@@ -351,3 +351,16 @@ The following gaps should be resolved before moving to architecture/implementati
 5. **L7 Q6**: Skill dependency validation
 
 These are minor and can be resolved in a single "gap-filling" pass without re-reading reference code.
+
+---
+
+## 10. Post-Convergence: Layer Redesign (D077)
+
+After convergence was declared, a critical review of the layer decomposition itself revealed:
+
+1. **L0 too fat**: Provider (LLM client) is an independent subsystem in all 3 reference projects but was lumped into L0 with the agent loop
+2. **L7 conflated**: Slash commands (TUI actions) and Skills (LLM content) are different concerns with different consumers
+
+**Redesign**: 10 → 11 layers. See `plan/layers.md` v2 and D077-D078 in `plan/decisions.md`.
+
+This does NOT invalidate the convergence (D076). The research observations are unchanged — only the layer numbering and grouping changed. All 76 decisions remain valid.
