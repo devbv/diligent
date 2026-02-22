@@ -247,3 +247,69 @@ Decisions made during synthesis reviews, with rationale.
 - **Deferred**: Per-session permission ruleset persistence — resolve during implementation
 - **Deferred**: Compaction plugin hooks — resolve in L7/L8
 - **Date**: 2026-02-23
+
+## Round 3 Decisions (L6: TUI + L7: Slash Commands & Skills)
+
+### D045: TUI rendering — Inline mode with custom ANSI framework
+- **Decision**: Use inline terminal rendering (no alternate screen) with a custom ANSI-based component framework. Render components as ANSI-styled string arrays with line-level differential rendering. Adopt pi-agent's `Component` interface pattern: `render(width): string[]` + `handleInput(data)` + `invalidate()`.
+- **Rationale**: Inline rendering preserves terminal scrollback history, which is valuable for a coding agent (users can scroll up to see previous context). pi-agent proves this approach works well in practice. codex-rs's alternate-screen ratatui approach is more sophisticated but loses scrollback. opencode's web-based approach (Solid.js) is too complex and requires a full web stack. A custom ANSI framework is the right level of abstraction for Bun/TS — lightweight, no native dependencies, and gives full control. The `Component` interface is minimal yet sufficient.
+- **Alternatives considered**: ratatui (Rust only), Ink/React for terminals (heavy dependency, React overhead), opencode's Solid.js (over-engineered for TUI), alternate screen mode (loses scrollback)
+- **Date**: 2026-02-23
+
+### D046: No server between TUI and core (resolves D011)
+- **Decision**: The TUI communicates with the agent core via direct in-process function calls. No HTTP server between TUI and core. Resolves D011 deferred item.
+- **Rationale**: codex-rs and pi-agent both use direct in-process communication for their TUI. opencode's HTTP server adds complexity and latency for the primary use case (terminal UI). The server architecture makes sense for opencode because it enables web UI, desktop app, and IDE extensions — but for diligent's MVP, the TUI is the only frontend. An HTTP server can be added later (as codex-rs did with `app-server`) when IDE integration is needed. Starting with direct calls keeps the architecture simple and avoids premature abstraction.
+- **Alternatives considered**: opencode's HTTP server (deferred — add when multiple frontends needed), JSON-RPC like pi-agent's RPC mode (deferred)
+- **Date**: 2026-02-23
+
+### D047: Markdown rendering — marked + ANSI styling
+- **Decision**: Use `marked` (Markdown parser) with custom ANSI styling renderers for terminal output. Code blocks use a syntax highlighting library (Shiki or similar). Streaming markdown rendered incrementally with newline-gated commits.
+- **Rationale**: pi-agent uses `marked` successfully for terminal markdown rendering. codex-rs uses `pulldown_cmark` (Rust equivalent). Both produce terminal-friendly output by converting markdown tokens to styled text. `marked` is mature, fast, and works well with Bun. Newline-gated streaming (render only completed lines during streaming, finalize remaining at end) from codex-rs is an excellent pattern for smooth streaming UX.
+- **Date**: 2026-02-23
+
+### D048: Input handling — Raw mode with Kitty protocol support
+- **Decision**: Use raw mode (`process.stdin.setRawMode(true)`) with Kitty keyboard protocol detection/enablement for better key disambiguation. Implement a `StdinBuffer` for batched input splitting (pi-agent's pattern). Support bracketed paste mode.
+- **Rationale**: pi-agent's input handling model is well-proven for Node/Bun TS. Kitty protocol provides reliable key modifier detection across modern terminals with graceful fallback for legacy terminals. `StdinBuffer` ensures components receive single events even when the terminal batches input.
+- **Date**: 2026-02-23
+
+### D049: Spinner — Braille spinner with configurable messages
+- **Decision**: Implement spinners using braille animation characters (`["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]`) with 80ms update interval. Spinners display a configurable message alongside the animation.
+- **Rationale**: pi-agent's braille spinner is clean, lightweight, and universally supported. codex-rs's shimmer gradient is visually impressive but requires true-color support and is more complex to implement. Braille spinners are the standard for CLI applications and work across all terminals.
+- **Date**: 2026-02-23
+
+### D050: Overlay system for modals and pickers
+- **Decision**: Implement an overlay stack system for modal UI elements (model picker, session selector, approval dialogs). Overlays render on top of base content with configurable positioning. Follow pi-agent's pattern: `showOverlay(component, options): OverlayHandle`.
+- **Rationale**: Both codex-rs and pi-agent implement overlay systems for interactive pickers and dialogs. Pi-agent's overlay API with anchor-based positioning and show/hide handles is clean and flexible. Essential for commands like `/model`, `/resume`, approval prompts.
+- **Date**: 2026-02-23
+
+### D051: Slash commands — Registry pattern with handler functions
+- **Decision**: Implement slash commands as a registry of `{ name, description, handler, availableDuringTask, supportsArgs }` objects. Commands registered at startup from built-in definitions. Handler receives `(args: string, context: CommandContext)`. Start with ~15 essential commands.
+- **Rationale**: pi-agent's if/else chain is too fragile for a growing command set. codex-rs's enum is Rust-specific. A registry pattern combines the best: named handlers (testable, modular), dynamic registration (extensions can add commands later), and O(1) lookup. The `CommandContext` provides access to session, TUI, config without tight coupling.
+- **Alternatives considered**: Enum-based dispatch (Rust pattern, not idiomatic TS), if/else chain (pi-agent, fragile), template-only (opencode, too limited for UI commands)
+- **Date**: 2026-02-23
+
+### D052: Skills — SKILL.md with frontmatter, progressive disclosure
+- **Decision**: Adopt the SKILL.md format with YAML frontmatter (`name`, `description`). Skills discovered from `~/.config/diligent/skills/`, project `.diligent/skills/`, and `.agents/skills/` (for cross-tool compatibility). Progressive disclosure: metadata always in system prompt, body loaded on invocation. Resolves D044 deferred item for markdown-based definitions.
+- **Rationale**: All three projects converge on the SKILL.md with YAML frontmatter format — this is a de facto standard emerging across coding agents. Progressive disclosure (metadata always loaded, ~100 tokens; body loaded on demand) is critical for context efficiency. Cross-compatibility with `.agents/skills/` directory enables shared skills across tools.
+- **Date**: 2026-02-23
+
+### D053: Skill invocation — Implicit (LLM-driven) with explicit fallback
+- **Decision**: Skills are available for implicit LLM invocation by default (skill metadata in system prompt, LLM can decide to use them). Users can also explicitly invoke via `/skill:name` or the skills picker. Skills can opt out of implicit invocation via `disable-model-invocation: true` in frontmatter.
+- **Rationale**: codex-rs's implicit invocation model is the most seamless UX — the LLM reads skill metadata and decides when to use each skill. pi-agent requires explicit `/skill:name` which adds friction. The opt-out mechanism (`disable-model-invocation`) handles skills that should only be explicitly invoked (e.g., destructive operations).
+- **Date**: 2026-02-23
+
+### D054: Multi-mode support — Interactive + Print modes
+- **Decision**: Support two modes from the start: Interactive (full TUI) and Print (one-shot, pipe-friendly). Interactive mode is the default. Print mode accepts input from stdin/args, outputs to stdout, exits when done.
+- **Rationale**: pi-agent supports Interactive, Print, and RPC modes. Print mode is essential for scripting and piping (`echo "fix the bug" | diligent`). RPC mode can be added later for IDE integration. Two modes is the minimum viable set.
+- **Date**: 2026-02-23
+
+### D055: Deferred Round 3 decisions
+- **Deferred**: Syntax highlighting library selection (Shiki vs tree-sitter-highlight vs highlight.js) — resolve during implementation
+- **Deferred**: LSP diagnostics display in TUI (D026) — resolve during implementation if needed
+- **Deferred**: Command palette (Cmd+Shift+P style) as alternative to slash commands — resolve post-MVP
+- **Deferred**: Remote skill discovery (opencode's URL-based pull) — resolve post-MVP
+- **Deferred**: Extension/plugin system scope — resolve in L8/L9 or post-MVP
+- **Deferred**: Compaction plugin hooks (from D044) — resolve in L8 or post-MVP
+- **Deferred**: RPC mode for IDE integration — resolve when needed
+- **Deferred**: Custom theme loading from filesystem — resolve during implementation
+- **Date**: 2026-02-23
