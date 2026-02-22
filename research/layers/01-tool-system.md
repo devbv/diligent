@@ -8,192 +8,456 @@
 4. How are tool results returned to the LLM?
 5. What is the tool call lifecycle?
 6. How are parallel vs sequential tool calls handled?
-7. What are the key abstractions?
-8. How does it interface with the REPL loop (L0)?
+7. How is approval integrated into tool execution?
+8. How are schemas validated?
+9. How are errors handled?
+10. What are the key abstractions and their relationships?
 
 ## codex-rs Analysis
 
-**Tool Definition:**
-- `ToolSpec` enum with variants: `Function(ResponsesApiTool)`, `LocalShell`, `WebSearch`, `Freeform(FreeformTool)`
-- `ResponsesApiTool`: name, description, strict, parameters (JsonSchema)
-- Rust-native JsonSchema subset (Boolean, String, Number, Array, Object)
+### Tool Definition
 
-**Registry:**
-- `ToolRegistry` stores `HashMap<String, Arc<dyn ToolHandler>>`
-- `ToolRegistryBuilder` (builder pattern): `push_spec()`, `register_handler()`, `build()`
-- `build_specs()` factory creates all tools conditionally based on feature flags
-- Single registry holds built-in + MCP + dynamic tools
+**Two-level system: ToolSpec (wire type) + ToolHandler (implementation)**
 
-**Invocation Flow:**
-1. `ToolRouter::build_tool_call()` converts LLM `ResponseItem` → `ToolCall`
-2. `ToolRouter::dispatch_tool_call()` dispatches with session, turn context
-3. `ToolRegistry` looks up handler by name, validates payload kind
-4. Checks if tool is mutating → gates execution
-5. Handler executes and returns `ToolOutput`
+```rust
+// Wire type sent to model:
+pub enum ToolSpec {
+    Function(ResponsesApiTool),   // name, description, strict, parameters: JsonSchema
+    LocalShell {},                 // Built-in shell
+    WebSearch { external_web_access? },
+    Freeform(FreeformTool),       // name, description, format (Lark grammar)
+}
 
-**Results to LLM:**
-- `ToolOutput` enum: `Function { body, success }` or `Mcp { result }`
-- Converted to `ResponseInputItem` (FunctionCallOutput / CustomToolCallOutput / McpToolCallOutput)
-- Output formatting: structured JSON (exit_code, duration) or freeform text
-- Truncation policies applied (max bytes/lines)
+// ConfiguredToolSpec wraps with parallel support flag:
+pub struct ConfiguredToolSpec {
+    pub spec: ToolSpec,
+    pub supports_parallel_tool_calls: bool,
+}
 
-**Lifecycle:**
-- Implicit through async: Pending → Approval → Sandbox selection → Running → Complete/Error
-- `FunctionCallError` variants: `RespondToModel`, `Fatal`, `MissingLocalShellCallId`
-- `Orchestrator::run()` pipeline: Approval → Sandbox Escalation → Network Approval
+// Implementation trait:
+#[async_trait]
+pub trait ToolHandler: Send + Sync {
+    fn kind(&self) -> ToolKind;   // Function | Mcp
+    fn matches_kind(&self, payload: &ToolPayload) -> bool;
+    async fn is_mutating(&self, invocation: &ToolInvocation) -> bool;
+    async fn handle(&self, invocation: ToolInvocation) -> Result<ToolOutput, FunctionCallError>;
+}
+```
 
-**Parallel vs Sequential:**
-- `ToolCallRuntime` uses `RwLock`: read lock for parallel-capable, write lock for sequential-only
-- Per-tool `supports_parallel` flag in `ConfiguredToolSpec`
-- Parallel: shell, grep, read_file, list_dir; Sequential: apply_patch, spawn_agent, plan
-- `CancellationToken` + `AbortOnDropHandle` for cleanup
+### Tool Registry
 
-**Key Abstractions:**
-- `ToolHandler` trait: `kind()`, `is_mutating()`, `handle()` — core dispatch interface
-- `ToolRuntime<Rq, Out>` trait: `run()`, `exec_approval_requirement()`, `start_approval_async()`, `network_approval_spec()` — lifecycle hooks for complex tools
-- `ToolInvocation`: carries session, turn, call_id, tool_name, payload
-- `ToolPayload` enum: Function, Custom, LocalShell, Mcp
-- `Orchestrator`: central approval/sandbox/network pipeline
+```rust
+pub struct ToolRegistry {
+    handlers: HashMap<String, Arc<dyn ToolHandler>>,
+}
 
-**Interface with L0:**
-- After LLM response, `build_tool_call()` converts each tool call
-- `ToolCallRuntime::handle_tool_call()` returns `ResponseInputItem`
-- Results feed back into next LLM turn as history
-- Tools emit events via session's event channel
+pub struct ToolRegistryBuilder {
+    handlers: HashMap<String, Arc<dyn ToolHandler>>,
+    specs: Vec<ConfiguredToolSpec>,
+}
+
+impl ToolRegistryBuilder {
+    pub fn push_spec(&mut self, spec: ToolSpec);
+    pub fn push_spec_with_parallel_support(&mut self, spec: ToolSpec, supports_parallel: bool);
+    pub fn register_handler(&mut self, name: impl Into<String>, handler: Arc<dyn ToolHandler>);
+    pub fn build(self) -> (Vec<ConfiguredToolSpec>, ToolRegistry);
+}
+
+// build_specs() factory: creates all handlers, conditionally adds based on config
+// Static registration, no runtime discovery (MCP tools added via MCPConnectionManager)
+```
+
+### Tool Invocation
+
+```rust
+pub struct ToolRouter {
+    registry: ToolRegistry,
+    specs: Vec<ConfiguredToolSpec>,
+}
+
+impl ToolRouter {
+    pub fn specs(&self) -> Vec<ToolSpec>;  // For model
+    pub async fn build_tool_call(session, item: ResponseItem) -> Result<Option<ToolCall>>;
+    pub async fn dispatch_tool_call(&self, session, turn, tracker, call, source) -> Result<ResponseInputItem>;
+}
+
+// Dispatch flow: ResponseItem → ToolCall → ToolInvocation → handler.handle() → ToolOutput → ResponseInputItem
+```
+
+**ToolInvocation carries:**
+```rust
+pub struct ToolInvocation {
+    pub session: Arc<Session>,
+    pub turn: Arc<TurnContext>,
+    pub tracker: SharedTurnDiffTracker,
+    pub call_id: String,
+    pub tool_name: String,
+    pub payload: ToolPayload,  // Function{args} | Custom{input} | LocalShell{params} | Mcp{server,tool,args}
+}
+```
+
+### Tool Results
+
+```rust
+pub enum ToolOutput {
+    Function { body: FunctionCallOutputBody, success: Option<bool> },  // Text or ContentItems
+    Mcp { result: Result<CallToolResult, String> },
+}
+
+// Converts to ResponseInputItem based on payload type:
+// Function → FunctionCallOutput { call_id, output: { body, success } }
+// Custom → CustomToolCallOutput { call_id, output }
+// Mcp → McpToolCallOutput { call_id, result }
+```
+
+### Tool Lifecycle
+
+1. **Lookup**: Find handler by name in HashMap (O(1))
+2. **Validation**: Check payload kind matches handler kind
+3. **Mutating check**: `is_mutating()` → if true, wait for `tool_call_gate.wait_ready()`
+4. **Execution**: `handler.handle(invocation)` async
+5. **Hook dispatch**: Fire AfterToolUse hook (can abort)
+6. **Response conversion**: `output.into_response(call_id, payload)`
+
+Events emitted: ExecCommandBegin/OutputDelta/End, PatchApplyBegin/End
+
+### Parallel vs Sequential
+
+```rust
+pub struct ToolCallRuntime {
+    parallel_execution: Arc<RwLock<()>>,  // Single RwLock
+}
+
+// Per-tool flag: supports_parallel_tool_calls
+// Parallel tools: .read() lock (concurrent)
+// Sequential tools: .write() lock (exclusive)
+// Example: shell=parallel, apply_patch=sequential
+```
+
+### Approval Integration (Orchestrator)
+
+```rust
+pub struct ToolOrchestrator { sandbox: SandboxManager }
+
+// Pipeline: Approval → Sandbox Selection → Attempt → Retry with Escalation → Network Approval
+// ExecApprovalRequirement: Skip | NeedsApproval { reason } | Forbidden { reason }
+// ToolRuntime trait extends: Approvable + Sandboxable + network_approval_spec()
+// ApprovalStore caches decisions per-session
+```
+
+### Schema System
+
+Custom JsonSchema subset: Boolean, String, Number, Array, Object with properties/required/additionalProperties. NOT full JSON Schema. Compatible with MCP. `strict: bool` flag for validation mode.
+
+### Error Handling
+
+```rust
+pub enum FunctionCallError {
+    RespondToModel(String),    // Error message sent to LLM
+    MissingLocalShellCallId,   // Parse error
+    Fatal(String),             // Unrecoverable
+}
+
+pub enum ToolError {
+    Rejected(String),          // User declined
+    Codex(CodexErr),           // Execution error (sandbox timeout, etc.)
+}
+```
+
+---
 
 ## pi-agent Analysis
 
-**Tool Definition:**
-- Base `Tool<TParameters>`: name, description, parameters (TypeBox schema)
-- `AgentTool<TParameters, TDetails>` extends with: label, `execute(toolCallId, params, signal?, onUpdate?)`
-- `AgentToolResult<T>`: content (TextContent | ImageContent)[], details
-- `onUpdate` callback for streaming partial results during execution
+### Tool Definition
 
-**Registry:**
-- No explicit registry — tools passed as array to `AgentContext.tools`
-- `Agent.setTools(t)` updates state directly
-- Tool collections exported from `coding-agent/src/core/tools/index.ts`
-- `createCodingTools(cwd, options)` factory for custom working directories
+**Two-level hierarchy: Tool (base) → AgentTool (executable)**
 
-**Invocation Flow:**
-1. `agentLoop()` streams assistant response
-2. Filters `toolCall` content from response
-3. `executeToolCalls()` iterates sequentially
-4. Looks up tool by name in array
-5. `validateToolArguments()` with AJV against TypeBox schema
-6. `tool.execute(id, args, signal, onUpdate)` called
-7. Result wrapped in `ToolResultMessage`
+```typescript
+// Base (LLM-facing, in ai package):
+interface Tool<TParameters extends TSchema = TSchema> {
+  name: string;
+  description: string;
+  parameters: TParameters;  // TypeBox schema
+}
 
-**Results to LLM:**
-- `ToolResultMessage`: role="toolResult", toolCallId, toolName, content[], details, isError
-- Added to `currentContext.messages` for next LLM turn
-- Content is TextContent or ImageContent blocks
+// Extended (executable, in agent package):
+interface AgentTool<TParameters extends TSchema, TDetails = any> extends Tool<TParameters> {
+  label: string;
+  execute: (
+    toolCallId: string,
+    params: Static<TParameters>,   // TypeBox inferred type
+    signal?: AbortSignal,
+    onUpdate?: AgentToolUpdateCallback<TDetails>,  // Streaming callback
+  ) => Promise<AgentToolResult<TDetails>>;
+}
 
-**Lifecycle:**
-- Events: `tool_execution_start` → `tool_execution_update` (streaming) → `tool_execution_end`
-- `AgentState.pendingToolCalls` Set tracks active tool IDs
-- isError flag on result distinguishes success/failure
+interface AgentToolResult<T> {
+  content: (TextContent | ImageContent)[];  // To LLM
+  details: T;                                // To UI
+}
+```
 
-**Parallel vs Sequential:**
-- **Sequential only** — simple for loop over tool calls
-- Between each tool, checks `getSteeringMessages()` for user interruption
-- If steering messages arrive, remaining tools are skipped with placeholder results
+### Tool Registry
 
-**Key Abstractions:**
-- `Tool<TParameters>` (base, in ai package)
-- `AgentTool<TParameters, TDetails>` (extended, in agent package)
-- `AgentToolResult<T>` (output)
-- `ToolCall` (LLM-generated invocation)
-- `ToolResultMessage` (result for context)
-- `EventStream<AgentEvent, AgentMessage[]>` (async event queue)
+```typescript
+// No formal registry — tools passed as array to AgentContext
+interface AgentContext {
+  systemPrompt: string;
+  messages: AgentMessage[];
+  tools?: AgentTool<any>[];
+}
 
-**Interface with L0:**
-- `agentLoop()` is the main entry: streams LLM → executes tools → feeds back results
-- Inner while loop continues until no more tool calls AND no steering messages
-- Outer while loop handles follow-up messages after completion
+// Tool collections:
+export const codingTools: Tool[] = [readTool, bashTool, editTool, writeTool];
+export const readOnlyTools: Tool[] = [readTool, grepTool, findTool, lsTool];
+export const allTools = { read: readTool, bash: bashTool, edit: editTool, ... };
+
+// Factory for custom cwd:
+export function createCodingTools(cwd, options?): Tool[]
+```
+
+### Tool Invocation
+
+```typescript
+// In agentLoop's runLoop():
+// 1. Stream assistant response
+// 2. Filter tool calls from content
+const toolCalls = message.content.filter(c => c.type === "toolCall");
+// 3. Execute sequentially
+const { toolResults, steeringMessages } = await executeToolCalls(tools, message, signal, stream, getSteeringMessages);
+// 4. Push results to context
+for (const result of toolResults) context.messages.push(result);
+```
+
+**executeToolCalls flow:**
+1. For each toolCall in sequence:
+2. Emit `tool_execution_start` event
+3. Validate args: `validateToolArguments(tool, toolCall)` (AJV + TypeBox)
+4. Execute: `tool.execute(toolCallId, validatedArgs, signal, onUpdate)`
+5. Emit `tool_execution_update` via onUpdate callback
+6. Catch errors → `isError = true`
+7. Emit `tool_execution_end`
+8. Create `ToolResultMessage`
+9. Check steering messages → skip remaining if user interrupted
+
+### Tool Results
+
+```typescript
+interface ToolResultMessage<TDetails = any> {
+  role: "toolResult";
+  toolCallId: string;
+  toolName: string;
+  content: (TextContent | ImageContent)[];
+  details?: TDetails;
+  isError: boolean;
+  timestamp: number;
+}
+// Added to context.messages for next LLM turn
+```
+
+### Tool Lifecycle Events
+
+```typescript
+type AgentEvent =
+  | { type: "tool_execution_start"; toolCallId; toolName; args }
+  | { type: "tool_execution_update"; toolCallId; toolName; args; partialResult }
+  | { type: "tool_execution_end"; toolCallId; toolName; result; isError };
+```
+
+### Parallel vs Sequential
+
+**Sequential only** with steering interruption:
+- Simple for loop over tool calls
+- Between each tool, check `getSteeringMessages()`
+- If steering messages found, skip remaining tools with placeholder results
+- No parallel execution at all
+
+### Validation
+
+AJV with TypeBox schema compilation. Supports type coercion (AJV mutates args). CSP-aware (disables in browser extensions). Errors formatted with JSON paths.
+
+### Error Handling
+
+All tool execution wrapped in try/catch. Errors converted to content `[{ type: "text", text: error.message }]` with `isError: true`. Error message sent to LLM for self-correction.
+
+---
 
 ## opencode Analysis
 
-**Tool Definition:**
-- `Tool.Info<Parameters, Metadata>`: id, `init()` async function
-- `init()` returns: description, parameters (Zod schema), `execute(args, ctx)`, optional `formatValidationError()`
-- **Lazy initialization** — expensive setup deferred until first use
-- Execute returns: title, metadata, output (string), optional attachments (FilePart[])
-- `Tool.Context`: sessionID, messageID, agent, abort signal, `metadata()` for streaming, `ask()` for permissions
+### Tool Definition
 
-**Registry:**
-- `ToolRegistry` with filesystem discovery: scans `{tool,tools}/*.{js,ts}` in config directories
-- Plugin system: `Plugin.list()` loads tools from registered plugins
-- `register()` for runtime addition/replacement
-- `tools(model, agent)` filters tools based on model/provider capabilities
-- Model-based filtering (e.g., apply_patch only for certain GPT models)
+**Lazy init pattern with Zod schemas:**
 
-**Invocation Flow:**
-1. `ToolRegistry.tools()` fetches and initializes tools
-2. Converted to AI SDK format via `tool()` wrapper
-3. Schema transformed for provider compatibility via `ProviderTransform.schema()`
-4. Passed to `streamText()` from `ai` library
-5. Stream events processed by `SessionProcessor`: tool-call → tool-result → tool-error
-6. Plugin hooks: `tool.execute.before`, `tool.execute.after`
+```typescript
+interface Tool.Info<Parameters extends z.ZodType, M extends Metadata> {
+  id: string;
+  init: (ctx?: InitContext) => Promise<{
+    description: string;
+    parameters: Parameters;   // Zod schema
+    execute(args: z.infer<Parameters>, ctx: Tool.Context): Promise<{
+      title: string;
+      metadata: M;
+      output: string;
+      attachments?: FilePart[];
+    }>;
+    formatValidationError?(error: z.ZodError): string;
+  }>;
+}
 
-**Results to LLM:**
-- Output: string (main result), title (display), metadata (tool-specific), attachments
-- Truncated via `Truncate.output()` if exceeds limits
-- Stored as `MessageV2.ToolPart` in session history
-- State tracked: `ToolStateCompleted { output, title, metadata, time, attachments }`
+// Tool.Context provides:
+interface Tool.Context<M> {
+  sessionID: string;
+  messageID: string;
+  agent: string;
+  abort: AbortSignal;
+  callID?: string;
+  extra?: Record<string, any>;
+  messages: MessageV2.WithParts[];
+  metadata(input: { title?; metadata?: M }): void;  // Real-time streaming updates
+  ask(input: PermissionRequest): Promise<void>;      // Permission check
+}
 
-**Lifecycle:**
-- Explicit state machine: `pending` → `running` → `completed` | `error`
-- Each state is a Zod-validated object with specific fields
-- `running` state supports metadata updates mid-execution
-- Permission denial handled as special error case
+// Convenience constructor:
+function Tool.define<P, R>(id, init: function | object): Tool.Info<P, R>
+```
 
-**Parallel vs Sequential:**
-- LLM can generate multiple tool calls in single response (processed independently)
-- `batch` tool enables explicit parallel execution (up to 25 tools via Promise.all)
-- Sequential within agent loop: result feeds into next LLM turn
+### Tool Registry
 
-**Key Abstractions:**
-- `Tool.Info`: definition with lazy init
-- `Tool.Context`: runtime context with abort, permissions, metadata streaming
-- `MessageV2.ToolPart`: persisted tool call with state machine
-- `MessageV2.ToolState`: union of Pending/Running/Completed/Error
-- `ToolRegistry`: discovery + filtering + initialization
+```typescript
+// Discovery: filesystem scan + plugin loading
+const matches = Glob.scanSync("{tool,tools}/*.{js,ts}", { cwd: configDir });
+// Dynamic import of each module
+const mod = await import(match);
+// Plus plugin tools: Plugin.list() → plugin.tool entries
 
-**Interface with L0:**
-- `SessionPrompt.prompt()` creates tool definitions, calls LLM, processes results
-- Loop continues until finish event or max steps
-- Results stored in SQLite via session messages
-- Event bus publishes state changes for reactive UI updates
+// Built-in tools listed explicitly in all():
+[InvalidTool, BashTool, ReadTool, GlobTool, GrepTool, EditTool, WriteTool, TaskTool, ...]
+
+// Filtered by model/provider:
+async function tools(model, agent?): Promise<Tool[]>
+// apply_patch for GPT, edit/write for Claude, websearch for opencode provider, etc.
+
+// Runtime registration:
+async function register(tool: Tool.Info): void
+```
+
+### Tool Invocation
+
+```typescript
+// In resolveTools() (prompt.ts):
+// 1. Get tools from ToolRegistry.tools(model, agent)
+// 2. For each tool, create AI SDK wrapper:
+const schema = ProviderTransform.schema(model, z.toJSONSchema(item.parameters));
+tools[item.id] = tool({
+  id: item.id,
+  description: item.description,
+  inputSchema: jsonSchema(schema),
+  async execute(args, options) {
+    const ctx = context(args, options);  // Build Tool.Context
+    await Plugin.trigger("tool.execute.before", ...);
+    const result = await item.execute(args, ctx);
+    await Plugin.trigger("tool.execute.after", ...);
+    return result;
+  },
+});
+
+// 3. Pass to LLM.stream({ tools }) which calls ai-sdk streamText()
+// 4. AI SDK handles tool-call events, invokes execute
+```
+
+### Tool Results
+
+```typescript
+// Tool returns:
+{ title: string, metadata: M, output: string, attachments?: FilePart[] }
+
+// Automatically truncated if tool doesn't handle truncation:
+if (result.metadata.truncated === undefined) {
+  const truncated = await Truncate.output(result.output);
+  result.output = truncated.content;
+  result.metadata.truncated = truncated.truncated;
+}
+
+// Stored as ToolPart in session:
+ToolStateCompleted { status: "completed", input, output, title, metadata, time, attachments? }
+```
+
+### Tool Lifecycle (State Machine)
+
+```typescript
+ToolStatePending   { status: "pending", input, raw }           // Input being streamed
+ToolStateRunning   { status: "running", input, title?, metadata?, time: { start } }  // Executing
+ToolStateCompleted { status: "completed", input, output, title, metadata, time: { start, end }, attachments? }
+ToolStateError     { status: "error", input, error, metadata?, time: { start, end } }
+
+// Transitions via Session.updatePart() in processor.ts
+```
+
+### Parallel vs Sequential
+
+- AI SDK processes tool calls sequentially from stream
+- **BatchTool** enables explicit parallel: `Promise.all(toolCalls.map(execute))`, up to 25 tools
+- No built-in parallel in the core loop
+
+### Permission Integration
+
+```typescript
+// Tools call ctx.ask() mid-execution:
+await ctx.ask({
+  permission: "read",          // Permission name
+  patterns: [filepath],         // Specific resource patterns
+  always: ["*"],               // Broad patterns to pre-approve
+  metadata: { filepath, diff }, // Context for user decision
+});
+// Throws PermissionNext.RejectedError if denied
+// Evaluated against agent + session rulesets
+```
+
+### Schema System
+
+Zod schemas → `z.toJSONSchema()` → `ProviderTransform.schema(model, jsonSchema)` for provider compatibility. Validation at execution time via `toolInfo.parameters.parse(args)`. Custom `formatValidationError()` optional.
+
+### Error Handling
+
+- Validation errors: Zod parse failure → descriptive error message
+- Permission denial: `PermissionNext.RejectedError` → may stop loop
+- Execution errors: caught by AI SDK → `tool-error` event → ToolStateError
+- **Doom loop detection**: same tool+input 3x in a row → ask for "doom_loop" permission
+
+---
 
 ## Comparison Table
 
 | Aspect | codex-rs | pi-agent | opencode |
 |---|---|---|---|
-| **Language** | Rust | TypeScript | TypeScript (Bun) |
-| **Tool Definition** | ToolSpec enum + ToolHandler trait | AgentTool interface with execute() | Tool.Info with lazy init() |
-| **Schema System** | Custom JsonSchema subset | TypeBox (@sinclair/typebox) | Zod |
-| **Registry** | HashMap + builder pattern | Array (no registry) | Filesystem + plugin discovery |
+| **Definition Pattern** | ToolSpec enum + ToolHandler trait | Tool interface + AgentTool extension | Tool.Info with lazy init() + Zod |
+| **Schema System** | Custom JsonSchema subset | TypeBox + AJV validation | Zod + z.toJSONSchema() + ProviderTransform |
+| **Registry** | HashMap + builder, static registration | Array (no registry), factory functions | Filesystem discovery + plugins + runtime register |
 | **Invocation** | Router → Registry → Handler | Direct array lookup → execute() | AI SDK tool() wrapper → execute |
-| **Result Format** | ToolOutput → ResponseInputItem | AgentToolResult → ToolResultMessage | {output, title, metadata, attachments} |
-| **Lifecycle States** | Implicit (async flow) | 3 events (start/update/end) | 4 explicit states (pending/running/completed/error) |
-| **Parallel Execution** | RwLock per-tool parallelism flag | Sequential only (with steering) | Batch tool (Promise.all, up to 25) |
-| **Approval Integration** | Orchestrator pipeline (approval → sandbox → network) | None (handled externally) | ctx.ask() inline permission requests |
-| **Streaming Results** | Output deltas via events | onUpdate callback | ctx.metadata() updates |
-| **Complexity** | High (orchestrator, sandbox, network) | Low (direct execute) | Medium (registry, permissions, batch) |
+| **Result Format** | ToolOutput(body, success) → ResponseInputItem | AgentToolResult(content[], details) → ToolResultMessage | {title, output, metadata, attachments?} → ToolPart |
+| **Lifecycle States** | Implicit (async flow) + events | 3 events (start/update/end) | 4 explicit states (pending/running/completed/error) |
+| **Parallel** | RwLock per-tool flag (true parallel) | Sequential only (with steering) | Sequential + batch tool (Promise.all, up to 25) |
+| **Approval** | Orchestrator pipeline (approval → sandbox → network) | None (external) | ctx.ask() inline permission |
+| **Streaming Results** | Event deltas via channels | onUpdate callback | ctx.metadata() updates |
+| **Error Recovery** | FunctionCallError enum, hook abort | try/catch → isError flag | Zod validation, permission denial, doom loop |
+| **Complexity** | High (orchestrator, sandbox, network approval) | Low (direct execute, simple events) | Medium (registry, permissions, state machine) |
 
 ## Open Questions
 
-1. **Schema system**: TypeBox vs Zod vs custom? Zod is most popular in TS ecosystem, TypeBox has better JSON Schema alignment. Custom subset like codex-rs is maximum control but more work.
+1. **Schema system**: Zod is the clear winner for TS. `z.toJSONSchema()` provides native JSON Schema export. TypeBox (pi-agent) has better JSON Schema alignment but worse ecosystem.
 
-2. **Registry complexity**: pi-agent's "no registry" (just an array) is simplest. opencode's filesystem discovery is most extensible. What level of dynamism is needed?
+2. **Registry complexity**: pi-agent's "no registry" (array) is simplest but limits dynamism. opencode's filesystem discovery is most extensible but adds startup cost. A simple Map registry (like codex-rs but simpler) is the right balance.
 
-3. **Parallel execution strategy**: codex-rs's RwLock approach is most sophisticated (per-tool parallelism). pi-agent's sequential-with-steering is simplest. opencode's batch tool is a middle ground. Which fits our needs?
+3. **Parallel execution**: codex-rs's RwLock is most sophisticated but premature. pi-agent's sequential-with-steering is simplest. Sequential first with `supportParallel` flag for later is correct.
 
-4. **Approval integration point**: Should approval be in the tool system (codex-rs orchestrator), in the tool context (opencode ctx.ask()), or external (pi-agent)? This heavily affects L3 design.
+4. **Approval integration point**: codex-rs's orchestrator is heavy. opencode's ctx.ask() is elegant but tightly coupled to tool implementation. pi-agent's external approach requires refactoring. Placeholder approval hook in context (auto-approve initially) is the right starting point.
 
-5. **Lazy initialization**: opencode's `init()` pattern defers tool setup. Worth adopting for tools with expensive setup (e.g., MCP connections)?
+5. **Lazy initialization**: opencode's `init()` pattern defers expensive setup. Not needed initially but useful for MCP connections later.
 
-6. **Tool result format**: String-only (simple, LLM-native) vs structured (richer for UI)? opencode returns string output + separate metadata. pi-agent returns content blocks (text + image).
+6. **Tool result format**: opencode's `{output: string, metadata: M}` with automatic truncation is the cleanest. pi-agent's content blocks are more flexible for images. Start with string output + metadata.
 
-7. **Streaming during execution**: All three support it differently. codex-rs emits event deltas, pi-agent uses onUpdate callback, opencode uses ctx.metadata(). What's the cleanest pattern for our Op/Event model?
+7. **Streaming during execution**: pi-agent's onUpdate callback is simple. opencode's ctx.metadata() is richer. codex-rs emits events via channels. For our Op/Event model, the callback approach maps cleanly to event emission.
+
+8. **Doom loop detection**: opencode's 3-strike detection is practical. Worth adding early since it prevents common failure modes.
+
+9. **ProviderTransform**: opencode's schema transformation for different providers is necessary for multi-provider support. Should be built into the provider abstraction, not the tool system.

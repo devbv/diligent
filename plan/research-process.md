@@ -80,36 +80,101 @@ Each file's structure:
 
 **NOTE: No design decisions for diligent are made in this step.** Pure observation and analysis only.
 
-### Research Execution Method
+### Research Execution Method — Agent Hierarchy
 
-- Deploy Explore agents **one per layer, one per project** or **one per layer in parallel**
-- Give each agent specific question lists and target directories
-- Collect results and organize into research files
+Token management is critical. A single agent cannot hold all rounds of research in context. Use a **hierarchical agent structure** to isolate each round's context:
+
+```
+Main Agent (persistent session, thin — orchestration only)
+  │
+  ├─ Round N Coordinator (Task subagent, one per round)
+  │    │  - Reads: research-process.md, layers.md, previous round's research files
+  │    │  - Writes: research files, updates to layers.md, decisions.md
+  │    │
+  │    ├─ Research Agent: Layer X × codex-rs    (Explore subagent)
+  │    ├─ Research Agent: Layer X × pi-agent    (Explore subagent)
+  │    ├─ Research Agent: Layer X × opencode    (Explore subagent)
+  │    ├─ Research Agent: Layer Y × codex-rs    (Explore subagent)
+  │    └─ ...
+  │
+  ├─ Round N+1 Coordinator (separate Task subagent, fresh context)
+  │    └─ ...
+  └─ ...
+```
+
+**Rules:**
+1. **Main agent stays thin** — only dispatches rounds, reads results, commits. Never does research directly.
+2. **Round Coordinator is a Task subagent** — gets a fresh context per round. Responsible for:
+   - Reading prior round outputs (from files, not from main agent's memory)
+   - Spawning Explore agents for each (layer × project) combination
+   - Collecting results → writing research files
+   - Running synthesis review (Step 3)
+3. **Research Agents are Explore subagents** — spawned by the coordinator, one per (layer × project). Each gets:
+   - Specific question list from Step 2
+   - Target directory path (e.g., `research/references/codex-rs/`)
+   - Reference structure guide (`research/references/README.md`)
+4. **All context transfer happens through files** — not through agent memory. This is what makes the hierarchy work across token limits.
+5. **Parallelism**: Research agents within a round run in parallel. Rounds run sequentially.
 
 ## Step 3: Synthesis Review
 
 Performed after each round of research:
 
-### 3a. Cross-Layer Analysis
+### 3a. Layer Decomposition Review
+
+Challenge the decomposition itself, not just the ordering:
+
+- **Decomposition axis**: Are we cutting along the right dimension? (functional, data flow, lifecycle, etc.) Do the reference projects suggest a fundamentally different decomposition?
+- **Layer identity**: Does each layer represent a **coherent, distinct concept**? Or are some layers just "grab bags" of loosely related features?
+- **Granularity**: Are we over-splitting (things that are always implemented together) or under-splitting (layers that contain unrelated concerns)?
+- **Classification fit**: Are there capabilities that don't belong in their current layer, or that span multiple layers awkwardly?
+- **Missing concepts**: Did research reveal a core concept that doesn't map to any existing layer?
+
+If the decomposition itself needs rethinking, **redefine the layer list before continuing to the next round.** This is more important than order changes.
+
+### 3b. Layer Boundary & Structure
 - Are the **interface boundaries** between researched layers natural?
 - Should a layer be **split** if it's too large?
 - Should two layers be **merged** if they're essentially one?
+- Is a **new layer** needed for something that doesn't fit anywhere?
 
-### 3b. Layer Order Reassessment
+### 3c. Round Grouping Review
+- Are the **layers grouped in the right rounds**? Layers in the same round should be closely related or benefit from being researched together.
+- Should a layer be **moved to an earlier round** because it turned out to be a prerequisite for understanding other layers?
+- Should a layer be **moved to a later round** because it depends on layers not yet researched?
+- Is a round **too large** (too many layers to research coherently) or **too small** (layers that make more sense researched alongside others)?
+
+Update the Round Plan table if grouping changes.
+
+### 3d. Layer Order Reassessment
 - Are there newly discovered dependencies from research results?
 - Should the order change?
-- Is a new layer needed?
 
-### 3c. Open Questions Consolidation
+### 3e. Open Questions Consolidation
 - Collect open questions from each layer's research
 - Classify: resolve in next round vs. defer until implementation
 
-### 3d. Decision Recording
+### 3f. Decision Recording
 - Record decisions and rationale from synthesis in `plan/decisions.md`
 - Update `plan/layers.md` if layer order changes
 
+### 3g. Full Review Pass (after all rounds complete)
+
+After the last round's synthesis, perform a **complete review from L0 through the final layer**:
+
+1. **Re-read all research files** in layer order — earlier research was written without knowledge of later layers
+2. **Cross-layer consistency check** — do early layer analyses still hold given what we learned later?
+3. **Update earlier research files** if new insights from later rounds change the picture
+4. **Final layer order validation** — confirm the full dependency graph makes sense end-to-end
+5. **Consolidated open questions** — single list across all layers, classified as "resolve before implementation" vs "resolve during implementation"
+
+This is NOT optional. Research done in Round 0 was conducted without context from Rounds 1–3. The full review ensures coherence across the entire layer stack.
+
 ### Loop Exit Conditions
+
+All of these must be true:
 - All layers researched
+- **Full review pass (3g) completed**
 - Layer order stabilized (no more reordering needed)
 - Remaining open questions are all "things we'll learn during implementation"
 
@@ -117,9 +182,9 @@ Performed after each round of research:
 
 | Round | Target Layers | Status |
 |---|---|---|
-| 0 | L0 (REPL Loop) | Complete (prior session) |
-| 1 | L1 (Tool System) + L2 (Core Tools) | Next |
-| 2 | L3 (Approval) + L4 (Config) + L5 (Session) | Waiting |
+| 0 | L0 (REPL Loop) | Complete (re-researched 2026-02-23) |
+| 1 | L1 (Tool System) + L2 (Core Tools) | Complete (re-researched 2026-02-23) |
+| 2 | L3 (Approval) + L4 (Config) + L5 (Session) | Complete (2026-02-23) |
 | 3 | L6 (TUI) + L7 (Commands) + L8 (MCP) + L9 (Multi-Agent) | Waiting |
 
 **Step 3 (synthesis review) is performed between every round.**

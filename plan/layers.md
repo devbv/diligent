@@ -4,12 +4,12 @@
 
 | Layer | Name | One-Line Definition | Status |
 |---|---|---|---|
-| L0 | REPL Loop | Basic stdin/stdout conversation loop with LLM streaming | Research complete, implementation planned |
-| L1 | Tool System | Framework for defining, registering, and invoking tools within the agent loop | Research complete |
-| L2 | Core Tools | Built-in tools: file read/write/edit, bash execution, glob, grep, ls | Research complete |
-| L3 | Approval & Sandbox | Permission model and sandboxed execution for tool calls | Research pending |
-| L4 | Config System | Hierarchical configuration (global, project, session) | Research pending |
-| L5 | Session & Persistence | Conversation history, session management, context compression | Research pending |
+| L0 | REPL Loop | Basic stdin/stdout conversation loop with LLM streaming | Research complete (re-researched), decisions D001-D011 |
+| L1 | Tool System | Framework for defining, registering, and invoking tools within the agent loop | Research complete (re-researched), decisions D012-D016 |
+| L2 | Core Tools | Built-in tools: file read/write/edit, bash execution, glob, grep, ls | Research complete (re-researched), decisions D017-D026 |
+| L3 | Approval & Sandbox | Permission model and sandboxed execution for tool calls | Research complete, decisions D027-D031 |
+| L4 | Config System | Hierarchical configuration (global, project, CLI) | Research complete, decisions D032-D035 |
+| L5 | Session & Persistence | Conversation history, session management, context compression | Research complete, decisions D036-D043 |
 | L6 | TUI | Terminal UI with rich rendering (markdown, syntax highlight, spinners) | Research pending |
 | L7 | Slash Commands & Skills | User-invocable commands and extensible skill system | Research pending |
 | L8 | MCP | Model Context Protocol server/client integration | Research pending |
@@ -34,9 +34,9 @@ Note: Dependencies flow right-to-left (← means "depends on"). L4 and L5 are so
 
 | Round | Layers | Status | Date |
 |---|---|---|---|
-| 0 | L0 (REPL Loop) | Complete | 2026-02-22 |
-| 1 | L1 (Tool System) + L2 (Core Tools) | Complete | 2026-02-23 |
-| 2 | L3 + L4 + L5 | Next | — |
+| 0 | L0 (REPL Loop) | Complete (re-researched) | 2026-02-23 |
+| 1 | L1 (Tool System) + L2 (Core Tools) | Complete (re-researched) | 2026-02-23 |
+| 2 | L3 + L4 + L5 | Complete | 2026-02-23 |
 | 3 | L6 + L7 + L8 + L9 | Waiting | — |
 
 ## Change History
@@ -45,3 +45,6 @@ Note: Dependencies flow right-to-left (← means "depends on"). L4 and L5 are so
 |---|---|---|
 | 2026-02-22 | Initial layer list created | Based on decomposition of coding agent capabilities, informed by codex-rs/pi-agent/opencode analysis |
 | 2026-02-23 | L1+L2 research complete, 10 new decisions (D005-D014) | Round 1 synthesis: Zod schemas, sequential execution, approval hook placeholder, 7 core tools, exact text replacement edit strategy |
+| 2026-02-23 | Full re-research from Round 0 | Deep-dive research with thorough code analysis. L0 decisions refined: D001-D004 confirmed, 7 new decisions D005-D011 (unified messages, JSONL persistence, EventStream, TurnContext/SessionState separation, AbortController, retry strategy, deferred items). Round 1 decisions renumbered D012-D021. |
+| 2026-02-23 | Round 1 re-research complete | L1+L2 deep-dive confirmed D012-D021. 5 new decisions D022-D026 (ripgrep for glob, binary detection, edit strategies, auto-truncation, deferred items). Layer order unchanged. |
+| 2026-02-23 | Round 2 research complete | L3+L4+L5 deep-dive: 18 new decisions D027-D044. L3: rule-based approval with wildcards, ctx.ask() pattern, once/always/reject responses, no OS sandbox at MVP, doom loop detection. L4: JSONC+Zod, 3-layer hierarchy, CLAUDE.md discovery. L5: JSONL+tree confirmed, LLM compaction with iterative summaries, file operation tracking, session listing/resume/fork, deferred persistence. Layer order unchanged — L3/L4/L5 remain independent of each other as expected. |
