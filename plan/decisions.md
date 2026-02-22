@@ -408,3 +408,46 @@ Decisions made during synthesis reviews, with rationale.
 - **Decision**: Recommended implementation order follows the layer numbering: L0 → L1 → L2 → L3 → L4 → L5 → L6 → L7 → L8 → L9. L4 (Config) can be introduced in parallel with L2/L3. L5 (Session) can be introduced in parallel with L3/L4.
 - **Rationale**: The dependency graph supports this order. L0-L2 form the core agent loop. L3 adds safety. L4-L5 add persistence/configuration. L6-L7 add user experience. L8-L9 add extensibility. The later layers (L8/L9) build on nearly everything below them, confirming they should be implemented last.
 - **Date**: 2026-02-23
+
+## Gap-Filling Decisions (Post Cycle 1 Review)
+
+### D070: Denied tools removed from LLM tool list
+- **Decision**: Tools that match "deny" permission rules are completely removed from the LLM's tool list, not left visible to fail at execution time.
+- **Rationale**: opencode follows this pattern. Removing denied tools (a) saves context tokens — each tool definition costs ~100-200 tokens, (b) prevents the LLM from attempting denied operations and generating confusing error loops, (c) is cleaner than returning "permission denied" errors mid-execution. The LLM adapts naturally to the available tool set. If a tool is conditionally denied (pattern-based), it remains in the list and the specific invocation is checked at call time.
+- **Date**: 2026-02-23
+
+### D071: Tool execution progress via callback → event emission
+- **Decision**: Tools emit progress during execution via an `onProgress(event)` callback in ToolContext. Progress events are forwarded to the agent event stream (D004/D007) as `tool_execution_update` events. This is the same pattern as pi-agent's `onUpdate` and opencode's `ctx.metadata()`.
+- **Rationale**: All three projects support mid-execution progress (bash output streaming, file read progress). The callback approach maps cleanly to the EventStream pattern (D007). Tools call `ctx.onProgress({ type, data })`, the executor wraps it as an AgentEvent, and the EventStream delivers it to consumers (TUI, persistence, etc.).
+- **Date**: 2026-02-23
+
+### D072: Ripgrep — require system install, document in prerequisites
+- **Decision**: Require ripgrep (`rg`) as a system dependency. Do not bundle or auto-download at MVP. Document as a prerequisite in README.
+- **Rationale**: ripgrep is widely available via system package managers (brew, apt, cargo). Auto-downloading binaries adds complexity (platform detection, binary verification, storage location) that's not worth it for MVP. pi-agent auto-downloads but this adds significant code. opencode also downloads lazily but has more infrastructure. Can be revisited post-MVP.
+- **Alternatives considered**: Bundle in npm package (binary size), auto-download like pi-agent (complexity), use Node.js glob/grep (much slower)
+- **Date**: 2026-02-23
+
+### D073: Config file — no locking at MVP, advisory warning
+- **Decision**: No file locking for config files at MVP. If multiple instances detect concurrent modification (via mtime check), emit a warning. Use atomic write (write to temp file, rename) to prevent corruption.
+- **Rationale**: File locking adds complexity (proper-lockfile dependency, cleanup on crash). The common case is single-instance usage. Atomic writes prevent the worst case (corrupted config). mtime-based detection catches the second-worst case (stale reads). Full locking can be added post-MVP if users report issues.
+- **Date**: 2026-02-23
+
+### D074: Config editing — read-modify-write with JSONC preservation deferred
+- **Decision**: Config edits (via `/settings` or programmatic) use read-parse-modify-serialize-write. JSONC comment preservation is deferred — edits may strip comments in MVP. Warn users that programmatic edits may remove comments.
+- **Rationale**: JSONC comment preservation requires a specialized parser that maintains the AST including comments (like `jsonc-parser` with edit operations). This is nice-to-have but not essential for MVP. Most config edits are infrequent. Users can be warned and manually re-add comments if needed.
+- **Date**: 2026-02-23
+
+### D075: Skill dependency validation deferred
+- **Decision**: Defer skill dependency validation (checking that required MCP servers/tools are available before skill execution) to post-MVP.
+- **Rationale**: codex-rs's `SkillDependencies` pattern is elegant but adds complexity. At MVP, skills that reference unavailable tools will simply fail at execution time with a clear error message. This is acceptable because (a) the failure is immediate and obvious, (b) most skills don't have complex dependencies, (c) dependency validation requires MCP connection state awareness which ties L7 to L8.
+- **Date**: 2026-02-23
+
+### D076: Research convergence — Cycle 2 not needed
+- **Decision**: Cycle 1 research has converged. No Cycle 2 needed. All 103 open questions across 10 layers are resolved (94 by existing decisions, 9 by gap-filling decisions D070-D075). Layer decomposition, boundaries, ordering, and round grouping are stable.
+- **Rationale**: Full evaluation in `plan/cycle1-review.md`. Outer loop exit criteria met:
+  - Full cycle produced no fundamental new insights after review
+  - All research files are coherent end-to-end (D068)
+  - Layer boundaries and dependencies are stable (D067)
+  - Decisions are consistent across all layers (D068)
+  - Remaining gaps were implementation details, not architectural questions
+- **Date**: 2026-02-23

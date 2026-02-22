@@ -6,16 +6,35 @@ This is NOT an implementation plan. It is a **process plan for how to conduct it
 
 ## Research Loop
 
+Two nested loops: an **inner loop** (per-round iteration) and an **outer loop** (full restart from Round 0).
+
 ```
-┌─→ 1. Define/reorder layer sequence
-│      ↓
-│   2. Deep research per layer (3 projects) → write to file
-│      ↓
-│   3. Synthesis review → reassess layer order → identify open questions
-│      ↓
-└── If new insights change the order or split layers → back to 1
-    Otherwise → proceed to implementation
+OUTER LOOP (Cycle N):
+┌─────────────────────────────────────────────────────────┐
+│                                                         │
+│   INNER LOOP (per-round):                               │
+│   ┌─→ 1. Define/reorder layer sequence                  │
+│   │      ↓                                              │
+│   │   2. Deep research per layer (3 projects) → file    │
+│   │      ↓                                              │
+│   │   3. Synthesis review → reassess layers             │
+│   │      ↓                                              │
+│   └── If layers change → back to 1                      │
+│       If more rounds remain → next round                │
+│       If all rounds done → Full Review Pass (3g)        │
+│                                                         │
+│   Full Review Pass (3g)                                 │
+│      ↓                                                  │
+│   Evaluate: has understanding fundamentally deepened?   │
+│      ↓                                                  │
+└──── YES → restart from Round 0 (Cycle N+1)              │
+      NO  → research stabilized, exit loop                │
+──────────────────────────────────────────────────────────┘
 ```
+
+**Why restart?** Later rounds (L6-L9) provide context that didn't exist when earlier rounds (L0-L2) were researched. Each full cycle produces deeper, more coherent research. The loop exits only when a full cycle produces no fundamental new insights — i.e., the understanding has converged.
+
+**Cycle history is tracked** in the Round Plan table. Each restart overwrites research files with improved versions. The decisions log grows monotonically (new decisions added, old ones refined).
 
 ## Step 1: Layer Sequence Definition
 
@@ -170,15 +189,28 @@ After the last round's synthesis, perform a **complete review from L0 through th
 
 This is NOT optional. Research done in Round 0 was conducted without context from Rounds 1–3. The full review ensures coherence across the entire layer stack.
 
-### Loop Exit Conditions
+### Outer Loop Restart Criteria
 
-All of these must be true:
-- All layers researched
-- **Full review pass (3g) completed**
-- Layer order stabilized (no more reordering needed)
-- Remaining open questions are all "things we'll learn during implementation"
+After Full Review Pass (3g), evaluate whether to restart from Round 0:
+
+**Restart (new cycle) if ANY of these are true:**
+- Earlier research files feel shallow or miss patterns that later rounds revealed
+- Cross-layer interfaces described in early rounds don't match what later rounds discovered
+- The decomposition itself (layer boundaries, what belongs where) needs rethinking
+- New reference project insights would change fundamental decisions
+- Open questions from early rounds could now be answered with accumulated knowledge
+
+**Stay exited (research converged) if ALL of these are true:**
+- A full cycle (Round 0 through 3g) produced no fundamental new insights
+- All research files are coherent when read end-to-end
+- Layer boundaries and dependencies are stable
+- Decisions are consistent across all layers
 
 ## Round Plan
+
+**Step 3 (synthesis review) is performed between every round.**
+
+### Cycle 1 (2026-02-23)
 
 | Round | Target Layers | Status |
 |---|---|---|
@@ -189,9 +221,24 @@ All of these must be true:
 | 4 | L8 (MCP) + L9 (Multi-Agent) | Complete (2026-02-23) |
 | — | Full Review Pass (Step 3g) | Complete (2026-02-23) |
 
-**Step 3 (synthesis review) is performed between every round.**
+69 decisions recorded (D001-D069). Full review pass completed.
 
-**STATUS: ALL RESEARCH COMPLETE.** All 10 layers researched across 3 reference projects. 69 decisions recorded (D001-D069). Full review pass (Step 3g) completed. Ready to proceed to implementation.
+### Cycle 1 Outer Loop Evaluation (2026-02-23)
+
+Full evaluation documented in `plan/cycle1-review.md`.
+
+- Open questions audit: 103 total across 10 layers, 94 resolved by D001-D069, 9 remaining gaps
+- Gap-filling decisions: D070-D076 resolve all remaining gaps
+- Layer decomposition: validated, no changes needed
+- Layer boundaries: stable, no splits/merges needed
+- Round grouping: confirmed correct
+- Layer order: confirmed correct
+
+**Outer loop exit criteria: ALL MET → Research converged (D076). No Cycle 2 needed.**
+
+76 decisions recorded (D001-D076).
+
+**STATUS: RESEARCH COMPLETE. Ready to proceed to architecture design (`plan/architecture.md`).**
 
 ### Round Completion Checklist
 

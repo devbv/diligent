@@ -44,6 +44,9 @@ Note: Dependencies flow right-to-left (← means "depends on"). L4 and L5 are so
 | 3 | L6 (TUI) + L7 (Slash Commands & Skills) | Complete | 2026-02-23 |
 | 4 | L8 (MCP) + L9 (Multi-Agent) | Complete | 2026-02-23 |
 | — | Full Review Pass (3g) | Complete | 2026-02-23 |
+| — | Outer Loop Evaluation | Converged (D076) | 2026-02-23 |
+
+76 decisions total (D001-D076). **RESEARCH CONVERGED — ready for architecture design.**
 
 ## Change History
 
@@ -56,3 +59,4 @@ Note: Dependencies flow right-to-left (← means "depends on"). L4 and L5 are so
 | 2026-02-23 | Round 2 research complete | L3+L4+L5 deep-dive: 18 new decisions D027-D044. L3: rule-based approval with wildcards, ctx.ask() pattern, once/always/reject responses, no OS sandbox at MVP, doom loop detection. L4: JSONC+Zod, 3-layer hierarchy, CLAUDE.md discovery. L5: JSONL+tree confirmed, LLM compaction with iterative summaries, file operation tracking, session listing/resume/fork, deferred persistence. Layer order unchanged — L3/L4/L5 remain independent of each other as expected. |
 | 2026-02-23 | Round 3 research complete | L6+L7 deep-dive: 11 new decisions D045-D055. L6: inline ANSI TUI (no alternate screen), no server between TUI and core (resolves D011), marked for markdown, raw mode with Kitty protocol, braille spinners, overlay system. L7: registry-based slash commands, SKILL.md with frontmatter (resolves D044), implicit skill invocation, Interactive+Print modes. Round grouping updated: Round 3 is L6+L7 only, Round 4 is L8+L9. Layer order unchanged. |
 | 2026-02-23 | Round 4 research complete (FINAL) | L8+L9 deep-dive: 11 new decisions D056-D066. L8: official MCP SDK, stdio+StreamableHTTP transport, discriminated config union, MCP tools as regular registry entries, tools-only at MVP. L9: TaskTool pattern with child sessions, code-defined agent types with config override, explicit deny permission isolation, wrapped text results. Full review pass (3g) completed: layer decomposition validated (D067), cross-layer consistency confirmed (D068), implementation order recommended (D069). ALL RESEARCH COMPLETE. |
+| 2026-02-23 | Outer loop evaluation: research converged | Full audit of 103 open questions across 10 layers: 94 resolved by D001-D069, 9 gaps filled by D070-D075. D076 declares convergence. Layer decomposition, boundaries, order, and round grouping all stable. No Cycle 2 needed. |
