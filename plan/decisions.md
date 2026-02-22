@@ -313,3 +313,98 @@ Decisions made during synthesis reviews, with rationale.
 - **Deferred**: RPC mode for IDE integration — resolve when needed
 - **Deferred**: Custom theme loading from filesystem — resolve during implementation
 - **Date**: 2026-02-23
+
+## Round 4 Decisions (L8: MCP + L9: Multi-Agent)
+
+### D056: MCP client — Official @modelcontextprotocol/sdk
+- **Decision**: Use the official `@modelcontextprotocol/sdk` TypeScript SDK for MCP client implementation. Do not roll a custom MCP client.
+- **Rationale**: opencode uses this SDK and it is the canonical TypeScript MCP implementation. codex-rs uses the `rmcp` Rust crate (also an official SDK). The official SDK handles protocol details, transport negotiation, and capability discovery. Rolling a custom client would duplicate significant work with no advantage. The SDK supports all three transport types (stdio, StreamableHTTP, SSE).
+- **Date**: 2026-02-23
+
+### D057: MCP transport — Stdio + StreamableHTTP (SSE fallback)
+- **Decision**: Support two MCP transport types: Stdio (for local servers) and StreamableHTTP with SSE fallback (for remote servers). Follow opencode's pattern of trying StreamableHTTP first, falling back to SSE.
+- **Rationale**: Stdio is essential for local MCP servers (the common case). StreamableHTTP is the modern remote transport. SSE is the legacy remote transport that many existing servers still use. opencode's try-HTTP-then-SSE pattern provides maximum compatibility with minimal complexity. OAuth deferred to post-MVP (see D063).
+- **Date**: 2026-02-23
+
+### D058: MCP config — Discriminated union (local/remote) in JSONC
+- **Decision**: MCP servers configured in `diligent.jsonc` under an `mcp` key. Config uses a discriminated union on `type`: `local` (command + environment) or `remote` (url + headers). Each server has optional `enabled` and `timeout` fields.
+- **Rationale**: opencode's discriminated union pattern is clean and type-safe with Zod (D012). The two types map directly to the two transport types (D057). Configuration follows D032 (JSONC) and D033 (3-layer hierarchy) — MCP servers can be defined at global, project, or CLI level. codex-rs's TOML format doesn't apply since we chose JSONC.
+- **Date**: 2026-02-23
+
+### D059: MCP tool integration — Convert to regular tools in registry
+- **Decision**: MCP tools are converted to regular tool objects and registered in the tool registry (D014). Tool names are namespaced: `serverName_toolName`. MCP tools go through the same permission system as built-in tools (D027/D028).
+- **Rationale**: Both codex-rs and opencode convert MCP tools into their respective tool systems. opencode's `convertMcpTool()` → `dynamicTool()` pattern is the model. MCP tools become indistinguishable from built-in tools in the LLM's tool list. Namespacing prevents collisions between servers. Same permission system means no special MCP permission logic needed.
+- **Date**: 2026-02-23
+
+### D060: MCP capabilities at MVP — Tools only
+- **Decision**: Support MCP tools capability at MVP (listTools, callTool, ToolListChangedNotification). Defer MCP resources, prompts-as-commands, and elicitation to post-MVP.
+- **Rationale**: Tools are the primary MCP use case. Resources add read-only data access (useful but not essential). opencode's prompts-as-commands pattern is elegant but requires L7 integration. codex-rs's elicitation support requires L3 integration. Starting with tools-only keeps the MCP surface area small and focused. Additional capabilities can be added incrementally.
+- **Deferred**: MCP resources (listResources, readResource), MCP prompts as slash commands, MCP elicitation, MCP sampling
+- **Date**: 2026-02-23
+
+### D061: MCP lifecycle — Connect at startup, dynamic refresh via events
+- **Decision**: Connect all configured MCP servers at startup (in parallel). Support dynamic tool list changes via ToolListChangedNotification. Defer runtime add/remove of servers to post-MVP.
+- **Rationale**: opencode connects all servers in parallel at startup via `Promise.all()`. The ToolListChangedNotification from the MCP SDK signals when a server's tools change, triggering a registry refresh. Runtime server management (add/connect/disconnect) is useful but not essential for MVP. codex-rs's `Op::RefreshMcpServers` is the eventual target.
+- **Date**: 2026-02-23
+
+### D062: Multi-agent — TaskTool pattern (single tool, child sessions)
+- **Decision**: Implement multi-agent via a single `task` tool (like opencode) that creates child sessions. Not the 5-tool interactive model (codex-rs) or the process-spawning model (pi-agent). Args: `description`, `prompt`, `subagent_type`, optional `task_id` for resume.
+- **Rationale**: opencode's single-tool pattern is the right complexity level for a TypeScript/Bun agent. It leverages the existing session system (D036/D040) for isolation and persistence. codex-rs's 5-tool interactive model (spawn/send_input/resume/wait/close) is powerful but adds substantial complexity. pi-agent's process-spawning model has high overhead per agent. A single tool with agent type selection gives the LLM enough flexibility while keeping the implementation tractable.
+- **Date**: 2026-02-23
+
+### D063: Agent types — Code-defined with config override
+- **Decision**: Define built-in agent types in code (like opencode): at minimum `general` (full access subagent) and `explore` (read-only subagent). Users can override, disable, or add agents via config `agent` section. Each agent has: name, description, mode, permission ruleset, optional model/prompt/steps.
+- **Rationale**: opencode's agent definition pattern is the most flexible. Code-defined defaults ensure agents work out of the box. Config override enables customization without code changes. Two initial agent types cover the main use cases: `general` for tasks that need write access, `explore` for read-only codebase investigation. More roles (like codex-rs's `worker` and `monitor`) can be added later.
+- **Date**: 2026-02-23
+
+### D064: Sub-agent permission isolation — Explicit deny rules
+- **Decision**: Sub-agent sessions created with explicit permission deny rules (like opencode): deny `todowrite`/`todoread` (no task list modification by sub-agents), deny `task` tool by default (prevents infinite nesting). Parent's permission system controls which agent types can be invoked.
+- **Rationale**: opencode's explicit deny approach is more principled than codex-rs's blanket auto-approve. Auto-approving everything for sub-agents (codex-rs) bypasses the permission system entirely, which is convenient but reduces safety guarantees. Denying the `task` tool by default provides an implicit depth limit without a separate numeric configuration. Agent types that explicitly include `task` permission can spawn sub-agents (controlled nesting).
+- **Date**: 2026-02-23
+
+### D065: Sub-agent result format — Wrapped text with session ID
+- **Decision**: Sub-agent results returned as text wrapped in `<task_result>` tags, along with the session ID for potential resumption. Result includes only the final text output, not the full conversation history.
+- **Rationale**: opencode's result format is simple and effective. The `<task_result>` wrapper helps the LLM distinguish agent output from tool metadata. Including the session ID enables resume support (pass `task_id` to continue a previous agent's session). Full conversation history would be too large for the parent's context.
+- **Date**: 2026-02-23
+
+### D066: Deferred Round 4 decisions
+- **Deferred**: MCP OAuth/authentication — resolve post-MVP (both codex-rs and opencode implement full OAuth flows, but it's complex)
+- **Deferred**: MCP server mode (exposing diligent as an MCP server) — resolve post-MVP
+- **Deferred**: MCP prompts as slash commands — resolve post-MVP (elegant bridge between L8 and L7)
+- **Deferred**: MCP resources capability — resolve post-MVP
+- **Deferred**: MCP elicitation — resolve post-MVP (requires L3 integration)
+- **Deferred**: Runtime MCP server add/remove — resolve post-MVP
+- **Deferred**: Interactive multi-agent communication (send_input, interrupt) — resolve post-MVP (codex-rs pattern)
+- **Deferred**: Built-in parallel execution mode for sub-agents (pi-agent pattern) — resolve post-MVP
+- **Deferred**: Agent generation from natural language (opencode pattern) — resolve post-MVP
+- **Deferred**: Rich collaboration events for TUI (codex-rs's 10 event types) — resolve during implementation
+- **Deferred**: Filesystem-based agent discovery (pi-agent's .md files) — resolve post-MVP
+- **Deferred**: Extension/plugin system as alternative to MCP (pi-agent pattern, relates to D055) — resolve post-MVP
+- **Date**: 2026-02-23
+
+## Full Review Pass Decisions (Post Round 4)
+
+### D067: Layer decomposition validated — No changes needed
+- **Decision**: The 10-layer decomposition (L0-L9) is validated across all research rounds. No layers need to be merged, split, or reordered. The decomposition cuts along functional capability boundaries, which aligns with how all three reference projects organize their code.
+- **Rationale**: After researching all 10 layers across 3 projects:
+  - Each layer represents a coherent, distinct concept (no "grab bags")
+  - Layer boundaries are natural — they correspond to module/crate/directory boundaries in all three reference projects
+  - No capabilities were discovered that don't fit into the existing layers
+  - The dependency graph (L0 ← L1 ← L2/L3, L0 ← L4/L5, L1 ← L6/L7/L8/L9) is confirmed correct
+  - Inter-layer interfaces are well-defined: tool system (L1) is the universal integration point for L2, L3, L7, L8, L9
+- **Date**: 2026-02-23
+
+### D068: Cross-layer consistency confirmed
+- **Decision**: Early-round research (L0-L2) remains valid in light of later rounds (L3-L9). No updates needed to earlier research files.
+- **Rationale**: Key cross-layer validations:
+  - D014 (Map-based tool registry) confirmed as the integration point for L2 (core tools), L7 (slash commands), L8 (MCP tools), L9 (task tool)
+  - D016 (tool context with approval hook) confirmed as the L1-L3 bridge — MCP and multi-agent tools use the same `ctx.ask()` pattern
+  - D006/D036 (JSONL sessions) confirmed as the L0-L5-L9 bridge — sub-agent sessions use the same persistence format
+  - D004 (Op/Event pattern) accommodates MCP events (tool list changed) and multi-agent events (spawn/wait/close) without changes
+  - D033 (3-layer config hierarchy) accommodates MCP server config and agent type config without changes
+- **Date**: 2026-02-23
+
+### D069: Implementation order recommendation
+- **Decision**: Recommended implementation order follows the layer numbering: L0 → L1 → L2 → L3 → L4 → L5 → L6 → L7 → L8 → L9. L4 (Config) can be introduced in parallel with L2/L3. L5 (Session) can be introduced in parallel with L3/L4.
+- **Rationale**: The dependency graph supports this order. L0-L2 form the core agent loop. L3 adds safety. L4-L5 add persistence/configuration. L6-L7 add user experience. L8-L9 add extensibility. The later layers (L8/L9) build on nearly everything below them, confirming they should be implemented last.
+- **Date**: 2026-02-23
