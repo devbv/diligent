@@ -451,3 +451,30 @@ Decisions made during synthesis reviews, with rationale.
   - Decisions are consistent across all layers (D068)
   - Remaining gaps were implementation details, not architectural questions
 - **Date**: 2026-02-23
+
+## Layer Redesign Decisions (Post Convergence)
+
+### D077: Layer redesign v2 — 10 → 11 layers
+- **Decision**: Restructure from 10 to 11 layers by splitting two overloaded layers:
+  1. Old L0 (REPL Loop) → **L0 (Provider)** + **L1 (Agent Loop)** — Provider is an independent subsystem in all 3 reference projects
+  2. Old L7 (Slash Commands & Skills) → Commands merged into **L7 (TUI & Commands)**, Skills split to **L8 (Skills)** — Commands are imperative TUI actions, Skills are declarative LLM content
+- **Rationale**:
+  - **Provider split**: codex-rs has `codex-api` crate, pi-agent has `ai` package, opencode has `provider/` directory. All three separate the LLM client from the agent loop. Combining them in one layer would create an implementation unit too large and with two distinct concerns (protocol/streaming vs orchestration/state).
+  - **Skills split**: Slash commands are dispatched from TUI input, trigger UI actions, make no sense outside TUI. Skills are filesystem-discovered content that affects LLM behavior via system prompt injection. Different consumers (TUI vs LLM), different lifecycles (runtime dispatch vs startup discovery), different extension points.
+- **Impact**: All existing decisions remain valid. Only layer numbering changes. Research files and analysis are unaffected — the observations apply to the new structure without modification.
+- **Date**: 2026-02-23
+
+### D078: Implementation order updated for 11 layers
+- **Decision**: L0 → L1 → L2 → L3 → L4 → L5 → L6 → L7 → L8 → L9 → L10. Updates D069.
+  - L0 (Provider): LLM abstraction — foundation, no dependencies
+  - L1 (Agent Loop): core loop using L0
+  - L2 (Tool System): framework consumed by L1
+  - L3 (Core Tools): implementations of L2
+  - L4 (Approval): permission layer for L2
+  - L5 (Config): settings, parallelizable with L3/L4
+  - L6 (Session): persistence, parallelizable with L4/L5
+  - L7 (TUI & Commands): user interface + command dispatch
+  - L8 (Skills): SKILL.md system, depends on system prompt (L1) and tool awareness (L2)
+  - L9 (MCP): external tools, depends on L2 + L4 + L5
+  - L10 (Multi-Agent): sub-agents, depends on L2 + L4 + L6
+- **Date**: 2026-02-23
