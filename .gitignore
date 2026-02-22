@@ -1,0 +1,13 @@
+# Reference projects (cloned repos - too large to track)
+research/references/codex-rs/
+research/references/pi-agent/
+research/references/opencode/
+
+# OS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
