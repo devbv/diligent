@@ -75,13 +75,21 @@ Research content is unchanged — same analysis, same code, same observations. O
 
 ## Research Progress
 
-All research complete. 76 decisions (D001-D076). **RESEARCH CONVERGED.**
+All research complete. 78 decisions (D001-D078). D079 proposed (FileTime conflict detection).
+
+- Cycle 1: 10-layer v1, 76 decisions (D001-D076). Converged. Layer redesign v2 (D077-D078).
+- Cycle 2: 11-layer v2, 78 decisions (D001-D078). Full review pass complete. Converged. No Cycle 3 needed.
+- Full review: `research/cycle2-review.md`
+
+**RESEARCH CONVERGED. Next step: architecture design (`plan/architecture.md`).**
 
 ## Change History
 
 | Date | Change | Reason |
 |---|---|---|
 | 2026-02-22 | Initial layer list created (v1, 10 layers) | Based on decomposition of coding agent capabilities |
-| 2026-02-23 | Rounds 0-4 research complete | Deep-dive across codex-rs, pi-agent, opencode |
-| 2026-02-23 | Full review pass + outer loop evaluation | 76 decisions, research converged (D076) |
+| 2026-02-23 | Cycle 1: Rounds 0-4 research complete | Deep-dive across codex-rs, pi-agent, opencode |
+| 2026-02-23 | Cycle 1: Full review pass + outer loop evaluation | 76 decisions, research converged (D076) |
 | 2026-02-23 | Layer redesign v2 (10 → 11 layers) | L0 too fat (Provider split out), L7 conflated two concerns (Commands → TUI, Skills → separate layer) |
+| 2026-02-23 | Cycle 2: Rounds 0-4 re-research complete | All 11 layers re-researched under v2 structure, 78 decisions (D001-D078) |
+| 2026-02-23 | Cycle 2: Full review pass + outer loop evaluation | All files consistent, no updates needed, research converged, Cycle 3 NOT needed |
