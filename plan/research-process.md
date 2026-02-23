@@ -238,13 +238,29 @@ Full evaluation documented in `plan/cycle1-review.md`.
 
 76 decisions recorded (D001-D076).
 
-**STATUS: RESEARCH COMPLETE. Ready to proceed to architecture design (`plan/architecture.md`).**
+Layer redesign v2 applied (D077-D078): 10 → 11 layers. Starting Cycle 2 with new structure.
+
+### Cycle 2 (2026-02-23) — 11-layer structure (v2)
+
+Research files: `research/layers-v2/` (Cycle 1 preserved in `research/layers/`)
+
+| Round | Target Layers (v2) | Old Layers (v1) | Status |
+|---|---|---|---|
+| 0 | L0 (Provider) + L1 (Agent Loop) | Old L0 (REPL Loop) split | Pending |
+| 1 | L2 (Tool System) + L3 (Core Tools) | Old L1 + L2 | Pending |
+| 2 | L4 (Approval) + L5 (Config) + L6 (Session) | Old L3 + L4 + L5 | Pending |
+| 3 | L7 (TUI & Commands) + L8 (Skills) | Old L6 + L7 split/merge | Pending |
+| 4 | L9 (MCP) + L10 (Multi-Agent) | Old L8 + L9 | Pending |
+| — | Full Review Pass (Step 3g) | — | Pending |
+
+**STATUS: Cycle 2 in progress. Re-researching with 11-layer structure.**
 
 ### Round Completion Checklist
 
 Each round must end with:
 1. **Git commit** — commit all research output from the round (research files, layer updates, decision log changes)
-2. Move to next round only after commit is confirmed
+2. **Git push** — push to remote after commit
+3. Move to next round only after push is confirmed
 
 ## Full Output List
 
@@ -259,10 +275,22 @@ plan/
 └── ...
 
 research/
-├── layers/
-│   ├── 00-repl-loop.md    # L0 research (observation/analysis only)
+├── layers/                  # Cycle 1 (v1, 10 layers) — preserved
+│   ├── 00-repl-loop.md
 │   ├── 01-tool-system.md
 │   └── ...
+├── layers-v2/               # Cycle 2 (v2, 11 layers) — current
+│   ├── 00-provider.md
+│   ├── 01-agent-loop.md
+│   ├── 02-tool-system.md
+│   ├── 03-core-tools.md
+│   ├── 04-approval.md
+│   ├── 05-config.md
+│   ├── 06-session.md
+│   ├── 07-tui-commands.md
+│   ├── 08-skills.md
+│   ├── 09-mcp.md
+│   └── 10-multi-agent.md
 └── references/
     ├── README.md           # Reference project structure guide (see below)
     ├── codex-rs/
