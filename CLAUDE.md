@@ -13,11 +13,13 @@ This is a custom coding agent implementation.
 
 - Research process plan: `plan/research-process.md`
 - Cycle 1 review & convergence: `plan/cycle1-review.md`
+- Cycle 2 review & convergence: `research/cycle2-review.md`
 - Current layer list and progress: `plan/layers.md`
-- Design decision log: `plan/decisions.md` (78 decisions, D001-D078)
-- Per-layer research: `research/layers/NN-*.md`
+- Design decision log: `plan/decisions.md` (78 decisions, D001-D078; D079 proposed)
+- Per-layer research (v1, preserved): `research/layers/NN-*.md`
+- Per-layer research (v2, current): `research/layers-v2/NN-*.md`
 - Reference projects: `research/references/` (codex-rs, pi-agent, opencode)
-- **Status**: Research converged (D076). Layers redesigned v2 (D077-D078, 11 layers). Next step: architecture design (`plan/architecture.md`)
+- **Status**: Research fully converged after 2 cycles. 11-layer v2 structure (D077-D078). 78 decisions (D001-D078). Next step: architecture design (`plan/architecture.md`)
 
 ## Development Commands
 

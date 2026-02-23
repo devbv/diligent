@@ -185,7 +185,8 @@ After the last round's synthesis, perform a **complete review from L0 through th
 2. **Cross-layer consistency check** — do early layer analyses still hold given what we learned later?
 3. **Update earlier research files** if new insights from later rounds change the picture
 4. **Final layer order validation** — confirm the full dependency graph makes sense end-to-end
-5. **Consolidated open questions** — single list across all layers, classified as "resolve before implementation" vs "resolve during implementation"
+5. **Missing layer check** — is there a capability or concern observed across reference projects that doesn't map to any existing layer? This is distinct from 3a's per-round check — here we have the full picture and can spot gaps that only become visible when viewing all layers together.
+6. **Consolidated open questions** — single list across all layers, classified as "resolve before implementation" vs "resolve during implementation"
 
 This is NOT optional. Research done in Round 0 was conducted without context from Rounds 1–3. The full review ensures coherence across the entire layer stack.
 
@@ -246,14 +247,30 @@ Research files: `research/layers-v2/` (Cycle 1 preserved in `research/layers/`)
 
 | Round | Target Layers (v2) | Old Layers (v1) | Status |
 |---|---|---|---|
-| 0 | L0 (Provider) + L1 (Agent Loop) | Old L0 (REPL Loop) split | Pending |
-| 1 | L2 (Tool System) + L3 (Core Tools) | Old L1 + L2 | Pending |
-| 2 | L4 (Approval) + L5 (Config) + L6 (Session) | Old L3 + L4 + L5 | Pending |
-| 3 | L7 (TUI & Commands) + L8 (Skills) | Old L6 + L7 split/merge | Pending |
-| 4 | L9 (MCP) + L10 (Multi-Agent) | Old L8 + L9 | Pending |
-| — | Full Review Pass (Step 3g) | — | Pending |
+| 0 | L0 (Provider) + L1 (Agent Loop) | Old L0 (REPL Loop) split | Complete (2026-02-23) |
+| 1 | L2 (Tool System) + L3 (Core Tools) | Old L1 + L2 | Complete (2026-02-23) |
+| 2 | L4 (Approval) + L5 (Config) + L6 (Session) | Old L3 + L4 + L5 | Complete (2026-02-23) |
+| 3 | L7 (TUI & Commands) + L8 (Skills) | Old L6 + L7 split/merge | Complete (2026-02-23) |
+| 4 | L9 (MCP) + L10 (Multi-Agent) | Old L8 + L9 | Complete (2026-02-23) |
+| — | Full Review Pass (Step 3g) | — | Complete (2026-02-23) |
 
-**STATUS: Cycle 2 in progress. Re-researching with 11-layer structure.**
+78 decisions recorded (D001-D078). Full review pass completed. D079 proposed (FileTime conflict detection).
+
+### Cycle 2 Outer Loop Evaluation (2026-02-23)
+
+Full evaluation documented in `research/cycle2-review.md`.
+
+- Cross-layer consistency: all decision references verified, all interface boundaries confirmed, all patterns consistent
+- Earlier research validity: all 11 files confirmed valid, no updates needed
+- Final layer order: dependency graph confirmed, no circular dependencies, implementation order stable
+- Missing layer check: no core capabilities missing from 11-layer structure
+- Consolidated open questions: ~80 across all layers, ~70+ resolved by decisions, ~10 implementation details, ~20 deferred
+- Decision completeness: 78 decisions mapped to layers, no contradictions, no orphan decisions
+- Proposed new decision: D079 (FileTime conflict detection)
+
+**Outer loop exit criteria: ALL MET. Research converged. Cycle 3 NOT needed.**
+
+**STATUS: Research complete. All cycles finished. Next step: architecture design (`plan/architecture.md`).**
 
 ### Round Completion Checklist
 
