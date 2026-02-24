@@ -16,8 +16,7 @@ This is a custom coding agent implementation.
 - Cycle 2 review & convergence: `research/cycle2-review.md`
 - Current layer list and progress: `plan/layers.md`
 - Design decision log: `plan/decisions.md` (78 decisions, D001-D078; D079 proposed)
-- Per-layer research (v1, preserved): `research/layers/NN-*.md`
-- Per-layer research (v2, current): `research/layers-v2/NN-*.md`
+- Per-layer research: `research/layers/NN-*.md`
 - Reference projects (external sources): `research/references/`
 - LLM tools research: `research/llm-tools/`
 - OpenClaw analysis: `research/openclaw/`

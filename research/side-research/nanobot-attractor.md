@@ -182,7 +182,7 @@ Reason: Shims lose access to reasoning tokens, extended thinking, prompt caching
 
 ## 4. Gap Analysis vs Main Research
 
-Cross-referenced all 12 findings against main research (layers-v2/*, decisions.md D001-D078, cycle1-review.md).
+Cross-referenced all 12 findings against main research (layers/*, decisions.md D001-D078, cycle1-review.md).
 
 ### Already Covered (7 of 12)
 
