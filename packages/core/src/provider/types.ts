@@ -6,6 +6,8 @@ export interface Model {
   provider: string;
   contextWindow: number;
   maxOutputTokens: number;
+  inputCostPer1M?: number;    // cost per 1M input tokens in USD
+  outputCostPer1M?: number;   // cost per 1M output tokens in USD
 }
 
 // D003: StreamFunction — the provider contract
@@ -32,6 +34,29 @@ export interface ToolDefinition {
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
+}
+
+// Provider error classification (D010)
+export type ProviderErrorType =
+  | "rate_limit"        // 429 — retryable, respect retry-after
+  | "overloaded"        // 529 — retryable
+  | "context_overflow"  // 400 with "context length" — NOT retryable, triggers compaction
+  | "auth"              // 401/403 — NOT retryable, fatal
+  | "network"           // ECONNREFUSED, timeout — retryable
+  | "unknown";          // everything else — NOT retryable
+
+export class ProviderError extends Error {
+  constructor(
+    message: string,
+    public readonly errorType: ProviderErrorType,
+    public readonly isRetryable: boolean,
+    public readonly retryAfterMs?: number,
+    public readonly statusCode?: number,
+    public readonly cause?: Error,
+  ) {
+    super(message);
+    this.name = "ProviderError";
+  }
 }
 
 // Provider events — 11 types

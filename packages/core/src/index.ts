@@ -25,8 +25,10 @@ export type {
   ToolDefinition,
   ProviderEvent,
   ProviderResult,
+  ProviderErrorType,
 } from "./provider/index";
-export { createAnthropicStream } from "./provider/index";
+export { createAnthropicStream, ProviderError, withRetry } from "./provider/index";
+export type { RetryConfig } from "./provider/index";
 
 // Agent
 export type { AgentEvent, AgentLoopConfig, MessageDelta } from "./agent/index";
@@ -43,4 +45,12 @@ export type {
 export { ToolRegistryBuilder, executeTool } from "./tool/index";
 
 // Built-in tools
-export { bashTool } from "./tools/bash";
+export {
+  bashTool,
+  createReadTool,
+  createWriteTool,
+  createEditTool,
+  createLsTool,
+  createGlobTool,
+  createGrepTool,
+} from "./tools/index";

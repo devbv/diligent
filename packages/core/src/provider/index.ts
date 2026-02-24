@@ -6,6 +6,10 @@ export type {
   ToolDefinition,
   ProviderEvent,
   ProviderResult,
+  ProviderErrorType,
 } from "./types";
 
-export { createAnthropicStream } from "./anthropic";
+export { ProviderError } from "./types";
+export { createAnthropicStream, classifyAnthropicError } from "./anthropic";
+export { withRetry } from "./retry";
+export type { RetryConfig } from "./retry";

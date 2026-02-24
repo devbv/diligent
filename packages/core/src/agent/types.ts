@@ -22,9 +22,9 @@ export type AgentEvent =
   | { type: "tool_start"; toolCallId: string; toolName: string; input: unknown }
   | { type: "tool_update"; toolCallId: string; toolName: string; partialResult: string }
   | { type: "tool_end"; toolCallId: string; toolName: string; output: string; isError: boolean }
-  // Status (1) — NOT emitted in Phase 1
+  // Status (1) — emitted in Phase 2
   | { type: "status_change"; status: "idle" | "busy" | "retry"; retry?: { attempt: number; delayMs: number } }
-  // Usage (1) — NOT emitted in Phase 1
+  // Usage (1) — emitted in Phase 2
   | { type: "usage"; usage: Usage; cost: number }
   // Error (1) — emitted in Phase 1
   | { type: "error"; error: Error; fatal: boolean };
@@ -38,4 +38,7 @@ export interface AgentLoopConfig {
   apiKey: string;
   signal?: AbortSignal;
   maxTurns?: number;
+  maxRetries?: number;        // D010: default 5
+  retryBaseDelayMs?: number;  // default: 1000
+  retryMaxDelayMs?: number;   // default: 30_000
 }

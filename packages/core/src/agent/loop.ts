@@ -7,10 +7,12 @@ import type {
   AssistantMessage,
   ToolResultMessage,
   ToolCallBlock,
+  Usage,
 } from "../types";
-import type { StreamContext, ToolDefinition } from "../provider/types";
+import type { StreamContext, ToolDefinition, Model } from "../provider/types";
 import type { ToolContext } from "../tool/types";
 import { executeTool } from "../tool/executor";
+import { withRetry } from "../provider/retry";
 
 export function agentLoop(
   messages: Message[],
@@ -23,7 +25,10 @@ export function agentLoop(
 
   runLoop(messages, config, stream).catch((err) => {
     stream.push({ type: "error", error: err, fatal: true });
-    stream.error(err);
+    // Complete the stream gracefully so the result promise resolves
+    // instead of leaving an unhandled rejection. Consumers see the error event.
+    stream.push({ type: "agent_end", messages: [...messages] });
+    stream.end([...messages]);
   });
 
   return stream;
@@ -40,6 +45,21 @@ async function runLoop(
 
   const registry = new Map(config.tools.map((t) => [t.name, t]));
 
+  // D010: Wrap stream function with retry
+  const retryStreamFn = withRetry(config.streamFunction, {
+    maxAttempts: config.maxRetries ?? 5,
+    baseDelayMs: config.retryBaseDelayMs ?? 1000,
+    maxDelayMs: config.retryMaxDelayMs ?? 30_000,
+    signal: config.signal,
+    onRetry: (attempt, delayMs, error) => {
+      stream.push({
+        type: "status_change",
+        status: "retry",
+        retry: { attempt, delayMs },
+      });
+    },
+  });
+
   stream.push({ type: "agent_start" });
 
   while (turnCount < maxTurns) {
@@ -49,13 +69,21 @@ async function runLoop(
     const turnId = `turn-${turnCount}`;
     stream.push({ type: "turn_start", turnId });
 
-    // 1. Stream LLM response
+    // 1. Stream LLM response (with retry)
     const assistantMessage = await streamAssistantResponse(
       allMessages,
       config,
+      retryStreamFn,
       stream,
     );
     allMessages.push(assistantMessage);
+
+    // Emit usage after each turn
+    stream.push({
+      type: "usage",
+      usage: assistantMessage.usage,
+      cost: calculateCost(config.model, assistantMessage.usage),
+    });
 
     // 2. Check for tool calls
     const toolCalls = assistantMessage.content.filter(
@@ -137,6 +165,7 @@ async function runLoop(
 async function streamAssistantResponse(
   messages: Message[],
   config: AgentLoopConfig,
+  streamFn: typeof config.streamFunction,
   agentStream: EventStream<AgentEvent, Message[]>,
 ): Promise<AssistantMessage> {
   const context: StreamContext = {
@@ -145,7 +174,7 @@ async function streamAssistantResponse(
     tools: config.tools.map(toolToDefinition),
   };
 
-  const providerStream = config.streamFunction(
+  const providerStream = streamFn(
     config.model,
     context,
     { signal: config.signal, apiKey: config.apiKey },
@@ -158,6 +187,8 @@ async function streamAssistantResponse(
       currentMessage = event.message;
       agentStream.push({ type: "message_end", message: event.message });
     } else if (event.type === "error") {
+      // Consume the rejected result to prevent unhandled rejection
+      providerStream.result().catch(() => {});
       throw event.error;
     } else if (event.type === "start") {
       // message_start emitted when we have first delta
@@ -213,4 +244,10 @@ function createEmptyAssistantMessage(model: string): AssistantMessage {
     stopReason: "end_turn",
     timestamp: Date.now(),
   };
+}
+
+function calculateCost(model: Model, usage: Usage): number {
+  const inputCost = (usage.inputTokens / 1_000_000) * (model.inputCostPer1M ?? 0);
+  const outputCost = (usage.outputTokens / 1_000_000) * (model.outputCostPer1M ?? 0);
+  return inputCost + outputCost;
 }
