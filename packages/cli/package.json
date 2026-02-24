@@ -7,7 +7,8 @@
     "diligent": "src/index.ts"
   },
   "dependencies": {
-    "@diligent/core": "workspace:*"
+    "@diligent/core": "workspace:*",
+    "marked": "^17.0.3"
   },
   "devDependencies": {
     "@types/bun": "latest",

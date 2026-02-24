@@ -9,6 +9,7 @@ import type {
   ProviderResult,
   ToolDefinition,
 } from "./types";
+import { ProviderError } from "./types";
 import type {
   Message,
   AssistantMessage,
@@ -105,7 +106,7 @@ export const createAnthropicStream: StreamFunction = (
     } catch (err) {
       stream.push({
         type: "error",
-        error: err instanceof Error ? err : new Error(String(err)),
+        error: classifyAnthropicError(err),
       });
     }
   })();
@@ -236,4 +237,54 @@ function mapStopReason(reason: string | null): StopReason {
     case "max_tokens": return "max_tokens";
     default: return "end_turn";
   }
+}
+
+export function classifyAnthropicError(err: unknown): ProviderError {
+  if (err instanceof Anthropic.APIError) {
+    const status = err.status;
+    if (status === 429) {
+      const retryAfter = parseRetryAfter(err.headers as Record<string, string> | undefined);
+      return new ProviderError(err.message, "rate_limit", true, retryAfter, status, err);
+    }
+    if (status === 529) {
+      return new ProviderError(err.message, "overloaded", true, undefined, status, err);
+    }
+    if (status === 400 && err.message.includes("context length")) {
+      return new ProviderError(err.message, "context_overflow", false, undefined, status, err);
+    }
+    if (status === 401 || status === 403) {
+      return new ProviderError(err.message, "auth", false, undefined, status, err);
+    }
+    return new ProviderError(err.message, "unknown", false, undefined, status, err);
+  }
+  if (isNetworkError(err)) {
+    return new ProviderError(String(err), "network", true);
+  }
+  return new ProviderError(
+    err instanceof Error ? err.message : String(err),
+    "unknown",
+    false,
+    undefined,
+    undefined,
+    err instanceof Error ? err : undefined,
+  );
+}
+
+function parseRetryAfter(headers?: Record<string, string>): number | undefined {
+  if (!headers) return undefined;
+  const ms = headers["retry-after-ms"];
+  if (ms) return parseInt(ms, 10);
+  const s = headers["retry-after"];
+  if (s) return parseInt(s, 10) * 1000;
+  return undefined;
+}
+
+function isNetworkError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const msg = err.message.toLowerCase();
+  return msg.includes("econnrefused") ||
+    msg.includes("econnreset") ||
+    msg.includes("etimedout") ||
+    msg.includes("fetch failed") ||
+    msg.includes("network");
 }
