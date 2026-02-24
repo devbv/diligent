@@ -4,5 +4,8 @@
   "private": true,
   "dependencies": {
     "@diligent/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.0"
   }
 }

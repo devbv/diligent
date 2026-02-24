@@ -12,8 +12,7 @@ This is a custom coding agent implementation.
 
 ## Testing
 
-- After any code change, always run unit tests: `bun test` (scans `packages/` via bunfig.toml `root`)
-- E2E tests (`packages/e2e/`) hit the real Anthropic API — run only when explicitly requested: `bun run test:e2e`
+- After any code change, always run tests
 
 ## Implementation
 
