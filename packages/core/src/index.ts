@@ -29,7 +29,7 @@ export type {
 export { createAnthropicStream } from "./provider/index";
 
 // Agent
-export type { AgentEvent, AgentLoopConfig } from "./agent/index";
+export type { AgentEvent, AgentLoopConfig, MessageDelta } from "./agent/index";
 export { agentLoop } from "./agent/index";
 
 // Tool
