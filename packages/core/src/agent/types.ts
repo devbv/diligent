@@ -1,7 +1,10 @@
 import type { AssistantMessage, Message, ToolResultMessage, Usage } from "../types";
-import type { ProviderEvent } from "../provider/types";
 import type { Model, StreamFunction } from "../provider/types";
 import type { Tool } from "../tool/types";
+
+export type MessageDelta =
+  | { type: "text_delta"; delta: string }
+  | { type: "thinking_delta"; delta: string };
 
 // D004: 15 AgentEvent types (all defined, ~7 emitted in Phase 1)
 export type AgentEvent =
@@ -13,7 +16,7 @@ export type AgentEvent =
   | { type: "turn_end"; turnId: string; message: AssistantMessage; toolResults: ToolResultMessage[] }
   // Message streaming (3) — emitted in Phase 1
   | { type: "message_start"; message: AssistantMessage }
-  | { type: "message_delta"; message: AssistantMessage; event: ProviderEvent }
+  | { type: "message_delta"; message: AssistantMessage; delta: MessageDelta }
   | { type: "message_end"; message: AssistantMessage }
   // Tool execution (3) — emitted in Phase 1
   | { type: "tool_start"; toolCallId: string; toolName: string; input: unknown }

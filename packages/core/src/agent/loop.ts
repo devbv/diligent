@@ -161,13 +161,29 @@ async function streamAssistantResponse(
       throw event.error;
     } else if (event.type === "start") {
       // message_start emitted when we have first delta
-    } else {
-      if (currentMessage === undefined) {
+    } else if (event.type === "text_delta") {
+      if (!currentMessage) {
         currentMessage = createEmptyAssistantMessage(config.model.id);
         agentStream.push({ type: "message_start", message: currentMessage });
       }
-      agentStream.push({ type: "message_delta", message: currentMessage, event });
+      agentStream.push({
+        type: "message_delta",
+        message: currentMessage,
+        delta: { type: "text_delta", delta: event.delta },
+      });
+    } else if (event.type === "thinking_delta") {
+      if (!currentMessage) {
+        currentMessage = createEmptyAssistantMessage(config.model.id);
+        agentStream.push({ type: "message_start", message: currentMessage });
+      }
+      agentStream.push({
+        type: "message_delta",
+        message: currentMessage,
+        delta: { type: "thinking_delta", delta: event.delta },
+      });
     }
+    // text_end, thinking_end, tool_call_*, usage — consumed silently
+    // (final data comes from the "done" event's AssistantMessage)
   }
 
   if (!currentMessage) {
@@ -180,10 +196,11 @@ async function streamAssistantResponse(
 }
 
 function toolToDefinition(tool: { name: string; description: string; parameters: z.ZodType }): ToolDefinition {
+  const { $schema, ...schema } = zodToJsonSchema(tool.parameters) as Record<string, unknown>;
   return {
     name: tool.name,
     description: tool.description,
-    inputSchema: zodToJsonSchema(tool.parameters, { target: "openApi3" }) as Record<string, unknown>,
+    inputSchema: schema,
   };
 }
 

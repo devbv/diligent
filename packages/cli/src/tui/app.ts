@@ -136,8 +136,8 @@ export class App {
   private handleAgentEvent(event: AgentEvent): void {
     switch (event.type) {
       case "message_delta":
-        if (event.event.type === "text_delta") {
-          this.terminal.write(event.event.delta);
+        if (event.delta.type === "text_delta") {
+          this.terminal.write(event.delta.delta);
         }
         break;
 
