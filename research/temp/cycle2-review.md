@@ -435,7 +435,7 @@ The Cycle 2 re-research with the 11-layer v2 structure validated the entire rese
 |---|---|
 | Total layers | 11 (L0-L10) |
 | Total decisions | 78 (D001-D078) |
-| Research files | 11 (`research/layers-v2/00-provider.md` through `10-multi-agent.md`) |
+| Research files | 11 (`research/layers/00-provider.md` through `10-multi-agent.md`) |
 | Total research file lines | ~6,600 |
 | Open questions (all files) | ~80 |
 | Resolved by decisions | ~70+ |

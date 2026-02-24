@@ -1,8 +1,8 @@
-# Diligent Research Process Plan
+# Diligent Layers Research Process Plan
 
 ## What Is This
 
-This is NOT an implementation plan. It is a **process plan for how to conduct iterative research**.
+This is NOT an implementation plan. It is a **process plan for how to conduct iterative layer research**.
 
 ## Research Loop
 
@@ -84,7 +84,7 @@ Analyze each layer's implementation across 3 projects:
 
 ### Research Output
 
-File location: `research/layers/NN-layer-name.md`
+File location: `research/layers/NN-layer-name.md` (11-layer v2 structure)
 
 Each file's structure:
 ```
@@ -207,77 +207,12 @@ After Full Review Pass (3g), evaluate whether to restart from Round 0:
 - Layer boundaries and dependencies are stable
 - Decisions are consistent across all layers
 
-## Round Plan
+## Research Status
 
-**Step 3 (synthesis review) is performed between every round.**
+**Complete.** 2 cycles conducted (2026-02-23). 78 decisions (D001-D078), D079 proposed. 11-layer structure finalized. Next step: architecture design (`plan/architecture.md`).
 
-### Cycle 1 (2026-02-23)
-
-| Round | Target Layers | Status |
-|---|---|---|
-| 0 | L0 (REPL Loop) | Complete (re-researched 2026-02-23) |
-| 1 | L1 (Tool System) + L2 (Core Tools) | Complete (re-researched 2026-02-23) |
-| 2 | L3 (Approval) + L4 (Config) + L5 (Session) | Complete (2026-02-23) |
-| 3 | L6 (TUI) + L7 (Slash Commands & Skills) | Complete (2026-02-23) |
-| 4 | L8 (MCP) + L9 (Multi-Agent) | Complete (2026-02-23) |
-| — | Full Review Pass (Step 3g) | Complete (2026-02-23) |
-
-69 decisions recorded (D001-D069). Full review pass completed.
-
-### Cycle 1 Outer Loop Evaluation (2026-02-23)
-
-Full evaluation documented in `plan/cycle1-review.md`.
-
-- Open questions audit: 103 total across 10 layers, 94 resolved by D001-D069, 9 remaining gaps
-- Gap-filling decisions: D070-D076 resolve all remaining gaps
-- Layer decomposition: validated, no changes needed
-- Layer boundaries: stable, no splits/merges needed
-- Round grouping: confirmed correct
-- Layer order: confirmed correct
-
-**Outer loop exit criteria: ALL MET → Research converged (D076). No Cycle 2 needed.**
-
-76 decisions recorded (D001-D076).
-
-Layer redesign v2 applied (D077-D078): 10 → 11 layers. Starting Cycle 2 with new structure.
-
-### Cycle 2 (2026-02-23) — 11-layer structure (v2)
-
-Research files: `research/layers-v2/` (Cycle 1 preserved in `research/layers/`)
-
-| Round | Target Layers (v2) | Old Layers (v1) | Status |
-|---|---|---|---|
-| 0 | L0 (Provider) + L1 (Agent Loop) | Old L0 (REPL Loop) split | Complete (2026-02-23) |
-| 1 | L2 (Tool System) + L3 (Core Tools) | Old L1 + L2 | Complete (2026-02-23) |
-| 2 | L4 (Approval) + L5 (Config) + L6 (Session) | Old L3 + L4 + L5 | Complete (2026-02-23) |
-| 3 | L7 (TUI & Commands) + L8 (Skills) | Old L6 + L7 split/merge | Complete (2026-02-23) |
-| 4 | L9 (MCP) + L10 (Multi-Agent) | Old L8 + L9 | Complete (2026-02-23) |
-| — | Full Review Pass (Step 3g) | — | Complete (2026-02-23) |
-
-78 decisions recorded (D001-D078). Full review pass completed. D079 proposed (FileTime conflict detection).
-
-### Cycle 2 Outer Loop Evaluation (2026-02-23)
-
-Full evaluation documented in `research/cycle2-review.md`.
-
-- Cross-layer consistency: all decision references verified, all interface boundaries confirmed, all patterns consistent
-- Earlier research validity: all 11 files confirmed valid, no updates needed
-- Final layer order: dependency graph confirmed, no circular dependencies, implementation order stable
-- Missing layer check: no core capabilities missing from 11-layer structure
-- Consolidated open questions: ~80 across all layers, ~70+ resolved by decisions, ~10 implementation details, ~20 deferred
-- Decision completeness: 78 decisions mapped to layers, no contradictions, no orphan decisions
-- Proposed new decision: D079 (FileTime conflict detection)
-
-**Outer loop exit criteria: ALL MET. Research converged. Cycle 3 NOT needed.**
-
-**STATUS: Research complete. All cycles finished. Next step: architecture design (`plan/architecture.md`).**
-
-### Round Completion Checklist
-
-Each round must end with:
-1. **Git commit** — commit all research output from the round (research files, layer updates, decision log changes)
-2. **Git push** — push to remote after commit
-3. Move to next round only after push is confirmed
+- Cycle 1 review: `plan/cycle1-review.md`
+- Cycle 2 review: `research/cycle2-review.md`
 
 ## Full Output List
 
@@ -292,11 +227,7 @@ plan/
 └── ...
 
 research/
-├── layers/                  # Cycle 1 (v1, 10 layers) — preserved
-│   ├── 00-repl-loop.md
-│   ├── 01-tool-system.md
-│   └── ...
-├── layers-v2/               # Cycle 2 (v2, 11 layers) — current
+├── layers/                  # 11-layer v2 structure (Cycle 1 v1 removed)
 │   ├── 00-provider.md
 │   ├── 01-agent-loop.md
 │   ├── 02-tool-system.md

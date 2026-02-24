@@ -840,8 +840,6 @@ For diligent's L6 implementation, the recommended approach combines the best pat
 
 ## Project-Level Memory System
 
-> Detailed analysis, reference comparisons, and design rationale: `06-session-memory.md`
-
 ### Problem
 
 Session persistence (all sections above) preserves conversation within a **single session**. However, starting a new session loses all knowledge from previous sessions. The goal is to natively embed the kind of documentation that skilled engineers naturally produce — decision records, pattern documentation, troubleshooting logs — as an agent-native capability.
@@ -873,9 +871,40 @@ Global `~/.config/diligent/` remains settings-only (D033). Runtime data goes to 
 | Format | JSONL + tree structure | JSONL append-only, typed entries |
 | Essence | What was said | What was learned |
 
+### D033 Supplement: Config vs Data Separation
+
+| Path | Purpose | Examples |
+|------|---------|---------|
+| `~/.config/diligent/` | Global settings | `diligent.jsonc`, global skills |
+| `.diligent/` | Project runtime data | sessions, knowledge, project skills |
+| `diligent.jsonc` (project root) | Project settings | Existing D033 |
+
+This separation follows XDG Base Directory Specification principles (config vs data vs state).
+
 ### Knowledge Store (D081)
 
 JSONL append-only. Five types: `pattern`, `decision`, `discovery`, `preference`, `correction`. Updates via `supersedes` field (append new entry referencing old, maintaining immutable append-only semantics).
+
+```typescript
+interface KnowledgeEntry {
+  id: string;                  // nanoid
+  timestamp: string;           // ISO 8601
+  sessionId: string;           // source session
+  type: "pattern" | "decision" | "discovery" | "preference" | "correction";
+  content: string;             // natural language, markdown OK
+  confidence: number;          // 0.0~1.0, LLM self-assessed
+  supersedes?: string;         // ID of previous entry this replaces
+  tags: string[];
+}
+```
+
+| Type | Description | Example |
+|------|-------------|---------|
+| `pattern` | Recurring coding/architecture pattern | "All async functions pass AbortSignal" |
+| `decision` | Explicit technical/design decision | "Chose vitest over Jest for ESM compat" |
+| `discovery` | Fact found during debugging/exploration | "Bun SQLite binding doesn't support concurrent reads in WAL mode" |
+| `preference` | User's expressed coding style/tool preference | "Commit messages: English, conventional commits" |
+| `correction` | Fix to prior knowledge (used with `supersedes`) | "Revised vitest decision → bun test" |
 
 Long-term evolution: JSONL serves as an accumulation log (Phase 1). Once sufficient entries accumulate, they can be promoted to structured markdown artifacts (e.g., `decisions/*.md`, `conventions/*.md`) as Phase 2. Promoted files become natural targets for vector DB search.
 
@@ -889,17 +918,28 @@ Knowledge recording is implemented as an `add_knowledge` tool that the agent cal
 
 Side-channel LLM approach was rejected: it also relies on LLM judgment (no reliability advantage), operates with partial context (lower quality), incurs extra LLM cost, and cannot support user-initiated recording.
 
+**Nudge mechanism**: At L1's `turn_end`, inject system message: "If anything noteworthy was learned (patterns, decisions, discoveries, preferences), use add_knowledge to record it." Configurable: `knowledge.nudgeInterval` (every N turns), `knowledge.nudge: false` to disable.
+
+**Event**: `{ type: "knowledge_saved"; entry: KnowledgeEntry }` — usable by L7 (TUI) for notifications.
+
 ### Knowledge Injection (D083)
 
-On new session start, load knowledge.jsonl → inject into system prompt "Project Knowledge" section. Default token budget: 8192. Priority ranking: recency × confidence × type weight.
+On new session start, load knowledge.jsonl → resolve `supersedes` chains → rank → inject into system prompt "Project Knowledge" section.
+
+**Priority algorithm**: `recency_score × confidence × type_weight`
+- `recency_score`: Time decay with 30-day half-life (OpenClaw temporal decay pattern)
+- `confidence`: LLM-assigned 0.0~1.0
+- `type_weight`: `preference` > `decision` > `pattern` > `discovery` > `correction` (closer to user intent = higher weight)
+
+**Injection position** in system prompt: after tool descriptions (D013) and skill metadata (D052), before environment context. Default token budget: 8192 (configurable via `knowledge.injectionBudget`).
 
 ### Flush Before Compact (D084)
 
-Before compaction, prompt the agent: "Record any important knowledge via add_knowledge before compaction begins." Knowledge persists independently of session logs.
+Before compaction, prompt the agent: "Record any important knowledge via add_knowledge before compaction begins." Knowledge persists independently of session logs. Inspired by OpenClaw's `memoryFlush` (`before_compaction` hook, `softThresholdTokens` concept).
 
 ### Export/Import (D085)
 
-`diligent export/import` CLI commands for `.diligent/` data as tar.gz archive. Supports merge (default) and replace modes.
+`diligent export/import` CLI commands for `.diligent/` data as tar.gz archive with `manifest.json`. Supports `--sessions`, `--knowledge`, `--skills` flags. Import modes: `merge` (default, append with dedup — knowledge uses `supersedes` for conflict-free merging) and `replace`.
 
 ---
 
@@ -920,3 +960,13 @@ Before compaction, prompt the agent: "Record any important knowledge via add_kno
 7. **How should the session interact with sub-agents?** Per D062 (TaskTool pattern), sub-agents create child sessions. The session model needs to support parent-child relationships (pi-agent's `parentSession`, opencode's `parentID`). Should child sessions be full sessions (same format, listed separately) or lightweight (in-memory only)?
 
 8. **Should custom entries be part of MVP?** Pi-agent's `CustomEntry` (not in LLM context) and `CustomMessageEntry` (in LLM context) enable extension state persistence and context injection. These are powerful for extensibility but add entry type complexity. Could be deferred until L8 (Skills) or L9 (MCP) need them.
+
+9. **Knowledge TTL**: Should entries expire? Options: (A) no TTL, time decay suffices; (B) configurable TTL (default 90 days), expired entries ignored on read; (C) knowledge compaction — periodically summarize/merge like session compaction.
+
+10. **Multi-agent knowledge sharing**: In D062-D066 (TaskTool, child agents), should child agents record to parent's knowledge store? Should they receive knowledge injection? Separate namespaces needed?
+
+11. **Monorepo `.diligent/` scope**: (A) single at monorepo root; (B) per-package; (C) hierarchical (root + per-package).
+
+12. **Knowledge vs CLAUDE.md priority**: When CLAUDE.md says "use Bun" but knowledge says "decision: use vitest" — CLAUDE.md (explicit user instruction) should always win over auto-extracted knowledge.
+
+13. **Nudge frequency optimization**: Every-turn nudge risks "nudge fatigue" (agent learns to ignore). Options: (A) every turn; (B) every N turns; (C) heuristic (long turns, debugging, config changes only); (D) no nudge, rely on agent autonomy + user request.
