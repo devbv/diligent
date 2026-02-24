@@ -3,8 +3,8 @@ import {
   agentLoop,
   createAnthropicStream,
   bashTool,
-} from "../../packages/core/src/index";
-import type { AgentEvent, AgentLoopConfig, Message, Model } from "../../packages/core/src/index";
+} from "@diligent/core";
+import type { AgentEvent, AgentLoopConfig, Message, Model } from "@diligent/core";
 
 const apiKey = process.env.ANTHROPIC_API_KEY;
 

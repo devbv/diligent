@@ -1,5 +1,9 @@
 {
   "name": "diligent",
   "private": true,
-  "workspaces": ["packages/*"]
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "test": "bun test",
+    "test:e2e": "bun test packages/e2e/"
+  }
 }
