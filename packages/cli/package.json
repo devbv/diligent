@@ -1,0 +1,16 @@
+{
+  "name": "@diligent/cli",
+  "version": "0.0.1",
+  "type": "module",
+  "main": "src/index.ts",
+  "bin": {
+    "diligent": "src/index.ts"
+  },
+  "dependencies": {
+    "@diligent/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.7.0"
+  }
+}
