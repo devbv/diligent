@@ -9,6 +9,7 @@ import type {
   ProviderResult,
   Model,
 } from "../src/provider/types";
+import type { StreamContext } from "../src/provider/types";
 import type { Message, AssistantMessage, UserMessage } from "../src/types";
 import type { Tool } from "../src/tool/types";
 
@@ -30,9 +31,12 @@ function makeAssistant(content: AssistantMessage["content"], stopReason: Assista
   };
 }
 
-function createMockStreamFunction(responses: AssistantMessage[]): StreamFunction {
+function createMockStreamFunction(responses: AssistantMessage[]): StreamFunction & { contexts: StreamContext[] } {
   let callIndex = 0;
-  return () => {
+  const contexts: StreamContext[] = [];
+
+  const fn: StreamFunction = (_model, context, _options) => {
+    contexts.push(context);
     const msg = responses[callIndex++];
     const stream = new EventStream<ProviderEvent, ProviderResult>(
       (event) => event.type === "done" || event.type === "error",
@@ -64,6 +68,8 @@ function createMockStreamFunction(responses: AssistantMessage[]): StreamFunction
 
     return stream;
   };
+
+  return Object.assign(fn, { contexts });
 }
 
 const echoTool: Tool = {
@@ -146,6 +152,15 @@ describe("agentLoop", () => {
     const toolEnd = events.find((e) => e.type === "tool_end") as Extract<AgentEvent, { type: "tool_end" }>;
     expect(toolEnd.toolName).toBe("echo");
     expect(toolEnd.output).toBe("hello");
+
+    // Verify StreamContext received correct tool definitions
+    expect(streamFn.contexts.length).toBeGreaterThanOrEqual(1);
+    const tools = streamFn.contexts[0].tools;
+    expect(tools).toHaveLength(1);
+    expect(tools[0].name).toBe("echo");
+    expect(tools[0].description).toBe("Echo a message");
+    expect(tools[0].inputSchema).toHaveProperty("properties");
+    expect((tools[0].inputSchema as Record<string, unknown>).properties).toHaveProperty("message");
   });
 
   test("maxTurns safety: loop exits after max turns", async () => {
@@ -182,6 +197,64 @@ describe("agentLoop", () => {
     // Should have exactly 2 turn_starts
     const turnStarts = events.filter((e) => e.type === "turn_start");
     expect(turnStarts).toHaveLength(2);
+  });
+
+  test("tool schemas: Zod types converted to valid JSON Schema in StreamContext", async () => {
+    const complexTool: Tool = {
+      name: "complex",
+      description: "Tool with diverse param types",
+      parameters: z.object({
+        query: z.string().describe("Search query"),
+        limit: z.number().optional().describe("Max results"),
+        recursive: z.boolean().describe("Recurse into subdirs"),
+        extensions: z.array(z.string()).describe("File extensions"),
+        mode: z.enum(["exact", "fuzzy", "regex"]).describe("Match mode"),
+      }),
+      async execute() { return { output: "ok" }; },
+    };
+
+    const msg = makeAssistant([{ type: "text", text: "done" }]);
+    const streamFn = createMockStreamFunction([msg]);
+
+    const config: AgentLoopConfig = {
+      model: TEST_MODEL,
+      systemPrompt: "test",
+      tools: [complexTool],
+      streamFunction: streamFn,
+      apiKey: "test-key",
+    };
+
+    const loop = agentLoop(
+      [{ role: "user", content: "test", timestamp: Date.now() }],
+      config,
+    );
+    for await (const _ of loop) { /* drain */ }
+
+    const tools = streamFn.contexts[0].tools;
+    expect(tools).toHaveLength(1);
+
+    const schema = tools[0].inputSchema as Record<string, unknown>;
+    const props = schema.properties as Record<string, Record<string, unknown>>;
+    const required = schema.required as string[];
+
+    // Required fields: query, recursive, extensions, mode (not limit — it's optional)
+    expect(required).toContain("query");
+    expect(required).toContain("recursive");
+    expect(required).toContain("extensions");
+    expect(required).toContain("mode");
+    expect(required).not.toContain("limit");
+
+    // Type correctness
+    expect(props.query.type).toBe("string");
+    expect(props.limit.type).toBe("number");
+    expect(props.recursive.type).toBe("boolean");
+    expect(props.extensions.type).toBe("array");
+    expect(props.mode).toHaveProperty("enum");
+    expect((props.mode.enum as string[])).toEqual(["exact", "fuzzy", "regex"]);
+
+    // Descriptions preserved
+    expect(props.query.description).toBe("Search query");
+    expect(props.extensions.description).toBe("File extensions");
   });
 
   test("unknown tool: error result fed back to LLM", async () => {
