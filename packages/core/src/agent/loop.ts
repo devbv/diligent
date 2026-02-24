@@ -1,3 +1,5 @@
+import { z } from "zod";
+import { zodToJsonSchema } from "zod-to-json-schema";
 import { EventStream } from "../event-stream";
 import type { AgentEvent, AgentLoopConfig } from "./types";
 import type {
@@ -5,8 +7,6 @@ import type {
   AssistantMessage,
   ToolResultMessage,
   ToolCallBlock,
-  ContentBlock,
-  Usage,
 } from "../types";
 import type { StreamContext, ToolDefinition } from "../provider/types";
 import type { ToolContext } from "../tool/types";
@@ -179,83 +179,12 @@ async function streamAssistantResponse(
   return result.message;
 }
 
-function toolToDefinition(tool: { name: string; description: string; parameters: { _def?: unknown } & { shape?: unknown } }): ToolDefinition {
+function toolToDefinition(tool: { name: string; description: string; parameters: z.ZodType }): ToolDefinition {
   return {
     name: tool.name,
     description: tool.description,
-    inputSchema: zodToJsonSchema(tool.parameters),
+    inputSchema: zodToJsonSchema(tool.parameters, { target: "openApi3" }) as Record<string, unknown>,
   };
-}
-
-// Convert a Zod schema to JSON Schema via its _def internals (Zod v3)
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function zodToJsonSchema(schema: any): Record<string, unknown> {
-  const def = schema?._def;
-  if (!def) return {};
-
-  switch (def.typeName) {
-    case "ZodObject": {
-      const shape = typeof def.shape === "function" ? def.shape() : def.shape;
-      const properties: Record<string, unknown> = {};
-      const required: string[] = [];
-      for (const [key, value] of Object.entries(shape)) {
-        properties[key] = zodToJsonSchema(value);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        if ((value as any)?._def?.typeName !== "ZodOptional" && (value as any)?._def?.typeName !== "ZodDefault") {
-          required.push(key);
-        }
-      }
-      return { type: "object", properties, ...(required.length > 0 && { required }) };
-    }
-    case "ZodString": {
-      const result: Record<string, unknown> = { type: "string" };
-      if (def.description) result.description = def.description;
-      return result;
-    }
-    case "ZodNumber": {
-      const result: Record<string, unknown> = { type: "number" };
-      if (def.description) result.description = def.description;
-      return result;
-    }
-    case "ZodBoolean": {
-      const result: Record<string, unknown> = { type: "boolean" };
-      if (def.description) result.description = def.description;
-      return result;
-    }
-    case "ZodArray": {
-      const result: Record<string, unknown> = { type: "array", items: zodToJsonSchema(def.type) };
-      if (def.description) result.description = def.description;
-      return result;
-    }
-    case "ZodEnum": {
-      const result: Record<string, unknown> = { type: "string", enum: def.values };
-      if (def.description) result.description = def.description;
-      return result;
-    }
-    case "ZodLiteral": {
-      return { const: def.value };
-    }
-    case "ZodOptional": {
-      const inner = zodToJsonSchema(def.innerType);
-      if (def.description) inner.description = def.description;
-      return inner;
-    }
-    case "ZodDefault": {
-      const inner = zodToJsonSchema(def.innerType);
-      if (def.description) inner.description = def.description;
-      return inner;
-    }
-    case "ZodNullable": {
-      const inner = zodToJsonSchema(def.innerType);
-      return { anyOf: [inner, { type: "null" }] };
-    }
-    case "ZodUnion": {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return { anyOf: def.options.map((opt: any) => zodToJsonSchema(opt)) };
-    }
-    default:
-      return {};
-  }
 }
 
 function createEmptyAssistantMessage(model: string): AssistantMessage {
