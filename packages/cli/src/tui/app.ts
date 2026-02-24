@@ -17,6 +17,9 @@ import {
   createAnthropicStream,
 } from "@diligent/core";
 
+// @ts-ignore — Bun resolves workspace package.json at runtime
+import { version as pkgVersion } from "../../package.json";
+
 export class App {
   private terminal = new Terminal();
   private input = new InputBuffer();
@@ -37,7 +40,7 @@ export class App {
       () => {}, // resize — no-op for now
     );
     this.terminal.write(
-      "\x1b[1;36mdiligent\x1b[0m \x1b[2mv0.0.1\x1b[0m\n" +
+      `\x1b[1;36mdiligent\x1b[0m \x1b[2mv${pkgVersion}\x1b[0m\n` +
       "\x1b[2mType a message to start. Ctrl+C to abort, Ctrl+D to exit.\x1b[0m\n",
     );
     this.showPrompt();

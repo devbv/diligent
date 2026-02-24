@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { Tool, ToolContext, ToolResult } from "../tool/types";
+import { MAX_OUTPUT_BYTES } from "../tool/truncation";
 
 const BashParams = z.object({
   command: z.string().min(1).describe("The shell command to execute"),
@@ -8,7 +9,6 @@ const BashParams = z.object({
 });
 
 const DEFAULT_TIMEOUT = 120_000;
-const MAX_OUTPUT_BYTES = 50 * 1024; // 50KB
 
 export const bashTool: Tool<typeof BashParams> = {
   name: "bash",

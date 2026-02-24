@@ -51,7 +51,6 @@ export const createAnthropicStream: StreamFunction = (
 
       // Track active tool call for delta routing
       let activeToolId: string | undefined;
-      let activeToolName: string | undefined;
 
       sdkStream.on("text", (textDelta) => {
         stream.push({ type: "text_delta", delta: textDelta });
@@ -80,14 +79,12 @@ export const createAnthropicStream: StreamFunction = (
             input: block.input as Record<string, unknown>,
           });
           activeToolId = undefined;
-          activeToolName = undefined;
         }
       });
 
       sdkStream.on("streamEvent", (event) => {
         if (event.type === "content_block_start" && event.content_block.type === "tool_use") {
           activeToolId = event.content_block.id;
-          activeToolName = event.content_block.name;
           stream.push({ type: "tool_call_start", id: event.content_block.id, name: event.content_block.name });
         }
       });
