@@ -7,23 +7,11 @@ This is a custom coding agent implementation.
 ## Project Rules
 
 - When project rules change, update this CLAUDE.md file
-- All documentation must be written in English
+- All documentation and file contents must be written in *English* even if the user writes in a different language.
+- Never start implementation until requirements are fully understood. Keep asking questions relentlessly until there is zero ambiguity — no assumptions, no guessing
 
-## Research Process (COMPLETE)
+## Implementation
 
-- Research process plan: `plan/research-process.md`
-- Cycle 1 review & convergence: `plan/cycle1-review.md`
-- Cycle 2 review & convergence: `research/cycle2-review.md`
-- Current layer list and progress: `plan/layers.md`
-- Design decision log: `plan/decisions.md` (78 decisions, D001-D078; D079 proposed)
-- Per-layer research: `research/layers/NN-*.md`
-- Reference projects (external sources): `research/references/`
-- LLM tools research: `research/llm-tools/`
-- OpenClaw analysis: `research/openclaw/`
-- Side research: `research/side-research/`
-- Implementation phases (layers vs phases analysis): `plan/implementation-phases.md`
-- **Status**: Research fully converged after 2 cycles. 11-layer v2 structure (D077-D078). 78 decisions (D001-D078). Next step: architecture design (`plan/architecture.md`)
-
-## Development Commands
-
-(To be added as the project develops)
+- Implementation plans live in `plan/impl/`. Always read the relevant phase plan before starting implementation.
+- Design decisions are in `plan/decisions.md`. Reference decision IDs (e.g. D001) when implementing.
+- Layer architecture is in `research/layers/*`. Understand layer dependencies before cross-layer work.
