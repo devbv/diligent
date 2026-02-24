@@ -199,6 +199,7 @@ Decisions made during synthesis reviews, with rationale.
 - **Decision**: Confirm D006. Sessions persisted as JSONL append-only files with pi-agent's tree structure (id/parentId on every entry). Session directory: `~/.config/diligent/sessions/<project-hash>/<session-id>.jsonl`.
 - **Rationale**: Round 2 deep-dive confirms JSONL+tree is the right approach. pi-agent's implementation is proven and supports branching, compaction entries, version migration, and session listing. Tree structure enables non-destructive branching without creating new files. Path includes project hash for per-project organization.
 - **Date**: 2026-02-23
+- **REVISED by D036-REV** (2026-02-24): Session directory changed to `.diligent/sessions/<session-id>.jsonl` (project-local). See D036-REV in Memory System Decisions section.
 
 ### D037: Compaction — LLM-based with iterative summary updating
 - **Decision**: Use LLM-based summarization for context compaction. Adopt pi-agent's iterative summary updating: if a previous summary exists, merge new information into it rather than generating from scratch. Structured template: Goal/Instructions/Progress/Key Decisions/Next Steps/Relevant Files. Resolves D011 auto-compaction deferred item.
@@ -478,3 +479,41 @@ Decisions made during synthesis reviews, with rationale.
   - L9 (MCP): external tools, depends on L2 + L4 + L5
   - L10 (Multi-Agent): sub-agents, depends on L2 + L4 + L6
 - **Date**: 2026-02-23
+
+## Memory System Decisions (L6 Extension)
+
+### D036-REV: Session storage location → project-local `.diligent/sessions/`
+- **Decision**: Revise D036. Session directory changed from `~/.config/diligent/sessions/<project-hash>/` to `.diligent/sessions/<session-id>.jsonl` (project-local). All other aspects of D036 (JSONL format, tree structure, entry types) remain unchanged.
+- **Rationale**: Global path (`~/.config/`) prevents portability (project migration loses sessions), sharing (team knowledge transfer), and easy backup. Project-local storage aligns with Claude Code's `.claude/` pattern. Compatible with D040 (session listing — path change only), D042 (deferred persistence — location-agnostic), and D052 (skill paths already include `.diligent/skills/`).
+- **Revises**: D036
+- **Date**: 2026-02-24
+
+### D080: Project data directory `.diligent/` convention
+- **Decision**: Store project runtime data in `.diligent/` directory. Layout: `sessions/`, `knowledge/`, `skills/`. Auto-generate `.diligent/.gitignore` excluding `sessions/` and `knowledge/` (skills are git-tracked per D052). Global config (`~/.config/diligent/`) remains settings-only (D033).
+- **Rationale**: Separates config (global `~/.config/`) from data (project-local `.diligent/`), following XDG Base Directory Specification principles. Claude Code's `.claude/` provides precedent for project-local agent data. Auto-generated `.gitignore` prevents accidental commit of session/knowledge data.
+- **Date**: 2026-02-24
+
+### D081: Knowledge store — JSONL append-only with typed entries
+- **Decision**: Accumulated knowledge stored in `.diligent/knowledge/knowledge.jsonl` as JSONL append-only. Each entry follows `KnowledgeEntry` schema: id, timestamp, sessionId, type, content, confidence, supersedes, tags. Five knowledge types: pattern, decision, discovery, preference, correction. Updates use `supersedes` field (append new entry referencing old).
+- **Rationale**: Consistent with D006 (JSONL choice). Type classification enables priority ranking and filtering. `supersedes` pattern maintains append-only immutability while allowing knowledge updates. Vector DB (OpenClaw approach) deferred — adds embedding dependency unsuitable for MVP.
+- **Date**: 2026-02-24
+
+### D082: Knowledge extraction — `add_knowledge` tool with turn_end nudge
+- **Decision**: Knowledge extraction via a dedicated `add_knowledge` tool that the agent calls directly, not a side-channel LLM. Three invocation paths: (1) user request ("기억해줘"), (2) agent autonomous (스스로 판단), (3) system nudge (turn_end 시 시스템 메시지 주입으로 판단 기회 보장). Emit `knowledge_saved` event.
+- **Rationale**: Side-channel approach was rejected because: (a) it also relies on LLM judgment (can return empty), so no reliability advantage over tool, (b) uses partial context vs main model's full context, (c) incurs extra LLM cost per turn, (d) cannot support user-initiated knowledge recording. Tool approach naturally covers all three invocation paths with a single mechanism. Turn_end nudge preserves the "guaranteed judgment opportunity" benefit of side-channel without the cost.
+- **Date**: 2026-02-24
+
+### D083: Knowledge injection — system prompt section with token budget
+- **Decision**: On new session start, load knowledge from `knowledge.jsonl`, rank by recency × confidence with type weighting, inject into system prompt "Project Knowledge" section. Default token budget: 8192. Budget configurable via `knowledge.injectionBudget`.
+- **Rationale**: Claude Code's auto memory "always loaded" pattern. 8192 tokens is 5-10% of context window — sufficient knowledge without excessive context pressure. Time decay (OpenClaw temporal decay pattern, 30-day half-life) reflects decreasing relevance of old knowledge.
+- **Date**: 2026-02-24
+
+### D084: Knowledge-compaction interaction — flush before compact via prompt
+- **Decision**: When compaction is triggered, prompt the agent to record any important knowledge via `add_knowledge` BEFORE running compaction (D037). Knowledge persists independently of session logs — survives compaction, session end, and session deletion.
+- **Rationale**: Directly from OpenClaw's `memoryFlush` (`before_compaction` hook), adapted to tool-based approach (D082). Agent uses full conversation context to judge what would be lost in compaction. No side-channel needed — flush prompt is part of main conversation flow.
+- **Date**: 2026-02-24
+
+### D085: Export/import mechanism
+- **Decision**: `diligent export/import` CLI commands for `.diligent/` data as tar.gz archive with `manifest.json`. Export supports `--sessions`, `--knowledge`, `--skills` flags. Import supports `merge` (default, append with dedup) and `replace` modes.
+- **Rationale**: Project-local storage (D080) enables straightforward archiving. Portability (machine migration) and sharing (team knowledge transfer) are core motivations. tar.gz is platform-agnostic. Merge mode leverages knowledge `supersedes` chains for conflict-free merging.
+- **Date**: 2026-02-24

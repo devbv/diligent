@@ -823,16 +823,83 @@ The following Cycle 1 decisions are validated by Cycle 2 deep-dive research:
 
 For diligent's L6 implementation, the recommended approach combines the best patterns:
 
-1. **Storage**: JSONL append-only with pi-agent's tree structure (D006/D036)
-2. **Entry types**: Start with 5 core types (message, compaction, model_change, custom, session_info), expand as needed
-3. **Context building**: Pi-agent's `buildSessionContext()` tree traversal algorithm
-4. **Compaction trigger**: Pi-agent's hybrid token estimation (actual usage + chars/4 for trailing)
-5. **Compaction algorithm**: Pi-agent's full pipeline (prepareCompaction -> findCutPoint -> generateSummary) with iterative updating
-6. **File tracking**: Pi-agent's `CompactionDetails` with cumulative carry-forward
-7. **Context re-injection**: codex-rs's explicit injection after compaction
-8. **Session management**: Pi-agent's file-based listing with `SessionInfo` metadata
-9. **Deferred persistence**: Pi-agent's write-on-first-assistant pattern
-10. **Version migration**: Pi-agent's header-based version detection with chained migration
+1. **Storage**: JSONL append-only with pi-agent's tree structure (D006/D036-REV)
+2. **Storage location**: Project-local `.diligent/sessions/` (D036-REV, D080)
+3. **Entry types**: Start with 5 core types (message, compaction, model_change, custom, session_info), expand as needed
+4. **Context building**: Pi-agent's `buildSessionContext()` tree traversal algorithm
+5. **Compaction trigger**: Pi-agent's hybrid token estimation (actual usage + chars/4 for trailing)
+6. **Compaction algorithm**: Pi-agent's full pipeline (prepareCompaction -> findCutPoint -> generateSummary) with iterative updating
+7. **File tracking**: Pi-agent's `CompactionDetails` with cumulative carry-forward
+8. **Context re-injection**: codex-rs's explicit injection after compaction
+9. **Session management**: Pi-agent's file-based listing with `SessionInfo` metadata
+10. **Deferred persistence**: Pi-agent's write-on-first-assistant pattern
+11. **Version migration**: Pi-agent's header-based version detection with chained migration
+12. **Project-level memory**: `add_knowledge` tool + knowledge injection (D081-D084)
+
+---
+
+## Project-Level Memory System
+
+> Detailed analysis, reference comparisons, and design rationale: `06-session-memory.md`
+
+### Problem
+
+Session persistence (all sections above) preserves conversation within a **single session**. However, starting a new session loses all knowledge from previous sessions. The goal is to natively embed the kind of documentation that skilled engineers naturally produce — decision records, pattern documentation, troubleshooting logs — as an agent-native capability.
+
+### D036-REV: Session Storage → Project-Local
+
+Move session directory from D036's `~/.config/diligent/sessions/<project-hash>/` to `.diligent/sessions/`. Motivation: portability (machine migration), sharing (team knowledge transfer), and backup (unified with project directory).
+
+### `.diligent/` Directory Layout (D080)
+
+```
+.diligent/
+├── .gitignore              # auto-generated (excludes sessions/, knowledge/)
+├── sessions/               # JSONL session logs (gitignored)
+├── knowledge/              # accumulated knowledge (gitignored)
+│   └── knowledge.jsonl
+└── skills/                 # project skills (git tracked, D052)
+```
+
+Global `~/.config/diligent/` remains settings-only (D033). Runtime data goes to project-local `.diligent/`.
+
+### Two Components
+
+| | Session Logs (existing) | Accumulated Knowledge (new) |
+|---|---|---|
+| Path | `.diligent/sessions/*.jsonl` | `.diligent/knowledge/knowledge.jsonl` |
+| Purpose | Resume/fork conversations | Cross-session knowledge continuity |
+| Lifetime | Per-session | Entire project lifetime |
+| Format | JSONL + tree structure | JSONL append-only, typed entries |
+| Essence | What was said | What was learned |
+
+### Knowledge Store (D081)
+
+JSONL append-only. Five types: `pattern`, `decision`, `discovery`, `preference`, `correction`. Updates via `supersedes` field (append new entry referencing old, maintaining immutable append-only semantics).
+
+Long-term evolution: JSONL serves as an accumulation log (Phase 1). Once sufficient entries accumulate, they can be promoted to structured markdown artifacts (e.g., `decisions/*.md`, `conventions/*.md`) as Phase 2. Promoted files become natural targets for vector DB search.
+
+### `add_knowledge` Tool (D082)
+
+Knowledge recording is implemented as an `add_knowledge` tool that the agent calls directly. Three invocation paths:
+
+1. **User request** — "Remember this" → agent calls the tool
+2. **Agent autonomous** — agent records significant discoveries during work
+3. **System nudge** — system message injected at turn_end to ensure judgment opportunity
+
+Side-channel LLM approach was rejected: it also relies on LLM judgment (no reliability advantage), operates with partial context (lower quality), incurs extra LLM cost, and cannot support user-initiated recording.
+
+### Knowledge Injection (D083)
+
+On new session start, load knowledge.jsonl → inject into system prompt "Project Knowledge" section. Default token budget: 8192. Priority ranking: recency × confidence × type weight.
+
+### Flush Before Compact (D084)
+
+Before compaction, prompt the agent: "Record any important knowledge via add_knowledge before compaction begins." Knowledge persists independently of session logs.
+
+### Export/Import (D085)
+
+`diligent export/import` CLI commands for `.diligent/` data as tar.gz archive. Supports merge (default) and replace modes.
 
 ---
 

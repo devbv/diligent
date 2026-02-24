@@ -18,7 +18,10 @@ This is a custom coding agent implementation.
 - Design decision log: `plan/decisions.md` (78 decisions, D001-D078; D079 proposed)
 - Per-layer research (v1, preserved): `research/layers/NN-*.md`
 - Per-layer research (v2, current): `research/layers-v2/NN-*.md`
-- Reference projects: `research/references/` (codex-rs, pi-agent, opencode)
+- Reference projects (external sources): `research/references/`
+- LLM tools research: `research/llm-tools/`
+- OpenClaw analysis: `research/openclaw/`
+- Side research: `research/side-research/`
 - Implementation phases (layers vs phases analysis): `plan/implementation-phases.md`
 - **Status**: Research fully converged after 2 cycles. 11-layer v2 structure (D077-D078). 78 decisions (D001-D078). Next step: architecture design (`plan/architecture.md`)
 
