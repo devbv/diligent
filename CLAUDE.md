@@ -10,6 +10,11 @@ This is a custom coding agent implementation.
 - All documentation and file contents must be written in *English* even if the user writes in a different language.
 - Never start implementation until requirements are fully understood. Keep asking questions relentlessly until there is zero ambiguity — no assumptions, no guessing
 
+## Testing
+
+- After any code change, always run unit tests: `bun test` (scans `packages/` via bunfig.toml `root`)
+- E2E tests (`packages/e2e/`) hit the real Anthropic API — run only when explicitly requested: `bun run test:e2e`
+
 ## Implementation
 
 - Implementation plans live in `plan/impl/`. Always read the relevant phase plan before starting implementation.
