@@ -1,0 +1,5 @@
+{
+  "name": "diligent",
+  "private": true,
+  "workspaces": ["packages/*"]
+}

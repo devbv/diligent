@@ -9,5 +9,13 @@
 *.swp
 *.swo
 
+# Build
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Secrets
+.env
+
 # Claude Code local settings
 .claude/settings.local.json
