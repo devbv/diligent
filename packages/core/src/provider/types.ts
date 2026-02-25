@@ -25,7 +25,6 @@ export interface StreamContext {
 
 export interface StreamOptions {
   signal?: AbortSignal;
-  apiKey: string;
   maxTokens?: number;
   temperature?: number;
 }

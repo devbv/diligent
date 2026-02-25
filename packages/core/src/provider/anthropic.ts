@@ -12,98 +12,96 @@ import type {
 } from "./types";
 import { ProviderError } from "./types";
 
-export const createAnthropicStream: StreamFunction = (
-  model: Model,
-  context: StreamContext,
-  options: StreamOptions,
-): EventStream<ProviderEvent, ProviderResult> => {
-  const stream = new EventStream<ProviderEvent, ProviderResult>(
-    (event) => event.type === "done" || event.type === "error",
-    (event) => {
-      if (event.type === "done") return { message: event.message };
-      throw (event as { type: "error"; error: Error }).error;
-    },
-  );
+export function createAnthropicStream(apiKey: string): StreamFunction {
+  const client = new Anthropic({ apiKey });
 
-  const client = new Anthropic({ apiKey: options.apiKey });
+  return (model: Model, context: StreamContext, options: StreamOptions): EventStream<ProviderEvent, ProviderResult> => {
+    const stream = new EventStream<ProviderEvent, ProviderResult>(
+      (event) => event.type === "done" || event.type === "error",
+      (event) => {
+        if (event.type === "done") return { message: event.message };
+        throw (event as { type: "error"; error: Error }).error;
+      },
+    );
 
-  (async () => {
-    try {
-      const sdkStream = client.messages.stream(
-        {
-          model: model.id,
-          max_tokens: options.maxTokens ?? model.maxOutputTokens,
-          system: context.systemPrompt,
-          messages: convertMessages(context.messages),
-          ...(context.tools.length > 0 && { tools: convertTools(context.tools) }),
-          ...(options.temperature !== undefined && { temperature: options.temperature }),
-        },
-        ...(options.signal ? [{ signal: options.signal }] : []),
-      );
+    (async () => {
+      try {
+        const sdkStream = client.messages.stream(
+          {
+            model: model.id,
+            max_tokens: options.maxTokens ?? model.maxOutputTokens,
+            system: context.systemPrompt,
+            messages: convertMessages(context.messages),
+            ...(context.tools.length > 0 && { tools: convertTools(context.tools) }),
+            ...(options.temperature !== undefined && { temperature: options.temperature }),
+          },
+          ...(options.signal ? [{ signal: options.signal }] : []),
+        );
 
-      stream.push({ type: "start" });
+        stream.push({ type: "start" });
 
-      // Track active tool call for delta routing
-      let activeToolId: string | undefined;
+        // Track active tool call for delta routing
+        let activeToolId: string | undefined;
 
-      sdkStream.on("text", (textDelta) => {
-        stream.push({ type: "text_delta", delta: textDelta });
-      });
+        sdkStream.on("text", (textDelta) => {
+          stream.push({ type: "text_delta", delta: textDelta });
+        });
 
-      sdkStream.on("thinking", (thinkingDelta) => {
-        stream.push({ type: "thinking_delta", delta: thinkingDelta });
-      });
+        sdkStream.on("thinking", (thinkingDelta) => {
+          stream.push({ type: "thinking_delta", delta: thinkingDelta });
+        });
 
-      sdkStream.on("inputJson", (partialJson) => {
-        if (activeToolId) {
-          stream.push({ type: "tool_call_delta", id: activeToolId, delta: partialJson });
-        }
-      });
+        sdkStream.on("inputJson", (partialJson) => {
+          if (activeToolId) {
+            stream.push({ type: "tool_call_delta", id: activeToolId, delta: partialJson });
+          }
+        });
 
-      sdkStream.on("contentBlock", (block) => {
-        if (block.type === "text") {
-          stream.push({ type: "text_end", text: block.text });
-        } else if (block.type === "thinking") {
-          stream.push({ type: "thinking_end", thinking: block.thinking });
-        } else if (block.type === "tool_use") {
-          stream.push({
-            type: "tool_call_end",
-            id: block.id,
-            name: block.name,
-            input: block.input as Record<string, unknown>,
-          });
-          activeToolId = undefined;
-        }
-      });
+        sdkStream.on("contentBlock", (block) => {
+          if (block.type === "text") {
+            stream.push({ type: "text_end", text: block.text });
+          } else if (block.type === "thinking") {
+            stream.push({ type: "thinking_end", thinking: block.thinking });
+          } else if (block.type === "tool_use") {
+            stream.push({
+              type: "tool_call_end",
+              id: block.id,
+              name: block.name,
+              input: block.input as Record<string, unknown>,
+            });
+            activeToolId = undefined;
+          }
+        });
 
-      sdkStream.on("streamEvent", (event) => {
-        if (event.type === "content_block_start" && event.content_block.type === "tool_use") {
-          activeToolId = event.content_block.id;
-          stream.push({ type: "tool_call_start", id: event.content_block.id, name: event.content_block.name });
-        }
-      });
+        sdkStream.on("streamEvent", (event) => {
+          if (event.type === "content_block_start" && event.content_block.type === "tool_use") {
+            activeToolId = event.content_block.id;
+            stream.push({ type: "tool_call_start", id: event.content_block.id, name: event.content_block.name });
+          }
+        });
 
-      const finalMessage = await sdkStream.finalMessage();
-      const assistantMessage = mapToAssistantMessage(finalMessage, model);
-      stream.push({
-        type: "usage",
-        usage: assistantMessage.usage,
-      });
-      stream.push({
-        type: "done",
-        stopReason: assistantMessage.stopReason,
-        message: assistantMessage,
-      });
-    } catch (err) {
-      stream.push({
-        type: "error",
-        error: classifyAnthropicError(err),
-      });
-    }
-  })();
+        const finalMessage = await sdkStream.finalMessage();
+        const assistantMessage = mapToAssistantMessage(finalMessage, model);
+        stream.push({
+          type: "usage",
+          usage: assistantMessage.usage,
+        });
+        stream.push({
+          type: "done",
+          stopReason: assistantMessage.stopReason,
+          message: assistantMessage,
+        });
+      } catch (err) {
+        stream.push({
+          type: "error",
+          error: classifyAnthropicError(err),
+        });
+      }
+    })();
 
-  return stream;
-};
+    return stream;
+  };
+}
 
 function convertMessages(messages: Message[]): Anthropic.MessageParam[] {
   const result: Anthropic.MessageParam[] = [];

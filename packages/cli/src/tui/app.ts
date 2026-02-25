@@ -119,7 +119,6 @@ export class App {
     this.isProcessing = true;
     this.abortController = new AbortController();
     this.accumulatedText = "";
-    this.lastRenderedLength = 0;
 
     const userMessage: UserMessage = {
       role: "user",
@@ -139,12 +138,12 @@ export class App {
       createGrepTool(cwd),
     ];
 
-    const loop = agentLoop(this.messages, {
+    const loopFn = this.config.agentLoopFn ?? agentLoop;
+    const loop = loopFn(this.messages, {
       model: this.config.model,
       systemPrompt: this.config.systemPrompt,
       tools,
-      streamFunction: createAnthropicStream,
-      apiKey: this.config.apiKey,
+      streamFunction: createAnthropicStream(this.config.apiKey),
       signal: this.abortController.signal,
     });
 
@@ -169,7 +168,6 @@ export class App {
     switch (event.type) {
       case "message_start":
         this.accumulatedText = "";
-        this.lastRenderedLength = 0;
         break;
 
       case "message_delta":

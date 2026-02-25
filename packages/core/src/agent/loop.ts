@@ -158,7 +158,7 @@ async function streamAssistantResponse(
     tools: config.tools.map(toolToDefinition),
   };
 
-  const providerStream = streamFn(config.model, context, { signal: config.signal, apiKey: config.apiKey });
+  const providerStream = streamFn(config.model, context, { signal: config.signal });
 
   let currentMessage: AssistantMessage | undefined;
 

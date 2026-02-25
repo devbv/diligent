@@ -88,7 +88,6 @@ describe("agentLoop", () => {
       systemPrompt: "test",
       tools: [],
       streamFunction: streamFn,
-      apiKey: "test-key",
     };
 
     const messages: Message[] = [{ role: "user", content: "hi", timestamp: Date.now() }];
@@ -124,7 +123,6 @@ describe("agentLoop", () => {
       systemPrompt: "test",
       tools: [echoTool],
       streamFunction: streamFn,
-      apiKey: "test-key",
     };
 
     const messages: Message[] = [{ role: "user", content: "echo hello", timestamp: Date.now() }];
@@ -169,7 +167,6 @@ describe("agentLoop", () => {
       systemPrompt: "test",
       tools: [echoTool],
       streamFunction: streamFn,
-      apiKey: "test-key",
       maxTurns: 2,
     };
 
@@ -210,7 +207,6 @@ describe("agentLoop", () => {
       systemPrompt: "test",
       tools: [complexTool],
       streamFunction: streamFn,
-      apiKey: "test-key",
     };
 
     const loop = agentLoop([{ role: "user", content: "test", timestamp: Date.now() }], config);
@@ -255,7 +251,6 @@ describe("agentLoop", () => {
       systemPrompt: "test",
       tools: [echoTool],
       streamFunction: streamFn,
-      apiKey: "test-key",
     };
 
     const messages: Message[] = [{ role: "user", content: "use fake tool", timestamp: Date.now() }];
