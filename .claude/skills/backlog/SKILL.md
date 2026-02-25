@@ -52,3 +52,4 @@ When creating `BACKLOG.md` for the first time:
 - Preserve the ordering within sections — newest items go at the bottom of each section
 - Use today's date from the system context for timestamps
 - The file should always be valid markdown that reads well in any viewer
+- **After modifying BACKLOG.md**, also update the backlog summary in `plan/STATUS.md` (the "Backlog" section) to keep it in sync

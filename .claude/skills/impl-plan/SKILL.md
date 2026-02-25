@@ -84,6 +84,7 @@ After generating the draft:
 1. Highlight any decisions that felt uncertain or where research was ambiguous
 2. Ask the user to review — focus their attention on scope boundaries and the task ordering
 3. Iterate until the plan is something an implementor could follow without asking questions
+4. **Update `plan/STATUS.md`** with the new phase scope, risk areas, and any new decisions referenced in the plan
 
 ## References
 
