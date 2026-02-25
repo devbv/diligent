@@ -520,3 +520,30 @@ Decisions made during synthesis reviews, with rationale.
 - **Decision**: `diligent export/import` CLI commands for `.diligent/` data as tar.gz archive with `manifest.json`. Export supports `--sessions`, `--knowledge`, `--skills` flags. Import supports `merge` (default, append with dedup) and `replace` modes.
 - **Rationale**: Project-local storage (D080) enables straightforward archiving. Portability (machine migration) and sharing (team knowledge transfer) are core motivations. tar.gz is platform-agnostic. Merge mode leverages knowledge `supersedes` chains for conflict-free merging.
 - **Date**: 2026-02-24
+
+## Codex Protocol Alignment (Cross-Cutting)
+
+### D086: Codex protocol alignment strategy — SessionManager mediator + item abstraction + serialization contract
+- **Decision**: Align Phase 3 architecture with codex-rs patterns to ensure a future web UI protocol layer (JSON-RPC 2.0 over WebSocket) can be added as a thin wrapper rather than a deep refactor. Three concrete changes:
+  1. **SessionManager mediator**: Introduce a `SessionManager` class that wraps `agentLoop()` and owns session lifecycle (create, resume, fork, rollback). Both TUI and future protocol layer consume this single API surface instead of calling `agentLoop()` directly. SessionManager handles persistence (L6), compaction triggers (D037), and session state — the agent loop remains a pure stateless function.
+  2. **Item abstraction via `itemId`**: Add an optional `itemId: string` field to grouped AgentEvent subtypes (`message_start/delta/end`, `tool_start/update/end`). Events sharing the same `itemId` form a logical item — equivalent to codex-rs's `item/started → item/delta(N) → item/completed` pattern. Existing consumers ignore the field (backward-compatible). A protocol layer maps `itemId` groups directly to codex-style item notifications.
+  3. **Serialization contract**: All types that cross the core↔consumer boundary (AgentEvent, Message, session JSONL entries, knowledge entries) must be JSON-serializable. Enforce via `JSON.parse(JSON.stringify(x))` roundtrip assertions in tests. Closures, class instances with methods, and non-serializable state must never appear in event payloads or persistent entries.
+- **Rationale**: The ultimate goal is a web UI consuming diligent via codex-like protocol (harness-friendly design). The gap analysis (`research/temp/web-ui-readiness.md`) identified 8 gaps between current architecture and codex-rs's app-server pattern. Gaps 2-4 (event granularity, bidirectional approval, thread/session model) can be pre-closed in Phase 3 with minimal overhead if designed in from the start. Retrofitting these patterns after Phase 3 would require breaking the session format and refactoring the TUI↔core boundary — compounding cost across Phase 4 and 5.
+- **What to adopt from codex-rs**:
+  - Thread/session lifecycle semantics (create/resume/fork/rollback) — maps naturally to D040
+  - Item grouping pattern (not the 50+ event types, just the structural `itemId` concept)
+  - Transport-agnostic core design (core knows nothing about stdio/ws/http)
+  - Bidirectional approval readiness (D028 `ctx.ask()` returns rich response, not just boolean)
+- **What to intentionally diverge from**:
+  - Event count: keep 15-20 AgentEvent types, not 50+ (D004 rationale still valid)
+  - Concurrency model: TypeScript async iterators, not Rust mpsc channels
+  - API versioning: single version (solo developer, no backward-compat burden)
+  - Init handshake / capability negotiation: defer to protocol layer introduction
+- **Expand ApprovalRequest/Response types** (preparing D028/D029 for Phase 4 + protocol):
+  - `ApprovalRequest` gains `toolName: string` and `details?: Record<string, unknown>` for pattern matching
+  - `approve()` return type changes from `Promise<boolean>` to `Promise<ApprovalResponse>`
+  - `ApprovalResponse = "once" | "always" | "reject"` (D029)
+  - Phase 3 implementation still auto-returns `"once"` — type change only, no behavior change
+- **Impact on Phase 3 scope**: Adds SessionManager design (~2h), itemId field (~1h), expanded approval types (~30min), serialization test convention (~30min). Total: ~half day of incremental work that prevents weeks of refactoring in Phase 4+.
+- **References**: D004, D028, D029, D040, D046, research/temp/web-ui-readiness.md, research/temp/debug-web-ui.md
+- **Date**: 2026-02-25
