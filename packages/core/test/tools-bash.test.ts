@@ -6,7 +6,7 @@ function makeCtx(signal?: AbortSignal): ToolContext {
   return {
     toolCallId: "tc_bash",
     signal: signal ?? new AbortController().signal,
-    approve: async () => true,
+    approve: async () => "once" as const,
   };
 }
 
