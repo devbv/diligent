@@ -6,7 +6,21 @@ import type { Model, StreamContext, ToolDefinition } from "../provider/types";
 import { executeTool } from "../tool/executor";
 import type { ToolContext } from "../tool/types";
 import type { AssistantMessage, Message, ToolCallBlock, ToolResultMessage, Usage } from "../types";
-import type { AgentEvent, AgentLoopConfig } from "./types";
+import type { AgentEvent, AgentLoopConfig, SerializableError } from "./types";
+
+// D086: Generate a short unique itemId for grouping related events
+let itemCounter = 0;
+function generateItemId(): string {
+  return `item-${++itemCounter}`;
+}
+
+// D086: Convert Error to serializable representation
+function toSerializableError(err: unknown): SerializableError {
+  if (err instanceof Error) {
+    return { message: err.message, name: err.name, stack: err.stack };
+  }
+  return { message: String(err), name: "Error" };
+}
 
 export function agentLoop(messages: Message[], config: AgentLoopConfig): EventStream<AgentEvent, Message[]> {
   const stream = new EventStream<AgentEvent, Message[]>(
@@ -15,7 +29,7 @@ export function agentLoop(messages: Message[], config: AgentLoopConfig): EventSt
   );
 
   runLoop(messages, config, stream).catch((err) => {
-    stream.push({ type: "error", error: err, fatal: true });
+    stream.push({ type: "error", error: toSerializableError(err), fatal: true });
     // Complete the stream gracefully so the result promise resolves
     // instead of leaving an unhandled rejection. Consumers see the error event.
     stream.push({ type: "agent_end", messages: [...messages] });
@@ -90,8 +104,11 @@ async function runLoop(
     for (const toolCall of toolCalls) {
       if (config.signal?.aborted) break;
 
+      const toolItemId = generateItemId();
+
       stream.push({
         type: "tool_start",
+        itemId: toolItemId,
         toolCallId: toolCall.id,
         toolName: toolCall.name,
         input: toolCall.input,
@@ -100,10 +117,11 @@ async function runLoop(
       const ctx: ToolContext = {
         toolCallId: toolCall.id,
         signal: config.signal ?? new AbortController().signal,
-        approve: async () => true,
+        approve: async () => "once" as const,
         onUpdate: (partial) => {
           stream.push({
             type: "tool_update",
+            itemId: toolItemId,
             toolCallId: toolCall.id,
             toolName: toolCall.name,
             partialResult: partial,
@@ -126,6 +144,7 @@ async function runLoop(
 
       stream.push({
         type: "tool_end",
+        itemId: toolItemId,
         toolCallId: toolCall.id,
         toolName: toolCall.name,
         output: result.output,
@@ -161,11 +180,12 @@ async function streamAssistantResponse(
   const providerStream = streamFn(config.model, context, { signal: config.signal });
 
   let currentMessage: AssistantMessage | undefined;
+  const messageItemId = generateItemId();
 
   for await (const event of providerStream) {
     if (event.type === "done") {
       currentMessage = event.message;
-      agentStream.push({ type: "message_end", message: event.message });
+      agentStream.push({ type: "message_end", itemId: messageItemId, message: event.message });
     } else if (event.type === "error") {
       // Consume the rejected result to prevent unhandled rejection
       providerStream.result().catch(() => {});
@@ -175,20 +195,22 @@ async function streamAssistantResponse(
     } else if (event.type === "text_delta") {
       if (!currentMessage) {
         currentMessage = createEmptyAssistantMessage(config.model.id);
-        agentStream.push({ type: "message_start", message: currentMessage });
+        agentStream.push({ type: "message_start", itemId: messageItemId, message: currentMessage });
       }
       agentStream.push({
         type: "message_delta",
+        itemId: messageItemId,
         message: currentMessage,
         delta: { type: "text_delta", delta: event.delta },
       });
     } else if (event.type === "thinking_delta") {
       if (!currentMessage) {
         currentMessage = createEmptyAssistantMessage(config.model.id);
-        agentStream.push({ type: "message_start", message: currentMessage });
+        agentStream.push({ type: "message_start", itemId: messageItemId, message: currentMessage });
       }
       agentStream.push({
         type: "message_delta",
+        itemId: messageItemId,
         message: currentMessage,
         delta: { type: "thinking_delta", delta: event.delta },
       });

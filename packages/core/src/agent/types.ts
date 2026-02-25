@@ -4,28 +4,35 @@ import type { AssistantMessage, Message, ToolResultMessage, Usage } from "../typ
 
 export type MessageDelta = { type: "text_delta"; delta: string } | { type: "thinking_delta"; delta: string };
 
-// D004: 15 AgentEvent types (all defined, ~7 emitted in Phase 1)
+// D086: Serializable error representation for events crossing core↔consumer boundary
+export interface SerializableError {
+  message: string;
+  name: string;
+  stack?: string;
+}
+
+// D004: 15 AgentEvent types — D086: itemId on grouped subtypes, SerializableError
 export type AgentEvent =
-  // Lifecycle (2) — emitted in Phase 1
+  // Lifecycle (2)
   | { type: "agent_start" }
   | { type: "agent_end"; messages: Message[] }
-  // Turn (2) — emitted in Phase 1
+  // Turn (2)
   | { type: "turn_start"; turnId: string }
   | { type: "turn_end"; turnId: string; message: AssistantMessage; toolResults: ToolResultMessage[] }
-  // Message streaming (3) — emitted in Phase 1
-  | { type: "message_start"; message: AssistantMessage }
-  | { type: "message_delta"; message: AssistantMessage; delta: MessageDelta }
-  | { type: "message_end"; message: AssistantMessage }
-  // Tool execution (3) — emitted in Phase 1
-  | { type: "tool_start"; toolCallId: string; toolName: string; input: unknown }
-  | { type: "tool_update"; toolCallId: string; toolName: string; partialResult: string }
-  | { type: "tool_end"; toolCallId: string; toolName: string; output: string; isError: boolean }
-  // Status (1) — emitted in Phase 2
+  // Message streaming (3) — D086: itemId groups related events
+  | { type: "message_start"; itemId: string; message: AssistantMessage }
+  | { type: "message_delta"; itemId: string; message: AssistantMessage; delta: MessageDelta }
+  | { type: "message_end"; itemId: string; message: AssistantMessage }
+  // Tool execution (3) — D086: itemId groups related events
+  | { type: "tool_start"; itemId: string; toolCallId: string; toolName: string; input: unknown }
+  | { type: "tool_update"; itemId: string; toolCallId: string; toolName: string; partialResult: string }
+  | { type: "tool_end"; itemId: string; toolCallId: string; toolName: string; output: string; isError: boolean }
+  // Status (1)
   | { type: "status_change"; status: "idle" | "busy" | "retry"; retry?: { attempt: number; delayMs: number } }
-  // Usage (1) — emitted in Phase 2
+  // Usage (1)
   | { type: "usage"; usage: Usage; cost: number }
-  // Error (1) — emitted in Phase 1
-  | { type: "error"; error: Error; fatal: boolean };
+  // Error (1) — D086: SerializableError instead of Error
+  | { type: "error"; error: SerializableError; fatal: boolean };
 
 // D008: Config for a single agent invocation
 export interface AgentLoopConfig {

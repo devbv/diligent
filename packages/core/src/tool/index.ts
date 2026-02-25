@@ -12,6 +12,7 @@ export {
 } from "./truncation";
 export type {
   ApprovalRequest,
+  ApprovalResponse,
   Tool,
   ToolContext,
   ToolRegistry,

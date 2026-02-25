@@ -9,17 +9,23 @@ export interface Tool<TParams extends z.ZodType = any> {
   execute: (args: z.infer<TParams>, ctx: ToolContext) => Promise<ToolResult>;
 }
 
-// D016: Tool context with approval placeholder
+// D086: Approval response — "once" (proceed once), "always" (remember), "reject" (deny)
+export type ApprovalResponse = "once" | "always" | "reject";
+
+// D016: Tool context — D086: approve returns ApprovalResponse
 export interface ToolContext {
   toolCallId: string;
   signal: AbortSignal;
-  approve: (request: ApprovalRequest) => Promise<boolean>;
+  approve: (request: ApprovalRequest) => Promise<ApprovalResponse>;
   onUpdate?: (partialResult: string) => void;
 }
 
+// D086: Expanded approval request with toolName + details for pattern matching
 export interface ApprovalRequest {
   permission: "read" | "write" | "execute";
+  toolName: string;
   description: string;
+  details?: Record<string, unknown>;
 }
 
 // D020: Tool result

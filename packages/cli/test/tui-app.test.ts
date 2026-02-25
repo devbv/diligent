@@ -16,6 +16,8 @@ function makeConfig(agentLoopFn: AppConfig["agentLoopFn"]): AppConfig {
     apiKey: "test-key",
     model: TEST_MODEL,
     systemPrompt: "test prompt",
+    diligent: {},
+    sources: [],
     agentLoopFn,
   };
 }
@@ -117,9 +119,9 @@ describe("App", () => {
 
     const events: AgentEvent[] = [
       { type: "agent_start" },
-      { type: "message_start", message: emptyMsg },
-      { type: "message_delta", message: emptyMsg, delta: { type: "text_delta", delta: "Hello " } },
-      { type: "message_delta", message: emptyMsg, delta: { type: "text_delta", delta: "world!" } },
+      { type: "message_start", itemId: "msg-1", message: emptyMsg },
+      { type: "message_delta", itemId: "msg-1", message: emptyMsg, delta: { type: "text_delta", delta: "Hello " } },
+      { type: "message_delta", itemId: "msg-1", message: emptyMsg, delta: { type: "text_delta", delta: "world!" } },
     ];
 
     const agentLoopFn = createMockAgentLoop(events, []);
@@ -145,8 +147,8 @@ describe("App", () => {
   test("tool_start/tool_end events → spinner and tool output", async () => {
     const events: AgentEvent[] = [
       { type: "agent_start" },
-      { type: "tool_start", toolCallId: "tc_1", toolName: "bash", input: { command: "echo hi" } },
-      { type: "tool_end", toolCallId: "tc_1", toolName: "bash", output: "hi\n", isError: false },
+      { type: "tool_start", itemId: "tool-1", toolCallId: "tc_1", toolName: "bash", input: { command: "echo hi" } },
+      { type: "tool_end", itemId: "tool-1", toolCallId: "tc_1", toolName: "bash", output: "hi\n", isError: false },
     ];
 
     const agentLoopFn = createMockAgentLoop(events, []);
@@ -172,7 +174,7 @@ describe("App", () => {
   test("error event → error displayed", async () => {
     const events: AgentEvent[] = [
       { type: "agent_start" },
-      { type: "error", error: new Error("something went wrong"), fatal: false },
+      { type: "error", error: { message: "something went wrong", name: "Error" }, fatal: false },
     ];
 
     const agentLoopFn = createMockAgentLoop(events, []);

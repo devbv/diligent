@@ -6,6 +6,7 @@ export class EventStream<T, R> implements AsyncIterable<T> {
   private resultResolve!: (value: R) => void;
   private resultReject!: (error: Error) => void;
   private resultPromise: Promise<R>;
+  private observers: Array<(event: T) => void> = [];
 
   constructor(
     private isComplete: (event: T) => boolean,
@@ -17,8 +18,14 @@ export class EventStream<T, R> implements AsyncIterable<T> {
     });
   }
 
+  /** Register an observer that receives every event (independent of the iterator). */
+  subscribe(callback: (event: T) => void): void {
+    this.observers.push(callback);
+  }
+
   push(event: T): void {
     if (this.isDone) return;
+    for (const observer of this.observers) observer(event);
     if (this.isComplete(event)) {
       this.isDone = true;
       try {

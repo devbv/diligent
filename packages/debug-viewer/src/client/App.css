@@ -32,15 +32,15 @@
   --cyan: #00c8ff;
   --cyan-dim: rgba(0, 200, 255, 0.12);
   --green: #34d399;
-  --green-dim: rgba(52, 211, 153, 0.10);
+  --green-dim: rgba(52, 211, 153, 0.1);
   --blue: #6b8afd;
-  --blue-dim: rgba(107, 138, 253, 0.10);
+  --blue-dim: rgba(107, 138, 253, 0.1);
   --amber: #f59e0b;
   --amber-dim: rgba(245, 158, 11, 0.08);
   --red: #ef4444;
-  --red-dim: rgba(239, 68, 68, 0.10);
+  --red-dim: rgba(239, 68, 68, 0.1);
   --purple: #a78bfa;
-  --purple-dim: rgba(167, 139, 250, 0.10);
+  --purple-dim: rgba(167, 139, 250, 0.1);
 
   /* Typography */
   --font-sans: "Sora", system-ui, sans-serif;
@@ -357,16 +357,36 @@ body,
 }
 
 /* Staggered entrance — first 10 entries */
-.conversation-view > [id^="entry-"]:nth-child(1) { animation-delay: 0.02s; }
-.conversation-view > [id^="entry-"]:nth-child(2) { animation-delay: 0.04s; }
-.conversation-view > [id^="entry-"]:nth-child(3) { animation-delay: 0.06s; }
-.conversation-view > [id^="entry-"]:nth-child(4) { animation-delay: 0.08s; }
-.conversation-view > [id^="entry-"]:nth-child(5) { animation-delay: 0.10s; }
-.conversation-view > [id^="entry-"]:nth-child(6) { animation-delay: 0.12s; }
-.conversation-view > [id^="entry-"]:nth-child(7) { animation-delay: 0.14s; }
-.conversation-view > [id^="entry-"]:nth-child(8) { animation-delay: 0.16s; }
-.conversation-view > [id^="entry-"]:nth-child(9) { animation-delay: 0.18s; }
-.conversation-view > [id^="entry-"]:nth-child(10) { animation-delay: 0.20s; }
+.conversation-view > [id^="entry-"]:nth-child(1) {
+  animation-delay: 0.02s;
+}
+.conversation-view > [id^="entry-"]:nth-child(2) {
+  animation-delay: 0.04s;
+}
+.conversation-view > [id^="entry-"]:nth-child(3) {
+  animation-delay: 0.06s;
+}
+.conversation-view > [id^="entry-"]:nth-child(4) {
+  animation-delay: 0.08s;
+}
+.conversation-view > [id^="entry-"]:nth-child(5) {
+  animation-delay: 0.1s;
+}
+.conversation-view > [id^="entry-"]:nth-child(6) {
+  animation-delay: 0.12s;
+}
+.conversation-view > [id^="entry-"]:nth-child(7) {
+  animation-delay: 0.14s;
+}
+.conversation-view > [id^="entry-"]:nth-child(8) {
+  animation-delay: 0.16s;
+}
+.conversation-view > [id^="entry-"]:nth-child(9) {
+  animation-delay: 0.18s;
+}
+.conversation-view > [id^="entry-"]:nth-child(10) {
+  animation-delay: 0.2s;
+}
 
 /* ═══════════════════════════════════════════════
    Message Cards
@@ -792,7 +812,9 @@ body,
 
 .search-input:focus {
   border-color: var(--cyan);
-  box-shadow: 0 0 0 1px var(--cyan-dim), var(--shadow-glow-cyan);
+  box-shadow:
+    0 0 0 1px var(--cyan-dim),
+    var(--shadow-glow-cyan);
 }
 
 .search-input::placeholder {
@@ -924,7 +946,9 @@ body,
    ═══════════════════════════════════════════════ */
 
 .highlight > .message-card {
-  box-shadow: 0 0 0 1px var(--cyan), var(--shadow-glow-cyan);
+  box-shadow:
+    0 0 0 1px var(--cyan),
+    var(--shadow-glow-cyan);
 }
 
 /* ═══════════════════════════════════════════════

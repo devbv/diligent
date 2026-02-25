@@ -9,7 +9,7 @@ function makeCtx(): ToolContext {
   return {
     toolCallId: "tc_test",
     signal: new AbortController().signal,
-    approve: async () => true,
+    approve: async () => "once" as const,
   };
 }
 
