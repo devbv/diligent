@@ -4,7 +4,24 @@
 
 **Phase 3b** — Compaction + Knowledge system + Multi-provider (OpenAI)
 
-Implementation spec: TBD
+Implementation spec: `plan/impl/phase-3b-compaction-knowledge-multiprovider.md`
+
+### Scope
+- **Compaction**: Token-based trigger (D038), LLM summarization (D037), simple cut points (turn boundaries only), file operation tracking (D039), context re-injection (D041)
+- **Knowledge**: JSONL store (D081), `add_knowledge` tool (D082), system prompt injection with 8192 token budget (D083), autonomous recording via system prompt instruction
+- **Multi-provider**: OpenAI Responses API provider, model registry with known model definitions, provider selection by model prefix
+
+### Key Decisions
+- Simple cut points only — no split-turn compaction
+- System prompt instruction for knowledge nudge — no per-turn injection
+- OpenAI Responses API (not Chat Completions)
+- Pre-compaction knowledge flush simplified to system prompt instruction (D084 full form deferred)
+
+### Risk Areas
+- Compaction summary quality (test with real sessions)
+- Token estimation accuracy (chars/4 heuristic)
+- OpenAI Responses API event format verification
+- SESSION_VERSION 1→2 backward compatibility
 
 ## Phases Complete
 
