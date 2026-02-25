@@ -775,6 +775,28 @@ pi-agent's approach (retry external to the loop) is the cleanest separation, but
 
 **Recommendation**: Retry orchestration belongs in L1, but as a wrapper around the core loop, not mixed into it. The loop function itself should be retry-agnostic; a `withRetry()` wrapper can add retry behavior.
 
+### Background Async Piggyback Pattern
+
+All three projects exhibit a common pattern for injecting asynchronously-produced results into the agent loop at natural breakpoints:
+
+1. **codex-rs: `TurnMetadataState`** (`core/src/turn_metadata.rs`). `spawn_git_enrichment_task()` launches a background tokio task that writes its result into `Arc<RwLock<Option<String>>>`. At the next API call, `current_header_value()` reads the result if available, falling back to a base value if not. This is the most explicit instance: a fire-and-forget background computation whose output is folded into the next outbound request.
+
+2. **pi-agent: `getSteeringMessages()` / `getFollowUpMessages()`**. Although designed for user-initiated steering, the callback mechanism generalizes: anything that produces messages asynchronously (LSP diagnostics, file watchers, background linters) can push them into the queue that `getSteeringMessages()` drains between tool executions.
+
+3. **opencode: DB-driven message loop**. Each loop iteration re-reads message history from the database, so any external process that writes a message to the DB (e.g., a background indexer) gets its result picked up on the next iteration.
+
+**Common structure**:
+
+```
+1. Background task produces a result
+2. Result lands in shared state (Arc<RwLock>, channel, DB row, in-memory queue)
+3. Loop checks shared state at a natural breakpoint (between tools, between turns, before API call)
+4. If result ready → fold into next round-trip context
+5. If not ready → proceed with fallback / skip
+```
+
+**Relevance to Diligent**: This pattern is not yet implemented or included in any phase plan. Use cases include LSP diagnostic injection, background file indexing results, and environment change notifications. The existing `getSteeringMessages()` callback in the agent loop design (D011) is the natural extension point — it can be generalized to a `getPendingInjections()` callback that drains both user steering and background results.
+
 ### Existing Decision Validation
 
 **D004 (Op/Event pattern, ~10-15 events)**: **Confirmed and refined.** pi-agent's 12 events + 2-3 additions gives ~15. codex-rs's 40+ is too granular for MVP. The event types should follow pi-agent's three-level lifecycle model.
