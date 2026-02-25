@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { buildSessionContext } from "../src/session/context-builder";
-import type { SessionEntry } from "../src/session/types";
+import type { CompactionEntry, SessionEntry } from "../src/session/types";
 
 function makeMsg(id: string, parentId: string | null, role: "user" | "assistant", text: string): SessionEntry {
   if (role === "user") {
@@ -98,5 +98,113 @@ describe("buildSessionContext", () => {
     const entries: SessionEntry[] = [makeMsg("a1", null, "user", "hi")];
     const ctx = buildSessionContext(entries, "nonexistent");
     expect(ctx.messages).toEqual([]);
+  });
+
+  it("handles CompactionEntry — summary replaces older messages", () => {
+    const compaction: CompactionEntry = {
+      type: "compaction",
+      id: "c1",
+      parentId: "a2",
+      timestamp: "2026-02-25T10:01:00.000Z",
+      summary: "## Goal\nRefactor config module",
+      firstKeptEntryId: "a3",
+      tokensBefore: 50000,
+      tokensAfter: 5000,
+    };
+
+    const entries: SessionEntry[] = [
+      makeMsg("a1", null, "user", "old message 1"),
+      makeMsg("a2", "a1", "assistant", "old response 1"),
+      compaction,
+      makeMsg("a3", "c1", "user", "new message"),
+      makeMsg("a4", "a3", "assistant", "new response"),
+    ];
+
+    const ctx = buildSessionContext(entries);
+    // First message should be the summary injection
+    expect(ctx.messages).toHaveLength(3); // summary + new user + new assistant
+    expect(ctx.messages[0].role).toBe("user");
+    expect(ctx.messages[0].content as string).toContain("[Session Summary]");
+    expect(ctx.messages[0].content as string).toContain("Refactor config module");
+    expect(ctx.messages[1].role).toBe("user");
+    expect(ctx.messages[2].role).toBe("assistant");
+  });
+
+  it("handles CompactionEntry with file operation details", () => {
+    const compaction: CompactionEntry = {
+      type: "compaction",
+      id: "c1",
+      parentId: "a2",
+      timestamp: "2026-02-25T10:01:00.000Z",
+      summary: "Summary text",
+      firstKeptEntryId: "a3",
+      tokensBefore: 50000,
+      tokensAfter: 5000,
+      details: {
+        readFiles: ["/src/a.ts", "/src/b.ts"],
+        modifiedFiles: ["/src/c.ts"],
+      },
+    };
+
+    const entries: SessionEntry[] = [
+      makeMsg("a1", null, "user", "old"),
+      makeMsg("a2", "a1", "assistant", "old"),
+      compaction,
+      makeMsg("a3", "c1", "user", "new"),
+    ];
+
+    const ctx = buildSessionContext(entries);
+    const summaryContent = ctx.messages[0].content as string;
+    expect(summaryContent).toContain("Files Read");
+    expect(summaryContent).toContain("/src/a.ts");
+    expect(summaryContent).toContain("Files Modified");
+    expect(summaryContent).toContain("/src/c.ts");
+  });
+
+  it("uses latest CompactionEntry when multiple exist", () => {
+    const compaction1: CompactionEntry = {
+      type: "compaction",
+      id: "c1",
+      parentId: "a2",
+      timestamp: "2026-02-25T10:01:00.000Z",
+      summary: "First summary",
+      firstKeptEntryId: "a3",
+      tokensBefore: 50000,
+      tokensAfter: 5000,
+    };
+    const compaction2: CompactionEntry = {
+      type: "compaction",
+      id: "c2",
+      parentId: "a4",
+      timestamp: "2026-02-25T10:02:00.000Z",
+      summary: "Second summary",
+      firstKeptEntryId: "a5",
+      tokensBefore: 30000,
+      tokensAfter: 3000,
+    };
+
+    const entries: SessionEntry[] = [
+      makeMsg("a1", null, "user", "very old"),
+      makeMsg("a2", "a1", "assistant", "very old response"),
+      compaction1,
+      makeMsg("a3", "c1", "user", "middle message"),
+      makeMsg("a4", "a3", "assistant", "middle response"),
+      compaction2,
+      makeMsg("a5", "c2", "user", "latest"),
+    ];
+
+    const ctx = buildSessionContext(entries);
+    const summaryContent = ctx.messages[0].content as string;
+    expect(summaryContent).toContain("Second summary");
+    expect(summaryContent).not.toContain("First summary");
+    expect(ctx.messages).toHaveLength(2); // summary + latest user msg
+  });
+
+  it("no compaction — existing behavior unchanged", () => {
+    const entries: SessionEntry[] = [makeMsg("a1", null, "user", "hello"), makeMsg("a2", "a1", "assistant", "hi")];
+    const ctx = buildSessionContext(entries);
+    expect(ctx.messages).toHaveLength(2);
+    expect(ctx.messages[0].role).toBe("user");
+    expect(ctx.messages[1].role).toBe("assistant");
   });
 });

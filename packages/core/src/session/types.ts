@@ -1,7 +1,7 @@
 import type { Message } from "../types";
 
 /** Session file format version. Increment when entry schema changes. */
-export const SESSION_VERSION = 1;
+export const SESSION_VERSION = 2;
 
 /** Unique entry ID — 8-char hex */
 export function generateEntryId(): string {
@@ -53,7 +53,24 @@ export interface SessionInfoEntry {
   name?: string;
 }
 
-export type SessionEntry = SessionMessageEntry | ModelChangeEntry | SessionInfoEntry;
+export interface CompactionEntry {
+  type: "compaction";
+  id: string;
+  parentId: string | null;
+  timestamp: string;
+  summary: string;
+  firstKeptEntryId: string;
+  tokensBefore: number;
+  tokensAfter: number;
+  details?: CompactionDetails;
+}
+
+export interface CompactionDetails {
+  readFiles: string[];
+  modifiedFiles: string[];
+}
+
+export type SessionEntry = SessionMessageEntry | ModelChangeEntry | SessionInfoEntry | CompactionEntry;
 
 /** Any line in a session file */
 export type SessionFileLine = SessionHeader | SessionEntry;

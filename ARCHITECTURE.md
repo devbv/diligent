@@ -24,13 +24,13 @@ Each layer is a functional subsystem. Layers are progressively deepened across i
 
 | Layer | Name | Status | Key Decisions |
 |---|---|---|---|
-| L0 | Provider | Implemented (Phase 2) | D001, D003, D010 |
-| L1 | Agent Loop | Implemented (Phase 2) | D004, D007, D008 |
+| L0 | Provider | Multi-provider (Phase 3b) | D001, D003, D009, D010 |
+| L1 | Agent Loop | Implemented (Phase 2) + compaction events (3b) | D004, D007, D008 |
 | L2 | Tool System | Implemented (Phase 2) | D013, D014, D015, D025 |
-| L3 | Core Tools | Implemented (Phase 2) | D017-D024 |
+| L3 | Core Tools | 8 tools (Phase 3b: +add_knowledge) | D017-D024, D082 |
 | L4 | Approval | Stub (auto-approve) | D027-D031 |
-| L5 | Config | Env-only | D032-D035 |
-| L6 | Session | In-memory only | D036-REV, D040-D043, D080 |
+| L5 | Config | 3-layer JSONC + knowledge/compaction wired | D032-D035 |
+| L6 | Session | Persistent + compaction + knowledge | D036-REV, D037-D043, D080-D084 |
 | L7 | TUI & Commands | Minimal (readline + markdown + spinner) | D045-D051 |
 | L8 | Skills | Planned | D052-D053 |
 | L9 | MCP | Planned | D056-D061 |
@@ -44,8 +44,10 @@ Deep research per layer: `research/layers/NN-*.md`
 - **AgentEvent union** (D004): 15 tagged-union event types covering lifecycle, turns, message streaming, tool execution, status, usage, and errors. `MessageDelta` type prevents provider events leaking into L1.
 - **Tool interface** (D013): `{ name, description, parameters (Zod schema), execute(args, ctx) }`. One file per tool in `packages/core/src/tools/`.
 - **TurnContext** (D008): Immutable per-turn config (model, tools, policies) separated from mutable session state. Agent loop is a pure stateless function.
-- **Provider abstraction** (D003): Common `Provider` interface with custom `StreamFunction`. Currently Anthropic only; OpenAI planned for Phase 3b.
-- **Session persistence** (D006/D036-REV): JSONL append-only files with tree structure (id/parentId). Project-local at `.diligent/sessions/`.
+- **Provider abstraction** (D003): Common `Provider` interface with custom `StreamFunction`. Anthropic and OpenAI (Responses API) providers. Model registry with alias resolution.
+- **Session persistence** (D006/D036-REV): JSONL append-only files with tree structure (id/parentId). Project-local at `.diligent/sessions/`. SESSION_VERSION 2 with CompactionEntry.
+- **Compaction** (D037-D039): Token-based trigger with LLM summarization. Proactive (pre-turn check) and reactive (context_overflow recovery). File operation tracking across compactions.
+- **Knowledge** (D081-D083): JSONL append-only store with 5 typed entries. Ranked injection into system prompt with 30-day time decay and token budget. `add_knowledge` tool for autonomous recording.
 - **Project data directory** (D080): `.diligent/` stores sessions, knowledge, and skills. Auto-generated `.gitignore` excludes sessions and knowledge.
 
 ## Key Decisions Summary
@@ -54,7 +56,7 @@ Deep research per layer: `research/layers/NN-*.md`
 |---|---|---|
 | D001 | Bun + TypeScript strict | Fast startup, native TS, good DX |
 | D003 | Custom provider abstraction (not ai-sdk) | Full control, no heavy dependency |
-| D004 | 15 AgentEvent types (tagged union) | Middle ground between codex-rs (40+) and pi-agent (12) |
+| D004 | 18 AgentEvent types (tagged union) | Middle ground between codex-rs (40+) and pi-agent (12). Phase 3b added compaction_start/end, knowledge_saved |
 | D006 | JSONL append-only sessions | Simple, no data loss, supports branching |
 | D008 | Immutable TurnContext + mutable SessionState | Prevents accidental mutation during tool execution |
 | D013 | Tool = object with Zod schema + execute() | Clean, testable, one file per tool |
@@ -62,7 +64,7 @@ Deep research per layer: `research/layers/NN-*.md`
 | D080 | `.diligent/` project data directory | Separates config (global) from data (project-local) |
 | D086 | Codex protocol alignment (SessionManager + itemId + serialization) | Future web UI as thin wrapper, not deep refactor |
 
-Full decision log: `plan/decisions.md` (D001-D086)
+Full decision log: `plan/decisions.md` (D001-D087)
 
 ## Dev Commands
 
