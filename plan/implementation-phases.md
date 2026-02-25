@@ -72,7 +72,7 @@ L4 is best implemented *after* the systems it depends on for full functionality.
 
 ## Implementation Phases
 
-### Phase 0: Project Skeleton
+### Phase 0: Project Skeleton ✅ COMPLETE (2026-02-24)
 
 **Goal**: Build infrastructure, development tools, core type definitions.
 
@@ -94,7 +94,7 @@ L4 is best implemented *after* the systems it depends on for full functionality.
 
 ---
 
-### Phase 1: Minimal Viable Agent
+### Phase 1: Minimal Viable Agent ✅ COMPLETE (2026-02-24)
 
 **Goal**: An agent that can converse with an LLM and execute a basic tool.
 
@@ -121,9 +121,15 @@ Agent → "Here are the files: ..."
 
 **Testing milestone**: Manual conversation test — ask agent to run a command, verify it works.
 
+**Implementation notes**:
+- Detailed spec: `plan/impl/phase-1-minimal-agent.md`
+- Agent loop implemented in 180 lines (functional pattern per D008)
+- EventStream implemented in 86 lines (matching pi-agent's ~88 line reference)
+- E2E tests established in `packages/e2e/` workspace package
+
 ---
 
-### Phase 2: Functional Coding Agent
+### Phase 2: Functional Coding Agent ✅ COMPLETE (2026-02-25)
 
 **Goal**: An agent that can read, edit, and search a codebase.
 
@@ -150,6 +156,15 @@ Agent → calls read tool → sees the typo → calls edit tool → fixes it
 
 **Testing milestone**: Ask agent to make a code change across files. Verify correctness.
 
+**Implementation notes**:
+- Detailed spec: `plan/impl/phase-2-functional-coding-agent.md`
+- D012 refined: `z.toJSONSchema()` replaced with `zod-to-json-schema` library (simpler, more reliable)
+- D004 confirmed: 15 AgentEvent types implemented. `MessageDelta` type introduced to prevent ProviderEvent leak into L1 events (commit `4252fd6`)
+- D015 `supportParallel` flag deferred — not needed until parallel execution is implemented
+- D024 fuzzy match deferred — Phase 2 implements exact match only as planned
+- All 7 tools functional, ~2,300 lines of production code added
+- Tech debt addressed in dedicated cleanup commit (`eb1ea9c`)
+
 ---
 
 ### Phase 3: Configuration & Persistence
@@ -167,16 +182,22 @@ User → exits, resumes → conversation continues with summary
 
 | Layer | What's Added | What's Deferred |
 |---|---|---|
-| L5 (Config) | Full JSONC + Zod validation, 3-layer hierarchy, CLAUDE.md discovery, template substitution | Enterprise config, config editing UI |
-| L6 (Session) | JSONL persistence, tree structure, compaction (LLM summarization), resume/fork, deferred persistence | Version migration (add when format changes) |
-| L1 (Agent Loop) | Compaction trigger hook, context re-injection after compaction | — |
+| L5 (Config) | Full JSONC + Zod validation, 3-layer hierarchy, CLAUDE.md discovery, template substitution (D032-D035) | Enterprise config, config editing UI |
+| L6 (Session) | JSONL persistence, tree structure, compaction (LLM summarization), resume/fork, deferred persistence (D036-REV, D037-D043) | Version migration (add when format changes) |
+| L6 (Knowledge) | Knowledge store `.diligent/knowledge/` (D081), `add_knowledge` tool (D082), knowledge injection in system prompt (D083), pre-compaction knowledge flush (D084) | Export/import (D085, add when needed) |
+| L1 (Agent Loop) | Compaction trigger hook, context re-injection after compaction (D041), knowledge flush prompt before compaction (D084) | — |
 | L0 (Provider) | Multiple providers (add OpenAI), model switching | Cost tracking (add when needed) |
+| Infrastructure | `.diligent/` project data directory convention (D080), auto-generated `.gitignore` | — |
 
 **Not touched**: L4 (still auto-approve), L7 (no new TUI features), L8, L9, L10
 
-**Artifact**: Configurable, persistent agent. Sessions survive restarts.
+**Artifact**: Configurable, persistent agent. Sessions survive restarts. Knowledge accumulates across sessions.
 
-**Testing milestone**: Start session, make edits, exit, resume — verify compaction summary is accurate and files are tracked.
+**Testing milestone**: Start session, make edits, exit, resume — verify compaction summary is accurate and files are tracked. Verify knowledge persists across sessions.
+
+**Known complexity risks**:
+- LLM compaction (D037) is the riskiest feature — touches L1, L6, and L0. Consider splitting Phase 3 into sub-phases (3a: config + basic persistence, 3b: compaction + knowledge + multi-provider) if implementation complexity is high.
+- Temp file cleanup from Phase 2's D025 implementation should be resolved when session directories are introduced.
 
 ---
 
@@ -241,24 +262,25 @@ This phase can be split into three sub-phases since L8, L9, L10 are relatively i
 Shows which layers are active in each phase and at what depth.
 
 ```
-         Phase 0   Phase 1   Phase 2   Phase 3   Phase 4   Phase 5
-         Skeleton  Min Agent Coding    Config+   Safety+   Extend
-                                       Persist   UX
+         Phase 0   Phase 1   Phase 2   Phase 3       Phase 4   Phase 5
+         Skeleton  Min Agent Coding    Config+       Safety+   Extend
+         ✅        ✅        ✅        Persist+Know  UX
 
-L0  Prov  types    minimal   +retry    +multi    —         —
-L1  Loop  types    minimal   +full     +compact  —         —
-L2  Tool  types    minimal   +trunc    —         —         —
-L3  Core  —        bash      +all 7    —         —         —
-L4  Appr  —        (auto)    (auto)    (auto)    FULL      —
-L5  Conf  —        env-only  —         FULL      +perm     —
-L6  Sess  —        (memory)  (memory)  FULL      —         —
-L7  TUI   —        readline  +md+spin  —         FULL      —
-L8  Skil  —        —         —         —         —         FULL
-L9  MCP   —        —         —         —         —         FULL
-L10 Mult  —        —         —         —         —         FULL
+L0  Prov  types    minimal   +retry    +multi        —         —
+L1  Loop  types    minimal   +full     +compact      —         —
+L2  Tool  types    minimal   +trunc    +knowledge    —         —
+L3  Core  —        bash      +all 7    +add_knowl    —         —
+L4  Appr  —        (auto)    (auto)    (auto)        FULL      —
+L5  Conf  —        env-only  —         FULL          +perm     —
+L6  Sess  —        (memory)  (memory)  FULL+knowl    —         —
+L7  TUI   —        readline  +md+spin  —             FULL      —
+L8  Skil  —        —         —         —             —         FULL
+L9  MCP   —        —         —         —             —         FULL
+L10 Mult  —        —         —         —             —         FULL
+Infra     scaffold CI+E2E    +e2e-pkg  .diligent/    —         —
 ```
 
-Legend: `types` = interfaces only, `minimal` = bare minimum, `+X` = incremental addition, `FULL` = complete implementation, `(auto)` / `(memory)` = placeholder/stub, `—` = no change
+Legend: `types` = interfaces only, `minimal` = bare minimum, `+X` = incremental addition, `FULL` = complete implementation, `(auto)` / `(memory)` = placeholder/stub, `—` = no change, `✅` = complete
 
 ---
 

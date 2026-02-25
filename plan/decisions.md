@@ -24,6 +24,7 @@ Decisions made during synthesis reviews, with rationale.
 - **Decision**: Use tagged union Op (user→agent) and AgentEvent (agent→user) types. Start with ~10-15 event types (pi-agent level), not 40+ (codex-rs level).
 - **Rationale**: codex-rs's fine-grained events (40+) are powerful but complex. pi-agent's ~24 events (12 agent + 12 streaming) is a good middle ground. Start minimal, expand as needed. Key events: turn_start/end, message_start/update/end, tool_execution_start/update/end.
 - **Date**: 2026-02-22 (refined 2026-02-23)
+- **Confirmed** (2026-02-25): 15 AgentEvent types implemented in Phase 2. `MessageDelta` type introduced (`core/src/agent/types.ts`) to prevent ProviderEvent types leaking into L1 events — a boundary refinement that strengthened the L0/L1 separation.
 
 ### D005: Unified messages (not part-based)
 - **Decision**: Messages carry their content inline (like pi-agent), not as separate part entities (like opencode).
@@ -70,6 +71,7 @@ Decisions made during synthesis reviews, with rationale.
 - **Decision**: Use Zod for tool parameter schemas
 - **Rationale**: Most popular TS validation library, used by opencode. Native JSON Schema export via `z.toJSONSchema()`. Better ecosystem support than TypeBox (pi-agent). Custom schema subsets (codex-rs) are too much maintenance in TS.
 - **Date**: 2026-02-23
+- **Refined** (2026-02-24): `z.toJSONSchema()` replaced with `zod-to-json-schema` library — simpler and more reliable for converting Zod schemas to Anthropic API's JSON Schema format. Hand-rolled converter initially implemented, then replaced (commit `8649b94`).
 
 ### D013: Tool definition — Interface with execute function
 - **Decision**: Tools defined as objects with `name`, `description`, `parameters` (Zod schema), and `execute(args, ctx)` function. No lazy init pattern initially.
@@ -387,6 +389,7 @@ Decisions made during synthesis reviews, with rationale.
 
 ### D067: Layer decomposition validated — No changes needed
 - **Decision**: The 10-layer decomposition (L0-L9) is validated across all research rounds. No layers need to be merged, split, or reordered. The decomposition cuts along functional capability boundaries, which aligns with how all three reference projects organize their code.
+- **Note**: Subsequently revised to 11 layers (L0-L10) by D077. The validation conclusion remains valid — D077 was a refinement (split two overloaded layers), not a structural change.
 - **Rationale**: After researching all 10 layers across 3 projects:
   - Each layer represents a coherent, distinct concept (no "grab bags")
   - Layer boundaries are natural — they correspond to module/crate/directory boundaries in all three reference projects
