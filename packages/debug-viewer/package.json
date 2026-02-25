@@ -1,0 +1,26 @@
+{
+  "name": "@diligent/debug-viewer",
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "start": "bun run src/server/index.ts",
+    "start:sample": "bun run src/server/index.ts --sample",
+    "generate-sample": "bun run src/server/sample-data/generate.ts"
+  },
+  "dependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-json-view-lite": "^2.0.0",
+    "marked": "^15.0.0"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0",
+    "@vitejs/plugin-react": "^4.0.0",
+    "typescript": "^5.7.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/bun": "^1.3.0"
+  }
+}
