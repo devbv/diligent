@@ -547,3 +547,48 @@ Decisions made during synthesis reviews, with rationale.
 - **Impact on Phase 3 scope**: Adds SessionManager design (~2h), itemId field (~1h), expanded approval types (~30min), serialization test convention (~30min). Total: ~half day of incremental work that prevents weeks of refactoring in Phase 4+.
 - **References**: D004, D028, D029, D040, D046, research/temp/web-ui-readiness.md, research/temp/debug-web-ui.md
 - **Date**: 2026-02-25
+
+### D087: Collaboration modes — codex-rs style modal agent behavior
+- **Decision**: Adopt codex-rs's collaboration mode pattern. The agent operates in one of several named modes that control system prompt, tool availability, and approval policy. Modes are a **core-level concept** (not TUI-only) stored as part of turn context.
+- **Modes**:
+  1. **`default`** — Full tool access. Prefer execution over asking. Current behavior.
+  2. **`plan`** — Read-only exploration + planning. Cannot edit/write files. 3-phase workflow: Ground (explore) → Intent (clarify goals) → Implementation (design spec). Outputs `<proposed_plan>` block when complete. `request_user_input` tool available.
+  3. **`execute`** — Autonomous long-horizon execution. Assumptions-first (no questions). Progress reporting via `update_plan` tool. Milestone-based delivery.
+- **What mode controls** (per-mode `CollaborationMode` config):
+  | Aspect | Where it lives | How mode affects it |
+  |---|---|---|
+  | System prompt | Mode-specific template injected into system prompt | Plan: "non-mutating only", Execute: "assumptions-first" |
+  | Tool availability | Tool registry filtering | Plan: read/search/bash(safe) only, no edit/write. Execute: all tools |
+  | Bash safety | Allowlist/denylist patterns (D087a) | Plan: regex allowlist (git status ok, git push blocked) |
+  | Approval policy | Approval layer (L4) | Execute: auto-approve most. Plan: deny mutation attempts |
+  | Model/reasoning | Optional per-mode override in config | E.g., plan mode could use cheaper model |
+  | `request_user_input` tool | Mode-gated | Only available in plan mode |
+- **Mode switching**:
+  - CLI flag: `--mode plan`, `--mode execute`
+  - Slash command: `/mode plan`, `/mode` (picker)
+  - Config default: `diligent.jsonc` → `"mode": "default"`
+  - **Mode persists across turns** — user messages alone don't change mode (codex-rs principle)
+  - Mode change recorded as `ModelChangeEntry`-style event in session JSONL
+- **Architecture mapping**:
+  | Layer | What changes |
+  |---|---|
+  | L1 (Agent loop) | `AgentLoopConfig` gains `mode: ModeKind`. Loop filters tools and injects mode template |
+  | L3 (Tools) | Tool definitions gain `allowedModes?: ModeKind[]` field. Registry filters by active mode |
+  | L4 (Approval) | Mode-aware default policy (plan → deny writes, execute → auto-approve) |
+  | L5 (Config) | `mode` field in `DiligentConfig`. Per-mode settings (model, reasoning) |
+  | L6 (Session) | Mode stored in session. `ModeChangeEntry` type for JSONL |
+  | L7 (TUI) | Mode indicator in status bar. `/mode` slash command. Mode-aware tool output |
+- **What to adopt from codex-rs**:
+  - Modal system prompt templates (separate `.md` files per mode)
+  - `CollaborationMode = { mode: ModeKind, settings: Settings }` structure
+  - Mode persistence across turns (developer instructions change mode, not user requests)
+  - Plan mode's 3-phase workflow and `<proposed_plan>` output format
+  - Execute mode's assumptions-first, progress-reporting pattern
+- **What to adapt / diverge**:
+  - **Simpler ModeKind**: Start with 3 modes (`plan`, `default`, `execute`), not codex-rs's hidden aliases (`pair_programming`, `custom`)
+  - **Bash safety**: Use pi-agent's regex allowlist approach (concrete, testable) instead of codex-rs's instruction-only approach
+  - **No `request_user_input` as separate tool initially**: Use existing approval mechanism to prompt user in plan mode
+  - **Mode templates in config, not embedded**: Store as `templates/mode/{name}.md` files, loadable and customizable
+- **Phase placement**: Phase 4 (Safety & UX Polish) — modes depend on approval system (L4) and slash commands (L7), both Phase 4 scope. Core types (`ModeKind`, `CollaborationMode`) can be defined earlier as forward declarations.
+- **References**: D004, D028, D050, D086, codex-rs `collaboration_mode/` templates, pi-agent plan-mode extension, opencode agent types
+- **Date**: 2026-02-25
