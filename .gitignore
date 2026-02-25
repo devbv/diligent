@@ -17,5 +17,6 @@ dist/
 # Secrets
 .env
 
-# Claude Code local settings
+# Claude Code local
 .claude/settings.local.json
+.claude/worktrees/
