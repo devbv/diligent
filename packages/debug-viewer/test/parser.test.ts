@@ -150,7 +150,9 @@ describe("detectEntryType", () => {
   });
 
   test("skips model_change and session_info without warning", () => {
-    expect(detectEntryType({ type: "model_change", id: "x", parentId: null, timestamp: "t", provider: "a", modelId: "b" })).toBeNull();
+    expect(
+      detectEntryType({ type: "model_change", id: "x", parentId: null, timestamp: "t", provider: "a", modelId: "b" }),
+    ).toBeNull();
     expect(detectEntryType({ type: "session_info", id: "x", parentId: null, timestamp: "t", name: "test" })).toBeNull();
   });
 });
