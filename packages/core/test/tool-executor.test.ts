@@ -1,8 +1,8 @@
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { z } from "zod";
 import { executeTool } from "../src/tool/executor";
 import { ToolRegistryBuilder } from "../src/tool/registry";
-import type { ToolContext, Tool } from "../src/tool/types";
+import type { Tool, ToolContext } from "../src/tool/types";
 import type { ToolCallBlock } from "../src/types";
 
 function makeCtx(): ToolContext {

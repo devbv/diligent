@@ -1,6 +1,5 @@
+import { readdir } from "node:fs/promises";
 import { z } from "zod";
-import { readdir, stat } from "node:fs/promises";
-import { join } from "node:path";
 import type { Tool, ToolResult } from "../tool/types";
 
 const LsParams = z.object({
@@ -25,9 +24,7 @@ export function createLsTool(): Tool<typeof LsParams> {
 
         // Cap at MAX_ENTRIES
         const limited = entries.slice(0, MAX_ENTRIES);
-        const lines = limited.map((entry) =>
-          entry.isDirectory() ? `${entry.name}/` : entry.name,
-        );
+        const lines = limited.map((entry) => (entry.isDirectory() ? `${entry.name}/` : entry.name));
 
         let output = lines.join("\n");
         if (entries.length > MAX_ENTRIES) {

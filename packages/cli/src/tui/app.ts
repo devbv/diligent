@@ -1,24 +1,22 @@
-import { Terminal } from "./terminal";
+import type { AgentEvent, Message, UserMessage } from "@diligent/core";
+import {
+  agentLoop,
+  bashTool,
+  createAnthropicStream,
+  createEditTool,
+  createGlobTool,
+  createGrepTool,
+  createLsTool,
+  createReadTool,
+  createWriteTool,
+} from "@diligent/core";
+// @ts-expect-error — Bun resolves workspace package.json at runtime
+import { version as pkgVersion } from "../../package.json";
+import type { AppConfig } from "../config";
 import { InputBuffer, Keys, matchesKey } from "./input";
 import { renderMarkdown } from "./markdown";
 import { Spinner } from "./spinner";
-import { agentLoop } from "@diligent/core";
-import type { AgentEvent } from "@diligent/core";
-import type { UserMessage, Message } from "@diligent/core";
-import type { AppConfig } from "../config";
-import {
-  bashTool,
-  createReadTool,
-  createWriteTool,
-  createEditTool,
-  createLsTool,
-  createGlobTool,
-  createGrepTool,
-  createAnthropicStream,
-} from "@diligent/core";
-
-// @ts-ignore — Bun resolves workspace package.json at runtime
-import { version as pkgVersion } from "../../package.json";
+import { Terminal } from "./terminal";
 
 export class App {
   private terminal = new Terminal();
@@ -28,7 +26,6 @@ export class App {
   private messages: Message[] = [];
   private accumulatedText = "";
   private spinner: Spinner;
-  private lastRenderedLength = 0;
 
   constructor(private config: AppConfig) {
     this.spinner = new Spinner((frame) => this.renderSpinner(frame));
@@ -41,7 +38,7 @@ export class App {
     );
     this.terminal.write(
       `\x1b[1;36mdiligent\x1b[0m \x1b[2mv${pkgVersion}\x1b[0m\n` +
-      "\x1b[2mType a message to start. Ctrl+C to abort, Ctrl+D to exit.\x1b[0m\n",
+        "\x1b[2mType a message to start. Ctrl+C to abort, Ctrl+D to exit.\x1b[0m\n",
     );
     this.showPrompt();
   }
@@ -159,9 +156,7 @@ export class App {
       const result = await loop.result();
       this.messages = result;
     } catch (err) {
-      this.terminal.write(
-        `\n\x1b[31mError: ${err instanceof Error ? err.message : String(err)}\x1b[0m`,
-      );
+      this.terminal.write(`\n\x1b[31mError: ${err instanceof Error ? err.message : String(err)}\x1b[0m`);
     }
 
     this.spinner.stop();
@@ -181,7 +176,7 @@ export class App {
         if (event.delta.type === "text_delta") {
           this.accumulatedText += event.delta.delta;
           // Render markdown incrementally
-          const rendered = renderMarkdown(this.accumulatedText, this.terminal.columns);
+          const _rendered = renderMarkdown(this.accumulatedText, this.terminal.columns);
           // Simple approach: write the new delta directly for streaming feel
           // On message_end, do a full re-render
           this.terminal.write(event.delta.delta);
@@ -223,24 +218,25 @@ export class App {
         // Show tool result summary
         if (event.output) {
           const lines = event.output.split("\n");
-          const display = lines.length > 20
-            ? [...lines.slice(0, 20), `\x1b[2m... (${lines.length - 20} more lines)\x1b[0m`].join("\n")
-            : event.output;
+          const display =
+            lines.length > 20
+              ? [...lines.slice(0, 20), `\x1b[2m... (${lines.length - 20} more lines)\x1b[0m`].join("\n")
+              : event.output;
           this.terminal.write(`\x1b[2m[${event.toolName}] ${display}\x1b[0m\n`);
         }
         break;
 
       case "status_change":
         if (event.status === "retry" && event.retry) {
-          this.spinner.start(`Retrying (attempt ${event.retry.attempt}, waiting ${Math.round(event.retry.delayMs / 1000)}s)...`);
+          this.spinner.start(
+            `Retrying (attempt ${event.retry.attempt}, waiting ${Math.round(event.retry.delayMs / 1000)}s)...`,
+          );
         }
         break;
 
       case "usage": {
         // Show token/cost info (subtle gray text)
-        const costStr = event.cost > 0
-          ? ` ($${event.cost.toFixed(4)})`
-          : "";
+        const costStr = event.cost > 0 ? ` ($${event.cost.toFixed(4)})` : "";
         this.terminal.write(
           `\x1b[2m[tokens: ${event.usage.inputTokens}in/${event.usage.outputTokens}out${costStr}]\x1b[0m\n`,
         );
@@ -249,9 +245,7 @@ export class App {
 
       case "error":
         this.spinner.stop();
-        this.terminal.write(
-          `\n\x1b[31mError: ${event.error.message}\x1b[0m\n`,
-        );
+        this.terminal.write(`\n\x1b[31mError: ${event.error.message}\x1b[0m\n`);
         break;
 
       default:

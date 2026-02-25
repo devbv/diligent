@@ -1,13 +1,13 @@
 import type { EventStream } from "../event-stream";
-import type { AssistantMessage, Message, Usage, StopReason } from "../types";
+import type { AssistantMessage, Message, StopReason, Usage } from "../types";
 
 export interface Model {
   id: string;
   provider: string;
   contextWindow: number;
   maxOutputTokens: number;
-  inputCostPer1M?: number;    // cost per 1M input tokens in USD
-  outputCostPer1M?: number;   // cost per 1M output tokens in USD
+  inputCostPer1M?: number; // cost per 1M input tokens in USD
+  outputCostPer1M?: number; // cost per 1M output tokens in USD
 }
 
 // D003: StreamFunction — the provider contract
@@ -38,12 +38,12 @@ export interface ToolDefinition {
 
 // Provider error classification (D010)
 export type ProviderErrorType =
-  | "rate_limit"        // 429 — retryable, respect retry-after
-  | "overloaded"        // 529 — retryable
-  | "context_overflow"  // 400 with "context length" — NOT retryable, triggers compaction
-  | "auth"              // 401/403 — NOT retryable, fatal
-  | "network"           // ECONNREFUSED, timeout — retryable
-  | "unknown";          // everything else — NOT retryable
+  | "rate_limit" // 429 — retryable, respect retry-after
+  | "overloaded" // 529 — retryable
+  | "context_overflow" // 400 with "context length" — NOT retryable, triggers compaction
+  | "auth" // 401/403 — NOT retryable, fatal
+  | "network" // ECONNREFUSED, timeout — retryable
+  | "unknown"; // everything else — NOT retryable
 
 export class ProviderError extends Error {
   constructor(

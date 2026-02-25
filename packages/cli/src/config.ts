@@ -18,14 +18,12 @@ export function loadConfig(): AppConfig {
   if (!apiKey) {
     throw new Error(
       "ANTHROPIC_API_KEY environment variable is required.\n" +
-      "Get your API key at https://console.anthropic.com/settings/keys"
+        "Get your API key at https://console.anthropic.com/settings/keys",
     );
   }
 
   const modelId = process.env.DILIGENT_MODEL;
-  const model: Model = modelId
-    ? { ...DEFAULT_MODEL, id: modelId }
-    : DEFAULT_MODEL;
+  const model: Model = modelId ? { ...DEFAULT_MODEL, id: modelId } : DEFAULT_MODEL;
 
   const systemPrompt = buildSystemPrompt();
 

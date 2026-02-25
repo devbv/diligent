@@ -1,9 +1,9 @@
-import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { createLsTool } from "../src/tools/ls";
+import { join } from "node:path";
 import type { ToolContext } from "../src/tool/types";
+import { createLsTool } from "../src/tools/ls";
 
 function makeCtx(): ToolContext {
   return {
@@ -65,7 +65,7 @@ describe("ls tool", () => {
     }
 
     const result = await tool.execute({ path: tmpDir }, makeCtx());
-    const lines = result.output.split("\n").filter(Boolean);
+    const _lines = result.output.split("\n").filter(Boolean);
     // 500 files + truncation message
     expect(result.output).toContain("more entries not shown");
   });

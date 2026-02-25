@@ -1,17 +1,11 @@
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { z } from "zod";
 import { agentLoop } from "../src/agent/loop";
-import { EventStream } from "../src/event-stream";
 import type { AgentEvent, AgentLoopConfig } from "../src/agent/types";
-import type {
-  StreamFunction,
-  ProviderEvent,
-  ProviderResult,
-  Model,
-} from "../src/provider/types";
-import type { StreamContext } from "../src/provider/types";
-import type { Message, AssistantMessage, UserMessage } from "../src/types";
+import { EventStream } from "../src/event-stream";
+import type { Model, ProviderEvent, ProviderResult, StreamContext, StreamFunction } from "../src/provider/types";
 import type { Tool } from "../src/tool/types";
+import type { AssistantMessage, Message } from "../src/types";
 
 const TEST_MODEL: Model = {
   id: "test-model",
@@ -20,7 +14,10 @@ const TEST_MODEL: Model = {
   maxOutputTokens: 4096,
 };
 
-function makeAssistant(content: AssistantMessage["content"], stopReason: AssistantMessage["stopReason"] = "end_turn"): AssistantMessage {
+function makeAssistant(
+  content: AssistantMessage["content"],
+  stopReason: AssistantMessage["stopReason"] = "end_turn",
+): AssistantMessage {
   return {
     role: "assistant",
     content,
@@ -94,9 +91,7 @@ describe("agentLoop", () => {
       apiKey: "test-key",
     };
 
-    const messages: Message[] = [
-      { role: "user", content: "hi", timestamp: Date.now() },
-    ];
+    const messages: Message[] = [{ role: "user", content: "hi", timestamp: Date.now() }];
 
     const loop = agentLoop(messages, config);
     const events: AgentEvent[] = [];
@@ -132,9 +127,7 @@ describe("agentLoop", () => {
       apiKey: "test-key",
     };
 
-    const messages: Message[] = [
-      { role: "user", content: "echo hello", timestamp: Date.now() },
-    ];
+    const messages: Message[] = [{ role: "user", content: "echo hello", timestamp: Date.now() }];
 
     const loop = agentLoop(messages, config);
     const events: AgentEvent[] = [];
@@ -169,11 +162,7 @@ describe("agentLoop", () => {
       [{ type: "tool_call", id: "tc_1", name: "echo", input: { message: "loop" } }],
       "tool_use",
     );
-    const streamFn = createMockStreamFunction([
-      toolCallMsg,
-      toolCallMsg,
-      toolCallMsg,
-    ]);
+    const streamFn = createMockStreamFunction([toolCallMsg, toolCallMsg, toolCallMsg]);
 
     const config: AgentLoopConfig = {
       model: TEST_MODEL,
@@ -184,9 +173,7 @@ describe("agentLoop", () => {
       maxTurns: 2,
     };
 
-    const messages: Message[] = [
-      { role: "user", content: "loop", timestamp: Date.now() },
-    ];
+    const messages: Message[] = [{ role: "user", content: "loop", timestamp: Date.now() }];
 
     const loop = agentLoop(messages, config);
     const events: AgentEvent[] = [];
@@ -210,7 +197,9 @@ describe("agentLoop", () => {
         extensions: z.array(z.string()).describe("File extensions"),
         mode: z.enum(["exact", "fuzzy", "regex"]).describe("Match mode"),
       }),
-      async execute() { return { output: "ok" }; },
+      async execute() {
+        return { output: "ok" };
+      },
     };
 
     const msg = makeAssistant([{ type: "text", text: "done" }]);
@@ -224,11 +213,10 @@ describe("agentLoop", () => {
       apiKey: "test-key",
     };
 
-    const loop = agentLoop(
-      [{ role: "user", content: "test", timestamp: Date.now() }],
-      config,
-    );
-    for await (const _ of loop) { /* drain */ }
+    const loop = agentLoop([{ role: "user", content: "test", timestamp: Date.now() }], config);
+    for await (const _ of loop) {
+      /* drain */
+    }
 
     const tools = streamFn.contexts[0].tools;
     expect(tools).toHaveLength(1);
@@ -250,7 +238,7 @@ describe("agentLoop", () => {
     expect(props.recursive.type).toBe("boolean");
     expect(props.extensions.type).toBe("array");
     expect(props.mode).toHaveProperty("enum");
-    expect((props.mode.enum as string[])).toEqual(["exact", "fuzzy", "regex"]);
+    expect(props.mode.enum as string[]).toEqual(["exact", "fuzzy", "regex"]);
 
     // Descriptions preserved
     expect(props.query.description).toBe("Search query");
@@ -258,10 +246,7 @@ describe("agentLoop", () => {
   });
 
   test("unknown tool: error result fed back to LLM", async () => {
-    const toolCallMsg = makeAssistant(
-      [{ type: "tool_call", id: "tc_1", name: "nonexistent", input: {} }],
-      "tool_use",
-    );
+    const toolCallMsg = makeAssistant([{ type: "tool_call", id: "tc_1", name: "nonexistent", input: {} }], "tool_use");
     const responseMsg = makeAssistant([{ type: "text", text: "Sorry, that tool doesn't exist" }]);
     const streamFn = createMockStreamFunction([toolCallMsg, responseMsg]);
 
@@ -273,9 +258,7 @@ describe("agentLoop", () => {
       apiKey: "test-key",
     };
 
-    const messages: Message[] = [
-      { role: "user", content: "use fake tool", timestamp: Date.now() },
-    ];
+    const messages: Message[] = [{ role: "user", content: "use fake tool", timestamp: Date.now() }];
 
     const loop = agentLoop(messages, config);
     const events: AgentEvent[] = [];

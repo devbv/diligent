@@ -1,12 +1,12 @@
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
 import {
+  MAX_OUTPUT_BYTES,
+  MAX_OUTPUT_LINES,
+  persistFullOutput,
   shouldTruncate,
   truncateHead,
   truncateTail,
-  persistFullOutput,
-  MAX_OUTPUT_BYTES,
-  MAX_OUTPUT_LINES,
 } from "../src/tool/truncation";
 
 describe("truncation", () => {

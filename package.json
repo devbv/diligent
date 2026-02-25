@@ -1,9 +1,16 @@
 {
   "name": "diligent",
   "private": true,
-  "workspaces": ["packages/*"],
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "test": "bun test",
-    "test:e2e": "bun test packages/e2e/"
+    "test:e2e": "bun test packages/e2e/",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write ."
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.4"
   }
 }

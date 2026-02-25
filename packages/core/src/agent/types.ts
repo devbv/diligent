@@ -1,10 +1,8 @@
-import type { AssistantMessage, Message, ToolResultMessage, Usage } from "../types";
 import type { Model, StreamFunction } from "../provider/types";
 import type { Tool } from "../tool/types";
+import type { AssistantMessage, Message, ToolResultMessage, Usage } from "../types";
 
-export type MessageDelta =
-  | { type: "text_delta"; delta: string }
-  | { type: "thinking_delta"; delta: string };
+export type MessageDelta = { type: "text_delta"; delta: string } | { type: "thinking_delta"; delta: string };
 
 // D004: 15 AgentEvent types (all defined, ~7 emitted in Phase 1)
 export type AgentEvent =
@@ -38,7 +36,7 @@ export interface AgentLoopConfig {
   apiKey: string;
   signal?: AbortSignal;
   maxTurns?: number;
-  maxRetries?: number;        // D010: default 5
-  retryBaseDelayMs?: number;  // default: 1000
-  retryMaxDelayMs?: number;   // default: 30_000
+  maxRetries?: number; // D010: default 5
+  retryBaseDelayMs?: number; // default: 1000
+  retryMaxDelayMs?: number; // default: 30_000
 }

@@ -1,9 +1,16 @@
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { EventStream } from "../src/event-stream";
-import { ProviderError } from "../src/provider/types";
-import type { StreamFunction, ProviderEvent, ProviderResult, Model, StreamContext, StreamOptions } from "../src/provider/types";
-import type { AssistantMessage } from "../src/types";
 import { withRetry } from "../src/provider/retry";
+import type {
+  Model,
+  ProviderEvent,
+  ProviderResult,
+  StreamContext,
+  StreamFunction,
+  StreamOptions,
+} from "../src/provider/types";
+import { ProviderError } from "../src/provider/types";
+import type { AssistantMessage } from "../src/types";
 
 const testModel: Model = {
   id: "test-model",
@@ -24,9 +31,7 @@ function makeAssistantMessage(): AssistantMessage {
 }
 
 /** Creates a StreamFunction that fails N times then succeeds */
-function createFailingStreamFn(
-  failures: ProviderError[],
-): { streamFn: StreamFunction; callCount: () => number } {
+function createFailingStreamFn(failures: ProviderError[]): { streamFn: StreamFunction; callCount: () => number } {
   let calls = 0;
 
   const streamFn: StreamFunction = (_model, _context, _options) => {
@@ -118,9 +123,7 @@ describe("withRetry", () => {
   });
 
   test("stops on non-retryable error", async () => {
-    const failures = [
-      new ProviderError("unauthorized", "auth", false, undefined, 401),
-    ];
+    const failures = [new ProviderError("unauthorized", "auth", false, undefined, 401)];
     const { streamFn, callCount } = createFailingStreamFn(failures);
 
     const retried = withRetry(streamFn, {
@@ -184,7 +187,9 @@ describe("withRetry", () => {
     });
 
     const stream = retried(testModel, testContext, testOptions);
-    for await (const _event of stream) { /* consume */ }
+    for await (const _event of stream) {
+      /* consume */
+    }
     await stream.result().catch(() => {});
 
     // retry-after (50ms) > baseDelay * 2^0 (1ms), so should use 50ms
@@ -240,7 +245,9 @@ describe("withRetry", () => {
     });
 
     const stream = retried(testModel, testContext, testOptions);
-    for await (const _event of stream) { /* consume */ }
+    for await (const _event of stream) {
+      /* consume */
+    }
     await stream.result().catch(() => {});
 
     // Delays should increase: 10, 20, 40

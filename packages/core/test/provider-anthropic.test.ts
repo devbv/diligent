@@ -1,14 +1,7 @@
-import { describe, test, expect, mock } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { EventStream } from "../src/event-stream";
-import type {
-  ProviderEvent,
-  ProviderResult,
-  Model,
-  StreamContext,
-  StreamOptions,
-  ToolDefinition,
-} from "../src/provider/types";
-import type { Message, AssistantMessage, ContentBlock, Usage } from "../src/types";
+import type { Model, ProviderEvent, ProviderResult } from "../src/provider/types";
+import type { AssistantMessage, Message } from "../src/types";
 
 // We test the event mapping logic by creating a mock that simulates
 // what createAnthropicStream does internally, without hitting the real SDK.
@@ -54,13 +47,7 @@ describe("Anthropic Provider Event Mapping", () => {
       events.push(event);
     }
 
-    expect(events.map((e) => e.type)).toEqual([
-      "start",
-      "text_delta",
-      "text_delta",
-      "text_end",
-      "done",
-    ]);
+    expect(events.map((e) => e.type)).toEqual(["start", "text_delta", "text_delta", "text_end", "done"]);
 
     const result = await stream.result();
     expect(result.message.content[0]).toEqual({ type: "text", text: "Hello" });
@@ -76,9 +63,7 @@ describe("Anthropic Provider Event Mapping", () => {
     );
 
     const msg = makeAssistantMessage({
-      content: [
-        { type: "tool_call", id: "tc_1", name: "bash", input: { command: "ls" } },
-      ],
+      content: [{ type: "tool_call", id: "tc_1", name: "bash", input: { command: "ls" } }],
       stopReason: "tool_use",
     });
 

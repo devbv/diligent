@@ -1,6 +1,6 @@
 import { z } from "zod";
-import type { Tool, ToolContext, ToolResult } from "../tool/types";
 import { MAX_OUTPUT_BYTES } from "../tool/truncation";
+import type { Tool, ToolResult } from "../tool/types";
 
 const BashParams = z.object({
   command: z.string().min(1).describe("The shell command to execute"),
@@ -59,7 +59,7 @@ export const bashTool: Tool<typeof BashParams> = {
 
     let output = stdout;
     let truncated = false;
-    if (stderr) output += (output ? "\n" : "") + `[stderr]\n${stderr}`;
+    if (stderr) output += `${output ? "\n" : ""}[stderr]\n${stderr}`;
     if (new TextEncoder().encode(output).length > MAX_OUTPUT_BYTES) {
       output = output.slice(-MAX_OUTPUT_BYTES);
       truncated = true;
