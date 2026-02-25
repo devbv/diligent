@@ -46,7 +46,7 @@ export function DetailInspector({ entry, onClose }: DetailInspectorProps) {
       <div className="detail-header">
         <span className="detail-type-badge">{type}</span>
         <button type="button" className="detail-close" onClick={onClose}>
-          x
+          &times;
         </button>
       </div>
 
