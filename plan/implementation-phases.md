@@ -169,7 +169,7 @@ Agent → calls read tool → sees the typo → calls edit tool → fixes it
 
 ### Phase 3: Configuration & Persistence
 
-**Goal**: User can configure the agent per-project and resume sessions.
+**Goal**: User can configure the agent per-project and resume sessions. Architecture prepared for future web UI / protocol layer (D086).
 
 ```
 User → creates diligent.jsonc with custom model/instructions
@@ -182,22 +182,25 @@ User → exits, resumes → conversation continues with summary
 
 | Layer | What's Added | What's Deferred |
 |---|---|---|
+| L1 (Agent Loop) | `itemId` on grouped AgentEvent subtypes (D086), compaction trigger hook, context re-injection after compaction (D041), knowledge flush prompt before compaction (D084) | — |
+| L2 (Tool System) | Expand `ApprovalRequest`/`ApprovalResponse` types for protocol readiness (D086, D028, D029). `approve()` returns `ApprovalResponse` instead of `boolean`. Phase 3 still auto-returns `"once"`. | Actual approval logic (Phase 4) |
+| L3 (Core Tools) | `add_knowledge` tool (D082) | — |
 | L5 (Config) | Full JSONC + Zod validation, 3-layer hierarchy, CLAUDE.md discovery, template substitution (D032-D035) | Enterprise config, config editing UI |
-| L6 (Session) | JSONL persistence, tree structure, compaction (LLM summarization), resume/fork, deferred persistence (D036-REV, D037-D043) | Version migration (add when format changes) |
-| L6 (Knowledge) | Knowledge store `.diligent/knowledge/` (D081), `add_knowledge` tool (D082), knowledge injection in system prompt (D083), pre-compaction knowledge flush (D084) | Export/import (D085, add when needed) |
-| L1 (Agent Loop) | Compaction trigger hook, context re-injection after compaction (D041), knowledge flush prompt before compaction (D084) | — |
+| L6 (Session) | **SessionManager** mediator class (D086): wraps `agentLoop()`, owns session lifecycle (create/resume/fork/rollback per D040), handles persistence + compaction triggers. JSONL persistence, tree structure, compaction (LLM summarization), deferred persistence (D036-REV, D037-D043) | Version migration (add when format changes) |
+| L6 (Knowledge) | Knowledge store `.diligent/knowledge/` (D081), knowledge injection in system prompt (D083), pre-compaction knowledge flush (D084) | Export/import (D085, add when needed) |
 | L0 (Provider) | Multiple providers (add OpenAI), model switching | Cost tracking (add when needed) |
-| Infrastructure | `.diligent/` project data directory convention (D080), auto-generated `.gitignore` | — |
+| Infrastructure | `.diligent/` project data directory convention (D080), auto-generated `.gitignore`, JSON serialization roundtrip test convention (D086) | — |
 
-**Not touched**: L4 (still auto-approve), L7 (no new TUI features), L8, L9, L10
+**Not touched**: L4 (still auto-approve behavior, but types expanded), L7 (no new TUI features — but TUI switches from direct `agentLoop()` to `SessionManager`), L8, L9, L10
 
-**Artifact**: Configurable, persistent agent. Sessions survive restarts. Knowledge accumulates across sessions.
+**Artifact**: Configurable, persistent agent. Sessions survive restarts. Knowledge accumulates across sessions. Architecture is protocol-layer-ready (D086).
 
-**Testing milestone**: Start session, make edits, exit, resume — verify compaction summary is accurate and files are tracked. Verify knowledge persists across sessions.
+**Testing milestone**: Start session, make edits, exit, resume — verify compaction summary is accurate and files are tracked. Verify knowledge persists across sessions. Verify all AgentEvent and session entry types pass JSON serialization roundtrip.
 
 **Known complexity risks**:
 - LLM compaction (D037) is the riskiest feature — touches L1, L6, and L0. Consider splitting Phase 3 into sub-phases (3a: config + basic persistence, 3b: compaction + knowledge + multi-provider) if implementation complexity is high.
 - Temp file cleanup from Phase 2's D025 implementation should be resolved when session directories are introduced.
+- SessionManager (D086) must be designed before session persistence to avoid the TUI↔core boundary being hardened around direct `agentLoop()` calls.
 
 ---
 
@@ -262,25 +265,25 @@ This phase can be split into three sub-phases since L8, L9, L10 are relatively i
 Shows which layers are active in each phase and at what depth.
 
 ```
-         Phase 0   Phase 1   Phase 2   Phase 3       Phase 4   Phase 5
-         Skeleton  Min Agent Coding    Config+       Safety+   Extend
-         ✅        ✅        ✅        Persist+Know  UX
+         Phase 0   Phase 1   Phase 2   Phase 3            Phase 4   Phase 5
+         Skeleton  Min Agent Coding    Config+Persist+    Safety+   Extend
+         ✅        ✅        ✅        Know+D086          UX
 
-L0  Prov  types    minimal   +retry    +multi        —         —
-L1  Loop  types    minimal   +full     +compact      —         —
-L2  Tool  types    minimal   +trunc    +knowledge    —         —
-L3  Core  —        bash      +all 7    +add_knowl    —         —
-L4  Appr  —        (auto)    (auto)    (auto)        FULL      —
-L5  Conf  —        env-only  —         FULL          +perm     —
-L6  Sess  —        (memory)  (memory)  FULL+knowl    —         —
-L7  TUI   —        readline  +md+spin  —             FULL      —
-L8  Skil  —        —         —         —             —         FULL
-L9  MCP   —        —         —         —             —         FULL
-L10 Mult  —        —         —         —             —         FULL
-Infra     scaffold CI+E2E    +e2e-pkg  .diligent/    —         —
+L0  Prov  types    minimal   +retry    +multi             —         —
+L1  Loop  types    minimal   +full     +compact+itemId    —         —
+L2  Tool  types    minimal   +trunc    +ApprovalResponse  —         —
+L3  Core  —        bash      +all 7    +add_knowl         —         —
+L4  Appr  —        (auto)    (auto)    (types expanded)   FULL      —
+L5  Conf  —        env-only  —         FULL               +perm     —
+L6  Sess  —        (memory)  (memory)  SessionMgr+knowl   —         —
+L7  TUI   —        readline  +md+spin  →SessionMgr        FULL      —
+L8  Skil  —        —         —         —                  —         FULL
+L9  MCP   —        —         —         —                  —         FULL
+L10 Mult  —        —         —         —                  —         FULL
+Infra     scaffold CI+E2E    +e2e-pkg  .diligent/+serial  —         —
 ```
 
-Legend: `types` = interfaces only, `minimal` = bare minimum, `+X` = incremental addition, `FULL` = complete implementation, `(auto)` / `(memory)` = placeholder/stub, `—` = no change, `✅` = complete
+Legend: `types` = interfaces only, `minimal` = bare minimum, `+X` = incremental addition, `FULL` = complete implementation, `(auto)` / `(memory)` = placeholder/stub, `→X` = switches to consume X, `—` = no change, `✅` = complete
 
 ---
 
