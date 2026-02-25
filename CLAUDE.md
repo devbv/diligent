@@ -1,21 +1,10 @@
 # CLAUDE.md
 
-## Project Overview
+Keep this file minimal. No duplication of what lives elsewhere.
 
-This is a custom coding agent implementation.
+## Rules
 
-## Project Rules
-
-- When project rules change, update this CLAUDE.md file
-- All documentation and file contents must be written in *English* even if the user writes in a different language.
-- Never start implementation until requirements are fully understood. Keep asking questions relentlessly until there is zero ambiguity — no assumptions, no guessing
-
-## Testing
-
-- After any code change, always run tests
-
-## Implementation
-
-- Implementation plans live in `plan/impl/`. Always read the relevant phase plan before starting implementation.
-- Design decisions are in `plan/decisions.md`. Reference decision IDs (e.g. D001) when implementing.
-- Layer architecture is in `research/layers/*`. Understand layer dependencies before cross-layer work.
+- English only in all files
+- Clarify requirements fully before implementing — no assumptions
+- Run tests after code changes
+- Plans: `plan/impl/`, decisions: `plan/decisions.md`, layers: `research/layers/`
