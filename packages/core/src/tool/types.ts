@@ -1,7 +1,7 @@
 import type { z } from "zod";
 
 // D013: Tool definition
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// biome-ignore lint/suspicious/noExplicitAny: generic default requires any for unparameterized Tool references
 export interface Tool<TParams extends z.ZodType = any> {
   name: string;
   description: string;
