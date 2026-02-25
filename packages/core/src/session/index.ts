@@ -1,3 +1,12 @@
+export type { CutPointResult } from "./compaction";
+export {
+  estimateTokens,
+  extractFileOperations,
+  findCutPoint,
+  formatFileOperations,
+  generateSummary,
+  shouldCompact,
+} from "./compaction";
 export type { SessionContext } from "./context-builder";
 export { buildSessionContext } from "./context-builder";
 export type { ResumeSessionOptions, SessionManagerConfig } from "./manager";
@@ -10,6 +19,8 @@ export {
   readSessionFile,
 } from "./persistence";
 export type {
+  CompactionDetails,
+  CompactionEntry,
   ModelChangeEntry,
   SessionEntry,
   SessionFileLine,

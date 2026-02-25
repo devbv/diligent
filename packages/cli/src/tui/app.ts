@@ -1,8 +1,8 @@
-import type { AgentEvent, DiligentPaths, Message, UserMessage } from "@diligent/core";
+import type { AgentEvent, DiligentPaths, Message, Tool, UserMessage } from "@diligent/core";
 import {
   agentLoop,
   bashTool,
-  createAnthropicStream,
+  createAddKnowledgeTool,
   createEditTool,
   createGlobTool,
   createGrepTool,
@@ -11,7 +11,6 @@ import {
   createWriteTool,
   SessionManager,
 } from "@diligent/core";
-// @ts-expect-error — Bun resolves workspace package.json at runtime
 import { version as pkgVersion } from "../../package.json";
 import type { AppConfig } from "../config";
 import { InputBuffer, Keys, matchesKey } from "./input";
@@ -63,8 +62,14 @@ export class App {
           model: this.config.model,
           systemPrompt: this.config.systemPrompt,
           tools,
-          streamFunction: createAnthropicStream(this.config.apiKey),
+          streamFunction: this.config.streamFunction,
         },
+        compaction: {
+          enabled: this.config.diligent.compaction?.enabled ?? true,
+          reserveTokens: this.config.diligent.compaction?.reserveTokens ?? 16384,
+          keepRecentTokens: this.config.diligent.compaction?.keepRecentTokens ?? 20000,
+        },
+        knowledgePath: this.paths.knowledge,
       });
 
       if (this.options?.resume) {
@@ -82,7 +87,7 @@ export class App {
   }
 
   private buildTools(cwd: string) {
-    return [
+    const tools: Tool[] = [
       bashTool,
       createReadTool(),
       createWriteTool(),
@@ -91,6 +96,13 @@ export class App {
       createGlobTool(cwd),
       createGrepTool(cwd),
     ];
+
+    // Add knowledge tool if paths available
+    if (this.paths) {
+      tools.push(createAddKnowledgeTool(this.paths.knowledge));
+    }
+
+    return tools;
   }
 
   private showPrompt(): void {
@@ -177,7 +189,7 @@ export class App {
 
     try {
       if (this.sessionManager) {
-        // Use SessionManager — it handles persistence
+        // Use SessionManager — it handles persistence and compaction
         const stream = this.sessionManager.run(userMessage);
         for await (const event of stream) {
           this.handleAgentEvent(event);
@@ -193,7 +205,7 @@ export class App {
           model: this.config.model,
           systemPrompt: this.config.systemPrompt,
           tools,
-          streamFunction: createAnthropicStream(this.config.apiKey),
+          streamFunction: this.config.streamFunction,
           signal: this.abortController.signal,
         });
 
@@ -278,6 +290,22 @@ export class App {
         );
         break;
       }
+
+      case "compaction_start":
+        this.spinner.start(`Compacting context (${Math.round(event.estimatedTokens / 1000)}k tokens)...`);
+        break;
+
+      case "compaction_end":
+        this.spinner.stop();
+        this.terminal.clearLine();
+        this.terminal.write(
+          `\x1b[2mContext compacted: ${Math.round(event.tokensBefore / 1000)}k -> ${Math.round(event.tokensAfter / 1000)}k tokens\x1b[0m\n`,
+        );
+        break;
+
+      case "knowledge_saved":
+        this.terminal.write(`\x1b[2m[knowledge] ${event.content}\x1b[0m\n`);
+        break;
 
       case "error":
         this.spinner.stop();

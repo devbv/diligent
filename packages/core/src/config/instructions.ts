@@ -76,3 +76,42 @@ export function buildSystemPrompt(
 
   return parts.join("\n");
 }
+
+const KNOWLEDGE_INSTRUCTION = `
+You have access to an add_knowledge tool. Use it to save important information that should persist across sessions:
+- Project patterns (naming conventions, preferred libraries, architectural patterns)
+- User preferences (workflow, style, communication)
+- Key decisions made during this session
+- Corrections to previous behavior
+
+Use your judgment — save knowledge when you discover something that would be useful in future sessions.`;
+
+/**
+ * Build system prompt with knowledge section and autonomous recording instruction.
+ */
+export function buildSystemPromptWithKnowledge(
+  basePrompt: string,
+  instructions: DiscoveredInstruction[],
+  knowledgeSection: string,
+  additionalInstructions?: string[],
+): string {
+  const parts = [basePrompt];
+
+  if (knowledgeSection) {
+    parts.push(knowledgeSection);
+  }
+
+  for (const inst of instructions) {
+    parts.push(`\nInstructions from: ${inst.path}\n${inst.content}`);
+  }
+
+  if (additionalInstructions?.length) {
+    for (const inst of additionalInstructions) {
+      parts.push(`\n${inst}`);
+    }
+  }
+
+  parts.push(KNOWLEDGE_INSTRUCTION);
+
+  return parts.join("\n");
+}

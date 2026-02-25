@@ -15,7 +15,7 @@ async function main() {
 
   const cwd = process.cwd();
   const paths = await ensureDiligentDir(cwd);
-  const config = await loadConfig(cwd);
+  const config = await loadConfig(cwd, paths);
 
   if (values.list) {
     const sessions = await listSessions(paths.sessions);

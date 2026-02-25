@@ -7,6 +7,7 @@ export { agentLoop } from "./agent/index";
 export type { DiligentConfig, DiscoveredInstruction } from "./config/index";
 export {
   buildSystemPrompt,
+  buildSystemPromptWithKnowledge,
   DEFAULT_CONFIG,
   DiligentConfigSchema,
   discoverInstructions,
@@ -18,9 +19,18 @@ export { EventStream } from "./event-stream";
 // Infrastructure
 export type { DiligentPaths } from "./infrastructure/index";
 export { ensureDiligentDir, resolvePaths } from "./infrastructure/index";
+// Knowledge
+export type { KnowledgeConfig, KnowledgeEntry, KnowledgeType } from "./knowledge/index";
+export {
+  appendKnowledge,
+  buildKnowledgeSection,
+  rankKnowledge,
+  readKnowledge,
+} from "./knowledge/index";
 // Provider
 export type {
   Model,
+  ModelDefinition,
   ProviderErrorType,
   ProviderEvent,
   ProviderResult,
@@ -30,9 +40,19 @@ export type {
   StreamOptions,
   ToolDefinition,
 } from "./provider/index";
-export { createAnthropicStream, ProviderError, withRetry } from "./provider/index";
+export {
+  createAnthropicStream,
+  createOpenAIStream,
+  KNOWN_MODELS,
+  ProviderError,
+  resolveModel,
+  withRetry,
+} from "./provider/index";
 // Session
 export type {
+  CompactionDetails,
+  CompactionEntry,
+  CutPointResult,
   ModelChangeEntry,
   ResumeSessionOptions,
   SessionContext,
@@ -49,12 +69,18 @@ export {
   buildSessionContext,
   createSessionFile,
   DeferredWriter,
+  estimateTokens,
+  extractFileOperations,
+  findCutPoint,
+  formatFileOperations,
   generateEntryId,
   generateSessionId,
+  generateSummary,
   listSessions,
   readSessionFile,
   SESSION_VERSION,
   SessionManager,
+  shouldCompact,
 } from "./session/index";
 // Tool
 export type {
@@ -69,6 +95,7 @@ export { executeTool, ToolRegistryBuilder } from "./tool/index";
 // Built-in tools
 export {
   bashTool,
+  createAddKnowledgeTool,
   createEditTool,
   createGlobTool,
   createGrepTool,
