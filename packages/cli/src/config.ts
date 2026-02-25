@@ -1,9 +1,12 @@
-import type { Model } from "@diligent/core";
+import type { AgentEvent, AgentLoopConfig, EventStream, Message, Model } from "@diligent/core";
+
+export type AgentLoopFn = (messages: Message[], config: AgentLoopConfig) => EventStream<AgentEvent, Message[]>;
 
 export interface AppConfig {
   apiKey: string;
   model: Model;
   systemPrompt: string;
+  agentLoopFn?: AgentLoopFn;
 }
 
 const DEFAULT_MODEL: Model = {

@@ -33,7 +33,6 @@ export interface AgentLoopConfig {
   systemPrompt: string;
   tools: Tool[];
   streamFunction: StreamFunction;
-  apiKey: string;
   signal?: AbortSignal;
   maxTurns?: number;
   maxRetries?: number; // D010: default 5
