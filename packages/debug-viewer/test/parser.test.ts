@@ -75,6 +75,84 @@ describe("detectEntryType", () => {
     const entry = detectEntryType({ foo: "bar" });
     expect(entry).toBeNull();
   });
+
+  // Core envelope format tests
+  test("detects core session header (type: session)", () => {
+    const entry = detectEntryType({
+      type: "session",
+      version: 1,
+      id: "20260225045827-f33876",
+      timestamp: "2026-02-25T04:58:27.696Z",
+      cwd: "/home/user/project",
+    });
+    expect(entry).not.toBeNull();
+    expect((entry as { type: string }).type).toBe("session_header");
+    expect((entry as { id: string }).id).toBe("20260225045827-f33876");
+    expect((entry as { cwd: string }).cwd).toBe("/home/user/project");
+    expect((entry as { timestamp: number }).timestamp).toBe(new Date("2026-02-25T04:58:27.696Z").getTime());
+  });
+
+  test("detects core message envelope (user)", () => {
+    const entry = detectEntryType({
+      type: "message",
+      id: "a54ceb01",
+      parentId: null,
+      timestamp: "2026-02-25T04:58:30.000Z",
+      message: { role: "user", content: "hello", timestamp: 1771995505590 },
+    });
+    expect(entry).not.toBeNull();
+    expect((entry as { role: string }).role).toBe("user");
+    expect((entry as { id: string }).id).toBe("a54ceb01");
+    expect((entry as { content: string }).content).toBe("hello");
+    expect((entry as { timestamp: number }).timestamp).toBe(1771995505590);
+  });
+
+  test("detects core message envelope (assistant)", () => {
+    const entry = detectEntryType({
+      type: "message",
+      id: "b12def02",
+      parentId: "a54ceb01",
+      timestamp: "2026-02-25T04:58:31.000Z",
+      message: {
+        role: "assistant",
+        content: [{ type: "text", text: "Hello!" }],
+        model: "claude-sonnet-4-20250514",
+        usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 },
+        stopReason: "end_turn",
+        timestamp: 1771995506000,
+      },
+    });
+    expect(entry).not.toBeNull();
+    expect((entry as { role: string }).role).toBe("assistant");
+    expect((entry as { id: string }).id).toBe("b12def02");
+    expect((entry as { parentId: string }).parentId).toBe("a54ceb01");
+    expect((entry as { model: string }).model).toBe("claude-sonnet-4-20250514");
+  });
+
+  test("detects core message envelope (tool_result)", () => {
+    const entry = detectEntryType({
+      type: "message",
+      id: "c34fab03",
+      parentId: "b12def02",
+      timestamp: "2026-02-25T04:58:32.000Z",
+      message: {
+        role: "tool_result",
+        toolCallId: "tc-001",
+        toolName: "read",
+        output: "file contents",
+        isError: false,
+        timestamp: 1771995507000,
+      },
+    });
+    expect(entry).not.toBeNull();
+    expect((entry as { role: string }).role).toBe("tool_result");
+    expect((entry as { toolName: string }).toolName).toBe("read");
+  });
+
+  test("skips model_change and session_info without warning", () => {
+    expect(detectEntryType({ type: "model_change", id: "x", parentId: null, timestamp: "t", provider: "a", modelId: "b" })).toBeNull();
+    expect(detectEntryType({ type: "session_info", id: "x", parentId: null, timestamp: "t", name: "test" })).toBeNull();
+  });
 });
 
 describe("parseSessionFile", () => {

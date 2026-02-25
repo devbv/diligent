@@ -13,10 +13,67 @@ import type {
 
 /**
  * Detect entry type from raw parsed JSON.
- * Strategy: check `role` first, then `type`, then skip with warning.
+ * Supports two formats:
+ *   1. Core envelope format: { type: "session"|"message", ... }
+ *   2. Legacy flat format (sample data): { role: "user"|"assistant"|"tool_result", ... }
  */
 export function detectEntryType(raw: Record<string, unknown>): SessionEntry | null {
-  // Check role-based entries first
+  // --- Core envelope format (from @diligent/core session persistence) ---
+
+  // Session header: { type: "session", version, id, timestamp (ISO), cwd }
+  if (raw.type === "session") {
+    return {
+      type: "session_header",
+      id: raw.id as string,
+      timestamp: new Date(raw.timestamp as string).getTime(),
+      cwd: raw.cwd as string,
+      version: String(raw.version ?? "1"),
+    } as SessionHeader;
+  }
+
+  // Message envelope: { type: "message", id, parentId, timestamp (ISO), message: { role, ... } }
+  if (raw.type === "message" && raw.message != null) {
+    const msg = raw.message as Record<string, unknown>;
+    const id = raw.id as string;
+    const parentId = (raw.parentId as string | null) ?? undefined;
+
+    if (msg.role === "user") {
+      return {
+        id,
+        parentId,
+        role: "user",
+        content: msg.content,
+        timestamp: msg.timestamp as number,
+      } as unknown as UserMessageEntry;
+    }
+    if (msg.role === "assistant") {
+      return {
+        id,
+        parentId,
+        role: "assistant",
+        content: msg.content,
+        model: msg.model,
+        usage: msg.usage,
+        stopReason: msg.stopReason,
+        timestamp: msg.timestamp as number,
+      } as unknown as AssistantMessageEntry;
+    }
+    if (msg.role === "tool_result") {
+      return {
+        id,
+        parentId,
+        role: "tool_result",
+        toolCallId: msg.toolCallId,
+        toolName: msg.toolName,
+        output: msg.output,
+        isError: msg.isError,
+        timestamp: msg.timestamp as number,
+      } as unknown as ToolResultEntry;
+    }
+  }
+
+  // --- Legacy flat format (sample data, backward compat) ---
+
   if (raw.role === "user") {
     return raw as unknown as UserMessageEntry;
   }
@@ -26,13 +83,16 @@ export function detectEntryType(raw: Record<string, unknown>): SessionEntry | nu
   if (raw.role === "tool_result") {
     return raw as unknown as ToolResultEntry;
   }
-
-  // Check type-based entries
   if (raw.type === "session_header") {
     return raw as unknown as SessionHeader;
   }
   if (raw.type === "compaction") {
     return raw as unknown as CompactionEntry;
+  }
+
+  // Skip known core types that the viewer doesn't render
+  if (raw.type === "model_change" || raw.type === "session_info") {
+    return null;
   }
 
   // Unknown entry type — skip with warning
