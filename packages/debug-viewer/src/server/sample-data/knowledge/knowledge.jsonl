@@ -1,0 +1,5 @@
+{"id":"k-001","timestamp":1708900020000,"sessionId":"sample-001","type":"pattern","content":"User prefers checking dependencies with npm outdated before upgrading.","confidence":0.7,"tags":["workflow","npm"]}
+{"id":"k-002","timestamp":1708910020000,"sessionId":"sample-002","type":"decision","content":"formatBytes should handle negative numbers by formatting absolute value with minus prefix.","confidence":0.9,"tags":["utils","formatting"]}
+{"id":"k-003","timestamp":1708920020000,"sessionId":"sample-003","type":"discovery","content":"Project uses Express 4.x for API layer with standard /health and /ready endpoints.","confidence":0.85,"tags":["architecture","api"]}
+{"id":"k-004","timestamp":1708920025000,"sessionId":"sample-003","type":"preference","content":"User prefers TypeScript strict mode for all server-side code.","confidence":0.6,"tags":["typescript","config"]}
+{"id":"k-005","timestamp":1708920030000,"sessionId":"sample-002","type":"correction","content":"Test assertions should match actual function behavior, not assumed behavior. Always run tests before modifying code.","confidence":0.95,"supersedes":"k-002","tags":["testing","workflow"]}
