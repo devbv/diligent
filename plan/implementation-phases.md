@@ -169,38 +169,66 @@ Agent → calls read tool → sees the typo → calls edit tool → fixes it
 
 ### Phase 3: Configuration & Persistence
 
-**Goal**: User can configure the agent per-project and resume sessions. Architecture prepared for future web UI / protocol layer (D086).
+**Goal**: User can configure the agent per-project and resume sessions. Architecture prepared for future web UI / protocol layer (D086). Knowledge accumulates across sessions.
+
+Split into two sub-phases to manage complexity:
+
+#### Phase 3a: Configuration & Session Persistence
+
+**Goal**: JSONC config, CLAUDE.md discovery, SessionManager, JSONL session persistence.
 
 ```
 User → creates diligent.jsonc with custom model/instructions
 User → creates CLAUDE.md with project context
 User → starts agent, agent respects both configs
-User → exits, resumes → conversation continues with summary
+User → exits, --continue → conversation resumes from persisted session
 ```
 
 **Scope per layer**:
 
 | Layer | What's Added | What's Deferred |
 |---|---|---|
-| L1 (Agent Loop) | `itemId` on grouped AgentEvent subtypes (D086), compaction trigger hook, context re-injection after compaction (D041), knowledge flush prompt before compaction (D084) | — |
-| L2 (Tool System) | Expand `ApprovalRequest`/`ApprovalResponse` types for protocol readiness (D086, D028, D029). `approve()` returns `ApprovalResponse` instead of `boolean`. Phase 3 still auto-returns `"once"`. | Actual approval logic (Phase 4) |
-| L3 (Core Tools) | `add_knowledge` tool (D082) | — |
+| L1 (Agent Loop) | `itemId` on grouped AgentEvent subtypes (D086) | Compaction trigger hook (Phase 3b) |
+| L2 (Tool System) | Expand `ApprovalRequest`/`ApprovalResponse` types (D086, D028, D029). `approve()` returns `ApprovalResponse`. Phase 3a still auto-returns `"once"` | Actual approval logic (Phase 4) |
 | L5 (Config) | Full JSONC + Zod validation, 3-layer hierarchy, CLAUDE.md discovery, template substitution (D032-D035) | Enterprise config, config editing UI |
-| L6 (Session) | **SessionManager** mediator class (D086): wraps `agentLoop()`, owns session lifecycle (create/resume/fork/rollback per D040), handles persistence + compaction triggers. JSONL persistence, tree structure, compaction (LLM summarization), deferred persistence (D036-REV, D037-D043) | Version migration (add when format changes) |
-| L6 (Knowledge) | Knowledge store `.diligent/knowledge/` (D081), knowledge injection in system prompt (D083), pre-compaction knowledge flush (D084) | Export/import (D085, add when needed) |
-| L0 (Provider) | Multiple providers (add OpenAI), model switching | Cost tracking (add when needed) |
+| L6 (Session) | **SessionManager** mediator class (D086): wraps `agentLoop()`, owns session lifecycle (create/resume/fork per D040). JSONL persistence, tree structure, deferred persistence (D036-REV, D040-D043) | Compaction, knowledge (Phase 3b) |
+| L7 (TUI) | Switches from direct `agentLoop()` to `SessionManager`. CLI: `--continue`, `--list` | No new TUI features |
 | Infrastructure | `.diligent/` project data directory convention (D080), auto-generated `.gitignore`, JSON serialization roundtrip test convention (D086) | — |
 
-**Not touched**: L4 (still auto-approve behavior, but types expanded), L7 (no new TUI features — but TUI switches from direct `agentLoop()` to `SessionManager`), L8, L9, L10
+**Artifact**: Configurable, persistent agent. Sessions survive restarts. Protocol-layer-ready architecture.
 
-**Artifact**: Configurable, persistent agent. Sessions survive restarts. Knowledge accumulates across sessions. Architecture is protocol-layer-ready (D086).
+**Testing milestone**: Start session, chat, exit, resume (`--continue`) — verify conversation history intact. Verify `diligent.jsonc` and CLAUDE.md respected.
 
-**Testing milestone**: Start session, make edits, exit, resume — verify compaction summary is accurate and files are tracked. Verify knowledge persists across sessions. Verify all AgentEvent and session entry types pass JSON serialization roundtrip.
+**Implementation notes**:
+- Detailed spec: `plan/impl/phase-3a-config-persistence.md`
+
+#### Phase 3b: Compaction, Knowledge & Multi-Provider
+
+**Goal**: LLM compaction for long sessions, cross-session knowledge system, OpenAI provider.
+
+```
+User → long session, context approaches limit → auto-compaction summarizes
+User → exits, starts new session → knowledge from previous sessions injected
+User → configures OpenAI provider → agent uses GPT model
+```
+
+**Scope per layer**:
+
+| Layer | What's Added | What's Deferred |
+|---|---|---|
+| L1 (Agent Loop) | Compaction trigger hook, context re-injection after compaction (D041), knowledge flush prompt before compaction (D084) | — |
+| L3 (Core Tools) | `add_knowledge` tool (D082) | — |
+| L6 (Session) | Compaction entry type, LLM summarization (D037), cut point detection, iterative summary updating, file operation tracking (D038, D039) | Version migration (add when format changes) |
+| L6 (Knowledge) | Knowledge store `.diligent/knowledge/` (D081), knowledge injection in system prompt (D083), pre-compaction knowledge flush (D084) | Export/import (D085, add when needed) |
+| L0 (Provider) | Multiple providers (add OpenAI), model switching | Cost tracking (add when needed) |
+
+**Artifact**: Full Phase 3 vision — configurable, persistent agent with compaction, knowledge, and multi-provider support.
+
+**Testing milestone**: Long session with compaction — verify summary is accurate and files are tracked. Verify knowledge persists across sessions. Verify OpenAI provider works.
 
 **Known complexity risks**:
-- LLM compaction (D037) is the riskiest feature — touches L1, L6, and L0. Consider splitting Phase 3 into sub-phases (3a: config + basic persistence, 3b: compaction + knowledge + multi-provider) if implementation complexity is high.
-- Temp file cleanup from Phase 2's D025 implementation should be resolved when session directories are introduced.
-- SessionManager (D086) must be designed before session persistence to avoid the TUI↔core boundary being hardened around direct `agentLoop()` calls.
+- LLM compaction (D037) is the riskiest feature — touches L1, L6, and L0
+- Temp file cleanup from Phase 2's D025 implementation should be resolved when session directories are introduced
 
 ---
 
@@ -265,21 +293,21 @@ This phase can be split into three sub-phases since L8, L9, L10 are relatively i
 Shows which layers are active in each phase and at what depth.
 
 ```
-         Phase 0   Phase 1   Phase 2   Phase 3            Phase 4   Phase 5
-         Skeleton  Min Agent Coding    Config+Persist+    Safety+   Extend
-         ✅        ✅        ✅        Know+D086          UX
+         Phase 0   Phase 1   Phase 2   Phase 3a         Phase 3b           Phase 4   Phase 5
+         Skeleton  Min Agent Coding    Config+Persist   Compact+Knowl+     Safety+   Extend
+         ✅        ✅        ✅        +D086            MultiProv          UX
 
-L0  Prov  types    minimal   +retry    +multi             —         —
-L1  Loop  types    minimal   +full     +compact+itemId    —         —
-L2  Tool  types    minimal   +trunc    +ApprovalResponse  —         —
-L3  Core  —        bash      +all 7    +add_knowl         —         —
-L4  Appr  —        (auto)    (auto)    (types expanded)   FULL      —
-L5  Conf  —        env-only  —         FULL               +perm     —
-L6  Sess  —        (memory)  (memory)  SessionMgr+knowl   —         —
-L7  TUI   —        readline  +md+spin  →SessionMgr        FULL      —
-L8  Skil  —        —         —         —                  —         FULL
-L9  MCP   —        —         —         —                  —         FULL
-L10 Mult  —        —         —         —                  —         FULL
+L0  Prov  types    minimal   +retry    —                +multi             —         —
+L1  Loop  types    minimal   +full     +itemId          +compact           —         —
+L2  Tool  types    minimal   +trunc    +ApprovalResp    —                  —         —
+L3  Core  —        bash      +all 7    —                +add_knowl         —         —
+L4  Appr  —        (auto)    (auto)    (types expanded) —                  FULL      —
+L5  Conf  —        env-only  —         FULL             —                  +perm     —
+L6  Sess  —        (memory)  (memory)  SessionMgr       +compact+knowl    —         —
+L7  TUI   —        readline  +md+spin  →SessionMgr      —                  FULL      —
+L8  Skil  —        —         —         —                —                  —         FULL
+L9  MCP   —        —         —         —                —                  —         FULL
+L10 Mult  —        —         —         —                —                  —         FULL
 Infra     scaffold CI+E2E    +e2e-pkg  .diligent/+serial  —         —
 ```
 
