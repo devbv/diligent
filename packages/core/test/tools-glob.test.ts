@@ -1,9 +1,9 @@
-import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { createGlobTool } from "../src/tools/glob";
+import { join } from "node:path";
 import type { ToolContext } from "../src/tool/types";
+import { createGlobTool } from "../src/tools/glob";
 
 function makeCtx(): ToolContext {
   return {

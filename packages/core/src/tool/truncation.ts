@@ -1,6 +1,6 @@
 import { mkdtemp, writeFile } from "node:fs/promises";
-import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 /** D025: Auto-truncation constants */
 export const MAX_OUTPUT_BYTES = 50_000; // 50KB

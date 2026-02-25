@@ -33,7 +33,7 @@ export class Terminal {
   }
 
   writeLine(text: string): void {
-    process.stdout.write(text + "\n");
+    process.stdout.write(`${text}\n`);
   }
 
   clearLine(): void {

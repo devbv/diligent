@@ -20,15 +20,13 @@ export class InputBuffer {
   cursorPos = 0;
 
   insert(char: string): void {
-    this.text =
-      this.text.slice(0, this.cursorPos) + char + this.text.slice(this.cursorPos);
+    this.text = this.text.slice(0, this.cursorPos) + char + this.text.slice(this.cursorPos);
     this.cursorPos += char.length;
   }
 
   backspace(): void {
     if (this.cursorPos > 0) {
-      this.text =
-        this.text.slice(0, this.cursorPos - 1) + this.text.slice(this.cursorPos);
+      this.text = this.text.slice(0, this.cursorPos - 1) + this.text.slice(this.cursorPos);
       this.cursorPos--;
     }
   }

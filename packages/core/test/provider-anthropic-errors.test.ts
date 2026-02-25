@@ -1,13 +1,9 @@
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import Anthropic from "@anthropic-ai/sdk";
 import { classifyAnthropicError } from "../src/provider/anthropic";
 import { ProviderError } from "../src/provider/types";
 
-function makeAPIError(
-  status: number,
-  message: string,
-  headers?: Record<string, string>,
-): Anthropic.APIError {
+function makeAPIError(status: number, message: string, headers?: Record<string, string>): Anthropic.APIError {
   return new Anthropic.APIError(status, { message }, message, headers as any);
 }
 

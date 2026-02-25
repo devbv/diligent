@@ -1,15 +1,14 @@
+export { classifyAnthropicError, createAnthropicStream } from "./anthropic";
+export type { RetryConfig } from "./retry";
+export { withRetry } from "./retry";
 export type {
   Model,
-  StreamFunction,
-  StreamContext,
-  StreamOptions,
-  ToolDefinition,
+  ProviderErrorType,
   ProviderEvent,
   ProviderResult,
-  ProviderErrorType,
+  StreamContext,
+  StreamFunction,
+  StreamOptions,
+  ToolDefinition,
 } from "./types";
-
 export { ProviderError } from "./types";
-export { createAnthropicStream, classifyAnthropicError } from "./anthropic";
-export { withRetry } from "./retry";
-export type { RetryConfig } from "./retry";

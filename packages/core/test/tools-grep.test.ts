@@ -1,9 +1,9 @@
-import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { createGrepTool } from "../src/tools/grep";
+import { join } from "node:path";
 import type { ToolContext } from "../src/tool/types";
+import { createGrepTool } from "../src/tools/grep";
 
 function makeCtx(): ToolContext {
   return {

@@ -1,22 +1,16 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { EventStream } from "../event-stream";
+import type { AssistantMessage, ContentBlock, Message, StopReason, Usage } from "../types";
 import type {
-  StreamFunction,
-  StreamContext,
-  StreamOptions,
   Model,
   ProviderEvent,
   ProviderResult,
+  StreamContext,
+  StreamFunction,
+  StreamOptions,
   ToolDefinition,
 } from "./types";
 import { ProviderError } from "./types";
-import type {
-  Message,
-  AssistantMessage,
-  ContentBlock,
-  Usage,
-  StopReason,
-} from "../types";
 
 export const createAnthropicStream: StreamFunction = (
   model: Model,
@@ -188,10 +182,7 @@ function convertTools(tools: ToolDefinition[]): Anthropic.Tool[] {
   }));
 }
 
-function mapToAssistantMessage(
-  msg: Anthropic.Message,
-  model: Model,
-): AssistantMessage {
+function mapToAssistantMessage(msg: Anthropic.Message, model: Model): AssistantMessage {
   const content: ContentBlock[] = msg.content.map((block): ContentBlock => {
     if (block.type === "text") {
       return { type: "text", text: block.text };
@@ -229,10 +220,14 @@ function mapToAssistantMessage(
 
 function mapStopReason(reason: string | null): StopReason {
   switch (reason) {
-    case "end_turn": return "end_turn";
-    case "tool_use": return "tool_use";
-    case "max_tokens": return "max_tokens";
-    default: return "end_turn";
+    case "end_turn":
+      return "end_turn";
+    case "tool_use":
+      return "tool_use";
+    case "max_tokens":
+      return "max_tokens";
+    default:
+      return "end_turn";
   }
 }
 
@@ -279,9 +274,11 @@ function parseRetryAfter(headers?: Record<string, string>): number | undefined {
 function isNetworkError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
   const msg = err.message.toLowerCase();
-  return msg.includes("econnrefused") ||
+  return (
+    msg.includes("econnrefused") ||
     msg.includes("econnreset") ||
     msg.includes("etimedout") ||
     msg.includes("fetch failed") ||
-    msg.includes("network");
+    msg.includes("network")
+  );
 }

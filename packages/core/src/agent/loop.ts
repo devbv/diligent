@@ -1,23 +1,14 @@
-import { z } from "zod";
+import type { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { EventStream } from "../event-stream";
-import type { AgentEvent, AgentLoopConfig } from "./types";
-import type {
-  Message,
-  AssistantMessage,
-  ToolResultMessage,
-  ToolCallBlock,
-  Usage,
-} from "../types";
-import type { StreamContext, ToolDefinition, Model } from "../provider/types";
-import type { ToolContext } from "../tool/types";
-import { executeTool } from "../tool/executor";
 import { withRetry } from "../provider/retry";
+import type { Model, StreamContext, ToolDefinition } from "../provider/types";
+import { executeTool } from "../tool/executor";
+import type { ToolContext } from "../tool/types";
+import type { AssistantMessage, Message, ToolCallBlock, ToolResultMessage, Usage } from "../types";
+import type { AgentEvent, AgentLoopConfig } from "./types";
 
-export function agentLoop(
-  messages: Message[],
-  config: AgentLoopConfig,
-): EventStream<AgentEvent, Message[]> {
+export function agentLoop(messages: Message[], config: AgentLoopConfig): EventStream<AgentEvent, Message[]> {
   const stream = new EventStream<AgentEvent, Message[]>(
     (event) => event.type === "agent_end",
     (event) => (event as { type: "agent_end"; messages: Message[] }).messages,
@@ -51,7 +42,7 @@ async function runLoop(
     baseDelayMs: config.retryBaseDelayMs ?? 1000,
     maxDelayMs: config.retryMaxDelayMs ?? 30_000,
     signal: config.signal,
-    onRetry: (attempt, delayMs, error) => {
+    onRetry: (attempt, delayMs, _error) => {
       stream.push({
         type: "status_change",
         status: "retry",
@@ -70,12 +61,7 @@ async function runLoop(
     stream.push({ type: "turn_start", turnId });
 
     // 1. Stream LLM response (with retry)
-    const assistantMessage = await streamAssistantResponse(
-      allMessages,
-      config,
-      retryStreamFn,
-      stream,
-    );
+    const assistantMessage = await streamAssistantResponse(allMessages, config, retryStreamFn, stream);
     allMessages.push(assistantMessage);
 
     // Emit usage after each turn
@@ -86,9 +72,7 @@ async function runLoop(
     });
 
     // 2. Check for tool calls
-    const toolCalls = assistantMessage.content.filter(
-      (b): b is ToolCallBlock => b.type === "tool_call",
-    );
+    const toolCalls = assistantMessage.content.filter((b): b is ToolCallBlock => b.type === "tool_call");
 
     if (toolCalls.length === 0) {
       stream.push({
@@ -174,11 +158,7 @@ async function streamAssistantResponse(
     tools: config.tools.map(toolToDefinition),
   };
 
-  const providerStream = streamFn(
-    config.model,
-    context,
-    { signal: config.signal, apiKey: config.apiKey },
-  );
+  const providerStream = streamFn(config.model, context, { signal: config.signal, apiKey: config.apiKey });
 
   let currentMessage: AssistantMessage | undefined;
 

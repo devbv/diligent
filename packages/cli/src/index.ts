@@ -8,9 +8,7 @@ async function main() {
     const app = new App(config);
     await app.start();
   } catch (err) {
-    console.error(
-      `\x1b[31mError:\x1b[0m ${err instanceof Error ? err.message : err}`,
-    );
+    console.error(`\x1b[31mError:\x1b[0m ${err instanceof Error ? err.message : err}`);
     process.exit(1);
   }
 }

@@ -1,5 +1,5 @@
-import { z } from "zod";
 import { readFile, writeFile } from "node:fs/promises";
+import { z } from "zod";
 import type { Tool, ToolResult } from "../tool/types";
 
 const EditParams = z.object({
@@ -11,8 +11,7 @@ const EditParams = z.object({
 export function createEditTool(): Tool<typeof EditParams> {
   return {
     name: "edit",
-    description:
-      "Replace an exact string in a file. The old_string must appear exactly once in the file.",
+    description: "Replace an exact string in a file. The old_string must appear exactly once in the file.",
     parameters: EditParams,
     async execute(args): Promise<ToolResult> {
       const { file_path, old_string, new_string } = args;
@@ -99,7 +98,9 @@ function generateUnifiedDiff(filePath: string, oldContent: string, newContent: s
   const lines: string[] = [];
   lines.push(`--- ${filePath}`);
   lines.push(`+++ ${filePath}`);
-  lines.push(`@@ -${startLine + 1},${oldEndWithCtx - startLine + 1} +${startLine + 1},${newEndWithCtx - startLine + 1} @@`);
+  lines.push(
+    `@@ -${startLine + 1},${oldEndWithCtx - startLine + 1} +${startLine + 1},${newEndWithCtx - startLine + 1} @@`,
+  );
 
   // Context before
   for (let i = startLine; i < firstDiff; i++) {

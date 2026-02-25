@@ -1,23 +1,60 @@
 import { z } from "zod";
-import { stat } from "node:fs/promises";
 import type { Tool, ToolResult } from "../tool/types";
 
 const ReadParams = z.object({
   file_path: z.string().describe("The absolute path to the file to read"),
-  offset: z.number().int().min(1).optional()
+  offset: z
+    .number()
+    .int()
+    .min(1)
+    .optional()
     .describe("Line number to start reading from (1-indexed). Only provide for large files"),
-  limit: z.number().int().positive().optional()
-    .describe("Maximum number of lines to read. Default: 2000"),
+  limit: z.number().int().positive().optional().describe("Maximum number of lines to read. Default: 2000"),
 });
 
 const BINARY_EXTENSIONS = new Set([
-  ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".ico", ".webp", ".svg",
-  ".wasm", ".zip", ".gz", ".tar", ".bz2", ".7z", ".rar",
-  ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
-  ".exe", ".dll", ".so", ".dylib", ".o", ".a",
-  ".mp3", ".mp4", ".avi", ".mov", ".wav", ".flac",
-  ".ttf", ".otf", ".woff", ".woff2", ".eot",
-  ".class", ".pyc", ".pyo",
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".bmp",
+  ".ico",
+  ".webp",
+  ".svg",
+  ".wasm",
+  ".zip",
+  ".gz",
+  ".tar",
+  ".bz2",
+  ".7z",
+  ".rar",
+  ".pdf",
+  ".doc",
+  ".docx",
+  ".xls",
+  ".xlsx",
+  ".ppt",
+  ".pptx",
+  ".exe",
+  ".dll",
+  ".so",
+  ".dylib",
+  ".o",
+  ".a",
+  ".mp3",
+  ".mp4",
+  ".avi",
+  ".mov",
+  ".wav",
+  ".flac",
+  ".ttf",
+  ".otf",
+  ".woff",
+  ".woff2",
+  ".eot",
+  ".class",
+  ".pyc",
+  ".pyo",
 ]);
 
 const DEFAULT_LIMIT = 2000;
@@ -35,12 +72,12 @@ function isBinaryByContent(bytes: Uint8Array): boolean {
   for (const byte of bytes) {
     if (byte === 0) nullCount++;
   }
-  return (nullCount / bytes.length) > 0.3;
+  return nullCount / bytes.length > 0.3;
 }
 
 function formatLineNumber(lineNum: number, maxLineNum: number): string {
   const width = String(maxLineNum).length;
-  return String(lineNum).padStart(width) + "\t";
+  return `${String(lineNum).padStart(width)}\t`;
 }
 
 export function createReadTool(): Tool<typeof ReadParams> {
@@ -94,9 +131,7 @@ export function createReadTool(): Tool<typeof ReadParams> {
 
       // 6. Prepend line numbers (cat -n format)
       const maxLineNum = startLine + selectedLines.length;
-      const numbered = selectedLines.map(
-        (line, i) => formatLineNumber(startLine + i + 1, maxLineNum) + line,
-      );
+      const numbered = selectedLines.map((line, i) => formatLineNumber(startLine + i + 1, maxLineNum) + line);
 
       let output = numbered.join("\n");
 

@@ -38,13 +38,14 @@ renderer.em = function (token) {
   return `${ITALIC_ON}${text}${ITALIC_OFF}`;
 };
 
-renderer.codespan = function (token) {
-  return `${CYAN}${token.text}${RESET}`;
-};
+renderer.codespan = (token) => `${CYAN}${token.text}${RESET}`;
 
-renderer.code = function (token) {
+renderer.code = (token) => {
   const header = token.lang ? `${GRAY}[${token.lang}]${RESET}\n` : "";
-  const indented = token.text.split("\n").map((line: string) => `  ${line}`).join("\n");
+  const indented = token.text
+    .split("\n")
+    .map((line: string) => `  ${line}`)
+    .join("\n");
   return `\n${header}${CYAN}${indented}${RESET}\n\n`;
 };
 
@@ -70,34 +71,28 @@ renderer.link = function (token) {
 
 renderer.blockquote = function (token) {
   const text = this.parser.parse(token.tokens);
-  const lines = text.trim().split("\n").map((line: string) => `${GRAY}│ ${line}${RESET}`).join("\n");
+  const lines = text
+    .trim()
+    .split("\n")
+    .map((line: string) => `${GRAY}│ ${line}${RESET}`)
+    .join("\n");
   return `${lines}\n\n`;
 };
 
-renderer.hr = function () {
-  return `\n${"─".repeat(40)}\n\n`;
-};
+renderer.hr = () => `\n${"─".repeat(40)}\n\n`;
 
-renderer.br = function () {
-  return "\n";
-};
+renderer.br = () => "\n";
 
 renderer.del = function (token) {
   const text = this.parser.parseInline(token.tokens);
   return `~~${text}~~`;
 };
 
-renderer.html = function (token) {
-  return token.text;
-};
+renderer.html = (token) => token.text;
 
-renderer.text = function (token) {
-  return token.text;
-};
+renderer.text = (token) => token.text;
 
-renderer.space = function () {
-  return "";
-};
+renderer.space = () => "";
 
 const marked = new Marked({ renderer, async: false });
 

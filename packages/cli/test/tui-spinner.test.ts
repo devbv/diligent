@@ -1,10 +1,12 @@
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { Spinner } from "../src/tui/spinner";
 
 describe("Spinner", () => {
   test("renders initial frame on start", () => {
     let lastFrame = "";
-    const spinner = new Spinner((frame) => { lastFrame = frame; });
+    const spinner = new Spinner((frame) => {
+      lastFrame = frame;
+    });
 
     spinner.start("Loading...");
     expect(lastFrame).toContain("Loading...");
@@ -14,7 +16,9 @@ describe("Spinner", () => {
 
   test("cycles through frames", async () => {
     const frames: string[] = [];
-    const spinner = new Spinner((frame) => { frames.push(frame); });
+    const spinner = new Spinner((frame) => {
+      frames.push(frame);
+    });
 
     spinner.start("Working...");
 
@@ -25,12 +29,14 @@ describe("Spinner", () => {
     // Should have multiple distinct frames
     expect(frames.length).toBeGreaterThan(2);
     // Frames should contain different braille characters
-    const uniqueChars = new Set(frames.map((f) => f.charAt(f.indexOf("⠋") >= 0 ? f.indexOf("⠋") : 0)));
+    const _uniqueChars = new Set(frames.map((f) => f.charAt(f.indexOf("⠋") >= 0 ? f.indexOf("⠋") : 0)));
   });
 
   test("updates message", () => {
     let lastFrame = "";
-    const spinner = new Spinner((frame) => { lastFrame = frame; });
+    const spinner = new Spinner((frame) => {
+      lastFrame = frame;
+    });
 
     spinner.start("Loading...");
     expect(lastFrame).toContain("Loading...");
@@ -49,8 +55,10 @@ describe("Spinner", () => {
   });
 
   test("start stops existing spinner first", () => {
-    let callCount = 0;
-    const spinner = new Spinner(() => { callCount++; });
+    let _callCount = 0;
+    const spinner = new Spinner(() => {
+      _callCount++;
+    });
 
     spinner.start("First");
     spinner.start("Second");

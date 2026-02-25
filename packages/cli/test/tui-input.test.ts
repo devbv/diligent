@@ -1,5 +1,5 @@
-import { describe, test, expect } from "bun:test";
-import { Keys, matchesKey, InputBuffer } from "../src/tui/input";
+import { describe, expect, test } from "bun:test";
+import { InputBuffer, Keys, matchesKey } from "../src/tui/input";
 
 describe("matchesKey", () => {
   test("matches Enter", () => {

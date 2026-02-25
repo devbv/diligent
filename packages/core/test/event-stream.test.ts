@@ -1,9 +1,7 @@
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { EventStream } from "../src/event-stream";
 
-type TestEvent =
-  | { type: "data"; value: string }
-  | { type: "done"; result: number };
+type TestEvent = { type: "data"; value: string } | { type: "done"; result: number };
 
 function createTestStream() {
   return new EventStream<TestEvent, number>(

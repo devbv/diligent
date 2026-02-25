@@ -1,5 +1,5 @@
-import { z } from "zod";
 import { stat } from "node:fs/promises";
+import { z } from "zod";
 import type { Tool, ToolResult } from "../tool/types";
 
 const GlobParams = z.object({
@@ -12,17 +12,16 @@ const MAX_FILES = 100;
 export function createGlobTool(cwd: string): Tool<typeof GlobParams> {
   return {
     name: "glob",
-    description:
-      "Find files matching a glob pattern. Returns file paths sorted by modification time (newest first).",
+    description: "Find files matching a glob pattern. Returns file paths sorted by modification time (newest first).",
     parameters: GlobParams,
     async execute(args): Promise<ToolResult> {
       const searchPath = args.path ?? cwd;
 
       try {
-        const proc = Bun.spawn(
-          ["rg", "--files", "--glob", args.pattern, searchPath],
-          { stdout: "pipe", stderr: "pipe" },
-        );
+        const proc = Bun.spawn(["rg", "--files", "--glob", args.pattern, searchPath], {
+          stdout: "pipe",
+          stderr: "pipe",
+        });
 
         const stdout = await new Response(proc.stdout).text();
         const stderr = await new Response(proc.stderr).text();

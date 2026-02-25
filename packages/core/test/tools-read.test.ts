@@ -1,9 +1,9 @@
-import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { createReadTool } from "../src/tools/read";
+import { join } from "node:path";
 import type { ToolContext } from "../src/tool/types";
+import { createReadTool } from "../src/tools/read";
 
 function makeCtx(): ToolContext {
   return {
@@ -78,7 +78,7 @@ describe("read tool", () => {
     // Create a file with >30% null bytes
     const buf = Buffer.alloc(100);
     buf.fill(0, 0, 50); // 50 null bytes
-    buf.fill(0x41, 50);  // 50 'A' bytes
+    buf.fill(0x41, 50); // 50 'A' bytes
     await writeFile(filePath, buf);
 
     const result = await tool.execute({ file_path: filePath }, makeCtx());

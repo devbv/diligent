@@ -1,4 +1,4 @@
-import { z } from "zod";
+import type { z } from "zod";
 
 // D013: Tool definition
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

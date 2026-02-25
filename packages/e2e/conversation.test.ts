@@ -1,10 +1,6 @@
-import { describe, test, expect } from "bun:test";
-import {
-  agentLoop,
-  createAnthropicStream,
-  bashTool,
-} from "@diligent/core";
+import { describe, expect, test } from "bun:test";
 import type { AgentEvent, AgentLoopConfig, Message, Model } from "@diligent/core";
+import { agentLoop, bashTool, createAnthropicStream } from "@diligent/core";
 
 const apiKey = process.env.ANTHROPIC_API_KEY;
 
@@ -35,56 +31,53 @@ describe("E2E: Real Anthropic API", () => {
     return;
   }
 
-  test(
-    "simple conversation without tools",
-    async () => {
-      const messages: Message[] = [
-        {
-          role: "user",
-          content: "Say exactly: hello world",
-          timestamp: Date.now(),
-        },
-      ];
+  test("simple conversation without tools", async () => {
+    const messages: Message[] = [
+      {
+        role: "user",
+        content: "Say exactly: hello world",
+        timestamp: Date.now(),
+      },
+    ];
 
-      const stream = agentLoop(messages, makeConfig({
+    const stream = agentLoop(
+      messages,
+      makeConfig({
         tools: [],
         maxTurns: 1,
-      }));
+      }),
+    );
 
-      const result = await stream.result();
-      const assistant = result.find((m) => m.role === "assistant");
-      expect(assistant).toBeDefined();
-    },
-    30_000,
-  );
+    const result = await stream.result();
+    const assistant = result.find((m) => m.role === "assistant");
+    expect(assistant).toBeDefined();
+  }, 30_000);
 
-  test(
-    "conversation with bash tool",
-    async () => {
-      const messages: Message[] = [
-        {
-          role: "user",
-          content:
-            "Run 'echo hello' using the bash tool and tell me what it outputs",
-          timestamp: Date.now(),
-        },
-      ];
+  test("conversation with bash tool", async () => {
+    const messages: Message[] = [
+      {
+        role: "user",
+        content: "Run 'echo hello' using the bash tool and tell me what it outputs",
+        timestamp: Date.now(),
+      },
+    ];
 
-      const stream = agentLoop(messages, makeConfig({
+    const stream = agentLoop(
+      messages,
+      makeConfig({
         systemPrompt: "You are a helpful assistant. Use the bash tool when asked to run commands.",
-      }));
+      }),
+    );
 
-      const events: AgentEvent[] = [];
-      for await (const event of stream) {
-        events.push(event);
-      }
+    const events: AgentEvent[] = [];
+    for await (const event of stream) {
+      events.push(event);
+    }
 
-      const toolEnd = events.find((e) => e.type === "tool_end");
-      expect(toolEnd).toBeDefined();
-      if (toolEnd && toolEnd.type === "tool_end") {
-        expect(toolEnd.toolName).toBe("bash");
-      }
-    },
-    60_000,
-  );
+    const toolEnd = events.find((e) => e.type === "tool_end");
+    expect(toolEnd).toBeDefined();
+    if (toolEnd && toolEnd.type === "tool_end") {
+      expect(toolEnd.toolName).toBe("bash");
+    }
+  }, 60_000);
 });

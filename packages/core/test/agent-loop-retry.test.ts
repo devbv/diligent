@@ -1,10 +1,10 @@
-import { describe, test, expect } from "bun:test";
-import { EventStream } from "../src/event-stream";
-import { ProviderError } from "../src/provider/types";
-import type { StreamFunction, ProviderEvent, ProviderResult, Model } from "../src/provider/types";
-import type { AssistantMessage } from "../src/types";
-import type { AgentEvent } from "../src/agent/types";
+import { describe, expect, test } from "bun:test";
 import { agentLoop } from "../src/agent/loop";
+import type { AgentEvent } from "../src/agent/types";
+import { EventStream } from "../src/event-stream";
+import type { Model, ProviderEvent, ProviderResult, StreamFunction } from "../src/provider/types";
+import { ProviderError } from "../src/provider/types";
+import type { AssistantMessage } from "../src/types";
 
 const testModel: Model = {
   id: "test-model",
@@ -70,18 +70,15 @@ describe("agent loop retry + usage", () => {
   test("emits usage event after successful turn", async () => {
     const { streamFn } = createMockStreamFn(0);
 
-    const stream = agentLoop(
-      [{ role: "user", content: "hi", timestamp: Date.now() }],
-      {
-        model: testModel,
-        systemPrompt: "test",
-        tools: [],
-        streamFunction: streamFn,
-        apiKey: "test-key",
-        retryBaseDelayMs: 1,
-        retryMaxDelayMs: 10,
-      },
-    );
+    const stream = agentLoop([{ role: "user", content: "hi", timestamp: Date.now() }], {
+      model: testModel,
+      systemPrompt: "test",
+      tools: [],
+      streamFunction: streamFn,
+      apiKey: "test-key",
+      retryBaseDelayMs: 1,
+      retryMaxDelayMs: 10,
+    });
 
     const events: AgentEvent[] = [];
     for await (const event of stream) {
@@ -101,19 +98,16 @@ describe("agent loop retry + usage", () => {
   test("emits status_change during retry", async () => {
     const { streamFn } = createMockStreamFn(2, "rate_limit");
 
-    const stream = agentLoop(
-      [{ role: "user", content: "hi", timestamp: Date.now() }],
-      {
-        model: testModel,
-        systemPrompt: "test",
-        tools: [],
-        streamFunction: streamFn,
-        apiKey: "test-key",
-        maxRetries: 5,
-        retryBaseDelayMs: 1,
-        retryMaxDelayMs: 10,
-      },
-    );
+    const stream = agentLoop([{ role: "user", content: "hi", timestamp: Date.now() }], {
+      model: testModel,
+      systemPrompt: "test",
+      tools: [],
+      streamFunction: streamFn,
+      apiKey: "test-key",
+      maxRetries: 5,
+      retryBaseDelayMs: 1,
+      retryMaxDelayMs: 10,
+    });
 
     const events: AgentEvent[] = [];
     for await (const event of stream) {
@@ -131,19 +125,16 @@ describe("agent loop retry + usage", () => {
   test("non-retryable error propagates immediately", async () => {
     const { streamFn, callCount } = createMockStreamFn(1, "auth");
 
-    const stream = agentLoop(
-      [{ role: "user", content: "hi", timestamp: Date.now() }],
-      {
-        model: testModel,
-        systemPrompt: "test",
-        tools: [],
-        streamFunction: streamFn,
-        apiKey: "test-key",
-        maxRetries: 5,
-        retryBaseDelayMs: 1,
-        retryMaxDelayMs: 10,
-      },
-    );
+    const stream = agentLoop([{ role: "user", content: "hi", timestamp: Date.now() }], {
+      model: testModel,
+      systemPrompt: "test",
+      tools: [],
+      streamFunction: streamFn,
+      apiKey: "test-key",
+      maxRetries: 5,
+      retryBaseDelayMs: 1,
+      retryMaxDelayMs: 10,
+    });
 
     const events: AgentEvent[] = [];
     for await (const event of stream) {
@@ -160,20 +151,17 @@ describe("agent loop retry + usage", () => {
     const { streamFn } = createMockStreamFn(10, "rate_limit");
     const controller = new AbortController();
 
-    const stream = agentLoop(
-      [{ role: "user", content: "hi", timestamp: Date.now() }],
-      {
-        model: testModel,
-        systemPrompt: "test",
-        tools: [],
-        streamFunction: streamFn,
-        apiKey: "test-key",
-        maxRetries: 10,
-        retryBaseDelayMs: 50,
-        retryMaxDelayMs: 100,
-        signal: controller.signal,
-      },
-    );
+    const stream = agentLoop([{ role: "user", content: "hi", timestamp: Date.now() }], {
+      model: testModel,
+      systemPrompt: "test",
+      tools: [],
+      streamFunction: streamFn,
+      apiKey: "test-key",
+      maxRetries: 10,
+      retryBaseDelayMs: 50,
+      retryMaxDelayMs: 100,
+      signal: controller.signal,
+    });
 
     // Abort after a short delay
     setTimeout(() => controller.abort(), 100);

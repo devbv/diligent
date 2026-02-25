@@ -15,8 +15,7 @@ const MAX_LINE_LENGTH = 2000;
 export function createGrepTool(cwd: string): Tool<typeof GrepParams> {
   return {
     name: "grep",
-    description:
-      "Search file contents using regex. Returns matching lines with file paths and line numbers.",
+    description: "Search file contents using regex. Returns matching lines with file paths and line numbers.",
     parameters: GrepParams,
     async execute(args): Promise<ToolResult> {
       const searchPath = args.path ?? cwd;
@@ -52,7 +51,7 @@ export function createGrepTool(cwd: string): Tool<typeof GrepParams> {
 
         // Truncate individual lines
         const truncated = limited.map((line) =>
-          line.length > MAX_LINE_LENGTH ? line.slice(0, MAX_LINE_LENGTH) + "..." : line,
+          line.length > MAX_LINE_LENGTH ? `${line.slice(0, MAX_LINE_LENGTH)}...` : line,
         );
 
         let output = truncated.join("\n");
