@@ -18,6 +18,10 @@ Sustainable developability breaks when:
 
 Your assessment should catch these problems early — ideally before the next phase begins.
 
+## Before You Start
+
+Check `docs/review/tech-lead/` for previous assessments. Files are named `{date}-{commit-hash}.md`. Read the most recent one to understand the trend — what was YELLOW last time, what was flagged as compounding. Your job is to assess *change*, not just current state.
+
 ## Context Gathering
 
 Build a complete picture before forming judgments. The project is a custom coding agent (Bun + TypeScript monorepo) with an 11-layer architecture (L0-L10) delivered across 6 phases (P0-P5).
@@ -25,9 +29,9 @@ Build a complete picture before forming judgments. The project is a custom codin
 ### What to Read
 
 **The plan (what should exist):**
-- `plan/decisions.md` — 78+ numbered design decisions. This is the constitutional document.
-- `plan/implementation-phases.md` — Phase roadmap with layer-phase matrix.
-- `plan/impl/` — Detailed specs for each phase. Note which phases have specs and which don't yet.
+- `docs/plan/decisions.md` — 78+ numbered design decisions. This is the constitutional document.
+- `docs/plan/implementation-phases.md` — Phase roadmap with layer-phase matrix.
+- `docs/plan/impl/` — Detailed specs for each phase. Note which phases have specs and which don't yet.
 
 **The code (what actually exists):**
 - `packages/core/src/` — Core library. What's implemented vs. what's just types?
@@ -41,9 +45,9 @@ Build a complete picture before forming judgments. The project is a custom codin
 - `git log --diff-filter=D --name-only --pretty=format:"%h %s"` — Deleted files reveal rework
 
 **The research (why decisions were made):**
-- `research/layers/` — Layer architecture documents (L0-L10)
-- `research/llm-tools/` — Tool system research
-- `research/references/` — Reference implementations studied (codex-rs, pi-agent, opencode)
+- `docs/research/layers/` — Layer architecture documents (L0-L10)
+- `docs/research/llm-tools/` — Tool system research
+- `docs/research/references/` — Reference implementations studied (codex-rs, pi-agent, opencode)
 
 ## Assessment Framework
 
@@ -57,7 +61,7 @@ This is about the gap between plan and reality. A small gap is natural. A large 
 
 **Check for:**
 
-- **Decision-code alignment**: Pick 5-10 key decisions from `plan/decisions.md` and verify they're reflected in the code. Misalignment here is a leading indicator of future breakage.
+- **Decision-code alignment**: Pick 5-10 key decisions from `docs/plan/decisions.md` and verify they're reflected in the code. Misalignment here is a leading indicator of future breakage.
 
 - **Layer boundary violations**: Each layer (L0-L10) has defined responsibilities. If L1 (agent loop) types reference L3 (core tools) specifics, the boundary is leaking. Trace import chains to verify.
 
@@ -89,15 +93,15 @@ This is the most important axis because it's the hardest to see. Today's code wo
 
 **Evaluate:**
 
-- **Extension points**: The architecture relies on "design the hooks early, implement them late" (e.g., `ctx.ask()` defined in P0, implemented in P4). Are these extension points actually sufficient? Or will the real implementation need something the interface doesn't provide?
+- **Extension points**: Identify interfaces or hooks that are defined now but will be fully implemented in a later phase. Are they actually sufficient for what the later phase will need? Or will the real implementation require something the interface doesn't provide?
 
-- **Persistence assumptions**: Code written before L6 (session persistence) might assume in-memory-only state. If those assumptions are baked into interfaces, L6 will require painful refactoring rather than clean integration.
+- **State scope assumptions**: Does current code assume a scope (in-memory, single-process, single-session) that a future layer will invalidate? Look for interfaces that smuggle transient state where durable state will eventually be required.
 
-- **Config rigidity**: Code written before L5 (full config) might hardcode values that should be configurable. Check for magic strings, hardcoded paths, or env-var assumptions that won't survive the config system.
+- **Hardcoded values**: Check for magic strings, hardcoded paths, or env-var assumptions in code that will eventually be governed by a config or plugin system. These are cheap to fix now, expensive later.
 
 - **Test foundation**: Can the current tests survive refactoring? Tests coupled to implementation details break when internals change, creating a "test maintenance tax" that discourages refactoring. Tests coupled to behavior survive and enable refactoring.
 
-- **Deferred decisions**: `plan/decisions.md` marks some decisions as "deferred." Check whether any deferred decisions block the next phase. If so, they need resolution now, not later.
+- **Deferred decisions**: `docs/plan/decisions.md` marks some decisions as "deferred." Check whether any deferred decisions block the next phase. If so, they need resolution now, not later.
 
 ## Output Format
 

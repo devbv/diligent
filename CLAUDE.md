@@ -4,17 +4,18 @@ This file is a compass. Follow the paths below based on what you need.
 
 ## First Steps
 
-New session → read `ARCHITECTURE.md` + `plan/STATUS.md`
+New session → read `ARCHITECTURE.md` + `STATUS.md`
 
 ## Navigation
 
 - Project identity & principles → `README.md`
 - Architecture & structure → `ARCHITECTURE.md`
-- Current phase & progress → `plan/STATUS.md`
-- Design decisions → `plan/decisions.md`
-- Phase implementation specs → `plan/impl/`
-- Layer research → `research/layers/`
+- Current phase & progress → `STATUS.md`
+- Design decisions → `docs/plan/decisions.md`
+- Phase implementation specs → `docs/plan/impl/`
+- Layer research → `docs/research/layers/`
 - Backlog → `BACKLOG.md`
+- Past assessments → `docs/review/`
 
 ## Rules
 

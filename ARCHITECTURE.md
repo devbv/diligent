@@ -36,7 +36,7 @@ Each layer is a functional subsystem. Layers are progressively deepened across i
 | L9 | MCP | Planned | D056-D061 |
 | L10 | Multi-Agent | Planned | D062-D065 |
 
-Deep research per layer: `research/layers/NN-*.md`
+Deep research per layer: `docs/research/layers/NN-*.md`
 
 ## Key Design Patterns
 
@@ -64,7 +64,7 @@ Deep research per layer: `research/layers/NN-*.md`
 | D080 | `.diligent/` project data directory | Separates config (global) from data (project-local) |
 | D086 | Codex protocol alignment (SessionManager + itemId + serialization) | Future web UI as thin wrapper, not deep refactor |
 
-Full decision log: `plan/decisions.md` (D001-D087)
+Full decision log: `docs/plan/decisions.md` (D001-D087)
 
 ## Dev Commands
 

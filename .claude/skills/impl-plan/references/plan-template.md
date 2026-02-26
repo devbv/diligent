@@ -1,6 +1,6 @@
 # Implementation Plan Template
 
-This is the template for plans written to `plan/impl/phase-N-[name].md`. Each section is explained below with its purpose.
+This is the template for plans written to `docs/plan/impl/phase-N-[name].md`. Each section is explained below with its purpose.
 
 ---
 
