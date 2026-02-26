@@ -1,22 +1,12 @@
-import type { AgentEvent, DiligentPaths, Message, Tool, UserMessage } from "@diligent/core";
-import {
-  agentLoop,
-  bashTool,
-  createAddKnowledgeTool,
-  createEditTool,
-  createGlobTool,
-  createGrepTool,
-  createLsTool,
-  createReadTool,
-  createWriteTool,
-  SessionManager,
-} from "@diligent/core";
+import type { AgentEvent, DiligentPaths, Message, UserMessage } from "@diligent/core";
+import { agentLoop, SessionManager } from "@diligent/core";
 import { version as pkgVersion } from "../../package.json";
 import type { AppConfig } from "../config";
 import { InputBuffer, Keys, matchesKey } from "./input";
 import { renderMarkdown } from "./markdown";
 import { Spinner } from "./spinner";
 import { Terminal } from "./terminal";
+import { buildTools } from "./tools";
 
 export interface AppOptions {
   resume?: boolean;
@@ -53,7 +43,7 @@ export class App {
     // Initialize SessionManager if paths available
     if (this.paths) {
       const cwd = process.cwd();
-      const tools = this.buildTools(cwd);
+      const tools = buildTools(cwd, this.paths);
 
       this.sessionManager = new SessionManager({
         cwd,
@@ -84,25 +74,6 @@ export class App {
     }
 
     this.showPrompt();
-  }
-
-  private buildTools(cwd: string) {
-    const tools: Tool[] = [
-      bashTool,
-      createReadTool(),
-      createWriteTool(),
-      createEditTool(),
-      createLsTool(),
-      createGlobTool(cwd),
-      createGrepTool(cwd),
-    ];
-
-    // Add knowledge tool if paths available
-    if (this.paths) {
-      tools.push(createAddKnowledgeTool(this.paths.knowledge));
-    }
-
-    return tools;
   }
 
   private showPrompt(): void {
@@ -199,7 +170,7 @@ export class App {
       } else {
         // Fallback: direct agentLoop (for tests or no-paths mode)
         const cwd = process.cwd();
-        const tools = this.buildTools(cwd);
+        const tools = buildTools(cwd, this.paths);
         const loopFn = this.config.agentLoopFn ?? agentLoop;
         const loop = loopFn(this.messages, {
           model: this.config.model,

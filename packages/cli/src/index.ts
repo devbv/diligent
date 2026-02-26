@@ -3,6 +3,7 @@ import { parseArgs } from "node:util";
 import { ensureDiligentDir, listSessions } from "@diligent/core";
 import { loadConfig } from "./config";
 import { App } from "./tui/app";
+import { NonInteractiveRunner } from "./tui/runner";
 
 async function main() {
   const { values } = parseArgs({
@@ -10,6 +11,7 @@ async function main() {
     options: {
       continue: { type: "boolean", short: "c" },
       list: { type: "boolean", short: "l" },
+      prompt: { type: "string", short: "p" },
     },
   });
 
@@ -29,6 +31,17 @@ async function main() {
       }
     }
     return;
+  }
+
+  if (values.prompt !== undefined) {
+    const prompt = values.prompt.trim();
+    if (!prompt) {
+      console.error("Error: --prompt requires a non-empty string");
+      process.exit(1);
+    }
+    const runner = new NonInteractiveRunner(config, paths, { resume: values.continue });
+    const exitCode = await runner.run(prompt);
+    process.exit(exitCode);
   }
 
   const app = new App(config, paths, { resume: values.continue });
