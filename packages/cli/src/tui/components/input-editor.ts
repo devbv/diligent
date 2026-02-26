@@ -2,6 +2,8 @@ import { isPrintable, matchesKey } from "../framework/keys";
 import type { Component, Focusable } from "../framework/types";
 import { CURSOR_MARKER } from "../framework/types";
 
+const MAX_HISTORY_SIZE = 100;
+
 export interface InputEditorOptions {
   prompt?: string;
   onSubmit?: (text: string) => void;
@@ -222,7 +224,7 @@ export class InputEditor implements Component, Focusable {
     }
     this.history.push(text);
     // Keep history bounded
-    if (this.history.length > 100) {
+    if (this.history.length > MAX_HISTORY_SIZE) {
       this.history.shift();
     }
   }

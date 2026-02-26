@@ -169,8 +169,6 @@ function createSim(rows = 24, columns = 80): { terminal: Terminal; sim: Terminal
     clearFromCursor() {},
     clearScreen() {},
     moveBy() {},
-    enterAltScreen() {},
-    leaveAltScreen() {},
     start() {},
     stop() {},
   } as unknown as Terminal;
@@ -408,8 +406,6 @@ describe("TUIRenderer — original tests", () => {
       clearFromCursor() {},
       clearScreen() {},
       moveBy(_lines: number) {},
-      enterAltScreen() {},
-      leaveAltScreen() {},
       start() {},
       stop() {},
     } as unknown as Terminal & { output: string[]; syncOutput: string[] };

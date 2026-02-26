@@ -166,9 +166,9 @@ describe("App", () => {
       restore();
     }
 
-    const allOutput = writes.join("");
+    const allOutput = writes.join("").replace(/\x1b\[[0-9;]*m/g, "");
     expect(allOutput).toContain("bash"); // spinner shows tool name
-    expect(allOutput).toContain("• bash");
+    expect(allOutput).toContain("⏺ bash");
   });
 
   test("error event → error displayed", async () => {

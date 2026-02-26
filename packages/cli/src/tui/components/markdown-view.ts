@@ -1,6 +1,9 @@
 import type { Component } from "../framework/types";
 import { renderMarkdown } from "../markdown";
 
+/** Delay before force-rendering trailing content that has no trailing newline */
+const TRAILING_RENDER_DELAY_MS = 100;
+
 /**
  * Streaming markdown renderer as a Component.
  * Implements newline-gated commit strategy (D047):
@@ -45,7 +48,7 @@ export class MarkdownView implements Component {
         if (this.buffer.length > 0 && !this.finalized) {
           this.requestRender();
         }
-      }, 100);
+      }, TRAILING_RENDER_DELAY_MS);
     }
   }
 

@@ -152,8 +152,6 @@ function makeTerminal(sim: TerminalSim): Terminal {
     clearFromCursor() {},
     clearScreen() {},
     moveBy() {},
-    enterAltScreen() {},
-    leaveAltScreen() {},
     start() {},
     stop() {},
   } as unknown as Terminal;
