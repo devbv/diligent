@@ -263,35 +263,40 @@ User → Ctrl+C during execution → overlay confirmation dialog appears
 **Implementation notes**:
 - Detailed spec: `plan/impl/phase-4a-tui-component-framework.md`
 
-#### Phase 4b: Approval System
+#### Phase 4b: Skills + Slash Commands
 
-**Goal**: Permission system protects against unwanted actions via rule-based matching and approval dialogs.
+**Goal**: Slash command system and skill discovery/invocation. Users can control the agent via `/commands` and extend it via SKILL.md files.
 
 ```
-Agent → wants to delete a file → approval overlay appears
-User → "always allow" → rule saved for session
-User → starts new session → denied tools removed from LLM list
+User → /help → shows available commands
+User → /model → model picker overlay
+User → /skills → skill picker overlay
+User → /skill:code-review → loads and invokes skill
+Agent → [autonomously discovers and uses skill from system prompt metadata]
 ```
 
 **Scope per layer**:
 
 | Layer | What's Added | What's Deferred |
 |---|---|---|
-| L4 (Approval) | Full rule-based matching (D027), ctx.ask() wiring (D028), once/always/reject (D029), session-scoped caching, doom loop detection (D031), denied tool filtering (D070), error types (RejectedError, CorrectedError, DeniedError) | OS-level sandboxing (D030), tree-sitter bash parsing |
-| L5 (Config) | Permission rules in config schema, config-to-ruleset conversion | Config editing with comment preservation |
-| L7 (TUI) | Approval dialog overlay component (built on 4a's ConfirmDialog + OverlayStack) | — |
+| L7 (TUI) | Slash command registry (D051), ~15 built-in commands, command autocomplete, ListPicker overlay, model/session/skills pickers | Command palette (D055), custom themes |
+| L8 (Skills) | FULL — SKILL.md discovery, frontmatter parsing, progressive disclosure, system prompt injection, implicit + explicit invocation (D052, D053) | Remote discovery, skill dependencies, $mention syntax |
+| L5 (Config) | `skills` section in config schema (paths, enabled) | — |
 
-**Artifact**: Safe coding agent with permission prompts for destructive operations.
+**Not touched**: L0, L1, L2, L3, L4 (still auto-approve — deferred), L6, L9, L10
 
-**Testing milestone**: Permission prompts appear for bash commands, file writes. "Always" caching reduces prompts. Doom loop detected after 3 identical calls.
+**Artifact**: Interactive agent with slash commands for control and a skill system for declarative extension.
 
-#### Phase 4c: Slash Commands, Print Mode & Collaboration Modes
+**Testing milestone**: `/help` lists commands. `/model` switches model via picker. Skills discovered from `.diligent/skills/`. `/skill:name` loads and invokes. LLM can autonomously use skills from system prompt metadata. Tab autocomplete works.
 
-**Goal**: Full command system, pipe-friendly output mode, and modal agent behavior.
+**Implementation notes**:
+- Detailed spec: `plan/impl/phase-4b-skills-slash-commands.md`
+
+#### Phase 4c: Print Mode & Collaboration Modes
+
+**Goal**: Pipe-friendly output mode and modal agent behavior.
 
 ```
-User → /model → model picker overlay
-User → /compact → triggers manual compaction
 User → echo "fix bug" | diligent → print mode, outputs to stdout
 User → /mode plan → agent enters read-only exploration mode
 ```
@@ -300,43 +305,39 @@ User → /mode plan → agent enters read-only exploration mode
 
 | Layer | What's Added | What's Deferred |
 |---|---|---|
-| L7 (TUI) | Slash command registry (D051), ~15 built-in commands, command autocomplete, Print mode (D054) | Command palette (D055), custom themes |
+| L7 (TUI) | Print mode (D054) | — |
 | L1 (Agent Loop) | Mode-aware tool filtering, mode system prompt injection (D087) | — |
 | L5 (Config) | `mode` field, per-mode settings (D087) | — |
 | L6 (Session) | ModeChangeEntry type (D087) | — |
 
-**Artifact**: Safe, polished coding agent with full terminal UX, slash commands, print mode, and collaboration modes.
+**Artifact**: Multi-mode agent with pipe-friendly print mode and collaboration modes.
 
-**Testing milestone**: Slash commands work. Print mode piping works. Plan mode restricts to read-only tools.
+**Testing milestone**: Print mode piping works. Plan mode restricts to read-only tools.
+
+#### Deferred: Approval System
+
+Approval system (L4 FULL — D027-D031) deferred to a future phase beyond Phase 4. `ctx.approve()` remains auto-approve. Requires: rule-based matching, approval dialog overlay, once/always/reject responses, session-scoped caching, doom loop detection.
 
 ---
 
 ### Phase 5: Extensibility
 
-**Goal**: Skills, MCP servers, and multi-agent delegation.
+**Goal**: MCP servers and multi-agent delegation.
 
-This phase can be split into three sub-phases since L8, L9, L10 are relatively independent:
-
-#### Phase 5a: Skills (L8)
-- SKILL.md discovery from global/project/config paths
-- Frontmatter parsing, progressive disclosure
-- Implicit (LLM-driven) + explicit (`/skill:name`) invocation
-- System prompt injection of skill metadata
-
-#### Phase 5b: MCP (L9)
+#### Phase 5a: MCP (L9)
 - Official `@modelcontextprotocol/sdk` integration
 - Stdio + StreamableHTTP transports
 - MCP tools → registry conversion (D059)
 - Startup parallel connection, ToolListChangedNotification
 - Permission integration (same rules as built-in tools)
 
-#### Phase 5c: Multi-Agent (L10)
+#### Phase 5b: Multi-Agent (L10)
 - TaskTool (single tool, child sessions)
 - Agent types: `general` (full access), `explore` (read-only)
 - Permission isolation (deny rules for sub-agents)
 - Result wrapping, resume via task_id
 
-**Artifact**: Fully extensible coding agent with skill system, MCP support, and sub-agent delegation.
+**Artifact**: Fully extensible coding agent with MCP support and sub-agent delegation.
 
 ---
 
@@ -345,22 +346,22 @@ This phase can be split into three sub-phases since L8, L9, L10 are relatively i
 Shows which layers are active in each phase and at what depth.
 
 ```
-         Phase 0   Phase 1   Phase 2   Phase 3a         Phase 3b           Phase 4a    Phase 4b    Phase 4c    Phase 5
-         Skeleton  Min Agent Coding    Config+Persist   Compact+Knowl+     TUI Comp    Approval    Cmds+Mode   Extend
-         ✅        ✅        ✅        +D086            MultiProv          Framework   System      +Print
+         Phase 0   Phase 1   Phase 2   Phase 3a         Phase 3b           Phase 4a    Phase 4b      Phase 4c    Phase 5
+         Skeleton  Min Agent Coding    Config+Persist   Compact+Knowl+     TUI Comp    Skills+Cmds   Mode+Print  Extend
+         ✅        ✅        ✅        +D086            MultiProv          Framework
 
-L0  Prov  types    minimal   +retry    —                +multi             —           —           —           —
-L1  Loop  types    minimal   +full     +itemId          +compact           —           —           +mode       —
-L2  Tool  types    minimal   +trunc    +ApprovalResp    —                  —           —           —           —
-L3  Core  —        bash      +all 7    —                +add_knowl         —           —           —           —
-L4  Appr  —        (auto)    (auto)    (types expanded) —                  —           FULL        —           —
-L5  Conf  —        env-only  —         FULL             —                  —           +perm       +mode       —
-L6  Sess  —        (memory)  (memory)  SessionMgr       +compact+knowl    —           —           +mode       —
-L7  TUI   —        readline  +md+spin  →SessionMgr      —                  REWRITE     +approval   +cmds+print —
-L8  Skil  —        —         —         —                —                  —           —           —           FULL
-L9  MCP   —        —         —         —                —                  —           —           —           FULL
-L10 Mult  —        —         —         —                —                  —           —           —           FULL
-Infra     scaffold CI+E2E    +e2e-pkg  .diligent/+serial  —           —           —           —
+L0  Prov  types    minimal   +retry    —                +multi             —           —             —           —
+L1  Loop  types    minimal   +full     +itemId          +compact           —           —             +mode       —
+L2  Tool  types    minimal   +trunc    +ApprovalResp    —                  —           —             —           —
+L3  Core  —        bash      +all 7    —                +add_knowl         —           —             —           —
+L4  Appr  —        (auto)    (auto)    (types expanded) —                  —           (auto)        (auto)      —
+L5  Conf  —        env-only  —         FULL             —                  —           +skills       +mode       —
+L6  Sess  —        (memory)  (memory)  SessionMgr       +compact+knowl    —           —             +mode       —
+L7  TUI   —        readline  +md+spin  →SessionMgr      —                  REWRITE     +cmds+picker  +print      —
+L8  Skil  —        —         —         —                —                  —           FULL          —           —
+L9  MCP   —        —         —         —                —                  —           —             —           FULL
+L10 Mult  —        —         —         —                —                  —           —             —           FULL
+Infra     scaffold CI+E2E    +e2e-pkg  .diligent/+serial  —           —           —             —           —
 ```
 
 Legend: `types` = interfaces only, `minimal` = bare minimum, `+X` = incremental addition, `FULL` = complete implementation, `(auto)` / `(memory)` = placeholder/stub, `→X` = switches to consume X, `—` = no change, `✅` = complete

@@ -28,11 +28,11 @@ Each layer is a functional subsystem. Layers are progressively deepened across i
 | L1 | Agent Loop | Implemented (Phase 2) + compaction events (3b) | D004, D007, D008 |
 | L2 | Tool System | Implemented (Phase 2) | D013, D014, D015, D025 |
 | L3 | Core Tools | 8 tools (Phase 3b: +add_knowledge) | D017-D024, D082 |
-| L4 | Approval | Stub (auto-approve) | D027-D031 |
+| L4 | Approval | Stub (auto-approve, future) | D027-D031 |
 | L5 | Config | 3-layer JSONC + knowledge/compaction wired | D032-D035 |
 | L6 | Session | Persistent + compaction + knowledge | D036-REV, D037-D043, D080-D084 |
 | L7 | TUI & Commands | Component framework + overlay system (Phase 4a) | D045-D051 |
-| L8 | Skills | Planned | D052-D053 |
+| L8 | Skills | Planned (Phase 4b, merged with slash commands) | D052-D053 |
 | L9 | MCP | Planned | D056-D061 |
 | L10 | Multi-Agent | Planned | D062-D065 |
 

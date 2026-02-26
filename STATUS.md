@@ -2,12 +2,15 @@
 
 ## Current Phase
 
-**Phase 4b planned** — Approval System. Next sub-phase of Phase 4.
+**Phase 4b planned** — Skills + Slash Commands. Next sub-phase of Phase 4.
 
 Phase 4 is split into three sub-phases:
 - **Phase 4a**: TUI Component Framework + Overlay System (DONE)
-- **Phase 4b**: Approval System (L4 FULL, wired to TUI overlays)
-- **Phase 4c**: Slash Commands, Print Mode, Collaboration Modes (D087)
+- **Phase 4b**: Skills + Slash Commands (L8 + command registry L7 — merged, D051-D053)
+- **Phase 4c**: Print Mode + Collaboration Modes (D054, D087)
+
+Deferred to a future phase (post-Phase 4):
+- **Approval System** (L4 FULL, wired to TUI overlays, D027-D031)
 
 ## Phases Complete
 
