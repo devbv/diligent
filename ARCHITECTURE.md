@@ -31,7 +31,7 @@ Each layer is a functional subsystem. Layers are progressively deepened across i
 | L4 | Approval | Stub (auto-approve) | D027-D031 |
 | L5 | Config | 3-layer JSONC + knowledge/compaction wired | D032-D035 |
 | L6 | Session | Persistent + compaction + knowledge | D036-REV, D037-D043, D080-D084 |
-| L7 | TUI & Commands | Minimal (readline + markdown + spinner) | D045-D051 |
+| L7 | TUI & Commands | Component framework + overlay system (Phase 4a) | D045-D051 |
 | L8 | Skills | Planned | D052-D053 |
 | L9 | MCP | Planned | D056-D061 |
 | L10 | Multi-Agent | Planned | D062-D065 |

@@ -324,7 +324,12 @@ describe("NonInteractiveRunner", () => {
     const events: AgentEvent[] = [
       { type: "agent_start" },
       { type: "message_start", itemId: "msg-1", message: emptyMsg },
-      { type: "message_delta", itemId: "msg-1", message: emptyMsg, delta: { type: "thinking_delta", delta: "internal thought" } },
+      {
+        type: "message_delta",
+        itemId: "msg-1",
+        message: emptyMsg,
+        delta: { type: "thinking_delta", delta: "internal thought" },
+      },
       { type: "message_delta", itemId: "msg-1", message: emptyMsg, delta: { type: "text_delta", delta: "visible" } },
       { type: "message_end", itemId: "msg-1", message: emptyMsg },
     ];
@@ -348,7 +353,14 @@ describe("NonInteractiveRunner", () => {
     const events: AgentEvent[] = [
       { type: "agent_start" },
       { type: "tool_start", itemId: "tool-1", toolCallId: "tc_1", toolName: "bash", input: { command: "ls" } },
-      { type: "tool_end", itemId: "tool-1", toolCallId: "tc_1", toolName: "bash", output: "file.txt\n", isError: false },
+      {
+        type: "tool_end",
+        itemId: "tool-1",
+        toolCallId: "tc_1",
+        toolName: "bash",
+        output: "file.txt\n",
+        isError: false,
+      },
     ];
 
     const agentLoopFn = createMockAgentLoop(events, []);

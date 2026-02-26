@@ -115,10 +115,7 @@ export class NonInteractiveRunner {
 
       case "usage": {
         const costStr = event.cost > 0 ? ` ($${event.cost.toFixed(4)})` : "";
-        this.writeStderr(
-          `[usage] ${event.usage.inputTokens}in/${event.usage.outputTokens}out${costStr}`,
-          isTTY,
-        );
+        this.writeStderr(`[usage] ${event.usage.inputTokens}in/${event.usage.outputTokens}out${costStr}`, isTTY);
         return hasText;
       }
 

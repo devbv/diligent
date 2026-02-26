@@ -196,7 +196,7 @@ describe("App", () => {
     expect(allOutput).toContain("Error: something went wrong");
   });
 
-  test("Ctrl+C during processing → abort called", async () => {
+  test("Ctrl+C during processing → confirm dialog → abort called", async () => {
     let abortSignal: AbortSignal | undefined;
     const agentLoopFn = mock((_messages: Message[], config: AgentLoopConfig) => {
       abortSignal = config.signal;
@@ -223,8 +223,12 @@ describe("App", () => {
     emitEnter();
     await wait(100);
 
-    // Send Ctrl+C while processing
+    // Send Ctrl+C while processing → shows confirm dialog
     emitCtrlC();
+    await wait(50);
+
+    // Confirm abort by pressing 'y'
+    emitChar("y");
     await wait(100);
 
     expect(abortSignal?.aborted).toBe(true);
