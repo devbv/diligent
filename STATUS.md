@@ -2,7 +2,12 @@
 
 ## Current Phase
 
-**Phase 3b complete** — Ready for next phase planning.
+**Phase 4a planned** — TUI Component Framework. Implementation plan at `docs/plan/impl/phase-4a-tui-component-framework.md`.
+
+Phase 4 is split into three sub-phases:
+- **Phase 4a**: TUI Component Framework + Overlay System
+- **Phase 4b**: Approval System (L4 FULL, wired to TUI overlays)
+- **Phase 4c**: Slash Commands, Print Mode, Collaboration Modes (D087)
 
 ## Phases Complete
 

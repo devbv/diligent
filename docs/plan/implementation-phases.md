@@ -236,26 +236,78 @@ User → configures OpenAI provider → agent uses GPT model
 
 **Goal**: Permission system protects against unwanted actions. Full TUI with slash commands, overlays, multi-mode.
 
+Split into three sub-phases to manage complexity:
+
+#### Phase 4a: TUI Component Framework
+
+**Goal**: Component-based TUI with line-level diffing, overlay system, Kitty protocol, and streaming markdown.
+
 ```
-Agent → wants to delete a file → approval overlay appears
-User → "always allow" → rule saved for session
-User → /model → model picker overlay
-User → echo "fix bug" | diligent → print mode, outputs to stdout
+User → types in InputEditor component with cursor + history
+Agent → streams markdown line-by-line (newline-gated, no flicker)
+User → Ctrl+C during execution → overlay confirmation dialog appears
 ```
 
 **Scope per layer**:
 
 | Layer | What's Added | What's Deferred |
 |---|---|---|
-| L4 (Approval) | Full rule-based matching, ctx.ask(), "always" caching, doom loop detection, denied tool filtering | OS-level sandboxing, tree-sitter bash parsing |
-| L7 (TUI) | Input: Kitty protocol, bracketed paste. Output: ANSI components, overlay system. Commands: slash command registry (~15 commands). Multi-mode: Interactive + Print | Command palette, custom themes |
-| L5 (Config) | Permission rules in config, session-scoped "always" rules | Config editing with comment preservation |
+| L7 (TUI) | Component interface (D045), TUI renderer with line-level diffing, Container, OverlayStack (D050), StdinBuffer + key matching (D048), Kitty protocol detection, InputEditor, MarkdownView (D047), SpinnerComponent (D049), ChatView, StatusBar, ConfirmDialog | Slash commands (4c), Print mode (4c) |
 
-**Not touched**: L8, L9, L10
+**Not touched**: L0-L6, L8-L10
 
-**Artifact**: Safe, polished coding agent with full terminal UX.
+**Artifact**: Component-based interactive TUI with overlay support. Same functionality as before but on a proper framework foundation.
 
-**Testing milestone**: Verify permission prompts appear for destructive operations. Verify slash commands work. Verify print mode piping.
+**Testing milestone**: Full conversation works with new TUI. Streaming markdown renders line-by-line. Overlay dialog appears on Ctrl+C.
+
+**Implementation notes**:
+- Detailed spec: `plan/impl/phase-4a-tui-component-framework.md`
+
+#### Phase 4b: Approval System
+
+**Goal**: Permission system protects against unwanted actions via rule-based matching and approval dialogs.
+
+```
+Agent → wants to delete a file → approval overlay appears
+User → "always allow" → rule saved for session
+User → starts new session → denied tools removed from LLM list
+```
+
+**Scope per layer**:
+
+| Layer | What's Added | What's Deferred |
+|---|---|---|
+| L4 (Approval) | Full rule-based matching (D027), ctx.ask() wiring (D028), once/always/reject (D029), session-scoped caching, doom loop detection (D031), denied tool filtering (D070), error types (RejectedError, CorrectedError, DeniedError) | OS-level sandboxing (D030), tree-sitter bash parsing |
+| L5 (Config) | Permission rules in config schema, config-to-ruleset conversion | Config editing with comment preservation |
+| L7 (TUI) | Approval dialog overlay component (built on 4a's ConfirmDialog + OverlayStack) | — |
+
+**Artifact**: Safe coding agent with permission prompts for destructive operations.
+
+**Testing milestone**: Permission prompts appear for bash commands, file writes. "Always" caching reduces prompts. Doom loop detected after 3 identical calls.
+
+#### Phase 4c: Slash Commands, Print Mode & Collaboration Modes
+
+**Goal**: Full command system, pipe-friendly output mode, and modal agent behavior.
+
+```
+User → /model → model picker overlay
+User → /compact → triggers manual compaction
+User → echo "fix bug" | diligent → print mode, outputs to stdout
+User → /mode plan → agent enters read-only exploration mode
+```
+
+**Scope per layer**:
+
+| Layer | What's Added | What's Deferred |
+|---|---|---|
+| L7 (TUI) | Slash command registry (D051), ~15 built-in commands, command autocomplete, Print mode (D054) | Command palette (D055), custom themes |
+| L1 (Agent Loop) | Mode-aware tool filtering, mode system prompt injection (D087) | — |
+| L5 (Config) | `mode` field, per-mode settings (D087) | — |
+| L6 (Session) | ModeChangeEntry type (D087) | — |
+
+**Artifact**: Safe, polished coding agent with full terminal UX, slash commands, print mode, and collaboration modes.
+
+**Testing milestone**: Slash commands work. Print mode piping works. Plan mode restricts to read-only tools.
 
 ---
 
@@ -293,22 +345,22 @@ This phase can be split into three sub-phases since L8, L9, L10 are relatively i
 Shows which layers are active in each phase and at what depth.
 
 ```
-         Phase 0   Phase 1   Phase 2   Phase 3a         Phase 3b           Phase 4   Phase 5
-         Skeleton  Min Agent Coding    Config+Persist   Compact+Knowl+     Safety+   Extend
-         ✅        ✅        ✅        +D086            MultiProv          UX
+         Phase 0   Phase 1   Phase 2   Phase 3a         Phase 3b           Phase 4a    Phase 4b    Phase 4c    Phase 5
+         Skeleton  Min Agent Coding    Config+Persist   Compact+Knowl+     TUI Comp    Approval    Cmds+Mode   Extend
+         ✅        ✅        ✅        +D086            MultiProv          Framework   System      +Print
 
-L0  Prov  types    minimal   +retry    —                +multi             —         —
-L1  Loop  types    minimal   +full     +itemId          +compact           —         —
-L2  Tool  types    minimal   +trunc    +ApprovalResp    —                  —         —
-L3  Core  —        bash      +all 7    —                +add_knowl         —         —
-L4  Appr  —        (auto)    (auto)    (types expanded) —                  FULL      —
-L5  Conf  —        env-only  —         FULL             —                  +perm     —
-L6  Sess  —        (memory)  (memory)  SessionMgr       +compact+knowl    —         —
-L7  TUI   —        readline  +md+spin  →SessionMgr      —                  FULL      —
-L8  Skil  —        —         —         —                —                  —         FULL
-L9  MCP   —        —         —         —                —                  —         FULL
-L10 Mult  —        —         —         —                —                  —         FULL
-Infra     scaffold CI+E2E    +e2e-pkg  .diligent/+serial  —         —
+L0  Prov  types    minimal   +retry    —                +multi             —           —           —           —
+L1  Loop  types    minimal   +full     +itemId          +compact           —           —           +mode       —
+L2  Tool  types    minimal   +trunc    +ApprovalResp    —                  —           —           —           —
+L3  Core  —        bash      +all 7    —                +add_knowl         —           —           —           —
+L4  Appr  —        (auto)    (auto)    (types expanded) —                  —           FULL        —           —
+L5  Conf  —        env-only  —         FULL             —                  —           +perm       +mode       —
+L6  Sess  —        (memory)  (memory)  SessionMgr       +compact+knowl    —           —           +mode       —
+L7  TUI   —        readline  +md+spin  →SessionMgr      —                  REWRITE     +approval   +cmds+print —
+L8  Skil  —        —         —         —                —                  —           —           —           FULL
+L9  MCP   —        —         —         —                —                  —           —           —           FULL
+L10 Mult  —        —         —         —                —                  —           —           —           FULL
+Infra     scaffold CI+E2E    +e2e-pkg  .diligent/+serial  —           —           —           —
 ```
 
 Legend: `types` = interfaces only, `minimal` = bare minimum, `+X` = incremental addition, `FULL` = complete implementation, `(auto)` / `(memory)` = placeholder/stub, `→X` = switches to consume X, `—` = no change, `✅` = complete
