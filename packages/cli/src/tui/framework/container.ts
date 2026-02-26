@@ -24,6 +24,17 @@ export class Container implements Component {
     }
   }
 
+  getCommittedLineCount(width: number): number {
+    let total = 0;
+    for (const child of this.children) {
+      const childRendered = child.render(width);
+      const childCommitted = child.getCommittedLineCount?.(width) ?? 0;
+      total += childCommitted;
+      if (childCommitted < childRendered.length) break;
+    }
+    return total;
+  }
+
   render(width: number): string[] {
     return this.children.flatMap((child) => child.render(width));
   }

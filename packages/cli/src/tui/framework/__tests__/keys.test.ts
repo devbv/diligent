@@ -155,3 +155,4 @@ describe("isPrintable", () => {
     expect(isPrintable("")).toBe(false);
   });
 });
+

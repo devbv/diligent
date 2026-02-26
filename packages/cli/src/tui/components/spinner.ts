@@ -3,12 +3,20 @@ import type { Component } from "../framework/types";
 const FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const FRAME_INTERVAL = 80;
 
+function formatElapsed(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  return `${m}m ${(s % 60).toString().padStart(2, "0")}s`;
+}
+
 /** Braille spinner as a Component. Self-animating via interval timer. (D049) */
 export class SpinnerComponent implements Component {
   private frameIndex = 0;
   private message = "";
   private active = false;
   private timer: ReturnType<typeof setInterval> | null = null;
+  private startTime: number | null = null;
 
   constructor(private requestRender: () => void) {}
 
@@ -18,6 +26,7 @@ export class SpinnerComponent implements Component {
     this.message = message;
     this.active = true;
     this.frameIndex = 0;
+    this.startTime = Date.now();
     this.requestRender();
     this.timer = setInterval(() => {
       this.frameIndex = (this.frameIndex + 1) % FRAMES.length;
@@ -37,6 +46,7 @@ export class SpinnerComponent implements Component {
       this.timer = null;
     }
     this.active = false;
+    this.startTime = null;
   }
 
   get isRunning(): boolean {
@@ -45,7 +55,9 @@ export class SpinnerComponent implements Component {
 
   render(_width: number): string[] {
     if (!this.active) return [];
-    return [`\x1b[36m${FRAMES[this.frameIndex]}\x1b[39m ${this.message}`];
+    const elapsed = this.startTime !== null ? formatElapsed(Date.now() - this.startTime) : "";
+    const elapsedStr = elapsed ? ` \x1b[2m(${elapsed})\x1b[0m` : "";
+    return [`\x1b[36m${FRAMES[this.frameIndex]}\x1b[39m ${this.message}${elapsedStr}`];
   }
 
   invalidate(): void {

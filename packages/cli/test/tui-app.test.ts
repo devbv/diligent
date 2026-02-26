@@ -167,8 +167,8 @@ describe("App", () => {
     }
 
     const allOutput = writes.join("");
-    expect(allOutput).toContain("Running bash...");
-    expect(allOutput).toContain("[bash]");
+    expect(allOutput).toContain("bash"); // spinner shows tool name
+    expect(allOutput).toContain("• bash");
   });
 
   test("error event → error displayed", async () => {
@@ -193,7 +193,7 @@ describe("App", () => {
     }
 
     const allOutput = writes.join("");
-    expect(allOutput).toContain("Error: something went wrong");
+    expect(allOutput).toContain("something went wrong");
   });
 
   test("Ctrl+C during processing → confirm dialog → abort called", async () => {

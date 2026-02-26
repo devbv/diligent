@@ -13,6 +13,8 @@ const SEQ = {
   CLEAR_TO_END: "\x1b[0J",
   KITTY_ENABLE: "\x1b[>1u",
   KITTY_DISABLE: "\x1b[<u",
+  ALT_SCREEN_ENTER: "\x1b[?1049h",
+  ALT_SCREEN_LEAVE: "\x1b[?1049l",
 } as const;
 
 export class Terminal {
@@ -84,6 +86,15 @@ export class Terminal {
 
   get rows(): number {
     return (this.stdout as { rows?: number }).rows ?? 24;
+  }
+
+  /** Alternate screen */
+  enterAltScreen(): void {
+    this.write(SEQ.ALT_SCREEN_ENTER);
+  }
+
+  leaveAltScreen(): void {
+    this.write(SEQ.ALT_SCREEN_LEAVE);
   }
 
   /** Cursor control */

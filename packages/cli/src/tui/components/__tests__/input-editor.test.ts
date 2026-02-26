@@ -13,9 +13,9 @@ describe("InputEditor", () => {
   test("renders empty input with cursor", () => {
     const { editor } = create();
     const lines = editor.render(80);
-    expect(lines).toHaveLength(1);
-    expect(lines[0]).toContain(">");
-    expect(lines[0]).toContain(CURSOR_MARKER);
+    expect(lines).toHaveLength(4); // blank + top separator + input line + bottom separator
+    expect(lines[2]).toContain(">");
+    expect(lines[2]).toContain(CURSOR_MARKER);
   });
 
   test("inserts printable characters", () => {
@@ -179,6 +179,26 @@ describe("InputEditor", () => {
 
     editor.handleInput("\x1b[B"); // down (back to draft)
     expect(editor.getText()).toBe("");
+  });
+
+  test("up/down returns false when input has text and not in history mode", () => {
+    const { editor } = create({ onSubmit: () => {} });
+    editor.handleInput("h");
+    editor.handleInput("i");
+    // cursor at end, not in history mode → guard fails → not consumed
+    expect(editor.handleInput("\x1b[A")).toBe(false);
+    expect(editor.handleInput("\x1b[B")).toBe(false);
+    expect(editor.getText()).toBe("hi"); // text unchanged
+  });
+
+  test("up returns true and navigates when input is empty", () => {
+    const { editor } = create({ onSubmit: () => {} });
+    editor.handleInput("f");
+    editor.handleInput("o");
+    editor.handleInput("o");
+    editor.handleInput("\r"); // submit "foo"
+    expect(editor.handleInput("\x1b[A")).toBe(true);
+    expect(editor.getText()).toBe("foo");
   });
 
   test("clear resets text and cursor", () => {

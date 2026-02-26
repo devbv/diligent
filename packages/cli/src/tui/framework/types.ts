@@ -8,6 +8,11 @@ export interface Component {
   wantsKeyRelease?: boolean;
   /** Clear cached rendering state, forcing full re-render */
   invalidate(): void;
+
+  /** Declare how many leading lines from render() are committed (immutable).
+   *  Committed lines are written once to scrollback and never redrawn.
+   *  If not implemented, all lines are treated as active (volatile). */
+  getCommittedLineCount?(width: number): number;
 }
 
 /** Components that can receive hardware cursor focus */
@@ -36,5 +41,6 @@ export interface OverlayHandle {
   setHidden(hidden: boolean): void;
 }
 
-/** Zero-width cursor marker — components embed this where the hardware cursor should be */
-export const CURSOR_MARKER = "\x1b[?25h\x1b[?8c";
+/** Zero-width cursor marker — components embed this where the hardware cursor should be.
+ * Uses APC (Application Program Command) sequence which all terminals ignore visually. */
+export const CURSOR_MARKER = "\x1b_diligent:c\x07";

@@ -16,7 +16,9 @@ describe("MarkdownView", () => {
 
     mv.pushDelta("world\n");
     const afterNewline = mv.render(80);
-    expect(afterNewline.length).toBeGreaterThan(0); // Committed via markdown rendering
+    // Committed via markdown — "Hello world" visible
+    expect(afterNewline.join("")).toContain("Hello");
+    expect(afterNewline.join("")).toContain("world");
   });
 
   test("accumulates multiple deltas before newline", () => {
@@ -37,7 +39,7 @@ describe("MarkdownView", () => {
     const mv = new MarkdownView(() => {});
     mv.pushDelta("trailing text");
     mv.finalize();
-    expect(mv.render(80).length).toBeGreaterThan(0);
+    expect(mv.render(80).join("")).toContain("trailing text");
   });
 
   test("reset clears all state", () => {
@@ -52,6 +54,9 @@ describe("MarkdownView", () => {
     mv.pushDelta("line 1\nline 2\n");
     const lines = mv.render(80);
     expect(lines.length).toBeGreaterThanOrEqual(2);
+    const text = lines.join(" ");
+    expect(text).toContain("line 1");
+    expect(text).toContain("line 2");
   });
 
   test("requestRender is called on commit", () => {
@@ -78,7 +83,6 @@ describe("MarkdownView", () => {
     mv.pushDelta("trailing");
     const lines = mv.render(80);
     // Should show trailing text even though no newline
-    expect(lines.length).toBeGreaterThan(0);
     expect(lines[0]).toContain("trailing");
   });
 });

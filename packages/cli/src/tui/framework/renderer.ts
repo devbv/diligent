@@ -1,5 +1,7 @@
 import type { OverlayStack } from "./overlay";
 import type { Terminal } from "./terminal";
+import { debugLogger } from "./debug-logger";
+import { CURSOR_MARKER } from "./types";
 import type { Component, Focusable } from "./types";
 
 /** Strip ANSI escape codes for measuring visible width */
@@ -10,24 +12,24 @@ function stripAnsi(str: string): string {
 }
 
 /**
- * TUI renderer with line-level differential rendering and overlay compositing.
- * Renders inline (no alternate screen) — content grows downward naturally.
+ * TUI renderer using inline viewport — content is written to the normal terminal
+ * buffer, and each render rewinds to the start of the previous frame before
+ * overwriting.  No alternate screen is used, so the terminal's native scrollback
+ * and text-selection features remain available.
  */
 export class TUIRenderer {
-  private previousLines: string[] = [];
   private renderScheduled = false;
   private focusedComponent: (Component & Focusable) | null = null;
   private overlayStack: OverlayStack | null = null;
   private started = false;
-  private cursorMarker: string;
+  private flushedCommittedCount = 0;     // committed lines already written to scrollback
+  private lastActiveRows = 0;            // terminal rows occupied by previous active region
+  private lastCursorRowInActive = 0;     // cursor row within active region (for rewind)
 
   constructor(
     private terminal: Terminal,
     private root: Component,
-  ) {
-    // Import CURSOR_MARKER value
-    this.cursorMarker = "\x1b[?25h\x1b[?8c";
-  }
+  ) {}
 
   /** Set the overlay stack for compositing */
   setOverlayStack(overlayStack: OverlayStack): void {
@@ -67,141 +69,140 @@ export class TUIRenderer {
   /** Start the render loop */
   start(): void {
     this.started = true;
-    this.previousLines = [];
+    this.terminal.hideCursor();
     this.doRender();
   }
 
-  /** Stop rendering, clear state */
+  /** Stop rendering — clear active region, leave committed lines in scrollback */
   stop(): void {
     this.started = false;
-    this.previousLines = [];
     this.renderScheduled = false;
+    // Erase active region so only committed lines remain in scrollback
+    if (this.lastActiveRows > 0) {
+      this.terminal.write("\r");
+      if (this.lastCursorRowInActive > 0) {
+        this.terminal.write(`\x1b[${this.lastCursorRowInActive}A`);
+      }
+      this.terminal.write("\x1b[0J");
+    }
+    this.lastActiveRows = 0;
+    this.lastCursorRowInActive = 0;
+    this.flushedCommittedCount = 0;
+    this.terminal.showCursor();
   }
 
-  /** Perform a render: render root, diff, emit changes */
+  /** Count how many terminal rows a set of lines occupies given terminal width */
+  private countTerminalRows(lines: string[], width: number): number {
+    return lines.reduce((sum, line) => {
+      const visible = stripAnsi(line).length;
+      return sum + Math.max(1, Math.ceil(visible / width));
+    }, 0);
+  }
+
+  /** Render with committed/active split: committed lines go to scrollback once,
+   *  active lines are redrawn each frame. */
   private doRender(): void {
     const width = this.terminal.columns;
-    let newLines = this.root.render(width);
+    const allLines = this.root.render(width);
 
-    // Composite overlays
+    // Determine committed line count (monotonically increasing)
+    let committedCount = this.root.getCommittedLineCount?.(width) ?? 0;
+    committedCount = Math.max(committedCount, this.flushedCommittedCount);
+
+    // Split into committed and active regions
+    const committedLines = allLines.slice(0, committedCount);
+    let activeLines = allLines.slice(committedCount);
+
+    // Apply overlays only to the active region
     if (this.overlayStack?.hasVisible()) {
-      newLines = this.compositeOverlays(newLines, width);
+      activeLines = this.compositeOverlays(activeLines, width);
     }
 
-    // Find cursor marker position
+    // Find cursor marker — only in active region
     let cursorRow = -1;
     let cursorCol = -1;
-    const cleanLines: string[] = [];
-
-    for (let i = 0; i < newLines.length; i++) {
-      const markerIdx = newLines[i].indexOf(this.cursorMarker);
+    const cleanActive: string[] = [];
+    for (let i = 0; i < activeLines.length; i++) {
+      const markerIdx = activeLines[i].indexOf(CURSOR_MARKER);
       if (markerIdx !== -1) {
         cursorRow = i;
-        // Calculate visible column position (before marker)
-        const beforeMarker = newLines[i].slice(0, markerIdx);
-        cursorCol = stripAnsi(beforeMarker).length;
-        cleanLines.push(newLines[i].replace(this.cursorMarker, ""));
+        cursorCol = stripAnsi(activeLines[i].slice(0, markerIdx)).length;
+        cleanActive.push(activeLines[i].replace(CURSOR_MARKER, ""));
       } else {
-        cleanLines.push(newLines[i]);
+        cleanActive.push(activeLines[i]);
       }
     }
 
-    // Diff and emit changes
-    const output = this.buildDiffOutput(cleanLines);
-    if (output) {
-      this.terminal.writeSynchronized(output);
+    // Cap active lines to terminal height
+    const maxLines = this.terminal.rows;
+    let displayActiveLines = cleanActive;
+    let displayCursorRow = cursorRow;
+    if (cleanActive.length > maxLines) {
+      const startIdx = cleanActive.length - maxLines;
+      displayActiveLines = cleanActive.slice(startIdx);
+      if (cursorRow !== -1) {
+        displayCursorRow = cursorRow - startIdx;
+        if (displayCursorRow < 0 || displayCursorRow >= maxLines) {
+          displayCursorRow = -1;
+          cursorCol = -1;
+        }
+      }
     }
 
-    // Position hardware cursor
-    if (cursorRow !== -1 && cursorCol !== -1) {
-      // Calculate absolute position: we're at the end of the rendered content
-      const linesFromBottom = cleanLines.length - 1 - cursorRow;
-      if (linesFromBottom > 0) {
-        this.terminal.write(`\x1b[${linesFromBottom}A`);
+    // How many new committed lines to flush this frame
+    const newCommittedCount = committedCount - this.flushedCommittedCount;
+
+    // Erase previous active region
+    if (this.lastActiveRows > 0) {
+      this.terminal.write("\r");
+      if (this.lastCursorRowInActive > 0) {
+        this.terminal.write(`\x1b[${this.lastCursorRowInActive}A`);
       }
-      this.terminal.write(`\r\x1b[${cursorCol}C`);
+      this.terminal.write("\x1b[0J");
+    }
+
+    // Write newly committed lines to scrollback (permanent)
+    if (newCommittedCount > 0) {
+      const newLines = committedLines.slice(this.flushedCommittedCount);
+      this.terminal.write(newLines.join("\r\n") + "\r\n");
+      this.flushedCommittedCount = committedCount;
+    }
+
+    // Write active region (redrawn each frame)
+    this.terminal.writeSynchronized(displayActiveLines.join("\r\n"));
+
+    const totalActiveRows = this.countTerminalRows(displayActiveLines, width);
+    this.lastActiveRows = totalActiveRows;
+
+    // Position cursor within active region
+    if (displayCursorRow !== -1 && cursorCol !== -1) {
+      const rowsBefore = this.countTerminalRows(displayActiveLines.slice(0, displayCursorRow), width);
+      const rowsToMoveUp = totalActiveRows - 1 - rowsBefore;
+      this.terminal.write("\r");
+      if (rowsToMoveUp > 0) {
+        this.terminal.write(`\x1b[${rowsToMoveUp}A`);
+      }
+      if (cursorCol > 0) {
+        this.terminal.write(`\x1b[${cursorCol}C`);
+      }
       this.terminal.showCursor();
+      this.lastCursorRowInActive = rowsBefore;
     } else {
       this.terminal.hideCursor();
+      this.lastCursorRowInActive = totalActiveRows - 1;
     }
 
-    this.previousLines = cleanLines;
-  }
-
-  private buildDiffOutput(newLines: string[]): string {
-    const prev = this.previousLines;
-    let output = "";
-
-    if (prev.length === 0) {
-      // First render — emit all lines
-      output = newLines.join("\n");
-      if (newLines.length > 0) output += "\n";
-      return output;
+    if (debugLogger.isEnabled) {
+      debugLogger.logRender({
+        termCols: this.terminal.columns,
+        termRows: this.terminal.rows,
+        newLines: allLines,
+        cleanLines: displayActiveLines,
+        cursorRow: displayCursorRow,
+        cursorCol,
+        fullOutput: displayActiveLines.join("\n"),
+      });
     }
-
-    // Move cursor to beginning of previous content
-    if (prev.length > 0) {
-      output += `\x1b[${prev.length}A\r`;
-    }
-
-    // Find first and last changed line
-    const maxLen = Math.max(prev.length, newLines.length);
-    let firstChanged = -1;
-    let lastChanged = -1;
-
-    for (let i = 0; i < maxLen; i++) {
-      const oldLine = i < prev.length ? prev[i] : undefined;
-      const newLine = i < newLines.length ? newLines[i] : undefined;
-      if (oldLine !== newLine) {
-        if (firstChanged === -1) firstChanged = i;
-        lastChanged = i;
-      }
-    }
-
-    if (firstChanged === -1) {
-      // No changes — move cursor back down
-      if (prev.length > 0) {
-        output += `\x1b[${prev.length}B`;
-      }
-      return output;
-    }
-
-    // Skip to first changed line
-    if (firstChanged > 0) {
-      output += `\x1b[${firstChanged}B`;
-    }
-
-    // Rewrite changed region
-    for (let i = firstChanged; i <= lastChanged; i++) {
-      output += "\x1b[2K"; // Clear line
-      if (i < newLines.length) {
-        output += newLines[i];
-      }
-      if (i < lastChanged) {
-        output += "\n";
-      }
-    }
-
-    // Clear excess old lines if content shrunk
-    if (newLines.length < prev.length) {
-      for (let i = newLines.length; i < prev.length; i++) {
-        output += "\n\x1b[2K";
-      }
-      // Move back up to end of new content
-      const excess = prev.length - newLines.length;
-      if (excess > 0) {
-        output += `\x1b[${excess}A`;
-      }
-    }
-
-    // Move to end of new content
-    const remaining = newLines.length - 1 - lastChanged;
-    if (remaining > 0) {
-      output += `\x1b[${remaining}B`;
-    }
-    output += "\r\n";
-
-    return output;
   }
 
   private compositeOverlays(baseLines: string[], width: number): string[] {
@@ -216,12 +217,11 @@ export class TUIRenderer {
 
       const overlayWidth = overlayLines.reduce((max: number, line: string) => Math.max(max, stripAnsi(line).length), 0);
 
-      // Resolve position
+      // Resolve position — use content height (not terminal.rows) for inline viewport
       let startRow: number;
       let startCol: number;
       const anchor = options.anchor ?? "center";
-
-      const totalRows = Math.max(result.length, this.terminal.rows);
+      const totalRows = baseLines.length;
 
       switch (anchor) {
         case "center":

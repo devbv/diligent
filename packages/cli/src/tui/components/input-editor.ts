@@ -23,11 +23,12 @@ export class InputEditor implements Component, Focusable {
   ) {}
 
   render(width: number): string[] {
-    const prompt = this.options.prompt ?? "diligent> ";
+    const sep = `\x1b[2m${"─".repeat(Math.max(0, width))}\x1b[0m`;
+    const prompt = this.options.prompt ?? "› ";
     const maxTextWidth = width - prompt.length;
 
     if (!this.focused) {
-      return [prompt + this.text];
+      return ["", sep, `\x1b[1;2m${prompt}\x1b[0m${this.text}`, sep];
     }
 
     // Build line with cursor marker embedded
@@ -44,10 +45,11 @@ export class InputEditor implements Component, Focusable {
       displayAfter = after.slice(0, Math.max(0, remaining));
     }
 
-    return [`\x1b[1;36m${prompt}\x1b[0m${displayBefore}${CURSOR_MARKER}${displayAfter}`];
+    return ["", sep, `\x1b[1;2m${prompt}\x1b[0m${displayBefore}${CURSOR_MARKER}${displayAfter}`, sep];
   }
 
-  handleInput(data: string): void {
+  /** Returns true if the key was consumed by the editor, false if the caller should handle it. */
+  handleInput(data: string): boolean {
     if (matchesKey(data, "enter")) {
       const text = this.text.trim();
       if (text) {
@@ -58,40 +60,40 @@ export class InputEditor implements Component, Focusable {
         this.requestRender();
         this.options.onSubmit?.(text);
       }
-      return;
+      return true;
     }
 
     if (matchesKey(data, "ctrl+c")) {
       this.options.onCancel?.();
-      return;
+      return true;
     }
 
     if (matchesKey(data, "ctrl+d")) {
       if (this.text.length === 0) {
         this.options.onExit?.();
       }
-      return;
+      return true;
     }
 
     // Ctrl+A — move to start
     if (matchesKey(data, "ctrl+a") || matchesKey(data, "home")) {
       this.cursorPos = 0;
       this.requestRender();
-      return;
+      return true;
     }
 
     // Ctrl+E — move to end
     if (matchesKey(data, "ctrl+e") || matchesKey(data, "end")) {
       this.cursorPos = this.text.length;
       this.requestRender();
-      return;
+      return true;
     }
 
     // Ctrl+K — delete to end of line
     if (matchesKey(data, "ctrl+k")) {
       this.text = this.text.slice(0, this.cursorPos);
       this.requestRender();
-      return;
+      return true;
     }
 
     // Ctrl+U — delete to start of line
@@ -99,7 +101,7 @@ export class InputEditor implements Component, Focusable {
       this.text = this.text.slice(this.cursorPos);
       this.cursorPos = 0;
       this.requestRender();
-      return;
+      return true;
     }
 
     // Ctrl+W — delete word backward
@@ -111,7 +113,7 @@ export class InputEditor implements Component, Focusable {
       this.text = this.text.slice(0, newPos) + this.text.slice(this.cursorPos);
       this.cursorPos = newPos;
       this.requestRender();
-      return;
+      return true;
     }
 
     // Backspace
@@ -121,7 +123,7 @@ export class InputEditor implements Component, Focusable {
         this.cursorPos--;
         this.requestRender();
       }
-      return;
+      return true;
     }
 
     // Delete
@@ -130,7 +132,7 @@ export class InputEditor implements Component, Focusable {
         this.text = this.text.slice(0, this.cursorPos) + this.text.slice(this.cursorPos + 1);
         this.requestRender();
       }
-      return;
+      return true;
     }
 
     // Arrow left
@@ -139,7 +141,7 @@ export class InputEditor implements Component, Focusable {
         this.cursorPos--;
         this.requestRender();
       }
-      return;
+      return true;
     }
 
     // Arrow right
@@ -148,19 +150,21 @@ export class InputEditor implements Component, Focusable {
         this.cursorPos++;
         this.requestRender();
       }
-      return;
+      return true;
     }
 
-    // Arrow up — history
+    // Arrow up/down — history navigation, guarded.
+    // Returns false when the guard fails so the caller can handle it (e.g. scroll the view).
     if (matchesKey(data, "up")) {
+      if (!this.shouldHandleNavigation()) return false;
       this.navigateHistory(1);
-      return;
+      return true;
     }
 
-    // Arrow down — history
     if (matchesKey(data, "down")) {
+      if (!this.shouldHandleNavigation()) return false;
       this.navigateHistory(-1);
-      return;
+      return true;
     }
 
     // Printable character
@@ -168,7 +172,25 @@ export class InputEditor implements Component, Focusable {
       this.text = this.text.slice(0, this.cursorPos) + data + this.text.slice(this.cursorPos);
       this.cursorPos += data.length;
       this.requestRender();
+      return true;
     }
+
+    return false;
+  }
+
+  /**
+   * Whether ↑/↓ should navigate history for the current editor state.
+   *
+   * Empty input always enables history navigation. Non-empty input only enables it
+   * when already in history-browsing mode and the cursor is at a line boundary,
+   * so normal editing is not interrupted.
+   */
+  private shouldHandleNavigation(): boolean {
+    if (this.text === "") return true;
+    if (this.historyIndex !== -1) {
+      return this.cursorPos === 0 || this.cursorPos === this.text.length;
+    }
+    return false;
   }
 
   invalidate(): void {
@@ -179,6 +201,7 @@ export class InputEditor implements Component, Focusable {
   clear(): void {
     this.text = "";
     this.cursorPos = 0;
+    this.requestRender();
   }
 
   /** Set input text programmatically */

@@ -7,6 +7,7 @@ import { ConfirmDialog, type ConfirmDialogOptions } from "./components/confirm-d
 import { InputEditor } from "./components/input-editor";
 import { StatusBar } from "./components/status-bar";
 import { Container } from "./framework/container";
+import { matchesKey } from "./framework/keys";
 import { OverlayStack } from "./framework/overlay";
 import { TUIRenderer } from "./framework/renderer";
 import { StdinBuffer } from "./framework/stdin-buffer";
@@ -50,7 +51,6 @@ export class App {
     this.chatView = new ChatView({ requestRender });
     this.inputEditor = new InputEditor(
       {
-        prompt: "diligent> ",
         onSubmit: (text) => this.handleSubmit(text),
         onCancel: () => this.handleCancel(),
         onExit: () => this.shutdown(),
@@ -75,11 +75,11 @@ export class App {
       () => this.renderer.requestRender(),
     );
 
-    // Show welcome banner in chatView
-    this.chatView.addUserMessage(`\x1b[1;36mdiligent\x1b[0m \x1b[2mv${pkgVersion}\x1b[0m`);
+    // Show welcome banner
+    this.chatView.addLines(this.buildWelcomeBanner());
 
-    // Update status bar with model info
-    this.statusBar.update({ model: this.config.model.id, status: "idle" });
+    // Update status bar with model info and cwd
+    this.statusBar.update({ model: this.config.model.id, status: "idle", cwd: process.cwd() });
 
     // Initialize SessionManager
     if (this.paths) {
@@ -122,18 +122,19 @@ export class App {
     const sequences = this.stdinBuffer.split(data);
 
     for (const seq of sequences) {
-      // Route input based on overlay state
+      // Overlay takes all input when visible
       if (this.overlayStack.hasVisible()) {
         const topComponent = this.overlayStack.getTopComponent();
         topComponent?.handleInput?.(seq);
         this.renderer.requestRender();
-      } else if (!this.isProcessing) {
+        continue;
+      }
+
+      if (!this.isProcessing) {
         this.inputEditor.handleInput(seq);
-      } else {
+      } else if (seq === "\x03") {
         // During processing, only handle ctrl+c
-        if (seq === "\x03") {
-          this.handleCancel();
-        }
+        this.handleCancel();
       }
     }
   }
@@ -233,6 +234,7 @@ export class App {
     return new Promise((resolve) => {
       const dialog = new ConfirmDialog(options, (confirmed) => {
         handle.hide();
+        this.renderer.setFocus(this.inputEditor);
         this.renderer.requestRender();
         resolve(confirmed);
       });
@@ -246,6 +248,37 @@ export class App {
     this.overlayStack.clear();
     this.renderer.stop();
     this.terminal.stop();
+  }
+
+  private buildWelcomeBanner(): string[] {
+    const cwd = process.cwd();
+    const home = process.env.HOME ?? "";
+    const dir = home && cwd.startsWith(home) ? `~${cwd.slice(home.length)}` : cwd;
+
+    const boxWidth = Math.min(54, Math.max(44, this.terminal.columns - 2));
+    const inner = boxWidth - 4; // 2 borders + 2 spaces padding
+
+    const pad = (s: string) => s + " ".repeat(Math.max(0, inner - s.length));
+    const truncate = (s: string) =>
+      s.length > inner ? `${s.slice(0, inner - 1)}\u2026` : s;
+
+    const title = `>_ diligent (v${pkgVersion})`;
+    const modelLine = truncate(`model:     ${this.config.model.id}`);
+    const dirLine = truncate(`directory: ${dir}`);
+
+    const row = (s: string) => `\x1b[2m\u2502 ${pad(s)} \u2502\x1b[0m`;
+
+    return [
+      `\x1b[2m\u256d${"─".repeat(boxWidth - 2)}\u256e\x1b[0m`,
+      `\x1b[2m\u2502\x1b[0m \x1b[1m${pad(title)}\x1b[0m \x1b[2m\u2502\x1b[0m`,
+      row(""),
+      row(modelLine),
+      row(dirLine),
+      `\x1b[2m\u2570${"─".repeat(boxWidth - 2)}\u256f\x1b[0m`,
+      "",
+      `\x1b[2m  Tip: ctrl+c to cancel \u00b7 ctrl+d to exit\x1b[0m`,
+      "",
+    ];
   }
 
   private shutdown(): void {

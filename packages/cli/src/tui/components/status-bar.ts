@@ -6,6 +6,23 @@ export interface StatusBarInfo {
   contextWindow?: number;
   sessionId?: string;
   status?: "idle" | "busy" | "retry";
+  cwd?: string;
+}
+
+function formatTokensCompact(n: number): string {
+  if (n < 1000) return String(n);
+  if (n < 1_000_000) return `${(n / 1000).toFixed(1).replace(/\.0$/, "")}K`;
+  return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+}
+
+function shortenPath(cwd: string): string {
+  const home = process.env.HOME ?? "";
+  const p = home && cwd.startsWith(home) ? `~${cwd.slice(home.length)}` : cwd;
+  const parts = p.split("/").filter(Boolean);
+  if (parts.length > 3) {
+    return `…/${parts.slice(-2).join("/")}`;
+  }
+  return p;
 }
 
 /** Bottom status bar showing model, tokens, session info */
@@ -17,32 +34,43 @@ export class StatusBar implements Component {
   }
 
   render(width: number): string[] {
-    const parts: string[] = [];
+    const leftParts: string[] = [];
 
     if (this.info.model) {
-      parts.push(this.info.model);
+      leftParts.push(this.info.model);
     }
 
     if (this.info.tokensUsed !== undefined) {
       if (this.info.contextWindow) {
         const pct = Math.round((this.info.tokensUsed / this.info.contextWindow) * 100);
-        parts.push(
-          `${Math.round(this.info.tokensUsed / 1000)}k/${Math.round(this.info.contextWindow / 1000)}k (${pct}%)`,
-        );
+        leftParts.push(`${pct}% context left`);
       } else {
-        parts.push(`${Math.round(this.info.tokensUsed / 1000)}k tokens`);
+        leftParts.push(`${formatTokensCompact(this.info.tokensUsed)} used`);
       }
     }
 
-    if (this.info.status && this.info.status !== "idle") {
-      parts.push(this.info.status);
+    if (this.info.cwd) {
+      leftParts.push(shortenPath(this.info.cwd));
     }
 
-    if (parts.length === 0) return [];
+    const statusHint =
+      this.info.status === "busy" ? "ctrl+c to cancel" :
+      this.info.status === "retry" ? "retrying…" : "";
+    const rightHint = statusHint;
 
-    let line = parts.join(" \u00b7 ");
+    if (leftParts.length === 0 && !rightHint) return [];
 
-    // Truncate to fit width
+    const leftStr = leftParts.length > 0 ? `  ${leftParts.join(" \u00b7 ")}` : "";
+
+    if (rightHint) {
+      const pad = Math.max(1, width - leftStr.length - rightHint.length);
+      const full = `${leftStr}${" ".repeat(pad)}${rightHint}`;
+      if (full.length <= width) {
+        return [`\x1b[2m${full}\x1b[0m`];
+      }
+    }
+
+    let line = leftStr;
     if (line.length > width) {
       line = line.slice(0, width - 1) + "\u2026";
     }

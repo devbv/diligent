@@ -11,6 +11,7 @@ export class MarkdownView implements Component {
   private buffer = "";
   private committedRaw = "";
   private committedLines: string[] = [];
+  private lastRenderWidth = 0;
   private finalized = false;
   private trailingTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -32,7 +33,8 @@ export class MarkdownView implements Component {
       const complete = this.buffer.slice(0, lastNewline + 1);
       this.buffer = this.buffer.slice(lastNewline + 1);
       this.committedRaw += complete;
-      this.committedLines = this.renderToLines(this.committedRaw);
+      // committedLines will be re-rendered at actual width in render()
+      this.committedLines = [];
       this.requestRender();
     }
 
@@ -58,7 +60,8 @@ export class MarkdownView implements Component {
     this.buffer = "";
 
     if (this.committedRaw.length > 0) {
-      this.committedLines = this.renderToLines(this.committedRaw);
+      // committedLines will be re-rendered at actual width in render()
+      this.committedLines = [];
     }
 
     this.finalized = true;
@@ -77,9 +80,15 @@ export class MarkdownView implements Component {
     this.finalized = false;
   }
 
-  render(_width: number): string[] {
-    if (this.committedLines.length === 0 && this.buffer.length === 0) {
+  render(width: number): string[] {
+    if (this.committedRaw.length === 0 && this.buffer.length === 0) {
       return [];
+    }
+
+    // Re-render committed content if width changed or cache is empty
+    if (this.committedRaw.length > 0 && (this.committedLines.length === 0 || this.lastRenderWidth !== width)) {
+      this.committedLines = this.renderToLines(this.committedRaw, width);
+      this.lastRenderWidth = width;
     }
 
     // If we have a trailing buffer (not yet committed via newline),
@@ -96,8 +105,8 @@ export class MarkdownView implements Component {
     // Force re-render of committed content on next render
   }
 
-  private renderToLines(text: string): string[] {
-    const rendered = renderMarkdown(text, 80);
+  private renderToLines(text: string, width: number): string[] {
+    const rendered = renderMarkdown(text, width);
     if (!rendered) return [];
     return rendered.split("\n");
   }
