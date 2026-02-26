@@ -1,13 +1,17 @@
-import type { AgentEvent, DiligentPaths, Message, UserMessage } from "@diligent/core";
+import type { AgentEvent, DiligentPaths, Message, SkillMetadata, UserMessage } from "@diligent/core";
 import { agentLoop, SessionManager } from "@diligent/core";
 import { version as pkgVersion } from "../../package.json";
 import type { AppConfig } from "../config";
+import { loadConfig } from "../config";
 import { ChatView } from "./components/chat-view";
 import { ConfirmDialog, type ConfirmDialogOptions } from "./components/confirm-dialog";
 import { InputEditor } from "./components/input-editor";
 import { StatusBar } from "./components/status-bar";
+import { registerBuiltinCommands } from "./commands/builtin/index";
+import { parseCommand } from "./commands/parser";
+import { CommandRegistry } from "./commands/registry";
+import type { CommandContext } from "./commands/types";
 import { Container } from "./framework/container";
-import { matchesKey } from "./framework/keys";
 import { OverlayStack } from "./framework/overlay";
 import { TUIRenderer } from "./framework/renderer";
 import { StdinBuffer } from "./framework/stdin-buffer";
@@ -30,6 +34,10 @@ export class App {
   private inputEditor: InputEditor;
   private statusBar: StatusBar;
 
+  // Commands & Skills
+  private commandRegistry: CommandRegistry;
+  private skills: SkillMetadata[];
+
   // State
   private abortController: AbortController | null = null;
   private isProcessing = false;
@@ -45,6 +53,11 @@ export class App {
     this.overlayStack = new OverlayStack();
     this.stdinBuffer = new StdinBuffer();
 
+    // Initialize command registry
+    this.skills = config.skills ?? [];
+    this.commandRegistry = new CommandRegistry();
+    registerBuiltinCommands(this.commandRegistry, this.skills);
+
     const requestRender = () => this.renderer.requestRender();
 
     // Build component tree
@@ -54,6 +67,7 @@ export class App {
         onSubmit: (text) => this.handleSubmit(text),
         onCancel: () => this.handleCancel(),
         onExit: () => this.shutdown(),
+        onComplete: (partial) => this.commandRegistry.complete(partial),
       },
       requestRender,
     );
@@ -140,6 +154,13 @@ export class App {
   }
 
   private async handleSubmit(text: string): Promise<void> {
+    // Check for slash command
+    const parsed = parseCommand(text);
+    if (parsed) {
+      await this.handleCommand(parsed.name, parsed.args);
+      return;
+    }
+
     this.isProcessing = true;
     this.abortController = new AbortController();
 
@@ -195,6 +216,71 @@ export class App {
     this.abortController = null;
     this.statusBar.update({ status: "idle" });
     this.renderer.requestRender();
+  }
+
+  private async handleCommand(name: string, args: string | undefined): Promise<void> {
+    const command = this.commandRegistry.get(name);
+    if (!command) {
+      this.chatView.addLines([`  \x1b[31mUnknown command: /${name}\x1b[0m`, "  Type /help for available commands."]);
+      this.renderer.requestRender();
+      return;
+    }
+
+    if (this.isProcessing && !command.availableDuringTask) {
+      this.chatView.addLines(["  \x1b[33mCommand not available while agent is running.\x1b[0m"]);
+      this.renderer.requestRender();
+      return;
+    }
+
+    const ctx = this.buildCommandContext();
+    try {
+      await command.handler(args, ctx);
+    } catch (err) {
+      this.chatView.addLines([
+        `  \x1b[31mCommand error: ${err instanceof Error ? err.message : String(err)}\x1b[0m`,
+      ]);
+    }
+    this.renderer.requestRender();
+  }
+
+  private buildCommandContext(): CommandContext {
+    return {
+      app: { confirm: (o) => this.confirm(o), stop: () => this.shutdown() },
+      config: this.config,
+      sessionManager: this.sessionManager,
+      skills: this.skills,
+      registry: this.commandRegistry,
+      requestRender: () => this.renderer.requestRender(),
+      displayLines: (lines) => {
+        this.chatView.addLines(lines);
+        this.renderer.requestRender();
+      },
+      displayError: (msg) => {
+        this.chatView.addLines([`  \x1b[31m${msg}\x1b[0m`]);
+        this.renderer.requestRender();
+      },
+      showOverlay: (c, o) => this.overlayStack.show(c, o),
+      runAgent: (text) => this.handleSubmit(text),
+      reload: () => this.reloadConfig(),
+    };
+  }
+
+  private async reloadConfig(): Promise<void> {
+    try {
+      const newConfig = await loadConfig(process.cwd(), this.paths);
+      this.config = newConfig;
+      this.skills = newConfig.skills ?? [];
+
+      // Rebuild command registry with new skills
+      this.commandRegistry = new CommandRegistry();
+      registerBuiltinCommands(this.commandRegistry, this.skills);
+
+      this.statusBar.update({ model: newConfig.model.id });
+    } catch (err) {
+      this.chatView.addLines([
+        `  \x1b[31mReload error: ${err instanceof Error ? err.message : String(err)}\x1b[0m`,
+      ]);
+    }
   }
 
   private handleAgentEvent(event: AgentEvent): void {
@@ -276,7 +362,7 @@ export class App {
       row(dirLine),
       `\x1b[2m\u2570${"─".repeat(boxWidth - 2)}\u256f\x1b[0m`,
       "",
-      `\x1b[2m  Tip: ctrl+c to cancel \u00b7 ctrl+d to exit\x1b[0m`,
+      `\x1b[2m  Tip: /help for commands \u00b7 ctrl+c to cancel \u00b7 ctrl+d to exit\x1b[0m`,
       "",
     ];
   }

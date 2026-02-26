@@ -9,6 +9,8 @@ export interface InputEditorOptions {
   onSubmit?: (text: string) => void;
   onCancel?: () => void;
   onExit?: () => void;
+  /** Autocomplete provider for slash commands */
+  onComplete?: (partial: string) => string[];
 }
 
 export class InputEditor implements Component, Focusable {
@@ -169,6 +171,29 @@ export class InputEditor implements Component, Focusable {
       return true;
     }
 
+    // Tab — autocomplete for slash commands
+    if (matchesKey(data, "tab")) {
+      if (this.text.startsWith("/") && !this.text.startsWith("//") && this.options.onComplete) {
+        const partial = this.text.slice(1).split(" ")[0]; // text after / up to first space
+        if (!this.text.includes(" ")) {
+          // Only autocomplete when no space yet (still typing command name)
+          const candidates = this.options.onComplete(partial);
+          if (candidates.length === 1) {
+            this.text = `/${candidates[0]} `;
+            this.cursorPos = this.text.length;
+          } else if (candidates.length > 1) {
+            const common = this.commonPrefix(candidates);
+            if (common.length > partial.length) {
+              this.text = `/${common}`;
+              this.cursorPos = this.text.length;
+            }
+          }
+          this.requestRender();
+        }
+      }
+      return true;
+    }
+
     // Printable character
     if (isPrintable(data)) {
       this.text = this.text.slice(0, this.cursorPos) + data + this.text.slice(this.cursorPos);
@@ -227,6 +252,18 @@ export class InputEditor implements Component, Focusable {
     if (this.history.length > MAX_HISTORY_SIZE) {
       this.history.shift();
     }
+  }
+
+  private commonPrefix(strings: string[]): string {
+    if (strings.length === 0) return "";
+    let prefix = strings[0];
+    for (let i = 1; i < strings.length; i++) {
+      while (!strings[i].startsWith(prefix)) {
+        prefix = prefix.slice(0, -1);
+        if (prefix === "") return "";
+      }
+    }
+    return prefix;
   }
 
   private navigateHistory(direction: number): void {

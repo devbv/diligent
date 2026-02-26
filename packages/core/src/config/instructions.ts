@@ -87,18 +87,23 @@ You have access to an add_knowledge tool. Use it to save important information t
 Use your judgment — save knowledge when you discover something that would be useful in future sessions.`;
 
 /**
- * Build system prompt with knowledge section and autonomous recording instruction.
+ * Build system prompt with knowledge section, skills section, and autonomous recording instruction.
  */
 export function buildSystemPromptWithKnowledge(
   basePrompt: string,
   instructions: DiscoveredInstruction[],
   knowledgeSection: string,
   additionalInstructions?: string[],
+  skillsSection?: string,
 ): string {
   const parts = [basePrompt];
 
   if (knowledgeSection) {
     parts.push(knowledgeSection);
+  }
+
+  if (skillsSection) {
+    parts.push(skillsSection);
   }
 
   for (const inst of instructions) {

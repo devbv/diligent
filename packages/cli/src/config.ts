@@ -6,6 +6,7 @@ import type {
   EventStream,
   Message,
   Model,
+  SkillMetadata,
   StreamFunction,
 } from "@diligent/core";
 import {
@@ -14,8 +15,10 @@ import {
   createAnthropicStream,
   createOpenAIStream,
   discoverInstructions,
+  discoverSkills,
   loadDiligentConfig,
   readKnowledge,
+  renderSkillsSection,
   resolveModel,
 } from "@diligent/core";
 
@@ -29,6 +32,7 @@ export interface AppConfig {
   diligent: DiligentConfig;
   sources: string[];
   agentLoopFn?: AgentLoopFn;
+  skills: SkillMetadata[];
 }
 
 const BASE_SYSTEM_PROMPT = [
@@ -79,7 +83,20 @@ export async function loadConfig(cwd: string = process.cwd(), paths?: DiligentPa
     }
   }
 
-  // Build system prompt with knowledge
+  // Load skills
+  let skills: SkillMetadata[] = [];
+  let skillsSection = "";
+  const skillsEnabled = config.skills?.enabled ?? true;
+  if (skillsEnabled) {
+    const result = await discoverSkills({
+      cwd,
+      additionalPaths: config.skills?.paths,
+    });
+    skills = result.skills;
+    skillsSection = renderSkillsSection(skills);
+  }
+
+  // Build system prompt with knowledge AND skills
   const basePrompt = config.systemPrompt ?? BASE_SYSTEM_PROMPT;
   const contextLines = [
     `Current working directory: ${cwd}`,
@@ -91,7 +108,8 @@ export async function loadConfig(cwd: string = process.cwd(), paths?: DiligentPa
     instructions,
     knowledgeSection,
     config.instructions,
+    skillsSection,
   );
 
-  return { apiKey, model, systemPrompt, streamFunction, diligent: config, sources };
+  return { apiKey, model, systemPrompt, streamFunction, diligent: config, sources, skills };
 }

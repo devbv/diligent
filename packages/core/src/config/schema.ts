@@ -57,6 +57,14 @@ export const DiligentConfigSchema = z
         keepRecentTokens: z.number().int().positive().optional(),
       })
       .optional(),
+
+    // Skills settings (Phase 4b)
+    skills: z
+      .object({
+        enabled: z.boolean().optional(),
+        paths: z.array(z.string()).optional(),
+      })
+      .optional(),
   })
   .strict();
 

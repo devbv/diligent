@@ -82,6 +82,15 @@ export {
   SessionManager,
   shouldCompact,
 } from "./session/index";
+// Skills
+export type {
+  DiscoveryOptions,
+  SkillFrontmatter,
+  SkillLoadError,
+  SkillLoadResult,
+  SkillMetadata,
+} from "./skills/index";
+export { discoverSkills, extractBody, renderSkillsSection } from "./skills/index";
 // Tool
 export type {
   ApprovalRequest,
