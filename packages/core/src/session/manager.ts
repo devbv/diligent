@@ -13,7 +13,8 @@ import { generateEntryId } from "./types";
 export interface SessionManagerConfig {
   cwd: string;
   paths: DiligentPaths;
-  agentConfig: AgentLoopConfig;
+  // D087: Factory allows per-run config (e.g. collaboration mode, mid-session knowledge refresh)
+  agentConfig: AgentLoopConfig | (() => AgentLoopConfig);
   compaction?: {
     enabled: boolean;
     reserveTokens: number;
@@ -140,7 +141,7 @@ export class SessionManager {
     // Proactive compaction check
     if (compactionConfig.enabled) {
       const tokens = estimateTokens(currentMessages);
-      if (shouldCompact(tokens, this.config.agentConfig.model.contextWindow, compactionConfig.reserveTokens)) {
+      if (shouldCompact(tokens, this.resolveAgentConfig().model.contextWindow, compactionConfig.reserveTokens)) {
         currentMessages = await this.performCompaction(tokens, compactionConfig, outerStream);
       }
     }
@@ -161,7 +162,7 @@ export class SessionManager {
   }
 
   private async proxyAgentLoop(messages: Message[], outerStream: EventStream<AgentEvent, Message[]>): Promise<void> {
-    const agentStream = agentLoop(messages, this.config.agentConfig);
+    const agentStream = agentLoop(messages, this.resolveAgentConfig());
 
     let fatalError: AgentEvent | null = null;
 
@@ -236,9 +237,9 @@ export class SessionManager {
     // Generate summary (D037)
     const summary = await generateSummary(
       messagesToSummarize,
-      this.config.agentConfig.streamFunction,
-      this.config.agentConfig.model,
-      { previousSummary: previousCompaction?.summary, signal: this.config.agentConfig.signal },
+      this.resolveAgentConfig().streamFunction,
+      this.resolveAgentConfig().model,
+      { previousSummary: previousCompaction?.summary, signal: this.resolveAgentConfig().signal },
     );
 
     // Save CompactionEntry
@@ -329,6 +330,10 @@ export class SessionManager {
     this.writeQueue = this.writeQueue.then(() => this.writer.write(entry)).catch(() => {});
 
     return entry;
+  }
+
+  private resolveAgentConfig(): AgentLoopConfig {
+    return typeof this.config.agentConfig === "function" ? this.config.agentConfig() : this.config.agentConfig;
   }
 
   get sessionPath(): string | null {

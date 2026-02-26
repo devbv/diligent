@@ -8,12 +8,6 @@ import type { ToolContext } from "../tool/types";
 import type { AssistantMessage, Message, ToolCallBlock, ToolResultMessage, Usage } from "../types";
 import type { AgentEvent, AgentLoopConfig, SerializableError } from "./types";
 
-// D086: Generate a short unique itemId for grouping related events
-let itemCounter = 0;
-function generateItemId(): string {
-  return `item-${++itemCounter}`;
-}
-
 // D086: Convert Error to serializable representation
 function toSerializableError(err: unknown): SerializableError {
   if (err instanceof Error) {
@@ -44,6 +38,10 @@ async function runLoop(
   config: AgentLoopConfig,
   stream: EventStream<AgentEvent, Message[]>,
 ): Promise<void> {
+  // D086: Counter scoped per invocation — itemIds are deterministic within each agentLoop call
+  let itemCounter = 0;
+  const generateItemId = () => `item-${++itemCounter}`;
+
   const allMessages = [...messages];
   let turnCount = 0;
   const maxTurns = config.maxTurns ?? 100;
@@ -75,7 +73,7 @@ async function runLoop(
     stream.push({ type: "turn_start", turnId });
 
     // 1. Stream LLM response (with retry)
-    const assistantMessage = await streamAssistantResponse(allMessages, config, retryStreamFn, stream);
+    const assistantMessage = await streamAssistantResponse(allMessages, config, retryStreamFn, stream, generateItemId);
     allMessages.push(assistantMessage);
 
     // Emit usage after each turn
@@ -170,6 +168,7 @@ async function streamAssistantResponse(
   config: AgentLoopConfig,
   streamFn: typeof config.streamFunction,
   agentStream: EventStream<AgentEvent, Message[]>,
+  generateItemId: () => string,
 ): Promise<AssistantMessage> {
   const context: StreamContext = {
     systemPrompt: config.systemPrompt,

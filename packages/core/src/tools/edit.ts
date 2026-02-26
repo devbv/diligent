@@ -13,8 +13,18 @@ export function createEditTool(): Tool<typeof EditParams> {
     name: "edit",
     description: "Replace an exact string in a file. The old_string must appear exactly once in the file.",
     parameters: EditParams,
-    async execute(args): Promise<ToolResult> {
+    async execute(args, ctx): Promise<ToolResult> {
       const { file_path, old_string, new_string } = args;
+
+      const approval = await ctx.approve({
+        permission: "write",
+        toolName: "edit",
+        description: `Edit ${file_path}`,
+        details: { file_path },
+      });
+      if (approval === "reject") {
+        return { output: "[Rejected by user]", metadata: { error: true } };
+      }
 
       // 1. Read file content
       let content: string;

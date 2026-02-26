@@ -14,8 +14,18 @@ export function createWriteTool(): Tool<typeof WriteParams> {
     description:
       "Write content to a file. Creates the file and parent directories if they don't exist. Overwrites existing content.",
     parameters: WriteParams,
-    async execute(args): Promise<ToolResult> {
+    async execute(args, ctx): Promise<ToolResult> {
       const { file_path, content } = args;
+
+      const approval = await ctx.approve({
+        permission: "write",
+        toolName: "write",
+        description: `Write to ${file_path}`,
+        details: { file_path },
+      });
+      if (approval === "reject") {
+        return { output: "[Rejected by user]", metadata: { error: true } };
+      }
 
       try {
         // 1. Create parent directories recursively

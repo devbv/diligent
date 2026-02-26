@@ -16,6 +16,16 @@ export const bashTool: Tool<typeof BashParams> = {
     "Execute a shell command. Use this to run programs, install packages, manage files, or interact with the system.",
   parameters: BashParams,
   async execute(args, ctx): Promise<ToolResult> {
+    const approval = await ctx.approve({
+      permission: "execute",
+      toolName: "bash",
+      description: args.description ?? args.command,
+      details: { command: args.command },
+    });
+    if (approval === "reject") {
+      return { output: "[Rejected by user]", metadata: { error: true } };
+    }
+
     const timeout = args.timeout ?? DEFAULT_TIMEOUT;
 
     const proc = Bun.spawn(["bash", "-c", args.command], {

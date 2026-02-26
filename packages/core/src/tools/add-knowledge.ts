@@ -20,7 +20,17 @@ export function createAddKnowledgeTool(knowledgePath: string, sessionId?: string
       "or corrections to previous behavior. Knowledge is injected into " +
       "future sessions automatically.",
     parameters: addKnowledgeSchema,
-    execute: async (args, _ctx: ToolContext): Promise<ToolResult> => {
+    execute: async (args, ctx: ToolContext): Promise<ToolResult> => {
+      const approval = await ctx.approve({
+        permission: "write",
+        toolName: "add_knowledge",
+        description: `Save knowledge: [${args.type}] ${args.content.slice(0, 80)}`,
+        details: { type: args.type },
+      });
+      if (approval === "reject") {
+        return { output: "[Rejected by user]", metadata: { error: true } };
+      }
+
       const entry: KnowledgeEntry = {
         id: generateEntryId(),
         timestamp: new Date().toISOString(),
