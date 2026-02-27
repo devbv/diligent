@@ -149,11 +149,14 @@ describe("detectEntryType", () => {
     expect((entry as { toolName: string }).toolName).toBe("read");
   });
 
-  test("skips model_change and session_info without warning", () => {
-    expect(
-      detectEntryType({ type: "model_change", id: "x", parentId: null, timestamp: "t", provider: "a", modelId: "b" }),
-    ).toBeNull();
-    expect(detectEntryType({ type: "session_info", id: "x", parentId: null, timestamp: "t", name: "test" })).toBeNull();
+  test("skips model_change, session_info, and mode_change with skip marker", () => {
+    const mc = detectEntryType({ type: "model_change", id: "x", parentId: null, timestamp: "t", provider: "a", modelId: "b" });
+    expect((mc as Record<string, unknown>).__skip).toBe(true);
+    const si = detectEntryType({ type: "session_info", id: "x", parentId: null, timestamp: "t", name: "test" });
+    expect((si as Record<string, unknown>).__skip).toBe(true);
+    const mch = detectEntryType({ type: "mode_change", id: "y", parentId: "x", timestamp: "t", mode: "plan" });
+    expect((mch as Record<string, unknown>).__skip).toBe(true);
+    expect((mch as Record<string, unknown>).parentId).toBe("x");
   });
 });
 
@@ -222,6 +225,22 @@ describe("parseSessionText", () => {
   test("skips unknown entry types", () => {
     const entries = parseSessionText('{"foo":"bar"}\n{"id":"m1","role":"user","content":"hi","timestamp":1}\n');
     expect(entries.length).toBe(1);
+  });
+
+  test("reparents entries whose parent is a skipped mode_change", () => {
+    const text = [
+      '{"type":"session","version":3,"id":"s1","timestamp":"2026-01-01T00:00:00Z","cwd":"/tmp"}',
+      '{"type":"mode_change","id":"mc1","parentId":null,"timestamp":"2026-01-01T00:00:01Z","mode":"plan"}',
+      '{"type":"mode_change","id":"mc2","parentId":"mc1","timestamp":"2026-01-01T00:00:02Z","mode":"execute"}',
+      '{"type":"message","id":"m1","parentId":"mc2","timestamp":"2026-01-01T00:00:03Z","message":{"role":"user","content":"hello","timestamp":1}}',
+    ].join("\n");
+    const entries = parseSessionText(text);
+    // mode_change entries should be dropped
+    expect(entries.length).toBe(2); // session_header + user message
+    // user message should be reparented to null (root) since mc1→mc2 chain leads to parentId:null
+    const user = entries.find((e) => "role" in e && e.role === "user");
+    expect(user).toBeDefined();
+    expect((user as { parentId?: string }).parentId).toBeUndefined();
   });
 });
 

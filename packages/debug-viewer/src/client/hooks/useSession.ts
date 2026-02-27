@@ -13,6 +13,7 @@ export function useSession(sessionId: string | null) {
       const res = await fetch(`/api/sessions/${id}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
+      console.log("[useSession]", id, data);
       setEntries(data.entries);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch session");

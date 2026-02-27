@@ -90,9 +90,10 @@ export function detectEntryType(raw: Record<string, unknown>): SessionEntry | nu
     return raw as unknown as CompactionEntry;
   }
 
-  // Skip known core types that the viewer doesn't render
+  // Known core types that the viewer doesn't render — return skip marker
+  // so the caller can preserve their parentId chain for reparenting
   if (raw.type === "model_change" || raw.type === "session_info" || raw.type === "mode_change") {
-    return null;
+    return { __skip: true, id: raw.id as string, parentId: raw.parentId as string | null } as never;
   }
 
   // Unknown entry type — skip with warning
@@ -111,9 +112,13 @@ export async function parseSessionFile(filePath: string): Promise<SessionEntry[]
 
 /**
  * Parse JSONL text into typed entries.
+ * Skipped entry types (mode_change, etc.) have their parentId chains preserved
+ * so that child entries are reparented to the nearest non-skipped ancestor.
  */
 export function parseSessionText(text: string): SessionEntry[] {
   const entries: SessionEntry[] = [];
+  // Map skipped entry id → its parentId, for reparenting children
+  const skippedParents = new Map<string, string | undefined>();
 
   for (const line of text.split("\n")) {
     const trimmed = line.trim();
@@ -121,12 +126,28 @@ export function parseSessionText(text: string): SessionEntry[] {
 
     try {
       const raw = JSON.parse(trimmed);
-      const entry = detectEntryType(raw);
-      if (entry) {
-        entries.push(entry);
+      const result = detectEntryType(raw);
+      if (result && (result as Record<string, unknown>).__skip) {
+        const skip = result as unknown as { id: string; parentId: string | null };
+        skippedParents.set(skip.id, skip.parentId ?? undefined);
+      } else if (result) {
+        entries.push(result);
       }
     } catch {
       console.warn("Failed to parse JSONL line:", trimmed.slice(0, 80));
+    }
+  }
+
+  // Reparent entries whose parentId points to a skipped entry
+  if (skippedParents.size > 0) {
+    for (const entry of entries) {
+      if ("parentId" in entry && entry.parentId) {
+        let pid: string | undefined = entry.parentId;
+        while (pid && skippedParents.has(pid)) {
+          pid = skippedParents.get(pid);
+        }
+        (entry as { parentId?: string }).parentId = pid;
+      }
     }
   }
 
