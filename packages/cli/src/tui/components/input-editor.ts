@@ -1,5 +1,6 @@
 import type { CompletionItem } from "../commands/registry";
 import { isPrintable, matchesKey } from "../framework/keys";
+import { displayWidth, sliceEndToFitWidth, sliceToFitWidth } from "../framework/string-width";
 import type { Component, Focusable } from "../framework/types";
 import { CURSOR_MARKER } from "../framework/types";
 
@@ -39,7 +40,8 @@ export class InputEditor implements Component, Focusable {
   render(width: number): string[] {
     const sep = `\x1b[2m${"─".repeat(Math.max(0, width))}\x1b[0m`;
     const prompt = this.options.prompt ?? "› ";
-    const maxTextWidth = width - prompt.length;
+    const promptWidth = displayWidth(prompt);
+    const maxTextWidth = width - promptWidth;
 
     if (!this.focused) {
       return ["", sep, `\x1b[1;2m${prompt}\x1b[0m${this.text}`, sep];
@@ -49,14 +51,16 @@ export class InputEditor implements Component, Focusable {
     const before = this.text.slice(0, this.cursorPos);
     const after = this.text.slice(this.cursorPos);
 
-    // Scroll if text is wider than terminal
+    // Scroll if text is wider than terminal (use display width for column math)
     let displayBefore = before;
     let displayAfter = after;
-    if (before.length + after.length > maxTextWidth && maxTextWidth > 0) {
-      const scrollOffset = Math.max(0, before.length - Math.floor(maxTextWidth * 0.7));
-      displayBefore = before.slice(scrollOffset);
-      const remaining = maxTextWidth - displayBefore.length;
-      displayAfter = after.slice(0, Math.max(0, remaining));
+    const beforeWidth = displayWidth(before);
+    const afterWidth = displayWidth(after);
+    if (beforeWidth + afterWidth > maxTextWidth && maxTextWidth > 0) {
+      const targetBeforeWidth = Math.floor(maxTextWidth * 0.7);
+      displayBefore = beforeWidth > targetBeforeWidth ? sliceEndToFitWidth(before, targetBeforeWidth) : before;
+      const remaining = maxTextWidth - displayWidth(displayBefore);
+      displayAfter = sliceToFitWidth(after, Math.max(0, remaining));
     }
 
     const inputLine = `\x1b[1;2m${prompt}\x1b[0m${displayBefore}${CURSOR_MARKER}${displayAfter}`;

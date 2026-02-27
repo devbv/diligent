@@ -1,8 +1,9 @@
-import type { OverlayStack } from "./overlay";
-import type { Terminal } from "./terminal";
 import { debugLogger } from "./debug-logger";
-import { CURSOR_MARKER } from "./types";
+import type { OverlayStack } from "./overlay";
+import { charDisplayWidth, displayWidth } from "./string-width";
+import type { Terminal } from "./terminal";
 import type { Component, Focusable } from "./types";
+import { CURSOR_MARKER } from "./types";
 
 /** Strip ANSI escape codes for measuring visible width */
 const ANSI_RE = new RegExp(`${String.fromCharCode(0x1b)}\\[[0-9;]*[a-zA-Z]`, "g");
@@ -22,9 +23,9 @@ export class TUIRenderer {
   private focusedComponent: (Component & Focusable) | null = null;
   private overlayStack: OverlayStack | null = null;
   private started = false;
-  private flushedCommittedCount = 0;     // committed lines already written to scrollback
-  private lastActiveRows = 0;            // terminal rows occupied by previous active region
-  private lastCursorRowInActive = 0;     // cursor row within active region (for rewind)
+  private flushedCommittedCount = 0; // committed lines already written to scrollback
+  private lastActiveRows = 0; // terminal rows occupied by previous active region
+  private lastCursorRowInActive = 0; // cursor row within active region (for rewind)
 
   constructor(
     private terminal: Terminal,
@@ -94,7 +95,7 @@ export class TUIRenderer {
   /** Count how many terminal rows a set of lines occupies given terminal width */
   private countTerminalRows(lines: string[], width: number): number {
     return lines.reduce((sum, line) => {
-      const visible = stripAnsi(line).length;
+      const visible = displayWidth(stripAnsi(line));
       return sum + Math.max(1, Math.ceil(visible / width));
     }, 0);
   }
@@ -126,7 +127,7 @@ export class TUIRenderer {
       const markerIdx = activeLines[i].indexOf(CURSOR_MARKER);
       if (markerIdx !== -1) {
         cursorRow = i;
-        cursorCol = stripAnsi(activeLines[i].slice(0, markerIdx)).length;
+        cursorCol = displayWidth(stripAnsi(activeLines[i].slice(0, markerIdx)));
         cleanActive.push(activeLines[i].replace(CURSOR_MARKER, ""));
       } else {
         cleanActive.push(activeLines[i]);
@@ -215,7 +216,10 @@ export class TUIRenderer {
       const overlayLines = component.render(width);
       if (overlayLines.length === 0) continue;
 
-      const overlayWidth = overlayLines.reduce((max: number, line: string) => Math.max(max, stripAnsi(line).length), 0);
+      const overlayWidth = overlayLines.reduce(
+        (max: number, line: string) => Math.max(max, displayWidth(stripAnsi(line))),
+        0,
+      );
 
       // Resolve position — use content height (not terminal.rows) for inline viewport
       let startRow: number;
@@ -251,14 +255,14 @@ export class TUIRenderer {
         const row = startRow + i;
         if (row < result.length) {
           const baseLine = result[row];
-          const baseVisible = stripAnsi(baseLine);
+          const baseVisibleWidth = displayWidth(stripAnsi(baseLine));
 
           // Build composited line: base before overlay, overlay, base after overlay
           let composited = "";
 
           // Pad base to reach startCol
-          if (baseVisible.length < startCol) {
-            composited = baseLine + " ".repeat(startCol - baseVisible.length);
+          if (baseVisibleWidth < startCol) {
+            composited = baseLine + " ".repeat(startCol - baseVisibleWidth);
           } else {
             // Reconstruct base up to startCol (preserving ANSI)
             composited = this.sliceWithAnsi(baseLine, 0, startCol);
@@ -267,10 +271,10 @@ export class TUIRenderer {
           composited += "\x1b[0m" + overlayLines[i] + "\x1b[0m";
 
           // Add rest of base line after overlay
-          const overlayVisibleWidth = stripAnsi(overlayLines[i]).length;
+          const overlayVisibleWidth = displayWidth(stripAnsi(overlayLines[i]));
           const afterCol = startCol + overlayVisibleWidth;
-          if (baseVisible.length > afterCol) {
-            composited += this.sliceWithAnsi(baseLine, afterCol, baseVisible.length);
+          if (baseVisibleWidth > afterCol) {
+            composited += this.sliceWithAnsi(baseLine, afterCol, baseVisibleWidth);
           }
 
           result[row] = composited;
@@ -283,37 +287,36 @@ export class TUIRenderer {
 
   /** Slice a string with ANSI codes by visible column positions */
   private sliceWithAnsi(str: string, start: number, end: number): string {
-    let visibleIdx = 0;
+    let colIdx = 0;
     let result = "";
     let inEscape = false;
     let escapeSeq = "";
 
-    for (let i = 0; i < str.length; i++) {
-      if (str[i] === "\x1b") {
-        inEscape = true;
-        escapeSeq = "\x1b";
-        continue;
-      }
-
-      if (inEscape) {
-        escapeSeq += str[i];
-        if (str[i].match(/[a-zA-Z]/)) {
-          inEscape = false;
-          // Include ANSI sequences that appear in range
-          if (visibleIdx >= start && visibleIdx < end) {
-            result += escapeSeq;
+    for (const ch of str) {
+      if (ch === "\x1b" || inEscape) {
+        if (ch === "\x1b") {
+          inEscape = true;
+          escapeSeq = "\x1b";
+        } else {
+          escapeSeq += ch;
+          if (ch.match(/[a-zA-Z]/)) {
+            inEscape = false;
+            if (colIdx >= start && colIdx < end) {
+              result += escapeSeq;
+            }
+            escapeSeq = "";
           }
-          escapeSeq = "";
         }
         continue;
       }
 
-      if (visibleIdx >= start && visibleIdx < end) {
-        result += str[i];
+      const w = charDisplayWidth(ch.codePointAt(0)!);
+      if (colIdx >= start && colIdx + w <= end) {
+        result += ch;
       }
-      visibleIdx++;
+      colIdx += w;
 
-      if (visibleIdx >= end) break;
+      if (colIdx >= end) break;
     }
 
     return result;
