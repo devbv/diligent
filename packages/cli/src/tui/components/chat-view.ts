@@ -62,11 +62,15 @@ export class ChatView implements Component {
   private items: ChatItem[] = [];
   private activeMarkdown: MarkdownView | null = null;
   private activeSpinner: SpinnerComponent;
+  private thinkingSpinner: SpinnerComponent;
+  private thinkingStartTime: number | null = null;
+  private thinkingText = "";
   private lastUsage: { input: number; output: number; cost: number } | null = null;
   private toolStartTimes = new Map<string, number>();
 
   constructor(private options: ChatViewOptions) {
     this.activeSpinner = new SpinnerComponent(options.requestRender);
+    this.thinkingSpinner = new SpinnerComponent(options.requestRender);
   }
 
   /** Handle agent events to update the view */
@@ -78,12 +82,24 @@ export class ChatView implements Component {
         break;
 
       case "message_delta":
-        if (event.delta.type === "text_delta" && this.activeMarkdown) {
+        if (event.delta.type === "thinking_delta") {
+          this.thinkingText += event.delta.delta;
+          if (!this.thinkingSpinner.isRunning) {
+            this.thinkingStartTime = Date.now();
+            this.thinkingSpinner.start("Thinking\u2026");
+          }
+        } else if (event.delta.type === "text_delta" && this.activeMarkdown) {
+          if (this.thinkingSpinner.isRunning) {
+            this.commitThinkingBlock();
+          }
           this.activeMarkdown.pushDelta(event.delta.delta);
         }
         break;
 
       case "message_end":
+        if (this.thinkingSpinner.isRunning) {
+          this.commitThinkingBlock();
+        }
         if (this.activeMarkdown) {
           this.activeMarkdown.finalize();
           this.items.push(this.activeMarkdown);
@@ -164,6 +180,9 @@ export class ChatView implements Component {
 
       case "error":
         this.activeSpinner.stop();
+        this.thinkingSpinner.stop();
+        this.thinkingStartTime = null;
+        this.thinkingText = "";
         this.items.push([`\x1b[31m✗ ${event.error.message}\x1b[0m`]);
         this.options.requestRender();
         break;
@@ -182,6 +201,20 @@ export class ChatView implements Component {
   /** Add raw lines to the display (used for banners, tips, etc.) */
   addLines(lines: string[]): void {
     this.items.push(lines);
+    this.options.requestRender();
+  }
+
+  /** Commit accumulated thinking block as a collapsed indicator */
+  private commitThinkingBlock(): void {
+    this.thinkingSpinner.stop();
+    if (this.thinkingText.length > 0) {
+      const elapsed =
+        this.thinkingStartTime !== null ? formatToolElapsed(Date.now() - this.thinkingStartTime) : "";
+      const elapsedStr = elapsed ? ` \x1b[2m\xb7 ${elapsed}\x1b[0m` : "";
+      this.items.push([`\x1b[2m\u25b8 Thinking${elapsedStr}\x1b[0m`]);
+    }
+    this.thinkingStartTime = null;
+    this.thinkingText = "";
     this.options.requestRender();
   }
 
@@ -223,6 +256,12 @@ export class ChatView implements Component {
       }
     }
 
+    // Add active thinking spinner
+    if (this.thinkingSpinner.isRunning) {
+      if (result.length > 0) result.push("");
+      result.push(...this.thinkingSpinner.render(width));
+    }
+
     // Add active streaming markdown
     if (this.activeMarkdown) {
       const lines = this.activeMarkdown.render(width);
@@ -248,6 +287,7 @@ export class ChatView implements Component {
       }
     }
     this.activeMarkdown?.invalidate();
+    this.thinkingSpinner.invalidate();
     this.activeSpinner.invalidate();
   }
 }

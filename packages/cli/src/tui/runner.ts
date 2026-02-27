@@ -11,6 +11,7 @@ export class NonInteractiveRunner {
   private messages: Message[] = [];
   private sessionManager: SessionManager | null = null;
   private exitCode = 0;
+  private isThinking = false;
 
   constructor(
     private config: AppConfig,
@@ -97,10 +98,22 @@ export class NonInteractiveRunner {
   private handleEvent(event: AgentEvent, isTTY: boolean, hasText: boolean): boolean {
     switch (event.type) {
       case "message_delta":
+        if (event.delta.type === "thinking_delta") {
+          if (!this.isThinking) {
+            this.isThinking = true;
+            this.writeStderr("[thinking] Reasoning...", isTTY);
+          }
+          return hasText;
+        }
         if (event.delta.type === "text_delta") {
+          this.isThinking = false;
           process.stdout.write(event.delta.delta);
           return true;
         }
+        return hasText;
+
+      case "message_end":
+        this.isThinking = false;
         return hasText;
 
       case "tool_start":
