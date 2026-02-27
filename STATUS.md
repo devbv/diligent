@@ -23,3 +23,13 @@ Deferred to a future phase (post-Phase 4):
 | Phase 3b: Compaction, Knowledge & Multi-Provider | 2026-02-25 | Compaction system (token estimation, LLM summarization, file operation tracking, proactive + reactive triggers), Knowledge store (JSONL, ranked injection, add_knowledge tool, 30-day time decay), OpenAI Responses API provider, model registry with alias resolution, provider selection by model prefix, 18 AgentEvent types, SESSION_VERSION 2, 323 tests |
 | Phase 4a: TUI Component Framework | 2026-02-26 | Component interface (render/handleInput/invalidate), TUI renderer with line-level diffing + synchronized output, overlay stack with compositing, StdinBuffer for input splitting, Kitty keyboard protocol, InputEditor with cursor/history/Ctrl shortcuts, MarkdownView with newline-gated streaming, SpinnerComponent, StatusBar, ChatView (AgentEvent handler), ConfirmDialog overlay, Container layout, app.ts rewritten to component-based architecture, 404 tests |
 | Phase 4b: Skills + Slash Commands | 2026-02-27 | Skill system (L8): SKILL.md frontmatter parsing, multi-location discovery (.diligent/skills, .agents/skills, ~/.config/diligent/skills, config paths), first-loaded-wins dedup, progressive disclosure (metadata in system prompt, body on demand), extractBody. Command system (L7): CommandRegistry with register/lookup/alias/complete, parseCommand with /command args and /skill:name patterns, double-slash escape. 15 built-in commands (/help, /model, /new, /resume, /status, /compact, /clear, /exit, /version, /config, /cost, /bug, /reload, /skills, /skill:*). ListPicker overlay component with type-to-filter and scrolling. InputEditor Tab autocomplete for commands. App integration: command dispatch in handleSubmit, CommandContext, reloadConfig. Config schema gains skills section, system prompt gains skillsSection parameter. 513 tests |
+
+## Backlog
+
+12 pending items. See `BACKLOG.md` for full details.
+
+- **P0**: Loop detection, env variable filtering (agent stability & security)
+- **P1**: Truncation order fix + head_tail mode, per-tool output limits, steering queue (core loop)
+- **P2**: ExecutionEnvironment abstraction, provider-aligned toolsets/ProviderProfile (architecture)
+- **P3**: Subagent system (L10), session state machine (future capabilities)
+- **Other**: Context budget for compaction, background async piggyback, debug-viewer type sync
