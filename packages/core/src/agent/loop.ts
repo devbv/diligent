@@ -18,6 +18,20 @@ function toSerializableError(err: unknown): SerializableError {
   return { message: String(err), name: "Error" };
 }
 
+/** Drain pending steering messages into allMessages. Returns true if any were injected. */
+function drainSteering(
+  config: AgentLoopConfig,
+  allMessages: Message[],
+  stream: EventStream<AgentEvent, Message[]>,
+): boolean {
+  if (!config.getSteeringMessages) return false;
+  const msgs = config.getSteeringMessages();
+  if (msgs.length === 0) return false;
+  for (const msg of msgs) allMessages.push(msg);
+  stream.push({ type: "steering_injected", messageCount: msgs.length });
+  return true;
+}
+
 export function agentLoop(messages: Message[], config: AgentLoopConfig): EventStream<AgentEvent, Message[]> {
   const stream = new EventStream<AgentEvent, Message[]>(
     (event) => event.type === "agent_end",
@@ -87,6 +101,9 @@ async function runLoop(
 
     const turnId = `turn-${turnCount}`;
     stream.push({ type: "turn_start", turnId });
+
+    // Drain steering before LLM call
+    drainSteering(config, allMessages, stream);
 
     // 1. Stream LLM response (with retry)
     const assistantMessage = await streamAssistantResponse(
@@ -175,6 +192,9 @@ async function runLoop(
 
       loopDetector.record(toolCall.name, toolCall.input);
     }
+
+    // Drain steering after tool execution
+    drainSteering(config, allMessages, stream);
 
     const loopResult = loopDetector.check();
     if (loopResult.detected) {

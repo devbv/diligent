@@ -55,8 +55,8 @@ function createStreamFn(): StreamFunction {
 }
 
 describe("SESSION_VERSION", () => {
-  test("is 3", () => {
-    expect(SESSION_VERSION).toBe(3);
+  test("is 4", () => {
+    expect(SESSION_VERSION).toBe(4);
   });
 });
 

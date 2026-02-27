@@ -72,7 +72,9 @@ export type AgentEvent =
   // Knowledge (1) — Phase 3b
   | { type: "knowledge_saved"; knowledgeId: string; content: string }
   // Loop detection (1) — P0
-  | { type: "loop_detected"; patternLength: number; toolName: string };
+  | { type: "loop_detected"; patternLength: number; toolName: string }
+  // Steering (1) — P1
+  | { type: "steering_injected"; messageCount: number };
 
 // D008: Config for a single agent invocation
 export interface AgentLoopConfig {
@@ -86,4 +88,5 @@ export interface AgentLoopConfig {
   retryBaseDelayMs?: number; // default: 1000
   retryMaxDelayMs?: number; // default: 30_000
   mode?: ModeKind; // D087: defaults to "default"
+  getSteeringMessages?: () => Message[];
 }

@@ -76,6 +76,9 @@ export function buildSessionContext(entries: SessionEntry[], leafId?: string | n
         case "message":
           messages.push(entry.message);
           break;
+        case "steering":
+          messages.push(entry.message);
+          break;
         case "model_change":
           currentModel = { provider: entry.provider, modelId: entry.modelId };
           break;
@@ -86,6 +89,9 @@ export function buildSessionContext(entries: SessionEntry[], leafId?: string | n
     for (const entry of path) {
       switch (entry.type) {
         case "message":
+          messages.push(entry.message);
+          break;
+        case "steering":
           messages.push(entry.message);
           break;
         case "model_change":

@@ -2,7 +2,7 @@ import type { ModeKind } from "../agent/types";
 import type { Message } from "../types";
 
 /** Session file format version. Increment when entry schema changes. */
-export const SESSION_VERSION = 3;
+export const SESSION_VERSION = 4;
 
 /** Unique entry ID — 8-char hex */
 export function generateEntryId(): string {
@@ -81,7 +81,22 @@ export interface ModeChangeEntry {
   changedBy: "cli" | "command" | "config";
 }
 
-export type SessionEntry = SessionMessageEntry | ModelChangeEntry | SessionInfoEntry | CompactionEntry | ModeChangeEntry;
+export interface SteeringEntry {
+  type: "steering";
+  id: string;
+  parentId: string | null;
+  timestamp: string;
+  message: Message;
+  source: "steer" | "follow_up";
+}
+
+export type SessionEntry =
+  | SessionMessageEntry
+  | ModelChangeEntry
+  | SessionInfoEntry
+  | CompactionEntry
+  | ModeChangeEntry
+  | SteeringEntry;
 
 /** Any line in a session file */
 export type SessionFileLine = SessionHeader | SessionEntry;

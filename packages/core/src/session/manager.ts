@@ -7,7 +7,14 @@ import type { Message } from "../types";
 import { estimateTokens, extractFileOperations, findCutPoint, generateSummary, shouldCompact } from "./compaction";
 import { buildSessionContext } from "./context-builder";
 import { DeferredWriter, listSessions, readSessionFile } from "./persistence";
-import type { CompactionEntry, ModeChangeEntry, SessionEntry, SessionInfo, SessionMessageEntry } from "./types";
+import type {
+  CompactionEntry,
+  ModeChangeEntry,
+  SessionEntry,
+  SessionInfo,
+  SessionMessageEntry,
+  SteeringEntry,
+} from "./types";
 import { generateEntryId } from "./types";
 
 export interface SessionManagerConfig {
@@ -35,6 +42,8 @@ export class SessionManager {
   private writer: DeferredWriter;
   private byId = new Map<string, SessionEntry>();
   private writeQueue: Promise<void> = Promise.resolve();
+  private steeringQueue: Message[] = [];
+  private followUpQueue: Message[] = [];
 
   constructor(private config: SessionManagerConfig) {
     this.writer = new DeferredWriter(config.paths.sessions, config.cwd);
@@ -161,7 +170,16 @@ export class SessionManager {
     }
   }
 
-  private async proxyAgentLoop(messages: Message[], outerStream: EventStream<AgentEvent, Message[]>): Promise<void> {
+  /**
+   * Run one agent loop iteration, proxying events to outerStream.
+   * Always filters agent_start/agent_end from the inner stream —
+   * the outer proxyAgentLoop controls lifecycle events.
+   * Returns the final messages array from the inner agent loop.
+   */
+  private async runAgentLoopInner(
+    messages: Message[],
+    outerStream: EventStream<AgentEvent, Message[]>,
+  ): Promise<Message[]> {
     const agentStream = agentLoop(messages, this.resolveAgentConfig());
 
     let fatalError: AgentEvent | null = null;
@@ -172,6 +190,11 @@ export class SessionManager {
       // Intercept fatal errors before forwarding — check if it's context_overflow
       if (event.type === "error" && event.fatal) {
         fatalError = event;
+        continue;
+      }
+
+      // Always filter inner lifecycle — outer controls lifecycle
+      if (event.type === "agent_start" || event.type === "agent_end") {
         continue;
       }
 
@@ -195,7 +218,22 @@ export class SessionManager {
       outerStream.push(fatalError);
     }
 
-    const result = await agentStream.result();
+    return agentStream.result();
+  }
+
+  private async proxyAgentLoop(messages: Message[], outerStream: EventStream<AgentEvent, Message[]>): Promise<void> {
+    outerStream.push({ type: "agent_start" });
+
+    let result = await this.runAgentLoopInner(messages, outerStream);
+
+    // Follow-up loop: drain follow-ups and run additional inner loops
+    // Follow-up messages are already persisted as SteeringEntries by followUp()
+    while (this.followUpQueue.length > 0) {
+      this.followUpQueue.splice(0);
+      const context = buildSessionContext(this.entries, this.leafId);
+      result = await this.runAgentLoopInner(context.messages, outerStream);
+    }
+
     outerStream.push({ type: "agent_end", messages: result });
     outerStream.end(result);
   }
@@ -313,6 +351,53 @@ export class SessionManager {
     }
   }
 
+  /** Inject a mid-task steering message into the current agent loop. */
+  steer(content: string): void {
+    const message: Message = {
+      role: "user",
+      content: `[Steering] ${content}`,
+      timestamp: Date.now(),
+    };
+    this.steeringQueue.push(message);
+    this.appendSteeringEntry(message, "steer");
+  }
+
+  /** Queue a follow-up message to run after the current agent loop completes. */
+  followUp(content: string): void {
+    const message: Message = {
+      role: "user",
+      content,
+      timestamp: Date.now(),
+    };
+    this.followUpQueue.push(message);
+    this.appendSteeringEntry(message, "follow_up");
+  }
+
+  /** Check if follow-up messages are pending. */
+  hasFollowUp(): boolean {
+    return this.followUpQueue.length > 0;
+  }
+
+  private drainSteeringQueue(): Message[] {
+    const msgs = this.steeringQueue.splice(0);
+    return msgs;
+  }
+
+  private appendSteeringEntry(message: Message, source: SteeringEntry["source"]): void {
+    const entry: SteeringEntry = {
+      type: "steering",
+      id: generateEntryId(),
+      parentId: this.leafId,
+      timestamp: new Date().toISOString(),
+      message,
+      source,
+    };
+    this.entries.push(entry);
+    this.byId.set(entry.id, entry);
+    this.leafId = entry.id;
+    this.writeQueue = this.writeQueue.then(() => this.writer.write(entry)).catch(() => {});
+  }
+
   appendModeChange(mode: ModeKind, changedBy: ModeChangeEntry["changedBy"] = "command"): void {
     const entry: ModeChangeEntry = {
       type: "mode_change",
@@ -348,7 +433,8 @@ export class SessionManager {
   }
 
   private resolveAgentConfig(): AgentLoopConfig {
-    return typeof this.config.agentConfig === "function" ? this.config.agentConfig() : this.config.agentConfig;
+    const base = typeof this.config.agentConfig === "function" ? this.config.agentConfig() : this.config.agentConfig;
+    return { ...base, getSteeringMessages: () => this.drainSteeringQueue() };
   }
 
   get sessionPath(): string | null {
