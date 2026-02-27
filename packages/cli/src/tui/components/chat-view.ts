@@ -227,12 +227,14 @@ export class ChatView implements Component {
     if (this.activeMarkdown) {
       const lines = this.activeMarkdown.render(width);
       if (lines.length > 0) {
+        if (result.length > 0) result.push("");
         result.push(TURN_MARKER + lines[0], ...lines.slice(1));
       }
     }
 
     // Add active spinner
     if (this.activeSpinner.isRunning) {
+      if (result.length > 0) result.push("");
       result.push(...this.activeSpinner.render(width));
     }
 
