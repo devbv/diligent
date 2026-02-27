@@ -10,6 +10,18 @@ const BashParams = z.object({
 
 const DEFAULT_TIMEOUT = 120_000;
 
+const SENSITIVE_PATTERNS = [/(_API_KEY|_TOKEN|_PASSWORD)$/, /_SECRET/, /^(API_KEY|SECRET_KEY|TOKEN|PASSWORD)$/];
+
+export function filterSensitiveEnv(env: NodeJS.ProcessEnv): Record<string, string | undefined> {
+  const filtered: Record<string, string | undefined> = {};
+  for (const [key, value] of Object.entries(env)) {
+    if (!SENSITIVE_PATTERNS.some((p) => p.test(key))) {
+      filtered[key] = value;
+    }
+  }
+  return filtered;
+}
+
 export const bashTool: Tool<typeof BashParams> = {
   name: "bash",
   description:
@@ -32,7 +44,7 @@ export const bashTool: Tool<typeof BashParams> = {
       cwd: process.cwd(),
       stdout: "pipe",
       stderr: "pipe",
-      env: { ...process.env },
+      env: filterSensitiveEnv(process.env),
     });
 
     let stdout = "";

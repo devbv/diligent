@@ -37,7 +37,9 @@ export type AgentEvent =
   | { type: "compaction_start"; estimatedTokens: number }
   | { type: "compaction_end"; tokensBefore: number; tokensAfter: number; summary: string }
   // Knowledge (1) — Phase 3b
-  | { type: "knowledge_saved"; knowledgeId: string; content: string };
+  | { type: "knowledge_saved"; knowledgeId: string; content: string }
+  // Loop detection (1) — P0
+  | { type: "loop_detected"; patternLength: number; toolName: string };
 
 // D008: Config for a single agent invocation
 export interface AgentLoopConfig {

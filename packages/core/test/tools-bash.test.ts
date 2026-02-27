@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { ToolContext } from "../src/tool/types";
-import { bashTool } from "../src/tools/bash";
+import { bashTool, filterSensitiveEnv } from "../src/tools/bash";
 
 function makeCtx(signal?: AbortSignal): ToolContext {
   return {
@@ -52,5 +52,63 @@ describe("bash tool", () => {
   test("description in metadata", async () => {
     const result = await bashTool.execute({ command: "echo hi", description: "test desc" }, makeCtx());
     expect(result.metadata?.description).toBe("test desc");
+  });
+
+  test("filters sensitive env variables from child process", async () => {
+    const original = process.env.TEST_API_KEY;
+    process.env.TEST_API_KEY = "secret-value";
+    try {
+      const result = await bashTool.execute({ command: 'echo "key=$TEST_API_KEY"' }, makeCtx());
+      expect(result.output).not.toContain("secret-value");
+    } finally {
+      if (original === undefined) delete process.env.TEST_API_KEY;
+      else process.env.TEST_API_KEY = original;
+    }
+  });
+
+  test("preserves non-sensitive env variables", async () => {
+    const result = await bashTool.execute({ command: "echo $HOME" }, makeCtx());
+    expect(result.output.trim()).toBe(process.env.HOME);
+  });
+});
+
+describe("filterSensitiveEnv", () => {
+  test("removes _API_KEY suffix variables", () => {
+    const env = { HOME: "/home", ANTHROPIC_API_KEY: "sk-ant", OPENAI_API_KEY: "sk-oai" };
+    const result = filterSensitiveEnv(env as NodeJS.ProcessEnv);
+    expect(result.HOME).toBe("/home");
+    expect(result.ANTHROPIC_API_KEY).toBeUndefined();
+    expect(result.OPENAI_API_KEY).toBeUndefined();
+  });
+
+  test("removes _SECRET suffix variables", () => {
+    const env = { PATH: "/usr/bin", AWS_SECRET_ACCESS_KEY: "aws-secret" };
+    const result = filterSensitiveEnv(env as NodeJS.ProcessEnv);
+    expect(result.PATH).toBe("/usr/bin");
+    expect(result.AWS_SECRET_ACCESS_KEY).toBeUndefined();
+  });
+
+  test("removes _TOKEN suffix variables", () => {
+    const env = { GITHUB_TOKEN: "ghp_abc", SHELL: "/bin/zsh" };
+    const result = filterSensitiveEnv(env as NodeJS.ProcessEnv);
+    expect(result.SHELL).toBe("/bin/zsh");
+    expect(result.GITHUB_TOKEN).toBeUndefined();
+  });
+
+  test("removes _PASSWORD suffix variables", () => {
+    const env = { DB_PASSWORD: "pass123", USER: "dev" };
+    const result = filterSensitiveEnv(env as NodeJS.ProcessEnv);
+    expect(result.USER).toBe("dev");
+    expect(result.DB_PASSWORD).toBeUndefined();
+  });
+
+  test("removes exact-match sensitive names", () => {
+    const env = { API_KEY: "key", SECRET_KEY: "sk", TOKEN: "tok", PASSWORD: "pw", HOME: "/home" };
+    const result = filterSensitiveEnv(env as NodeJS.ProcessEnv);
+    expect(result.HOME).toBe("/home");
+    expect(result.API_KEY).toBeUndefined();
+    expect(result.SECRET_KEY).toBeUndefined();
+    expect(result.TOKEN).toBeUndefined();
+    expect(result.PASSWORD).toBeUndefined();
   });
 });

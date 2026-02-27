@@ -26,10 +26,9 @@ Deferred to a future phase (post-Phase 4):
 
 ## Backlog
 
-12 pending items. See `BACKLOG.md` for full details.
+8 pending items. See `BACKLOG.md` for full details.
 
 - **P0**: Loop detection, env variable filtering (agent stability & security)
-- **P1**: Truncation order fix + head_tail mode, per-tool output limits, steering queue (core loop)
-- **P2**: ExecutionEnvironment abstraction, provider-aligned toolsets/ProviderProfile (architecture)
-- **P3**: Subagent system (L10), session state machine (future capabilities)
-- **Other**: Context budget for compaction, background async piggyback, debug-viewer type sync
+- **P1**: Truncation order fix + head_tail mode, per-tool output limits, steering queue (core loop quality)
+- **P2**: Context budget for compaction, background async piggyback (future capabilities)
+- **P3**: Debug-viewer type sync (opportunistic, Phase 3 타입 변경 시)

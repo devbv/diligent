@@ -1,8 +1,8 @@
 // Types
 
 // Agent
-export type { AgentEvent, AgentLoopConfig, MessageDelta, SerializableError } from "./agent/index";
-export { agentLoop } from "./agent/index";
+export type { AgentEvent, AgentLoopConfig, LoopDetectionResult, MessageDelta, SerializableError } from "./agent/index";
+export { agentLoop, LoopDetector } from "./agent/index";
 // Config
 export type { DiligentConfig, DiscoveredInstruction } from "./config/index";
 export {

@@ -6,6 +6,7 @@ import type { Model, StreamContext, ToolDefinition } from "../provider/types";
 import { executeTool } from "../tool/executor";
 import type { ToolContext } from "../tool/types";
 import type { AssistantMessage, Message, ToolCallBlock, ToolResultMessage, Usage } from "../types";
+import { LoopDetector } from "./loop-detector";
 import type { AgentEvent, AgentLoopConfig, SerializableError } from "./types";
 
 // D086: Convert Error to serializable representation
@@ -46,6 +47,7 @@ async function runLoop(
   let turnCount = 0;
   const maxTurns = config.maxTurns ?? 100;
 
+  const loopDetector = new LoopDetector();
   const registry = new Map(config.tools.map((t) => [t.name, t]));
 
   // D010: Wrap stream function with retry
@@ -147,6 +149,22 @@ async function runLoop(
         toolName: toolCall.name,
         output: result.output,
         isError: toolResult.isError,
+      });
+
+      loopDetector.record(toolCall.name, toolCall.input);
+    }
+
+    const loopResult = loopDetector.check();
+    if (loopResult.detected) {
+      stream.push({
+        type: "loop_detected",
+        patternLength: loopResult.patternLength!,
+        toolName: loopResult.toolName!,
+      });
+      allMessages.push({
+        role: "user",
+        content: `[WARNING: Loop detected — tool "${loopResult.toolName}" is being called in a repeating pattern (length ${loopResult.patternLength}). Try a different approach.]`,
+        timestamp: Date.now(),
       });
     }
 
