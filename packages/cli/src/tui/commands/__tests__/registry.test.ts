@@ -85,4 +85,41 @@ describe("CommandRegistry", () => {
 
     expect(registry.complete("z")).toEqual([]);
   });
+
+  describe("completeDetailed", () => {
+    it("returns items with name and description", () => {
+      const registry = new CommandRegistry();
+      registry.register(makeCommand({ name: "help", description: "Show help" }));
+      registry.register(makeCommand({ name: "model", description: "Change model" }));
+
+      const items = registry.completeDetailed("h");
+      expect(items).toEqual([{ name: "help", description: "Show help" }]);
+    });
+
+    it("excludes aliases (only primary names)", () => {
+      const registry = new CommandRegistry();
+      registry.register(makeCommand({ name: "exit", aliases: ["quit"], description: "Exit app" }));
+
+      expect(registry.completeDetailed("q")).toEqual([]);
+      expect(registry.completeDetailed("e")).toEqual([{ name: "exit", description: "Exit app" }]);
+    });
+
+    it("returns all commands for empty partial", () => {
+      const registry = new CommandRegistry();
+      registry.register(makeCommand({ name: "help" }));
+      registry.register(makeCommand({ name: "model" }));
+
+      const items = registry.completeDetailed("");
+      expect(items).toHaveLength(2);
+      expect(items[0].name).toBe("help");
+      expect(items[1].name).toBe("model");
+    });
+
+    it("returns empty array for no matches", () => {
+      const registry = new CommandRegistry();
+      registry.register(makeCommand({ name: "help" }));
+
+      expect(registry.completeDetailed("z")).toEqual([]);
+    });
+  });
 });

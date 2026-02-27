@@ -68,6 +68,7 @@ export class App {
         onCancel: () => this.handleCancel(),
         onExit: () => this.shutdown(),
         onComplete: (partial) => this.commandRegistry.complete(partial),
+        onCompleteDetailed: (partial) => this.commandRegistry.completeDetailed(partial),
       },
       requestRender,
     );

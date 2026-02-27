@@ -1,5 +1,10 @@
 import type { Command } from "./types";
 
+export interface CompletionItem {
+  name: string;
+  description: string;
+}
+
 export class CommandRegistry {
   private commands = new Map<string, Command>();
   private aliases = new Map<string, string>();
@@ -29,6 +34,17 @@ export class CommandRegistry {
   /** Autocomplete candidates for a partial name */
   complete(partial: string): string[] {
     const all = [...this.commands.keys(), ...this.aliases.keys()];
-    return all.filter(n => n.startsWith(partial)).sort();
+    return all.filter((n) => n.startsWith(partial)).sort();
+  }
+
+  /** Autocomplete candidates with descriptions for inline popup (primary names only) */
+  completeDetailed(partial: string): CompletionItem[] {
+    return [...this.commands.keys()]
+      .filter((n) => n.startsWith(partial))
+      .sort()
+      .map((name) => {
+        const cmd = this.commands.get(name);
+        return { name, description: cmd?.description ?? "" };
+      });
   }
 }
