@@ -1,7 +1,8 @@
+import type { ModeKind } from "../agent/types";
 import type { Message } from "../types";
 
 /** Session file format version. Increment when entry schema changes. */
-export const SESSION_VERSION = 2;
+export const SESSION_VERSION = 3;
 
 /** Unique entry ID — 8-char hex */
 export function generateEntryId(): string {
@@ -70,7 +71,17 @@ export interface CompactionDetails {
   modifiedFiles: string[];
 }
 
-export type SessionEntry = SessionMessageEntry | ModelChangeEntry | SessionInfoEntry | CompactionEntry;
+export interface ModeChangeEntry {
+  type: "mode_change";
+  id: string;
+  parentId: string | null;
+  timestamp: string;
+  mode: ModeKind;
+  /** Who triggered the change */
+  changedBy: "cli" | "command" | "config";
+}
+
+export type SessionEntry = SessionMessageEntry | ModelChangeEntry | SessionInfoEntry | CompactionEntry | ModeChangeEntry;
 
 /** Any line in a session file */
 export type SessionFileLine = SessionHeader | SessionEntry;

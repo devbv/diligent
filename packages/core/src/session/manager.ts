@@ -1,5 +1,5 @@
 import { agentLoop } from "../agent/loop";
-import type { AgentEvent, AgentLoopConfig } from "../agent/types";
+import type { AgentEvent, AgentLoopConfig, ModeKind } from "../agent/types";
 import { EventStream } from "../event-stream";
 import type { DiligentPaths } from "../infrastructure/diligent-dir";
 import { ProviderError } from "../provider/types";
@@ -7,7 +7,7 @@ import type { Message } from "../types";
 import { estimateTokens, extractFileOperations, findCutPoint, generateSummary, shouldCompact } from "./compaction";
 import { buildSessionContext } from "./context-builder";
 import { DeferredWriter, listSessions, readSessionFile } from "./persistence";
-import type { CompactionEntry, SessionEntry, SessionInfo, SessionMessageEntry } from "./types";
+import type { CompactionEntry, ModeChangeEntry, SessionEntry, SessionInfo, SessionMessageEntry } from "./types";
 import { generateEntryId } from "./types";
 
 export interface SessionManagerConfig {
@@ -311,6 +311,21 @@ export class SessionManager {
         this.appendMessageEntry(toolResult);
       }
     }
+  }
+
+  appendModeChange(mode: ModeKind, changedBy: ModeChangeEntry["changedBy"] = "command"): void {
+    const entry: ModeChangeEntry = {
+      type: "mode_change",
+      id: generateEntryId(),
+      parentId: this.leafId,
+      timestamp: new Date().toISOString(),
+      mode,
+      changedBy,
+    };
+    this.entries.push(entry);
+    this.byId.set(entry.id, entry);
+    this.leafId = entry.id;
+    this.writeQueue = this.writeQueue.then(() => this.writer.write(entry)).catch(() => {});
   }
 
   private appendMessageEntry(message: Message): SessionEntry {

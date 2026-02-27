@@ -24,6 +24,7 @@ export type KeyId =
   | "ctrl+w"
   | "ctrl+backspace"
   | "shift+enter"
+  | "shift+tab"
   | string;
 
 /** Legacy escape code mappings for each key */
@@ -52,6 +53,7 @@ const KEY_SEQUENCES: Record<string, string[]> = {
   "ctrl+w": ["\x17"],
   "ctrl+backspace": ["\x08"],
   "shift+enter": ["\x1b[13;2u"], // Kitty protocol
+  "shift+tab": ["\x1b[Z"],
 };
 
 /** Kitty protocol key code mappings */

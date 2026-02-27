@@ -2,6 +2,39 @@ import type { Model, StreamFunction } from "../provider/types";
 import type { Tool } from "../tool/types";
 import type { AssistantMessage, Message, ToolResultMessage, Usage } from "../types";
 
+// D087: Collaboration modes
+export type ModeKind = "default" | "plan" | "execute";
+
+/**
+ * Tools available in plan mode (read-only exploration only).
+ * Bash, write, edit, add_knowledge are excluded.
+ */
+export const PLAN_MODE_ALLOWED_TOOLS = new Set(["read_file", "glob", "grep", "ls"]);
+
+/**
+ * System prompt prefixes injected per mode.
+ * Empty string for "default" — no prefix added, current behavior preserved.
+ */
+export const MODE_SYSTEM_PROMPT_PREFIXES: Record<ModeKind, string> = {
+  default: "",
+  plan: [
+    "You are operating in PLAN MODE.",
+    "You may ONLY read files, search code, and explore the codebase.",
+    "You must NOT create, edit, delete, or write any files.",
+    "Do not run bash commands.",
+    "Focus on understanding the codebase and producing a plan.",
+    "When ready, output your plan inside a <proposed_plan> block.",
+    "",
+  ].join("\n"),
+  execute: [
+    "You are operating in EXECUTE MODE.",
+    "Work autonomously toward the goal. Make reasonable assumptions rather than asking questions.",
+    "Report significant progress milestones as you work.",
+    "Complete the full task before stopping.",
+    "",
+  ].join("\n"),
+};
+
 export type MessageDelta = { type: "text_delta"; delta: string } | { type: "thinking_delta"; delta: string };
 
 // D086: Serializable error representation for events crossing core↔consumer boundary
@@ -52,4 +85,5 @@ export interface AgentLoopConfig {
   maxRetries?: number; // D010: default 5
   retryBaseDelayMs?: number; // default: 1000
   retryMaxDelayMs?: number; // default: 30_000
+  mode?: ModeKind; // D087: defaults to "default"
 }

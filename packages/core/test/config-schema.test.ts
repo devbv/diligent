@@ -51,6 +51,26 @@ describe("DiligentConfigSchema", () => {
     const result = DiligentConfigSchema.safeParse({ provider: { anthropic: { baseUrl: "not-a-url" } } });
     expect(result.success).toBe(false);
   });
+
+  it("accepts valid mode values", () => {
+    for (const mode of ["default", "plan", "execute"]) {
+      const result = DiligentConfigSchema.safeParse({ mode });
+      expect(result.success).toBe(true);
+    }
+  });
+
+  it("rejects invalid mode value", () => {
+    const result = DiligentConfigSchema.safeParse({ mode: "invalid" });
+    expect(result.success).toBe(false);
+  });
+
+  it("mode is optional", () => {
+    const result = DiligentConfigSchema.safeParse({});
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.mode).toBeUndefined();
+    }
+  });
 });
 
 describe("DEFAULT_CONFIG", () => {

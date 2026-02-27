@@ -1,6 +1,5 @@
 import type { AppConfig } from "../../config";
-import type { SessionManager } from "@diligent/core";
-import type { SkillMetadata } from "@diligent/core";
+import type { ModeKind, SessionManager, SkillMetadata } from "@diligent/core";
 import type { Component, OverlayHandle, OverlayOptions } from "../framework/types";
 import type { ConfirmDialogOptions } from "../components/confirm-dialog";
 import type { CommandRegistry } from "./registry";
@@ -43,6 +42,10 @@ export interface CommandContext {
   runAgent: (text: string) => Promise<void>;
   /** Reload config and skills */
   reload: () => Promise<void>;
+  /** Current collaboration mode */
+  currentMode: ModeKind;
+  /** Switch to a new collaboration mode. Persists to session if SessionManager available. */
+  setMode: (mode: ModeKind) => void;
 }
 
 /**

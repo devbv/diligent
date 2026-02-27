@@ -6,6 +6,7 @@ import type {
   EventStream,
   Message,
   Model,
+  ModeKind,
   SkillMetadata,
   StreamFunction,
 } from "@diligent/core";
@@ -33,6 +34,7 @@ export interface AppConfig {
   sources: string[];
   agentLoopFn?: AgentLoopFn;
   skills: SkillMetadata[];
+  mode: ModeKind; // D087: always set, defaults to "default"
 }
 
 const BASE_SYSTEM_PROMPT = [
@@ -111,5 +113,5 @@ export async function loadConfig(cwd: string = process.cwd(), paths?: DiligentPa
     skillsSection,
   );
 
-  return { apiKey, model, systemPrompt, streamFunction, diligent: config, sources, skills };
+  return { apiKey, model, systemPrompt, streamFunction, diligent: config, sources, skills, mode: (config.mode ?? "default") as ModeKind };
 }

@@ -22,6 +22,7 @@ export type {
   CompactionDetails,
   CompactionEntry,
   ModelChangeEntry,
+  ModeChangeEntry,
   SessionEntry,
   SessionFileLine,
   SessionHeader,

@@ -8,6 +8,7 @@ import type { ToolContext } from "../tool/types";
 import type { AssistantMessage, Message, ToolCallBlock, ToolResultMessage, Usage } from "../types";
 import { LoopDetector } from "./loop-detector";
 import type { AgentEvent, AgentLoopConfig, SerializableError } from "./types";
+import { MODE_SYSTEM_PROMPT_PREFIXES, PLAN_MODE_ALLOWED_TOOLS } from "./types";
 
 // D086: Convert Error to serializable representation
 function toSerializableError(err: unknown): SerializableError {
@@ -48,7 +49,20 @@ async function runLoop(
   const maxTurns = config.maxTurns ?? 100;
 
   const loopDetector = new LoopDetector();
-  const registry = new Map(config.tools.map((t) => [t.name, t]));
+
+  // D087: Filter tools for plan mode (read-only exploration)
+  const activeMode = config.mode ?? "default";
+  const activeTools =
+    activeMode === "plan"
+      ? config.tools.filter((t) => PLAN_MODE_ALLOWED_TOOLS.has(t.name))
+      : config.tools;
+  const registry = new Map(activeTools.map((t) => [t.name, t]));
+
+  // D087: Prepend mode system prompt prefix
+  const effectiveSystemPrompt =
+    activeMode === "default"
+      ? config.systemPrompt
+      : `${MODE_SYSTEM_PROMPT_PREFIXES[activeMode]}${config.systemPrompt}`;
 
   // D010: Wrap stream function with retry
   const retryStreamFn = withRetry(config.streamFunction, {
@@ -75,7 +89,15 @@ async function runLoop(
     stream.push({ type: "turn_start", turnId });
 
     // 1. Stream LLM response (with retry)
-    const assistantMessage = await streamAssistantResponse(allMessages, config, retryStreamFn, stream, generateItemId);
+    const assistantMessage = await streamAssistantResponse(
+      allMessages,
+      config,
+      activeTools,
+      effectiveSystemPrompt,
+      retryStreamFn,
+      stream,
+      generateItemId,
+    );
     allMessages.push(assistantMessage);
 
     // Emit usage after each turn
@@ -184,14 +206,16 @@ async function runLoop(
 async function streamAssistantResponse(
   messages: Message[],
   config: AgentLoopConfig,
+  activeTools: typeof config.tools,
+  effectiveSystemPrompt: string,
   streamFn: typeof config.streamFunction,
   agentStream: EventStream<AgentEvent, Message[]>,
   generateItemId: () => string,
 ): Promise<AssistantMessage> {
   const context: StreamContext = {
-    systemPrompt: config.systemPrompt,
+    systemPrompt: effectiveSystemPrompt,
     messages,
-    tools: config.tools.map(toolToDefinition),
+    tools: activeTools.map(toolToDefinition),
   };
 
   const providerStream = streamFn(config.model, context, { signal: config.signal });

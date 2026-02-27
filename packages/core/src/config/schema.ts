@@ -65,6 +65,9 @@ export const DiligentConfigSchema = z
         paths: z.array(z.string()).optional(),
       })
       .optional(),
+
+    // Collaboration mode (Phase 4c)
+    mode: z.enum(["default", "plan", "execute"]).optional(),
   })
   .strict();
 
