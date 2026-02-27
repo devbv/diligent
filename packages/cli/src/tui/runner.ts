@@ -1,6 +1,7 @@
 import type { AgentEvent, DiligentPaths, Message, UserMessage } from "@diligent/core";
 import { agentLoop, SessionManager } from "@diligent/core";
 import type { AgentLoopFn, AppConfig } from "../config";
+import { t } from "./theme";
 import { buildTools } from "./tools";
 
 export interface RunnerOptions {
@@ -34,6 +35,7 @@ export class NonInteractiveRunner {
           systemPrompt: this.config.systemPrompt,
           tools,
           streamFunction: this.config.streamFunction,
+          mode: this.config.mode,
         },
         compaction: {
           enabled: this.config.diligent.compaction?.enabled ?? true,
@@ -76,6 +78,7 @@ export class NonInteractiveRunner {
           systemPrompt: this.config.systemPrompt,
           tools,
           streamFunction: this.config.streamFunction,
+          mode: this.config.mode,
         });
 
         for await (const event of loop) {
@@ -161,7 +164,7 @@ export class NonInteractiveRunner {
 
   private writeStderr(msg: string, isTTY: boolean): void {
     if (isTTY) {
-      process.stderr.write(`\x1b[2m${msg}\x1b[0m\n`);
+      process.stderr.write(`${t.dim}${msg}${t.reset}\n`);
     } else {
       process.stderr.write(`${msg}\n`);
     }

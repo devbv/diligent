@@ -1,3 +1,4 @@
+import { t } from "../../theme";
 import type { Command } from "../types";
 
 export const helpCommand: Command = {
@@ -8,11 +9,11 @@ export const helpCommand: Command = {
     const commands = ctx.registry.list().filter(c => !c.hidden);
     const lines = [
       "",
-      "\x1b[1m  Commands:\x1b[0m",
+      `${t.bold}  Commands:${t.reset}`,
       "",
       ...commands.map(c => {
         const name = `/${c.name}`.padEnd(18);
-        return `  \x1b[36m${name}\x1b[0m ${c.description}`;
+        return `  ${t.accent}${name}${t.reset} ${c.description}`;
       }),
       "",
     ];

@@ -1,5 +1,6 @@
 import { isPrintable, matchesKey } from "../framework/keys";
 import type { Component } from "../framework/types";
+import { t } from "../theme";
 
 export interface ListPickerItem {
   label: string;
@@ -51,21 +52,21 @@ export class ListPicker implements Component {
     // Top border with title
     const titleStr = ` ${this.options.title} `;
     const borderLen = Math.max(0, dialogWidth - 2 - titleStr.length);
-    lines.push(`\x1b[1m┌─${titleStr}${"─".repeat(borderLen)}┐\x1b[0m`);
+    lines.push(`${t.bold}┌─${titleStr}${"─".repeat(borderLen)}┐${t.reset}`);
 
     // Filter line (shown when filter is active)
     if (this.filter) {
       const filterLine = `Filter: ${this.filter}`;
       const padding = " ".repeat(Math.max(0, innerWidth - filterLine.length));
-      lines.push(`\x1b[1m│\x1b[0m \x1b[2m${filterLine}${padding}\x1b[0m \x1b[1m│\x1b[0m`);
+      lines.push(`${t.bold}│${t.reset} ${t.dim}${filterLine}${padding}${t.reset} ${t.bold}│${t.reset}`);
       const sepFill = "─".repeat(Math.max(0, dialogWidth - 2));
-      lines.push(`\x1b[1m├${sepFill}┤\x1b[0m`);
+      lines.push(`${t.bold}├${sepFill}┤${t.reset}`);
     }
 
     if (items.length === 0) {
       const noItems = this.filter ? "No matches" : "No items";
       const padding = " ".repeat(Math.max(0, innerWidth - noItems.length));
-      lines.push(`\x1b[1m│\x1b[0m \x1b[2m${noItems}${padding}\x1b[0m \x1b[1m│\x1b[0m`);
+      lines.push(`${t.bold}│${t.reset} ${t.dim}${noItems}${padding}${t.reset} ${t.bold}│${t.reset}`);
     } else {
       // Ensure selected item is visible by adjusting scroll
       if (this.selectedIndex < this.scrollOffset) {
@@ -78,7 +79,7 @@ export class ListPicker implements Component {
       if (this.scrollOffset > 0) {
         const upHint = `↑ ${this.scrollOffset} more`;
         const padding = " ".repeat(Math.max(0, innerWidth - upHint.length));
-        lines.push(`\x1b[1m│\x1b[0m \x1b[2m${upHint}${padding}\x1b[0m \x1b[1m│\x1b[0m`);
+        lines.push(`${t.bold}│${t.reset} ${t.dim}${upHint}${padding}${t.reset} ${t.bold}│${t.reset}`);
       }
 
       // Render visible items
@@ -103,11 +104,11 @@ export class ListPicker implements Component {
         const visibleTextLen = 2 + labelPart.length + (descPart ? 2 + descPart.length : 0); // "▸ " + label + "  " + desc
         const padding = " ".repeat(Math.max(0, innerWidth - visibleTextLen));
 
-        const descStr = descPart ? `  \x1b[2m${descPart}\x1b[0m` : "";
+        const descStr = descPart ? `  ${t.dim}${descPart}${t.reset}` : "";
         if (isSelected) {
-          lines.push(`\x1b[1m│\x1b[0m \x1b[36m${marker} ${labelPart}${descStr}\x1b[0m${padding} \x1b[1m│\x1b[0m`);
+          lines.push(`${t.bold}│${t.reset} ${t.accent}${marker} ${labelPart}${descStr}${t.reset}${padding} ${t.bold}│${t.reset}`);
         } else {
-          lines.push(`\x1b[1m│\x1b[0m ${marker} ${labelPart}${descStr}${padding} \x1b[1m│\x1b[0m`);
+          lines.push(`${t.bold}│${t.reset} ${marker} ${labelPart}${descStr}${padding} ${t.bold}│${t.reset}`);
         }
       }
 
@@ -116,12 +117,12 @@ export class ListPicker implements Component {
       if (remaining > 0) {
         const downHint = `↓ ${remaining} more`;
         const padding = " ".repeat(Math.max(0, innerWidth - downHint.length));
-        lines.push(`\x1b[1m│\x1b[0m \x1b[2m${downHint}${padding}\x1b[0m \x1b[1m│\x1b[0m`);
+        lines.push(`${t.bold}│${t.reset} ${t.dim}${downHint}${padding}${t.reset} ${t.bold}│${t.reset}`);
       }
     }
 
     // Bottom border
-    lines.push(`\x1b[1m└${"─".repeat(dialogWidth - 2)}┘\x1b[0m`);
+    lines.push(`${t.bold}└${"─".repeat(dialogWidth - 2)}┘${t.reset}`);
 
     return lines;
   }

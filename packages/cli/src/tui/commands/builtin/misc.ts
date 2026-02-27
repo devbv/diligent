@@ -1,4 +1,5 @@
 import { version as pkgVersion } from "../../../../package.json";
+import { t } from "../../theme";
 import type { Command } from "../types";
 
 export const clearCommand: Command = {
@@ -38,11 +39,11 @@ export const configCommand: Command = {
   handler: async (_args, ctx) => {
     const lines = [""];
     if (ctx.config.sources.length === 0) {
-      lines.push("  \x1b[2mNo config files loaded (using defaults).\x1b[0m");
+      lines.push(`  ${t.dim}No config files loaded (using defaults).${t.reset}`);
     } else {
-      lines.push("  \x1b[1mConfig sources:\x1b[0m");
+      lines.push(`  ${t.bold}Config sources:${t.reset}`);
       for (const source of ctx.config.sources) {
-        lines.push(`    \x1b[2m${source}\x1b[0m`);
+        lines.push(`    ${t.dim}${source}${t.reset}`);
       }
     }
     lines.push("");
@@ -55,7 +56,7 @@ export const costCommand: Command = {
   description: "Show token usage estimate",
   availableDuringTask: true,
   handler: async (_args, ctx) => {
-    ctx.displayLines(["  \x1b[2mToken cost tracking coming soon.\x1b[0m"]);
+    ctx.displayLines([`  ${t.dim}Token cost tracking coming soon.${t.reset}`]);
   },
 };
 
@@ -66,7 +67,7 @@ export const bugCommand: Command = {
   handler: async (_args, ctx) => {
     ctx.displayLines([
       "",
-      "  \x1b[1mFeedback & Bug Reports:\x1b[0m",
+      `  ${t.bold}Feedback & Bug Reports:${t.reset}`,
       "  https://github.com/anthropics/diligent/issues",
       "",
     ]);

@@ -1,6 +1,7 @@
 import type { AgentEvent } from "@diligent/core";
 import { debugLogger } from "../framework/debug-logger";
 import type { Component } from "../framework/types";
+import { t } from "../theme";
 import { MarkdownView } from "./markdown-view";
 import { SpinnerComponent } from "./spinner";
 
@@ -35,11 +36,9 @@ class UserMessageView {
   constructor(private text: string) {}
 
   render(width: number): string[] {
-    const BG = "\x1b[48;5;237m";
-    const RESET = "\x1b[0m";
     const visibleLen = 3 + this.text.length; // " › " = 3 visible chars
     const padding = " ".repeat(Math.max(0, width - visibleLen));
-    return [`${BG} \x1b[1;2m›\x1b[0m${BG} ${this.text}${padding}${RESET}`];
+    return [`${t.bgUser} ${t.bold}${t.dim}›${t.reset}${t.bgUser} ${this.text}${padding}${t.reset}`];
   }
 
   invalidate(): void {}
@@ -120,25 +119,25 @@ export class ChatView implements Component {
         this.activeSpinner.stop();
         const startTime = this.toolStartTimes.get(event.toolCallId);
         this.toolStartTimes.delete(event.toolCallId);
-        const elapsed = startTime !== undefined ? ` \x1b[2m· ${formatToolElapsed(Date.now() - startTime)}\x1b[0m` : "";
+        const elapsed = startTime !== undefined ? ` ${t.dim}· ${formatToolElapsed(Date.now() - startTime)}${t.reset}` : "";
 
         if (event.output) {
           const rawLines = event.output.split("\n");
           const display = truncateMiddle(rawLines, TOOL_MAX_LINES);
-          const lines: string[] = [`\x1b[32m⏺\x1b[0m ${event.toolName}${elapsed}`];
+          const lines: string[] = [`${t.success}⏺${t.reset} ${event.toolName}${elapsed}`];
           for (let i = 0; i < display.length; i++) {
             const isEllipsis = display[i].startsWith("… +");
             if (isEllipsis) {
-              lines.push(`\x1b[2m    ${display[i]}\x1b[0m`);
+              lines.push(`${t.dim}    ${display[i]}${t.reset}`);
             } else if (i === 0) {
-              lines.push(`\x1b[2m  └ ${display[i]}\x1b[0m`);
+              lines.push(`${t.dim}  └ ${display[i]}${t.reset}`);
             } else {
-              lines.push(`\x1b[2m    ${display[i]}\x1b[0m`);
+              lines.push(`${t.dim}    ${display[i]}${t.reset}`);
             }
           }
           this.items.push(lines);
         } else {
-          this.items.push([`\x1b[32m⏺\x1b[0m ${event.toolName}${elapsed}`]);
+          this.items.push([`${t.success}⏺${t.reset} ${event.toolName}${elapsed}`]);
         }
         this.options.requestRender();
         break;
@@ -168,13 +167,13 @@ export class ChatView implements Component {
       case "compaction_end":
         this.activeSpinner.stop();
         this.items.push([
-          `\x1b[32m⏺\x1b[0m \x1b[2mcompacted: ${formatTokensCompact(event.tokensBefore)} → ${formatTokensCompact(event.tokensAfter)}\x1b[0m`,
+          `${t.success}⏺${t.reset} ${t.dim}compacted: ${formatTokensCompact(event.tokensBefore)} → ${formatTokensCompact(event.tokensAfter)}${t.reset}`,
         ]);
         this.options.requestRender();
         break;
 
       case "knowledge_saved":
-        this.items.push([`\x1b[32m⏺\x1b[0m \x1b[2mknowledge saved\x1b[0m`]);
+        this.items.push([`${t.success}⏺${t.reset} ${t.dim}knowledge saved${t.reset}`]);
         this.options.requestRender();
         break;
 
@@ -183,7 +182,7 @@ export class ChatView implements Component {
         this.thinkingSpinner.stop();
         this.thinkingStartTime = null;
         this.thinkingText = "";
-        this.items.push([`\x1b[31m✗ ${event.error.message}\x1b[0m`]);
+        this.items.push([`${t.error}✗ ${event.error.message}${t.reset}`]);
         this.options.requestRender();
         break;
 
@@ -210,8 +209,8 @@ export class ChatView implements Component {
     if (this.thinkingText.length > 0) {
       const elapsed =
         this.thinkingStartTime !== null ? formatToolElapsed(Date.now() - this.thinkingStartTime) : "";
-      const elapsedStr = elapsed ? ` \x1b[2m\xb7 ${elapsed}\x1b[0m` : "";
-      this.items.push([`\x1b[2m\u25b8 Thinking${elapsedStr}\x1b[0m`]);
+      const elapsedStr = elapsed ? ` ${t.dim}\xb7 ${elapsed}${t.reset}` : "";
+      this.items.push([`${t.dim}\u25b8 Thinking${elapsedStr}${t.reset}`]);
     }
     this.thinkingStartTime = null;
     this.thinkingText = "";
@@ -239,7 +238,7 @@ export class ChatView implements Component {
 
   render(width: number): string[] {
     const result: string[] = [];
-    const TURN_MARKER = "\x1b[2m⏺\x1b[0m ";
+    const TURN_MARKER = `${t.dim}⏺${t.reset} `;
 
     for (let i = 0; i < this.items.length; i++) {
       if (i > 0 && result.length > 0) result.push("");

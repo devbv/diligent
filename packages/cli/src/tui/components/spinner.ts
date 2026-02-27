@@ -1,4 +1,5 @@
 import type { Component } from "../framework/types";
+import { t } from "../theme";
 
 const FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const FRAME_INTERVAL = 80;
@@ -56,8 +57,8 @@ export class SpinnerComponent implements Component {
   render(_width: number): string[] {
     if (!this.active) return [];
     const elapsed = this.startTime !== null ? formatElapsed(Date.now() - this.startTime) : "";
-    const elapsedStr = elapsed ? ` \x1b[2m(${elapsed})\x1b[0m` : "";
-    return [`\x1b[36m${FRAMES[this.frameIndex]}\x1b[39m ${this.message}${elapsedStr}`];
+    const elapsedStr = elapsed ? ` ${t.dim}(${elapsed})${t.reset}` : "";
+    return [`${t.accent}${FRAMES[this.frameIndex]}${t.reset} ${this.message}${elapsedStr}`];
   }
 
   invalidate(): void {

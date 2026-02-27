@@ -1,6 +1,7 @@
 import type { SkillMetadata } from "@diligent/core";
 import { extractBody } from "@diligent/core";
 import { ListPicker, type ListPickerItem } from "../../components/list-picker";
+import { t } from "../../theme";
 import type { Command } from "../types";
 
 /**
@@ -16,7 +17,7 @@ export function createSkillInvokeCommand(skillName: string, skill: SkillMetadata
       const content = await Bun.file(skill.path).text();
       const body = extractBody(content);
 
-      ctx.displayLines([`  \x1b[2mSkill loaded: ${skill.name}\x1b[0m`]);
+      ctx.displayLines([`  ${t.dim}Skill loaded: ${skill.name}${t.reset}`]);
 
       // Inject as user message with skill prefix and run agent
       const message = `[Using skill: ${skill.name}]\n\n${body}`;
@@ -38,7 +39,7 @@ export const skillsPickerCommand: Command = {
   handler: async (_args, ctx) => {
     if (ctx.skills.length === 0) {
       ctx.displayLines([
-        "  \x1b[2mNo skills found.\x1b[0m",
+        `  ${t.dim}No skills found.${t.reset}`,
         "  Add skills to .diligent/skills/ or ~/.config/diligent/skills/",
       ]);
       return;

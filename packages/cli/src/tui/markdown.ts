@@ -1,15 +1,5 @@
 import { Marked, Renderer } from "marked";
-
-// ANSI escape codes
-const BOLD_ON = "\x1b[1m";
-const BOLD_OFF = "\x1b[22m";
-const ITALIC_ON = "\x1b[3m";
-const ITALIC_OFF = "\x1b[23m";
-const UNDERLINE_ON = "\x1b[4m";
-const UNDERLINE_OFF = "\x1b[24m";
-const CYAN = "\x1b[36m";
-const GRAY = "\x1b[2m";
-const RESET = "\x1b[0m";
+import { t } from "./theme";
 
 /**
  * Custom marked renderer that outputs ANSI-styled terminal text. (D047)
@@ -20,7 +10,7 @@ const renderer = new Renderer();
 
 renderer.heading = function (token) {
   const text = this.parser.parseInline(token.tokens);
-  return `\n${BOLD_ON}${UNDERLINE_ON}${text}${UNDERLINE_OFF}${BOLD_OFF}\n\n`;
+  return `\n${t.bold}${t.underline}${text}${t.underlineOff}${t.boldOff}\n\n`;
 };
 
 renderer.paragraph = function (token) {
@@ -30,23 +20,23 @@ renderer.paragraph = function (token) {
 
 renderer.strong = function (token) {
   const text = this.parser.parseInline(token.tokens);
-  return `${BOLD_ON}${text}${BOLD_OFF}`;
+  return `${t.bold}${text}${t.boldOff}`;
 };
 
 renderer.em = function (token) {
   const text = this.parser.parseInline(token.tokens);
-  return `${ITALIC_ON}${text}${ITALIC_OFF}`;
+  return `${t.italic}${text}${t.italicOff}`;
 };
 
-renderer.codespan = (token) => `${CYAN}${token.text}${RESET}`;
+renderer.codespan = (token) => `${t.accent}${token.text}${t.reset}`;
 
 renderer.code = (token) => {
-  const header = token.lang ? `${GRAY}[${token.lang}]${RESET}\n` : "";
+  const header = token.lang ? `${t.dim}[${token.lang}]${t.reset}\n` : "";
   const indented = token.text
     .split("\n")
     .map((line: string) => `  ${line}`)
     .join("\n");
-  return `\n${header}${CYAN}${indented}${RESET}\n\n`;
+  return `\n${header}${t.accent}${indented}${t.reset}\n\n`;
 };
 
 renderer.list = function (token) {
@@ -65,8 +55,8 @@ renderer.listitem = function (token) {
 
 renderer.link = function (token) {
   const text = this.parser.parseInline(token.tokens);
-  if (text === token.href) return `${CYAN}${token.href}${RESET}`;
-  return `${text} (${CYAN}${token.href}${RESET})`;
+  if (text === token.href) return `${t.accent}${token.href}${t.reset}`;
+  return `${text} (${t.accent}${token.href}${t.reset})`;
 };
 
 renderer.blockquote = function (token) {
@@ -74,7 +64,7 @@ renderer.blockquote = function (token) {
   const lines = text
     .trim()
     .split("\n")
-    .map((line: string) => `${GRAY}│ ${line}${RESET}`)
+    .map((line: string) => `${t.dim}│ ${line}${t.reset}`)
     .join("\n");
   return `${lines}\n\n`;
 };

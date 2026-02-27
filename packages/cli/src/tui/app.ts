@@ -1,4 +1,4 @@
-import type { AgentEvent, DiligentPaths, Message, SkillMetadata, UserMessage } from "@diligent/core";
+import type { AgentEvent, DiligentPaths, Message, ModeKind, SkillMetadata, UserMessage } from "@diligent/core";
 import { agentLoop, SessionManager } from "@diligent/core";
 import { version as pkgVersion } from "../../package.json";
 import type { AppConfig } from "../config";
@@ -16,6 +16,8 @@ import { OverlayStack } from "./framework/overlay";
 import { TUIRenderer } from "./framework/renderer";
 import { StdinBuffer } from "./framework/stdin-buffer";
 import { Terminal } from "./framework/terminal";
+import { matchesKey } from "./framework/keys";
+import { t } from "./theme";
 import { buildTools } from "./tools";
 
 export interface AppOptions {
@@ -43,12 +45,14 @@ export class App {
   private isProcessing = false;
   private messages: Message[] = [];
   private sessionManager: SessionManager | null = null;
+  private currentMode: ModeKind;
 
   constructor(
     private config: AppConfig,
     private paths?: DiligentPaths,
     private options?: AppOptions,
   ) {
+    this.currentMode = config.mode;
     this.terminal = new Terminal();
     this.overlayStack = new OverlayStack();
     this.stdinBuffer = new StdinBuffer();
@@ -94,7 +98,7 @@ export class App {
     this.chatView.addLines(this.buildWelcomeBanner());
 
     // Update status bar with model info and cwd
-    this.statusBar.update({ model: this.config.model.id, status: "idle", cwd: process.cwd() });
+    this.statusBar.update({ model: this.config.model.id, status: "idle", cwd: process.cwd(), mode: this.currentMode });
 
     // Initialize SessionManager
     if (this.paths) {
@@ -104,12 +108,13 @@ export class App {
       this.sessionManager = new SessionManager({
         cwd,
         paths: this.paths,
-        agentConfig: {
+        agentConfig: () => ({
           model: this.config.model,
           systemPrompt: this.config.systemPrompt,
           tools,
           streamFunction: this.config.streamFunction,
-        },
+          mode: this.currentMode,
+        }),
         compaction: {
           enabled: this.config.diligent.compaction?.enabled ?? true,
           reserveTokens: this.config.diligent.compaction?.reserveTokens ?? 16384,
@@ -145,6 +150,12 @@ export class App {
         continue;
       }
 
+      // Shift+Tab: cycle collaboration mode (available always when no overlay)
+      if (matchesKey(seq, "shift+tab")) {
+        this.cycleMode();
+        continue;
+      }
+
       if (!this.isProcessing) {
         this.inputEditor.handleInput(seq);
       } else if (seq === "\x03") {
@@ -152,6 +163,13 @@ export class App {
         this.handleCancel();
       }
     }
+  }
+
+  private cycleMode(): void {
+    const modes: ModeKind[] = ["default", "plan", "execute"];
+    const idx = modes.indexOf(this.currentMode);
+    const next = modes[(idx + 1) % modes.length];
+    this.setMode(next);
   }
 
   private async handleSubmit(text: string): Promise<void> {
@@ -194,6 +212,7 @@ export class App {
           tools,
           streamFunction: this.config.streamFunction,
           signal: this.abortController.signal,
+          mode: this.currentMode,
         });
 
         for await (const event of loop) {
@@ -222,13 +241,13 @@ export class App {
   private async handleCommand(name: string, args: string | undefined): Promise<void> {
     const command = this.commandRegistry.get(name);
     if (!command) {
-      this.chatView.addLines([`  \x1b[31mUnknown command: /${name}\x1b[0m`, "  Type /help for available commands."]);
+      this.chatView.addLines([`  ${t.error}Unknown command: /${name}${t.reset}`, "  Type /help for available commands."]);
       this.renderer.requestRender();
       return;
     }
 
     if (this.isProcessing && !command.availableDuringTask) {
-      this.chatView.addLines(["  \x1b[33mCommand not available while agent is running.\x1b[0m"]);
+      this.chatView.addLines([`  ${t.warn}Command not available while agent is running.${t.reset}`]);
       this.renderer.requestRender();
       return;
     }
@@ -238,7 +257,7 @@ export class App {
       await command.handler(args, ctx);
     } catch (err) {
       this.chatView.addLines([
-        `  \x1b[31mCommand error: ${err instanceof Error ? err.message : String(err)}\x1b[0m`,
+        `  ${t.error}Command error: ${err instanceof Error ? err.message : String(err)}${t.reset}`,
       ]);
     }
     this.renderer.requestRender();
@@ -257,13 +276,22 @@ export class App {
         this.renderer.requestRender();
       },
       displayError: (msg) => {
-        this.chatView.addLines([`  \x1b[31m${msg}\x1b[0m`]);
+        this.chatView.addLines([`  ${t.error}${msg}${t.reset}`]);
         this.renderer.requestRender();
       },
       showOverlay: (c, o) => this.overlayStack.show(c, o),
       runAgent: (text) => this.handleSubmit(text),
       reload: () => this.reloadConfig(),
+      currentMode: this.currentMode,
+      setMode: (mode) => this.setMode(mode),
     };
+  }
+
+  private setMode(mode: ModeKind): void {
+    this.currentMode = mode;
+    this.sessionManager?.appendModeChange(mode, "command");
+    this.statusBar.update({ mode });
+    this.renderer.requestRender();
   }
 
   private async reloadConfig(): Promise<void> {
@@ -279,7 +307,7 @@ export class App {
       this.statusBar.update({ model: newConfig.model.id });
     } catch (err) {
       this.chatView.addLines([
-        `  \x1b[31mReload error: ${err instanceof Error ? err.message : String(err)}\x1b[0m`,
+        `  ${t.error}Reload error: ${err instanceof Error ? err.message : String(err)}${t.reset}`,
       ]);
     }
   }
@@ -353,24 +381,24 @@ export class App {
     const modelLine = truncate(`model:     ${this.config.model.id}`);
     const dirLine = truncate(`directory: ${dir}`);
 
-    const row = (s: string) => `\x1b[2m\u2502 ${pad(s)} \u2502\x1b[0m`;
+    const row = (s: string) => `${t.dim}\u2502 ${pad(s)} \u2502${t.reset}`;
 
     return [
-      `\x1b[2m\u256d${"─".repeat(boxWidth - 2)}\u256e\x1b[0m`,
-      `\x1b[2m\u2502\x1b[0m \x1b[1m${pad(title)}\x1b[0m \x1b[2m\u2502\x1b[0m`,
+      `${t.dim}\u256d${"─".repeat(boxWidth - 2)}\u256e${t.reset}`,
+      `${t.dim}\u2502${t.reset} ${t.bold}${pad(title)}${t.reset} ${t.dim}\u2502${t.reset}`,
       row(""),
       row(modelLine),
       row(dirLine),
-      `\x1b[2m\u2570${"─".repeat(boxWidth - 2)}\u256f\x1b[0m`,
+      `${t.dim}\u2570${"─".repeat(boxWidth - 2)}\u256f${t.reset}`,
       "",
-      `\x1b[2m  Tip: /help for commands \u00b7 ctrl+c to cancel \u00b7 ctrl+d to exit\x1b[0m`,
+      `${t.dim}  Tip: /help for commands \u00b7 ctrl+c to cancel \u00b7 ctrl+d to exit${t.reset}`,
       "",
     ];
   }
 
   private shutdown(): void {
     this.stop();
-    this.terminal.write("\n\x1b[2mGoodbye!\x1b[0m\n");
+    this.terminal.write(`\n${t.dim}Goodbye!${t.reset}\n`);
     process.exit(0);
   }
 }

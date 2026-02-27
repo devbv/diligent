@@ -1,4 +1,6 @@
+import type { ModeKind } from "@diligent/core";
 import type { Component } from "../framework/types";
+import { t } from "../theme";
 
 export interface StatusBarInfo {
   model?: string;
@@ -7,6 +9,7 @@ export interface StatusBarInfo {
   sessionId?: string;
   status?: "idle" | "busy" | "retry";
   cwd?: string;
+  mode?: ModeKind;
 }
 
 function formatTokensCompact(n: number): string {
@@ -23,6 +26,22 @@ function shortenPath(cwd: string): string {
     return `…/${parts.slice(-2).join("/")}`;
   }
   return p;
+}
+
+const MODE_COLORS: Record<string, string> = {
+  plan: t.modePlan,
+  execute: t.modeExecute,
+};
+
+function formatModeHint(mode: ModeKind): string {
+  const color = MODE_COLORS[mode] ?? "";
+  return `${t.boldOff}${color}${mode} mode${t.reset}${t.dim}  (shift+tab to cycle)`;
+}
+
+/** Visible length excluding ANSI escape codes */
+function visibleLength(s: string): number {
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI stripping
+  return s.replace(/\x1b\[[0-9;]*m/g, "").length;
 }
 
 /** Bottom status bar showing model, tokens, session info */
@@ -56,17 +75,22 @@ export class StatusBar implements Component {
     const statusHint =
       this.info.status === "busy" ? "ctrl+c to cancel" :
       this.info.status === "retry" ? "retrying…" : "";
-    const rightHint = statusHint;
+    const modeHint =
+      !statusHint && this.info.mode && this.info.mode !== "default"
+        ? formatModeHint(this.info.mode)
+        : "";
+    const rightHint = statusHint || modeHint;
 
     if (leftParts.length === 0 && !rightHint) return [];
 
     const leftStr = leftParts.length > 0 ? `  ${leftParts.join(" \u00b7 ")}` : "";
 
     if (rightHint) {
-      const pad = Math.max(1, width - leftStr.length - rightHint.length);
-      const full = `${leftStr}${" ".repeat(pad)}${rightHint}`;
-      if (full.length <= width) {
-        return [`\x1b[2m${full}\x1b[0m`];
+      const rightVisible = visibleLength(rightHint);
+      const pad = Math.max(1, width - leftStr.length - rightVisible);
+      const full = `${t.dim}${leftStr}${" ".repeat(pad)}${rightHint}${t.reset}`;
+      if (leftStr.length + pad + rightVisible <= width) {
+        return [full];
       }
     }
 
@@ -75,7 +99,7 @@ export class StatusBar implements Component {
       line = line.slice(0, width - 1) + "\u2026";
     }
 
-    return [`\x1b[2m${line}\x1b[0m`];
+    return [`${t.dim}${line}${t.reset}`];
   }
 
   invalidate(): void {

@@ -1,5 +1,6 @@
 import { resolveModel, KNOWN_MODELS } from "@diligent/core";
 import { ListPicker, type ListPickerItem } from "../../components/list-picker";
+import { t } from "../../theme";
 import type { Command } from "../types";
 
 export const modelCommand: Command = {
@@ -11,7 +12,7 @@ export const modelCommand: Command = {
       try {
         const model = resolveModel(args);
         ctx.config.model = model;
-        ctx.displayLines([`  Model switched to \x1b[1m${model.id}\x1b[0m`]);
+        ctx.displayLines([`  Model switched to ${t.bold}${model.id}${t.reset}`]);
       } catch {
         ctx.displayError(`Unknown model: ${args}`);
       }
@@ -37,7 +38,7 @@ export const modelCommand: Command = {
           if (value) {
             const model = resolveModel(value);
             ctx.config.model = model;
-            ctx.displayLines([`  Model switched to \x1b[1m${model.id}\x1b[0m`]);
+            ctx.displayLines([`  Model switched to ${t.bold}${model.id}${t.reset}`]);
           }
           resolve();
         },

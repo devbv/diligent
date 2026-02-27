@@ -1,5 +1,6 @@
 import { matchesKey } from "../framework/keys";
 import type { Component } from "../framework/types";
+import { t } from "../theme";
 
 export interface ConfirmDialogOptions {
   title: string;
@@ -44,30 +45,30 @@ export class ConfirmDialog implements Component {
     // Top border with title
     const titleStr = ` ${title} `;
     const borderLen = Math.max(0, dialogWidth - 2 - titleStr.length);
-    lines.push(`\x1b[1m\u250c\u2500${titleStr}${"\u2500".repeat(borderLen)}\u2510\x1b[0m`);
+    lines.push(`${t.bold}\u250c\u2500${titleStr}${"\u2500".repeat(borderLen)}\u2510${t.reset}`);
 
     // Message line(s)
     const msgLines = this.wrapText(message, innerWidth);
     for (const ml of msgLines) {
       const padding = " ".repeat(Math.max(0, innerWidth - ml.length));
-      lines.push(`\x1b[1m\u2502\x1b[0m ${ml}${padding} \x1b[1m\u2502\x1b[0m`);
+      lines.push(`${t.bold}\u2502${t.reset} ${ml}${padding} ${t.bold}\u2502${t.reset}`);
     }
 
     // Empty line
-    lines.push(`\x1b[1m\u2502\x1b[0m ${" ".repeat(innerWidth)} \x1b[1m\u2502\x1b[0m`);
+    lines.push(`${t.bold}\u2502${t.reset} ${" ".repeat(innerWidth)} ${t.bold}\u2502${t.reset}`);
 
     // Buttons line
-    const confirmStr = this.selectedIndex === 0 ? `\x1b[7m ${this.confirmLabel} \x1b[0m` : ` ${this.confirmLabel} `;
-    const cancelStr = this.selectedIndex === 1 ? `\x1b[7m ${this.cancelLabel} \x1b[0m` : ` ${this.cancelLabel} `;
+    const confirmStr = this.selectedIndex === 0 ? `${t.inverse} ${this.confirmLabel} ${t.reset}` : ` ${this.confirmLabel} `;
+    const cancelStr = this.selectedIndex === 1 ? `${t.inverse} ${this.cancelLabel} ${t.reset}` : ` ${this.cancelLabel} `;
 
     const buttonsText = `  ${confirmStr}    ${cancelStr}`;
     // Approximate visible width for padding
     const buttonsVisibleLen = 4 + this.confirmLabel.length + 4 + this.cancelLabel.length + 2;
     const btnPadding = " ".repeat(Math.max(0, innerWidth - buttonsVisibleLen));
-    lines.push(`\x1b[1m\u2502\x1b[0m ${buttonsText}${btnPadding} \x1b[1m\u2502\x1b[0m`);
+    lines.push(`${t.bold}\u2502${t.reset} ${buttonsText}${btnPadding} ${t.bold}\u2502${t.reset}`);
 
     // Bottom border
-    lines.push(`\x1b[1m\u2514${"\u2500".repeat(dialogWidth - 2)}\u2518\x1b[0m`);
+    lines.push(`${t.bold}\u2514${"\u2500".repeat(dialogWidth - 2)}\u2518${t.reset}`);
 
     return lines;
   }

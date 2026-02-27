@@ -1,3 +1,4 @@
+import { t } from "../../theme";
 import type { Command } from "../types";
 
 export const newCommand: Command = {
@@ -9,7 +10,7 @@ export const newCommand: Command = {
       return;
     }
     await ctx.sessionManager.create();
-    ctx.displayLines(["  \x1b[2mNew session started.\x1b[0m"]);
+    ctx.displayLines([`  ${t.dim}New session started.${t.reset}`]);
   },
 };
 
@@ -26,7 +27,7 @@ export const resumeCommand: Command = {
     if (args) {
       const resumed = await ctx.sessionManager.resume({ sessionId: args });
       if (resumed) {
-        ctx.displayLines([`  \x1b[2mResumed session: ${args}\x1b[0m`]);
+        ctx.displayLines([`  ${t.dim}Resumed session: ${args}${t.reset}`]);
       } else {
         ctx.displayError(`Session not found: ${args}`);
       }
@@ -36,7 +37,7 @@ export const resumeCommand: Command = {
     // Show session picker
     const sessions = await ctx.sessionManager.list();
     if (sessions.length === 0) {
-      ctx.displayLines(["  \x1b[2mNo sessions found.\x1b[0m"]);
+      ctx.displayLines([`  ${t.dim}No sessions found.${t.reset}`]);
       return;
     }
 
@@ -56,7 +57,7 @@ export const resumeCommand: Command = {
           if (value) {
             const resumed = await ctx.sessionManager?.resume({ sessionId: value });
             if (resumed) {
-              ctx.displayLines([`  \x1b[2mResumed session: ${value}\x1b[0m`]);
+              ctx.displayLines([`  ${t.dim}Resumed session: ${value}${t.reset}`]);
             }
           }
           resolve();
@@ -74,22 +75,22 @@ export const statusCommand: Command = {
   availableDuringTask: true,
   handler: async (_args, ctx) => {
     const lines: string[] = [""];
-    lines.push(`  \x1b[1mModel:\x1b[0m    ${ctx.config.model.id} (${ctx.config.model.provider})`);
+    lines.push(`  ${t.bold}Model:${t.reset}    ${ctx.config.model.id} (${ctx.config.model.provider})`);
 
     if (ctx.sessionManager) {
-      lines.push(`  \x1b[1mEntries:\x1b[0m  ${ctx.sessionManager.entryCount}`);
+      lines.push(`  ${t.bold}Entries:${t.reset}  ${ctx.sessionManager.entryCount}`);
       const path = ctx.sessionManager.sessionPath;
       if (path) {
-        lines.push(`  \x1b[1mSession:\x1b[0m  ${path}`);
+        lines.push(`  ${t.bold}Session:${t.reset}  ${path}`);
       }
     }
 
     if (ctx.config.sources.length > 0) {
-      lines.push(`  \x1b[1mConfig:\x1b[0m   ${ctx.config.sources.join(", ")}`);
+      lines.push(`  ${t.bold}Config:${t.reset}   ${ctx.config.sources.join(", ")}`);
     }
 
     if (ctx.skills.length > 0) {
-      lines.push(`  \x1b[1mSkills:\x1b[0m   ${ctx.skills.length} loaded`);
+      lines.push(`  ${t.bold}Skills:${t.reset}   ${ctx.skills.length} loaded`);
     }
 
     lines.push("");

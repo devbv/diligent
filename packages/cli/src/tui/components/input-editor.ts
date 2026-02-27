@@ -3,6 +3,7 @@ import { isPrintable, matchesKey } from "../framework/keys";
 import { displayWidth, sliceEndToFitWidth, sliceToFitWidth } from "../framework/string-width";
 import type { Component, Focusable } from "../framework/types";
 import { CURSOR_MARKER } from "../framework/types";
+import { t } from "../theme";
 
 const MAX_HISTORY_SIZE = 100;
 const MAX_VISIBLE_COMPLETIONS = 8;
@@ -38,13 +39,13 @@ export class InputEditor implements Component, Focusable {
   ) {}
 
   render(width: number): string[] {
-    const sep = `\x1b[2m${"─".repeat(Math.max(0, width))}\x1b[0m`;
+    const sep = `${t.dim}${"─".repeat(Math.max(0, width))}${t.reset}`;
     const prompt = this.options.prompt ?? "› ";
     const promptWidth = displayWidth(prompt);
     const maxTextWidth = width - promptWidth;
 
     if (!this.focused) {
-      return ["", sep, `\x1b[1;2m${prompt}\x1b[0m${this.text}`, sep];
+      return ["", sep, `${t.bold}${t.dim}${prompt}${t.reset}${this.text}`, sep];
     }
 
     // Build line with cursor marker embedded
@@ -63,7 +64,7 @@ export class InputEditor implements Component, Focusable {
       displayAfter = sliceToFitWidth(after, Math.max(0, remaining));
     }
 
-    const inputLine = `\x1b[1;2m${prompt}\x1b[0m${displayBefore}${CURSOR_MARKER}${displayAfter}`;
+    const inputLine = `${t.bold}${t.dim}${prompt}${t.reset}${displayBefore}${CURSOR_MARKER}${displayAfter}`;
 
     // Render completion popup below the input
     const popupLines = this.renderCompletionPopup(width);
@@ -407,7 +408,7 @@ export class InputEditor implements Component, Focusable {
 
     // "↑ N more" indicator
     if (start > 0) {
-      lines.push(`\x1b[2m  \u2191 ${start} more\x1b[0m`);
+      lines.push(`${t.dim}  \u2191 ${start} more${t.reset}`);
     }
 
     // Find the longest name for alignment
@@ -417,7 +418,7 @@ export class InputEditor implements Component, Focusable {
     for (let i = start; i < end; i++) {
       const item = this.completionItems[i];
       const isSelected = i === this.completionIndex;
-      const marker = isSelected ? "\x1b[36m \u25b8 " : "   ";
+      const marker = isSelected ? `${t.accent} \u25b8 ` : "   ";
       const name = item.name.padEnd(maxNameLen);
       const desc = item.description;
 
@@ -426,16 +427,16 @@ export class InputEditor implements Component, Focusable {
       const truncDesc = descSpace > 4 ? (desc.length > descSpace ? `${desc.slice(0, descSpace - 1)}\u2026` : desc) : "";
 
       if (isSelected) {
-        lines.push(`${marker}${name}\x1b[0m   \x1b[2m${truncDesc}\x1b[0m`);
+        lines.push(`${marker}${name}${t.reset}   ${t.dim}${truncDesc}${t.reset}`);
       } else {
-        lines.push(`${marker}${name}   \x1b[2m${truncDesc}\x1b[0m`);
+        lines.push(`${marker}${name}   ${t.dim}${truncDesc}${t.reset}`);
       }
     }
 
     // "↓ N more" indicator
     const remaining = total - end;
     if (remaining > 0) {
-      lines.push(`\x1b[2m  \u2193 ${remaining} more\x1b[0m`);
+      lines.push(`${t.dim}  \u2193 ${remaining} more${t.reset}`);
     }
 
     return lines;

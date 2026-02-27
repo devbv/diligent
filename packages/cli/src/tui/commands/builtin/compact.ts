@@ -1,3 +1,4 @@
+import { t } from "../../theme";
 import type { Command } from "../types";
 
 export const compactCommand: Command = {
@@ -8,6 +9,6 @@ export const compactCommand: Command = {
       ctx.displayError("No .diligent/ directory — compaction not available.");
       return;
     }
-    ctx.displayLines(["  \x1b[2mCompaction is triggered automatically. Use /status to see token usage.\x1b[0m"]);
+    ctx.displayLines([`  ${t.dim}Compaction is triggered automatically. Use /status to see token usage.${t.reset}`]);
   },
 };
