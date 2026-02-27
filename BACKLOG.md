@@ -2,11 +2,6 @@
 
 ## Pending
 
-### P0 — Immediate (stability & security)
-
-- [ ] **Implement loop detection** — Track tool call signatures (name + args hash), detect repeating patterns (length 1/2/3) within a configurable window (default 10). Inject warning as SteeringTurn when detected. Currently only maxTurns hard stop exists. Reference: attractor spec §2.10. ~100 lines estimated. (added: 2026-02-27)
-- [ ] **Add environment variable filtering to bash tool** — Filter `*_API_KEY`, `*_SECRET`, `*_TOKEN`, `*_PASSWORD` patterns by default before passing env to child processes. Currently no filtering — API keys can leak to LLM via tool output. Reference: attractor spec §4.2. ~30 lines estimated. (added: 2026-02-27)
-
 ### P1 — High (core loop quality)
 
 - [ ] **Fix output truncation order and add head_tail mode** — Change to char-based first, then line-based (currently reversed — vulnerable to pathological cases like 2-line 10MB CSV). Add head_tail split mode that preserves both beginning and end of output. Add explicit WARNING marker in truncated output so LLM knows data is missing. Reference: attractor spec §5.1-5.3. (added: 2026-02-27)
@@ -23,3 +18,7 @@
 - [ ] **Sync debug-viewer shared types when Phase 3 implements session persistence** — `packages/debug-viewer/src/shared/types.ts` duplicates core types by convention (DV-01). When Phase 3 adds session writer and potentially new fields (D086 `itemId`, expanded `ApprovalResponse`, etc.), manually sync viewer types. D086's serialization contract (`JSON.parse(JSON.stringify())` roundtrip tests) is the reference for format stability. Include this as a checklist item in the Phase 3 implementation plan (`docs/plan/impl/`). (added: 2026-02-25)
 
 ## Done
+
+- [x] **Implement loop detection** — Track tool call signatures, detect repeating patterns within configurable window, inject warning as SteeringTurn. (done: 2026-02-27)
+- [x] **Add environment variable filtering to bash tool** — Filter `*_API_KEY`, `*_SECRET`, `*_TOKEN`, `*_PASSWORD` patterns before passing env to child processes. (done: 2026-02-27)
+- [x] **Add thinking/reasoning block display in TUI** — Animated spinner during model reasoning phase, collapsed `▸ Thinking · Xs` indicator after completion, `[thinking]` stderr output in non-interactive mode. (done: 2026-02-27)
