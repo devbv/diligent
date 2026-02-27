@@ -1,0 +1,1 @@
+cp -r /solution/.diligent/sessions/ /logs/agent/sessions/ 2>/dev/null || true

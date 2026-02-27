@@ -8,7 +8,14 @@
     "test": "bun test",
     "test:e2e": "bun test packages/e2e/",
     "lint": "biome check .",
-    "lint:fix": "biome check --write ."
+    "lint:fix": "biome check --write .",
+    "build": "bun build --compile packages/cli/src/index.ts --outfile dist/diligent",
+    "build:linux-x64": "bun build --compile --target=bun-linux-x64 packages/cli/src/index.ts --outfile dist/diligent-linux-x64",
+    "build:linux-arm64": "bun build --compile --target=bun-linux-arm64 packages/cli/src/index.ts --outfile dist/diligent-linux-arm64",
+    "build:darwin-arm64": "bun build --compile --target=bun-darwin-arm64 packages/cli/src/index.ts --outfile dist/diligent-darwin-arm64",
+    "build:darwin-x64": "bun build --compile --target=bun-darwin-x64 packages/cli/src/index.ts --outfile dist/diligent-darwin-x64",
+    "build:all": "bun run build:linux-x64 && bun run build:linux-arm64 && bun run build:darwin-arm64 && bun run build:darwin-x64",
+    "typecheck": "bunx tsc --noEmit -p packages/core/tsconfig.json && bunx tsc --noEmit -p packages/cli/tsconfig.json"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.4"

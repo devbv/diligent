@@ -1,0 +1,7 @@
+Traceback (most recent call last):
+  File "/Users/devbv-mini4/.local/share/uv/tools/harbor/lib/python3.14/site-packages/harbor/trial/trial.py", line 480, in run
+    await self._setup_agent()
+  File "/Users/devbv-mini4/.local/share/uv/tools/harbor/lib/python3.14/site-packages/harbor/trial/trial.py", line 241, in _setup_agent
+    self._agent.setup(environment=self._environment),
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: DiligentAgent.setup() got an unexpected keyword argument 'environment'

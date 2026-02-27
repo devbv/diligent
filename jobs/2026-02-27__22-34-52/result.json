@@ -1,0 +1,29 @@
+{
+    "id": "b2857a91-43b3-4fb4-ad46-1fbec29d103f",
+    "started_at": "2026-02-27T22:34:53.442145",
+    "finished_at": "2026-02-27T22:35:12.316069",
+    "n_total_trials": 1,
+    "stats": {
+        "n_trials": 1,
+        "n_errors": 0,
+        "evals": {
+            "diligent__claude-sonnet-4-20250514__terminal-bench": {
+                "n_trials": 1,
+                "n_errors": 0,
+                "metrics": [
+                    {
+                        "mean": 0.0
+                    }
+                ],
+                "reward_stats": {
+                    "reward": {
+                        "0.0": [
+                            "fix-git__ANPw2Rq"
+                        ]
+                    }
+                },
+                "exception_stats": {}
+            }
+        }
+    }
+}

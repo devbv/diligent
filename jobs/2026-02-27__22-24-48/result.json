@@ -1,0 +1,28 @@
+{
+    "id": "9f1a5b84-6bae-4bef-b712-89779d364168",
+    "started_at": "2026-02-27T22:24:51.845049",
+    "finished_at": null,
+    "n_total_trials": 5,
+    "stats": {
+        "n_trials": 1,
+        "n_errors": 1,
+        "evals": {
+            "diligent__claude-sonnet-4-20250514__terminal-bench": {
+                "n_trials": 0,
+                "n_errors": 1,
+                "metrics": [
+                    {
+                        "mean": 0.0
+                    }
+                ],
+                "reward_stats": {},
+                "exception_stats": {
+                    "TypeError": [
+                        "gpt2-codegolf__CMN5hFF"
+                    ]
+                }
+            }
+        }
+    },
+    "trial_results": []
+}

@@ -1,0 +1,99 @@
+{
+    "id": "d9bfd130-fe70-4ca0-a9f1-06d4e6dbe2b2",
+    "task_name": "fix-git",
+    "trial_name": "fix-git__n4BPn5U",
+    "trial_uri": "file:///Users/devbv-mini4/git/diligent/jobs/2026-02-27__22-33-20/fix-git__n4BPn5U",
+    "task_id": {
+        "git_url": "https://github.com/laude-institute/terminal-bench-2.git",
+        "git_commit_id": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "fix-git"
+    },
+    "source": "terminal-bench",
+    "task_checksum": "7fa0a681f751d73f290d862522a82a5e448fa529834987ee1b80e5665c51aa7e",
+    "config": {
+        "task": {
+            "path": "fix-git",
+            "git_url": "https://github.com/laude-institute/terminal-bench-2.git",
+            "git_commit_id": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+            "overwrite": false,
+            "download_dir": null,
+            "source": "terminal-bench"
+        },
+        "trial_name": "fix-git__n4BPn5U",
+        "trials_dir": "jobs/2026-02-27__22-33-20",
+        "timeout_multiplier": 1.0,
+        "agent_timeout_multiplier": null,
+        "verifier_timeout_multiplier": null,
+        "agent_setup_timeout_multiplier": null,
+        "environment_build_timeout_multiplier": null,
+        "agent": {
+            "name": null,
+            "import_path": "diligent_tbench:DiligentAgent",
+            "model_name": "anthropic/claude-sonnet-4-20250514",
+            "override_timeout_sec": null,
+            "override_setup_timeout_sec": null,
+            "max_timeout_sec": null,
+            "kwargs": {},
+            "env": {}
+        },
+        "environment": {
+            "type": "docker",
+            "import_path": null,
+            "force_build": false,
+            "delete": true,
+            "override_cpus": null,
+            "override_memory_mb": null,
+            "override_storage_mb": null,
+            "override_gpus": null,
+            "suppress_override_warnings": false,
+            "kwargs": {}
+        },
+        "verifier": {
+            "override_timeout_sec": null,
+            "max_timeout_sec": null,
+            "disable": false
+        },
+        "artifacts": [],
+        "job_id": "2442e72c-56e5-4f3d-82dc-1c83c50f3d8b"
+    },
+    "agent_info": {
+        "name": "diligent",
+        "version": "unknown",
+        "model_info": {
+            "name": "claude-sonnet-4-20250514",
+            "provider": "anthropic"
+        }
+    },
+    "agent_result": {
+        "n_input_tokens": null,
+        "n_cache_tokens": null,
+        "n_output_tokens": null,
+        "cost_usd": null,
+        "rollout_details": null,
+        "metadata": null
+    },
+    "verifier_result": {
+        "rewards": {
+            "reward": 0.0
+        }
+    },
+    "exception_info": null,
+    "started_at": "2026-02-27T13:33:21.630396Z",
+    "finished_at": "2026-02-27T13:33:39.861595Z",
+    "environment_setup": {
+        "started_at": "2026-02-27T13:33:21.636202Z",
+        "finished_at": "2026-02-27T13:33:27.762421Z"
+    },
+    "agent_setup": {
+        "started_at": "2026-02-27T13:33:27.762616Z",
+        "finished_at": "2026-02-27T13:33:31.848512Z"
+    },
+    "agent_execution": {
+        "started_at": "2026-02-27T13:33:31.848722Z",
+        "finished_at": "2026-02-27T13:33:32.512702Z"
+    },
+    "verifier": {
+        "started_at": "2026-02-27T13:33:32.512798Z",
+        "finished_at": "2026-02-27T13:33:38.291843Z"
+    }
+}

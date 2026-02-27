@@ -1,0 +1,87 @@
+{
+    "id": "1f113b31-3229-4d56-b2dc-b42cd466ea56",
+    "task_name": "gpt2-codegolf",
+    "trial_name": "gpt2-codegolf__CMN5hFF",
+    "trial_uri": "file:///Users/devbv-mini4/git/diligent/jobs/2026-02-27__22-24-48/gpt2-codegolf__CMN5hFF",
+    "task_id": {
+        "git_url": "https://github.com/laude-institute/terminal-bench-2.git",
+        "git_commit_id": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+        "path": "gpt2-codegolf"
+    },
+    "source": "terminal-bench",
+    "task_checksum": "c3dfea370953fe9b6cb53d368f1f242af2833cf1af623849bdaee8fe026b1cf1",
+    "config": {
+        "task": {
+            "path": "gpt2-codegolf",
+            "git_url": "https://github.com/laude-institute/terminal-bench-2.git",
+            "git_commit_id": "69671fbaac6d67a7ef0dfec016cc38a64ef7a77c",
+            "overwrite": false,
+            "download_dir": null,
+            "source": "terminal-bench"
+        },
+        "trial_name": "gpt2-codegolf__CMN5hFF",
+        "trials_dir": "jobs/2026-02-27__22-24-48",
+        "timeout_multiplier": 1.0,
+        "agent_timeout_multiplier": null,
+        "verifier_timeout_multiplier": null,
+        "agent_setup_timeout_multiplier": null,
+        "environment_build_timeout_multiplier": null,
+        "agent": {
+            "name": null,
+            "import_path": "diligent_tbench:DiligentAgent",
+            "model_name": "anthropic/claude-sonnet-4-20250514",
+            "override_timeout_sec": null,
+            "override_setup_timeout_sec": null,
+            "max_timeout_sec": null,
+            "kwargs": {},
+            "env": {}
+        },
+        "environment": {
+            "type": "docker",
+            "import_path": null,
+            "force_build": false,
+            "delete": true,
+            "override_cpus": null,
+            "override_memory_mb": null,
+            "override_storage_mb": null,
+            "override_gpus": null,
+            "suppress_override_warnings": false,
+            "kwargs": {}
+        },
+        "verifier": {
+            "override_timeout_sec": null,
+            "max_timeout_sec": null,
+            "disable": false
+        },
+        "artifacts": [],
+        "job_id": "9f1a5b84-6bae-4bef-b712-89779d364168"
+    },
+    "agent_info": {
+        "name": "diligent",
+        "version": "unknown",
+        "model_info": {
+            "name": "claude-sonnet-4-20250514",
+            "provider": "anthropic"
+        }
+    },
+    "agent_result": null,
+    "verifier_result": null,
+    "exception_info": {
+        "exception_type": "TypeError",
+        "exception_message": "DiligentAgent.setup() got an unexpected keyword argument 'environment'",
+        "exception_traceback": "Traceback (most recent call last):\n  File \"/Users/devbv-mini4/.local/share/uv/tools/harbor/lib/python3.14/site-packages/harbor/trial/trial.py\", line 480, in run\n    await self._setup_agent()\n  File \"/Users/devbv-mini4/.local/share/uv/tools/harbor/lib/python3.14/site-packages/harbor/trial/trial.py\", line 241, in _setup_agent\n    self._agent.setup(environment=self._environment),\n    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nTypeError: DiligentAgent.setup() got an unexpected keyword argument 'environment'\n",
+        "occurred_at": "2026-02-27T22:25:06.082322"
+    },
+    "started_at": "2026-02-27T13:24:51.849914Z",
+    "finished_at": "2026-02-27T13:25:07.648684Z",
+    "environment_setup": {
+        "started_at": "2026-02-27T13:24:51.850808Z",
+        "finished_at": "2026-02-27T13:25:06.079567Z"
+    },
+    "agent_setup": {
+        "started_at": "2026-02-27T13:25:06.079653Z",
+        "finished_at": "2026-02-27T13:25:06.079692Z"
+    },
+    "agent_execution": null,
+    "verifier": null
+}

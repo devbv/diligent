@@ -1,0 +1,2 @@
+Trial gpt2-codegolf__gPyY7gr failed: DiligentAgent.setup() got an unexpected keyword argument 'environment'
+Not retrying trial because the maximum number of retries has been reached

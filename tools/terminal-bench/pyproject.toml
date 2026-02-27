@@ -1,0 +1,15 @@
+[project]
+name = "diligent-tbench"
+version = "0.1.0"
+description = "Harbor agent adapter for diligent coding agent"
+requires-python = ">=3.12"
+dependencies = [
+    "harbor>=0.1.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/diligent_tbench"]

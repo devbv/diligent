@@ -1,0 +1,2 @@
+[31mError:[0m ANTHROPIC_API_KEY environment variable is required.
+Get your API key at https://console.anthropic.com/settings/keys

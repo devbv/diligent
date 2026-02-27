@@ -14,8 +14,14 @@ async function main() {
       list: { type: "boolean", short: "l" },
       prompt: { type: "string", short: "p" },
       mode: { type: "string", short: "m" }, // D087: collaboration mode
+      version: { type: "boolean", short: "v" },
     },
   });
+
+  if (values.version) {
+    console.log("diligent 0.0.1");
+    return;
+  }
 
   const cwd = process.cwd();
   const paths = await ensureDiligentDir(cwd);
