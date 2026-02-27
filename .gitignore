@@ -23,3 +23,6 @@ dist/
 
 # Runtime data
 .diligent/
+
+# Terminal Bench job outputs
+jobs/

@@ -1,1 +1,0 @@
-cp -r $HOME/.diligent/sessions/ /logs/agent/sessions/ 2>/dev/null; cp -r /tmp/.diligent/sessions/ /logs/agent/sessions/ 2>/dev/null; true
