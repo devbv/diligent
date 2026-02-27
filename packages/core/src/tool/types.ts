@@ -32,7 +32,7 @@ export interface ApprovalRequest {
 export interface ToolResult {
   output: string;
   metadata?: Record<string, unknown>;
-  truncateDirection?: "head" | "tail"; // D025: hint for auto-truncation. Default: "tail"
+  truncateDirection?: "head" | "tail" | "head_tail"; // D025: hint for auto-truncation. Default: "tail"
 }
 
 // D014: Registry type

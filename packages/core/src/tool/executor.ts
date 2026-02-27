@@ -1,5 +1,12 @@
 import type { ToolCallBlock } from "../types";
-import { persistFullOutput, shouldTruncate, truncateHead, truncateTail } from "./truncation";
+import {
+  TRUNCATION_WARNING,
+  persistFullOutput,
+  shouldTruncate,
+  truncateHead,
+  truncateHeadTail,
+  truncateTail,
+} from "./truncation";
 import type { ToolContext, ToolRegistry, ToolResult } from "./types";
 
 export async function executeTool(
@@ -25,14 +32,20 @@ export async function executeTool(
   // D025: Auto-truncation safety net
   if (shouldTruncate(result.output)) {
     const direction = result.truncateDirection ?? "tail";
-    const truncated = direction === "head" ? truncateHead(result.output) : truncateTail(result.output);
+    const truncated =
+      direction === "head"
+        ? truncateHead(result.output)
+        : direction === "head_tail"
+          ? truncateHeadTail(result.output)
+          : truncateTail(result.output);
 
     const savedPath = await persistFullOutput(result.output);
 
     return {
       output:
         truncated.output +
-        `\n\n... (truncated from ${truncated.originalLines} lines / ${truncated.originalBytes} bytes. Full output at: ${savedPath})`,
+        TRUNCATION_WARNING +
+        `\n(truncated from ${truncated.originalLines} lines / ${truncated.originalBytes} bytes. Full output at: ${savedPath})`,
       metadata: {
         ...result.metadata,
         truncated: true,

@@ -4,7 +4,7 @@
 
 ### P1 — High (core loop quality)
 
-- [ ] **Fix output truncation order and add head_tail mode** — Change to char-based first, then line-based (currently reversed — vulnerable to pathological cases like 2-line 10MB CSV). Add head_tail split mode that preserves both beginning and end of output. Add explicit WARNING marker in truncated output so LLM knows data is missing. Reference: attractor spec §5.1-5.3. (added: 2026-02-27)
+- [x] **Fix output truncation order and add head_tail mode** — Reversed to char-based first, then line-based. Added head_tail split mode (40/60 head/tail budget). Added explicit WARNING marker. (done: 2026-02-27)
 - [ ] **Implement per-tool output limits** — Different char limits per tool (read_file: 50k, shell: 30k, grep: 20k, glob: 20k, edit: 10k, write: 1k) instead of current uniform 50KB/2000 lines for all tools. Configurable via SessionConfig. Reference: attractor spec §5.2. (added: 2026-02-27)
 - [ ] **Add steering queue to agent loop** — Implement `steer()` and `follow_up()` APIs on SessionManager. Add `drain_steering()` before/after LLM calls. New SteeringTurn type in session history, converted to user-role messages for LLM. Key enabler for library-first usage and mid-task redirection by host applications. Reference: attractor spec §2.5-2.6. (added: 2026-02-27)
 
