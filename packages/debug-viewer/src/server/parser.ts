@@ -91,12 +91,12 @@ export function detectEntryType(raw: Record<string, unknown>): SessionEntry | nu
   }
 
   // Skip known core types that the viewer doesn't render
-  if (raw.type === "model_change" || raw.type === "session_info") {
+  if (raw.type === "model_change" || raw.type === "session_info" || raw.type === "mode_change") {
     return null;
   }
 
   // Unknown entry type — skip with warning
-  console.warn("Unknown session entry type:", JSON.stringify(raw).slice(0, 100));
+  console.warn("Unknown session entry type:", JSON.stringify(raw).slice(0, 300));
   return null;
 }
 

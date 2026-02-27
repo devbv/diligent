@@ -83,6 +83,15 @@ function AssistantMessageCard({
             );
           }
 
+          if (block.type === "image") {
+            const { media_type, data } = block.source;
+            return (
+              <div key={blockKey(block, i)} className="image-block">
+                <img src={`data:${media_type};base64,${data}`} alt="Image content" />
+              </div>
+            );
+          }
+
           if (block.type === "text") {
             const html = renderMarkdown(block.text);
             // biome-ignore lint/security/noDangerouslySetInnerHtml: rendering trusted markdown from session data

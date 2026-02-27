@@ -542,6 +542,21 @@ body,
   text-decoration: underline;
 }
 
+/* ─── Image Block ─── */
+
+.image-block {
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+}
+
+.image-block img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-sm);
+}
+
 /* ─── Thinking Block ─── */
 
 .thinking-block {
@@ -678,6 +693,14 @@ body,
   letter-spacing: 0.05em;
 }
 
+.tool-duration {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
 .tool-expand {
   color: var(--text-muted);
   font-size: 9px;
@@ -730,6 +753,21 @@ body,
 .tool-output.error {
   color: var(--red);
   border-color: rgba(239, 68, 68, 0.15);
+  border-left: 3px solid var(--red);
+  background: var(--red-dim);
+}
+
+.tool-output-error-badge {
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 2px;
+  background: var(--red-dim);
+  color: var(--red);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-left: 6px;
+  vertical-align: middle;
 }
 
 /* JSON viewer override — specificity boost via repeated class */

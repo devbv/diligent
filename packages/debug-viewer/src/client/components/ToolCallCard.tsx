@@ -8,6 +8,17 @@ interface ToolCallCardProps {
   onSelect: (entry: unknown) => void;
 }
 
+function formatDuration(startTime: number, endTime: number): string {
+  const ms = endTime - startTime;
+  const seconds = ms / 1000;
+  if (seconds < 60) {
+    return `${seconds.toFixed(1)}s`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = Math.floor(seconds % 60);
+  return `${minutes}m ${remainingSeconds}s`;
+}
+
 const TOOL_ICONS: Record<string, string> = {
   read: "R",
   write: "W",
@@ -21,6 +32,10 @@ export function ToolCallCard({ toolCall, pair, onSelect }: ToolCallCardProps) {
   const [expanded, setExpanded] = useState(false);
   const isError = pair?.result?.isError ?? false;
   const icon = TOOL_ICONS[toolCall.name] ?? "T";
+  const duration =
+    pair?.startTime != null && pair?.endTime != null
+      ? formatDuration(pair.startTime, pair.endTime)
+      : undefined;
 
   const inputPreview = Object.entries(toolCall.input)
     .map(([k, v]) => `${k}: ${typeof v === "string" ? v.slice(0, 50) : JSON.stringify(v).slice(0, 50)}`)
@@ -40,6 +55,7 @@ export function ToolCallCard({ toolCall, pair, onSelect }: ToolCallCardProps) {
         <span className="tool-name">{toolCall.name}</span>
         <span className="tool-input-preview">{inputPreview}</span>
         {isError && <span className="tool-error-badge">ERR</span>}
+        {duration && <span className="tool-duration">{duration}</span>}
         <span className="tool-expand">{expanded ? "\u25BC" : "\u25B6"}</span>
       </button>
 
@@ -51,7 +67,9 @@ export function ToolCallCard({ toolCall, pair, onSelect }: ToolCallCardProps) {
           </div>
           {pair?.result && (
             <div className="tool-section">
-              <div className="tool-section-label">Output {isError ? "(Error)" : ""}</div>
+              <div className="tool-section-label">
+                Output {isError && <span className="tool-output-error-badge">Error</span>}
+              </div>
               <pre className={`tool-output ${isError ? "error" : ""}`}>{pair.result.output}</pre>
             </div>
           )}
