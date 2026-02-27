@@ -41,9 +41,8 @@ Deferred to a future phase (post-Phase 4):
 
 ## Backlog
 
-8 pending items. See `BACKLOG.md` for full details.
+4 pending items. See `BACKLOG.md` for full details.
 
-- **P0**: Loop detection, env variable filtering (agent stability & security)
-- **P1**: Truncation order fix + head_tail mode, per-tool output limits, steering queue (core loop quality)
+- **P1**: Per-tool output limits (core loop quality)
 - **P2**: Context budget for compaction, background async piggyback (future capabilities)
-- **P3**: Debug-viewer type sync (opportunistic, Phase 3 타입 변경 시)
+- **P3**: Debug-viewer type sync (opportunistic)

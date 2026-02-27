@@ -4,9 +4,7 @@
 
 ### P1 — High (core loop quality)
 
-- [x] **Fix output truncation order and add head_tail mode** — Reversed to char-based first, then line-based. Added head_tail split mode (40/60 head/tail budget). Added explicit WARNING marker. (done: 2026-02-27)
 - [ ] **Implement per-tool output limits** — Different char limits per tool (read_file: 50k, shell: 30k, grep: 20k, glob: 20k, edit: 10k, write: 1k) instead of current uniform 50KB/2000 lines for all tools. Configurable via SessionConfig. Reference: attractor spec §5.2. (added: 2026-02-27)
-- [ ] **Add steering queue to agent loop** — Implement `steer()` and `follow_up()` APIs on SessionManager. Add `drain_steering()` before/after LLM calls. New SteeringTurn type in session history, converted to user-role messages for LLM. Key enabler for library-first usage and mid-task redirection by host applications. Reference: attractor spec §2.5-2.6. (added: 2026-02-27)
 
 ### P2 — Medium (future capabilities)
 
@@ -19,6 +17,8 @@
 
 ## Done
 
+- [x] **Fix output truncation order and add head_tail mode** — Reversed to char-based first, then line-based. Added head_tail split mode (40/60 head/tail budget). Added explicit WARNING marker. (done: 2026-02-27)
+- [x] **Add steering queue to agent loop** — `steer()` and `followUp()` on SessionManager, `drainSteering()` before/after LLM calls, SteeringEntry in session JSONL, follow-up loop in proxyAgentLoop. (done: 2026-02-27)
 - [x] **Implement loop detection** — Track tool call signatures, detect repeating patterns within configurable window, inject warning as SteeringTurn. (done: 2026-02-27)
 - [x] **Add environment variable filtering to bash tool** — Filter `*_API_KEY`, `*_SECRET`, `*_TOKEN`, `*_PASSWORD` patterns before passing env to child processes. (done: 2026-02-27)
 - [x] **Add thinking/reasoning block display in TUI** — Animated spinner during model reasoning phase, collapsed `▸ Thinking · Xs` indicator after completion, `[thinking]` stderr output in non-interactive mode. (done: 2026-02-27)

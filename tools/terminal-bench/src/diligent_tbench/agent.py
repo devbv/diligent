@@ -90,8 +90,9 @@ class DiligentAgent(BaseInstalledAgent):
                 timeout_sec=600,
             ),
             # Copy session logs to mounted dir for host-side access
+            # Sessions land in {cwd}/.diligent/sessions/ — use find to catch any location
             ExecInput(
-                command=f"cp -r $HOME/.diligent/sessions/ {output_dir}/sessions/ 2>/dev/null; cp -r /tmp/.diligent/sessions/ {output_dir}/sessions/ 2>/dev/null; true",
+                command=f"mkdir -p {output_dir}/sessions && find / -path '*/.diligent/sessions/*.jsonl' -exec cp {{}} {output_dir}/sessions/ \\; 2>/dev/null; true",
                 timeout_sec=30,
             ),
         ]
