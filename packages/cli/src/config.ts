@@ -11,6 +11,7 @@ import type {
   StreamFunction,
 } from "@diligent/core";
 import {
+  buildBaseSystemPrompt,
   buildKnowledgeSection,
   buildSystemPromptWithKnowledge,
   createAnthropicStream,
@@ -37,10 +38,6 @@ export interface AppConfig {
   mode: ModeKind; // D087: always set, defaults to "default"
 }
 
-const BASE_SYSTEM_PROMPT = [
-  "You are a coding assistant. You help developers by running commands and explaining results.",
-  "Use the bash tool to execute shell commands when needed.",
-].join("\n");
 
 export async function loadConfig(cwd: string = process.cwd(), paths?: DiligentPaths): Promise<AppConfig> {
   const { config, sources } = await loadDiligentConfig(cwd);
@@ -99,14 +96,13 @@ export async function loadConfig(cwd: string = process.cwd(), paths?: DiligentPa
   }
 
   // Build system prompt with knowledge AND skills
-  const basePrompt = config.systemPrompt ?? BASE_SYSTEM_PROMPT;
-  const contextLines = [
-    `Current working directory: ${cwd}`,
-    `Platform: ${process.platform}`,
-    `Date: ${new Date().toISOString().split("T")[0]}`,
-  ];
+  const basePrompt = config.systemPrompt ?? buildBaseSystemPrompt({
+    currentDate: new Date().toISOString().split("T")[0],
+    cwd,
+    platform: process.platform,
+  });
   const systemPrompt = buildSystemPromptWithKnowledge(
-    [basePrompt, ...contextLines].join("\n"),
+    basePrompt,
     instructions,
     knowledgeSection,
     config.instructions,

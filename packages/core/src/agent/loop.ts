@@ -238,7 +238,10 @@ async function streamAssistantResponse(
     tools: activeTools.map(toolToDefinition),
   };
 
-  const providerStream = streamFn(config.model, context, { signal: config.signal });
+  const providerStream = streamFn(config.model, context, {
+    signal: config.signal,
+    budgetTokens: config.model.defaultBudgetTokens,
+  });
 
   let currentMessage: AssistantMessage | undefined;
   const messageItemId = generateItemId();

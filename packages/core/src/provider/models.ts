@@ -7,12 +7,25 @@ export interface ModelDefinition extends Model {
 export const KNOWN_MODELS: ModelDefinition[] = [
   // Anthropic
   {
+    id: "claude-opus-4-20250514",
+    provider: "anthropic",
+    contextWindow: 200_000,
+    maxOutputTokens: 16_384,
+    inputCostPer1M: 15.0,
+    outputCostPer1M: 75.0,
+    supportsThinking: true,
+    defaultBudgetTokens: 10_000,
+    aliases: ["claude-opus", "opus"],
+  },
+  {
     id: "claude-sonnet-4-20250514",
     provider: "anthropic",
     contextWindow: 200_000,
     maxOutputTokens: 16_384,
     inputCostPer1M: 3.0,
     outputCostPer1M: 15.0,
+    supportsThinking: true,
+    defaultBudgetTokens: 10_000,
     aliases: ["claude-sonnet", "sonnet"],
   },
   {
@@ -50,6 +63,8 @@ export const KNOWN_MODELS: ModelDefinition[] = [
     maxOutputTokens: 100_000,
     inputCostPer1M: 10.0,
     outputCostPer1M: 40.0,
+    supportsThinking: true,
+    defaultBudgetTokens: 10_000,
   },
 ];
 

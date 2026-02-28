@@ -26,14 +26,21 @@ export function createAnthropicStream(apiKey: string): StreamFunction {
 
     (async () => {
       try {
+        const useThinking = model.supportsThinking && (options.budgetTokens ?? model.defaultBudgetTokens);
+        const budgetTokens = options.budgetTokens ?? model.defaultBudgetTokens ?? 0;
+
         const sdkStream = client.messages.stream(
           {
             model: model.id,
-            max_tokens: options.maxTokens ?? model.maxOutputTokens,
+            max_tokens: useThinking
+              ? Math.max((options.maxTokens ?? model.maxOutputTokens), budgetTokens + 1000)
+              : (options.maxTokens ?? model.maxOutputTokens),
             system: context.systemPrompt,
             messages: convertMessages(context.messages),
             ...(context.tools.length > 0 && { tools: convertTools(context.tools) }),
-            ...(options.temperature !== undefined && { temperature: options.temperature }),
+            ...(useThinking
+              ? { thinking: { type: "enabled" as const, budget_tokens: budgetTokens }, temperature: 1 }
+              : options.temperature !== undefined ? { temperature: options.temperature } : {}),
           },
           ...(options.signal ? [{ signal: options.signal }] : []),
         );
@@ -157,8 +164,7 @@ function convertContentBlock(block: ContentBlock): Anthropic.ContentBlockParam {
         },
       };
     case "thinking":
-      // Thinking blocks are not sent back to the API
-      return { type: "text", text: "" };
+      return { type: "thinking", thinking: block.thinking, signature: block.signature } as unknown as Anthropic.ContentBlockParam;
     case "tool_call":
       return {
         type: "tool_use",
@@ -192,7 +198,7 @@ function mapToAssistantMessage(msg: Anthropic.Message, model: Model): AssistantM
         input: block.input as Record<string, unknown>,
       };
     } else if (block.type === "thinking") {
-      return { type: "thinking", thinking: block.thinking };
+      return { type: "thinking", thinking: block.thinking, signature: block.signature };
     }
     return { type: "text", text: "" };
   });

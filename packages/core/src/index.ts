@@ -27,6 +27,9 @@ export {
   rankKnowledge,
   readKnowledge,
 } from "./knowledge/index";
+// Prompt
+export type { SystemPromptVars } from "./prompt/index";
+export { buildBaseSystemPrompt } from "./prompt/index";
 // Provider
 export type {
   Model,

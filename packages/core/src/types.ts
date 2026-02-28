@@ -14,6 +14,7 @@ export interface ImageBlock {
 export interface ThinkingBlock {
   type: "thinking";
   thinking: string;
+  signature?: string;
 }
 
 export interface ToolCallBlock {
