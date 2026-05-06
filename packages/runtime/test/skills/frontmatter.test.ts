@@ -168,6 +168,100 @@ describe("parseFrontmatter", () => {
     expect(result.frontmatter.name).toBe("my-skill");
     expect(result.frontmatter.description).toBe("A skill");
   });
+
+  it("parses literal block scalar (|)", () => {
+    const content = ["---", "name: my-skill", "description: |", "  Line 1", "  Line 2", "---", "body"].join("\n");
+
+    const result = parseFrontmatter(content, "/test/SKILL.md");
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+    expect(result.frontmatter.description).toBe("Line 1\nLine 2\n");
+  });
+
+  it("parses literal block scalar with strip chomp (|-)", () => {
+    const content = ["---", "name: my-skill", "description: |-", "  Line 1", "  Line 2", "---", "body"].join("\n");
+
+    const result = parseFrontmatter(content, "/test/SKILL.md");
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+    expect(result.frontmatter.description).toBe("Line 1\nLine 2");
+  });
+
+  it("parses folded block scalar (>) collapsing lines into a single string", () => {
+    const content = ["---", "name: my-skill", "description: >", "  Line 1", "  Line 2", "  Line 3", "---", "body"].join(
+      "\n",
+    );
+
+    const result = parseFrontmatter(content, "/test/SKILL.md");
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+    expect(result.frontmatter.description).toBe("Line 1 Line 2 Line 3\n");
+  });
+
+  it("preserves blank lines as newlines in folded block scalar", () => {
+    const content = [
+      "---",
+      "name: my-skill",
+      "description: >-",
+      "  Para one line one,",
+      "  para one line two.",
+      "",
+      "  Para two.",
+      "---",
+      "body",
+    ].join("\n");
+
+    const result = parseFrontmatter(content, "/test/SKILL.md");
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+    expect(result.frontmatter.description).toBe("Para one line one, para one line two.\n\nPara two.");
+  });
+
+  it("supports plain scalar continuation (indented next line)", () => {
+    const content = [
+      "---",
+      "name: my-skill",
+      "description: A long description that",
+      "  continues onto the next line",
+      "  and one more.",
+      "---",
+      "body",
+    ].join("\n");
+
+    const result = parseFrontmatter(content, "/test/SKILL.md");
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+    expect(result.frontmatter.description).toBe("A long description that continues onto the next line and one more.");
+  });
+
+  it("parses block scalar followed by another key", () => {
+    const content = [
+      "---",
+      "name: my-skill",
+      "description: |",
+      "  Line 1",
+      "  Line 2",
+      "disable-model-invocation: true",
+      "---",
+      "body",
+    ].join("\n");
+
+    const result = parseFrontmatter(content, "/test/SKILL.md");
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+    expect(result.frontmatter.description).toBe("Line 1\nLine 2\n");
+    expect(result.frontmatter["disable-model-invocation"]).toBe(true);
+  });
+
+  it("enforces description length limit even when written as block scalar", () => {
+    const longLines = Array.from({ length: 30 }, () => `  ${"a".repeat(40)}`);
+    const content = ["---", "name: my-skill", "description: >", ...longLines, "---", "body"].join("\n");
+
+    const result = parseFrontmatter(content, "/test/SKILL.md");
+    expect("error" in result).toBe(true);
+    if (!("error" in result)) return;
+    expect(result.error).toContain("exceeds 1024 characters");
+  });
 });
 
 describe("validateSkillName", () => {

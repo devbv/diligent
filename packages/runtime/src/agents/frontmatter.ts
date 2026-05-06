@@ -1,6 +1,7 @@
 // @summary Parses and validates AGENT.md frontmatter metadata
 import type { ModelClass } from "@diligent/core/llm/models";
 import { TOOL_CAPABILITIES } from "../tools/tool-metadata";
+import { parseYamlFrontmatter } from "../util/yaml-frontmatter";
 import type { AgentFrontmatter } from "./types";
 
 const NAME_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
@@ -37,39 +38,11 @@ export function parseAgentFrontmatter(
   options?: { knownToolNames?: Iterable<string> },
 ): { frontmatter: AgentFrontmatter; body: string } | { error: string } {
   const knownToolNames = options?.knownToolNames ? new Set(options.knownToolNames) : undefined;
-  const lines = content.split("\n");
-  if (lines[0]?.trim() !== "---") {
-    return { error: `${filePath}: missing frontmatter (no opening ---)` };
-  }
 
-  let closingIdx = -1;
-  for (let index = 1; index < lines.length; index++) {
-    if (lines[index].trim() === "---") {
-      closingIdx = index;
-      break;
-    }
-  }
+  const result = parseYamlFrontmatter(content, filePath);
+  if ("error" in result) return result;
 
-  if (closingIdx === -1) {
-    return { error: `${filePath}: missing frontmatter (no closing ---)` };
-  }
-
-  const parsed: Record<string, string> = {};
-  for (const line of lines.slice(1, closingIdx)) {
-    const trimmed = line.trim();
-    if (trimmed === "" || trimmed.startsWith("#")) continue;
-    const colonIdx = trimmed.indexOf(":");
-    if (colonIdx === -1) {
-      return { error: `${filePath}: invalid frontmatter line: ${trimmed}` };
-    }
-
-    const key = trimmed.slice(0, colonIdx).trim();
-    let value = trimmed.slice(colonIdx + 1).trim();
-    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-      value = value.slice(1, -1);
-    }
-    parsed[key] = value;
-  }
+  const { parsed, body: rawBody } = result;
 
   if (!parsed.name) {
     return { error: `${filePath}: frontmatter missing required field: name` };
@@ -106,10 +79,7 @@ export function parseAgentFrontmatter(
     modelClass = parsed.model_class as ModelClass;
   }
 
-  const body = lines
-    .slice(closingIdx + 1)
-    .join("\n")
-    .trim();
+  const body = rawBody.trim();
   if (!body) {
     return { error: `${filePath}: AGENT.md body must not be empty` };
   }
