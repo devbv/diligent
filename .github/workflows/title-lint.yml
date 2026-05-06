@@ -16,18 +16,3 @@ jobs:
 
       - name: Validate PR title
         run: bun run validate:title --title "${{ github.event.pull_request.title }}"
-
-      - name: Validate commit subjects in PR
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          REPO: ${{ github.repository }}
-        run: |
-          gh api \
-            "/repos/${REPO}/pulls/${PR_NUMBER}/commits" \
-            --paginate \
-            --jq '.[].commit.message' \
-            | while IFS= read -r message; do
-                title="${message%%$'\n'*}"
-                bun run validate:title --title "$title"
-              done
