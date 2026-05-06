@@ -219,11 +219,25 @@ class KeyringAuthStorage implements AuthStorageBackend {
 }
 
 class LazyKeyringAuthStorage implements AuthStorageBackend {
-  constructor(private readonly getStorage: KeyringStorageFactory) {}
+  private readonly fileStorage: FileAuthStorage;
+
+  constructor(
+    filePath: string,
+    private readonly getStorage: KeyringStorageFactory,
+  ) {
+    this.fileStorage = new FileAuthStorage(filePath);
+  }
 
   async load(): Promise<AuthKeys> {
-    const storage = await this.getStorage();
-    return storage.load();
+    try {
+      const storage = await this.getStorage();
+      return storage.load();
+    } catch (error) {
+      console.warn(
+        `[auth] Keyring load failed, falling back to file: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return this.fileStorage.load();
+    }
   }
 
   async save(store: AuthKeys): Promise<void> {
@@ -313,7 +327,7 @@ async function createAuthStorage(options?: string | AuthStoreOptions): Promise<A
     case "file":
       return fileStorage;
     case "keyring":
-      return new LazyKeyringAuthStorage(createKeyringStorage);
+      return new LazyKeyringAuthStorage(path, createKeyringStorage);
     case "auto":
       return new AutoAuthStorage(path, createKeyringStorage);
     case "ephemeral":
