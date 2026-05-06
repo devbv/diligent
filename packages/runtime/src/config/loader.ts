@@ -63,16 +63,48 @@ export function mergeConfig(base: DiligentConfig, override: DiligentConfig): Dil
     if (key === "instructions" && Array.isArray(value)) {
       const baseInstructions = (base as Record<string, unknown>).instructions as string[] | undefined;
       (merged as Record<string, unknown>).instructions = [...new Set([...(baseInstructions ?? []), ...value])];
-    } else if (typeof value === "object" && !Array.isArray(value) && value !== null) {
-      (merged as Record<string, unknown>)[key] = {
-        ...((base as Record<string, unknown>)[key] as Record<string, unknown> | undefined),
-        ...value,
-      };
+    } else if (isPlainObject(value)) {
+      const baseValue = (base as Record<string, unknown>)[key];
+      (merged as Record<string, unknown>)[key] = isPlainObject(baseValue)
+        ? mergePlainObjects(baseValue, value)
+        : mergePlainObjects({}, value);
     } else {
       (merged as Record<string, unknown>)[key] = value;
     }
   }
   return merged;
+}
+
+function mergePlainObjects(base: Record<string, unknown>, override: Record<string, unknown>): Record<string, unknown> {
+  const merged = { ...base };
+
+  for (const [key, value] of Object.entries(override)) {
+    if (value === undefined) continue;
+    const baseValue = merged[key];
+
+    if (isPlainObject(value) && isPlainObject(baseValue)) {
+      merged[key] = mergePlainObjects(baseValue, value);
+      continue;
+    }
+
+    if (Array.isArray(value)) {
+      merged[key] = [...value];
+      continue;
+    }
+
+    if (isPlainObject(value)) {
+      merged[key] = mergePlainObjects({}, value);
+      continue;
+    }
+
+    merged[key] = value;
+  }
+
+  return merged;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /** Template substitution: {env:VAR_NAME} → process.env[VAR_NAME] */

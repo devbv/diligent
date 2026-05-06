@@ -60,6 +60,26 @@ describe("mergeConfig", () => {
     expect(result.provider?.vertex).toEqual({ project: "p", location: "l", endpoint: "openapi" });
   });
 
+  it("deep merges nested provider auth settings without dropping siblings", () => {
+    const base: DiligentConfig = {
+      provider: {
+        auth: { credentialsStore: "keyring" },
+        anthropic: { apiKey: "old" },
+      },
+    };
+    const override: DiligentConfig = {
+      provider: {
+        openai: { apiKey: "new" },
+      },
+    };
+
+    const result = mergeConfig(base, override);
+
+    expect(result.provider?.auth?.credentialsStore).toBe("keyring");
+    expect(result.provider?.anthropic?.apiKey).toBe("old");
+    expect(result.provider?.openai?.apiKey).toBe("new");
+  });
+
   it("concatenates instructions with deduplication (D034)", () => {
     const base: DiligentConfig = { instructions: ["Use Bun", "Run tests"] };
     const override: DiligentConfig = { instructions: ["Run tests", "Use strict"] };
