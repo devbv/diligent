@@ -1,5 +1,5 @@
 export interface SkillMetadata {
-  /** Skill name — kebab-case, matches parent directory name */
+  /** Skill name — kebab-case, defined by frontmatter */
   name: string;
   /** Human-readable description */
   description: string;

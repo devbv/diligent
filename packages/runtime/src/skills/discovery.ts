@@ -4,7 +4,7 @@ import { readdir, realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { resolveProjectDirName } from "../infrastructure/diligent-dir";
-import { parseFrontmatter, validateSkillName } from "./frontmatter";
+import { parseFrontmatter } from "./frontmatter";
 import type { SkillLoadError, SkillLoadResult, SkillMetadata } from "./types";
 
 export interface DiscoveryOptions {
@@ -80,19 +80,17 @@ async function scanSkillDirectory(
     if (entry.isDirectory()) {
       // Look for SKILL.md in subdirectory
       const skillPath = join(dir, entry.name, "SKILL.md");
-      await loadSkill(skillPath, entry.name, source, skills, errors, seen);
+      await loadSkill(skillPath, source, skills, errors, seen);
     } else if (entry.isFile() && entry.name.endsWith(".md") && entry.name !== "README.md") {
-      // Flat skill: foo.md directly in root (name derived from filename without extension)
+      // Flat skill: foo.md directly in root
       const skillPath = join(dir, entry.name);
-      const derivedName = entry.name.slice(0, -3); // strip .md
-      await loadSkill(skillPath, derivedName, source, skills, errors, seen);
+      await loadSkill(skillPath, source, skills, errors, seen);
     }
   }
 }
 
 async function loadSkill(
   skillPath: string,
-  expectedDirName: string,
   source: SkillMetadata["source"],
   skills: SkillMetadata[],
   errors: SkillLoadError[],
@@ -118,13 +116,6 @@ async function loadSkill(
   }
 
   const { frontmatter } = result;
-
-  // Validate name matches directory
-  const nameError = validateSkillName(frontmatter.name, expectedDirName);
-  if (nameError) {
-    errors.push({ path: skillPath, message: nameError });
-    return;
-  }
 
   // Dedup check
   const existing = seen.get(frontmatter.name);

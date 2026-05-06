@@ -129,6 +129,44 @@ describe("parseFrontmatter", () => {
     expect(result.frontmatter["disable-model-invocation"]).toBe(true);
   });
 
+  it("parses YAML folded block descriptions", () => {
+    const content = [
+      "---",
+      "name: my-skill",
+      "description: >",
+      "  First line of the description.",
+      "  Second line stays part of the same value.",
+      "disable-model-invocation: true",
+      "---",
+      "body",
+    ].join("\n");
+
+    const result = parseFrontmatter(content, "/test/SKILL.md");
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+
+    expect(result.frontmatter.description).toBe(
+      "First line of the description. Second line stays part of the same value.\n",
+    );
+    expect(result.frontmatter["disable-model-invocation"]).toBe(true);
+  });
+
+  it("rejects non-boolean disable-model-invocation values", () => {
+    const content = [
+      "---",
+      "name: my-skill",
+      "description: A skill",
+      'disable-model-invocation: "true"',
+      "---",
+      "body",
+    ].join("\n");
+
+    const result = parseFrontmatter(content, "/test/SKILL.md");
+    expect("error" in result).toBe(true);
+    if (!("error" in result)) return;
+    expect(result.error).toContain("disable-model-invocation must be a boolean");
+  });
+
   it("defaults disable-model-invocation to false (field absent)", () => {
     const content = ["---", "name: my-skill", "description: A skill", "---", "body"].join("\n");
 
@@ -175,11 +213,8 @@ describe("validateSkillName", () => {
     expect(validateSkillName("my-skill", "my-skill")).toBeNull();
   });
 
-  it("returns error string for mismatched names", () => {
-    const result = validateSkillName("my-skill", "other-dir");
-    expect(result).not.toBeNull();
-    expect(result).toContain("my-skill");
-    expect(result).toContain("other-dir");
+  it("allows mismatched directory names", () => {
+    expect(validateSkillName("my-skill", "other-dir")).toBeNull();
   });
 });
 

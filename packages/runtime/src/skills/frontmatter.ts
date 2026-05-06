@@ -1,4 +1,5 @@
 // @summary Parses and validates SKILL.md frontmatter metadata
+import { extractMarkdownBody, parseYamlFrontmatter } from "../frontmatter/yaml";
 import type { SkillFrontmatter } from "./types";
 
 const NAME_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
@@ -12,97 +13,62 @@ export function parseFrontmatter(
   content: string,
   filePath: string,
 ): { frontmatter: SkillFrontmatter; body: string } | { error: string } {
-  const lines = content.split("\n");
-
-  // Must start with ---
-  if (lines[0]?.trim() !== "---") {
-    return { error: `${filePath}: missing frontmatter (no opening ---)` };
+  const parsedResult = parseYamlFrontmatter(content, filePath);
+  if ("error" in parsedResult) {
+    return parsedResult;
   }
 
-  // Find closing ---
-  let closingIdx = -1;
-  for (let i = 1; i < lines.length; i++) {
-    if (lines[i].trim() === "---") {
-      closingIdx = i;
-      break;
-    }
-  }
-
-  if (closingIdx === -1) {
-    return { error: `${filePath}: missing frontmatter (no closing ---)` };
-  }
-
-  // Parse key-value pairs
-  const kvLines = lines.slice(1, closingIdx);
-  const parsed: Record<string, string> = {};
-
-  for (const line of kvLines) {
-    const trimmed = line.trim();
-    if (trimmed === "" || trimmed.startsWith("#")) continue;
-
-    const colonIdx = trimmed.indexOf(":");
-    if (colonIdx === -1) {
-      return { error: `${filePath}: invalid frontmatter line: ${trimmed}` };
-    }
-
-    const key = trimmed.slice(0, colonIdx).trim();
-    let value = trimmed.slice(colonIdx + 1).trim();
-
-    // Remove surrounding quotes if present
-    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-      value = value.slice(1, -1);
-    }
-
-    parsed[key] = value;
-  }
+  const parsed = parsedResult.frontmatter;
 
   // Validate required fields
-  if (!parsed.name) {
+  if (typeof parsed.name !== "string" || parsed.name.trim() === "") {
     return { error: `${filePath}: frontmatter missing required field: name` };
   }
-  if (!parsed.description) {
+  if (typeof parsed.description !== "string" || parsed.description.trim() === "") {
     return { error: `${filePath}: frontmatter missing required field: description` };
   }
 
+  const name = parsed.name;
+  const description = parsed.description;
+
   // Validate name format
-  if (parsed.name.length > MAX_NAME_LENGTH) {
+  if (name.length > MAX_NAME_LENGTH) {
     return { error: `${filePath}: skill name exceeds ${MAX_NAME_LENGTH} characters` };
   }
-  if (!NAME_PATTERN.test(parsed.name)) {
+  if (!NAME_PATTERN.test(name)) {
     return {
-      error: `${filePath}: skill name must be kebab-case (lowercase alphanumeric with hyphens): "${parsed.name}"`,
+      error: `${filePath}: skill name must be kebab-case (lowercase alphanumeric with hyphens): "${name}"`,
     };
   }
 
   // Validate description length
-  if (parsed.description.length > MAX_DESCRIPTION_LENGTH) {
+  if (description.length > MAX_DESCRIPTION_LENGTH) {
     return { error: `${filePath}: skill description exceeds ${MAX_DESCRIPTION_LENGTH} characters` };
   }
 
   // Parse boolean field
-  const disableModelInvocation = parsed["disable-model-invocation"] === "true";
+  if (parsed["disable-model-invocation"] !== undefined && typeof parsed["disable-model-invocation"] !== "boolean") {
+    return { error: `${filePath}: disable-model-invocation must be a boolean` };
+  }
+
+  const disableModelInvocation = parsed["disable-model-invocation"] === true;
 
   const frontmatter: SkillFrontmatter = {
-    name: parsed.name,
-    description: parsed.description,
+    name,
+    description,
   };
   if (disableModelInvocation) {
     frontmatter["disable-model-invocation"] = true;
   }
 
-  // Extract body (everything after closing ---)
-  const body = lines.slice(closingIdx + 1).join("\n");
-
-  return { frontmatter, body };
+  return { frontmatter, body: parsedResult.body };
 }
 
 /**
- * Validate that skill name matches its parent directory name.
+ * Skill names are defined by YAML frontmatter.
+ * Directory or filename mismatches are allowed for compatibility.
  */
-export function validateSkillName(name: string, dirName: string): string | null {
-  if (name !== dirName) {
-    return `Skill name "${name}" must match directory name "${dirName}"`;
-  }
+export function validateSkillName(_name: string, _dirName: string): string | null {
   return null;
 }
 
@@ -110,14 +76,5 @@ export function validateSkillName(name: string, dirName: string): string | null 
  * Extract body from SKILL.md content (strip frontmatter).
  */
 export function extractBody(content: string): string {
-  const lines = content.split("\n");
-  if (lines[0]?.trim() !== "---") return content;
-
-  for (let i = 1; i < lines.length; i++) {
-    if (lines[i].trim() === "---") {
-      return lines.slice(i + 1).join("\n");
-    }
-  }
-
-  return content;
+  return extractMarkdownBody(content);
 }

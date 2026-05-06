@@ -1,5 +1,6 @@
 // @summary Parses and validates AGENT.md frontmatter metadata
 import type { ModelClass } from "@diligent/core/llm/models";
+import { parseYamlFrontmatter } from "../frontmatter/yaml";
 import { TOOL_CAPABILITIES } from "../tools/tool-metadata";
 import type { AgentFrontmatter } from "./types";
 
@@ -8,11 +9,23 @@ const MAX_NAME_LENGTH = 64;
 const MAX_DESCRIPTION_LENGTH = 1024;
 const MODEL_CLASSES = new Set<ModelClass>(["pro", "general", "lite"]);
 
-function parseToolList(rawValue: string): string[] {
-  return rawValue
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean);
+function parseToolList(rawValue: unknown): string[] | { error: string } {
+  if (Array.isArray(rawValue)) {
+    const invalidValue = rawValue.find((value) => typeof value !== "string");
+    if (invalidValue !== undefined) {
+      return { error: `tools entries must be strings; received ${typeof invalidValue}` };
+    }
+    return rawValue.map((value) => value.trim()).filter(Boolean);
+  }
+
+  if (typeof rawValue === "string") {
+    return rawValue
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
+  }
+
+  return { error: `tools must be a string or list of strings; received ${typeof rawValue}` };
 }
 
 function normalizeToolNames(
@@ -37,61 +50,42 @@ export function parseAgentFrontmatter(
   options?: { knownToolNames?: Iterable<string> },
 ): { frontmatter: AgentFrontmatter; body: string } | { error: string } {
   const knownToolNames = options?.knownToolNames ? new Set(options.knownToolNames) : undefined;
-  const lines = content.split("\n");
-  if (lines[0]?.trim() !== "---") {
-    return { error: `${filePath}: missing frontmatter (no opening ---)` };
+  const parsedResult = parseYamlFrontmatter(content, filePath);
+  if ("error" in parsedResult) {
+    return parsedResult;
   }
 
-  let closingIdx = -1;
-  for (let index = 1; index < lines.length; index++) {
-    if (lines[index].trim() === "---") {
-      closingIdx = index;
-      break;
-    }
-  }
+  const parsed = parsedResult.frontmatter;
 
-  if (closingIdx === -1) {
-    return { error: `${filePath}: missing frontmatter (no closing ---)` };
-  }
-
-  const parsed: Record<string, string> = {};
-  for (const line of lines.slice(1, closingIdx)) {
-    const trimmed = line.trim();
-    if (trimmed === "" || trimmed.startsWith("#")) continue;
-    const colonIdx = trimmed.indexOf(":");
-    if (colonIdx === -1) {
-      return { error: `${filePath}: invalid frontmatter line: ${trimmed}` };
-    }
-
-    const key = trimmed.slice(0, colonIdx).trim();
-    let value = trimmed.slice(colonIdx + 1).trim();
-    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-      value = value.slice(1, -1);
-    }
-    parsed[key] = value;
-  }
-
-  if (!parsed.name) {
+  if (typeof parsed.name !== "string" || parsed.name.trim() === "") {
     return { error: `${filePath}: frontmatter missing required field: name` };
   }
-  if (!parsed.description) {
+  if (typeof parsed.description !== "string" || parsed.description.trim() === "") {
     return { error: `${filePath}: frontmatter missing required field: description` };
   }
-  if (parsed.name.length > MAX_NAME_LENGTH) {
+
+  const name = parsed.name;
+  const description = parsed.description;
+
+  if (name.length > MAX_NAME_LENGTH) {
     return { error: `${filePath}: agent name exceeds ${MAX_NAME_LENGTH} characters` };
   }
-  if (!NAME_PATTERN.test(parsed.name)) {
+  if (!NAME_PATTERN.test(name)) {
     return {
-      error: `${filePath}: agent name must be kebab-case (lowercase alphanumeric with hyphens): "${parsed.name}"`,
+      error: `${filePath}: agent name must be kebab-case (lowercase alphanumeric with hyphens): "${name}"`,
     };
   }
-  if (parsed.description.length > MAX_DESCRIPTION_LENGTH) {
+  if (description.length > MAX_DESCRIPTION_LENGTH) {
     return { error: `${filePath}: agent description exceeds ${MAX_DESCRIPTION_LENGTH} characters` };
   }
 
   let tools: string[] | undefined;
-  if (parsed.tools) {
-    const toolResult = normalizeToolNames(parseToolList(parsed.tools), filePath, knownToolNames);
+  if (parsed.tools !== undefined) {
+    const parsedTools = parseToolList(parsed.tools);
+    if (!Array.isArray(parsedTools)) {
+      return { error: `${filePath}: ${parsedTools.error}` };
+    }
+    const toolResult = normalizeToolNames(parsedTools, filePath, knownToolNames);
     if ("error" in toolResult) {
       return toolResult;
     }
@@ -100,24 +94,24 @@ export function parseAgentFrontmatter(
 
   let modelClass: ModelClass | undefined;
   if (parsed.model_class) {
+    if (typeof parsed.model_class !== "string") {
+      return { error: `${filePath}: model_class must be a string` };
+    }
     if (!MODEL_CLASSES.has(parsed.model_class as ModelClass)) {
       return { error: `${filePath}: invalid model_class: ${parsed.model_class}` };
     }
     modelClass = parsed.model_class as ModelClass;
   }
 
-  const body = lines
-    .slice(closingIdx + 1)
-    .join("\n")
-    .trim();
+  const body = parsedResult.body.trim();
   if (!body) {
     return { error: `${filePath}: AGENT.md body must not be empty` };
   }
 
   return {
     frontmatter: {
-      name: parsed.name,
-      description: parsed.description,
+      name,
+      description,
       ...(tools ? { tools } : {}),
       ...(modelClass ? { model_class: modelClass } : {}),
     },

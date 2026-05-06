@@ -61,6 +61,36 @@ describe("discoverSkills", () => {
     expect(result.skills[0].source).toBe("project");
   });
 
+  it("prefers the YAML skill name even when the folder name differs", async () => {
+    const root = await createTmpDir();
+    const skillDir = join(root, ".diligent", "skills", "folder-name-does-not-match");
+    await mkdir(skillDir, { recursive: true });
+    await writeFile(join(skillDir, "SKILL.md"), makeSkillMd("yaml-skill-name", "Uses frontmatter name"));
+
+    const result = await discoverSkills({ cwd: root, globalConfigDir: join(root, "no-global") });
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.skills).toHaveLength(1);
+    expect(result.skills[0].name).toBe("yaml-skill-name");
+    expect(result.skills[0].path).toBe(join(skillDir, "SKILL.md"));
+  });
+
+  it("prefers the YAML skill name even for flat markdown files", async () => {
+    const root = await createTmpDir();
+    const skillsDir = join(root, ".diligent", "skills");
+    await mkdir(skillsDir, { recursive: true });
+    await writeFile(
+      join(skillsDir, "filename-does-not-match.md"),
+      makeSkillMd("yaml-flat-name", "Uses frontmatter name"),
+    );
+
+    const result = await discoverSkills({ cwd: root, globalConfigDir: join(root, "no-global") });
+
+    expect(result.errors).toHaveLength(0);
+    expect(result.skills).toHaveLength(1);
+    expect(result.skills[0].name).toBe("yaml-flat-name");
+  });
+
   it("skips hidden directories", async () => {
     const root = await createTmpDir();
     const hiddenDir = join(root, ".diligent", "skills", ".hidden-skill");

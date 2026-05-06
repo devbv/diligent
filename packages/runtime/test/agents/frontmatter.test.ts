@@ -39,6 +39,32 @@ describe("parseAgentFrontmatter", () => {
     expect(result.frontmatter.tools).toEqual(["read", "glob"]);
   });
 
+  it("parses YAML list tools and folded descriptions", () => {
+    const content = [
+      "---",
+      "name: reviewer",
+      "description: >",
+      "  Reviews code thoroughly.",
+      "  Flags correctness and maintainability issues.",
+      "tools:",
+      "  - read",
+      "  - glob",
+      "  - read",
+      "model_class: general",
+      "---",
+      "Review carefully.",
+    ].join("\n");
+
+    const result = parseAgentFrontmatter(content, "/tmp/AGENT.md");
+    expect("error" in result).toBe(false);
+    if ("error" in result) return;
+    expect(result.frontmatter.description).toBe(
+      "Reviews code thoroughly. Flags correctness and maintainability issues.\n",
+    );
+    expect(result.frontmatter.tools).toEqual(["read", "glob"]);
+    expect(result.frontmatter.model_class).toBe("general");
+  });
+
   it("passes through unknown tool names with a warning instead of rejecting", () => {
     const content = [
       "---",
@@ -90,6 +116,15 @@ describe("parseAgentFrontmatter", () => {
     );
     const result = parseAgentFrontmatter(content, "/tmp/AGENT.md");
     expect("error" in result).toBe(true);
+  });
+
+  it("rejects invalid tools value types", () => {
+    const content = ["---", "name: reviewer", "description: Reviews code", "tools: true", "---", "Body"].join("\n");
+
+    const result = parseAgentFrontmatter(content, "/tmp/AGENT.md");
+    expect("error" in result).toBe(true);
+    if (!("error" in result)) return;
+    expect(result.error).toContain("tools must be a string or list of strings");
   });
 
   it("rejects empty body", () => {
