@@ -36,7 +36,7 @@ function isAssetResult(result: RagResult | AssetResult): result is AssetResult {
   return "assetId" in result;
 }
 
-function normalizeAssetResult(result: AssetResult): AssetResult {
+function normalizeAssetResult(result: Partial<AssetResult>): Partial<AssetResult> {
   return {
     text: result.text,
     score: result.score,
@@ -147,12 +147,13 @@ export async function execute(args: Params, ctx: ToolContext): Promise<ToolResul
     });
 
     if (args.source === "assets") {
-      const assetResults = results.filter(isAssetResult).map(normalizeAssetResult);
+      const rawAssets = results.filter(isAssetResult);
+      const assetResults = rawAssets.map(normalizeAssetResult);
       return {
         output: assetResults.length
           ? JSON.stringify({ results: assetResults, totalCount: data?.totalCount ?? assetResults.length }, null, 2)
           : "No results found.",
-        render: buildSearchRender({ source: args.source, query: args.query }, assetResults),
+        render: buildSearchRender({ source: args.source, query: args.query }, rawAssets),
         metadata: { resultCount: assetResults.length, results: assetResults },
       };
     }
