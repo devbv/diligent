@@ -187,6 +187,12 @@ describe("keyring storage", () => {
     expect(result.anthropic).toBe("sk-keyring");
   });
 
+  test("load returns empty when keyring backend is unavailable", async () => {
+    const path = join(TEST_ROOT, "auth.jsonc");
+
+    await expect(loadAuthStore(authOptions(path, "keyring"))).resolves.toEqual({});
+  });
+
   test("saving to keyring removes fallback file", async () => {
     const path = join(TEST_ROOT, "auth.jsonc");
     await Bun.write(path, JSON.stringify({ anthropic: "old-file-key" }));

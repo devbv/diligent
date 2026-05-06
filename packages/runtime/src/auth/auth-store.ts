@@ -38,6 +38,8 @@ interface AuthStorageBackend {
   delete(): Promise<boolean>;
 }
 
+type KeyringStorageFactory = () => Promise<KeyringAuthStorage>;
+
 const KEYRING_SERVICE = "Diligent Auth";
 const KEYRING_ACCOUNT_PREFIX = "cli|";
 const DEFAULT_AUTH_CREDENTIALS_STORE_MODE: AuthCredentialsStoreMode = "auto";
@@ -216,12 +218,31 @@ class KeyringAuthStorage implements AuthStorageBackend {
   }
 }
 
+class LazyKeyringAuthStorage implements AuthStorageBackend {
+  constructor(private readonly getStorage: KeyringStorageFactory) {}
+
+  async load(): Promise<AuthKeys> {
+    const storage = await this.getStorage();
+    return storage.load();
+  }
+
+  async save(store: AuthKeys): Promise<void> {
+    const storage = await this.getStorage();
+    await storage.save(store);
+  }
+
+  async delete(): Promise<boolean> {
+    const storage = await this.getStorage();
+    return storage.delete();
+  }
+}
+
 class AutoAuthStorage implements AuthStorageBackend {
   private readonly fileStorage: FileAuthStorage;
 
   constructor(
     filePath: string,
-    private readonly getKeyringStorage: () => Promise<KeyringAuthStorage>,
+    private readonly getKeyringStorage: KeyringStorageFactory,
   ) {
     this.fileStorage = new FileAuthStorage(filePath);
   }
@@ -286,14 +307,15 @@ async function createAuthStorage(options?: string | AuthStoreOptions): Promise<A
   const normalized = normalizeOptions(options);
   const { path, mode } = normalized;
   const fileStorage = new FileAuthStorage(path);
+  const createKeyringStorage: KeyringStorageFactory = async () => new KeyringAuthStorage(path, await loadKeytar());
 
   switch (mode) {
     case "file":
       return fileStorage;
     case "keyring":
-      return new KeyringAuthStorage(path, await loadKeytar());
+      return new LazyKeyringAuthStorage(createKeyringStorage);
     case "auto":
-      return new AutoAuthStorage(path, async () => new KeyringAuthStorage(path, await loadKeytar()));
+      return new AutoAuthStorage(path, createKeyringStorage);
     case "ephemeral":
       return new EphemeralAuthStorage(path);
   }
