@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 type RenderBlock = Record<string, unknown>;
 
 type ToolRenderPayload = {
@@ -22,6 +24,17 @@ interface AssetResult {
   categoryId: string;
   subCategoryId: string;
 }
+
+const AssetResultSchema = z.object({
+  text: z.string(),
+  score: z.number(),
+  title: z.string(),
+  keywords: z.array(z.string()),
+  assetId: z.string(),
+  assetType: z.string(),
+  categoryId: z.string(),
+  subCategoryId: z.string(),
+});
 
 interface OriginFileResult {
   originFileUrl: string;
@@ -86,6 +99,19 @@ function buildDocsPreviewBlock(result: RagResult): ToolRenderBlock | undefined {
   };
 }
 
+function normalizeAssetForRender(raw: Partial<AssetResult>): AssetResult {
+  return {
+    text: raw.text ?? "",
+    score: raw.score ?? 0,
+    title: raw.title ?? "(untitled)",
+    keywords: raw.keywords ?? [],
+    assetId: raw.assetId ?? "",
+    assetType: raw.assetType ?? "(unknown)",
+    categoryId: raw.categoryId ?? "(unknown)",
+    subCategoryId: raw.subCategoryId ?? "(unknown)",
+  };
+}
+
 function buildAssetPreviewBlock(result: AssetResult): ToolRenderBlock[] {
   const blocks: ToolRenderBlock[] = [
     {
@@ -123,7 +149,17 @@ function buildAssetPreviewBlock(result: AssetResult): ToolRenderBlock[] {
 
 export function buildSearchRender(args: { source: string; query: string }, results: RagResult[]): ToolRenderPayload {
   if (args.source === "assets") {
-    const assetResults = results as unknown as AssetResult[];
+    const rawAssets = results as unknown as Partial<AssetResult>[];
+    const assetResults = rawAssets.map((raw) => {
+      const parsed = AssetResultSchema.safeParse(raw);
+      if (!parsed.success) {
+        console.warn("[overdaresearch] asset schema drift", {
+          assetId: raw.assetId ?? "(unknown)",
+          issues: parsed.error.issues,
+        });
+      }
+      return normalizeAssetForRender(raw);
+    });
     const rows = assetResults
       .slice(0, 10)
       .map((entry) => [
