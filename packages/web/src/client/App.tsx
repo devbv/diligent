@@ -109,7 +109,7 @@ export function App() {
 
   return (
     <div className="h-screen bg-black text-text">
-      <div className="mx-auto flex h-full max-w-[1480px] gap-1 bg-black px-3 py-3 lg:px-4 lg:py-4">
+      <div className="mx-auto flex h-full max-w-[1480px] gap-1 bg-black">
         <div
           className="shrink-0 overflow-hidden transition-[width] duration-200"
           style={{ width: sidebarOpen ? 280 : 0 }}
@@ -125,7 +125,7 @@ export function App() {
           />
         </div>
 
-        <Panel className="relative flex min-h-0 flex-1 flex-col overflow-hidden border-border/100 bg-surface-dark">
+        <Panel className="relative flex min-h-0 flex-1 flex-col overflow-hidden border-border/100 bg-surface-dark !rounded-none">
           <div className="flex h-16 shrink-0 items-center gap-2 border-b border-border/100 bg-surface-dark px-3">
             <button
               type="button"
