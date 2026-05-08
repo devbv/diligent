@@ -108,10 +108,10 @@ describe("filterSensitiveEnv", () => {
   });
 
   test("removes _TOKEN suffix variables", () => {
-    const env = { GITHUB_TOKEN: "ghp_abc", SHELL: "/bin/zsh" };
+    const env = { MY_APP_TOKEN: "tok_abc", SHELL: "/bin/zsh" };
     const result = filterSensitiveEnv(env as NodeJS.ProcessEnv);
     expect(result.SHELL).toBe("/bin/zsh");
-    expect(result.GITHUB_TOKEN).toBeUndefined();
+    expect(result.MY_APP_TOKEN).toBeUndefined();
   });
 
   test("removes _PASSWORD suffix variables", () => {
@@ -129,5 +129,14 @@ describe("filterSensitiveEnv", () => {
     expect(result.SECRET_KEY).toBeUndefined();
     expect(result.TOKEN).toBeUndefined();
     expect(result.PASSWORD).toBeUndefined();
+  });
+
+  test("passes through CI passlist tokens (GH_TOKEN, GITHUB_TOKEN, NPM_TOKEN)", () => {
+    const env = { GH_TOKEN: "ghs_abc", GITHUB_TOKEN: "ghp_xyz", NPM_TOKEN: "npm_tok", MY_TOKEN: "secret" };
+    const result = filterSensitiveEnv(env as NodeJS.ProcessEnv);
+    expect(result.GH_TOKEN).toBe("ghs_abc");
+    expect(result.GITHUB_TOKEN).toBe("ghp_xyz");
+    expect(result.NPM_TOKEN).toBe("npm_tok");
+    expect(result.MY_TOKEN).toBeUndefined();
   });
 });

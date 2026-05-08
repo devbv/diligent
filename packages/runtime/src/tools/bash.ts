@@ -18,6 +18,8 @@ const DEFAULT_TIMEOUT = 120_000;
 
 const SENSITIVE_PATTERNS = [/(_API_KEY|_TOKEN|_PASSWORD)$/, /_SECRET/, /^(API_KEY|SECRET_KEY|TOKEN|PASSWORD)$/];
 
+const CI_PASSLIST = new Set(["GH_TOKEN", "GITHUB_TOKEN", "NPM_TOKEN"]);
+
 /**
  * Convert Windows-style backslash paths to forward slashes so bash doesn't
  * strip them as escape sequences. e.g. C:\Users\foo → C:/Users/foo
@@ -44,7 +46,7 @@ function resolveWindowsShell(command: string): string[] {
 export function filterSensitiveEnv(env: NodeJS.ProcessEnv): Record<string, string | undefined> {
   const filtered: Record<string, string | undefined> = {};
   for (const [key, value] of Object.entries(env)) {
-    if (!SENSITIVE_PATTERNS.some((p) => p.test(key))) {
+    if (CI_PASSLIST.has(key) || !SENSITIVE_PATTERNS.some((p) => p.test(key))) {
       filtered[key] = value;
     }
   }
