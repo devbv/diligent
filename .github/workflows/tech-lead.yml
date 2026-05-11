@@ -12,8 +12,6 @@ permissions:
 jobs:
   run:
     runs-on: ubuntu-latest
-    env:
-      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -56,6 +54,8 @@ jobs:
 
       - name: Download latest diligent Linux binary
         if: steps.guard.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
@@ -95,6 +95,8 @@ jobs:
       - name: Run tech-lead skill
         if: steps.guard.outputs.skip == 'false'
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           ./.bin/diligent --yolo --prompt "/tech-lead"
