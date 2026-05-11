@@ -13,14 +13,14 @@ permissions:
 jobs:
   run:
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Download latest diligent Linux binary
-        env:
-          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
@@ -64,8 +64,6 @@ jobs:
 
       - name: Run passion-junior skill
         shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           ./.bin/diligent --yolo --prompt "/passion-junior"
