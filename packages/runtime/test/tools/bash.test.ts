@@ -108,10 +108,19 @@ describe("filterSensitiveEnv", () => {
   });
 
   test("removes _TOKEN suffix variables", () => {
-    const env = { GITHUB_TOKEN: "ghp_abc", SHELL: "/bin/zsh" };
+    const env = { SLACK_TOKEN: "xoxb-abc", SHELL: "/bin/zsh" };
     const result = filterSensitiveEnv(env as NodeJS.ProcessEnv);
     expect(result.SHELL).toBe("/bin/zsh");
-    expect(result.GITHUB_TOKEN).toBeUndefined();
+    expect(result.SLACK_TOKEN).toBeUndefined();
+  });
+
+  test("passes through GH_TOKEN and GITHUB_TOKEN for GitHub CLI use", () => {
+    const env = { GH_TOKEN: "ghp_ghtok", GITHUB_TOKEN: "ghp_ghtok2", ANTHROPIC_API_KEY: "sk-ant", SHELL: "/bin/bash" };
+    const result = filterSensitiveEnv(env as NodeJS.ProcessEnv);
+    expect(result.GH_TOKEN).toBe("ghp_ghtok");
+    expect(result.GITHUB_TOKEN).toBe("ghp_ghtok2");
+    expect(result.ANTHROPIC_API_KEY).toBeUndefined();
+    expect(result.SHELL).toBe("/bin/bash");
   });
 
   test("removes _PASSWORD suffix variables", () => {
