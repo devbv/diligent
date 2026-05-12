@@ -68,7 +68,7 @@
   overflow-x: auto;
   white-space: pre;
   word-break: normal;
-  font-family: ui-monospace, monospace;
+  font-family: "Noto Sans Mono", "Nanum Gothic Coding", ui-monospace, monospace;
   font-size: 0.8125rem;
   line-height: 1.7;
   margin: 0.875rem 0;
@@ -81,7 +81,7 @@
   border: 1px solid color-mix(in srgb, var(--color-text) 8%, transparent);
   border-radius: 0.375rem;
   padding: 0.12rem 0.38rem;
-  font-family: ui-monospace, monospace;
+  font-family: "Noto Sans Mono", "Nanum Gothic Coding", ui-monospace, monospace;
   font-size: 0.8125rem;
   color: color-mix(in srgb, var(--color-text) 95%, transparent);
 }
@@ -278,7 +278,7 @@ body,
 
 body {
   margin: 0;
-  font-family: "IBM Plex Sans", ui-sans-serif, system-ui;
+  font-family: "Noto Sans", "Noto Sans KR", ui-sans-serif, system-ui;
   background: var(--color-bg);
   color: var(--color-text);
 }
