@@ -90,7 +90,9 @@ export function App() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const previousBridge = window.AgentNativeBridge;
-    window.AgentNativeBridge = createAgentNativeBridge({ updateContextItems: updateActiveContextItems });
+    window.AgentNativeBridge = createAgentNativeBridge({
+      updateContextItems: updateActiveContextItems,
+    });
     installAgentNativeBridgeMock(window);
     return () => {
       window.AgentNativeBridge = previousBridge;
@@ -109,9 +111,9 @@ export function App() {
 
   return (
     <div className="h-screen bg-black text-text">
-      <div className="mx-auto flex h-full max-w-[1480px] gap-1 bg-black">
+      <div className="flex h-full bg-black">
         <div
-          className="shrink-0 overflow-hidden transition-[width] duration-200"
+          className="shrink-0 overflow-hidden border-r border-border/100 transition-[width] duration-200"
           style={{ width: sidebarOpen ? 280 : 0 }}
         >
           <Sidebar
@@ -125,7 +127,7 @@ export function App() {
           />
         </div>
 
-        <Panel className="relative flex min-h-0 flex-1 flex-col overflow-hidden border-border/100 bg-surface-dark !rounded-none">
+        <Panel className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-surface-dark !rounded-none !border-0">
           <div className="flex h-16 shrink-0 items-center gap-2 border-b border-border/100 bg-surface-dark px-3">
             <button
               type="button"

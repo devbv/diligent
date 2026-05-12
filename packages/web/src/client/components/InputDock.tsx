@@ -310,7 +310,7 @@ export function InputDock({
   const canRenderSlashMenuPortal = slashMenuOpen && slashMenuPosition && typeof document !== "undefined";
 
   return (
-    <div className="relative z-20 bg-surface-dark px-2 pb-2 pt-2">
+    <div className="relative z-20 bg-surface-dark px-2 pb-4 pt-2">
       <div
         className={`relative rounded-sm border px-4 py-3 ${hasProvider ? "border-white/10 !bg-[#21262C]" : "border-danger/30 !bg-[#21262C]"}${isBusy ? " input-dock-glow" : ""}`}
       >
@@ -483,7 +483,10 @@ export function InputDock({
               ref={plusMenuPopupRef}
               role="menu"
               className="fixed z-[100] min-w-[150px] rounded-xl border border-border/100 bg-surface-dark p-1 shadow-panel"
-              style={{ left: plusMenuPosition.left, bottom: plusMenuPosition.bottom }}
+              style={{
+                left: plusMenuPosition.left,
+                bottom: plusMenuPosition.bottom,
+              }}
             >
               <div className="relative">
                 <div className="relative">
@@ -595,7 +598,10 @@ export function InputDock({
                 selectedIndex={slashSelectedIndex}
                 onSelect={handleSlashSelect}
                 className="fixed z-[100] w-[280px] overflow-hidden rounded-xl border border-border/100 bg-surface-dark shadow-panel"
-                style={{ left: slashMenuPosition.left, bottom: slashMenuPosition.bottom }}
+                style={{
+                  left: slashMenuPosition.left,
+                  bottom: slashMenuPosition.bottom,
+                }}
               />
             </div>,
             document.body,
