@@ -446,6 +446,104 @@ export function buildScriptEditRender(
   };
 }
 
+function maskToken(token: string): string {
+  if (token.length <= 12) return "***";
+  return `${token.slice(0, 6)}…${token.slice(-4)} (len=${token.length})`;
+}
+
+export function buildHubTokenReadRender(result: unknown, output: string): ToolRenderPayload {
+  const token = isRecord(result) ? readString(result.token) : undefined;
+  const masked = token ? maskToken(token) : "(missing)";
+  return {
+    inputSummary: "read hub token",
+    outputSummary: token ? `token ${masked}` : "no token",
+    blocks: [
+      {
+        type: "key_value",
+        title: "Hub token read",
+        items: [{ key: "token", value: masked }],
+      },
+      {
+        type: "summary",
+        text: token
+          ? "Token retrieved. Treat as a secret — do not echo to chat."
+          : firstLine(output, "No token returned."),
+        tone: token ? "info" : "warning",
+      },
+    ],
+  };
+}
+
+export function buildLevelPublishRender(
+  result: unknown,
+  args: Record<string, unknown>,
+  output: string,
+): ToolRenderPayload {
+  const worldName = readString(args.worldName);
+  const description = readString(args.description);
+  const categories = Array.isArray(args.category)
+    ? (args.category as unknown[]).filter((v): v is string => typeof v === "string")
+    : [];
+  const keywords = Array.isArray(args.keyword)
+    ? (args.keyword as unknown[]).filter((v): v is string => typeof v === "string")
+    : [];
+
+  const worldId = isRecord(result) && typeof result.worldId === "number" ? String(result.worldId) : undefined;
+  const version = isRecord(result) && typeof result.version === "number" ? String(result.version) : undefined;
+  const url = isRecord(result) ? readString(result.url) : undefined;
+
+  const items: { key: string; value: string }[] = [];
+  if (worldName) items.push({ key: "worldName", value: worldName });
+  if (description) items.push({ key: "description", value: description });
+  if (categories.length > 0) items.push({ key: "category", value: categories.join(", ") });
+  if (keywords.length > 0) items.push({ key: "keyword", value: keywords.join(", ") });
+  if (worldId) items.push({ key: "worldId", value: worldId });
+  if (version) items.push({ key: "version", value: version });
+  if (url) items.push({ key: "approval URL", value: url });
+
+  const headline = url ? `Open approval URL to finalize publish: ${url}` : firstLine(output, "Publish requested.");
+
+  return {
+    inputSummary: clip(worldName ? `publish ${worldName}` : "publish world"),
+    outputSummary: worldId ? `worldId ${worldId} v${version ?? "?"}` : summarizeText(output, "Publish requested."),
+    blocks: [
+      ...(items.length > 0 ? [{ type: "key_value" as const, title: "Level publish", items }] : []),
+      { type: "summary", text: headline, tone: "success" },
+    ],
+  };
+}
+
+export function buildGameScreenshotRender(
+  result: unknown,
+  args: Record<string, unknown>,
+  output: string,
+): ToolRenderPayload {
+  const captureType = readString(args.captureType) ?? "Viewport";
+  const size = isRecord(args.size) ? args.size : undefined;
+  const width = size && typeof size.width === "number" ? size.width : undefined;
+  const height = size && typeof size.height === "number" ? size.height : undefined;
+  const path = isRecord(result) ? readString(result.path) : undefined;
+
+  const items: { key: string; value: string }[] = [{ key: "captureType", value: captureType }];
+  if (width !== undefined && height !== undefined) {
+    items.push({ key: "size", value: `${width}×${height}` });
+  }
+  if (path) items.push({ key: "path", value: path });
+
+  return {
+    inputSummary: clip(`screenshot ${captureType}`),
+    outputSummary: path ? `saved: ${path}` : summarizeText(output, "Screenshot captured."),
+    blocks: [
+      { type: "key_value", title: "Game screenshot", items },
+      {
+        type: "summary",
+        text: path ? `Saved to ${path}` : firstLine(output, "Screenshot captured."),
+        tone: "success",
+      },
+    ],
+  };
+}
+
 export function buildActionSequencerApplyJsonRender(args: Record<string, unknown>, output: string): ToolRenderPayload {
   const instanceGuid = readString(args.instanceGuid) ?? "";
   const jsonFilePath = readString(args.jsonFilePath) ?? "";
