@@ -122,8 +122,8 @@ const config: Config = {
         panel: "var(--shadow-panel)",
       },
       fontFamily: {
-        sans: ["IBM Plex Sans", "ui-sans-serif", "system-ui"],
-        mono: ["IBM Plex Mono", "ui-monospace", "SFMono-Regular"],
+        sans: ["Noto Sans", "Noto Sans KR", "ui-sans-serif", "system-ui"],
+        mono: ["Noto Sans Mono", "Nanum Gothic Coding", "ui-monospace", "SFMono-Regular"],
       },
     },
   },

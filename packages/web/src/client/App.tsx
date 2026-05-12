@@ -161,9 +161,7 @@ export function App() {
                     : state.threadStatus}
               </span>
             )}
-            <span className="min-w-0 flex-1 truncate font-mono text-xs uppercase tracking-[0.12em] text-muted/90">
-              {threadTitle || "new conversation"}
-            </span>
+            <span className="min-w-0 flex-1 truncate text-xs text-muted/90">{threadTitle || "NEW CONVERSATION"}</span>
             <button
               type="button"
               onClick={() => {
