@@ -4,8 +4,17 @@ export interface CallbackResult {
   state: string;
 }
 
-export function waitForCallback(expectedState: string, timeoutMs = 5 * 60 * 1000): Promise<CallbackResult> {
+export function waitForCallback(
+  expectedState: string,
+  timeoutMs = 5 * 60 * 1000,
+  signal?: AbortSignal,
+): Promise<CallbackResult> {
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new Error("OAuth flow cancelled"));
+      return;
+    }
+
     const server = Bun.serve({
       port: 1455,
       hostname: "localhost",
@@ -20,7 +29,7 @@ export function waitForCallback(expectedState: string, timeoutMs = 5 * 60 * 1000
         const error = url.searchParams.get("error");
 
         if (error) {
-          server.stop();
+          cleanup();
           reject(new Error(`OAuth error: ${error}`));
           return new Response(renderCallbackHtml("Authentication failed."), {
             headers: { "Content-Type": "text/html" },
@@ -28,7 +37,7 @@ export function waitForCallback(expectedState: string, timeoutMs = 5 * 60 * 1000
         }
 
         if (!code || state !== expectedState) {
-          server.stop();
+          cleanup();
           reject(new Error("Invalid callback: missing code or state mismatch"));
           return new Response(renderCallbackHtml("Invalid callback."), {
             headers: { "Content-Type": "text/html" },
@@ -36,6 +45,7 @@ export function waitForCallback(expectedState: string, timeoutMs = 5 * 60 * 1000
         }
 
         setTimeout(() => server.stop(), 1000);
+        cleanup({ keepServer: true });
         resolve({ code, state });
         return new Response(renderCallbackHtml("Authentication successful! You can close this window."), {
           headers: { "Content-Type": "text/html" },
@@ -43,10 +53,23 @@ export function waitForCallback(expectedState: string, timeoutMs = 5 * 60 * 1000
       },
     });
 
-    setTimeout(() => {
-      server.stop();
+    const timeoutHandle = setTimeout(() => {
+      cleanup();
       reject(new Error("OAuth callback timed out after 5 minutes"));
     }, timeoutMs);
+
+    const onAbort = () => {
+      cleanup();
+      reject(new Error("OAuth flow cancelled"));
+    };
+
+    function cleanup(opts?: { keepServer?: boolean }): void {
+      clearTimeout(timeoutHandle);
+      signal?.removeEventListener("abort", onAbort);
+      if (!opts?.keepServer) server.stop();
+    }
+
+    signal?.addEventListener("abort", onAbort);
   });
 }
 

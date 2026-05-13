@@ -4,7 +4,7 @@ import type { AuthOAuthStartResponse, ModelInfo, ProviderAuthStatus } from "@dil
 import { DILIGENT_CLIENT_REQUEST_METHODS } from "@diligent/protocol";
 import type { RefObject } from "react";
 import { useCallback, useRef, useState } from "react";
-import { fetchProviderStatus, removeProviderKey, setProviderKey, startOAuthFlow } from "./auth-api";
+import { cancelOAuthFlow, fetchProviderStatus, removeProviderKey, setProviderKey, startOAuthFlow } from "./auth-api";
 import type { WebRpcClient } from "./rpc-client";
 
 export function resolveDraftModel({
@@ -143,6 +143,16 @@ export function useProviderManager(rpcRef: RefObject<WebRpcClient | null>) {
     [rpcRef],
   );
 
+  const handleOAuthCancel = useCallback(
+    async (provider: string): Promise<void> => {
+      const rpc = rpcRef.current;
+      if (!rpc) return;
+      if (provider !== "chatgpt") return;
+      await cancelOAuthFlow(rpc, provider);
+    },
+    [rpcRef],
+  );
+
   // Notification handlers: called from App.tsx when server pushes account notifications
   const onAccountLoginCompleted = useCallback(
     (params: { loginId: string | null; success: boolean; error: string | null }): void => {
@@ -193,6 +203,7 @@ export function useProviderManager(rpcRef: RefObject<WebRpcClient | null>) {
     handleSetProviderKey,
     handleRemoveProviderKey,
     handleOAuthStart,
+    handleOAuthCancel,
     onAccountLoginCompleted,
     onAccountUpdated,
   };

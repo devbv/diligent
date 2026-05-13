@@ -123,6 +123,7 @@ export class DiligentAppServer {
   // Config/auth state
   private currentModelId: string | undefined;
   private oauthPending: Promise<void> | null = null;
+  private oauthAbortController: AbortController | null = null;
 
   // Per-cwd cache to avoid scanning session files on every new thread creation
   private readonly lastUsedModelByCwd = new Map<string, string>();
@@ -677,6 +678,10 @@ export class DiligentAppServer {
       oauthPending: this.oauthPending,
       setOAuthPending: (value) => {
         this.oauthPending = value;
+      },
+      oauthAbortController: this.oauthAbortController,
+      setOAuthAbortController: (controller) => {
+        this.oauthAbortController = controller;
       },
       openBrowser: this.config.openBrowser,
       emit: (notification) => this.emit(notification),

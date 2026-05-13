@@ -312,6 +312,9 @@ export function App() {
             const result = await providerMgr.handleOAuthStart("chatgpt");
             return result;
           }}
+          onOAuthCancel={async () => {
+            await providerMgr.handleOAuthCancel("chatgpt");
+          }}
           onClose={() => {
             setShowProviderModal(false);
             setFocusedProvider(null);

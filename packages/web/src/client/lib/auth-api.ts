@@ -1,5 +1,10 @@
-// @summary RPC helpers for provider authentication (list, set, remove, OAuth start)
-import type { AuthListResponse, AuthOAuthStartResponse, ProviderName } from "@diligent/protocol";
+// @summary RPC helpers for provider authentication (list, set, remove, OAuth start/cancel)
+import type {
+  AuthListResponse,
+  AuthOAuthCancelResponse,
+  AuthOAuthStartResponse,
+  ProviderName,
+} from "@diligent/protocol";
 import { DILIGENT_CLIENT_REQUEST_METHODS } from "@diligent/protocol";
 import type { WebRpcClient } from "./rpc-client";
 
@@ -22,4 +27,11 @@ export async function startOAuthFlow(rpc: WebRpcClient, provider: ProviderName):
     throw new Error("OAuth login is only supported for chatgpt provider");
   }
   return rpc.webRequest(DILIGENT_CLIENT_REQUEST_METHODS.AUTH_OAUTH_START, { provider });
+}
+
+export async function cancelOAuthFlow(rpc: WebRpcClient, provider: ProviderName): Promise<AuthOAuthCancelResponse> {
+  if (provider !== "chatgpt") {
+    throw new Error("OAuth cancel is only supported for chatgpt provider");
+  }
+  return rpc.webRequest(DILIGENT_CLIENT_REQUEST_METHODS.AUTH_OAUTH_CANCEL, { provider });
 }
