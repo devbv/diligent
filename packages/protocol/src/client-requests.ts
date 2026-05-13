@@ -394,6 +394,17 @@ export const AuthOAuthStartResponseSchema = z.object({
 });
 export type AuthOAuthStartResponse = z.infer<typeof AuthOAuthStartResponseSchema>;
 
+// --- auth/oauth/cancel ---
+export const AuthOAuthCancelParamsSchema = z.object({
+  provider: z.literal("chatgpt"),
+});
+export type AuthOAuthCancelParams = z.infer<typeof AuthOAuthCancelParamsSchema>;
+
+export const AuthOAuthCancelResponseSchema = z.object({
+  cancelled: z.boolean(),
+});
+export type AuthOAuthCancelResponse = z.infer<typeof AuthOAuthCancelResponseSchema>;
+
 // --- thread/subscribe ---
 export const ThreadSubscribeParamsSchema = z.object({
   threadId: z.string(),
@@ -464,6 +475,10 @@ export const DiligentClientRequestSchema = z.discriminatedUnion("method", [
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.AUTH_REMOVE), params: AuthRemoveParamsSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.AUTH_OAUTH_START), params: AuthOAuthStartParamsSchema }),
   z.object({
+    method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.AUTH_OAUTH_CANCEL),
+    params: AuthOAuthCancelParamsSchema,
+  }),
+  z.object({
     method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.THREAD_SUBSCRIBE),
     params: ThreadSubscribeParamsSchema,
   }),
@@ -505,6 +520,10 @@ export const DiligentClientResponseSchema = z.discriminatedUnion("method", [
   z.object({
     method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.AUTH_OAUTH_START),
     result: AuthOAuthStartResponseSchema,
+  }),
+  z.object({
+    method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.AUTH_OAUTH_CANCEL),
+    result: AuthOAuthCancelResponseSchema,
   }),
   z.object({
     method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.THREAD_SUBSCRIBE),

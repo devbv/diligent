@@ -116,6 +116,7 @@ export async function handleAuthOAuthStart(args: {
   providerManager: ProviderManager | undefined;
   oauthPending: Promise<void> | null;
   setOAuthPending: (value: Promise<void> | null) => void;
+  setOAuthAbortController: (controller: AbortController | null) => void;
   openBrowser?: (url: string) => void;
   emit: EmitFn;
   authStore?: AuthStoreOptions;
@@ -129,6 +130,8 @@ export async function handleAuthOAuthStart(args: {
 
   const loginId = randomBytes(32).toString("base64url");
   let authUrl = "";
+  const controller = new AbortController();
+  args.setOAuthAbortController(controller);
   // Always open browser server-side. Custom openBrowser callback is used if provided (e.g. TUI),
   // otherwise fall back to the default platform browser launcher. This ensures it works inside
   // Tauri where window.open() cannot open an external browser.
@@ -142,6 +145,7 @@ export async function handleAuthOAuthStart(args: {
           authUrl = url;
         },
         openBrowser: opener,
+        signal: controller.signal,
       });
       await saveOAuthTokens(tokens, args.authStore);
       const authBinding = createChatGPTOAuthBinding({
@@ -166,11 +170,26 @@ export async function handleAuthOAuthStart(args: {
       });
     } finally {
       args.setOAuthPending(null);
+      args.setOAuthAbortController(null);
     }
   })();
 
   args.setOAuthPending(pending);
   return { authUrl };
+}
+
+export async function handleAuthOAuthCancel(args: {
+  params: { provider: "chatgpt" };
+  oauthAbortController: AbortController | null;
+}): Promise<{ cancelled: boolean }> {
+  if (args.params.provider !== "chatgpt") {
+    throw Object.assign(new Error("Unsupported OAuth provider"), { code: -32602 });
+  }
+  if (!args.oauthAbortController) {
+    return { cancelled: false };
+  }
+  args.oauthAbortController.abort();
+  return { cancelled: true };
 }
 
 export async function handleImageUpload(args: {

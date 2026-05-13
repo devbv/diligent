@@ -15,6 +15,7 @@ interface ProviderSettingsModalProps {
   onSet: (provider: string, apiKey: string) => Promise<void>;
   onRemove: (provider: string) => Promise<void>;
   onOAuthStart: (provider: string) => Promise<{ authUrl: string }>;
+  onOAuthCancel?: (provider: string) => Promise<void>;
   onClose: () => void;
 }
 
@@ -42,6 +43,7 @@ export function ProviderSettingsModal({
   onSet,
   onRemove,
   onOAuthStart,
+  onOAuthCancel,
   onClose,
 }: ProviderSettingsModalProps) {
   const [editingProvider, setEditingProvider] = useState<string | null>(null);
@@ -83,16 +85,23 @@ export function ProviderSettingsModal({
   };
 
   const handleOAuthStart = useCallback(async () => {
-    setSavingProvider("chatgpt");
     setError(null);
     try {
       await onOAuthStart("chatgpt");
-      // Server opens the browser; account/login/completed notification will signal completion
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to start OAuth");
-      setSavingProvider(null);
     }
   }, [onOAuthStart]);
+
+  const handleOAuthCancel = useCallback(async () => {
+    if (!onOAuthCancel) return;
+    setError(null);
+    try {
+      await onOAuthCancel("chatgpt");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to cancel OAuth");
+    }
+  }, [onOAuthCancel]);
 
   const isConnected = (p: ProviderAuthStatus) => p.configured || p.oauthConnected;
   const orderedProviders = [
@@ -200,6 +209,11 @@ export function ProviderSettingsModal({
                       >
                         {oauthPending ? "Waiting for login..." : "Login with ChatGPT"}
                       </Button>
+                      {oauthPending && onOAuthCancel ? (
+                        <Button intent="ghost" size="sm" onClick={() => void handleOAuthCancel()}>
+                          Cancel
+                        </Button>
+                      ) : null}
                     </div>
                   ) : null}
                 </div>
@@ -208,6 +222,11 @@ export function ProviderSettingsModal({
               {p.provider === "chatgpt" && oauthPending && editingProvider !== p.provider ? (
                 <div className="mt-2 flex items-center gap-2">
                   <span className="animate-pulse text-xs text-accent">Waiting for ChatGPT login...</span>
+                  {onOAuthCancel ? (
+                    <Button intent="ghost" size="sm" onClick={() => void handleOAuthCancel()}>
+                      Cancel
+                    </Button>
+                  ) : null}
                 </div>
               ) : null}
             </div>

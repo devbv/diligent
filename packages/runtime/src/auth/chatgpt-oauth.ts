@@ -8,6 +8,7 @@ export interface OAuthFlowOptions {
   onUrl?: (url: string) => void;
   timeoutMs?: number;
   openBrowser?: (url: string) => void;
+  signal?: AbortSignal;
 }
 
 export async function runChatGPTOAuth(options: OAuthFlowOptions = {}): Promise<OpenAIOAuthTokens> {
@@ -17,7 +18,7 @@ export async function runChatGPTOAuth(options: OAuthFlowOptions = {}): Promise<O
   const opener = options.openBrowser ?? defaultOpenBrowser;
   opener(request.authUrl);
 
-  const { code } = await waitForCallback(request.state, options.timeoutMs);
+  const { code } = await waitForCallback(request.state, options.timeoutMs, options.signal);
   const rawTokens = await exchangeCodeForTokens(code, request.codeVerifier);
   return buildOAuthTokens(rawTokens);
 }

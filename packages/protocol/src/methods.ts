@@ -23,6 +23,7 @@ export const DILIGENT_CLIENT_REQUEST_METHODS = {
   AUTH_SET: "auth/set",
   AUTH_REMOVE: "auth/remove",
   AUTH_OAUTH_START: "auth/oauth/start",
+  AUTH_OAUTH_CANCEL: "auth/oauth/cancel",
   THREAD_SUBSCRIBE: "thread/subscribe",
   THREAD_UNSUBSCRIBE: "thread/unsubscribe",
   IMAGE_UPLOAD: "image/upload",

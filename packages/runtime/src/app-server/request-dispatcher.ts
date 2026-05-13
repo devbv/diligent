@@ -18,6 +18,7 @@ import {
 import type { RpcPeer } from "../rpc/channel";
 import {
   buildProviderList,
+  handleAuthOAuthCancel,
   handleAuthOAuthStart,
   handleAuthRemove,
   handleAuthSet,
@@ -111,6 +112,8 @@ export interface ClientRequestDispatchContext {
   authStore: AuthStoreOptions | undefined;
   oauthPending: Promise<void> | null;
   setOAuthPending(value: Promise<void> | null): void;
+  oauthAbortController: AbortController | null;
+  setOAuthAbortController(controller: AbortController | null): void;
   openBrowser: ((url: string) => void) | undefined;
 
   // Notification emitter and other config
@@ -328,9 +331,16 @@ export async function dispatchClientRequest(
         providerManager: ctx.providerManager,
         oauthPending: ctx.oauthPending,
         setOAuthPending: (value) => ctx.setOAuthPending(value),
+        setOAuthAbortController: (controller) => ctx.setOAuthAbortController(controller),
         openBrowser: ctx.openBrowser,
         emit: (notification) => ctx.emit(notification),
         authStore: ctx.authStore,
+      });
+
+    case DILIGENT_CLIENT_REQUEST_METHODS.AUTH_OAUTH_CANCEL:
+      return handleAuthOAuthCancel({
+        params: request.params,
+        oauthAbortController: ctx.oauthAbortController,
       });
 
     case DILIGENT_CLIENT_REQUEST_METHODS.IMAGE_UPLOAD: {
