@@ -211,7 +211,7 @@ export function KnowledgeManagerModal({ threadId, onList, onUpdate, onClose, cla
         aria-modal="true"
         aria-label="Knowledge"
         tabIndex={-1}
-        className="absolute inset-0 z-10 flex flex-col rounded-xl border border-border/100 bg-surface-default p-5 shadow-panel"
+        className="absolute inset-0 z-10 flex flex-col border border-border/100 bg-surface-default p-5 shadow-panel"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="mb-1 flex items-start justify-between gap-2">
