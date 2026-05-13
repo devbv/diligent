@@ -14,6 +14,7 @@ pub struct WebServerOptions {
     pub userid: Option<String>,
     pub studio_rpc_port: Option<u16>,
     pub web_server_port: Option<u16>,
+    pub hub_domain: Option<String>,
 }
 
 fn normalize_cwd(raw: &str) -> String {
@@ -50,6 +51,7 @@ pub fn parse_args(args: &[String]) -> Result<WebServerOptions, String> {
     let mut userid: Option<String> = None;
     let mut studio_rpc_port: Option<u16> = None;
     let mut web_server_port: Option<u16> = None;
+    let mut hub_domain: Option<String> = None;
 
     for arg in args {
         if let Some(value) = arg.strip_prefix("--cwd=") {
@@ -82,9 +84,15 @@ pub fn parse_args(args: &[String]) -> Result<WebServerOptions, String> {
             }
             continue;
         }
+        if let Some(value) = arg.strip_prefix("--hub-domain=") {
+            if !value.is_empty() {
+                hub_domain = Some(value.to_string());
+            }
+            continue;
+        }
         if matches!(arg.as_str(), "--help" | "-h") {
             return Err(
-                "Usage: overdare-ai-agent start --cwd=/path/to/project [--userid=abc] [--studio-rpc-port=12345] [--web-server-port=3000]"
+                "Usage: overdare-ai-agent start --cwd=/path/to/project [--userid=abc] [--studio-rpc-port=12345] [--web-server-port=3000] [--hub-domain=hub.example.com]"
                     .to_string(),
             );
         }
@@ -101,6 +109,7 @@ pub fn parse_args(args: &[String]) -> Result<WebServerOptions, String> {
         userid,
         studio_rpc_port,
         web_server_port,
+        hub_domain,
     })
 }
 
@@ -268,6 +277,9 @@ pub async fn start_foreground(options: WebServerOptions) -> Result<RunningWebSer
     if let Some(studio_rpc_port) = options.studio_rpc_port {
         cmd.env("STUDIO_PORT", studio_rpc_port.to_string());
     }
+    if let Some(hub_domain) = options.hub_domain.as_deref().filter(|v| !v.is_empty()) {
+        cmd.env("HUB_DOMAIN", hub_domain);
+    }
     cmd.env("DILIGENT_STORAGE_NAMESPACE", storage_namespace());
     if let Some(version) = resolve_installed_runtime_version() {
         cmd.env("DILIGENT_SERVER_VERSION", version);
@@ -357,12 +369,14 @@ mod tests {
             "--userid=user-1".to_string(),
             "--studio-rpc-port=8123".to_string(),
             "--web-server-port=4567".to_string(),
+            "--hub-domain=hub.example.com".to_string(),
         ];
         let parsed = parse_args(&args).expect("parse args");
         assert_eq!(parsed.cwd, "/tmp/project");
         assert_eq!(parsed.userid.as_deref(), Some("user-1"));
         assert_eq!(parsed.studio_rpc_port, Some(8123));
         assert_eq!(parsed.web_server_port, Some(4567));
+        assert_eq!(parsed.hub_domain.as_deref(), Some("hub.example.com"));
     }
 
     #[cfg(windows)]
