@@ -108,6 +108,7 @@ function hydrateFromSnapshotItems(state: ThreadState, payload: ThreadReadRespons
       fatal: error.fatal,
       turnId: error.turnId,
       timestamp: Date.parse(error.timestamp),
+      providerErrorType: error.error.providerErrorType,
     });
   }
 

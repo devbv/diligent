@@ -17,12 +17,28 @@ import { StreamingIndicator } from "./StreamingIndicator";
 import { ToolBlock } from "./ToolBlock";
 import { UserMessage } from "./UserMessage";
 
-function ErrorMessage({ item }: { item: Extract<RenderItem, { kind: "error" }> }) {
+function ErrorMessage({
+  item,
+  onOpenProviders,
+}: {
+  item: Extract<RenderItem, { kind: "error" }>;
+  onOpenProviders?: () => void;
+}) {
+  const isAuthError = item.providerErrorType === "auth";
   return (
     <div className="py-1">
       <div className="rounded-md border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-text-soft">
         <div className="font-medium">{item.name ? `${item.name}: ${item.message}` : item.message}</div>
         {item.turnId ? <div className="mt-1 text-xs text-danger/80">Turn: {item.turnId}</div> : null}
+        {isAuthError && onOpenProviders ? (
+          <button
+            type="button"
+            onClick={onOpenProviders}
+            className="mt-2 rounded-md border border-danger/40 bg-danger/15 px-2.5 py-1 text-xs font-medium text-danger transition hover:bg-danger/25"
+          >
+            Reconnect
+          </button>
+        ) : null}
       </div>
     </div>
   );
@@ -37,7 +53,10 @@ interface MessageListProps {
   onOpenProviders: () => void;
   onQuickConnectChatGPT?: () => void;
   isCompacting?: boolean;
-  approvalPrompt?: { request: ApprovalRequest; onDecide: (decision: "once" | "always" | "reject") => void } | null;
+  approvalPrompt?: {
+    request: ApprovalRequest;
+    onDecide: (decision: "once" | "always" | "reject") => void;
+  } | null;
   questionPrompt?: {
     request: UserInputRequest;
     answers: Record<string, string | string[]>;
@@ -55,6 +74,7 @@ function renderGroupedItems(
   items: RenderItem[],
   threadCwd?: string,
   onLoadChildThread?: (childThreadId: string) => Promise<ThreadReadResponse>,
+  onOpenProviders?: () => void,
 ): React.ReactNode[] {
   const result: React.ReactNode[] = [];
   let collabBuf: CollabItem[] = [];
@@ -76,7 +96,7 @@ function renderGroupedItems(
     if (item.kind === "context") {
       result.push(<ContextMessage key={item.id} summary={item.summary} />);
     } else if (item.kind === "error") {
-      result.push(<ErrorMessage key={item.id} item={item} />);
+      result.push(<ErrorMessage key={item.id} item={item} onOpenProviders={onOpenProviders} />);
     } else if (item.kind === "tool") {
       result.push(<ToolBlock key={item.id} item={item} threadCwd={threadCwd} />);
     } else if (item.kind === "user") {
@@ -135,7 +155,9 @@ function MessageListImpl({
   // biome-ignore lint/correctness/useExhaustiveDependencies: items reference and threadStatus are intentional triggers
   useEffect(() => {
     if (isAtBottomRef.current) {
-      bottomRef.current?.scrollIntoView({ behavior: threadStatus === "busy" ? "auto" : "smooth" });
+      bottomRef.current?.scrollIntoView({
+        behavior: threadStatus === "busy" ? "auto" : "smooth",
+      });
     }
   }, [items, threadStatus]);
 
@@ -178,8 +200,8 @@ function MessageListImpl({
 
   const hasPrompt = approvalPrompt || questionPrompt;
   const groupedItems = useMemo(
-    () => renderGroupedItems(items, threadCwd, onLoadChildThread),
-    [items, threadCwd, onLoadChildThread],
+    () => renderGroupedItems(items, threadCwd, onLoadChildThread, onOpenProviders),
+    [items, threadCwd, onLoadChildThread, onOpenProviders],
   );
   const visibleItems = useMemo(
     () =>
