@@ -5,8 +5,11 @@ import * as actionSequencerApplyJson from "./methods/action-sequencer-service.ap
 import * as assetDrawerImport from "./methods/asset-drawer.import.ts";
 import * as assetManagerImageImport from "./methods/asset-manager.image.import.ts";
 import * as gamePlay from "./methods/game.play.ts";
+import * as gameScreenshot from "./methods/game.screenshot.ts";
 import * as gameStop from "./methods/game.stop.ts";
+import * as hubTokenRead from "./methods/hub.token.read.ts";
 import * as levelBrowse from "./methods/level.browse.ts";
+import * as levelPublish from "./methods/level.publish.ts";
 import * as levelSaveFile from "./methods/level.save.file.ts";
 // biome-ignore lint/correctness/noUnusedImports: script.add moved to tools/script-add-tool.ts
 import * as _scriptAdd from "./methods/script.add.ts";
@@ -17,12 +20,15 @@ import {
   buildAssetDrawerImportRender,
   buildAssetManagerImageImportRender,
   buildGamePlayRender,
+  buildGameScreenshotRender,
   buildGameStopRender,
+  buildHubTokenReadRender,
   buildInstanceDeleteRender,
   buildInstanceMoveRender,
   buildInstanceReadRender,
   buildInstanceUpsertRender,
   buildLevelBrowseRender,
+  buildLevelPublishRender,
   buildLevelSaveFileRender,
 } from "./render.ts";
 
@@ -48,8 +54,11 @@ export const methodModules: MethodModule[] = [
   actionSequencerApplyJson,
   levelBrowse,
   levelSaveFile,
+  levelPublish,
   gamePlay,
   gameStop,
+  gameScreenshot,
+  hubTokenRead,
 ];
 
 /** Methods that mutate the level and should trigger an automatic save after execution. */
@@ -73,4 +82,9 @@ export const renderBuilders: Record<string, RenderBuilder> = {
   studiorpc_instance_move: ({ normalizedArgs, output }) => buildInstanceMoveRender(normalizedArgs, output),
   studiorpc_game_play: ({ normalizedArgs, output }) => buildGamePlayRender(normalizedArgs, output),
   studiorpc_game_stop: ({ output }) => buildGameStopRender(output),
+  studiorpc_game_screenshot: ({ normalizedArgs, output, result }) =>
+    buildGameScreenshotRender(result, normalizedArgs, output),
+  studiorpc_level_publish: ({ normalizedArgs, output, result }) =>
+    buildLevelPublishRender(result, normalizedArgs, output),
+  studiorpc_hub_token_read: ({ output, result }) => buildHubTokenReadRender(result, output),
 };
