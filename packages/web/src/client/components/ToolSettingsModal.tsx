@@ -302,7 +302,7 @@ export function ToolSettingsModal({
         aria-modal="true"
         aria-label="Config"
         tabIndex={-1}
-        className="absolute inset-0 z-10 flex flex-col rounded-xl border border-border/100 bg-surface-default p-5 shadow-panel"
+        className="absolute inset-0 z-10 flex flex-col border border-border/100 bg-surface-default p-5 shadow-panel"
         onClick={(event) => event.stopPropagation()}
         onKeyDown={handleKeyDown}
       >
