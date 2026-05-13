@@ -475,7 +475,7 @@ export function buildHubTokenReadRender(result: unknown, output: string): ToolRe
 }
 
 export function buildLevelPublishRender(
-  result: unknown,
+  _result: unknown,
   args: Record<string, unknown>,
   output: string,
 ): ToolRenderPayload {
@@ -488,27 +488,22 @@ export function buildLevelPublishRender(
     ? (args.keyword as unknown[]).filter((v): v is string => typeof v === "string")
     : [];
 
-  const worldId = isRecord(result) && typeof result.worldId === "number" ? String(result.worldId) : undefined;
-  const version = isRecord(result) && typeof result.version === "number" ? String(result.version) : undefined;
-  const url = isRecord(result) ? readString(result.url) : undefined;
-
   const items: { key: string; value: string }[] = [];
   if (worldName) items.push({ key: "worldName", value: worldName });
   if (description) items.push({ key: "description", value: description });
   if (categories.length > 0) items.push({ key: "category", value: categories.join(", ") });
   if (keywords.length > 0) items.push({ key: "keyword", value: keywords.join(", ") });
-  if (worldId) items.push({ key: "worldId", value: worldId });
-  if (version) items.push({ key: "version", value: version });
-  if (url) items.push({ key: "approval URL", value: url });
-
-  const headline = url ? `Open approval URL to finalize publish: ${url}` : firstLine(output, "Publish requested.");
 
   return {
     inputSummary: clip(worldName ? `publish ${worldName}` : "publish world"),
-    outputSummary: worldId ? `worldId ${worldId} v${version ?? "?"}` : summarizeText(output, "Publish requested."),
+    outputSummary: summarizeText(output, "Publish requested. Approve in browser to finalize."),
     blocks: [
       ...(items.length > 0 ? [{ type: "key_value" as const, title: "Level publish", items }] : []),
-      { type: "summary", text: headline, tone: "success" },
+      {
+        type: "summary",
+        text: firstLine(output, "Studio is opening the web approval page — finalize publish there."),
+        tone: "success",
+      },
     ],
   };
 }

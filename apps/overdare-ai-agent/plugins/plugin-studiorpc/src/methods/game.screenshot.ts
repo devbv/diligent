@@ -5,7 +5,8 @@ export const method = "game.screenshot";
 
 export const description =
   "Capture a screenshot of the OVERDARE Studio viewport and save it to a file. " +
-  'captureType defaults to "Viewport". When captureType is "Custom", `size` (width/height in pixels) is required.';
+  'captureType defaults to "Viewport". `size` (width/height in pixels) is REQUIRED when captureType is "Custom", ' +
+  "and MUST be omitted for any other captureType (Viewport / Thumbnail / HubScreenshot).";
 
 const sizeSchema = z.object({
   width: z.number().int().positive().describe("Image width in pixels (Custom only)"),

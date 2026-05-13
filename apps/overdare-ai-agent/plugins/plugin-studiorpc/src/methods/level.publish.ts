@@ -4,12 +4,13 @@ import { z } from "zod";
 export const method = "level.publish";
 
 export const description =
-  "Publish the world currently being edited to the OVERDARE platform and open the web approval page. " +
-  "On the FIRST publish, worldName/description/category/keyword are persisted as the world's metadata. " +
+  "Publish the world currently being edited to the OVERDARE platform. Studio itself opens the web approval " +
+  "page in a browser; the JSON-RPC response is only `{ success: true }` and does NOT contain a URL. " +
+  "All params are optional — calling with empty params is valid. " +
+  "On the FIRST publish, worldName/description/category/keyword (if provided) are persisted as the world's metadata. " +
   "On SUBSEQUENT publishes (Update), Studio uploads new S3 resources but ignores these metadata params — " +
   "to change metadata afterwards the user must edit it on the OVERDARE web admin page. " +
-  "The success response includes a `url` that the user must open in a browser to finalize publishing; " +
-  "always surface that URL to the user.";
+  "Error -32009 means the user canceled the publish in the Studio UI — treat it as a final outcome and do NOT retry automatically.";
 
 export const params = z.object({
   worldName: z.string().optional().describe("World display name. Only applied on the first publish."),
