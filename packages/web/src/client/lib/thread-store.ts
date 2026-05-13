@@ -83,6 +83,7 @@ export type RenderItem =
       fatal: boolean;
       turnId?: string;
       timestamp: number;
+      providerErrorType?: "rate_limit" | "overloaded" | "context_overflow" | "auth" | "network" | "unknown";
     }
   | {
       id: string;
@@ -430,8 +431,10 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent): ThreadState {
         currentContextTokens: event.usage.inputTokens + event.usage.cacheReadTokens + event.usage.cacheWriteTokens,
       };
 
-    case "error":
-      return settleInFlightItems({
+    case "error": {
+      const now = Date.now();
+      const errorKey = `event:error:${now}`;
+      const settled = settleInFlightItems({
         ...merged,
         threadStatus: "idle",
         isCompacting: false,
@@ -441,12 +444,22 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent): ThreadState {
         activeReasoningStartedAt: null,
         activeReasoningDurationMs: 0,
         toast: {
-          id: `err-${Date.now()}`,
+          id: `err-${now}`,
           kind: "error",
           message: event.error.message,
           fatal: event.fatal,
         },
       });
+      return withItem(settled, errorKey, {
+        id: errorKey,
+        kind: "error",
+        message: event.error.message,
+        name: event.error.name,
+        fatal: event.fatal,
+        timestamp: now,
+        providerErrorType: event.error.providerErrorType,
+      });
+    }
 
     case "knowledge_saved":
       return {

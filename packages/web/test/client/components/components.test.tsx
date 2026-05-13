@@ -15,6 +15,7 @@ import { Input } from "../../../src/client/components/Input";
 import { extractPastedImageFiles, InputDock } from "../../../src/client/components/InputDock";
 import { KnowledgeManagerModal } from "../../../src/client/components/KnowledgeManagerModal";
 import { MarkdownContent } from "../../../src/client/components/MarkdownContent";
+import { MessageList } from "../../../src/client/components/MessageList";
 import { Modal } from "../../../src/client/components/Modal";
 import { ProviderSettingsModal } from "../../../src/client/components/ProviderSettingsModal";
 import { QuestionCard } from "../../../src/client/components/QuestionCard";
@@ -1100,4 +1101,52 @@ test("slash menu returns null for empty commands", () => {
   const html = renderToStaticMarkup(<SlashMenu commands={[]} selectedIndex={0} onSelect={() => {}} />);
 
   expect(html).toBe("");
+});
+
+test("MessageList shows Reconnect button on auth error", () => {
+  const html = renderToStaticMarkup(
+    <MessageList
+      items={[
+        {
+          id: "event:error:1",
+          kind: "error",
+          message: "ChatGPT API error (401): unauthorized",
+          name: "ProviderError",
+          providerErrorType: "auth",
+          fatal: false,
+          timestamp: 1715562000000,
+        },
+      ]}
+      threadStatus="idle"
+      hasProvider={true}
+      onOpenProviders={() => {}}
+      onQuickConnectChatGPT={() => {}}
+    />,
+  );
+
+  expect(html).toContain("Reconnect");
+});
+
+test("MessageList does not show Reconnect button on non-auth error", () => {
+  const html = renderToStaticMarkup(
+    <MessageList
+      items={[
+        {
+          id: "event:error:2",
+          kind: "error",
+          message: "Rate limit exceeded",
+          name: "ProviderError",
+          providerErrorType: "rate_limit",
+          fatal: false,
+          timestamp: 1715562000000,
+        },
+      ]}
+      threadStatus="idle"
+      hasProvider={true}
+      onOpenProviders={() => {}}
+      onQuickConnectChatGPT={() => {}}
+    />,
+  );
+
+  expect(html).not.toContain("Reconnect");
 });

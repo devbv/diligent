@@ -304,6 +304,63 @@ test("error during compaction clears compacting and busy state immediately", () 
   expect(next.toast?.message).toBe("Estimated Token is below 50000");
 });
 
+test("error event appends a RenderItem and preserves providerErrorType", () => {
+  resetAdapter();
+
+  const next = reduce(
+    { ...initialThreadState, activeThreadId: "t1", threadStatus: "busy" },
+    {
+      method: DILIGENT_SERVER_NOTIFICATION_METHODS.ERROR,
+      params: {
+        threadId: "t1",
+        error: {
+          message: "ChatGPT API error (401): unauthorized",
+          name: "ProviderError",
+          providerErrorType: "auth",
+        },
+        fatal: false,
+      },
+    },
+  );
+
+  const errorItem = next.items.find((item) => item.kind === "error");
+  expect(errorItem).toBeDefined();
+  if (errorItem?.kind === "error") {
+    expect(errorItem.providerErrorType).toBe("auth");
+    expect(errorItem.message).toBe("ChatGPT API error (401): unauthorized");
+    expect(errorItem.fatal).toBe(false);
+  }
+  // Toast still produced alongside the persistent RenderItem.
+  expect(next.toast?.message).toBe("ChatGPT API error (401): unauthorized");
+});
+
+test("hydrateFromThreadRead preserves providerErrorType on history error entries", () => {
+  const hydrated = hydrateFromThreadRead(initialThreadState, {
+    threadId: "t1",
+    items: [],
+    errors: [
+      {
+        id: "err-1",
+        error: {
+          message: "ChatGPT API error (401): unauthorized",
+          name: "ProviderError",
+          providerErrorType: "auth",
+        },
+        fatal: false,
+        turnId: "turn-1",
+        timestamp: "2024-05-13T01:00:00.000Z",
+      },
+    ],
+  });
+
+  const errorItem = hydrated.items.find((item) => item.kind === "error");
+  expect(errorItem).toBeDefined();
+  if (errorItem?.kind === "error") {
+    expect(errorItem.providerErrorType).toBe("auth");
+    expect(errorItem.turnId).toBe("turn-1");
+  }
+});
+
 test("plan tool completion sets planState when unresolved steps remain", () => {
   resetAdapter();
   const threadId = "t1";
