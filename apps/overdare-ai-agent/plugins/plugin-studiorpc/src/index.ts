@@ -1,6 +1,8 @@
 import type { Tool } from "@diligent/plugin-sdk";
 import { call } from "./rpc.ts";
 import { methodModules, mutatingMethods, renderBuilders } from "./tool-registry.ts";
+import { createHubWorldCategoriesListTool } from "./tools/hub-world-categories-list-tool.ts";
+import { createHubWorldLookupTool } from "./tools/hub-world-lookup-tool.ts";
 import { createInstanceDeleteTool } from "./tools/instance-delete-tool.ts";
 import { createInstanceMoveTool } from "./tools/instance-move-tool.ts";
 import { createInstanceReadTool } from "./tools/instance-read-tool.ts";
@@ -35,6 +37,8 @@ export async function createTools(ctx: { cwd: string }): Promise<Tool[]> {
     createScriptAddTool(ctx.cwd, writeLock),
     createScriptDeleteTool(ctx.cwd, writeLock),
     createScriptEditTool(ctx.cwd, writeLock),
+    createHubWorldLookupTool(),
+    createHubWorldCategoriesListTool(),
   ];
 
   for (const mod of methodModules) {
