@@ -1,6 +1,6 @@
 // @summary Verifies CLI argument parsing for web sidecar startup options
 import { describe, expect, test } from "bun:test";
-import { parseArgs } from "../../src/server/index";
+import { parseArgs, resolveServerVersionOverride } from "../../src/server/index";
 
 describe("web server parseArgs", () => {
   test("parses parent pid and other startup args", () => {
@@ -22,5 +22,10 @@ describe("web server parseArgs", () => {
   test("ignores invalid parent pid", () => {
     const args = parseArgs(["--parent-pid=abc"]);
     expect(args.parentPid).toBeUndefined();
+  });
+
+  test("reads server version override from env", () => {
+    expect(resolveServerVersionOverride({ DILIGENT_SERVER_VERSION: "1.2.3" } as NodeJS.ProcessEnv)).toBe("1.2.3");
+    expect(resolveServerVersionOverride({ DILIGENT_SERVER_VERSION: "  " } as NodeJS.ProcessEnv)).toBeUndefined();
   });
 });

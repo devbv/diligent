@@ -7,6 +7,7 @@ use crate::storage::{
     global_storage_dir, migrate_global_namespace_if_needed, migrate_local_namespace_if_needed,
     storage_namespace,
 };
+use crate::update::installed_version;
 
 pub struct WebServerOptions {
     pub cwd: String,
@@ -150,6 +151,15 @@ fn resolve_updated_rg_bin() -> Option<PathBuf> {
     }
 }
 
+fn resolve_installed_runtime_version() -> Option<String> {
+    let version = installed_version()?.version;
+    let trimmed = version.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    Some(trimmed.to_string())
+}
+
 async fn wait_for_health(port: u16) -> Result<(), String> {
     use tokio::time::{sleep, timeout};
     let url = format!("http://127.0.0.1:{}/health", port);
@@ -259,6 +269,9 @@ pub async fn start_foreground(options: WebServerOptions) -> Result<RunningWebSer
         cmd.env("STUDIO_PORT", studio_rpc_port.to_string());
     }
     cmd.env("DILIGENT_STORAGE_NAMESPACE", storage_namespace());
+    if let Some(version) = resolve_installed_runtime_version() {
+        cmd.env("DILIGENT_SERVER_VERSION", version);
+    }
 
     let mut child = cmd
         .spawn()
@@ -308,8 +321,34 @@ pub async fn start_foreground(options: WebServerOptions) -> Result<RunningWebSer
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_cwd, parse_args};
+    use super::{normalize_cwd, parse_args, resolve_installed_runtime_version};
     use crate::storage::storage_namespace;
+    use std::fs;
+
+    fn with_temp_home<T>(test: T)
+    where
+        T: FnOnce(),
+    {
+        let temp_root = std::env::temp_dir().join(format!(
+            "overdare-ai-agent-webserver-test-{}-{}",
+            std::process::id(),
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        fs::create_dir_all(&temp_root).expect("create temp root");
+
+        let previous_home = std::env::var_os("HOME");
+        std::env::set_var("HOME", &temp_root);
+
+        test();
+
+        if let Some(home) = previous_home {
+            std::env::set_var("HOME", home);
+        } else {
+            std::env::remove_var("HOME");
+        }
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
 
     #[test]
     fn parse_args_reads_cwd_and_userid() {
@@ -347,5 +386,23 @@ mod tests {
     #[test]
     fn packaged_webserver_uses_packaged_namespace() {
         assert_eq!(storage_namespace(), "overdare");
+    }
+
+    #[test]
+    fn resolve_installed_runtime_version_reads_version_json() {
+        with_temp_home(|| {
+            let runtime_dir = std::env::var_os("HOME")
+                .map(std::path::PathBuf::from)
+                .expect("home path")
+                .join(".overdare/updates/runtime");
+            fs::create_dir_all(&runtime_dir).expect("create runtime dir");
+            fs::write(
+                runtime_dir.join("version.json"),
+                "{\n  \"version\": \"1.2.3\",\n  \"applied_at\": \"2026-01-01T00:00:00Z\",\n  \"sha256\": \"abc\"\n}\n",
+            )
+            .expect("write version json");
+
+            assert_eq!(resolve_installed_runtime_version().as_deref(), Some("1.2.3"));
+        });
     }
 }

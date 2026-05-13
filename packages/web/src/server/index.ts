@@ -37,6 +37,11 @@ interface ParsedArgs {
   parentPid?: number;
 }
 
+export function resolveServerVersionOverride(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  const value = env.DILIGENT_SERVER_VERSION?.trim();
+  return value ? value : undefined;
+}
+
 function isProcessAlive(pid: number): boolean {
   if (!Number.isFinite(pid) || pid <= 0) {
     return false;
@@ -94,6 +99,7 @@ export async function createWebServer(options: CreateServerOptions = {}): Promis
     cwd,
     runtimeConfig,
     overrides: {
+      serverVersion: resolveServerVersionOverride(),
       toImageUrl: (absPath) => toWebImageUrl(absPath),
       getInitializeResult: async () => ({
         cwd,
