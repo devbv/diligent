@@ -1,12 +1,22 @@
 {
   "model": "gpt-5.5",
-  "effort": "medium",
+  "effort": "high",
   "systemPromptFile": "system-prompt.txt",
   "yolo": true,
   "tools": {
     "builtin": {
-      "bash": false,
-      "web_action": false
-    }
+      "bash": false
+    },
+    "plugins": [
+      {
+        "package": "@overdare/plugin-studiorpc",
+        "tools": {
+          "studiorpc_level_save_file": false,
+          "studiorpc_level_publish": false,
+          "hub_world_lookup": false,
+          "hub_world_categories_list": false
+        }
+      }
+    ]
   }
 }
