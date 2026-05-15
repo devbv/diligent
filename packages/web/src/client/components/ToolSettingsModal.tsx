@@ -17,7 +17,9 @@ const PROVIDER_LABELS: Record<string, string> = {
   anthropic: "Anthropic",
   openai: "OpenAI",
   chatgpt: "ChatGPT",
-  gemini: "Gemini",
+  "gemini-3.1-pro": "Gemini 3.1 Pro",
+  "gemini-3-flash": "Gemini 3 Flash",
+  "gemini-3.1-flash-lite": "Gemini 3.1 Flash Lite",
   vertex: "Vertex AI",
 };
 

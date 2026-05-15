@@ -1,9 +1,18 @@
 // @summary Gemini provider implementation with thinking support and content conversion
-import type { FunctionDeclaration } from "@google/genai";
+import type {
+  Candidate,
+  Content,
+  FunctionDeclaration,
+  GenerateContentConfig,
+  GenerateContentResponseUsageMetadata,
+  Part,
+  Tool,
+} from "@google/genai";
 import { GoogleGenAI } from "@google/genai";
 import { EventStream } from "../../event-stream";
-import type { AssistantMessage, ContentBlock, Message, StopReason, Usage } from "../../types";
+import type { AssistantMessage, ContentBlock, Message, StopReason, ToolCallBlock, Usage } from "../../types";
 import { isNetworkError } from "../errors";
+import { materializeUserContentBlocks } from "../image-io";
 import { flattenSections } from "../system-sections";
 import type {
   FunctionToolDefinition,
@@ -16,6 +25,9 @@ import type {
   ToolDefinition,
 } from "../types";
 import { ProviderError } from "../types";
+
+type ProviderToolUseBlock = Extract<ContentBlock, { type: "provider_tool_use" }>;
+type WebSearchResultBlock = Extract<ContentBlock, { type: "web_search_result" }>;
 
 export function createGeminiStream(apiKey?: string, baseUrl?: string): StreamFunction {
   const resolvedApiKey = resolveGeminiApiKey(apiKey);
@@ -50,59 +62,61 @@ export function createGeminiStream(apiKey?: string, baseUrl?: string): StreamFun
 
         const responseStream = await client.models.generateContentStream({
           model: model.id,
-          contents: convertToGeminiContents(context.messages),
-          config: {
-            ...(context.systemPrompt.length > 0 ? { systemInstruction: flattenSections(context.systemPrompt) } : {}),
-            ...(context.tools.length > 0 ? { tools: convertToGeminiTools(context.tools) } : {}),
-            ...(options.maxTokens !== undefined ? { maxOutputTokens: options.maxTokens } : {}),
-            ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
-            ...(useThinking ? { thinkingConfig: { thinkingBudget: budgetTokens } } : {}),
-          },
+          contents: await convertToGeminiContents(context.messages, context.cwd),
+          config: buildGeminiGenerateConfig(context, options, useThinking ? budgetTokens : undefined),
         });
 
         stream.push({ type: "start" });
 
         const textBlocks: ContentBlock[] = [];
-        const toolCallBlocks: ContentBlock[] = [];
+        const toolCallBlocks: ToolCallBlock[] = [];
+        const webBlocksById = new Map<string, ContentBlock>();
         let toolCallCounter = 0;
         let currentText = "";
         let currentThinking = "";
         let stopReason: StopReason = "end_turn";
-        let usageMeta: { promptTokenCount?: number; candidatesTokenCount?: number } | undefined;
+        let usageMeta: GenerateContentResponseUsageMetadata | undefined;
 
         for await (const chunk of responseStream) {
           if (options.signal?.aborted) break;
 
-          if (chunk.usageMetadata) {
-            usageMeta = chunk.usageMetadata as { promptTokenCount?: number; candidatesTokenCount?: number };
-          }
+          if (chunk.usageMetadata) usageMeta = chunk.usageMetadata;
 
-          const candidate = chunk.candidates?.[0] as Record<string, unknown> | undefined;
-          const finishReason = candidate?.finishReason as string | undefined;
+          const candidate = chunk.candidates?.[0];
+          const finishReason = candidate?.finishReason;
           if (finishReason) {
             stopReason = mapGeminiStopReason(finishReason);
           }
 
-          const parts = (candidate?.content as { parts?: unknown[] } | undefined)?.parts ?? [];
-          for (const rawPart of parts) {
-            const part = rawPart as {
-              text?: string;
-              thought?: boolean;
-              functionCall?: { name: string; args?: Record<string, unknown> };
-            };
+          if (candidate) {
+            for (const block of extractGeminiWebBlocks(candidate)) {
+              if (webBlocksById.has(geminiWebBlockKey(block))) continue;
+              webBlocksById.set(geminiWebBlockKey(block), block);
+              stream.push({ type: "content_block", block });
+            }
+          }
 
+          for (const part of candidate?.content?.parts ?? []) {
             if (part.thought && part.text) {
               stream.push({ type: "thinking_delta", delta: part.text });
               currentThinking += part.text;
             } else if (part.text) {
               stream.push({ type: "text_delta", delta: part.text });
               currentText += part.text;
-            } else if (part.functionCall) {
-              const toolId = `gemini-${part.functionCall.name}-${++toolCallCounter}`;
-              const input = (part.functionCall.args ?? {}) as Record<string, unknown>;
-              stream.push({ type: "tool_call_start", id: toolId, name: part.functionCall.name });
-              stream.push({ type: "tool_call_end", id: toolId, name: part.functionCall.name, input });
-              toolCallBlocks.push({ type: "tool_call", id: toolId, name: part.functionCall.name, input });
+            } else if (part.functionCall?.name) {
+              const toolName = part.functionCall.name;
+              const toolId = `gemini-${toolName}-${++toolCallCounter}`;
+              const input = part.functionCall.args ?? {};
+              const providerMetadata = toGeminiProviderMetadata(part);
+              stream.push({ type: "tool_call_start", id: toolId, name: toolName });
+              stream.push({ type: "tool_call_end", id: toolId, name: toolName, input });
+              toolCallBlocks.push({
+                type: "tool_call",
+                id: toolId,
+                name: toolName,
+                input,
+                ...(providerMetadata ? { providerMetadata } : {}),
+              });
             }
           }
         }
@@ -118,7 +132,7 @@ export function createGeminiStream(apiKey?: string, baseUrl?: string): StreamFun
           textBlocks.push({ type: "text", text: currentText });
         }
 
-        const contentBlocks: ContentBlock[] = [...textBlocks, ...toolCallBlocks];
+        const contentBlocks: ContentBlock[] = [...textBlocks, ...webBlocksById.values(), ...toolCallBlocks];
 
         const usage: Usage = {
           inputTokens: usageMeta?.promptTokenCount ?? 0,
@@ -148,33 +162,48 @@ export function createGeminiStream(apiKey?: string, baseUrl?: string): StreamFun
   };
 }
 
-type GeminiPart =
-  | { text: string }
-  | { functionCall: { name: string; args: Record<string, unknown> } }
-  | { functionResponse: { name: string; response: Record<string, unknown> } };
+type GeminiRole = "user" | "model";
+type GeminiContent = Content & { role: GeminiRole; parts: Part[] };
+type GeminiProviderMetadata = { gemini: { thoughtSignature: string } };
 
-type GeminiContent = { role: string; parts: GeminiPart[] };
+export function buildGeminiGenerateConfig(
+  context: StreamContext,
+  options: StreamOptions,
+  thinkingBudget?: number,
+): GenerateContentConfig {
+  const tools = context.tools.length > 0 ? convertToGeminiTools(context.tools) : undefined;
+  return {
+    ...(context.systemPrompt.length > 0 ? { systemInstruction: flattenSections(context.systemPrompt) } : {}),
+    ...(tools && tools.length > 0 ? { tools } : {}),
+    ...(needsServerSideToolInvocations(context.tools)
+      ? { toolConfig: { includeServerSideToolInvocations: true } }
+      : {}),
+    ...(options.maxTokens !== undefined ? { maxOutputTokens: options.maxTokens } : {}),
+    ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
+    ...(thinkingBudget !== undefined ? { thinkingConfig: { thinkingBudget } } : {}),
+  };
+}
 
-function convertToGeminiContents(messages: Message[]): GeminiContent[] {
+export async function convertToGeminiContents(messages: Message[], cwd?: string): Promise<GeminiContent[]> {
   const result: GeminiContent[] = [];
 
   for (const msg of messages) {
     if (msg.role === "user") {
-      const text =
+      const parts: Part[] =
         typeof msg.content === "string"
-          ? msg.content
-          : msg.content
-              .filter((b) => b.type === "text")
-              .map((b) => (b as { type: "text"; text: string }).text)
-              .join("\n");
-      result.push({ role: "user", parts: [{ text }] });
+          ? [{ text: msg.content }]
+          : (await materializeUserContentBlocks(msg.content, { cwd })).flatMap(convertUserContentBlockToGeminiPart);
+      result.push({ role: "user", parts: parts.length > 0 ? parts : [{ text: "" }] });
     } else if (msg.role === "assistant") {
-      const parts: GeminiPart[] = [];
+      const parts: Part[] = [];
       for (const block of msg.content) {
         if (block.type === "text") {
           parts.push({ text: block.text });
         } else if (block.type === "tool_call") {
-          parts.push({ functionCall: { name: block.name, args: block.input } });
+          parts.push({
+            functionCall: { name: block.name, args: block.input },
+            ...toGeminiThoughtSignaturePart(block.providerMetadata),
+          });
         }
         // Skip thinking blocks — not needed in conversation history
       }
@@ -192,22 +221,299 @@ function convertToGeminiContents(messages: Message[]): GeminiContent[] {
   return result;
 }
 
-function convertToGeminiTools(tools: ToolDefinition[]): { functionDeclarations: FunctionDeclaration[] }[] {
-  return [
+function toGeminiThoughtSignaturePart(providerMetadata: Record<string, unknown> | undefined): {
+  thoughtSignature?: string;
+} {
+  const geminiMetadata = providerMetadata?.gemini;
+  if (!geminiMetadata || typeof geminiMetadata !== "object" || Array.isArray(geminiMetadata)) return {};
+  const thoughtSignature = (geminiMetadata as Record<string, unknown>).thoughtSignature;
+  return typeof thoughtSignature === "string" ? { thoughtSignature } : {};
+}
+
+function toGeminiProviderMetadata(part: Part): GeminiProviderMetadata | undefined {
+  return part.thoughtSignature ? { gemini: { thoughtSignature: part.thoughtSignature } } : undefined;
+}
+
+function convertUserContentBlockToGeminiPart(block: ContentBlock): Part[] {
+  if (block.type === "text") return [{ text: block.text }];
+  if (block.type === "image") {
+    return [
+      {
+        inlineData: {
+          mimeType: block.source.media_type,
+          data: block.source.data,
+        },
+      },
+    ];
+  }
+  if (block.type === "local_image") {
+    throw new Error("local_image blocks must be materialized before Gemini conversion");
+  }
+  return [];
+}
+
+export function convertToGeminiTools(tools: ToolDefinition[]): Tool[] {
+  const functionDeclarations = tools.flatMap((tool) => {
+    if (tool.kind !== "function") return [];
+    const t: FunctionToolDefinition = tool;
+    return [
+      {
+        name: t.name,
+        description: t.description,
+        parameters: toGeminiSchema({
+          type: "object",
+          ...t.inputSchema,
+        }) as unknown as FunctionDeclaration["parameters"],
+      },
+    ];
+  });
+
+  const webTools = createGeminiWebTools(tools);
+  return [...(functionDeclarations.length > 0 ? [{ functionDeclarations }] : []), ...webTools];
+}
+
+function createGeminiWebTools(tools: ToolDefinition[]): Tool[] {
+  const hasWebTool = tools.some((tool) => tool.kind === "provider_builtin" && tool.capability === "web");
+  if (!hasWebTool) return [];
+  return [{ googleSearch: {} }, { urlContext: {} }];
+}
+
+function needsServerSideToolInvocations(tools: ToolDefinition[]): boolean {
+  const hasWebTool = tools.some((tool) => tool.kind === "provider_builtin" && tool.capability === "web");
+  const hasFunctionTool = tools.some((tool) => tool.kind === "function");
+  return hasWebTool && hasFunctionTool;
+}
+
+export function extractGeminiWebBlocks(candidate: Candidate): ContentBlock[] {
+  return [...extractGeminiSearchBlocks(candidate), ...extractGeminiFetchBlocks(candidate)];
+}
+
+function extractGeminiSearchBlocks(candidate: Candidate): ContentBlock[] {
+  const groundingMetadata = candidate.groundingMetadata;
+  const chunks = groundingMetadata?.groundingChunks ?? [];
+  const results = chunks.flatMap((chunk) => {
+    const web = chunk.web;
+    if (!web?.uri) return [];
+    return [
+      {
+        url: web.uri,
+        ...(web.title ? { title: web.title } : {}),
+      },
+    ];
+  });
+  const queries = groundingMetadata?.webSearchQueries ?? [];
+  if (results.length === 0 && queries.length === 0) return [];
+
+  const toolUseId = "gemini-web-search";
+  const toolUse: ProviderToolUseBlock = {
+    type: "provider_tool_use",
+    id: toolUseId,
+    provider: "gemini",
+    name: "web_search",
+    input: queries.length > 0 ? { queries } : {},
+  };
+  const result: WebSearchResultBlock = {
+    type: "web_search_result",
+    toolUseId,
+    provider: "gemini",
+    results,
+  };
+  return [toolUse, result];
+}
+
+function extractGeminiFetchBlocks(candidate: Candidate): ContentBlock[] {
+  const urlMetadata = candidate.urlContextMetadata?.urlMetadata ?? [];
+  if (urlMetadata.length === 0) return [];
+
+  const toolUseId = "gemini-web-fetch";
+  const urls = urlMetadata.flatMap((metadata) => (metadata.retrievedUrl ? [metadata.retrievedUrl] : []));
+  const blocks: ContentBlock[] = [
     {
-      functionDeclarations: tools.flatMap((tool) => {
-        if (tool.kind !== "function") return [];
-        const t: FunctionToolDefinition = tool;
-        return [
-          {
-            name: t.name,
-            description: t.description,
-            parameters: { type: "object", ...t.inputSchema } as unknown as FunctionDeclaration["parameters"],
-          },
-        ];
-      }),
+      type: "provider_tool_use",
+      id: toolUseId,
+      provider: "gemini",
+      name: "web_fetch",
+      input: urls.length > 0 ? { urls } : {},
     },
   ];
+
+  for (const metadata of urlMetadata) {
+    const url = metadata.retrievedUrl ?? "";
+    blocks.push({
+      type: "web_fetch_result",
+      toolUseId,
+      provider: "gemini",
+      url,
+      ...(metadata.urlRetrievalStatus && metadata.urlRetrievalStatus !== "URL_RETRIEVAL_STATUS_SUCCESS"
+        ? { error: { code: metadata.urlRetrievalStatus } }
+        : {}),
+    });
+  }
+
+  return blocks;
+}
+
+function geminiWebBlockKey(block: ContentBlock): string {
+  if (block.type === "provider_tool_use") return `${block.type}:${block.id}`;
+  if (block.type === "web_search_result") return `${block.type}:${block.toolUseId}`;
+  if (block.type === "web_fetch_result") return `${block.type}:${block.toolUseId}:${block.url}`;
+  return JSON.stringify(block);
+}
+
+const GEMINI_SCHEMA_KEYS = new Set([
+  "anyOf",
+  "default",
+  "description",
+  "enum",
+  "example",
+  "format",
+  "items",
+  "maxItems",
+  "maxLength",
+  "maxProperties",
+  "maximum",
+  "minItems",
+  "minLength",
+  "minProperties",
+  "minimum",
+  "nullable",
+  "pattern",
+  "properties",
+  "propertyOrdering",
+  "required",
+  "title",
+  "type",
+]);
+
+export function toGeminiSchema(schema: Record<string, unknown>): Record<string, unknown> {
+  const definitions = collectSchemaDefinitions(schema);
+  return sanitizeGeminiSchema(schema, definitions, new Set());
+}
+
+function collectSchemaDefinitions(schema: Record<string, unknown>): Map<string, unknown> {
+  const definitions = new Map<string, unknown>();
+  for (const key of ["definitions", "$defs"]) {
+    const container = schema[key];
+    if (!container || typeof container !== "object" || Array.isArray(container)) continue;
+    for (const [name, value] of Object.entries(container as Record<string, unknown>)) {
+      definitions.set(`#/${key}/${name}`, value);
+    }
+  }
+  return definitions;
+}
+
+function sanitizeGeminiSchema(
+  value: unknown,
+  definitions: Map<string, unknown>,
+  refStack: Set<string>,
+): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+
+  const source = value as Record<string, unknown>;
+  const ref = source.$ref;
+  if (typeof ref === "string") {
+    const target = definitions.get(ref);
+    if (target && !refStack.has(ref)) {
+      const nextStack = new Set(refStack);
+      nextStack.add(ref);
+      const resolved = sanitizeGeminiSchema(target, definitions, nextStack);
+      return sanitizeGeminiSchema({ ...resolved, ...withoutKey(source, "$ref") }, definitions, refStack);
+    }
+    return {};
+  }
+
+  const result: Record<string, unknown> = {};
+  for (const [key, raw] of Object.entries(source)) {
+    if (key === "$schema" || key === "$id" || key === "$defs" || key === "definitions") continue;
+
+    if (key === "oneOf" || key === "allOf") {
+      const normalized = sanitizeGeminiSchemaArray(raw, definitions, refStack);
+      if (normalized.length > 0) result.anyOf = normalized;
+      continue;
+    }
+
+    if (key === "type") {
+      applyGeminiType(result, raw, definitions, refStack);
+      continue;
+    }
+
+    if (!GEMINI_SCHEMA_KEYS.has(key)) continue;
+
+    if (key === "properties") {
+      const properties = sanitizeGeminiProperties(raw, definitions, refStack);
+      if (Object.keys(properties).length > 0) result.properties = properties;
+      continue;
+    }
+
+    if (key === "items") {
+      result.items = sanitizeGeminiSchema(raw, definitions, refStack);
+      continue;
+    }
+
+    if (key === "anyOf") {
+      const anyOf = sanitizeGeminiSchemaArray(raw, definitions, refStack);
+      if (anyOf.length > 0) result.anyOf = anyOf;
+      continue;
+    }
+
+    result[key] = raw;
+  }
+
+  return result;
+}
+
+function sanitizeGeminiProperties(
+  value: unknown,
+  definitions: Map<string, unknown>,
+  refStack: Set<string>,
+): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const result: Record<string, unknown> = {};
+  for (const [name, schema] of Object.entries(value as Record<string, unknown>)) {
+    result[name] = sanitizeGeminiSchema(schema, definitions, refStack);
+  }
+  return result;
+}
+
+function sanitizeGeminiSchemaArray(
+  value: unknown,
+  definitions: Map<string, unknown>,
+  refStack: Set<string>,
+): Record<string, unknown>[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => sanitizeGeminiSchema(item, definitions, refStack))
+    .filter((item) => Object.keys(item).length > 0);
+}
+
+function applyGeminiType(
+  result: Record<string, unknown>,
+  value: unknown,
+  definitions: Map<string, unknown>,
+  refStack: Set<string>,
+): void {
+  if (typeof value === "string") {
+    result.type = value;
+    return;
+  }
+  if (!Array.isArray(value)) return;
+
+  const types = value.filter((item): item is string => typeof item === "string");
+  if (types.includes("null")) result.nullable = true;
+  const nonNullTypes = types.filter((item) => item !== "null");
+  if (nonNullTypes.length === 1) {
+    result.type = nonNullTypes[0];
+  } else if (nonNullTypes.length > 1) {
+    result.anyOf = nonNullTypes.map((type) => sanitizeGeminiSchema({ type }, definitions, refStack));
+  }
+}
+
+function withoutKey(source: Record<string, unknown>, keyToRemove: string): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(source)) {
+    if (key !== keyToRemove) result[key] = value;
+  }
+  return result;
 }
 
 function resolveGeminiApiKey(apiKey?: string): string {

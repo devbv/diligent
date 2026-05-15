@@ -58,6 +58,7 @@ export const ToolCallBlockSchema = z.object({
   id: z.string(),
   name: z.string(),
   input: z.record(z.unknown()),
+  providerMetadata: z.record(z.unknown()).optional(),
 });
 export type ToolCallBlock = z.infer<typeof ToolCallBlockSchema>;
 
@@ -78,7 +79,7 @@ export type ToolCallBlock = z.infer<typeof ToolCallBlockSchema>;
 export const ProviderToolUseBlockSchema = z.object({
   type: z.literal("provider_tool_use"),
   id: z.string(),
-  provider: z.enum(["openai", "chatgpt", "anthropic"]),
+  provider: z.enum(["openai", "chatgpt", "anthropic", "gemini"]),
   name: z.enum(["web_search", "web_fetch"]),
   input: z.record(z.unknown()),
 });
@@ -96,7 +97,7 @@ export type WebSearchResult = z.infer<typeof WebSearchResultSchema>;
 export const WebSearchResultBlockSchema = z.object({
   type: z.literal("web_search_result"),
   toolUseId: z.string(),
-  provider: z.enum(["openai", "chatgpt", "anthropic"]),
+  provider: z.enum(["openai", "chatgpt", "anthropic", "gemini"]),
   results: z.array(WebSearchResultSchema),
   error: z.object({ code: z.string(), message: z.string().optional() }).optional(),
 });
@@ -114,7 +115,7 @@ export type WebFetchDocument = z.infer<typeof WebFetchDocumentSchema>;
 export const WebFetchResultBlockSchema = z.object({
   type: z.literal("web_fetch_result"),
   toolUseId: z.string(),
-  provider: z.enum(["openai", "chatgpt", "anthropic"]),
+  provider: z.enum(["openai", "chatgpt", "anthropic", "gemini"]),
   url: z.string(),
   document: WebFetchDocumentSchema.optional(),
   retrievedAt: z.string().optional(),

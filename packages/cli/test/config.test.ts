@@ -37,8 +37,8 @@ describe("loadConfig", () => {
     await mkdir(dir, { recursive: true });
 
     const config = await loadConfig(dir);
-    expect(config.model.id).toBe("claude-sonnet-4-6");
-    expect(config.model.provider).toBe("anthropic");
+    expect(config.model.id).toBe("gemini-3.1-pro-preview");
+    expect(config.model.provider).toBe("gemini");
   });
 
   test("loads config from config.jsonc", async () => {

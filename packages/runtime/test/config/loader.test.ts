@@ -99,7 +99,7 @@ describe("loadDiligentConfig", () => {
   it("returns default config when no files exist", async () => {
     await mkdir(TEST_ROOT, { recursive: true });
     const { config, sources } = await loadDiligentConfig(TEST_ROOT);
-    expect(config.model).toBe("claude-sonnet-4-6");
+    expect(config.model).toBe("gemini-3.1-pro-preview");
     expect(sources).toEqual([]);
   });
 
@@ -199,7 +199,7 @@ describe("loadDiligentConfig", () => {
     try {
       const { config, sources } = await loadDiligentConfig(TEST_ROOT);
       expect(sources).toEqual([]); // file was skipped
-      expect(config.model).toBe("claude-sonnet-4-6"); // defaults
+      expect(config.model).toBe("gemini-3.1-pro-preview"); // defaults
       expect(warnSpy.length).toBeGreaterThan(0);
     } finally {
       console.warn = origWarn;

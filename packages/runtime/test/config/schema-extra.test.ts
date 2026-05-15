@@ -70,7 +70,7 @@ describe("DiligentConfigSchema", () => {
 
 describe("DEFAULT_CONFIG", () => {
   it("has a model set", () => {
-    expect(DEFAULT_CONFIG.model).toBe("claude-sonnet-4-6");
+    expect(DEFAULT_CONFIG.model).toBe("gemini-3.1-pro-preview");
   });
 
   it("validates against schema", () => {

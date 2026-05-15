@@ -23,7 +23,9 @@ const PROVIDER_LABELS: Record<string, string> = {
   anthropic: "Anthropic",
   openai: "OpenAI",
   chatgpt: "ChatGPT",
-  gemini: "Gemini",
+  "gemini-3.1-pro": "Gemini 3.1 Pro",
+  "gemini-3-flash": "Gemini 3 Flash",
+  "gemini-3.1-flash-lite": "Gemini 3.1 Flash Lite",
   vertex: "Vertex AI",
 };
 
@@ -31,7 +33,9 @@ const PROVIDER_INPUT_PLACEHOLDERS: Record<string, string> = {
   anthropic: "API key",
   openai: "API key",
   chatgpt: "API key",
-  gemini: "API key",
+  "gemini-3.1-pro": "API key",
+  "gemini-3-flash": "API key",
+  "gemini-3.1-flash-lite": "API key",
   vertex: "Google Cloud access token",
 };
 

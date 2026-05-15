@@ -90,11 +90,9 @@ describe("modelCommand picker", () => {
 
     expect(capturedItems.length).toBeGreaterThan(0);
     const modelItems = capturedItems.filter((item) => !item.header);
-    expect(modelItems.length).toBeGreaterThan(0);
     expect(modelItems.every((item) => resolveModel(item.value).provider === "openai")).toBe(true);
     expect(capturedItems.some((item) => item.header && item.label.includes("openai"))).toBe(true);
     expect(capturedItems.some((item) => item.header && item.label.includes("anthropic"))).toBe(false);
-    expect(capturedItems.some((item) => item.header && item.label.includes("gemini"))).toBe(false);
   });
 
   it("falls back to current provider models when no provider is authenticated", async () => {

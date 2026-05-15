@@ -177,6 +177,6 @@ export const DiligentConfigSchema = z
 export type DiligentConfig = z.infer<typeof DiligentConfigSchema>;
 
 export const DEFAULT_CONFIG: DiligentConfig = {
-  model: "claude-sonnet-4-6",
+  model: "gemini-3.1-pro-preview",
   effort: "medium",
 };

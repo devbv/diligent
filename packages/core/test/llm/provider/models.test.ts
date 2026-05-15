@@ -65,9 +65,14 @@ describe("resolveModel", () => {
 });
 
 describe("model class annotations", () => {
-  it("annotates vision support for Anthropic and OpenAI only", () => {
+  it("annotates vision support for providers with image-capable model cards", () => {
     for (const model of KNOWN_MODELS) {
-      if (model.provider === "anthropic" || model.provider === "openai" || model.provider === "chatgpt") {
+      if (
+        model.provider === "anthropic" ||
+        model.provider === "openai" ||
+        model.provider === "chatgpt" ||
+        model.provider === "gemini"
+      ) {
         expect(model.supportsVision).toBe(true);
       } else {
         expect(model.supportsVision).not.toBe(true);
@@ -112,9 +117,9 @@ describe("model class annotations", () => {
   });
 
   it("gemini classes map correctly", () => {
-    expect(KNOWN_MODELS.find((m) => m.id === "gemini-2.5-pro")?.modelClass).toBe("pro");
-    expect(KNOWN_MODELS.find((m) => m.id === "gemini-2.5-flash")?.modelClass).toBe("general");
-    expect(KNOWN_MODELS.find((m) => m.id === "gemini-2.5-flash-lite")?.modelClass).toBe("lite");
+    expect(KNOWN_MODELS.find((m) => m.id === "gemini-3.1-pro-preview")?.modelClass).toBe("pro");
+    expect(KNOWN_MODELS.find((m) => m.id === "gemini-3-flash-preview")?.modelClass).toBe("general");
+    expect(KNOWN_MODELS.find((m) => m.id === "gemini-3.1-flash-lite-preview")?.modelClass).toBe("lite");
   });
 
   it("chatgpt classes map correctly", () => {
@@ -190,16 +195,16 @@ describe("resolveModelForClass", () => {
   });
 
   it("resolves gemini general → pro", () => {
-    const flash = resolveModel("gemini-2.5-flash");
+    const flash = resolveModel("gemini-3-flash-preview");
     const pro = resolveModelForClass(flash, "pro");
-    expect(pro.id).toBe("gemini-2.5-pro");
+    expect(pro.id).toBe("gemini-3.1-pro-preview");
     expect(pro.provider).toBe("gemini");
   });
 
   it("resolves gemini general → lite", () => {
-    const flash = resolveModel("gemini-2.5-flash");
+    const flash = resolveModel("gemini-3-flash-preview");
     const lite = resolveModelForClass(flash, "lite");
-    expect(lite.id).toBe("gemini-2.5-flash-lite");
+    expect(lite.id).toBe("gemini-3.1-flash-lite-preview");
     expect(lite.provider).toBe("gemini");
   });
 
