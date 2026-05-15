@@ -665,7 +665,7 @@ describe("SessionManager", () => {
 
     try {
       const response1 = makeAssistantMessage([{ type: "text", text: "turn one" }]);
-      response1.usage.cacheReadTokens = 9;
+      response1.usage.cacheReadTokens = 5000;
 
       const response2 = makeAssistantMessage([{ type: "text", text: "turn two" }]);
       response2.usage.cacheReadTokens = 0;

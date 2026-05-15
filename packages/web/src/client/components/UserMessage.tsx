@@ -44,7 +44,11 @@ export function UserMessage({ text, images = [], contextItems = [] }: UserMessag
             ))}
           </div>
         ) : null}
-        {text ? <p className="whitespace-pre-wrap text-sm leading-7 text-white">{text}</p> : null}
+        {text ? (
+          <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm leading-7 text-white">
+            {text}
+          </p>
+        ) : null}
       </div>
     </div>
   );

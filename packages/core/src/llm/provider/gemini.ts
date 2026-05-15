@@ -137,7 +137,7 @@ export function createGeminiStream(apiKey?: string, baseUrl?: string): StreamFun
         const usage: Usage = {
           inputTokens: usageMeta?.promptTokenCount ?? 0,
           outputTokens: usageMeta?.candidatesTokenCount ?? 0,
-          cacheReadTokens: 0,
+          cacheReadTokens: usageMeta?.cachedContentTokenCount ?? 0,
           cacheWriteTokens: 0,
         };
 

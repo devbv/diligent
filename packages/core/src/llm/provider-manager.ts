@@ -35,8 +35,8 @@ export const PROVIDER_NAMES: ProviderName[] = ["anthropic", "openai", "chatgpt",
 
 export const DEFAULT_MODELS: Record<ProviderName, string> = {
   anthropic: "claude-sonnet-4-6",
-  openai: "gpt-5.3-codex",
-  chatgpt: "chatgpt-5.3-codex",
+  openai: "gpt-5.5",
+  chatgpt: "chatgpt-5.5",
   gemini: "gemini-2.5-flash",
   vertex: "vertex-gemma-4-26b-it",
   zai: "glm-5.1",

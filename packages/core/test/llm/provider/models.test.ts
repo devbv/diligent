@@ -111,7 +111,8 @@ describe("model class annotations", () => {
   });
 
   it("openai classes map correctly", () => {
-    expect(KNOWN_MODELS.find((m) => m.id === "gpt-5.4")?.modelClass).toBe("pro");
+    expect(KNOWN_MODELS.find((m) => m.id === "gpt-5.5")?.modelClass).toBe("pro");
+    expect(KNOWN_MODELS.find((m) => m.id === "gpt-5.4")?.modelClass).toBe("general");
     expect(KNOWN_MODELS.find((m) => m.id === "gpt-5.3-codex")?.modelClass).toBe("general");
     expect(KNOWN_MODELS.find((m) => m.id === "gpt-5.4-mini")?.modelClass).toBe("lite");
   });
@@ -123,8 +124,8 @@ describe("model class annotations", () => {
   });
 
   it("chatgpt classes map correctly", () => {
-    expect(KNOWN_MODELS.find((m) => m.id === "chatgpt-5.4")?.modelClass).toBe("pro");
     expect(KNOWN_MODELS.find((m) => m.id === "chatgpt-5.5")?.modelClass).toBe("pro");
+    expect(KNOWN_MODELS.find((m) => m.id === "chatgpt-5.4")?.modelClass).toBe("general");
     expect(KNOWN_MODELS.find((m) => m.id === "chatgpt-5.3-codex")?.modelClass).toBe("general");
     expect(KNOWN_MODELS.find((m) => m.id === "chatgpt-5.4-mini")?.modelClass).toBe("lite");
   });
@@ -218,7 +219,7 @@ describe("resolveModelForClass", () => {
   it("resolves chatgpt general → pro", () => {
     const codex = resolveModel("chatgpt-5.3-codex");
     const pro = resolveModelForClass(codex, "pro");
-    expect(pro.id).toBe("chatgpt-5.4");
+    expect(pro.id).toBe("chatgpt-5.5");
     expect(pro.provider).toBe("chatgpt");
   });
 

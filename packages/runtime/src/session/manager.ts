@@ -571,7 +571,7 @@ export class SessionManager {
     const currPromptHashes = this.currPromptHashesBySession.get(sessionId) ?? [];
     const commonPrefix = sharedPrefixLength(prevPromptHashes, currPromptHashes);
 
-    if (prevCacheRead > currCacheRead) {
+    if (prevCacheRead - currCacheRead >= 4096) {
       this.emitPrefixCompareLog({
         sessionId,
         turn,

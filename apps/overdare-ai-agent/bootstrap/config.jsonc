@@ -1,5 +1,5 @@
 {
-  "model": "gpt-5.4",
+  "model": "gpt-5.5",
   "effort": "medium",
   "systemPromptFile": "system-prompt.txt",
   "yolo": true,

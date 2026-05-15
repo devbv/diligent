@@ -15,7 +15,7 @@ function summarize(text: string): string {
 export function ThinkingBlock({ text, streaming = false, duration = null }: ThinkingBlockProps) {
   if (streaming) {
     return (
-      <div className="whitespace-pre-wrap rounded-lg bg-transparent py-1 font-mono text-xs leading-relaxed text-muted/65">
+      <div className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] rounded-lg bg-transparent py-1 font-mono text-xs leading-relaxed text-muted/65">
         {text}
       </div>
     );
@@ -30,7 +30,9 @@ export function ThinkingBlock({ text, streaming = false, duration = null }: Thin
         {duration ? <span className="text-muted/70">{duration}</span> : null}
         {summary && <span className="max-w-[40ch] truncate normal-case tracking-normal text-muted/80">{summary}</span>}
       </summary>
-      <pre className="mt-2 whitespace-pre-wrap font-mono text-xs leading-relaxed text-text/78">{text}</pre>
+      <pre className="mt-2 whitespace-pre-wrap break-words [overflow-wrap:anywhere] font-mono text-xs leading-relaxed text-text/78">
+        {text}
+      </pre>
     </details>
   );
 }
