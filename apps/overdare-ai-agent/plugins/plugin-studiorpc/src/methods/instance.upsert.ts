@@ -54,9 +54,7 @@ export const description =
   "Each item is inferred by its fields: add uses parentGuid/class/name/properties, update uses guid with optional name and properties. " +
   "To create nested hierarchies, add the parent first so its GUID is returned, then add children using that GUID as parentGuid in subsequent items. " +
   "Services (Workspace, Lighting, Atmosphere, Players, StarterPlayer, MaterialService, etc.) are singletons — they cannot be added, only updated by guid. " +
-  "To reparent an existing instance (change its hierarchy), use instance.move instead of delete + re-add. " +
-  "IMPORTANT KNOWN BUG: CFrame Position is always reset to (0,0,0) on add. " +
-  "To work around this, first add the instance without a CFrame position, then immediately update it with the desired CFrame position using the returned GUID.";
+  "To reparent an existing instance (change its hierarchy), use instance.move instead of delete + re-add. ";
 
 export type InstanceUpsertAddArgs = z.infer<typeof addParams>;
 export type InstanceUpsertUpdateArgs = z.infer<typeof updateParams>;
