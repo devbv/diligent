@@ -227,6 +227,17 @@ export const KNOWN_MODELS: ModelDefinition[] = [
   // ChatGPT subscription models map to the same upstream family, but remain distinct
   // in Diligent so provider identity stays separate from auth strategy.
   {
+    id: "chatgpt-5.5",
+    provider: "chatgpt",
+    contextWindow: 300_000,
+    maxOutputTokens: 128_000,
+    supportsThinking: true,
+    supportedEfforts: THINKING_EFFORTS_WITH_NONE,
+    supportsVision: true,
+    aliases: ["chatgpt-5.5-pro"],
+    modelClass: "pro",
+  },
+  {
     id: "chatgpt-5.4",
     provider: "chatgpt",
     contextWindow: 300_000,
@@ -238,17 +249,6 @@ export const KNOWN_MODELS: ModelDefinition[] = [
     supportedEfforts: THINKING_EFFORTS_WITH_NONE,
     supportsVision: true,
     modelClass: "general",
-  },
-  {
-    id: "chatgpt-5.5",
-    provider: "chatgpt",
-    contextWindow: 300_000,
-    maxOutputTokens: 128_000,
-    supportsThinking: true,
-    supportedEfforts: THINKING_EFFORTS_WITH_NONE,
-    supportsVision: true,
-    aliases: ["chatgpt-5.5-pro"],
-    modelClass: "pro",
   },
   {
     id: "chatgpt-5.3-codex",

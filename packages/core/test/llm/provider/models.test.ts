@@ -130,6 +130,15 @@ describe("model class annotations", () => {
     expect(KNOWN_MODELS.find((m) => m.id === "chatgpt-5.4-mini")?.modelClass).toBe("lite");
   });
 
+  it("orders chatgpt models by preferred display and default priority", () => {
+    expect(KNOWN_MODELS.filter((m) => m.provider === "chatgpt").map((m) => m.id)).toEqual([
+      "chatgpt-5.5",
+      "chatgpt-5.4",
+      "chatgpt-5.3-codex",
+      "chatgpt-5.4-mini",
+    ]);
+  });
+
   it("vertex classes map correctly", () => {
     expect(KNOWN_MODELS.find((m) => m.id === "vertex-gemma-4-26b-it")?.modelClass).toBe("general");
   });
