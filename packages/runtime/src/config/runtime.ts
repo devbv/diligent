@@ -17,6 +17,7 @@ import {
   type AuthStoreOptions,
   loadAuthStore,
   loadOAuthTokens,
+  removeOAuthTokens,
   saveOAuthTokens,
 } from "../auth/index";
 import { createChatGPTOAuthBinding, createVertexAccessTokenBinding } from "../auth/provider-auth";
@@ -81,8 +82,14 @@ export async function loadRuntimeConfig(cwd: string, paths: DiligentPaths): Prom
       initialTokens: oauthTokens,
       onTokensRefreshed: (tokens) => saveOAuthTokens(tokens, authStore),
     });
-    await chatgptAuth.auth.ensureFresh?.();
-    providerManager.setExternalAuth("chatgpt", chatgptAuth.auth);
+    try {
+      await chatgptAuth.auth.ensureFresh?.();
+      providerManager.setExternalAuth("chatgpt", chatgptAuth.auth);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`[auth] ChatGPT OAuth refresh failed during startup; sign in again to use ChatGPT: ${message}`);
+      await removeOAuthTokens(authStore).catch(() => {});
+    }
   }
 
   if (config.provider?.vertex) {

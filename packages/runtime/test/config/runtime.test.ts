@@ -1,5 +1,5 @@
 // @summary Tests for runtime config agent loading and prompt rendering
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it, mock } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -263,6 +263,64 @@ describe("loadRuntimeConfig", () => {
     } finally {
       process.env.HOME = originalHome;
       process.env.USERPROFILE = originalUserProfile;
+    }
+  });
+
+  it("does not fail startup when stored ChatGPT OAuth refresh fails and removes stale tokens", async () => {
+    tmpRoot = await mkdtemp(join(tmpdir(), "diligent-runtime-chatgpt-refresh-fail-"));
+    const paths = makePaths(tmpRoot);
+    const isolatedHome = join(tmpRoot, ".isolated-home");
+    await mkdir(paths.sessions, { recursive: true });
+    await mkdir(paths.knowledge, { recursive: true });
+    await mkdir(paths.skills, { recursive: true });
+    await mkdir(paths.images, { recursive: true });
+    await mkdir(join(isolatedHome, ".diligent"), { recursive: true });
+    await writeFile(
+      join(tmpRoot, ".diligent", "config.jsonc"),
+      JSON.stringify({ provider: { auth: { credentialsStore: "file" } } }),
+    );
+    await writeFile(
+      join(isolatedHome, ".diligent", "auth.jsonc"),
+      JSON.stringify({
+        chatgpt_oauth: {
+          access_token: "expired-access-token",
+          refresh_token: "reused-refresh-token",
+          id_token: "expired-id-token",
+          expires_at: Date.now() - 60_000,
+        },
+      }),
+    );
+
+    const originalHome = process.env.HOME;
+    const originalUserProfile = process.env.USERPROFILE;
+    const originalFetch = globalThis.fetch;
+    process.env.HOME = isolatedHome;
+    process.env.USERPROFILE = isolatedHome;
+    globalThis.fetch = mock(
+      async () =>
+        new Response(
+          JSON.stringify({
+            error: {
+              message:
+                "Your refresh token has already been used to generate a new access token. Please try signing in again.",
+              type: "invalid_request_error",
+              code: "refresh_token_reused",
+            },
+          }),
+          { status: 401 },
+        ),
+    ) as unknown as typeof fetch;
+
+    try {
+      const config = await loadRuntimeConfig(tmpRoot, paths);
+      const authFile = join(isolatedHome, ".diligent", "auth.jsonc");
+
+      expect(config.providerManager.hasKeyFor("chatgpt")).toBe(false);
+      expect(await Bun.file(authFile).exists()).toBe(false);
+    } finally {
+      process.env.HOME = originalHome;
+      process.env.USERPROFILE = originalUserProfile;
+      globalThis.fetch = originalFetch;
     }
   });
 });
