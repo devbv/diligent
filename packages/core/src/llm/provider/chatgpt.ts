@@ -93,8 +93,12 @@ export function createChatGPTStream(getTokens: () => OpenAIOAuthTokens): StreamF
           const errText = await response.text().catch(() => "");
           const isUsageLimit = errText.includes("usage_limit_reached");
           const is429 = response.status === 429;
+          const message =
+            is429 && isUsageLimit
+              ? "AI usage limit reached. Please try again later or upgrade your plan."
+              : `ChatGPT API error (${response.status}): ${errText || "no body"}`;
           throw new ProviderError(
-            `ChatGPT API error (${response.status}): ${errText || "no body"}`,
+            message,
             is429 && isUsageLimit
               ? "unknown"
               : is429
