@@ -5,35 +5,39 @@ export const method = "game.screenshot";
 
 export const description =
   "Capture a screenshot of the OVERDARE Studio viewport and save it to a file. " +
-  'captureType defaults to "Viewport". `size` (width/height in pixels) is REQUIRED when captureType is "Custom", ' +
-  "and MUST be omitted for any other captureType (Viewport / Thumbnail / HubScreenshot).";
+  'Two valid shapes: (1) { captureType: "Custom", size: { width, height } } for explicit dimensions, ' +
+  'or (2) { captureType: "Viewport" | "Thumbnail" | "HubScreenshot" } with NO size field. ' +
+  'captureType defaults to "Viewport" when omitted.';
 
 const sizeSchema = z.object({
-  width: z.number().int().positive().describe("Image width in pixels (Custom only)"),
-  height: z.number().int().positive().describe("Image height in pixels (Custom only)"),
+  width: z.number().int().positive().describe("Image width in pixels."),
+  height: z.number().int().positive().describe("Image height in pixels."),
 });
 
-export const params = z
+const customParams = z
+  .object({
+    captureType: z.literal("Custom").describe("Custom capture — requires an explicit `size` (width/height in pixels)."),
+    size: sizeSchema.describe('REQUIRED for "Custom" capture. Image width and height in pixels.'),
+  })
+  .strict();
+
+const presetParams = z
   .object({
     captureType: z
-      .enum(["Viewport", "Thumbnail", "HubScreenshot", "Custom"])
-      .optional()
-      .describe('Capture mode. Defaults to "Viewport".'),
-    size: sizeSchema.optional().describe('Required only when captureType is "Custom".'),
+      .enum(["Viewport", "Thumbnail", "HubScreenshot"])
+      .describe(
+        "Preset capture mode with system-defined dimensions. " +
+          'DO NOT include a "size" field for these modes — the call will be rejected.',
+      ),
   })
-  .superRefine((value, ctx) => {
-    if (value.captureType === "Custom" && !value.size) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["size"],
-        message: 'size is required when captureType is "Custom".',
-      });
+  .strict();
+
+export const params = z.preprocess(
+  (value) => {
+    if (value && typeof value === "object" && !Array.isArray(value) && !("captureType" in value)) {
+      return { ...(value as Record<string, unknown>), captureType: "Viewport" };
     }
-    if (value.captureType && value.captureType !== "Custom" && value.size) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["size"],
-        message: `size is only allowed when captureType is "Custom" (got "${value.captureType}").`,
-      });
-    }
-  });
+    return value;
+  },
+  z.discriminatedUnion("captureType", [customParams, presetParams]),
+);
