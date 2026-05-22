@@ -29,6 +29,13 @@ const TEST_OAUTH_TOKENS: OpenAIOAuthTokens = {
   id_token: "it-test",
   expires_at: 9_999_999_999_000,
   account_id: "acc-test",
+  account_info: {
+    email: "test@example.com",
+    chatgpt_plan_type: "pro",
+    chatgpt_user_id: "user-test",
+    chatgpt_account_id: "acc-test",
+    chatgpt_account_is_fedramp: false,
+  },
 };
 
 function authOptions(path: string, mode: "file" | "keyring" | "auto" | "ephemeral") {

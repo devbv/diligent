@@ -4,6 +4,7 @@ import {
   buildOAuthTokens,
   exchangeCodeForTokens,
   extractAccountId,
+  extractAccountInfo,
   parseJwtClaims,
   type RawTokenResponse,
 } from "../../../src/auth/chatgpt-oauth/token-exchange";
@@ -125,6 +126,52 @@ describe("extractAccountId", () => {
   });
 });
 
+describe("extractAccountInfo", () => {
+  test("extracts email and ChatGPT subscription claims from id_token", () => {
+    const raw = {
+      access_token: fakeJwt({
+        email: "access-token@example.com",
+        "https://api.openai.com/auth": { chatgpt_plan_type: "free" },
+      }),
+      refresh_token: "rt",
+      id_token: fakeJwt({
+        email: "test@example.com",
+        "https://api.openai.com/auth": {
+          chatgpt_plan_type: "pro",
+          chatgpt_user_id: "user-123",
+          chatgpt_account_id: "acc-123",
+          chatgpt_account_is_fedramp: false,
+        },
+      }),
+      expires_in: 3600,
+      token_type: "Bearer",
+    };
+
+    expect(extractAccountInfo(raw)).toEqual({
+      email: "test@example.com",
+      chatgpt_plan_type: "pro",
+      chatgpt_user_id: "user-123",
+      chatgpt_account_id: "acc-123",
+      chatgpt_account_is_fedramp: false,
+    });
+  });
+
+  test("returns undefined when id_token has no account metadata", () => {
+    const raw = {
+      access_token: fakeJwt({
+        email: "access-token@example.com",
+        "https://api.openai.com/auth": { chatgpt_plan_type: "pro" },
+      }),
+      refresh_token: "rt",
+      id_token: fakeJwt({ sub: "user-1" }),
+      expires_in: 3600,
+      token_type: "Bearer",
+    };
+
+    expect(extractAccountInfo(raw)).toBeUndefined();
+  });
+});
+
 describe("buildOAuthTokens", () => {
   test("builds tokens with expires_at from expires_in", () => {
     const before = Date.now();
@@ -157,5 +204,32 @@ describe("buildOAuthTokens", () => {
 
     const tokens = buildOAuthTokens(raw);
     expect(tokens.expires_at).toBeGreaterThanOrEqual(before + 3600 * 1000);
+  });
+
+  test("includes account metadata from id_token claims", () => {
+    const raw = {
+      access_token: "at",
+      refresh_token: "rt",
+      id_token: fakeJwt({
+        email: "test@example.com",
+        "https://api.openai.com/auth": {
+          chatgpt_plan_type: "plus",
+          chatgpt_user_id: "user-build",
+          chatgpt_account_id: "acc-build",
+          chatgpt_account_is_fedramp: true,
+        },
+      }),
+      token_type: "Bearer",
+    } as RawTokenResponse;
+
+    const tokens = buildOAuthTokens(raw);
+    expect(tokens.account_id).toBe("acc-build");
+    expect(tokens.account_info).toEqual({
+      email: "test@example.com",
+      chatgpt_plan_type: "plus",
+      chatgpt_user_id: "user-build",
+      chatgpt_account_id: "acc-build",
+      chatgpt_account_is_fedramp: true,
+    });
   });
 });

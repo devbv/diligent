@@ -60,6 +60,16 @@ const OpenAIOAuthSchema = z.object({
   id_token: z.string(),
   expires_at: z.number(),
   account_id: z.string().optional(),
+  account_info: z
+    .object({
+      email: z.string().optional(),
+      chatgpt_plan_type: z.string().optional(),
+      chatgpt_user_id: z.string().optional(),
+      chatgpt_account_id: z.string().optional(),
+      chatgpt_account_is_fedramp: z.boolean().optional(),
+    })
+    .strict()
+    .optional(),
 });
 
 const AuthKeysSchema = z
