@@ -1,63 +1,91 @@
-// @summary Tests for OpenAI API error classification and handling
-import { describe, expect, it } from "bun:test";
+// @summary Tests for OpenAI and ChatGPT error classification retryability
+import { describe, expect, test } from "bun:test";
 import OpenAI from "openai";
+import { isNetworkError } from "../../../src/llm/errors";
 import { classifyOpenAIError } from "../../../src/llm/provider/openai";
 
-const emptyHeaders = new Headers();
+function makeOpenAIAPIError(status: number, message: string, headers?: Record<string, string>): OpenAI.APIError {
+  const sdkHeaders = new Headers(headers);
+  return new OpenAI.APIError(status, { message }, message, sdkHeaders);
+}
 
 describe("classifyOpenAIError", () => {
-  it("classifies 429 as non-retryable rate_limit", () => {
-    const err = new OpenAI.APIError(429, { message: "Rate limit exceeded" }, "rate limit", emptyHeaders);
-    const classified = classifyOpenAIError(err);
-    expect(classified.errorType).toBe("rate_limit");
-    expect(classified.isRetryable).toBe(false);
+  test("classifies 429 as non-retryable rate_limit", () => {
+    const result = classifyOpenAIError(makeOpenAIAPIError(429, "Rate limit exceeded"));
+
+    expect(result.errorType).toBe("rate_limit");
+    expect(result.isRetryable).toBe(false);
+    expect(result.statusCode).toBe(429);
   });
 
-  it("classifies 401 as auth", () => {
-    const err = new OpenAI.APIError(401, { message: "Invalid API key" }, "unauthorized", emptyHeaders);
-    const classified = classifyOpenAIError(err);
-    expect(classified.errorType).toBe("auth");
-    expect(classified.isRetryable).toBe(false);
+  test("classifies 401 as auth", () => {
+    const result = classifyOpenAIError(makeOpenAIAPIError(401, "Invalid API key"));
+
+    expect(result.errorType).toBe("auth");
+    expect(result.isRetryable).toBe(false);
   });
 
-  it("classifies context overflow", () => {
-    const err = new OpenAI.APIError(
-      400,
-      { message: "This model's maximum context length is 128000" },
-      "bad_request",
-      emptyHeaders,
+  test("classifies context overflow", () => {
+    const result = classifyOpenAIError(makeOpenAIAPIError(400, "This model's maximum context length is 128000"));
+
+    expect(result.errorType).toBe("context_overflow");
+    expect(result.isRetryable).toBe(false);
+  });
+
+  test("classifies network errors", () => {
+    const result = classifyOpenAIError(new Error("fetch failed: ECONNREFUSED"));
+
+    expect(result.errorType).toBe("network");
+    expect(result.isRetryable).toBe(true);
+  });
+
+  test("parses retry-after header on 429", () => {
+    const result = classifyOpenAIError(makeOpenAIAPIError(429, "Rate limit exceeded", { "retry-after": "3" }));
+
+    expect(result.retryAfterMs).toBe(3000);
+  });
+
+  test("classifies overloaded text as retryable server_error", () => {
+    const result = classifyOpenAIError(new Error("ChatGPT is temporarily overloaded. Please try again."));
+
+    expect(result.errorType).toBe("server_error");
+    expect(result.isRetryable).toBe(true);
+  });
+
+  test("classifies transient OpenAI processing errors as retryable server_error", () => {
+    const result = classifyOpenAIError(
+      new Error(
+        "An error occurred while processing your request. You can retry your request. Please include the request ID 95226c1b-7063-4299-9d94-8d091ed07716.",
+      ),
     );
-    const classified = classifyOpenAIError(err);
-    expect(classified.errorType).toBe("context_overflow");
+
+    expect(result.errorType).toBe("server_error");
+    expect(result.isRetryable).toBe(true);
   });
 
-  it("classifies network errors", () => {
-    const err = new Error("fetch failed: ECONNREFUSED");
-    const classified = classifyOpenAIError(err);
-    expect(classified.errorType).toBe("network");
-    expect(classified.isRetryable).toBe(true);
+  test("classifies 500 as retryable server_error", () => {
+    const result = classifyOpenAIError(makeOpenAIAPIError(500, "Internal server error"));
+
+    expect(result.errorType).toBe("server_error");
+    expect(result.isRetryable).toBe(true);
   });
 
-  it("classifies transient OpenAI processing errors as retryable overloaded", () => {
-    const err = new Error(
-      "An error occurred while processing your request. You can retry your request, or contact us through our help center at help.openai.com if the error persists. Please include the request ID 95226c1b-7063-4299-9d94-8d091ed07716 in your message.",
-    );
-    const classified = classifyOpenAIError(err);
-    expect(classified.errorType).toBe("overloaded");
-    expect(classified.isRetryable).toBe(true);
+  test("classifies unknown errors", () => {
+    const result = classifyOpenAIError(new Error("Something unexpected"));
+
+    expect(result.errorType).toBe("unknown");
+    expect(result.isRetryable).toBe(false);
+  });
+});
+
+describe("isNetworkError", () => {
+  test("classifies timed out errors as network retryable candidates", () => {
+    expect(isNetworkError(new Error("The operation timed out."))).toBe(true);
   });
 
-  it("classifies 500 as retryable overloaded", () => {
-    const err = new OpenAI.APIError(500, { message: "Internal server error" }, "server_error", emptyHeaders);
-    const classified = classifyOpenAIError(err);
-    expect(classified.errorType).toBe("overloaded");
-    expect(classified.isRetryable).toBe(true);
-  });
+  test("does not classify user aborts as network retryable candidates", () => {
+    const error = new DOMException("The operation was aborted.", "AbortError");
 
-  it("classifies unknown errors", () => {
-    const err = new Error("Something unexpected");
-    const classified = classifyOpenAIError(err);
-    expect(classified.errorType).toBe("unknown");
-    expect(classified.isRetryable).toBe(false);
+    expect(isNetworkError(error)).toBe(false);
   });
 });

@@ -29,7 +29,7 @@ function makeAssistantMessage(): AssistantMessage {
 
 function createMockStreamFn(
   failCount: number = 0,
-  errorType: "rate_limit" | "auth" = "rate_limit",
+  errorType: "server_error" | "auth" = "server_error",
 ): { streamFn: StreamFunction; callCount: () => number } {
   let calls = 0;
 
@@ -48,8 +48,8 @@ function createMockStreamFn(
     // before pushing events, avoiding premature unhandled rejection detection.
     setTimeout(() => {
       if (currentCall < failCount) {
-        const isRetryable = errorType === "rate_limit";
-        const statusCode = errorType === "rate_limit" ? 429 : 401;
+        const isRetryable = errorType === "server_error";
+        const statusCode = errorType === "server_error" ? 503 : 401;
         stream.push({
           type: "error",
           error: new ProviderError(`Error ${errorType}`, errorType, isRetryable, undefined, statusCode),
@@ -107,7 +107,7 @@ describe("agent loop retry + usage", () => {
   });
 
   test("retryable failures eventually recover without surfacing fatal events", async () => {
-    const { streamFn } = createMockStreamFn(2, "rate_limit");
+    const { streamFn } = createMockStreamFn(2, "server_error");
     const { events } = await runAgent(streamFn, { retry: { maxRetries: 5, baseDelayMs: 1, maxDelayMs: 10 } });
 
     expect(events.some((e) => e.type === "usage")).toBe(true);
@@ -125,7 +125,7 @@ describe("agent loop retry + usage", () => {
   });
 
   test("abort cancels retry", async () => {
-    const { streamFn } = createMockStreamFn(10, "rate_limit");
+    const { streamFn } = createMockStreamFn(10, "server_error");
     const controller = new AbortController();
 
     // Abort after a short delay

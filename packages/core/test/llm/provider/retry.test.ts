@@ -96,8 +96,8 @@ describe("withRetry", () => {
 
   test("retries on retryable errors and eventually succeeds", async () => {
     const failures = [
-      new ProviderError("server unavailable", "overloaded", true, undefined, 503),
-      new ProviderError("overloaded", "overloaded", true, undefined, 529),
+      new ProviderError("server unavailable", "server_error", true, undefined, 503),
+      new ProviderError("overloaded", "server_error", true, undefined, 529),
     ];
     const { streamFn, callCount } = createFailingStreamFn(failures);
 
@@ -142,9 +142,9 @@ describe("withRetry", () => {
 
   test("stops after max attempts exceeded", async () => {
     const failures = [
-      new ProviderError("server unavailable", "overloaded", true, undefined, 503),
-      new ProviderError("server unavailable", "overloaded", true, undefined, 503),
-      new ProviderError("server unavailable", "overloaded", true, undefined, 503),
+      new ProviderError("server unavailable", "server_error", true, undefined, 503),
+      new ProviderError("server unavailable", "server_error", true, undefined, 503),
+      new ProviderError("server unavailable", "server_error", true, undefined, 503),
     ];
     const { streamFn, callCount } = createFailingStreamFn(failures);
 
@@ -168,7 +168,7 @@ describe("withRetry", () => {
 
   test("respects retry-after delay", async () => {
     const failures = [
-      new ProviderError("server unavailable", "overloaded", true, 50, 503), // 50ms retry-after
+      new ProviderError("server unavailable", "server_error", true, 50, 503), // 50ms retry-after
     ];
     const { streamFn } = createFailingStreamFn(failures);
 
@@ -189,8 +189,8 @@ describe("withRetry", () => {
 
   test("abort cancels retry", async () => {
     const failures = [
-      new ProviderError("server unavailable", "overloaded", true, undefined, 503),
-      new ProviderError("server unavailable", "overloaded", true, undefined, 503),
+      new ProviderError("server unavailable", "server_error", true, undefined, 503),
+      new ProviderError("server unavailable", "server_error", true, undefined, 503),
     ];
     const { streamFn, callCount } = createFailingStreamFn(failures);
     const controller = new AbortController();
@@ -229,7 +229,7 @@ describe("withRetry", () => {
         stream.push({ type: "text_delta", delta: "partial" });
         stream.push({
           type: "error",
-          error: new ProviderError("overloaded mid-stream", "overloaded", true, undefined, 529),
+          error: new ProviderError("overloaded mid-stream", "server_error", true, undefined, 529),
         });
       });
 
@@ -250,11 +250,87 @@ describe("withRetry", () => {
     expect(events.find((e) => e.type === "error")).toBeDefined();
   });
 
+  test("retries after start event when no visible output was emitted", async () => {
+    let callCount = 0;
+    const streamFn: StreamFunction = (_model, _context, _options) => {
+      const stream = new EventStream<ProviderEvent, ProviderResult>(
+        (event) => event.type === "done" || event.type === "error",
+        (event) => {
+          if (event.type === "done") return { message: event.message };
+          throw (event as { type: "error"; error: Error }).error;
+        },
+      );
+
+      const currentCall = callCount++;
+      queueMicrotask(() => {
+        if (currentCall === 0) {
+          stream.push({ type: "start" });
+          stream.push({
+            type: "error",
+            error: new ProviderError("server error", "server_error", true, undefined, 503),
+          });
+          return;
+        }
+        stream.push({ type: "start" });
+        stream.push({ type: "done", stopReason: "end_turn", message: makeAssistantMessage() });
+      });
+
+      return stream;
+    };
+
+    const retried = withRetry(streamFn, { maxAttempts: 3, baseDelayMs: 1, maxDelayMs: 10 });
+
+    const stream = retried(testModel, testContext, testOptions);
+    const events: ProviderEvent[] = [];
+    for await (const event of stream) {
+      events.push(event);
+    }
+    await stream.result().catch(() => {});
+
+    expect(callCount).toBe(2);
+    expect(events.some((event) => event.type === "done")).toBe(true);
+  });
+
+  test("retries retryable ProviderError thrown while creating the stream", async () => {
+    let callCount = 0;
+    const streamFn: StreamFunction = (_model, _context, _options) => {
+      const currentCall = callCount++;
+      if (currentCall === 0) {
+        throw new ProviderError("server unavailable", "server_error", true, undefined, 503);
+      }
+
+      const stream = new EventStream<ProviderEvent, ProviderResult>(
+        (event) => event.type === "done" || event.type === "error",
+        (event) => {
+          if (event.type === "done") return { message: event.message };
+          throw (event as { type: "error"; error: Error }).error;
+        },
+      );
+      queueMicrotask(() => {
+        stream.push({ type: "done", stopReason: "end_turn", message: makeAssistantMessage() });
+      });
+      return stream;
+    };
+
+    const retried = withRetry(streamFn, { maxAttempts: 3, baseDelayMs: 1, maxDelayMs: 10 });
+
+    const stream = retried(testModel, testContext, testOptions);
+    const events: ProviderEvent[] = [];
+    for await (const event of stream) {
+      events.push(event);
+    }
+    await stream.result().catch(() => {});
+
+    expect(callCount).toBe(2);
+    expect(events.some((event) => event.type === "done")).toBe(true);
+    expect(events.some((event) => event.type === "error")).toBe(false);
+  });
+
   test("exponential backoff increases delay", async () => {
     const failures = [
-      new ProviderError("overloaded", "overloaded", true, undefined, 529),
-      new ProviderError("overloaded", "overloaded", true, undefined, 529),
-      new ProviderError("overloaded", "overloaded", true, undefined, 529),
+      new ProviderError("overloaded", "server_error", true, undefined, 529),
+      new ProviderError("overloaded", "server_error", true, undefined, 529),
+      new ProviderError("overloaded", "server_error", true, undefined, 529),
     ];
     const { streamFn } = createFailingStreamFn(failures);
 

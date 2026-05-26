@@ -6,11 +6,15 @@
  */
 export function isNetworkError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
+  if (err.name === "AbortError") return false;
+  if (err.name === "TimeoutError") return true;
   const msg = err.message.toLowerCase();
   return (
     msg.includes("econnrefused") ||
     msg.includes("econnreset") ||
     msg.includes("etimedout") ||
+    msg.includes("timed out") ||
+    msg.includes("timeout") ||
     msg.includes("fetch failed") ||
     msg.includes("network")
   );

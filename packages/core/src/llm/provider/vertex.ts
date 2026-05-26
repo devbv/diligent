@@ -130,7 +130,8 @@ export function classifyVertexError(err: unknown): ProviderError {
       typeof record.message === "string" ? record.message : err instanceof Error ? err.message : String(err);
     if (status === 429) return new ProviderError(message, "rate_limit", false, undefined, status);
     if (status === 401 || status === 403) return new ProviderError(message, "auth", false, undefined, status);
-    if (status !== undefined && status >= 500) return new ProviderError(message, "overloaded", true, undefined, status);
+    if (status !== undefined && status >= 500)
+      return new ProviderError(message, "server_error", true, undefined, status);
     if (status === 400 && isContextOverflow(message)) {
       return new ProviderError(message, "context_overflow", false, undefined, status);
     }

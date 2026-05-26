@@ -305,7 +305,7 @@ export class SessionManager {
     this.emitBusyStatus();
 
     const prepared = await this.prepareRun(userMessage);
-    const { unsubscribe, getCurrentTurnId, shouldPersistFailedTurn } = this.subscribeRunEvents(prepared);
+    const { unsubscribe, getCurrentTurnId, getLastAgentError } = this.subscribeRunEvents(prepared);
 
     let normalCompletion = false;
     try {
@@ -313,7 +313,7 @@ export class SessionManager {
       this.commitRun(prepared.turnStager);
       normalCompletion = true;
     } catch (err) {
-      this.handleRunError(err, getCurrentTurnId(), shouldPersistFailedTurn());
+      this.handleRunError(err, prepared.turnStager, getCurrentTurnId(), getLastAgentError());
     } finally {
       this.finishRun(unsubscribe);
     }
@@ -375,23 +375,16 @@ export class SessionManager {
   private subscribeRunEvents(prepared: { agent: Agent; turnStager: TurnStager }): {
     unsubscribe: () => void;
     getCurrentTurnId: () => string | undefined;
-    shouldPersistFailedTurn: () => boolean;
+    getLastAgentError: () => { error: ErrorEntry["error"]; fatal: boolean } | undefined;
   } {
     const { agent, turnStager } = prepared;
     let currentTurnId: string | undefined;
-    let persistFailedTurn = false;
+    let lastAgentError: { error: ErrorEntry["error"]; fatal: boolean } | undefined;
 
     const unsubscribe = agent.subscribe((event: CoreAgentEvent) => {
       if (event.type === "turn_start") currentTurnId = event.turnId;
-      if (
-        event.type === "message_start" ||
-        event.type === "message_delta" ||
-        event.type === "message_end" ||
-        event.type === "tool_start" ||
-        event.type === "tool_update" ||
-        event.type === "tool_end"
-      ) {
-        persistFailedTurn = true;
+      if (event.type === "error") {
+        lastAgentError = { error: event.error, fatal: event.fatal };
       }
       if (event.type === "usage") {
         this.handleUsageEvent(event.usage);
@@ -415,7 +408,7 @@ export class SessionManager {
     return {
       unsubscribe,
       getCurrentTurnId: () => currentTurnId,
-      shouldPersistFailedTurn: () => persistFailedTurn,
+      getLastAgentError: () => lastAgentError,
     };
   }
 
@@ -427,19 +420,22 @@ export class SessionManager {
     this.appendEntries(turnStager.flushPendingEntries());
   }
 
-  private handleRunError(err: unknown, turnId?: string, persistTurnFailure: boolean = false): void {
-    if (persistTurnFailure) {
-      const pendingEntries = this.state.getVisibleState().entries.slice(this.state.getCommittedEntries().length);
-      this.appendEntries(pendingEntries);
-    }
-    const serializable = toSerializableError(err);
+  private handleRunError(
+    err: unknown,
+    turnStager: TurnStager,
+    turnId?: string,
+    agentError?: { error: ErrorEntry["error"]; fatal: boolean },
+  ): void {
+    const pendingEntries = turnStager.flushPendingEntries();
+    this.appendEntries(pendingEntries);
+    const serializable = agentError?.error ?? toSerializableError(err);
     console.error(
       "[SessionManager] Run error session=%s %s lastPersisted=%s",
       this.persistence.sessionId,
       formatSerializableErrorForLog(serializable),
       summarizeLastPersistedMessage(this.state.getCommittedEntries()),
     );
-    this.appendError(serializable, { fatal: false, turnId, persist: persistTurnFailure });
+    this.appendError(serializable, { fatal: false, turnId, persist: true });
   }
 
   private finishRun(unsubscribe: () => void): void {

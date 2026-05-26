@@ -116,8 +116,8 @@ export type ToolDefinition = FunctionToolDefinition | ProviderBuiltinToolDefinit
 
 // Provider error classification (D010)
 export type ProviderErrorType =
-  | "rate_limit" // 429 — retryable, respect retry-after
-  | "overloaded" // 529 — retryable
+  | "rate_limit" // 429 — NOT retryable, retry-after is surfaced for diagnostics
+  | "server_error" // 5xx and transient provider server failures — retryable
   | "context_overflow" // 400 with "context length" — NOT retryable, triggers compaction
   | "auth" // 401/403 — NOT retryable, fatal
   | "network" // ECONNREFUSED, timeout — retryable

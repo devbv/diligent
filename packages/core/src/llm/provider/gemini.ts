@@ -550,7 +550,7 @@ export function classifyGeminiError(err: unknown): ProviderError {
       return new ProviderError(msg, "rate_limit", false, undefined, httpStatus, err);
     }
     if (httpStatus !== undefined && httpStatus >= 500) {
-      return new ProviderError(msg, "overloaded", true, undefined, httpStatus, err);
+      return new ProviderError(msg, "server_error", true, undefined, httpStatus, err);
     }
     if (httpStatus === 401 || httpStatus === 403) {
       return new ProviderError(msg, "auth", false, undefined, httpStatus, err);

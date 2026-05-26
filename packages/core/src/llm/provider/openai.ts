@@ -74,7 +74,7 @@ export function classifyOpenAIError(err: unknown): ProviderError {
       return new ProviderError(err.message, "rate_limit", false, retryAfter, status, err);
     }
     if (status >= 500) {
-      return new ProviderError(err.message, "overloaded", true, undefined, status, err);
+      return new ProviderError(err.message, "server_error", true, undefined, status, err);
     }
     if (status === 400 && isContextOverflow(err.message)) {
       return new ProviderError(err.message, "context_overflow", false, undefined, status, err);
@@ -90,7 +90,7 @@ export function classifyOpenAIError(err: unknown): ProviderError {
   if (isTransientOpenAIError(err)) {
     return new ProviderError(
       err instanceof Error ? err.message : String(err),
-      "overloaded",
+      "server_error",
       true,
       undefined,
       undefined,
@@ -221,6 +221,10 @@ function isTransientOpenAIError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
   const message = err.message.toLowerCase();
   return (
+    message.includes("overloaded") ||
+    message.includes("temporarily unavailable") ||
+    message.includes("timeout") ||
+    message.includes("timed out") ||
     message.includes("an error occurred while processing your request") ||
     message.includes("request id") ||
     message.includes("help.openai.com") ||
