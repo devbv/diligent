@@ -8,7 +8,7 @@ import type { ProviderName, StreamFunction } from "@diligent/core/llm/types";
 import type { RuntimeAgent } from "../agent/runtime-agent";
 import type { AgentEvent } from "../agent-event";
 import type { ApprovalRequest, ApprovalResponse, PermissionEngine } from "../approval/types";
-import type { AuthStoreOptions } from "../auth/auth-store";
+import { type AuthStoreOptions, loadOAuthTokens } from "../auth/auth-store";
 import type { ChildStopInfo } from "../collab/types";
 import type { DiligentConfig } from "../config/schema";
 import { getLastAssistantMessage, getTurnUsage, runCombinedHooks } from "../hooks/runner";
@@ -104,6 +104,15 @@ export interface DiligentAppServerConfig {
   userId?: string;
   /** Auth credential storage backend configuration. */
   authStore?: AuthStoreOptions;
+}
+
+async function resolveProviderPlanType(
+  provider: string | undefined,
+  authStore: AuthStoreOptions | undefined,
+): Promise<string | undefined> {
+  if (provider !== "chatgpt" || !authStore) return undefined;
+  const tokens = await loadOAuthTokens(authStore).catch(() => undefined);
+  return tokens?.account_info?.chatgpt_plan_type;
 }
 
 export class DiligentAppServer {
@@ -624,6 +633,8 @@ export class DiligentAppServer {
 
     if (stopShellHandlers.length === 0 && stopPluginHandlers.length === 0) return;
 
+    const providerPlanType = await resolveProviderPlanType(info.provider, this.config.authStore);
+
     const stopInput = {
       session_id: info.sessionId,
       transcript_path: info.sessionPath,
@@ -635,6 +646,7 @@ export class DiligentAppServer {
       usage: getTurnUsage(info.context),
       model: info.model,
       provider: info.provider,
+      ...(providerPlanType ? { provider_plan_type: providerPlanType } : {}),
       effort: info.effort,
       user_id: info.userId,
     };

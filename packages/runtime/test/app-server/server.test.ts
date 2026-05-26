@@ -1,7 +1,7 @@
 // @summary Tests for DiligentAppServer JSON-RPC request handling and event notifications
 
 import { describe, expect, it, mock, setDefaultTimeout } from "bun:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EventStream } from "@diligent/core/event-stream";
@@ -26,6 +26,7 @@ import {
   createYoloPermissionEngine,
   getBuiltinAgentDefinitions,
   RuntimeAgent,
+  saveOAuthTokens,
 } from "@diligent/runtime";
 import { createAppServerConfig, DiligentAppServer } from "@diligent/runtime/app-server";
 import { handleImageUpload } from "@diligent/runtime/app-server/config-handlers";
@@ -203,6 +204,96 @@ function makeFactoryRuntimeConfig(overrides?: {
 }
 
 describe("DiligentAppServer", () => {
+  it("passes ChatGPT provider plan type to Stop plugin hooks", async () => {
+    const projectRoot = await mkdtemp(join(process.env.TMPDIR ?? "/tmp", "diligent-app-server-plan-type-"));
+    const capturePath = join(projectRoot, "stop-input.json");
+    const pluginRoot = join(projectRoot, "node_modules", "@test", "plan-hook");
+    const authStore = { path: join(projectRoot, "auth.jsonc"), mode: "file" as const };
+
+    await mkdir(pluginRoot, { recursive: true });
+    await writeFile(join(pluginRoot, "package.json"), JSON.stringify({ type: "module", main: "index.js" }));
+    await writeFile(
+      join(pluginRoot, "index.js"),
+      `export async function onStop(input) {
+  await Bun.write(process.env.TEST_STOP_INPUT_PATH, JSON.stringify(input));
+  return {};
+}
+`,
+    );
+    await saveOAuthTokens(
+      {
+        access_token: "at-test",
+        refresh_token: "rt-test",
+        id_token: "it-test",
+        expires_at: Date.now() + 60_000,
+        account_info: { chatgpt_plan_type: "pro" },
+      },
+      authStore,
+    );
+
+    const originalCapturePath = process.env.TEST_STOP_INPUT_PATH;
+    process.env.TEST_STOP_INPUT_PATH = capturePath;
+
+    try {
+      const server = new DiligentAppServer({
+        resolvePaths: (cwd) => ensureDiligentDir(cwd),
+        createAgent: () => {
+          throw new Error("not used");
+        },
+        toolConfig: {
+          getTools: () => ({ plugins: [{ package: "@test/plan-hook" }] }),
+          setTools: () => {},
+        },
+        authStore,
+      });
+
+      await (
+        server as unknown as {
+          runStopHooksFor(info: {
+            sessionId: string;
+            sessionPath: string;
+            cwd: string;
+            model: string;
+            provider?: string;
+            effort: "medium";
+            userId?: string;
+            context: Array<Record<string, unknown>>;
+            isRerun: boolean;
+          }): Promise<void>;
+        }
+      ).runStopHooksFor({
+        sessionId: "session-1",
+        sessionPath: join(projectRoot, "session.jsonl"),
+        cwd: projectRoot,
+        model: "chatgpt-5.1-codex-max",
+        provider: "chatgpt",
+        effort: "medium",
+        userId: "user-1",
+        context: [
+          {
+            role: "assistant",
+            content: [{ type: "text", text: "ok" }],
+            model: "chatgpt-5.1-codex-max",
+            usage: { inputTokens: 1, outputTokens: 2, cacheReadTokens: 0, cacheWriteTokens: 0 },
+            stopReason: "end_turn",
+            timestamp: Date.now(),
+          },
+        ],
+        isRerun: false,
+      });
+
+      const input = JSON.parse(await readFile(capturePath, "utf-8")) as { provider_plan_type?: string };
+      expect(input.provider_plan_type).toBe("pro");
+    } finally {
+      if (originalCapturePath === undefined) {
+        delete process.env.TEST_STOP_INPUT_PATH;
+      } else {
+        process.env.TEST_STOP_INPUT_PATH = originalCapturePath;
+      }
+      await rm(projectRoot, { recursive: true, force: true });
+    }
+  });
+
   it("handles initialize/thread/start/turn/start and emits codex-like notifications", async () => {
     const projectRoot = await mkdtemp(join(process.env.TMPDIR ?? "/tmp", "diligent-app-server-"));
 
