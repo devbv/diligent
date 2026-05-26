@@ -11,6 +11,10 @@ export interface RetryConfig {
   maxDelayMs: number; // default: 30_000 (30s)
 }
 
+function isVisibleProviderEvent(event: ProviderEvent): boolean {
+  return event.type !== "start" && event.type !== "usage";
+}
+
 /**
  * Wraps a StreamFunction with exponential backoff retry.
  * Only retries on retryable errors. Respects retry-after headers. (D010)
@@ -70,9 +74,11 @@ export function withRetry(
           }
 
           // Forward non-terminal events (text_delta, etc.)
-          // Track whether any visible delta has been sent — once streaming starts,
-          // retry is unsafe because the consumer already received partial output.
-          hasSentDelta = true;
+          // Track whether any visible output has been sent — once user-visible
+          // streaming starts, retry is unsafe because the consumer already
+          // received partial output. Provider bookkeeping events like `start`
+          // and `usage` do not make retry unsafe.
+          if (isVisibleProviderEvent(event)) hasSentDelta = true;
           stream.push(event);
         }
 

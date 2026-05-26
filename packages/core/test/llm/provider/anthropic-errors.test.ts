@@ -55,11 +55,11 @@ describe("classifyAnthropicError", () => {
     expect(result.retryAfterMs).toBeUndefined();
   });
 
-  test("classifies 529 as overloaded (retryable)", () => {
+  test("classifies 529 as server_error (retryable)", () => {
     const err = makeAPIError(529, "Overloaded");
     const result = classifyAnthropicError(err);
 
-    expect(result.errorType).toBe("overloaded");
+    expect(result.errorType).toBe("server_error");
     expect(result.isRetryable).toBe(true);
     expect(result.statusCode).toBe(529);
   });
@@ -99,11 +99,11 @@ describe("classifyAnthropicError", () => {
     expect(result.statusCode).toBe(403);
   });
 
-  test("classifies 500 as overloaded (retryable)", () => {
+  test("classifies 500 as server_error (retryable)", () => {
     const err = makeAPIError(500, "Internal server error");
     const result = classifyAnthropicError(err);
 
-    expect(result.errorType).toBe("overloaded");
+    expect(result.errorType).toBe("server_error");
     expect(result.isRetryable).toBe(true);
     expect(result.statusCode).toBe(500);
   });

@@ -19,6 +19,19 @@ function resolveChatGPTModelId(modelId: string): string {
   return modelId.startsWith("chatgpt-") ? `gpt-${modelId.slice("chatgpt-".length)}` : modelId;
 }
 
+function isTransientChatGPTErrorMessage(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("overloaded") ||
+    normalized.includes("temporarily unavailable") ||
+    normalized.includes("timeout") ||
+    normalized.includes("timed out") ||
+    normalized.includes("service unavailable") ||
+    normalized.includes("server had an error") ||
+    normalized.includes("internal server error")
+  );
+}
+
 /**
  * Create a StreamFunction for ChatGPT subscription (OAuth).
  *
@@ -104,11 +117,11 @@ export function createChatGPTStream(getTokens: () => OpenAIOAuthTokens): StreamF
               : is429
                 ? "rate_limit"
                 : response.status >= 500
-                  ? "overloaded"
+                  ? "server_error"
                   : response.status === 401 || response.status === 403
                     ? "auth"
                     : "unknown",
-            response.status >= 500,
+            !is429 && (response.status >= 500 || isTransientChatGPTErrorMessage(message)),
             undefined,
             response.status,
           );
@@ -166,6 +179,11 @@ export function createChatGPTStream(getTokens: () => OpenAIOAuthTokens): StreamF
           stream.push({ type: "error", error: err });
         } else if (isNetworkError(err)) {
           stream.push({ type: "error", error: new ProviderError(String(err), "network", true) });
+        } else if (err instanceof Error && isTransientChatGPTErrorMessage(err.message)) {
+          stream.push({
+            type: "error",
+            error: new ProviderError(err.message, "server_error", true, undefined, undefined, err),
+          });
         } else {
           stream.push({
             type: "error",

@@ -423,7 +423,7 @@ export function classifyAnthropicError(err: unknown): ProviderError {
       return new ProviderError(err.message, "rate_limit", false, retryAfter, status, err);
     }
     if (status >= 500) {
-      return new ProviderError(err.message, "overloaded", true, undefined, status, err);
+      return new ProviderError(err.message, "server_error", true, undefined, status, err);
     }
     if (status === 400 && err.message.includes("context length")) {
       return new ProviderError(err.message, "context_overflow", false, undefined, status, err);
