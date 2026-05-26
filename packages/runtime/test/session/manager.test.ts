@@ -174,7 +174,7 @@ describe("SessionManager", () => {
     expect(ctx.length).toBeGreaterThanOrEqual(4); // user, assistant, user, assistant
   });
 
-  test("run() does not persist staged user message when the turn fails", async () => {
+  test("run() persists staged user message and non-fatal error when the turn fails before streaming", async () => {
     const dir = await setupDir();
     const mgr = new SessionManager({
       cwd: dir,
@@ -191,12 +191,18 @@ describe("SessionManager", () => {
     await mgr.run({ role: "user", content: "will fail", timestamp: Date.now() });
     await mgr.waitForWrites();
 
-    expect(mgr.entryCount).toBe(0);
-    expect(mgr.getContext()).toEqual([]);
+    expect(mgr.entryCount).toBe(2);
+    expect(mgr.getContext()).toEqual([{ role: "user", content: "will fail", timestamp: expect.any(Number) }]);
     expect(mgr.getErrors()).toHaveLength(1);
 
     const { entries } = await readSessionFile(mgr.sessionPath!);
-    expect(entries).toHaveLength(0);
+    expect(entries).toHaveLength(2);
+    expect(entries[0]?.type === "message" ? entries[0].message.role : null).toBe("user");
+    expect(entries[1]?.type).toBe("error");
+    if (entries[1]?.type === "error") {
+      expect(entries[1].fatal).toBe(false);
+      expect(entries[1].error.message).toBe("provider failed");
+    }
   });
 
   test("run() persists staged user message and non-fatal error when provider fails after streaming starts", async () => {
@@ -249,6 +255,43 @@ describe("SessionManager", () => {
     }
   });
 
+  test("run() persists structured provider error information from agent error events", async () => {
+    const dir = await setupDir();
+    const mgr = new SessionManager({
+      cwd: dir,
+      paths: resolvePaths(dir),
+      agent: new Agent(TEST_MODEL, [{ label: "test", content: "test" }], [], {
+        effort: "medium",
+        llmMsgStreamFn: () => {
+          throw new ProviderError(
+            "provider overloaded",
+            "overloaded",
+            false,
+            undefined,
+            529,
+            Object.assign(new Error("provider overloaded"), { code: "overloaded_error" }),
+          );
+        },
+      }),
+    });
+    await mgr.create();
+
+    await mgr.run({ role: "user", content: "show details", timestamp: Date.now() });
+    await mgr.waitForWrites();
+
+    const { entries } = await readSessionFile(mgr.sessionPath!);
+    const errorEntry = entries.find((entry) => entry.type === "error");
+    expect(errorEntry).toBeDefined();
+    if (errorEntry?.type === "error") {
+      expect(errorEntry.fatal).toBe(false);
+      expect(errorEntry.error.message).toBe("provider overloaded");
+      expect(errorEntry.error.code).toBe("overloaded_error");
+      expect(errorEntry.error.providerErrorType).toBe("overloaded");
+      expect(errorEntry.error.isRetryable).toBe(false);
+      expect(errorEntry.error.statusCode).toBe(529);
+    }
+  });
+
   test("run() logs provider error code when available", async () => {
     const dir = await setupDir();
     const errorSpy = spyOn(console, "error").mockImplementation(() => {});
@@ -261,7 +304,7 @@ describe("SessionManager", () => {
           throw new ProviderError(
             "provider failed",
             "overloaded",
-            true,
+            false,
             undefined,
             529,
             Object.assign(new Error("provider failed"), { code: "overloaded_error" }),
