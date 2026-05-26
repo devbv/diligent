@@ -65,6 +65,19 @@ function createResponsesAPIState(): ResponsesAPIState {
   };
 }
 
+function isTransientResponseFailure(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("overloaded") ||
+    normalized.includes("temporarily unavailable") ||
+    normalized.includes("timeout") ||
+    normalized.includes("timed out") ||
+    normalized.includes("service unavailable") ||
+    normalized.includes("server had an error") ||
+    normalized.includes("internal server error")
+  );
+}
+
 function decodeResponsesAPIEvent(event: Record<string, unknown>): ResponsesAPIDecodedEvent | undefined {
   const type = event.type as string;
 
@@ -246,8 +259,13 @@ function reduceResponsesAPIEvent(
       return [];
 
     case "response_failed": {
-      const errorType = isContextOverflow(event.message) ? "context_overflow" : "unknown";
-      return [{ type: "error", error: new ProviderError(event.message, errorType, false) }];
+      if (isContextOverflow(event.message)) {
+        return [{ type: "error", error: new ProviderError(event.message, "context_overflow", false) }];
+      }
+      if (isTransientResponseFailure(event.message)) {
+        return [{ type: "error", error: new ProviderError(event.message, "server_error", true) }];
+      }
+      return [{ type: "error", error: new ProviderError(event.message, "unknown", false) }];
     }
   }
 }

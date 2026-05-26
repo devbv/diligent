@@ -21,6 +21,17 @@ const TEST_CONTEXT: StreamContext = {
 
 const originalFetch = globalThis.fetch;
 
+function chatGPTSuccessResponse(text = "ok"): Response {
+  return new Response(
+    [
+      `data: {"type":"response.output_text.delta","delta":"${text}"}`,
+      'data: {"type":"response.completed","response":{"status":"completed","usage":{"input_tokens":1,"output_tokens":1}}}',
+      "",
+    ].join("\n"),
+    { status: 200, headers: { "content-type": "text/event-stream" } },
+  );
+}
+
 afterEach(() => {
   globalThis.fetch = originalFetch;
 });
@@ -58,14 +69,7 @@ describe("createChatGPTStream retry classification", () => {
       if (fetchCount === 1) {
         return new Response(JSON.stringify({ error: { message: "rate limited" } }), { status: 429 });
       }
-      return new Response(
-        [
-          'data: {"type":"response.output_text.delta","delta":"ok"}',
-          'data: {"type":"response.completed","response":{"status":"completed","usage":{"input_tokens":1,"output_tokens":1}}}',
-          "",
-        ].join("\n"),
-        { status: 200, headers: { "content-type": "text/event-stream" } },
-      );
+      return chatGPTSuccessResponse();
     }) as typeof fetch;
 
     const chatgptStream = createChatGPTStream(() => ({ access_token: "token", refresh_token: "refresh" }));
@@ -81,5 +85,59 @@ describe("createChatGPTStream retry classification", () => {
     const errorEvent = events.find((event) => event.type === "error");
     expect(errorEvent).toBeDefined();
     expect(errorEvent?.type === "error" ? errorEvent.error.message : "").toContain("429");
+  });
+
+  test("retries ChatGPT HTTP 500 and recovers", async () => {
+    let fetchCount = 0;
+    globalThis.fetch = (async () => {
+      fetchCount++;
+      if (fetchCount === 1) {
+        return new Response(JSON.stringify({ error: { message: "server had an error" } }), { status: 500 });
+      }
+      return chatGPTSuccessResponse();
+    }) as typeof fetch;
+
+    const chatgptStream = createChatGPTStream(() => ({ access_token: "token", refresh_token: "refresh" }));
+    const retried = withRetry(chatgptStream, { maxAttempts: 2, baseDelayMs: 1, maxDelayMs: 1 });
+    const stream = retried({ ...TEST_MODEL, id: "chatgpt-5", provider: "chatgpt" }, TEST_CONTEXT, {});
+    const events: ProviderEvent[] = [];
+    for await (const event of stream) {
+      events.push(event);
+    }
+    await stream.result().catch(() => {});
+
+    expect(fetchCount).toBe(2);
+    expect(events.some((event) => event.type === "done")).toBe(true);
+    expect(events.some((event) => event.type === "error")).toBe(false);
+  });
+
+  test("retries transient ChatGPT response.failed before visible output", async () => {
+    let fetchCount = 0;
+    globalThis.fetch = (async () => {
+      fetchCount++;
+      if (fetchCount === 1) {
+        return new Response(
+          [
+            'data: {"type":"response.failed","response":{"error":{"message":"ChatGPT is temporarily unavailable. Please try again."}}}',
+            "",
+          ].join("\n"),
+          { status: 200, headers: { "content-type": "text/event-stream" } },
+        );
+      }
+      return chatGPTSuccessResponse();
+    }) as typeof fetch;
+
+    const chatgptStream = createChatGPTStream(() => ({ access_token: "token", refresh_token: "refresh" }));
+    const retried = withRetry(chatgptStream, { maxAttempts: 2, baseDelayMs: 1, maxDelayMs: 1 });
+    const stream = retried({ ...TEST_MODEL, id: "chatgpt-5", provider: "chatgpt" }, TEST_CONTEXT, {});
+    const events: ProviderEvent[] = [];
+    for await (const event of stream) {
+      events.push(event);
+    }
+    await stream.result().catch(() => {});
+
+    expect(fetchCount).toBe(2);
+    expect(events.some((event) => event.type === "done")).toBe(true);
+    expect(events.some((event) => event.type === "error")).toBe(false);
   });
 });
