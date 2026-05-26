@@ -291,6 +291,41 @@ describe("withRetry", () => {
     expect(events.some((event) => event.type === "done")).toBe(true);
   });
 
+  test("retries retryable ProviderError thrown while creating the stream", async () => {
+    let callCount = 0;
+    const streamFn: StreamFunction = (_model, _context, _options) => {
+      const currentCall = callCount++;
+      if (currentCall === 0) {
+        throw new ProviderError("server unavailable", "server_error", true, undefined, 503);
+      }
+
+      const stream = new EventStream<ProviderEvent, ProviderResult>(
+        (event) => event.type === "done" || event.type === "error",
+        (event) => {
+          if (event.type === "done") return { message: event.message };
+          throw (event as { type: "error"; error: Error }).error;
+        },
+      );
+      queueMicrotask(() => {
+        stream.push({ type: "done", stopReason: "end_turn", message: makeAssistantMessage() });
+      });
+      return stream;
+    };
+
+    const retried = withRetry(streamFn, { maxAttempts: 3, baseDelayMs: 1, maxDelayMs: 10 });
+
+    const stream = retried(testModel, testContext, testOptions);
+    const events: ProviderEvent[] = [];
+    for await (const event of stream) {
+      events.push(event);
+    }
+    await stream.result().catch(() => {});
+
+    expect(callCount).toBe(2);
+    expect(events.some((event) => event.type === "done")).toBe(true);
+    expect(events.some((event) => event.type === "error")).toBe(false);
+  });
+
   test("exponential backoff increases delay", async () => {
     const failures = [
       new ProviderError("overloaded", "server_error", true, undefined, 529),

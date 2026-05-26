@@ -15,6 +15,12 @@ function isVisibleProviderEvent(event: ProviderEvent): boolean {
   return event.type !== "start" && event.type !== "usage";
 }
 
+function toProviderError(err: unknown): ProviderError {
+  return err instanceof ProviderError
+    ? err
+    : new ProviderError(err instanceof Error ? err.message : String(err), "unknown", false);
+}
+
 /**
  * Wraps a StreamFunction with exponential backoff retry.
  * Only retries on retryable errors. Respects retry-after headers. (D010)
@@ -45,45 +51,50 @@ export function withRetry(
           return;
         }
 
-        // Collect events from the inner stream
-        const inner = streamFn(model, context, options);
         let errorEvent: ProviderError | undefined;
         let hasSentDelta = false;
+        let inner: ReturnType<StreamFunction> | undefined;
 
-        for await (const event of inner) {
-          if (event.type === "error") {
-            // Capture the error, don't forward yet
-            const err = event.error;
-            errorEvent =
-              err instanceof ProviderError
-                ? err
-                : new ProviderError(err instanceof Error ? err.message : String(err), "unknown", false);
-            console.log(
-              `[llm:retry] stream error attempt=${attempt}/${config.maxAttempts} ${formatSerializableErrorForLog(toSerializableError(errorEvent))}`,
-            );
-            break;
-          }
+        try {
+          // Collect events from the inner stream
+          inner = streamFn(model, context, options);
 
-          if (event.type === "done") {
-            // Success — forward the done event and return
-            if (attempt > 1) {
-              console.log(`[llm:retry] recovered on attempt=${attempt}/${config.maxAttempts}`);
+          for await (const event of inner) {
+            if (event.type === "error") {
+              // Capture the error, don't forward yet
+              errorEvent = toProviderError(event.error);
+              console.log(
+                `[llm:retry] stream error attempt=${attempt}/${config.maxAttempts} ${formatSerializableErrorForLog(toSerializableError(errorEvent))}`,
+              );
+              break;
             }
-            stream.push(event);
-            return;
-          }
 
-          // Forward non-terminal events (text_delta, etc.)
-          // Track whether any visible output has been sent — once user-visible
-          // streaming starts, retry is unsafe because the consumer already
-          // received partial output. Provider bookkeeping events like `start`
-          // and `usage` do not make retry unsafe.
-          if (isVisibleProviderEvent(event)) hasSentDelta = true;
-          stream.push(event);
+            if (event.type === "done") {
+              // Success — forward the done event and return
+              if (attempt > 1) {
+                console.log(`[llm:retry] recovered on attempt=${attempt}/${config.maxAttempts}`);
+              }
+              stream.push(event);
+              return;
+            }
+
+            // Forward non-terminal events (text_delta, etc.)
+            // Track whether any visible output has been sent — once user-visible
+            // streaming starts, retry is unsafe because the consumer already
+            // received partial output. Provider bookkeeping events like `start`
+            // and `usage` do not make retry unsafe.
+            if (isVisibleProviderEvent(event)) hasSentDelta = true;
+            stream.push(event);
+          }
+        } catch (err) {
+          errorEvent = toProviderError(err);
+          console.log(
+            `[llm:retry] stream exception attempt=${attempt}/${config.maxAttempts} ${formatSerializableErrorForLog(toSerializableError(errorEvent))}`,
+          );
         }
 
         // Consume the inner stream's rejected result to prevent unhandled rejection
-        inner.result().catch(() => {});
+        inner?.result().catch(() => {});
 
         // If no error captured from events, check if stream completed normally
         if (!errorEvent) {
@@ -133,10 +144,7 @@ export function withRetry(
         });
       }
     })().catch((err) => {
-      const providerErr =
-        err instanceof ProviderError
-          ? err
-          : new ProviderError(err instanceof Error ? err.message : String(err), "unknown", false);
+      const providerErr = toProviderError(err);
       console.log(`[llm:retry] wrapper exception ${formatSerializableErrorForLog(toSerializableError(providerErr))}`);
       stream.push({ type: "error", error: providerErr });
     });
