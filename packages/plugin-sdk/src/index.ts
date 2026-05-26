@@ -53,6 +53,8 @@ export interface PluginHookInput {
   model?: string;
   /** Provider used for the completed turn. Only present on Stop hook events. */
   provider?: string;
+  /** Provider subscription plan for the completed turn when available. Only present on Stop hook events. */
+  provider_plan_type?: string;
   /** Effort level used for the completed turn. Only present on Stop hook events. */
   effort?: string;
   /** Last assistant message text from the completed turn. Only present on Stop hook events. */

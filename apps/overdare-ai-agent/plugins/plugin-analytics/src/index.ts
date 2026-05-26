@@ -300,6 +300,9 @@ function buildStudioLogPayload(input: PluginHookInput): StudioLogPayload | undef
           session_id: input.session_id ?? "",
           model: input.model ?? "unknown",
           provider: input.provider ?? "unknown",
+          ...(typeof input.provider_plan_type === "string" && input.provider_plan_type.length > 0
+            ? { provider_plan_type: input.provider_plan_type }
+            : {}),
           input_tokens: usage.inputTokens,
           output_tokens: usage.outputTokens,
           cache_read_tokens: usage.cacheReadTokens,
