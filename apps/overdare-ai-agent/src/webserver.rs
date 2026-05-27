@@ -12,6 +12,7 @@ use crate::update::installed_version;
 pub struct WebServerOptions {
     pub cwd: String,
     pub userid: Option<String>,
+    pub project_id: Option<String>,
     pub studio_rpc_port: Option<u16>,
     pub web_server_port: Option<u16>,
     pub hub_domain: Option<String>,
@@ -49,6 +50,7 @@ fn normalize_cwd(raw: &str) -> String {
 pub fn parse_args(args: &[String]) -> Result<WebServerOptions, String> {
     let mut cwd: Option<String> = None;
     let mut userid: Option<String> = None;
+    let mut project_id: Option<String> = None;
     let mut studio_rpc_port: Option<u16> = None;
     let mut web_server_port: Option<u16> = None;
     let mut hub_domain: Option<String> = None;
@@ -63,6 +65,12 @@ pub fn parse_args(args: &[String]) -> Result<WebServerOptions, String> {
         if let Some(value) = arg.strip_prefix("--userid=") {
             if !value.is_empty() {
                 userid = Some(value.to_string());
+            }
+            continue;
+        }
+        if let Some(value) = arg.strip_prefix("--project-id=") {
+            if !value.is_empty() {
+                project_id = Some(value.to_string());
             }
             continue;
         }
@@ -92,7 +100,7 @@ pub fn parse_args(args: &[String]) -> Result<WebServerOptions, String> {
         }
         if matches!(arg.as_str(), "--help" | "-h") {
             return Err(
-                "Usage: overdare-ai-agent start --cwd=/path/to/project [--userid=abc] [--studio-rpc-port=12345] [--web-server-port=3000] [--hub-domain=hub.example.com]"
+                "Usage: overdare-ai-agent start --cwd=/path/to/project [--userid=abc] [--project-id=project] [--studio-rpc-port=12345] [--web-server-port=3000] [--hub-domain=hub.example.com]"
                     .to_string(),
             );
         }
@@ -107,6 +115,7 @@ pub fn parse_args(args: &[String]) -> Result<WebServerOptions, String> {
     Ok(WebServerOptions {
         cwd,
         userid,
+        project_id,
         studio_rpc_port,
         web_server_port,
         hub_domain,
@@ -280,6 +289,9 @@ pub async fn start_foreground(options: WebServerOptions) -> Result<RunningWebSer
     if let Some(hub_domain) = options.hub_domain.as_deref().filter(|v| !v.is_empty()) {
         cmd.env("HUB_DOMAIN", hub_domain);
     }
+    if let Some(project_id) = options.project_id.as_deref().filter(|v| !v.is_empty()) {
+        cmd.env("OVERDARE_PROJECT_ID", project_id);
+    }
     cmd.env("DILIGENT_STORAGE_NAMESPACE", storage_namespace());
     if let Some(version) = resolve_installed_runtime_version() {
         cmd.env("DILIGENT_SERVER_VERSION", version);
@@ -333,7 +345,7 @@ pub async fn start_foreground(options: WebServerOptions) -> Result<RunningWebSer
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_cwd, parse_args, resolve_installed_runtime_version};
+    use super::{parse_args, resolve_installed_runtime_version};
     use crate::storage::storage_namespace;
     use std::fs;
 
@@ -367,6 +379,7 @@ mod tests {
         let args = vec![
             "--cwd=/tmp/project".to_string(),
             "--userid=user-1".to_string(),
+            "--project-id=project-1".to_string(),
             "--studio-rpc-port=8123".to_string(),
             "--web-server-port=4567".to_string(),
             "--hub-domain=hub.example.com".to_string(),
@@ -374,6 +387,7 @@ mod tests {
         let parsed = parse_args(&args).expect("parse args");
         assert_eq!(parsed.cwd, "/tmp/project");
         assert_eq!(parsed.userid.as_deref(), Some("user-1"));
+        assert_eq!(parsed.project_id.as_deref(), Some("project-1"));
         assert_eq!(parsed.studio_rpc_port, Some(8123));
         assert_eq!(parsed.web_server_port, Some(4567));
         assert_eq!(parsed.hub_domain.as_deref(), Some("hub.example.com"));
@@ -383,7 +397,7 @@ mod tests {
     #[test]
     fn normalize_cwd_converts_msys_drive_paths() {
         assert_eq!(
-            normalize_cwd("/c/Users/devbv/git/diligent"),
+            super::normalize_cwd("/c/Users/devbv/git/diligent"),
             r"C:\Users\devbv\git\diligent"
         );
     }
@@ -392,7 +406,7 @@ mod tests {
     #[test]
     fn normalize_cwd_converts_git_bash_users_paths() {
         assert_eq!(
-            normalize_cwd("/Users/devbv/git/diligent"),
+            super::normalize_cwd("/Users/devbv/git/diligent"),
             r"C:\Users\devbv\git\diligent"
         );
     }

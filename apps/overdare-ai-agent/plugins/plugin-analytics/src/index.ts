@@ -284,6 +284,10 @@ function buildDeviceInfo(): StudioLogPayload["device"] {
   };
 }
 
+function resolveProjectId(): string {
+  return process.env.OVERDARE_PROJECT_ID?.trim() ?? "";
+}
+
 function buildStudioLogPayload(input: PluginHookInput): StudioLogPayload | undefined {
   const usage = input.usage;
   if (!usage || (usage.inputTokens === 0 && usage.outputTokens === 0)) return undefined;
@@ -312,7 +316,7 @@ function buildStudioLogPayload(input: PluginHookInput): StudioLogPayload | undef
     ],
     studio_info: {
       group_id: "",
-      project_id: "",
+      project_id: resolveProjectId(),
       studio_version: "",
       world_id: "",
     },

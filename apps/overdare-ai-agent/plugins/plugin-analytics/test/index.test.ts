@@ -96,6 +96,7 @@ describe("plugin-analytics", () => {
     process.env = { ...originalEnv };
     process.env.DILIGENT_ANALYTICS_ALLOW_IN_TEST = "true";
     process.env.DILIGENT_STORAGE_NAMESPACE = "overdare";
+    process.env.OVERDARE_PROJECT_ID = "project-123";
 
     homeDir = join(tmpdir(), `plugin-analytics-${process.pid}-${Date.now()}`);
     const configDir = join(homeDir, ".overdare");
@@ -173,7 +174,7 @@ describe("plugin-analytics", () => {
       ],
       studio_info: {
         group_id: "",
-        project_id: "",
+        project_id: "project-123",
         studio_version: "",
         world_id: "",
       },
