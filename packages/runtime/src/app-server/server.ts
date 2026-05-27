@@ -102,6 +102,8 @@ export interface DiligentAppServerConfig {
   hooks?: DiligentConfig["hooks"];
   /** User identifier included in hook inputs. Falls back to OS username if unset. */
   userId?: string;
+  /** Called when a connection switches to a current thread. */
+  onCurrentThreadChange?: (threadId: string) => void;
   /** Auth credential storage backend configuration. */
   authStore?: AuthStoreOptions;
 }
@@ -669,6 +671,7 @@ export class DiligentAppServer {
       setConnectionCurrentThreadId: (connectionId, threadId) => {
         const conn = this.connections.get(connectionId);
         if (conn) conn.currentThreadId = threadId;
+        this.config.onCurrentThreadChange?.(threadId);
       },
       threadHandlersCtx: this.buildThreadHandlersContext(),
       turnInitiators: this.turnInitiators,

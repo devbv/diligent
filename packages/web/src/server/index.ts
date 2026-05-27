@@ -1,5 +1,6 @@
 // @summary Bun server entrypoint for Web CLI with /rpc WebSocket, persisted image routes, and static file hosting
 import { createWriteStream, existsSync, mkdirSync, realpathSync, type WriteStream } from "node:fs";
+import { appendFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 import {
   type AgentRegistry,
@@ -94,11 +95,13 @@ export async function createWebServer(options: CreateServerOptions = {}): Promis
   }
 
   let lastRegistry: AgentRegistry | undefined;
+  const threadAppServerLog = enableThreadAppServerLogFile(paths);
 
   const baseConfig = createAppServerConfig({
     cwd,
     runtimeConfig,
     overrides: {
+      onCurrentThreadChange: (threadId) => threadAppServerLog.setThreadId(threadId),
       serverVersion: resolveServerVersionOverride(),
       toImageUrl: (absPath) => toWebImageUrl(absPath),
       getInitializeResult: async () => ({
@@ -201,6 +204,7 @@ export async function createWebServer(options: CreateServerOptions = {}): Promis
   return {
     server,
     stop: () => {
+      threadAppServerLog.cleanup();
       lastRegistry?.shutdownAll().catch(() => {});
       server.stop();
     },
@@ -336,6 +340,86 @@ export function enableProcessLogFile(logFile: string, baseDir: string): () => vo
     process.stdout.write = originalStdoutWrite;
     process.stderr.write = originalStderrWrite;
     stream?.end();
+  };
+}
+
+export function enableThreadAppServerLogFile(paths: Pick<DiligentPaths, "root">): {
+  setThreadId: (threadId: string) => void;
+  cleanup: () => void;
+} {
+  const originalStdoutWrite = process.stdout.write.bind(process.stdout) as typeof process.stdout.write;
+  const originalStderrWrite = process.stderr.write.bind(process.stderr) as typeof process.stderr.write;
+  const pendingLines: string[] = [];
+
+  let currentThreadId: string | null = null;
+  let logsDirInitialized = false;
+  let partialLine = "";
+
+  const appendLine = (line: string): void => {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+
+    if (!currentThreadId) {
+      pendingLines.push(trimmed);
+      return;
+    }
+
+    const logsDir = join(paths.root, "logs");
+    if (!logsDirInitialized) {
+      mkdirSync(logsDir, { recursive: true });
+      logsDirInitialized = true;
+    }
+
+    const logPath = join(logsDir, `${currentThreadId}.app-server.log`);
+    appendFile(logPath, `${new Date().toISOString()} ${trimmed}\n`).catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      originalStderrWrite(`[webserver-log] Failed to write app-server log file ${logPath}: ${message}\n`);
+    });
+  };
+
+  const mirrorChunk = (chunk: unknown): void => {
+    const text =
+      typeof chunk === "string"
+        ? chunk
+        : chunk instanceof Uint8Array
+          ? Buffer.from(chunk).toString("utf8")
+          : String(chunk);
+    partialLine += text;
+    const lines = partialLine.split(/\r?\n/);
+    partialLine = lines.pop() ?? "";
+    for (const line of lines) appendLine(line);
+  };
+
+  process.stdout.write = ((chunk: unknown, encoding?: unknown, cb?: unknown) => {
+    mirrorChunk(chunk);
+    return originalStdoutWrite(chunk as never, encoding as never, cb as never);
+  }) as typeof process.stdout.write;
+
+  process.stderr.write = ((chunk: unknown, encoding?: unknown, cb?: unknown) => {
+    mirrorChunk(chunk);
+    return originalStderrWrite(chunk as never, encoding as never, cb as never);
+  }) as typeof process.stderr.write;
+
+  const flushPending = (): void => {
+    if (!currentThreadId) return;
+    while (pendingLines.length > 0) {
+      appendLine(pendingLines.shift() ?? "");
+    }
+  };
+
+  return {
+    setThreadId(threadId: string): void {
+      currentThreadId = threadId;
+      flushPending();
+    },
+    cleanup(): void {
+      if (partialLine) {
+        appendLine(partialLine);
+        partialLine = "";
+      }
+      process.stdout.write = originalStdoutWrite;
+      process.stderr.write = originalStderrWrite;
+    },
   };
 }
 

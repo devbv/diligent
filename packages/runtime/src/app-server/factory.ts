@@ -97,7 +97,10 @@ export interface CreateAppServerConfigOptions {
   cwd: string;
   runtimeConfig: RuntimeConfig;
   overrides?: Partial<
-    Pick<DiligentAppServerConfig, "serverName" | "serverVersion" | "getInitializeResult" | "openBrowser" | "toImageUrl">
+    Pick<
+      DiligentAppServerConfig,
+      "serverName" | "serverVersion" | "getInitializeResult" | "openBrowser" | "toImageUrl" | "onCurrentThreadChange"
+    >
   >;
 }
 

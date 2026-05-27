@@ -259,7 +259,7 @@ test("compaction_error clears compacting state", () => {
   expect(next.isCompacting).toBe(false);
 });
 
-test("resolveDraftModel prefers initial model when available", () => {
+test("resolveDraftModel preserves the current user-selected model when available", () => {
   const next = resolveDraftModel({
     initialModel: "gpt-5",
     currentModel: "claude-sonnet",
@@ -269,15 +269,15 @@ test("resolveDraftModel prefers initial model when available", () => {
     ],
   });
 
-  expect(next).toBe("gpt-5");
+  expect(next).toBe("claude-sonnet");
 });
 
-test("resolveDraftModel falls back to current model when initial model is unavailable", () => {
+test("resolveDraftModel falls back to initial model when current model is unavailable", () => {
   const next = resolveDraftModel({
     initialModel: "gpt-5",
     currentModel: "claude-sonnet",
-    availableModels: [{ id: "claude-sonnet", provider: "anthropic" }],
+    availableModels: [{ id: "gpt-5", provider: "openai" }],
   });
 
-  expect(next).toBe("claude-sonnet");
+  expect(next).toBe("gpt-5");
 });

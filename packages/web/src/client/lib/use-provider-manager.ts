@@ -16,11 +16,11 @@ export function resolveDraftModel({
   currentModel: string;
   availableModels: ModelInfo[];
 }): string {
-  if (availableModels.some((model) => model.id === initialModel)) {
-    return initialModel;
-  }
   if (availableModels.some((model) => model.id === currentModel)) {
     return currentModel;
+  }
+  if (availableModels.some((model) => model.id === initialModel)) {
+    return initialModel;
   }
   return availableModels[0]?.id ?? "";
 }
