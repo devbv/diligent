@@ -103,6 +103,10 @@ export async function runThreadCompaction({
   }
 }
 
+export function getModelChangeThreadId(activeThreadId: string | null): string | undefined {
+  return activeThreadId ?? undefined;
+}
+
 export function useAppActions({
   rpcRef,
   state,
@@ -405,7 +409,7 @@ export function useAppActions({
             return;
           }
 
-          void changeModel(arg).then(() => {
+          void changeModel(arg, getModelChangeThreadId(activeThreadId)).then(() => {
             const modelInfo = availableModels.find((model) => model.id === arg);
             if (effort === "none" && modelInfo && !supportsThinkingNone(modelInfo)) {
               setEffortState("medium");
@@ -516,9 +520,9 @@ export function useAppActions({
 
   const handleModelChange = useCallback(
     (modelId: string) => {
-      void changeModel(modelId);
+      void changeModel(modelId, getModelChangeThreadId(state.activeThreadId));
     },
-    [changeModel],
+    [changeModel, state.activeThreadId],
   );
 
   const handleAddImagesToDock = useCallback(

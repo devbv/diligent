@@ -6,6 +6,7 @@ import { prependContextToMessage } from "../../../src/client/lib/agent-native-br
 import type { PendingImage } from "../../../src/client/lib/app-state";
 import {
   clearComposerInputAfterSend,
+  getModelChangeThreadId,
   prepareNewThreadForFirstMessage,
   runThreadCompaction,
 } from "../../../src/client/lib/use-app-actions";
@@ -65,6 +66,11 @@ test("prependContextToMessage serializes mixed context items before typed text",
   expect(result).toContain("Instance: Name=Spawn_A; ClassType=Part; GUID=guid-1");
   expect(result).toContain("File: Name=spawn.ts; URI=file:///workspace/spawn.ts; Language=typescript");
   expect(result.endsWith("adjust these")).toBe(true);
+});
+
+test("getModelChangeThreadId scopes model changes to the active thread when present", () => {
+  expect(getModelChangeThreadId("thread-1")).toBe("thread-1");
+  expect(getModelChangeThreadId(null)).toBeUndefined();
 });
 
 test("mock bridge update semantics replace prior context with latest snapshot", async () => {
