@@ -106,6 +106,7 @@ function toToolCallExecution(
     toolCallId: toolCall.id,
     toolName: toolCall.name,
     output: result.output,
+    outputImages: result.outputImages,
     isError: !!result.metadata?.error,
     timestamp: Date.now(),
     render: result.render,
@@ -117,6 +118,7 @@ function toToolCallExecution(
     toolCallId: toolCall.id,
     toolName: toolCall.name,
     output: result.output,
+    outputImages: result.outputImages,
     isError: toolResult.isError,
     render: result.render,
   });

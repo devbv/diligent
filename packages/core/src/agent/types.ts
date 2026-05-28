@@ -5,6 +5,7 @@ import type { ProviderErrorType, StreamFunction, ThinkingEffort } from "../llm/t
 import type {
   AssistantMessage,
   ContentBlock,
+  ImageBlock,
   Message,
   ToolRenderPayloadLike,
   ToolResultMessage,
@@ -72,6 +73,7 @@ export type CoreAgentEvent =
       toolCallId: string;
       toolName: string;
       output: string;
+      outputImages?: ImageBlock[];
       isError: boolean;
       render?: ToolRenderPayloadLike;
       childThreadId?: string;

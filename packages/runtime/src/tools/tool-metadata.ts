@@ -36,6 +36,7 @@ export const TOOL_CAPABILITIES: Record<string, ToolCapabilities> = {
 
   // Read-only filesystem tools (plan-mode safe)
   read: { planModeAllowed: true, hasCustomRender: true },
+  read_image: { planModeAllowed: true },
   glob: { planModeAllowed: true },
   grep: { planModeAllowed: true },
   ls: { planModeAllowed: true },

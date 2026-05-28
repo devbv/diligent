@@ -16,6 +16,7 @@ import { createGrepTool } from "./grep";
 import { createLsTool } from "./ls";
 import { createPlanTool } from "./plan";
 import { createReadTool } from "./read";
+import { createReadImageTool } from "./read-image";
 import { createRequestUserInputTool } from "./request-user-input";
 import { createSearchKnowledgeTool } from "./search-knowledge";
 import { createSkillTool } from "./skill";
@@ -73,6 +74,7 @@ export async function buildDefaultTools(options: BuildDefaultToolsOptions): Prom
           createBashTool(cwd, host),
           createSkillTool(skills),
           createReadTool(),
+          createReadImageTool(),
           createApplyPatchTool(cwd, host),
           createLsTool(),
           createGlobTool(cwd),

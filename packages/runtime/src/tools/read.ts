@@ -112,7 +112,7 @@ export function createReadTool(): Tool<typeof ReadParams> {
       // 2. Binary detection by extension
       if (isBinaryByExtension(file_path)) {
         const size = file.size;
-        const output = `Binary file (${size} bytes). Cannot display contents.`;
+        const output = `Binary file (${size} bytes). Cannot display contents. For image files (.png/.jpg/.gif/.webp), use the read_image tool instead.`;
         return {
           output,
           render: {
@@ -128,7 +128,7 @@ export function createReadTool(): Tool<typeof ReadParams> {
         const sample = new Uint8Array(await file.slice(0, 4096).arrayBuffer());
         if (isBinaryByContent(sample)) {
           const size = file.size;
-          const output = `Binary file (${size} bytes). Cannot display contents.`;
+          const output = `Binary file (${size} bytes). Cannot display contents. For image files (.png/.jpg/.gif/.webp), use the read_image tool instead.`;
           return {
             output,
             render: {
