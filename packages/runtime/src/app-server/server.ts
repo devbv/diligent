@@ -30,6 +30,7 @@ import {
 } from "../protocol/index";
 import { isRpcNotification, isRpcRequest, isRpcResponse, type RpcPeer } from "../rpc/channel";
 import { SessionManager, type SessionManagerConfig } from "../session/manager";
+import { type BundledToolProvider, collectBundledHooks } from "../tools/bundled-provider";
 import { collectPluginHooks } from "../tools/plugin-loader";
 import type { UserInputRequest, UserInputResponse } from "../tools/user-input-types";
 import {
@@ -100,6 +101,8 @@ export interface DiligentAppServerConfig {
   permissionEngine?: PermissionEngine;
   /** Lifecycle hooks config (UserPromptSubmit, Stop). */
   hooks?: DiligentConfig["hooks"];
+  /** Product-owned in-process bundled tool providers. */
+  bundledToolProviders?: BundledToolProvider[];
   /** User identifier included in hook inputs. Falls back to OS username if unset. */
   userId?: string;
   /** Called when a connection switches to a current thread. */
@@ -632,8 +635,10 @@ export class DiligentAppServer {
   ): Promise<{ continueWith?: import("@diligent/core/types").Message } | undefined> {
     const stopShellHandlers = this.config.hooks?.Stop ?? [];
     const { onStop: stopPluginHandlers } = await collectPluginHooks(this.config.toolConfig?.getTools(), info.cwd);
+    const { onStop: stopBundledHandlers } = collectBundledHooks(this.config.bundledToolProviders);
+    const stopHandlers = [...stopPluginHandlers, ...stopBundledHandlers];
 
-    if (stopShellHandlers.length === 0 && stopPluginHandlers.length === 0) return;
+    if (stopShellHandlers.length === 0 && stopHandlers.length === 0) return;
 
     const providerPlanType = await resolveProviderPlanType(info.provider, this.config.authStore);
 
@@ -653,7 +658,7 @@ export class DiligentAppServer {
       user_id: info.userId,
     };
 
-    const stopResult = await runCombinedHooks(stopShellHandlers, stopPluginHandlers, stopInput, info.cwd);
+    const stopResult = await runCombinedHooks(stopShellHandlers, stopHandlers, stopInput, info.cwd);
 
     if (stopResult.blocked && stopResult.reason) {
       return {
@@ -718,7 +723,14 @@ export class DiligentAppServer {
         }
         return this.config.userId ?? userInfo().username;
       },
-      getPluginHooks: (cwd: string) => collectPluginHooks(this.config.toolConfig?.getTools(), cwd),
+      getPluginHooks: async (cwd: string) => {
+        const pluginHooks = await collectPluginHooks(this.config.toolConfig?.getTools(), cwd);
+        const bundledHooks = collectBundledHooks(this.config.bundledToolProviders);
+        return {
+          onUserPromptSubmit: [...pluginHooks.onUserPromptSubmit, ...bundledHooks.onUserPromptSubmit],
+          onStop: [...pluginHooks.onStop, ...bundledHooks.onStop],
+        };
+      },
       resolvePaths: this.config.resolvePaths,
       createThreadRuntime: (
         threadId: string,
@@ -735,6 +747,7 @@ export class DiligentAppServer {
       consumeTurn: (runtime: ThreadRuntime, runPromise: Promise<void>, turnId: string) =>
         this.consumeTurn(runtime, runPromise, turnId),
       resolveToolsContext: (threadId?: string) => this.resolveToolsContext(threadId),
+      getBundledToolProviders: () => this.config.bundledToolProviders ?? [],
       getSkillNames: () => this.getSkillNames(),
       setActiveThreadId: (threadId: string | null) => {
         this.activeThreadId = threadId;

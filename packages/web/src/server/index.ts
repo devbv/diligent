@@ -4,6 +4,7 @@ import { appendFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 import {
   type AgentRegistry,
+  type BundledToolProvider,
   createAppServerConfig,
   createWsPeer,
   DiligentAppServer,
@@ -26,6 +27,7 @@ interface CreateServerOptions {
   cwd?: string;
   userId?: string;
   distDir?: string;
+  bundledToolProviders?: BundledToolProvider[];
 }
 
 interface ParsedArgs {
@@ -87,6 +89,7 @@ export async function createWebServer(options: CreateServerOptions = {}): Promis
 
   const paths = await ensureDiligentDir(cwd);
   const runtimeConfig = await loadRuntimeConfig(cwd, paths);
+  const bundledToolProviders = options.bundledToolProviders ?? [];
   if (options.userId?.trim()) {
     runtimeConfig.diligent = {
       ...runtimeConfig.diligent,
@@ -100,6 +103,7 @@ export async function createWebServer(options: CreateServerOptions = {}): Promis
   const baseConfig = createAppServerConfig({
     cwd,
     runtimeConfig,
+    bundledToolProviders,
     overrides: {
       onCurrentThreadChange: (threadId) => threadAppServerLog.setThreadId(threadId),
       serverVersion: resolveServerVersionOverride(),
@@ -508,3 +512,4 @@ if (isDirect) {
 }
 
 export type { DiligentPaths };
+export type { CreateServerOptions };

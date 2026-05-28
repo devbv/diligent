@@ -8,6 +8,7 @@ import type { DiligentPaths } from "../infrastructure";
 import type { SkillMetadata } from "../skills";
 import { createApplyPatchTool } from "./apply-patch";
 import { createBashTool } from "./bash";
+import type { BundledToolProvider } from "./bundled-provider";
 import type { RuntimeToolHost } from "./capabilities";
 import type { PluginLoadError, PluginStateEntry, ToolStateEntry } from "./catalog";
 import { buildToolCatalog } from "./catalog";
@@ -45,6 +46,7 @@ export interface BuildDefaultToolsOptions {
    */
   existingRegistry?: AgentRegistry;
   host?: RuntimeToolHost;
+  bundledToolProviders?: BundledToolProvider[];
 }
 
 export async function buildDefaultTools(options: BuildDefaultToolsOptions): Promise<BuildDefaultToolsResult> {
@@ -58,6 +60,7 @@ export async function buildDefaultTools(options: BuildDefaultToolsOptions): Prom
     enableCollabTools = true,
     existingRegistry,
     host,
+    bundledToolProviders,
   } = options;
   const catalog = parentToolOverride
     ? {
@@ -90,7 +93,7 @@ export async function buildDefaultTools(options: BuildDefaultToolsOptions): Prom
           builtinTools.push(createUpdateKnowledgeTool(paths.knowledge));
         }
 
-        return buildToolCatalog(builtinTools, toolsConfig, cwd, host);
+        return buildToolCatalog(builtinTools, toolsConfig, cwd, host, { bundledProviders: bundledToolProviders });
       })();
 
   // 2. Add collab tools (always enabled, not user-configurable)

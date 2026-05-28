@@ -42,7 +42,7 @@ At a high level, packaging does the following:
 
 The sidecar serves the React client and hosts `DiligentAppServer` over WebSocket JSON-RPC. Packaging therefore needs to bundle both UI assets and runtime assets coherently for the OVERDARE CLI launcher.
 
-For launcher/runtime coordination, the packaged sidecar announces its bound port on stdout as `WEBSERVER_PORT=<port>`. When the OVERDARE launcher is started with `--studio-rpc-port=<port>`, it forwards that value to the runtime subprocess as `STUDIO_PORT` so packaged plugins can reach OVERDARE Studio RPC.
+For launcher/runtime coordination, the packaged sidecar announces its bound port on stdout as `WEBSERVER_PORT=<port>`. When the OVERDARE launcher is started with `--studio-rpc-port=<port>`, it forwards that value to the runtime subprocess so bundled product tools and any remaining packaged plugins can reach OVERDARE Studio RPC.
 
 ## Platform model
 
@@ -72,9 +72,11 @@ OVERDARE-owned defaults now live under `apps/overdare-ai-agent/`:
 
 At bundle assembly time these assets are staged under `defaults/` for compatibility with existing updater expectations. The launcher prefers an updated `bootstrap/` directory if present at runtime and otherwise falls back to the legacy `defaults/` path.
 
+First-party executable TypeScript tools should move to bundled providers in `apps/overdare-ai-agent/sidecar/src/tools` instead of being shipped as copied plugin folders. During migration, a bundled provider can declare the legacy package in `supersedesPluginPackages` so stale plugin copies are suppressed. Only remove a plugin from `apps/overdare-ai-agent/plugins/` after the bundled equivalent has been verified.
+
 ## Sidecar build
 
-The sidecar is compiled from `packages/web/src/server/index.ts` using `bun build --compile`.
+The OVERDARE sidecar is compiled from `apps/overdare-ai-agent/sidecar/src/server.ts` using `bun build --compile`. That product entrypoint imports the generic `@diligent/web/server` and injects OVERDARE bundled tool providers without placing product code in `packages/web` or `packages/runtime`.
 
 The sidecar helper script can build a fresh current-platform runtime binary for OVERDARE CLI diagnostics and launcher flows.
 
@@ -89,10 +91,13 @@ Common outputs include the compiled sidecar binary and runtime bundle contents u
 1. Decide whether the change affects sidecar build, runtime bundle assembly, or both.
 2. If the shipped runtime contents change, update bootstrap/plugin ownership and runtime bundle layout together.
 3. Verify whether OVERDARE CLI launcher/update expectations also need changes.
+4. For first-party tool migrations, preserve tool names, schemas, render payloads, approval prompts, and user-input behavior before removing the legacy plugin artifact.
 
 ## Key code paths
 
 - `scripts/build-overdare-sidecar.ts`
+- `apps/overdare-ai-agent/sidecar/src/server.ts`
+- `apps/overdare-ai-agent/sidecar/src/tools/`
 - `apps/overdare-ai-agent/README.md`
 - `apps/overdare-ai-agent/bootstrap/`
 - `apps/overdare-ai-agent/plugins/`

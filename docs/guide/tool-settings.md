@@ -1,6 +1,6 @@
 # Tool settings
 
-Diligent lets you control which built-in tools are available in a project and add trusted JavaScript plugin packages.
+Diligent lets you control which built-in tools are available in a project and add trusted JavaScript plugin packages. Product builds can also ship bundled product tools that are registered by the packaged runtime itself.
 
 ## Where settings are stored
 
@@ -22,6 +22,8 @@ That means a plugin can:
 - make network requests if the runtime allows it
 
 Only configure packages you already trust.
+
+Bundled product tools run with the same trust level as the packaged runtime. They are not loaded from your project or home plugin folder, but their individual tools still appear in the tool catalog and use the same approval, rendering, and per-tool enablement paths as other tools.
 
 ## Built-in tools
 
@@ -45,6 +47,19 @@ Some built-ins are immutable and always stay enabled:
 - `request_user_input`
 
 These appear as locked in the UI and stay enabled even if config tries to disable them.
+
+## Bundled product tools
+
+Product variants can register first-party bundled tool providers in-process. For example, the OVERDARE packaged sidecar is assembled by `apps/overdare-ai-agent/sidecar`, imports `@diligent/web/server`, and injects OVERDARE-owned providers from `apps/overdare-ai-agent/sidecar/src/tools`.
+
+Bundled product tools are different from external plugins:
+
+- they ship in the runtime binary instead of being copied into `$HOME/.diligent/plugins` or `$HOME/.overdare/plugins`
+- they do not require a `tools.plugins` config entry
+- they can supersede legacy first-party plugin packages so stale copied plugin folders are ignored by the catalog
+- their tool names, Zod schemas, approval prompts, user-input behavior, and render payloads should remain stable when migrated from a plugin
+
+External user-installed plugins are still supported. Supersession only applies to package names declared by a bundled provider.
 
 ## Plugin packages
 

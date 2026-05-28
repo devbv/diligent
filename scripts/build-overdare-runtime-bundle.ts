@@ -13,6 +13,7 @@ const DIST = resolve(ROOT, "dist");
 const DIAGNOSTICS_DIR = resolve(OVERDARE_CLI, ".diligent/diagnostics");
 const BOOTSTRAP_DIR = resolve(OVERDARE_CLI, "bootstrap");
 const PLUGINS_DIR = resolve(OVERDARE_CLI, "plugins");
+const VALIDATOR_PLUGIN = resolve(PLUGINS_DIR, "plugin-validator");
 
 type PlatformConfig = {
   id: string;
@@ -119,6 +120,14 @@ function maybeStageRg(platform: PlatformConfig, stageDir: string): void {
   cpSync(source, target);
 }
 
+function stageSidecarAssets(platform: PlatformConfig, stageDir: string): void {
+  const validatorDir = join(stageDir, "validator");
+  mkdirSync(validatorDir, { recursive: true });
+  const luauLspName = platform.id === "windows-x64" ? "luau-lsp.exe" : "luau-lsp";
+  cpSync(resolve(VALIDATOR_PLUGIN, luauLspName), join(validatorDir, luauLspName));
+  cpSync(resolve(VALIDATOR_PLUGIN, "overdare-types.d.lua"), join(validatorDir, "overdare-types.d.lua"));
+}
+
 function zipRuntimeBundle(stageDir: string, outPath: string): void {
   if (process.platform === "win32") {
     run(
@@ -142,6 +151,7 @@ async function main(): Promise<void> {
 
   cpSync(sidecarPath, join(stageDir, `diligent-web-server${platform.ext}`));
   cpSync(resolve(WEB, "dist/client"), join(stageDir, "dist/client"), { recursive: true });
+  stageSidecarAssets(platform, stageDir);
   stageBootstrap(stageDir);
   maybeStageRg(platform, stageDir);
 

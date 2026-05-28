@@ -7,8 +7,10 @@ import { getModelInfoList } from "@diligent/core/llm/models";
 import { ProviderManager } from "@diligent/core/llm/provider-manager";
 import type { Model } from "@diligent/core/llm/types";
 import { createAppServerConfig } from "@diligent/runtime/app-server";
+import { z } from "zod";
 import type { PermissionEngine } from "../../src/approval";
 import type { RuntimeConfig } from "../../src/config/runtime";
+import type { BundledToolProvider } from "../../src/tools/bundled-provider";
 
 function makeRuntimeConfig(overrides?: Partial<RuntimeConfig>): RuntimeConfig {
   const providerManager = new ProviderManager({});
@@ -191,6 +193,35 @@ describe("createAppServerConfig", () => {
     config.toolConfig?.setTools(undefined);
     expect(config.toolConfig?.getTools()).toBeUndefined();
     expect(runtimeConfig.diligent.tools).toBeUndefined();
+  });
+
+  it("passes bundled tool providers into created runtime agents", async () => {
+    const runtimeConfig = makeRuntimeConfig();
+    const bundledToolProviders: BundledToolProvider[] = [
+      {
+        id: "@product/factory-tools",
+        createTools: () => [
+          {
+            name: "factory_bundled_tool",
+            description: "Factory bundled tool",
+            parameters: z.object({}),
+            execute: async () => ({ output: "ok" }),
+          },
+        ],
+      },
+    ];
+    const config = createAppServerConfig({ cwd: "/tmp/test", runtimeConfig, bundledToolProviders });
+
+    const agent = await config.createAgent({
+      cwd: "/tmp/test",
+      mode: "default",
+      effort: "medium",
+      modelId: "claude-sonnet-4-6",
+      approve: async () => "once",
+      ask: async () => null,
+    });
+
+    expect(agent.tools.map((tool) => tool.name)).toContain("factory_bundled_tool");
   });
 });
 

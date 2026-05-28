@@ -95,6 +95,7 @@ export {
   writeGlobalToolsConfig,
   writeProjectToolsConfig,
 } from "./config";
+export type { HookInput, HookResult, PluginHookFn } from "./hooks/runner";
 export type { DiligentPaths } from "./infrastructure";
 export { ensureDiligentDir, resolvePaths } from "./infrastructure";
 export type { KnowledgeConfig, KnowledgeEntry, KnowledgeType } from "./knowledge";
@@ -143,10 +144,15 @@ export type { DiscoveryOptions, SkillFrontmatter, SkillLoadError, SkillLoadResul
 export { discoverSkills, extractBody, renderSkillsSection } from "./skills";
 export type {
   BuildDefaultToolsResult,
+  BuildToolCatalogOptions,
+  BundledToolProvider,
+  BundledToolProviderContext,
+  CollectedBundledHooks,
   PluginLoadError,
   PluginLoadResult,
   PluginManifest,
   PluginStateEntry,
+  RuntimeToolHost,
   ToolCatalogResult,
   ToolStateEntry,
   ToolStateReason,
@@ -158,6 +164,7 @@ export type {
 export {
   buildDefaultTools,
   buildToolCatalog,
+  collectBundledHooks,
   createApplyPatchTool,
   createBashTool,
   createEditTool,
@@ -179,4 +186,6 @@ export {
   isImmutableTool,
   loadPlugin,
   registerSkillTool,
+  requestToolApproval,
+  requestToolUserInput,
 } from "./tools";

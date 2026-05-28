@@ -3,6 +3,7 @@
 import type { Tool } from "@diligent/core/tool/types";
 import { COLLAB_TOOL_NAMES } from "../collab";
 import type { DiligentConfig } from "../config/schema";
+import type { BundledToolProvider } from "./bundled-provider";
 import type { RuntimeToolHost } from "./capabilities";
 import { isImmutableTool } from "./immutable";
 import { discoverGlobalPlugins, loadPlugin } from "./plugin-loader";
@@ -14,7 +15,8 @@ export type ToolStateReason =
   | "plugin_disabled"
   | "plugin_load_failed"
   | "conflict_dropped"
-  | "invalid_plugin_tool";
+  | "invalid_plugin_tool"
+  | "superseded_by_bundled";
 
 export interface ToolStateEntry {
   name: string;
@@ -62,6 +64,18 @@ type ToolMapEntry = {
   order: number;
 };
 
+export interface BuildToolCatalogOptions {
+  bundledProviders?: BundledToolProvider[];
+}
+
+interface ProviderToolBatch {
+  id: string;
+  tools: Tool[];
+  orderBase: number;
+  toolToggles: Record<string, boolean>;
+  label: "Bundled provider" | "Plugin";
+}
+
 function compareEntries(a: ToolMapEntry, b: ToolMapEntry): number {
   return a.order - b.order || a.tool.name.localeCompare(b.tool.name);
 }
@@ -82,11 +96,16 @@ export async function buildToolCatalog(
   toolsConfig: DiligentConfig["tools"],
   cwd: string,
   host?: RuntimeToolHost,
+  options: BuildToolCatalogOptions = {},
 ): Promise<ToolCatalogResult> {
   const config = toolsConfig ?? {};
   const conflictPolicy = config.conflictPolicy ?? "error";
   const builtinToggles = config.builtin ?? {};
   const explicitPlugins = config.plugins ?? [];
+  const bundledProviders = options.bundledProviders ?? [];
+  const supersededPluginPackages = new Set(
+    bundledProviders.flatMap((provider) => provider.supersedesPluginPackages ?? []),
+  );
 
   // Auto-discover plugins from ~/.diligent/plugins/ and merge with explicit config.
   // Explicit config entries always take precedence (for enable/disable, per-tool toggles, etc.).
@@ -94,6 +113,7 @@ export async function buildToolCatalog(
   const explicitPackageNames = new Set(explicitPlugins.map((p) => p.package));
   const autoPlugins = discoveredNames
     .filter((name) => !explicitPackageNames.has(name))
+    .filter((name) => !supersededPluginPackages.has(name))
     .map((name) => ({
       package: name,
       enabled: true as const,
@@ -130,7 +150,31 @@ export async function buildToolCatalog(
   // 2. Load plugin tools and separate package-level state from tool-level state.
   const pluginErrors: PluginLoadError[] = [];
   const plugins: PluginStateEntry[] = [];
-  const pluginOrderStart = order;
+  const bundledOrderStart = order;
+
+  for (const [providerIndex, provider] of bundledProviders.entries()) {
+    let providerTools: Tool[];
+    try {
+      providerTools = await Promise.resolve(provider.createTools({ cwd, host }));
+    } catch (err) {
+      pluginErrors.push({
+        package: provider.id,
+        enabled: true,
+        error: `Bundled provider '${provider.id}' createTools() threw: ${err instanceof Error ? err.message : String(err)}`,
+      });
+      continue;
+    }
+
+    mergeProviderTools({
+      id: provider.id,
+      tools: providerTools,
+      orderBase: bundledOrderStart + providerIndex * 1000,
+      toolToggles: {},
+      label: "Bundled provider",
+    });
+  }
+
+  const pluginOrderStart = bundledOrderStart + bundledProviders.length * 1000;
 
   for (const [pluginIndex, pluginConfig] of pluginConfigs.entries()) {
     const pluginEnabled = pluginConfig.enabled ?? true;
@@ -143,6 +187,26 @@ export async function buildToolCatalog(
       warnings: [],
     };
     plugins.push(pluginState);
+
+    if (supersededPluginPackages.has(pluginConfig.package)) {
+      pluginState.loaded = false;
+      pluginState.loadError = `Plugin '${pluginConfig.package}' is superseded by a bundled tool provider.`;
+      for (const toolName of Object.keys(pluginConfig.tools ?? {})) {
+        state.set(`superseded:${pluginConfig.package}:${toolName}`, {
+          name: toolName,
+          source: "plugin",
+          pluginPackage: pluginConfig.package,
+          enabled: false,
+          immutable: false,
+          configurable: true,
+          available: false,
+          reason: "superseded_by_bundled",
+          error: pluginState.loadError,
+        });
+      }
+      pluginErrors.push({ package: pluginConfig.package, enabled: pluginEnabled, error: pluginState.loadError });
+      continue;
+    }
 
     if (!pluginEnabled) {
       const toolToggles = pluginConfig.tools ?? {};
@@ -208,8 +272,18 @@ export async function buildToolCatalog(
     }
 
     const pluginToolToggles = pluginConfig.tools ?? {};
-    for (const [toolIndex, tool] of result.tools.entries()) {
-      const pluginOrder = pluginOrderStart + pluginIndex * 1000 + toolIndex;
+    mergeProviderTools({
+      id: pluginConfig.package,
+      tools: result.tools,
+      orderBase: pluginOrderStart + pluginIndex * 1000,
+      toolToggles: pluginToolToggles,
+      label: "Plugin",
+    });
+  }
+
+  function mergeProviderTools(batch: ProviderToolBatch): void {
+    for (const [toolIndex, tool] of batch.tools.entries()) {
+      const pluginOrder = batch.orderBase + toolIndex;
       const existing = toolMap.get(tool.name);
 
       if (existing && existing.source === "builtin") {
@@ -217,37 +291,37 @@ export async function buildToolCatalog(
         const builtinImmutable = isImmutableTool(tool.name);
 
         if (builtinImmutable) {
-          state.set(`conflict:${pluginConfig.package}:${tool.name}`, {
+          state.set(`conflict:${batch.id}:${tool.name}`, {
             name: tool.name,
             source: "plugin",
-            pluginPackage: pluginConfig.package,
+            pluginPackage: batch.id,
             enabled: false,
             immutable: false,
             configurable: true,
             available: false,
             reason: "conflict_dropped",
-            error: `Plugin tool '${tool.name}' cannot override immutable built-in tool '${tool.name}'.`,
+            error: `${batch.label} tool '${tool.name}' cannot override immutable built-in tool '${tool.name}'.`,
           });
           pluginErrors.push({
-            package: pluginConfig.package,
+            package: batch.id,
             enabled: true,
-            error: `Plugin tool '${tool.name}' cannot override immutable built-in tool '${tool.name}'.`,
+            error: `${batch.label} tool '${tool.name}' cannot override immutable built-in tool '${tool.name}'.`,
           });
           continue;
         }
 
         if (conflictPolicy === "plugin_wins") {
-          const enabled = pluginToolToggles[tool.name] ?? true;
+          const enabled = batch.toolToggles[tool.name] ?? true;
           toolMap.set(tool.name, {
             tool,
             source: "plugin",
-            pluginPackage: pluginConfig.package,
+            pluginPackage: batch.id,
             order: pluginOrder,
           });
           state.set(tool.name, {
             name: tool.name,
             source: "plugin",
-            pluginPackage: pluginConfig.package,
+            pluginPackage: batch.id,
             enabled,
             immutable: false,
             configurable: true,
@@ -259,13 +333,13 @@ export async function buildToolCatalog(
 
         const error =
           conflictPolicy === "error"
-            ? `Plugin tool '${tool.name}' conflicts with built-in tool. Using built-in (conflictPolicy: "error").`
+            ? `${batch.label} tool '${tool.name}' conflicts with built-in tool. Using built-in (conflictPolicy: "error").`
             : undefined;
 
-        state.set(`conflict:${pluginConfig.package}:${tool.name}`, {
+        state.set(`conflict:${batch.id}:${tool.name}`, {
           name: tool.name,
           source: "plugin",
-          pluginPackage: pluginConfig.package,
+          pluginPackage: batch.id,
           enabled: false,
           immutable: false,
           configurable: true,
@@ -274,23 +348,38 @@ export async function buildToolCatalog(
           error,
         });
         if (error) {
-          pluginErrors.push({ package: pluginConfig.package, enabled: true, error });
+          pluginErrors.push({ package: batch.id, enabled: true, error });
         }
         state.set(tool.name, existingState);
         continue;
       }
 
-      const enabled = pluginToolToggles[tool.name] ?? true;
+      if (existing && existing.source === "plugin") {
+        state.set(`conflict:${batch.id}:${tool.name}`, {
+          name: tool.name,
+          source: "plugin",
+          pluginPackage: batch.id,
+          enabled: false,
+          immutable: false,
+          configurable: true,
+          available: false,
+          reason: "conflict_dropped",
+          error: `${batch.label} tool '${tool.name}' conflicts with tool from '${existing.pluginPackage}'. Using '${existing.pluginPackage}'.`,
+        });
+        continue;
+      }
+
+      const enabled = batch.toolToggles[tool.name] ?? true;
       toolMap.set(tool.name, {
         tool,
         source: "plugin",
-        pluginPackage: pluginConfig.package,
+        pluginPackage: batch.id,
         order: pluginOrder,
       });
       state.set(tool.name, {
         name: tool.name,
         source: "plugin",
-        pluginPackage: pluginConfig.package,
+        pluginPackage: batch.id,
         enabled,
         immutable: false,
         configurable: true,
