@@ -22,6 +22,12 @@ pub fn hidden_dir_name(env: Env) -> String {
     format!(".{}", storage_namespace(env))
 }
 
+/// The pre-P067 directory name (`.diligent`), shared across all envs.
+///
+/// Legacy paths intentionally do NOT take an `Env` argument: there was no
+/// per-env directory before P067, so there is only one possible legacy
+/// location per host/project. Migration callers pair this with an
+/// `env`-aware target path produced by [`hidden_dir_name`].
 pub fn legacy_hidden_dir_name() -> String {
     format!(".{}", DEFAULT_STORAGE_NAMESPACE)
 }
@@ -52,7 +58,7 @@ pub fn local_legacy_storage_dir(cwd: &str) -> PathBuf {
 
 pub fn migrate_global_namespace_if_needed(env: Env) -> Result<MigrationOutcome, String> {
     if !env_uses_legacy_migration(env) {
-        return Ok(MigrationOutcome::SkippedNoLegacy);
+        return Ok(MigrationOutcome::SkippedByPolicy);
     }
     let legacy =
         global_legacy_storage_dir().ok_or("Cannot determine home directory for migration")?;
@@ -65,7 +71,7 @@ pub fn migrate_local_namespace_if_needed(
     env: Env,
 ) -> Result<MigrationOutcome, String> {
     if !env_uses_legacy_migration(env) {
-        return Ok(MigrationOutcome::SkippedNoLegacy);
+        return Ok(MigrationOutcome::SkippedByPolicy);
     }
     let legacy = local_legacy_storage_dir(cwd);
     let target = local_storage_dir(cwd, env);
@@ -78,9 +84,15 @@ fn env_uses_legacy_migration(env: Env) -> bool {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MigrationOutcome {
+    /// Successfully moved the legacy directory onto the target path.
     Migrated { from: PathBuf, to: PathBuf },
+    /// No legacy directory existed to migrate from. Treated as a clean install.
     SkippedNoLegacy,
+    /// The target directory already exists; legacy data was left untouched.
     SkippedTargetExists,
+    /// The current env's policy disables legacy migration entirely (e.g. dev,
+    /// which has no `.diligent-dev` predecessor on disk).
+    SkippedByPolicy,
 }
 
 pub fn migrate_namespace_if_needed(
@@ -137,6 +149,19 @@ mod tests {
     fn dev_namespace_defaults_to_overdare_dev() {
         assert_eq!(storage_namespace(Env::Dev), PACKAGED_STORAGE_NAMESPACE_DEV);
         assert_eq!(hidden_dir_name(Env::Dev), ".overdare-dev");
+    }
+
+    #[test]
+    fn dev_env_skips_global_migration_by_policy() {
+        let outcome = super::migrate_global_namespace_if_needed(Env::Dev).expect("dev skip");
+        assert_eq!(outcome, MigrationOutcome::SkippedByPolicy);
+    }
+
+    #[test]
+    fn dev_env_skips_local_migration_by_policy() {
+        let outcome = super::migrate_local_namespace_if_needed("/tmp/whatever", Env::Dev)
+            .expect("dev skip local");
+        assert_eq!(outcome, MigrationOutcome::SkippedByPolicy);
     }
 
     #[test]

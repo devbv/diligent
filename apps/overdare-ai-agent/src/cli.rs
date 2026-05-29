@@ -40,7 +40,9 @@ fn extract_env_flag(args: &[String]) -> (Option<String>, Vec<String>) {
 }
 
 fn run_update(selection: &EnvSelection) -> Result<(), String> {
-    migrate_global_namespace_if_needed(selection.env).map(|_| ())?;
+    // Migration is owned by the entry point (run_init / start_foreground); this
+    // function trusts that it already ran. Calling it here would be idempotent
+    // but wasteful — and obscures who is responsible for ordering.
     let mut log = String::new();
     let mut progress = |event: UpdateProgress| match event {
         UpdateProgress::Disabled => println!("update disabled"),

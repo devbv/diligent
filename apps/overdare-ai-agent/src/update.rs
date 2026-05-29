@@ -462,6 +462,12 @@ mod tests {
     }
 
     #[test]
+    fn manifest_env_match_prod_ok() {
+        let m = manifest_with_env("1.0.0", Some("prod"));
+        assert!(validate_manifest_env(&m, Env::Prod).is_ok());
+    }
+
+    #[test]
     fn manifest_env_mismatch_rejected() {
         let m = manifest_with_env("1.0.0", Some("dev"));
         let err = validate_manifest_env(&m, Env::Prod).unwrap_err();
