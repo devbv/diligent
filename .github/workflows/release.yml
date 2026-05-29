@@ -242,6 +242,13 @@ jobs:
           overdare_cli_windows = dist / f"overdare-ai-agent-{release_env}-{version}-windows-x64.exe"
           linux_cli = dist / f"diligent-{version}-linux-x64"
 
+          required = [runtime_bundle_windows, overdare_cli_windows]
+          if release_env == "prod":
+              required.append(linux_cli)
+          for path in required:
+              if not path.exists():
+                  raise SystemExit(f"Required release artifact missing: {path}")
+
           def sha256(path: Path) -> str:
               h = hashlib.sha256()
               with path.open("rb") as f:
@@ -385,6 +392,18 @@ jobs:
               exit 1
             fi
           done
+
+      - name: Verify prod release is not marked as prerelease
+        if: ${{ env.RELEASE_ENV == 'prod' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          is_pre=$(gh release view "$TAG" --json isPrerelease --jq '.isPrerelease')
+          if [ "$is_pre" != "false" ]; then
+            echo "Release '$TAG' is unexpectedly marked as prerelease (got '$is_pre'). prod releases must not be prerelease — GitHub's 'latest' redirect would skip this release." >&2
+            exit 1
+          fi
 
       - name: Upload merged release metadata artifact
         uses: actions/upload-artifact@v4

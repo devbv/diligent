@@ -19,11 +19,11 @@ impl FromStr for Env {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
+        match s.to_ascii_lowercase().as_str() {
             "prod" => Ok(Env::Prod),
             "dev" => Ok(Env::Dev),
-            other => Err(format!(
-                "Unknown env: '{other}' (expected 'prod' or 'dev')"
+            _ => Err(format!(
+                "Unknown env: '{s}' (expected 'prod' or 'dev', case-insensitive)"
             )),
         }
     }
@@ -56,12 +56,18 @@ impl EnvSelection {
         let pinned_version = match version_part {
             Some(v) if v.trim().is_empty() => {
                 return Err(format!(
-                    "Empty version after '@' in --env={raw} (use --env={env_part} or --env={env_part}@<version>)",
-                    raw = raw,
-                    env_part = env_part
+                    "Empty version after '@' in --env={trimmed} (use --env={env_part} or --env={env_part}@<version>)"
                 ));
             }
-            Some(v) => Some(v.trim().to_string()),
+            Some(v) => {
+                let trimmed_v = v.trim();
+                if !is_valid_pinned_version(trimmed_v) {
+                    return Err(format!(
+                        "Invalid pinned version '{trimmed_v}' (allowed: alphanumeric, '.', '-', '+'; must start with an alphanumeric character)"
+                    ));
+                }
+                Some(trimmed_v.to_string())
+            }
             None => None,
         };
         Ok(EnvSelection {
@@ -86,6 +92,23 @@ impl EnvSelection {
         }
         Ok(EnvSelection::latest(Env::Prod))
     }
+}
+
+/// Allowed characters in a pinned version string.
+///
+/// Mirrors the loose shape of a SemVer-style release tag suffix:
+/// must start with an ASCII alphanumeric, followed by alphanumerics,
+/// '.', '-', or '+'. This blocks path-traversal characters ('/', '..')
+/// and stray whitespace from sliding into the manifest URL.
+fn is_valid_pinned_version(v: &str) -> bool {
+    let mut chars = v.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    if !first.is_ascii_alphanumeric() {
+        return false;
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '+'))
 }
 
 const RELEASE_BASE: &str = "https://github.com/overdare/diligent/releases";
@@ -139,6 +162,32 @@ mod tests {
     #[test]
     fn parse_unknown_env_errors() {
         assert!(EnvSelection::parse("staging").is_err());
+    }
+
+    #[test]
+    fn parse_is_case_insensitive() {
+        assert_eq!(EnvSelection::parse("PROD").unwrap().env, Env::Prod);
+        assert_eq!(EnvSelection::parse("Dev").unwrap().env, Env::Dev);
+        assert_eq!(EnvSelection::parse("DeV@1.2.3").unwrap().env, Env::Dev);
+    }
+
+    #[test]
+    fn parse_rejects_path_traversal_in_pin() {
+        let err = EnvSelection::parse("prod@1.0/../../etc").unwrap_err();
+        assert!(err.contains("Invalid pinned version"));
+    }
+
+    #[test]
+    fn parse_rejects_leading_v_or_symbol_in_pin() {
+        // Leading 'v' is a common mistake — only the bare version belongs after '@'.
+        assert!(EnvSelection::parse("prod@-1.0").is_err());
+        assert!(EnvSelection::parse("prod@.1.0").is_err());
+    }
+
+    #[test]
+    fn parse_accepts_semver_prerelease_and_build_metadata() {
+        assert!(EnvSelection::parse("dev@1.4.0-beta.2").is_ok());
+        assert!(EnvSelection::parse("prod@1.2.3+sha.abc123").is_ok());
     }
 
     #[test]

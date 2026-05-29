@@ -263,26 +263,48 @@ fn validate_pinned_version(
 }
 
 fn fetch_manifest(manifest_url: &str) -> Result<UpdateManifest, String> {
+    // Retry transient failures (network errors, 5xx, dev-latest swap window).
+    // Do NOT retry 4xx — those are permanent (wrong URL, missing release).
+    const ATTEMPTS: u32 = 3;
+    const BASE_BACKOFF_MS: u64 = 500;
+
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
         .user_agent(format!("overdare-ai-agent/{BUNDLED_RUNTIME_VERSION}"))
         .build()
         .map_err(|e| format!("http client: {e}"))?;
-    let response = client
-        .get(manifest_url)
-        .send()
-        .map_err(|e| format!("fetch manifest: {e}"))?;
-    if !response.status().is_success() {
-        return Err(format!(
-            "fetch manifest failed: HTTP {} ({})",
-            response.status(),
-            manifest_url
+
+    let mut last_err = String::new();
+    for attempt in 1..=ATTEMPTS {
+        match client.get(manifest_url).send() {
+            Ok(response) => {
+                let status = response.status();
+                if status.is_success() {
+                    let body = response
+                        .text()
+                        .map_err(|e| format!("read manifest body: {e}"))?;
+                    return serde_json::from_str(&body)
+                        .map_err(|e| format!("parse manifest: {e}"));
+                }
+                if !status.is_server_error() || attempt == ATTEMPTS {
+                    return Err(format!(
+                        "fetch manifest failed: HTTP {status} ({manifest_url})"
+                    ));
+                }
+                last_err = format!("HTTP {status} ({manifest_url})");
+            }
+            Err(e) => {
+                last_err = format!("fetch manifest: {e}");
+                if attempt == ATTEMPTS {
+                    return Err(last_err);
+                }
+            }
+        }
+        thread::sleep(Duration::from_millis(
+            BASE_BACKOFF_MS * (1u64 << (attempt - 1)),
         ));
     }
-    let body = response
-        .text()
-        .map_err(|e| format!("read manifest body: {e}"))?;
-    serde_json::from_str(&body).map_err(|e| format!("parse manifest: {e}"))
+    Err(last_err)
 }
 
 pub fn fetch_latest_version(selection: &EnvSelection) -> Result<String, String> {
