@@ -1,4 +1,5 @@
 mod cli;
+mod env;
 mod init;
 mod storage;
 mod update;

@@ -1,60 +1,79 @@
 use std::path::{Path, PathBuf};
 
-pub const DEFAULT_STORAGE_NAMESPACE: &str = "diligent";
-pub const PACKAGED_STORAGE_NAMESPACE: &str = "overdare";
+use crate::env::Env;
 
-pub fn storage_namespace() -> &'static str {
-    match option_env!("DILIGENT_STORAGE_NAMESPACE") {
-        Some(value) if !value.trim().is_empty() => value,
-        _ => PACKAGED_STORAGE_NAMESPACE,
+pub const DEFAULT_STORAGE_NAMESPACE: &str = "diligent";
+pub const PACKAGED_STORAGE_NAMESPACE_PROD: &str = "overdare";
+pub const PACKAGED_STORAGE_NAMESPACE_DEV: &str = "overdare-dev";
+
+pub fn storage_namespace(env: Env) -> &'static str {
+    if let Some(value) = option_env!("DILIGENT_STORAGE_NAMESPACE") {
+        if !value.trim().is_empty() {
+            return value;
+        }
+    }
+    match env {
+        Env::Prod => PACKAGED_STORAGE_NAMESPACE_PROD,
+        Env::Dev => PACKAGED_STORAGE_NAMESPACE_DEV,
     }
 }
 
-pub fn hidden_dir_name() -> String {
-    format!(".{}", storage_namespace())
+pub fn hidden_dir_name(env: Env) -> String {
+    format!(".{}", storage_namespace(env))
 }
 
 pub fn legacy_hidden_dir_name() -> String {
     format!(".{}", DEFAULT_STORAGE_NAMESPACE)
 }
 
-pub fn global_storage_dir() -> Option<PathBuf> {
+fn home_dir() -> Option<PathBuf> {
     #[cfg(windows)]
     let home = std::env::var_os("USERPROFILE").map(PathBuf::from);
     #[cfg(not(windows))]
     let home = std::env::var_os("HOME").map(PathBuf::from);
+    home
+}
 
-    home.map(|h| h.join(hidden_dir_name()))
+pub fn global_storage_dir(env: Env) -> Option<PathBuf> {
+    home_dir().map(|h| h.join(hidden_dir_name(env)))
 }
 
 pub fn global_legacy_storage_dir() -> Option<PathBuf> {
-    #[cfg(windows)]
-    let home = std::env::var_os("USERPROFILE").map(PathBuf::from);
-    #[cfg(not(windows))]
-    let home = std::env::var_os("HOME").map(PathBuf::from);
-
-    home.map(|h| h.join(legacy_hidden_dir_name()))
+    home_dir().map(|h| h.join(legacy_hidden_dir_name()))
 }
 
-pub fn local_storage_dir(cwd: &str) -> PathBuf {
-    PathBuf::from(cwd).join(hidden_dir_name())
+pub fn local_storage_dir(cwd: &str, env: Env) -> PathBuf {
+    PathBuf::from(cwd).join(hidden_dir_name(env))
 }
 
 pub fn local_legacy_storage_dir(cwd: &str) -> PathBuf {
     PathBuf::from(cwd).join(legacy_hidden_dir_name())
 }
 
-pub fn migrate_global_namespace_if_needed() -> Result<MigrationOutcome, String> {
+pub fn migrate_global_namespace_if_needed(env: Env) -> Result<MigrationOutcome, String> {
+    if !env_uses_legacy_migration(env) {
+        return Ok(MigrationOutcome::SkippedNoLegacy);
+    }
     let legacy =
         global_legacy_storage_dir().ok_or("Cannot determine home directory for migration")?;
-    let target = global_storage_dir().ok_or("Cannot determine home directory for migration")?;
+    let target = global_storage_dir(env).ok_or("Cannot determine home directory for migration")?;
     migrate_namespace_if_needed(&legacy, &target)
 }
 
-pub fn migrate_local_namespace_if_needed(cwd: &str) -> Result<MigrationOutcome, String> {
+pub fn migrate_local_namespace_if_needed(
+    cwd: &str,
+    env: Env,
+) -> Result<MigrationOutcome, String> {
+    if !env_uses_legacy_migration(env) {
+        return Ok(MigrationOutcome::SkippedNoLegacy);
+    }
     let legacy = local_legacy_storage_dir(cwd);
-    let target = local_storage_dir(cwd);
+    let target = local_storage_dir(cwd, env);
     migrate_namespace_if_needed(&legacy, &target)
+}
+
+fn env_uses_legacy_migration(env: Env) -> bool {
+    matches!(env, Env::Prod)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -92,8 +111,9 @@ pub fn migrate_namespace_if_needed(
 mod tests {
     use super::{
         hidden_dir_name, legacy_hidden_dir_name, migrate_namespace_if_needed, storage_namespace,
-        MigrationOutcome, PACKAGED_STORAGE_NAMESPACE,
+        MigrationOutcome, PACKAGED_STORAGE_NAMESPACE_DEV, PACKAGED_STORAGE_NAMESPACE_PROD,
     };
+    use crate::env::Env;
     use std::fs;
     use std::path::PathBuf;
 
@@ -107,10 +127,16 @@ mod tests {
     }
 
     #[test]
-    fn packaged_namespace_defaults_to_overdare() {
-        assert_eq!(storage_namespace(), PACKAGED_STORAGE_NAMESPACE);
-        assert_eq!(hidden_dir_name(), ".overdare");
+    fn prod_namespace_defaults_to_overdare() {
+        assert_eq!(storage_namespace(Env::Prod), PACKAGED_STORAGE_NAMESPACE_PROD);
+        assert_eq!(hidden_dir_name(Env::Prod), ".overdare");
         assert_eq!(legacy_hidden_dir_name(), ".diligent");
+    }
+
+    #[test]
+    fn dev_namespace_defaults_to_overdare_dev() {
+        assert_eq!(storage_namespace(Env::Dev), PACKAGED_STORAGE_NAMESPACE_DEV);
+        assert_eq!(hidden_dir_name(Env::Dev), ".overdare-dev");
     }
 
     #[test]

@@ -7,6 +7,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+use crate::env::{manifest_url_for, Env, EnvSelection};
 use crate::storage::global_storage_dir;
 
 const BUNDLED_RUNTIME_VERSION: &str = match option_env!("DILIGENT_RUNTIME_VERSION") {
@@ -14,12 +15,11 @@ const BUNDLED_RUNTIME_VERSION: &str = match option_env!("DILIGENT_RUNTIME_VERSIO
     None => "0.0.0-dev",
 };
 
-const DEFAULT_UPDATE_MANIFEST_URL: &str =
-    "https://github.com/overdare/diligent/releases/latest/download/update-manifest.json";
-
 #[derive(Debug, Deserialize, Serialize)]
 struct UpdateManifest {
     version: String,
+    #[serde(default)]
+    env: Option<String>,
     #[serde(default)]
     platforms: std::collections::HashMap<String, PlatformBundle>,
 }
@@ -58,12 +58,12 @@ struct FetchedUpdate {
     bytes: Vec<u8>,
 }
 
-fn updates_dir() -> Option<PathBuf> {
-    global_storage_dir().map(|g| g.join("updates"))
+fn updates_dir(env: Env) -> Option<PathBuf> {
+    global_storage_dir(env).map(|g| g.join("updates"))
 }
 
-fn runtime_dir() -> Option<PathBuf> {
-    updates_dir().map(|u| u.join("runtime"))
+fn runtime_dir(env: Env) -> Option<PathBuf> {
+    updates_dir(env).map(|u| u.join("runtime"))
 }
 
 fn current_platform() -> &'static str {
@@ -108,8 +108,8 @@ fn strip_jsonc_line_comment(line: &str) -> &str {
     line
 }
 
-fn read_user_config_json() -> Option<serde_json::Value> {
-    let path = global_storage_dir()?.join("config.jsonc");
+fn read_user_config_json(env: Env) -> Option<serde_json::Value> {
+    let path = global_storage_dir(env)?.join("config.jsonc");
     let content = fs::read_to_string(&path).ok()?;
     let stripped: String = content
         .lines()
@@ -119,8 +119,8 @@ fn read_user_config_json() -> Option<serde_json::Value> {
     serde_json::from_str::<serde_json::Value>(&stripped).ok()
 }
 
-fn is_update_disabled() -> bool {
-    read_user_config_json()
+fn is_update_disabled(env: Env) -> bool {
+    read_user_config_json(env)
         .and_then(|val| {
             val.get("updateMode")
                 .and_then(|v| v.as_str())
@@ -129,21 +129,23 @@ fn is_update_disabled() -> bool {
         .unwrap_or(false)
 }
 
-fn resolve_manifest_url() -> String {
+fn resolve_manifest_url(selection: &EnvSelection) -> String {
     if let Ok(url) = std::env::var("DILIGENT_UPDATE_URL") {
         let trimmed = url.trim();
         if !trimmed.is_empty() {
             return trimmed.to_string();
         }
     }
-    match option_env!("DILIGENT_UPDATE_URL") {
-        Some(url) if !url.is_empty() => url.to_string(),
-        _ => DEFAULT_UPDATE_MANIFEST_URL.to_string(),
+    if let Some(url) = option_env!("DILIGENT_UPDATE_URL") {
+        if !url.is_empty() {
+            return url.to_string();
+        }
     }
+    manifest_url_for(selection)
 }
 
-fn runtime_bootstrap_required() -> bool {
-    let runtime = match runtime_dir() {
+fn runtime_bootstrap_required(env: Env) -> bool {
+    let runtime = match runtime_dir(env) {
         Some(path) => path,
         None => return true,
     };
@@ -205,19 +207,58 @@ where
     Err(format!("{label}: unexpected retry state"))
 }
 
-pub fn installed_version() -> Option<InstalledVersion> {
-    let path = updates_dir()?.join("runtime/version.json");
+pub fn installed_version(env: Env) -> Option<InstalledVersion> {
+    let path = updates_dir(env)?.join("runtime/version.json");
     let content = fs::read_to_string(&path).ok()?;
     serde_json::from_str(&content).ok()
 }
 
-pub fn runtime_installed() -> bool {
-    !runtime_bootstrap_required()
+pub fn runtime_installed(env: Env) -> bool {
+    !runtime_bootstrap_required(env)
 }
 
 fn report_progress(progress: &mut Option<&mut dyn FnMut(UpdateProgress)>, event: UpdateProgress) {
     if let Some(callback) = progress.as_deref_mut() {
         callback(event);
+    }
+}
+
+fn validate_manifest_env(manifest: &UpdateManifest, requested: Env) -> Result<(), String> {
+    match manifest.env.as_deref() {
+        None => match requested {
+            Env::Prod => Ok(()),
+            Env::Dev => Err(
+                "Manifest is missing 'env' field; refusing to install on dev env (no legacy dev releases exist)."
+                    .to_string(),
+            ),
+        },
+        Some(declared) => {
+            if declared == requested.as_str() {
+                Ok(())
+            } else {
+                Err(format!(
+                    "Manifest declares env='{declared}' but agent requested env='{}'. Check --env or DILIGENT_UPDATE_URL.",
+                    requested.as_str()
+                ))
+            }
+        }
+    }
+}
+
+fn validate_pinned_version(
+    manifest: &UpdateManifest,
+    selection: &EnvSelection,
+) -> Result<(), String> {
+    let Some(pin) = selection.pinned_version.as_deref() else {
+        return Ok(());
+    };
+    if manifest.version == pin {
+        Ok(())
+    } else {
+        Err(format!(
+            "Pinned version '{pin}' but manifest at the pinned URL declares version '{}'. The release may have been retagged or the URL is wrong.",
+            manifest.version
+        ))
     }
 }
 
@@ -244,24 +285,29 @@ fn fetch_manifest(manifest_url: &str) -> Result<UpdateManifest, String> {
     serde_json::from_str(&body).map_err(|e| format!("parse manifest: {e}"))
 }
 
-pub fn fetch_latest_version() -> Result<String, String> {
-    let manifest = fetch_manifest(&resolve_manifest_url())?;
+pub fn fetch_latest_version(selection: &EnvSelection) -> Result<String, String> {
+    let manifest = fetch_manifest(&resolve_manifest_url(selection))?;
+    validate_manifest_env(&manifest, selection.env)?;
+    validate_pinned_version(&manifest, selection)?;
     Ok(manifest.version)
 }
 
-pub fn init_status() -> Result<(Option<String>, String), String> {
-    let current = installed_version().map(|item| item.version);
-    let latest = fetch_latest_version()?;
+pub fn init_status(selection: &EnvSelection) -> Result<(Option<String>, String), String> {
+    let current = installed_version(selection.env).map(|item| item.version);
+    let latest = fetch_latest_version(selection)?;
     Ok((current, latest))
 }
 
 fn fetch_update(
+    selection: &EnvSelection,
     manifest_url: &str,
     effective_version: String,
     bootstrap_required: bool,
     progress: &mut Option<&mut dyn FnMut(UpdateProgress)>,
 ) -> Result<Option<FetchedUpdate>, String> {
     let manifest = fetch_manifest(manifest_url)?;
+    validate_manifest_env(&manifest, selection.env)?;
+    validate_pinned_version(&manifest, selection)?;
     if !should_download_update(&manifest.version, &effective_version, bootstrap_required) {
         report_progress(progress, UpdateProgress::UpToDate);
         return Ok(None);
@@ -352,7 +398,18 @@ fn extract_zip(zip_path: &Path, out_dir: &Path) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::strip_jsonc_line_comment;
+    use super::{
+        strip_jsonc_line_comment, validate_manifest_env, validate_pinned_version, UpdateManifest,
+    };
+    use crate::env::{Env, EnvSelection};
+
+    fn manifest_with_env(version: &str, env_field: Option<&str>) -> UpdateManifest {
+        UpdateManifest {
+            version: version.to_string(),
+            env: env_field.map(|s| s.to_string()),
+            platforms: Default::default(),
+        }
+    }
 
     #[test]
     fn strip_jsonc_preserves_url_content() {
@@ -362,19 +419,69 @@ mod tests {
             r#"{ "url": "https://example.com" } "#
         );
     }
+
+    #[test]
+    fn manifest_env_missing_allowed_for_prod() {
+        let m = manifest_with_env("1.0.0", None);
+        assert!(validate_manifest_env(&m, Env::Prod).is_ok());
+    }
+
+    #[test]
+    fn manifest_env_missing_rejected_for_dev() {
+        let m = manifest_with_env("1.0.0", None);
+        let err = validate_manifest_env(&m, Env::Dev).unwrap_err();
+        assert!(err.contains("dev"));
+    }
+
+    #[test]
+    fn manifest_env_match_ok() {
+        let m = manifest_with_env("1.0.0", Some("dev"));
+        assert!(validate_manifest_env(&m, Env::Dev).is_ok());
+    }
+
+    #[test]
+    fn manifest_env_mismatch_rejected() {
+        let m = manifest_with_env("1.0.0", Some("dev"));
+        let err = validate_manifest_env(&m, Env::Prod).unwrap_err();
+        assert!(err.contains("env="));
+    }
+
+    #[test]
+    fn pinned_version_match_ok() {
+        let m = manifest_with_env("1.2.3", Some("prod"));
+        let sel = EnvSelection::parse("prod@1.2.3").unwrap();
+        assert!(validate_pinned_version(&m, &sel).is_ok());
+    }
+
+    #[test]
+    fn pinned_version_mismatch_rejected() {
+        let m = manifest_with_env("1.2.4", Some("prod"));
+        let sel = EnvSelection::parse("prod@1.2.3").unwrap();
+        let err = validate_pinned_version(&m, &sel).unwrap_err();
+        assert!(err.contains("1.2.3"));
+        assert!(err.contains("1.2.4"));
+    }
+
+    #[test]
+    fn pinned_validation_noop_when_no_pin() {
+        let m = manifest_with_env("9.9.9", Some("prod"));
+        let sel = EnvSelection::latest(Env::Prod);
+        assert!(validate_pinned_version(&m, &sel).is_ok());
+    }
 }
 
 pub fn run_with_progress(
     log: &mut String,
     mut progress: Option<&mut dyn FnMut(UpdateProgress)>,
+    selection: &EnvSelection,
 ) -> Result<bool, String> {
-    if is_update_disabled() {
+    if is_update_disabled(selection.env) {
         let _ = writeln!(log, "[update] auto-update disabled via config");
         report_progress(&mut progress, UpdateProgress::Disabled);
         return Ok(false);
     }
 
-    let bootstrap_required = runtime_bootstrap_required();
+    let bootstrap_required = runtime_bootstrap_required(selection.env);
     if bootstrap_required {
         let _ = writeln!(
             log,
@@ -383,8 +490,8 @@ pub fn run_with_progress(
         report_progress(&mut progress, UpdateProgress::BootstrapRequired);
     }
 
-    let manifest_url = resolve_manifest_url();
-    let effective_version = installed_version()
+    let manifest_url = resolve_manifest_url(selection);
+    let effective_version = installed_version(selection.env)
         .map(|v| v.version)
         .unwrap_or_else(|| BUNDLED_RUNTIME_VERSION.to_string());
 
@@ -396,10 +503,12 @@ pub fn run_with_progress(
     );
     let _ = writeln!(
         log,
-        "[update] Checking for updates (current: v{effective_version})..."
+        "[update] Checking for updates (env={}, current: v{effective_version})...",
+        selection.env.as_str()
     );
 
     let fetched = match fetch_update(
+        selection,
         &manifest_url,
         effective_version.clone(),
         bootstrap_required,
@@ -413,7 +522,7 @@ pub fn run_with_progress(
         }
     };
 
-    let updates = updates_dir().ok_or("cannot resolve updates dir")?;
+    let updates = updates_dir(selection.env).ok_or("cannot resolve updates dir")?;
     fs::create_dir_all(&updates).map_err(|e| format!("create updates dir: {e}"))?;
     let zip_path = updates.join(format!(
         "runtime-bundle-{}-{}.zip",
@@ -472,7 +581,7 @@ pub fn run_with_progress(
     )
     .map_err(|e| format!("write staging version.json: {e}"))?;
 
-    let runtime = runtime_dir().ok_or("cannot resolve runtime dir")?;
+    let runtime = runtime_dir(selection.env).ok_or("cannot resolve runtime dir")?;
     if runtime.exists() {
         retry_fs_op("remove old runtime", || fs::remove_dir_all(&runtime))?;
     }
