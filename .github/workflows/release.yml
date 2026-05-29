@@ -7,6 +7,14 @@ on:
         description: "Release version (e.g. 1.0.0)"
         required: true
         type: string
+      env:
+        description: "Release env (prod or dev)"
+        required: true
+        type: choice
+        options:
+          - prod
+          - dev
+        default: prod
 
 jobs:
   prepare:
@@ -16,24 +24,37 @@ jobs:
       contents: write
     outputs:
       version: ${{ steps.resolve.outputs.version }}
+      env: ${{ steps.resolve.outputs.env }}
       tag: ${{ steps.resolve.outputs.tag }}
       release_exists: ${{ steps.check_release.outputs.release_exists }}
 
     steps:
-      - name: Resolve version
+      - name: Resolve version and env
         id: resolve
         shell: bash
         run: |
-          RELEASE_VERSION="${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}"
+          RELEASE_VERSION="${{ inputs.version }}"
           VERSION="${RELEASE_VERSION#v}"
           if [ -z "$VERSION" ]; then
             echo "Failed to resolve version from RELEASE_VERSION=$RELEASE_VERSION" >&2
             exit 1
           fi
+          RELEASE_ENV="${{ inputs.env }}"
+          case "$RELEASE_ENV" in
+            prod|dev) ;;
+            *)
+              echo "Invalid env '$RELEASE_ENV' (expected prod or dev)" >&2
+              exit 1
+              ;;
+          esac
 
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Packaging version: $VERSION"
+          TAG="${RELEASE_ENV}-v${VERSION}"
+          {
+            echo "version=$VERSION"
+            echo "env=$RELEASE_ENV"
+            echo "tag=$TAG"
+          } >> "$GITHUB_OUTPUT"
+          echo "Packaging version: $VERSION (env=$RELEASE_ENV, tag=$TAG)"
 
       - name: Check existing GitHub Release
         id: check_release
@@ -59,6 +80,7 @@ jobs:
       contents: read
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
+      RELEASE_ENV: ${{ needs.prepare.outputs.env }}
 
     steps:
       - uses: actions/checkout@v4
@@ -72,19 +94,22 @@ jobs:
       - name: Build runtime bundle
         shell: bash
         run: |
-          bun run overdare-ai-agent:build-runtime-bundle -- --version "$VERSION" --platform windows-x64
+          bun run overdare-ai-agent:build-runtime-bundle -- \
+            --version "$VERSION" \
+            --platform windows-x64 \
+            --env "$RELEASE_ENV"
 
       - name: Upload runtime bundle artifact
         uses: actions/upload-artifact@v4
         with:
-          name: overdare-runtime-windows-x64-${{ env.VERSION }}
+          name: overdare-runtime-${{ env.RELEASE_ENV }}-windows-x64-${{ env.VERSION }}
           path: |
-            dist/overdare-ai-agent-runtime-${{ env.VERSION }}-windows-x64.zip
+            dist/overdare-ai-agent-runtime-${{ env.RELEASE_ENV }}-${{ env.VERSION }}-windows-x64.zip
 
   build-linux-cli-x64:
     name: Diligent Linux x64 CLI
     needs: prepare
-    if: ${{ needs.prepare.outputs.release_exists != 'true' }}
+    if: ${{ needs.prepare.outputs.release_exists != 'true' && needs.prepare.outputs.env == 'prod' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -104,7 +129,7 @@ jobs:
         shell: bash
         run: |
           bun run build:linux-x64
-          mv dist/diligent-linux-x64 dist/diligent-${VERSION}-linux-x64
+          mv dist/diligent-linux-x64 "dist/diligent-${VERSION}-linux-x64"
 
       - name: Upload Linux CLI artifact
         uses: actions/upload-artifact@v4
@@ -121,6 +146,7 @@ jobs:
       contents: read
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
+      RELEASE_ENV: ${{ needs.prepare.outputs.env }}
 
     steps:
       - uses: actions/checkout@v4
@@ -133,23 +159,34 @@ jobs:
         run: |
           cargo build --manifest-path apps/overdare-ai-agent/Cargo.toml --release
           mkdir -p dist
-          cp apps/overdare-ai-agent/target/release/overdare-ai-agent.exe dist/overdare-ai-agent-${VERSION}-windows-x64.exe
+          cp apps/overdare-ai-agent/target/release/overdare-ai-agent.exe \
+             "dist/overdare-ai-agent-${RELEASE_ENV}-${VERSION}-windows-x64.exe"
 
       - name: Upload OVERDARE CLI artifact
         uses: actions/upload-artifact@v4
         with:
-          name: overdare-ai-agent-windows-x64-${{ env.VERSION }}
-          path: dist/overdare-ai-agent-${{ env.VERSION }}-windows-x64.exe
+          name: overdare-ai-agent-${{ env.RELEASE_ENV }}-windows-x64-${{ env.VERSION }}
+          path: dist/overdare-ai-agent-${{ env.RELEASE_ENV }}-${{ env.VERSION }}-windows-x64.exe
 
   publish-release:
     name: Publish GitHub Release
-    needs: [prepare, build-overdare-runtime-bundle-windows-x64, build-linux-cli-x64, build-overdare-ai-agent-windows-x64]
-    if: ${{ needs.prepare.outputs.release_exists != 'true' }}
+    needs:
+      - prepare
+      - build-overdare-runtime-bundle-windows-x64
+      - build-linux-cli-x64
+      - build-overdare-ai-agent-windows-x64
+    if: |
+      always() &&
+      needs.prepare.outputs.release_exists != 'true' &&
+      needs.build-overdare-runtime-bundle-windows-x64.result == 'success' &&
+      needs.build-overdare-ai-agent-windows-x64.result == 'success' &&
+      (needs.build-linux-cli-x64.result == 'success' || needs.build-linux-cli-x64.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: write
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
+      RELEASE_ENV: ${{ needs.prepare.outputs.env }}
       TAG: ${{ needs.prepare.outputs.tag }}
       REPOSITORY: ${{ github.repository }}
 
@@ -159,10 +196,11 @@ jobs:
       - name: Download Windows runtime bundle artifact
         uses: actions/download-artifact@v4
         with:
-          name: overdare-runtime-windows-x64-${{ env.VERSION }}
+          name: overdare-runtime-${{ env.RELEASE_ENV }}-windows-x64-${{ env.VERSION }}
           path: release-artifacts/runtime-windows-x64
 
       - name: Download Linux x64 CLI artifact
+        if: ${{ env.RELEASE_ENV == 'prod' }}
         uses: actions/download-artifact@v4
         with:
           name: diligent-linux-x64-${{ env.VERSION }}
@@ -171,7 +209,7 @@ jobs:
       - name: Download OVERDARE CLI Windows x64 artifact
         uses: actions/download-artifact@v4
         with:
-          name: overdare-ai-agent-windows-x64-${{ env.VERSION }}
+          name: overdare-ai-agent-${{ env.RELEASE_ENV }}-windows-x64-${{ env.VERSION }}
           path: release-artifacts/overdare-ai-agent-windows-x64
 
       - name: Assemble release files
@@ -179,8 +217,10 @@ jobs:
         run: |
           mkdir -p dist
           cp -R release-artifacts/runtime-windows-x64/. dist/
-          cp -R release-artifacts/linux-x64/. dist/
           cp -R release-artifacts/overdare-ai-agent-windows-x64/. dist/
+          if [ "$RELEASE_ENV" = "prod" ]; then
+            cp -R release-artifacts/linux-x64/. dist/
+          fi
 
       - name: Generate merged metadata
         shell: bash
@@ -193,11 +233,14 @@ jobs:
           from pathlib import Path
 
           version = os.environ["VERSION"]
+          release_env = os.environ["RELEASE_ENV"]
+          tag = os.environ["TAG"]
           repository = os.environ["REPOSITORY"]
           dist = Path("dist")
-          runtime_bundle_windows = dist / f"overdare-ai-agent-runtime-{version}-windows-x64.zip"
+
+          runtime_bundle_windows = dist / f"overdare-ai-agent-runtime-{release_env}-{version}-windows-x64.zip"
+          overdare_cli_windows = dist / f"overdare-ai-agent-{release_env}-{version}-windows-x64.exe"
           linux_cli = dist / f"diligent-{version}-linux-x64"
-          overdare_cli_windows = dist / f"overdare-ai-agent-{version}-windows-x64.exe"
 
           def sha256(path: Path) -> str:
               h = hashlib.sha256()
@@ -206,56 +249,87 @@ jobs:
                       h.update(chunk)
               return h.hexdigest()
 
-          artifacts = {}
+          artifacts: dict[str, list[str]] = {}
           if runtime_bundle_windows.exists():
               artifacts["windows-x64-runtime"] = [runtime_bundle_windows.name]
+          if overdare_cli_windows.exists():
+              artifacts[f"overdare-ai-agent-{release_env}-windows-x64"] = [overdare_cli_windows.name]
           if linux_cli.exists():
               artifacts["linux-x64"] = [linux_cli.name]
-          if overdare_cli_windows.exists():
-              artifacts["overdare-ai-agent-windows-x64"] = [overdare_cli_windows.name]
 
           release_date = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-          platforms = {}
+          platforms: dict[str, dict] = {}
           if runtime_bundle_windows.exists():
               platforms["windows-x64"] = {
-                  "url": f"https://github.com/{repository}/releases/download/v{version}/{runtime_bundle_windows.name}",
+                  "url": f"https://github.com/{repository}/releases/download/{tag}/{runtime_bundle_windows.name}",
                   "sha256": sha256(runtime_bundle_windows),
                   "size": runtime_bundle_windows.stat().st_size,
               }
 
           manifest = {
               "version": version,
+              "env": release_env,
               "releaseDate": release_date,
               "platforms": platforms,
           }
-          (dist / "update-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+          manifest_path = dist / f"update-manifest-{release_env}.json"
+          manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
 
           git_commit = os.popen("git rev-parse --short HEAD").read().strip() or "unknown"
           release_meta = {
               "version": version,
+              "env": release_env,
+              "tag": tag,
               "buildDate": release_date,
               "gitCommit": git_commit,
               "platforms": list(artifacts.keys()),
               "artifacts": artifacts,
           }
-          (dist / "release-meta.json").write_text(json.dumps(release_meta, indent=2) + "\n")
+          (dist / f"release-meta-{release_env}.json").write_text(
+              json.dumps(release_meta, indent=2) + "\n"
+          )
 
+          excluded = {
+              f"checksums-{release_env}.sha256",
+              f"release-meta-{release_env}.json",
+              # legacy aliases — written later, must not feed back into checksums
+              "checksums.sha256",
+              "release-meta.json",
+              "update-manifest.json",
+          }
           checksum_files = sorted(
-              path for path in dist.iterdir() if path.is_file() and path.name not in {"checksums.sha256", "release-meta.json"}
+              path
+              for path in dist.iterdir()
+              if path.is_file() and path.name not in excluded
           )
           checksum_lines = [f"{sha256(path)}  {path.name}" for path in checksum_files]
-          (dist / "checksums.sha256").write_text("\n".join(checksum_lines) + "\n")
+          (dist / f"checksums-{release_env}.sha256").write_text("\n".join(checksum_lines) + "\n")
+
+          if release_env == "prod":
+              # Migration-window legacy aliases for old agents (pre-PR1) that fetch
+              # update-manifest.json / release-meta.json / checksums.sha256 without env suffix.
+              (dist / "update-manifest.json").write_bytes(manifest_path.read_bytes())
+              (dist / "release-meta.json").write_bytes(
+                  (dist / f"release-meta-{release_env}.json").read_bytes()
+              )
+              (dist / "checksums.sha256").write_bytes(
+                  (dist / f"checksums-{release_env}.sha256").read_bytes()
+              )
           PY
 
-      - name: Create GitHub Release
+      - name: Create GitHub Release (prod)
+        if: ${{ env.RELEASE_ENV == 'prod' }}
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           gh release create "$TAG" \
-            dist/overdare-ai-agent-runtime-"$VERSION"-windows-x64.zip \
+            dist/overdare-ai-agent-runtime-"$RELEASE_ENV"-"$VERSION"-windows-x64.zip \
+            dist/overdare-ai-agent-"$RELEASE_ENV"-"$VERSION"-windows-x64.exe \
             dist/diligent-"$VERSION"-linux-x64 \
-            dist/overdare-ai-agent-"$VERSION"-windows-x64.exe \
+            dist/update-manifest-"$RELEASE_ENV".json \
+            dist/release-meta-"$RELEASE_ENV".json \
+            dist/checksums-"$RELEASE_ENV".sha256 \
             dist/update-manifest.json \
             dist/release-meta.json \
             dist/checksums.sha256 \
@@ -263,11 +337,60 @@ jobs:
             --generate-notes \
             --draft
 
+      - name: Create GitHub Release (dev)
+        if: ${{ env.RELEASE_ENV == 'dev' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh release create "$TAG" \
+            dist/overdare-ai-agent-runtime-"$RELEASE_ENV"-"$VERSION"-windows-x64.zip \
+            dist/overdare-ai-agent-"$RELEASE_ENV"-"$VERSION"-windows-x64.exe \
+            dist/update-manifest-"$RELEASE_ENV".json \
+            dist/release-meta-"$RELEASE_ENV".json \
+            dist/checksums-"$RELEASE_ENV".sha256 \
+            --title "$TAG" \
+            --generate-notes \
+            --prerelease
+
+      - name: Refresh dev-latest rolling release
+        if: ${{ env.RELEASE_ENV == 'dev' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          # Delete the previous rolling release (and its tag) if present.
+          gh release delete dev-latest -y --cleanup-tag || true
+
+          gh release create dev-latest \
+            dist/overdare-ai-agent-runtime-"$RELEASE_ENV"-"$VERSION"-windows-x64.zip \
+            dist/overdare-ai-agent-"$RELEASE_ENV"-"$VERSION"-windows-x64.exe \
+            dist/update-manifest-"$RELEASE_ENV".json \
+            dist/release-meta-"$RELEASE_ENV".json \
+            dist/checksums-"$RELEASE_ENV".sha256 \
+            --title "dev-latest (pointer to $TAG)" \
+            --prerelease \
+            --notes "Rolling pointer to the latest dev release. Use $TAG for an immutable reference."
+
+      - name: Verify dev releases are marked as prerelease
+        if: ${{ env.RELEASE_ENV == 'dev' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          for r in "$TAG" dev-latest; do
+            is_pre=$(gh release view "$r" --json isPrerelease --jq '.isPrerelease')
+            if [ "$is_pre" != "true" ]; then
+              echo "Release '$r' is not marked as prerelease (got '$is_pre'). Aborting to avoid polluting prod 'latest'." >&2
+              exit 1
+            fi
+          done
+
       - name: Upload merged release metadata artifact
         uses: actions/upload-artifact@v4
         with:
-          name: overdare-release-metadata-${{ env.VERSION }}
+          name: overdare-release-metadata-${{ env.RELEASE_ENV }}-${{ env.VERSION }}
           path: |
-            dist/update-manifest.json
-            dist/release-meta.json
-            dist/checksums.sha256
+            dist/update-manifest-${{ env.RELEASE_ENV }}.json
+            dist/release-meta-${{ env.RELEASE_ENV }}.json
+            dist/checksums-${{ env.RELEASE_ENV }}.sha256
