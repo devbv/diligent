@@ -4,6 +4,9 @@ import type { z } from "zod";
 
 export type { ApprovalRequest, ApprovalResponse, UserInputRequest, UserInputResponse };
 
+export type { Env } from "./env";
+export { currentEnv } from "./env";
+
 export interface ToolRenderPayload {
   inputSummary?: string;
   outputSummary?: string;

@@ -136,16 +136,24 @@ Both envs can coexist on one machine. Switching envs in one terminal session doe
 
 ## Per-env environment isolation (`DILIGENT_ENV`)
 
-In addition to splitting storage and download paths, the runtime needs to know which env it is running as so it can route to the correct backing services (Supabase project, analytics destination, hub domain default, RAG index, log targets, etc.). The agent will forward `DILIGENT_ENV=prod|dev` to the runtime child process; the runtime resolves env-specific configuration from a bundled config layer.
+In addition to splitting storage and download paths, the agent forwards `DILIGENT_ENV=prod|dev` to the runtime child process so downstream code can react to the release channel.
 
-End state for the runtime:
+After surveying actual hardcoded backing-service URLs in the runtime and plugins, we deliberately narrowed PR3's scope:
 
-- A single bundled config file (e.g. `bootstrap/env-config.json`) maps each env to its backing service URLs and keys
-- Existing runtime code paths that hard-code a Supabase URL / analytics endpoint / hub domain default read from `getEnvConfig(currentEnv)` instead
-- Defaults preserved: when `DILIGENT_ENV` is missing (legacy launcher), runtime falls back to `prod` config
-- `--hub-domain` CLI arg still wins over the env-default hub domain (current behavior preserved)
+- The analytics destination (`bubo`) is **data-plane**: it should follow the hub the user is connected to (`HUB_DOMAIN`), not the agent binary's release channel. A prod-channel agent connected to a QA hub must still report to the QA analytics ingest. The existing `HUB_DOMAIN`-based routing in `plugin-analytics` is kept as-is.
+- The RAG search endpoint (`aiguide.overdare.com`) is a single deployment-agnostic service; there is no dev RAG to route to.
+- Hub domain defaults are intentionally explicit (`--hub-domain` CLI arg); no env-derived default is desirable.
 
-What is **not** in scope for P067: actually provisioning a separate dev Supabase project / dev analytics ingestion endpoint. P067 wires the *plumbing* so those values are env-resolvable; populating them is operational work tracked separately.
+That leaves no concrete backing service that the runtime should re-route based on `DILIGENT_ENV` today.
+
+End state for the runtime in this plan:
+
+- `packages/plugin-sdk` exposes a single `currentEnv()` helper that reads `DILIGENT_ENV` and returns `"prod"` / `"dev"`, defaulting to `"prod"` when the variable is missing (legacy launcher) or unrecognized. This is the plumbing that future env-conditional behavior should key off of.
+- No existing call site is migrated in PR3. The helper is purely available for future use — e.g. dev-only diagnostics, pre-release telemetry flags, or future feature gates that genuinely scale with the build channel.
+
+A bundled `env-config.json` file and `getEnvConfig()` loader were considered and dropped: with no current consumer, the JSON file would carry only placeholder values and the loader would add disk I/O on every plugin boot for no benefit. If a real env-keyed config dataset emerges later, the helper can grow into one.
+
+What is **not** in scope for P067: actually provisioning a separate dev Supabase project / dev analytics ingestion endpoint, or building the env-config.json + loader pair. Those become operational work tracked separately and can plug into `currentEnv()` when their values are real.
 
 ## Scope
 
@@ -158,9 +166,11 @@ What is **not** in scope for P067: actually provisioning a separate dev Supabase
 | `apps/overdare-ai-agent/src/storage.rs` | `storage_namespace(env)` returns `"overdare"` for prod, `"overdare-dev"` for dev; `option_env!("DILIGENT_STORAGE_NAMESPACE")` override retained for non-env special builds |
 | `apps/overdare-ai-agent/src/webserver.rs` | Carry env through `WebServerOptions`; forward `DILIGENT_STORAGE_NAMESPACE` and `DILIGENT_ENV` to child runtime |
 | `apps/overdare-ai-agent/src/init.rs` | Use env-aware global storage dir for bootstrap deployment |
-| `apps/overdare-ai-agent/bootstrap/env-config.json` (NEW) | Bundle env→service map (Supabase project ref, analytics endpoint, hub domain default, log target) |
-| `packages/runtime/src/config/env.ts` (NEW or extended) | Load bundled env-config, resolve current env via `DILIGENT_ENV`, default to `prod` when missing |
-| Runtime call sites that currently hard-code Supabase / analytics / hub URLs | Replace literals with `getEnvConfig(currentEnv).<field>` |
+| `packages/plugin-sdk/src/env.ts` (NEW) | `currentEnv()` helper that reads `DILIGENT_ENV`, defaults to `prod` when missing or unrecognized |
+| `packages/plugin-sdk/src/index.ts` | Re-export `currentEnv` and the `Env` type for plugin consumers |
+| `packages/plugin-sdk/test/env.test.ts` (NEW) | Cover default-prod, dev, trimming, case, unrecognized, empty/whitespace inputs |
+| ~~`apps/overdare-ai-agent/bootstrap/env-config.json`~~ | Dropped from PR3 — no concrete consumer; revisit when a real env-keyed dataset appears |
+| ~~Runtime call sites that currently hard-code service URLs~~ | Not migrated. Analytics intentionally follows `HUB_DOMAIN` (data plane); RAG has no dev endpoint |
 | `scripts/build-overdare-runtime-bundle.ts` | New required arg `--env=<env>`; output filename uses env-prefixed pattern; bundle content unchanged across envs |
 | `.github/workflows/release.yml` | Add `inputs.env: { type: choice, options: [prod, dev] }`; build with env-prefixed filenames; tag as `{env}-v{version}`; `--prerelease` for dev; rolling `dev-latest` release maintenance; legacy alias upload for prod migration window |
 | `apps/overdare-ai-agent/README.md` | Document `--env`, pinning syntax, storage paths, dev/prod coexistence |
@@ -264,12 +274,13 @@ What is **not** in scope for P067: actually provisioning a separate dev Supabase
 - Prod releases also upload legacy alias filenames during migration window
 - Verify-prerelease guard step
 
-### PR3 — runtime: env config plumbing
+### PR3 — runtime: minimal env helper
 
-- `packages/runtime/src/config/env.ts` and `bootstrap/env-config.json`
-- Replace hard-coded Supabase / analytics / hub URLs with `getEnvConfig` lookups
-- Default-to-prod fallback when `DILIGENT_ENV` missing
-- Runtime unit tests
+- `packages/plugin-sdk/src/env.ts` with `currentEnv()` only
+- Re-export from plugin-sdk's `index.ts`
+- Default-to-prod fallback when `DILIGENT_ENV` missing or unrecognized
+- Plugin-sdk unit tests
+- **Intentionally** does not migrate any call site. Bubo analytics stays `HUB_DOMAIN`-driven (data plane), RAG stays single-URL. Future env-keyed values plug into `currentEnv()` when they exist.
 
 ### PR4 — cleanup (after one or two release cycles)
 
