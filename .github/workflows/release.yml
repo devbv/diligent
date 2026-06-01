@@ -341,6 +341,7 @@ jobs:
             dist/release-meta.json \
             dist/checksums.sha256 \
             --title "$TAG" \
+            --target "$GITHUB_SHA" \
             --generate-notes \
             --draft
 
@@ -357,6 +358,7 @@ jobs:
             dist/release-meta-"$RELEASE_ENV".json \
             dist/checksums-"$RELEASE_ENV".sha256 \
             --title "$TAG" \
+            --target "$GITHUB_SHA" \
             --generate-notes \
             --prerelease
 
@@ -366,8 +368,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          # Delete the previous rolling release (and its tag) if present.
-          gh release delete dev-latest -y --cleanup-tag || true
+          # Atomically replace the rolling pointer. The previous `|| true` was
+          # masking real failures (auth blips, tag-cleanup races) and could
+          # leave the rolling tag stuck on the previous version.
+          if gh release view dev-latest --json id >/dev/null 2>&1; then
+            if ! gh release delete dev-latest -y --cleanup-tag; then
+              echo "Failed to delete the previous dev-latest release; investigate before retrying — leaving the rolling tag untouched is safer than overwriting it half-deleted." >&2
+              exit 1
+            fi
+          else
+            echo "No existing dev-latest release; creating fresh."
+          fi
 
           gh release create dev-latest \
             dist/overdare-ai-agent-runtime-"$RELEASE_ENV"-"$VERSION"-windows-x64.zip \
@@ -376,6 +387,7 @@ jobs:
             dist/release-meta-"$RELEASE_ENV".json \
             dist/checksums-"$RELEASE_ENV".sha256 \
             --title "dev-latest (pointer to $TAG)" \
+            --target "$GITHUB_SHA" \
             --prerelease \
             --notes "Rolling pointer to the latest dev release. Use $TAG for an immutable reference."
 
@@ -393,17 +405,24 @@ jobs:
             fi
           done
 
-      - name: Verify prod release is not marked as prerelease
+      - name: Verify prod release state and announce manual publish
         if: ${{ env.RELEASE_ENV == 'prod' }}
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          is_pre=$(gh release view "$TAG" --json isPrerelease --jq '.isPrerelease')
+          state=$(gh release view "$TAG" --json isPrerelease,isDraft --jq '{p: .isPrerelease, d: .isDraft}')
+          is_pre=$(echo "$state" | jq -r '.p')
+          is_draft=$(echo "$state" | jq -r '.d')
           if [ "$is_pre" != "false" ]; then
             echo "Release '$TAG' is unexpectedly marked as prerelease (got '$is_pre'). prod releases must not be prerelease — GitHub's 'latest' redirect would skip this release." >&2
             exit 1
           fi
+          if [ "$is_draft" != "true" ]; then
+            echo "Release '$TAG' is no longer in draft state (got isDraft='$is_draft'). prod releases must stay in draft until a human reviews and publishes — otherwise the change ships without manual approval." >&2
+            exit 1
+          fi
+          echo "::warning title=Manual publish required::Prod release '$TAG' is published as a DRAFT. Manually publish it via the GitHub Releases UI to make it available at /releases/latest/. Until then, prod-latest agents continue to fetch the previously published release."
 
       - name: Upload merged release metadata artifact
         uses: actions/upload-artifact@v4

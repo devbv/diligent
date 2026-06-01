@@ -356,32 +356,8 @@ mod tests {
     use super::{parse_args, resolve_installed_runtime_version};
     use crate::env::Env;
     use crate::storage::storage_namespace;
+    use crate::testutil::with_temp_home;
     use std::fs;
-
-    fn with_temp_home<T>(test: T)
-    where
-        T: FnOnce(),
-    {
-        let temp_root = std::env::temp_dir().join(format!(
-            "overdare-ai-agent-webserver-test-{}-{}",
-            std::process::id(),
-            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
-        ));
-        fs::create_dir_all(&temp_root).expect("create temp root");
-
-        let previous_home = std::env::var_os("HOME");
-        std::env::set_var("HOME", &temp_root);
-
-        test();
-
-        if let Some(home) = previous_home {
-            std::env::set_var("HOME", home);
-        } else {
-            std::env::remove_var("HOME");
-        }
-
-        let _ = fs::remove_dir_all(temp_root);
-    }
 
     #[test]
     fn parse_args_reads_cwd_and_userid() {
@@ -429,11 +405,8 @@ mod tests {
 
     #[test]
     fn resolve_installed_runtime_version_reads_version_json() {
-        with_temp_home(|| {
-            let runtime_dir = std::env::var_os("HOME")
-                .map(std::path::PathBuf::from)
-                .expect("home path")
-                .join(".overdare/updates/runtime");
+        with_temp_home("webserver-installed-version", |home| {
+            let runtime_dir = home.join(".overdare/updates/runtime");
             fs::create_dir_all(&runtime_dir).expect("create runtime dir");
             fs::write(
                 runtime_dir.join("version.json"),

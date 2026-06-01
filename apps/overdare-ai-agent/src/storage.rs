@@ -7,13 +7,20 @@ pub const PACKAGED_STORAGE_NAMESPACE_PROD: &str = "overdare";
 pub const PACKAGED_STORAGE_NAMESPACE_DEV: &str = "overdare-dev";
 
 pub fn storage_namespace(env: Env) -> &'static str {
-    if let Some(value) = option_env!("DILIGENT_STORAGE_NAMESPACE") {
-        if !value.trim().is_empty() {
-            return value;
-        }
-    }
     match env {
-        Env::Prod => PACKAGED_STORAGE_NAMESPACE_PROD,
+        // Legacy P060 escape-hatch: a packaged single-env build can override the
+        // prod namespace at compile time. Dev intentionally never honors this
+        // override — P067's prod/dev isolation must hold for any packaging that
+        // is sensitive to env selection. A build that wants to relocate the dev
+        // namespace should fork PACKAGED_STORAGE_NAMESPACE_DEV instead.
+        Env::Prod => {
+            if let Some(value) = option_env!("DILIGENT_STORAGE_NAMESPACE") {
+                if !value.trim().is_empty() {
+                    return value;
+                }
+            }
+            PACKAGED_STORAGE_NAMESPACE_PROD
+        }
         Env::Dev => PACKAGED_STORAGE_NAMESPACE_DEV,
     }
 }
@@ -149,6 +156,18 @@ mod tests {
     fn dev_namespace_defaults_to_overdare_dev() {
         assert_eq!(storage_namespace(Env::Dev), PACKAGED_STORAGE_NAMESPACE_DEV);
         assert_eq!(hidden_dir_name(Env::Dev), ".overdare-dev");
+    }
+
+    #[test]
+    fn dev_namespace_is_never_static_overdare() {
+        // Guards the env-isolation contract: even a build packaged with a
+        // legacy `DILIGENT_STORAGE_NAMESPACE` override must not collapse dev
+        // onto the prod root. (The override is intentionally prod-only.)
+        assert_ne!(
+            storage_namespace(Env::Dev),
+            PACKAGED_STORAGE_NAMESPACE_PROD,
+            "dev namespace must not equal the prod namespace"
+        );
     }
 
     #[test]

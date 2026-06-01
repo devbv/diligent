@@ -5,6 +5,9 @@ mod storage;
 mod update;
 mod webserver;
 
+#[cfg(test)]
+mod testutil;
+
 fn main() {
     if let Err(message) = cli::run() {
         eprintln!("{message}");
