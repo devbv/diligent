@@ -73,14 +73,10 @@ function ensureWebClientBuilt(): void {
 }
 
 function buildSidecar(platform: PlatformConfig): string {
-  run(["bun", "run", "scripts/build-overdare-sidecar.ts"], ROOT);
-  const source = resolve(DIAGNOSTICS_DIR, `diligent-web-server${process.platform === "win32" ? ".exe" : ""}`);
-  if (!existsSync(source)) {
-    throw new Error(`Built sidecar not found: ${source}`);
-  }
   const target = resolve(DIAGNOSTICS_DIR, `diligent-web-server-${platform.id}${platform.ext}`);
-  if (source !== target) {
-    cpSync(source, target);
+  run(["bun", "run", "scripts/build-overdare-sidecar.ts", `--platform=${platform.id}`, `--outfile=${target}`], ROOT);
+  if (!existsSync(target)) {
+    throw new Error(`Built sidecar not found: ${target}`);
   }
   return target;
 }
