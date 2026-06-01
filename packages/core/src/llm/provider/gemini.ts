@@ -215,6 +215,14 @@ export async function convertToGeminiContents(messages: Message[], cwd?: string)
         role: "user",
         parts: [{ functionResponse: { name: msg.toolName, response: { output: msg.output } } }],
       });
+      // functionResponse cannot carry image bytes; attach any image content
+      // as a follow-up user turn so the model can see it.
+      if (msg.outputImages && msg.outputImages.length > 0) {
+        const imageParts: Part[] = msg.outputImages.map((img) => ({
+          inlineData: { mimeType: img.source.media_type, data: img.source.data },
+        }));
+        result.push({ role: "user", parts: imageParts });
+      }
     }
   }
 

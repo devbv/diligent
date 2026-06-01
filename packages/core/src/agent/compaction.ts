@@ -95,13 +95,30 @@ function truncateUserMessage(msg: Message, maxTokens: number): Message {
 }
 
 /**
+ * Strip outputImages from tool_result messages before they are sent to the
+ * summarizer. The summary itself is text, so re-uploading multi-MB base64
+ * images for summarization wastes tokens and yields no benefit; we replace
+ * them with a textual marker so the model still knows an image was loaded.
+ */
+function stripOutputImagesForSummarization(messages: Message[]): Message[] {
+  return messages.map((msg) => {
+    if (msg.role !== "tool_result") return msg;
+    if (!msg.outputImages || msg.outputImages.length === 0) return msg;
+    const count = msg.outputImages.length;
+    const marker = `\n[${count} image${count > 1 ? "s" : ""} omitted from compaction]`;
+    const { outputImages: _omit, ...rest } = msg;
+    return { ...rest, output: msg.output + marker };
+  });
+}
+
+/**
  * Select messages to summarize and recent user messages to retain.
  */
 export function selectForCompaction(
   messages: Message[],
   keepRecentTokens: number,
 ): { messagesToSummarize: Message[]; recentUserMessages: Message[] } {
-  const messagesToSummarize = [...messages];
+  const messagesToSummarize = stripOutputImagesForSummarization(messages);
   const userMessages = messages.filter((msg) => msg.role === "user");
 
   // Walk backwards within token budget

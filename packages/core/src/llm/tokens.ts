@@ -19,6 +19,9 @@ export function estimateTokens(messages: Message[]): number {
       }
     } else if (msg.role === "tool_result") {
       chars += msg.output.length;
+      for (const img of msg.outputImages ?? []) {
+        chars += img.source.data.length;
+      }
     }
   }
   return Math.ceil(chars / 4);

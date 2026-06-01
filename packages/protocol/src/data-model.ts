@@ -290,6 +290,7 @@ export const ThreadItemSchema = z.union([
     startedAt: z.number().int().optional(),
     durationMs: z.number().int().nonnegative().optional(),
     output: z.string().optional(),
+    outputImages: z.array(ImageBlockSchema).optional(),
     isError: z.boolean().optional(),
     render: ToolRenderPayloadSchema.optional(),
   }),

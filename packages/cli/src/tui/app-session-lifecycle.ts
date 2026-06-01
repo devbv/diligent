@@ -217,6 +217,7 @@ export class AppSessionLifecycle {
           toolCallId: item.toolCallId,
           toolName: item.toolName,
           output: item.output,
+          ...(item.outputImages ? { outputImages: item.outputImages } : {}),
           isError: item.isError ?? false,
           timestamp:
             typeof item.startedAt === "number" && typeof item.durationMs === "number"

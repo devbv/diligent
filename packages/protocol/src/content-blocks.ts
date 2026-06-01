@@ -28,11 +28,14 @@ export const TextBlockSchema = z.object({
 });
 export type TextBlock = z.infer<typeof TextBlockSchema>;
 
+export const SUPPORTED_IMAGE_MEDIA_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"] as const;
+export type SupportedImageMediaType = (typeof SUPPORTED_IMAGE_MEDIA_TYPES)[number];
+
 export const ImageBlockSchema = z.object({
   type: z.literal("image"),
   source: z.object({
     type: z.literal("base64"),
-    media_type: z.string(),
+    media_type: z.enum(SUPPORTED_IMAGE_MEDIA_TYPES),
     data: z.string(),
   }),
 });
@@ -41,7 +44,7 @@ export type ImageBlock = z.infer<typeof ImageBlockSchema>;
 export const LocalImageBlockSchema = z.object({
   type: z.literal("local_image"),
   path: z.string(),
-  mediaType: z.string(),
+  mediaType: z.enum(SUPPORTED_IMAGE_MEDIA_TYPES),
   fileName: z.string().optional(),
 });
 export type LocalImageBlock = z.infer<typeof LocalImageBlockSchema>;

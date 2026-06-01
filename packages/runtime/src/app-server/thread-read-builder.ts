@@ -197,6 +197,7 @@ export function buildThreadReadItems(transcript: ThreadReadTranscriptEntry[]): T
         startedAt: start?.startedAt ?? message.timestamp,
         durationMs: Math.max(0, message.timestamp - (start?.startedAt ?? message.timestamp)),
         output: message.output,
+        ...(message.outputImages ? { outputImages: message.outputImages } : {}),
         isError: message.isError,
         render: mergeToolRenderPayload(startRender, message.render ?? derivedRender),
       });

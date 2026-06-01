@@ -300,6 +300,7 @@ export class ProtocolNotificationAdapter {
           toolCallId: started?.toolCallId ?? item.toolCallId,
           toolName: started?.toolName ?? item.toolName,
           output: item.output ?? "",
+          ...(item.outputImages ? { outputImages: item.outputImages } : {}),
           isError: item.isError ?? false,
           render: mergeToolRenderPayload(started?.render, item.render),
           ...(typeof item.timestamp === "number" ? { timestamp: item.timestamp } : {}),

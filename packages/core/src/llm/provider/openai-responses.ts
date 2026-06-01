@@ -51,6 +51,16 @@ export async function convertMessages(messages: Message[], cwd?: string): Promis
         call_id: msg.toolCallId,
         output: msg.output,
       });
+      // OpenAI's function_call_output is text-only; attach any image content
+      // as a follow-up user message so the model can actually see it.
+      if (msg.outputImages && msg.outputImages.length > 0) {
+        const imageContent: ResponseInputMessageContentList = msg.outputImages.map((img) => ({
+          type: "input_image",
+          image_url: `data:${img.source.media_type};base64,${img.source.data}`,
+          detail: "auto",
+        }));
+        result.push({ type: "message", role: "user", content: imageContent });
+      }
     }
   }
 

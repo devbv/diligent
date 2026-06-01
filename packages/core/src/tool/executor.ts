@@ -67,6 +67,7 @@ export async function executeTool(
     const savedPath = await persistFullOutput(result.output);
 
     return {
+      ...result,
       output:
         truncated.output +
         TRUNCATION_WARNING +
