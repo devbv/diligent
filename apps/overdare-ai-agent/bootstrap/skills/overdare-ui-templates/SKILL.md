@@ -1,6 +1,6 @@
 ---
 name: overdare-ui-templates
-description: When generating UI, first determine whether a template is appropriate. For structure confirmation, AskQuestion (choice UI) is mandatory; prompting free-text input is prohibited. Adding/removing elements is prohibited before user_confirmed_spec is finalized. If appropriate, edit with ui-generator; if not possible, switch to ui-generator.
+description: Use FIRST, before ui-generator, for OVERDARE Studio UI that may match an official template: in-game HUD, popup/modal, notification/confirmation, loading screen, leaderboard, boss HP bar, character select, and game over/victory/defeat/score/rank result screens. For structure confirmation, AskQuestion (choice UI) is mandatory. If a template fits, use this skill; if none fits, hand off to ui-generator.
 ---
 
 # OVERDARE UI Template Guide
@@ -174,9 +174,9 @@ Common: structural add/remove is allowed **only after spec**. Before spec, keep 
 **A. Confirmation turn (before creation):** template candidate (1-2 chat sentences) + **fixed choices via `AskQuestion`** -> reflect response in spec, then create (do not put options only in chat and collect input there)
 
 **B. Completion turn:** 1 line each for structure/purpose | confirmation and `user_confirmed_spec` | template and asset ID | add/remove (remove/add/none) | L2, naming, boundaries, reserved regions | no inferential add/remove
----
+<!-- ---
 name: overdare-ui-templates
-description: Before generating UI, first judge whether an official template fits. For structure confirmation, AskQuestion (choice UI) is mandatory; do not induce free-text input. Do not remove/add elements before user_confirmed_spec is finalized. If it fits, edit via ui-generator; if it doesn't, switch to ui-generator.
+description: Use FIRST, before ui-generator, for OVERDARE Studio UI that may match an official template: in-game HUD, popup/modal, notification/confirmation, loading screen, leaderboard, boss HP bar, character select, and game over/victory/defeat/score/rank result screens. For structure confirmation, AskQuestion (choice UI) is mandatory. If a template fits, use this skill; if none fits, hand off to ui-generator.
 ---
 
 # OVERDARE UI Template Guide
@@ -355,4 +355,4 @@ Common: Structural add/remove only **after spec**. Before spec, keep the default
 
 **A. Confirmation turn (before creation):** 1–2 chat sentences: template candidate + **fixed choices via `AskQuestion`** → reflect answers in spec → then create (do not put choices only in chat and take typed input)
 
-**B. Completion turn:** 1 line each: structure & purpose | confirmation & `user_confirmed_spec` | template & asset ID | add/remove (remove/add/none) | L2/naming/boundaries/reserved areas | no inferred structural changes
+**B. Completion turn:** 1 line each: structure & purpose | confirmation & `user_confirmed_spec` | template & asset ID | add/remove (remove/add/none) | L2/naming/boundaries/reserved areas | no inferred structural changes -->

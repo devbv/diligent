@@ -1,9 +1,43 @@
 ---
 name: ui-generator
-description: "Use for OVERDARE Studio GUI work: create, improve, import, arrange, or wire screen-space UI and lightweight world-space GUI for HUDs, menus, mobile action buttons, attack/skill clusters, health/stamina/shield/cooldown bars, scoreboards, timers, shot clocks, quick slots, inventory/status panels, popups, toasts, tutorial/loading overlays, nameplates, interaction labels, signs, and UI asset packs. Covers StarterGui GUI creation; BillboardGui/SurfaceGui when the result is GUI, not 3D art; UI_ELEMENTS Asset Drawer/worldAsset search and import; mobile landscape safe areas; readability, contrast, padding, palette, ZIndex/DisplayOrder, overlap warnings, hierarchy preserve/reorg, imported UI reparenting, and LocalScript Activated behavior for TextButton/ImageButton. Not for non-UI gameplay, physics, backend, pure 3D placement, ActionSequencer timing, or PvP TPA architecture unless the task clearly includes UI."
+description: "Use for OVERDARE Studio GUI work, but check overdare-ui-templates FIRST — if the request matches an official template (HUD, popup/modal, loading, leaderboard, boss HP, character select, result screens), use that skill first; use ui-generator only for non-template UI or what it cannot solve. Covers screen-space and lightweight world-space GUI: menus, action buttons, health/stamina/cooldown bars, scoreboards, quick slots, popups, toasts, overlays, nameplates, signs, and UI_ELEMENTS/worldAsset import. Not for non-UI gameplay, physics, backend, 3D placement, or ActionSequencer/PvP TPA unless the task clearly includes UI."
 ---
 
 # ui-generator
+
+## MUST: Check `overdare-ui-templates` First (Gate)
+
+**Before doing ANY UI work in this skill, you MUST run this gate. Do not create, import, or edit a single GUI instance until the gate is resolved.**
+
+This skill overlaps heavily with the `overdare-ui-templates` skill. When an official OVERDARE template fits the request, the template path is authoritative and MUST be used; this skill is only the GUI executor for it, or the fallback when no template fits.
+
+**Step 1 — MUST classify the request against the official templates.**
+Check whether the request corresponds to any of these `overdare-ui-templates` templates:
+
+- `IngameHUD` — persistent HUD (HP, currency, action, menu)
+- `PopupGui` — text modal (notification, warning, confirmation, announcement)
+- `IconPopupGui` — icon confirmation (purchase, reward, item, skill)
+- `LoadingScreenGui` — pre-entry loading (name, bar, loading text)
+- `LeaderboardHUD` — top-right persistent leaderboard + "Show all" popup
+- `BossHPHUD` — boss HP HUD (name, level, HP bar, text)
+- `CharacterSelectGui` — character selection (scroll + Back, Go)
+- `GameOverGui` — game over (time + description + 3 buttons)
+- `GameDefeatGui` — defeat (description + 3 buttons)
+- `GameVictoryGui` — victory (description + 3 buttons)
+- `GameScoreResultGui` — personal score (my score + 3 buttons)
+- `GameRankResultGui` — rank list (scroll slots + 3 buttons)
+
+**Step 2 — MUST branch as follows. No exceptions.**
+
+- **If the request matches (or is similar to) an official template above → you MUST invoke the `overdare-ui-templates` skill and follow it instead of starting here.** Do NOT build the matching UI directly from this skill. `overdare-ui-templates` owns template selection, the mandatory `AskQuestion` confirmation flow, and `user_confirmed_spec`; it will call back into `ui-generator` for the actual GUI work.
+- **If the request does NOT match any official template → handle it with this skill (`ui-generator`) as normal.** Examples of no-template cases: custom/bespoke layouts, health/stamina/cooldown bars not covered by a template, quick slots, message toasts, mobile action button clusters, world-space GUI (nameplates, signs, floating labels), and ad-hoc panels with no official template equivalent.
+- **If it is a mix** (part matches a template, part does not): the matching part MUST go through `overdare-ui-templates`; only the genuinely template-less part is handled directly here.
+
+**Step 3 — Loop guard (MUST honor).** If you arrived here because `overdare-ui-templates` already selected a template and delegated the GUI execution to `ui-generator` (template + `user_confirmed_spec` already decided), do NOT re-run this gate or re-invoke `overdare-ui-templates`. Proceed directly with the GUI work within the confirmed spec.
+
+> MUST NOT skip this gate for speed or because the request "looks simple." Building a template-covered UI directly from `ui-generator` without going through `overdare-ui-templates` is a failure.
+
+---
 
 ## Purpose
 
@@ -45,6 +79,8 @@ When a request matches one of these focused references, consult the relevant fil
 ---
 
 ## Use When
+
+> **MUST run the `Check overdare-ui-templates First (Gate)` above before using this list.** Several items below — HUDs, Main menus, Scoreboards, Popup dialogs, and Loading screens — are covered by official `overdare-ui-templates` templates. For those you MUST go through `overdare-ui-templates` first and only fall back here if no template fits. The list below describes this skill's overall GUI scope; it is NOT a license to skip the gate.
 
 Use this skill when the user asks to create, improve, import, arrange, or wire up GUI, including:
 
@@ -347,6 +383,8 @@ Typical examples:
 ---
 
 ## UI Type Templates
+
+> **Gate reminder:** Some types below (Main Menu, Scoreboard, Popup Dialog, and HUD-style layouts) overlap official `overdare-ui-templates` templates. If the request matches an official template you MUST handle it through `overdare-ui-templates` first; the styles below apply only to non-template UI, or as the GUI executor once `overdare-ui-templates` has delegated to this skill.
 
 When creating UI, choose a template style based on the UI type.
 
