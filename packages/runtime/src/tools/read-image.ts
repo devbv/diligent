@@ -6,15 +6,22 @@ import type { Tool, ToolContext, ToolResult } from "@diligent/core/tool/types";
 import type { ImageBlock } from "@diligent/core/types";
 import { z } from "zod";
 import { isAbsolute, stripExtendedLengthPrefix } from "../util/path";
+import { downscaleImageIfNeeded } from "./image-resize";
 import { createTextRenderPayload, summarizeRenderText } from "./render-payload";
 
 const ReadImageParams = z.object({
   file_path: z.string().describe("Absolute path to the image file to read"),
 });
 
-// Anthropic's per-image base64 limit is 5 MB; match it to fail fast locally
-// rather than at the provider on the next turn.
+// Anthropic's per-image base64 limit is 5 MB; the FINAL (post-downscale) bytes must fit under it,
+// so we fail fast locally rather than at the provider on the next turn.
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+// The source file may exceed 5 MB and still be usable: downscaling oversized images brings them
+// under the transport cap. We read up to this larger bound, then downscale, then enforce
+// MAX_IMAGE_BYTES on the result. The cap also bounds decode memory (≈ width×height×4 bytes) for the
+// user's own image files — the only inputs this tool reads.
+const MAX_SOURCE_BYTES = 30 * 1024 * 1024;
 
 const EXTENSION_TO_MEDIA_TYPE: Record<string, "image/png" | "image/jpeg" | "image/gif" | "image/webp"> = {
   ".png": "image/png",
@@ -126,8 +133,8 @@ export function createReadImageTool(): Tool<typeof ReadImageParams> {
         return errorResult(`Error: Not a regular file: ${file_path}`);
       }
 
-      if (stat.size > MAX_IMAGE_BYTES) {
-        return errorResult(`Error: Image exceeds 5 MB limit (${formatBytes(stat.size)}): ${basename(file_path)}`);
+      if (stat.size > MAX_SOURCE_BYTES) {
+        return errorResult(`Error: Image exceeds 30 MB limit (${formatBytes(stat.size)}): ${basename(file_path)}`);
       }
       if (stat.size === 0) {
         return errorResult(`Error: Image is empty: ${basename(file_path)}`);
@@ -145,9 +152,9 @@ export function createReadImageTool(): Tool<typeof ReadImageParams> {
       if (ctx.signal.aborted) return errorResult("Aborted");
 
       // Race guard: file may have grown between lstat and read.
-      if (bytes.byteLength > MAX_IMAGE_BYTES) {
+      if (bytes.byteLength > MAX_SOURCE_BYTES) {
         return errorResult(
-          `Error: Image exceeds 5 MB limit (${formatBytes(bytes.byteLength)}): ${basename(file_path)}`,
+          `Error: Image exceeds 30 MB limit (${formatBytes(bytes.byteLength)}): ${basename(file_path)}`,
         );
       }
 
@@ -166,16 +173,39 @@ export function createReadImageTool(): Tool<typeof ReadImageParams> {
         );
       }
 
+      // Cap the long edge before encoding: vision token cost scales with pixel resolution, not
+      // base64 length, so downscaling oversized images is what actually reduces token spend.
+      // A resize failure must not block reading the image — fall back to the original bytes.
+      let encodedBytes = bytes;
+      try {
+        encodedBytes = await downscaleImageIfNeeded(bytes, declaredMediaType);
+      } catch {
+        encodedBytes = bytes;
+      }
+
+      if (ctx.signal.aborted) return errorResult("Aborted");
+
+      // Enforce the provider transport cap on the FINAL bytes. After downscale this is rarely hit;
+      // when it is (e.g. a modest-resolution image that is still >5 MB), there is nothing more we can
+      // safely strip, so surface it rather than letting the provider reject the turn.
+      if (encodedBytes.byteLength > MAX_IMAGE_BYTES) {
+        return errorResult(
+          `Error: Image exceeds 5 MB limit (${formatBytes(encodedBytes.byteLength)}): ${basename(file_path)}`,
+        );
+      }
+
       const imageBlock: ImageBlock = {
         type: "image",
         source: {
           type: "base64",
           media_type: declaredMediaType,
-          data: Buffer.from(bytes).toString("base64"),
+          data: Buffer.from(encodedBytes).toString("base64"),
         },
       };
 
-      const summary = `Loaded image ${basename(file_path)} (${formatBytes(bytes.byteLength)}, ${declaredMediaType})`;
+      const downscaledNote =
+        encodedBytes.byteLength < bytes.byteLength ? ` (downscaled from ${formatBytes(bytes.byteLength)})` : "";
+      const summary = `Loaded image ${basename(file_path)} (${formatBytes(encodedBytes.byteLength)}, ${declaredMediaType})${downscaledNote}`;
 
       return {
         output: summary,

@@ -6,11 +6,16 @@ import { flattenSections } from "../system-sections";
 import type { Model, ProviderEvent, ProviderResult, StreamContext, StreamFunction, StreamOptions } from "../types";
 import { ProviderError } from "../types";
 import type { NativeCompactFn } from "./native-compaction";
-import { buildResponsesRequestBody, isContextOverflow, toResponseInputItems } from "./openai-responses";
+import {
+  buildResponsesRequestBody,
+  isContextOverflow,
+  type OpenAIImageDetail,
+  toResponseInputItems,
+} from "./openai-responses";
 import { describeCompactionPayload, extractCompactionSummary, extractCompactionSummaryItem } from "./openai-shared";
 import { handleResponsesAPIEvents } from "./openai-sse";
 
-export function createOpenAIStream(apiKey?: string, baseUrl?: string): StreamFunction {
+export function createOpenAIStream(apiKey?: string, baseUrl?: string, imageDetail?: OpenAIImageDetail): StreamFunction {
   const resolvedApiKey = resolveOpenAIApiKey(apiKey);
   const client = new OpenAI({ apiKey: resolvedApiKey, baseURL: baseUrl });
 
@@ -41,6 +46,7 @@ export function createOpenAIStream(apiKey?: string, baseUrl?: string): StreamFun
           temperature: options.temperature,
           useReasoning,
           effort: options.effort,
+          imageDetail,
         });
         const openaiStream = await client.responses.create(
           requestBody,
