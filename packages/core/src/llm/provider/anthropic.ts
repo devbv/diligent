@@ -203,10 +203,26 @@ export async function convertMessages(
       // Tool results go into a user message with tool_result blocks
       // Check if previous result entry is already a user message we can append to
       const last = result[result.length - 1];
+      const hasImages = (msg.outputImages?.length ?? 0) > 0;
       const toolResultBlock: Anthropic.ToolResultBlockParam = {
         type: "tool_result",
         tool_use_id: msg.toolCallId,
-        content: msg.output,
+        content: hasImages
+          ? [
+              // Anthropic rejects empty text blocks — omit when output is empty.
+              ...(msg.output ? [{ type: "text" as const, text: msg.output }] : []),
+              ...(msg.outputImages ?? []).map(
+                (img): Anthropic.ImageBlockParam => ({
+                  type: "image",
+                  source: {
+                    type: "base64",
+                    media_type: img.source.media_type as Anthropic.Base64ImageSource["media_type"],
+                    data: img.source.data,
+                  },
+                }),
+              ),
+            ]
+          : msg.output,
         is_error: msg.isError,
       };
 

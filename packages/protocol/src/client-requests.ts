@@ -12,6 +12,7 @@ import {
   ProviderNameSchema,
   SerializableErrorSchema,
   SessionSummarySchema,
+  SUPPORTED_IMAGE_MEDIA_TYPES,
   ThinkingEffortSchema,
   ThreadItemSchema,
 } from "./data-model";
@@ -143,7 +144,7 @@ export type ThreadCompactStartResponse = z.infer<typeof ThreadCompactStartRespon
 export const TurnAttachmentSchema = z.object({
   type: z.literal("local_image"),
   path: z.string(),
-  mediaType: z.string(),
+  mediaType: z.enum(SUPPORTED_IMAGE_MEDIA_TYPES),
   fileName: z.string().optional(),
 });
 export type TurnAttachment = z.infer<typeof TurnAttachmentSchema>;
@@ -431,7 +432,7 @@ export type ThreadUnsubscribeResponse = z.infer<typeof ThreadUnsubscribeResponse
 export const ImageUploadParamsSchema = z.object({
   threadId: z.string().optional(),
   fileName: z.string().min(1),
-  mediaType: z.enum(["image/png", "image/jpeg", "image/webp", "image/gif"]),
+  mediaType: z.enum(SUPPORTED_IMAGE_MEDIA_TYPES),
   dataBase64: z.string().min(1),
 });
 export type ImageUploadParams = z.infer<typeof ImageUploadParamsSchema>;

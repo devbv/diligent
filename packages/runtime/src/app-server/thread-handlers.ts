@@ -15,6 +15,7 @@ import {
   type Mode,
   type PluginDescriptor,
   type SessionSummary,
+  type SupportedImageMediaType,
   type ThinkingEffort,
   type ThreadItem,
   type ToolConflictPolicy,
@@ -544,7 +545,7 @@ export async function handleTurnSteer(
   ctx: ThreadHandlersContext,
   threadId: string | undefined,
   content: string,
-  attachments?: Array<{ type: "local_image"; path: string; mediaType: string; fileName?: string }>,
+  attachments?: Array<{ type: "local_image"; path: string; mediaType: SupportedImageMediaType; fileName?: string }>,
 ): Promise<{ queued: true }> {
   const runtime = await ctx.resolveThreadRuntime(threadId);
   const normalizedAttachments = attachments?.map((attachment) =>
@@ -570,9 +571,9 @@ export async function handleTurnSteer(
 }
 
 function normalizeLocalImageAttachment(
-  attachment: { type: "local_image"; path: string; mediaType: string; fileName?: string },
+  attachment: { type: "local_image"; path: string; mediaType: SupportedImageMediaType; fileName?: string },
   cwd: string,
-): { type: "local_image"; path: string; mediaType: string; fileName?: string } {
+): { type: "local_image"; path: string; mediaType: SupportedImageMediaType; fileName?: string } {
   const absolutePath = resolvePersistedLocalImagePath(attachment.path, cwd);
   return {
     ...attachment,

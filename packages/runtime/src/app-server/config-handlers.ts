@@ -22,6 +22,7 @@ import {
   type DiligentServerNotification,
   type ProviderAuthStatus,
   type ProviderName,
+  type SupportedImageMediaType,
 } from "../protocol/index";
 
 type EmitFn = (notification: DiligentServerNotification) => Promise<void>;
@@ -193,11 +194,17 @@ export async function handleAuthOAuthCancel(args: {
 }
 
 export async function handleImageUpload(args: {
-  params: { fileName: string; mediaType: string; dataBase64: string };
+  params: { fileName: string; mediaType: SupportedImageMediaType; dataBase64: string };
   threadId?: string;
   cwd: string;
   toImageUrl?: (absPath: string) => string | undefined;
-}): Promise<{ type: "local_image"; path: string; mediaType: string; fileName: string; webUrl?: string }> {
+}): Promise<{
+  type: "local_image";
+  path: string;
+  mediaType: SupportedImageMediaType;
+  fileName: string;
+  webUrl?: string;
+}> {
   const projectDirName = resolveProjectDirName();
   const root = args.threadId
     ? join(args.cwd, projectDirName, "images", args.threadId)

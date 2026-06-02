@@ -1,5 +1,6 @@
 export type { SessionContext, SessionTranscriptEntry } from "./context-builder";
 export { buildSessionContext, buildSessionTranscript } from "./context-builder";
+export { externalizeEntryImages, materializeEntryImages } from "./image-sidecar";
 export type { ResumeSessionOptions, SessionManagerConfig } from "./manager";
 export { SessionManager } from "./manager";
 export type { SessionPersistenceConfig, SessionReconcileResult } from "./persistence";

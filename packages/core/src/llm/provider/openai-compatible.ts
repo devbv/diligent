@@ -91,6 +91,15 @@ export async function buildOpenAICompatibleMessages(
       name: msg.toolName,
       content: msg.output,
     });
+    // Chat Completions' tool role is text-only; attach any image content as a
+    // follow-up user message so the model can actually see it.
+    if (msg.outputImages && msg.outputImages.length > 0) {
+      const imageContent: OpenAICompatibleContentPart[] = msg.outputImages.map((img) => ({
+        type: "image_url",
+        image_url: { url: `data:${img.source.media_type};base64,${img.source.data}` },
+      }));
+      result.push({ role: "user", content: imageContent });
+    }
   }
 
   return result;

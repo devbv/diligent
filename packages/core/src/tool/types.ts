@@ -1,4 +1,5 @@
 import type { z } from "zod";
+import type { ImageBlock } from "../types";
 
 // D013: Tool definition
 // biome-ignore lint/suspicious/noExplicitAny: generic default requires any for unparameterized Tool references
@@ -28,6 +29,8 @@ export interface ToolRenderPayloadLike {
 
 export interface ToolResult {
   output: string;
+  /** Optional image content blocks returned alongside text. Provider support varies — Anthropic embeds them in tool_result content; other providers fall back to text-only. */
+  outputImages?: ImageBlock[];
   render?: ToolRenderPayloadLike;
   abortRequested?: boolean; // When true, tool signals the agent loop to stop after this result
   metadata?: Record<string, unknown>;

@@ -1,6 +1,7 @@
 // @summary Session file persistence with JSONL format, immediate writing, and session listing
 import { appendFile, unlink } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
+import { externalizeEntryImages, materializeEntryImages } from "./image-sidecar";
 import type {
   CollabSessionMeta,
   SessionEntry,
@@ -40,16 +41,30 @@ export async function createSessionFile(
 /**
  * Append a single entry to a session file.
  * Append-only: never modifies existing lines.
+ *
+ * Tool-result images are externalized to a sidecar blob directory before the
+ * entry is serialized, so the JSONL line stays small (typically <1 KB even
+ * for 5 MB image attachments). Without this, image-heavy sessions inflate
+ * the file by megabytes per entry and make listSessions O(image bytes).
  */
 export async function appendEntry(sessionPath: string, entry: SessionEntry): Promise<void> {
-  await appendFile(sessionPath, `${JSON.stringify(entry)}\n`, "utf8");
+  const sessionsDir = dirname(sessionPath);
+  const externalized = await externalizeEntryImages(sessionsDir, entry);
+  await appendFile(sessionPath, `${JSON.stringify(externalized)}\n`, "utf8");
 }
 
 /**
  * Read all lines from a session file.
  * Validates header version.
+ *
+ * Pass `{ materializeImages: false }` for code paths that only need text
+ * content (e.g. listSessions building first-user-message previews) so the
+ * sidecar blob files don't have to be read.
  */
-export async function readSessionFile(path: string): Promise<{ header: SessionHeader; entries: SessionEntry[] }> {
+export async function readSessionFile(
+  path: string,
+  options?: { materializeImages?: boolean },
+): Promise<{ header: SessionHeader; entries: SessionEntry[] }> {
   const text = await Bun.file(path).text();
   const lines = text.trim().split("\n").filter(Boolean);
 
@@ -68,7 +83,12 @@ export async function readSessionFile(path: string): Promise<{ header: SessionHe
     );
   }
 
-  const entries = lines.slice(1).map((line) => JSON.parse(line) as SessionEntry);
+  const rawEntries = lines.slice(1).map((line) => JSON.parse(line) as SessionEntry);
+  if (options?.materializeImages === false) {
+    return { header, entries: rawEntries };
+  }
+  const sessionsDir = dirname(path);
+  const entries = await Promise.all(rawEntries.map((entry) => materializeEntryImages(sessionsDir, entry)));
   return { header, entries };
 }
 
@@ -83,7 +103,8 @@ export async function listSessions(sessionsDir: string): Promise<SessionInfo[]> 
   for await (const file of glob.scan(sessionsDir)) {
     try {
       const path = join(sessionsDir, file);
-      const { header, entries } = await readSessionFile(path);
+      // listSessions only needs text content for previews — skip blob materialization.
+      const { header, entries } = await readSessionFile(path, { materializeImages: false });
 
       const messageEntries = entries.filter((e): e is SessionMessageEntry => e.type === "message");
       const firstUserEntry = messageEntries.find((e) => e.message.role === "user");

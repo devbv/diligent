@@ -32,6 +32,7 @@ export interface ToolResultMessage {
   toolCallId: string;
   toolName: string;
   output: string;
+  outputImages?: import("@diligent/protocol").ImageBlock[];
   isError: boolean;
   timestamp: number;
   render?: ToolRenderPayloadLike;

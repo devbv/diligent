@@ -61,13 +61,24 @@ const BINARY_EXTENSIONS = new Set([
   ".pyo",
 ]);
 
+const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp"]);
+
 const DEFAULT_LIMIT = 2000;
 
-function isBinaryByExtension(filePath: string): boolean {
+function extensionOf(filePath: string): string | null {
   const dotIdx = filePath.lastIndexOf(".");
-  if (dotIdx === -1) return false;
-  const ext = filePath.slice(dotIdx).toLowerCase();
-  return BINARY_EXTENSIONS.has(ext);
+  if (dotIdx === -1) return null;
+  return filePath.slice(dotIdx).toLowerCase();
+}
+
+function isBinaryByExtension(filePath: string): boolean {
+  const ext = extensionOf(filePath);
+  return ext !== null && BINARY_EXTENSIONS.has(ext);
+}
+
+function isImageExtension(filePath: string): boolean {
+  const ext = extensionOf(filePath);
+  return ext !== null && IMAGE_EXTENSIONS.has(ext);
 }
 
 function isBinaryByContent(bytes: Uint8Array): boolean {
@@ -112,7 +123,8 @@ export function createReadTool(): Tool<typeof ReadParams> {
       // 2. Binary detection by extension
       if (isBinaryByExtension(file_path)) {
         const size = file.size;
-        const output = `Binary file (${size} bytes). Cannot display contents.`;
+        const suffix = isImageExtension(file_path) ? " Use the read_image tool to view this image." : "";
+        const output = `Binary file (${size} bytes). Cannot display contents.${suffix}`;
         return {
           output,
           render: {
@@ -128,6 +140,7 @@ export function createReadTool(): Tool<typeof ReadParams> {
         const sample = new Uint8Array(await file.slice(0, 4096).arrayBuffer());
         if (isBinaryByContent(sample)) {
           const size = file.size;
+          // Reached this branch means the extension was NOT a known binary one — so it's not a known image either.
           const output = `Binary file (${size} bytes). Cannot display contents.`;
           return {
             output,

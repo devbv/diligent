@@ -34,6 +34,7 @@ export class TurnStager {
         toolCallId: event.toolCallId,
         toolName: event.toolName,
         output: event.output,
+        outputImages: event.outputImages,
         isError: event.isError,
         timestamp: Date.now(),
         render: event.render,

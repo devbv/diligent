@@ -16,6 +16,8 @@ export type {
 export {
   Agent,
   createAnthropicStream,
+  createGeminiStream,
+  createOpenAIStream,
   DEFAULT_MODELS,
   DEFAULT_PROVIDER,
   EventStream,
@@ -166,6 +168,7 @@ export {
   createLsTool,
   createMultiEditTool,
   createPlanTool,
+  createReadImageTool,
   createReadTool,
   createRequestUserInputTool,
   createSearchKnowledgeTool,

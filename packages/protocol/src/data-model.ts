@@ -1,6 +1,6 @@
 // @summary Zod schemas for Diligent protocol domain models and event payloads
 import { z } from "zod";
-import { ContentBlockSchema } from "./content-blocks";
+import { ContentBlockSchema, ImageBlockSchema } from "./content-blocks";
 import { ToolRenderPayloadSchema } from "./tool-render";
 
 // Re-export content block and tool render types from focused sub-files.
@@ -50,6 +50,7 @@ export const ToolResultMessageSchema = z.object({
   toolCallId: z.string(),
   toolName: z.string(),
   output: z.string(),
+  outputImages: z.array(ImageBlockSchema).optional(),
   isError: z.boolean(),
   timestamp: z.number().int(),
   render: ToolRenderPayloadSchema.optional(),
@@ -170,6 +171,7 @@ export const AgentEventSchema = z.union([
     toolCallId: z.string(),
     toolName: z.string(),
     output: z.string(),
+    outputImages: z.array(ImageBlockSchema).optional(),
     isError: z.boolean(),
     render: ToolRenderPayloadSchema.optional(),
     timestamp: z.number().int().optional(),
@@ -288,6 +290,7 @@ export const ThreadItemSchema = z.union([
     startedAt: z.number().int().optional(),
     durationMs: z.number().int().nonnegative().optional(),
     output: z.string().optional(),
+    outputImages: z.array(ImageBlockSchema).optional(),
     isError: z.boolean().optional(),
     render: ToolRenderPayloadSchema.optional(),
   }),

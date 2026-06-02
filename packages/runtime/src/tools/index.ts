@@ -18,6 +18,7 @@ export { createPlanTool } from "./plan";
 export type { PluginLoadResult, PluginManifest } from "./plugin-loader";
 export { getGlobalPluginPath, getGlobalPluginRoot, loadPlugin } from "./plugin-loader";
 export { createReadTool } from "./read";
+export { createReadImageTool } from "./read-image";
 export {
   createCommandRenderPayload,
   createEditDiffRenderPayload,
