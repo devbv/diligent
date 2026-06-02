@@ -4,8 +4,19 @@ export { AgentRegistry, createCollabTools } from "../collab";
 export type { ApplyPatchOptions } from "./apply-patch";
 export { createApplyPatchTool, parsePatch } from "./apply-patch";
 export { createBashTool, filterSensitiveEnv } from "./bash";
+export type { BundledToolProvider, BundledToolProviderContext, CollectedBundledHooks } from "./bundled-provider";
+export { collectBundledHooks } from "./bundled-provider";
+export type { RuntimeToolHost } from "./capabilities";
+export { requestToolApproval, requestToolUserInput } from "./capabilities";
 // Tool catalog (P032)
-export type { PluginLoadError, PluginStateEntry, ToolCatalogResult, ToolStateEntry, ToolStateReason } from "./catalog";
+export type {
+  BuildToolCatalogOptions,
+  PluginLoadError,
+  PluginStateEntry,
+  ToolCatalogResult,
+  ToolStateEntry,
+  ToolStateReason,
+} from "./catalog";
 export { buildToolCatalog } from "./catalog";
 export type { BuildDefaultToolsResult } from "./defaults";
 export { buildDefaultTools } from "./defaults";

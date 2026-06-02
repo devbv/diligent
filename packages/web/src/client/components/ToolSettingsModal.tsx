@@ -107,6 +107,8 @@ function describeToolReason(tool: ToolsListResponse["tools"][number]): string {
       return "Dropped because another tool already uses this name";
     case "invalid_plugin_tool":
       return "Rejected because the plugin returned an invalid tool";
+    case "superseded_by_bundled":
+      return "Superseded by a bundled product tool";
   }
 }
 

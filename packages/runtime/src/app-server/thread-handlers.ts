@@ -27,6 +27,7 @@ import { buildSessionContext } from "../session/context-builder";
 import type { SessionManager } from "../session/manager";
 import { deleteSession, listSessions, readSessionFile } from "../session/persistence";
 import { generateSessionId } from "../session/types";
+import type { BundledToolProvider } from "../tools/bundled-provider";
 import { buildDefaultTools } from "../tools/defaults";
 import type { CollectedPluginHooks } from "../tools/plugin-loader";
 import {
@@ -129,6 +130,7 @@ export interface ThreadHandlersContext {
   emit: (notification: DiligentServerNotification) => Promise<void>;
   consumeTurn: (runtime: ThreadRuntime, runPromise: Promise<void>, turnId: string) => Promise<void>;
   resolveToolsContext: (threadId?: string) => Promise<{ cwd: string; tools: DiligentConfig["tools"] | undefined }>;
+  getBundledToolProviders: () => BundledToolProvider[];
   getSkillNames: () => string[];
   setActiveThreadId: (threadId: string | null) => void;
 }
@@ -650,7 +652,12 @@ export async function handleToolsList(
 }> {
   const { cwd, tools } = await ctx.resolveToolsContext(threadId);
   const paths = await ctx.resolvePaths(cwd);
-  const result = await buildDefaultTools({ cwd, paths, toolsConfig: tools });
+  const result = await buildDefaultTools({
+    cwd,
+    paths,
+    toolsConfig: tools,
+    bundledToolProviders: ctx.getBundledToolProviders(),
+  });
 
   return {
     configPath: getGlobalConfigPath(),
@@ -694,7 +701,12 @@ export async function handleToolsSet(
   toolConfig.setTools(writeResult.config.tools);
 
   const paths = await ctx.resolvePaths(cwd);
-  const result = await buildDefaultTools({ cwd, paths, toolsConfig: writeResult.config.tools });
+  const result = await buildDefaultTools({
+    cwd,
+    paths,
+    toolsConfig: writeResult.config.tools,
+    bundledToolProviders: ctx.getBundledToolProviders(),
+  });
 
   return {
     configPath: writeResult.configPath,

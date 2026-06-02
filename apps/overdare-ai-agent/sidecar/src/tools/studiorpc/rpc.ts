@@ -1,0 +1,149 @@
+import net from "node:net";
+import readline from "node:readline";
+import { loadOverdareConfig } from "./config";
+
+const DEFAULT_HOST = "localhost";
+const DEFAULT_PORT = 13377;
+const TIMEOUT_MS = 10_000;
+
+interface JsonRpcResponse {
+  jsonrpc: string;
+  id: number;
+  result?: unknown;
+  error?: { code: number; message: string; data?: unknown };
+}
+
+let nextId = 1;
+
+/**
+ * Resolve Studio RPC host.
+ * Priority: STUDIO_HOST env var > config file > DEFAULT_HOST.
+ */
+function resolveHost(): string {
+  if (process.env.STUDIO_HOST) return process.env.STUDIO_HOST;
+  const cfg = loadOverdareConfig();
+  return cfg.host ?? DEFAULT_HOST;
+}
+
+/**
+ * Resolve Studio RPC port.
+ * Priority: STUDIO_PORT env var > config file > DEFAULT_PORT.
+ */
+function resolvePort(): number {
+  const envPort = process.env.STUDIO_PORT;
+  if (envPort) {
+    const parsed = Number(envPort);
+    if (!Number.isNaN(parsed) && parsed > 0) return parsed;
+  }
+  const cfg = loadOverdareConfig();
+  return cfg.port ?? DEFAULT_PORT;
+}
+
+/**
+ * Send a JSON-RPC 2.0 request over a TCP socket to OVERDARE Studio.
+ *
+ * Configuration (in priority order):
+ *   1. STUDIO_HOST / STUDIO_PORT environment variables
+ *   2. ~/.<storage-namespace>/overdare.jsonc config file
+ *   3. Hard-coded defaults: localhost:13377
+ */
+/**
+ * Apply pending level changes and save the file.
+ * Returns the result of `level.apply`.
+ */
+export async function applyAndSave(): Promise<unknown> {
+  const result = await call("level.apply", {});
+  await call("level.save.file", {});
+  return result;
+}
+
+export async function call(method: string, params?: Record<string, unknown>): Promise<unknown> {
+  const host = resolveHost();
+  const port = resolvePort();
+
+  return new Promise((resolve, reject) => {
+    const id = nextId++;
+    const request = {
+      jsonrpc: "2.0",
+      id,
+      method,
+      ...(params !== undefined && Object.keys(params).length > 0 && { params }),
+    };
+
+    // Guard against double-settlement: on Windows, Bun's happy-eyeballs
+    // dual-stack (::1 then 127.0.0.1) can emit two consecutive error events
+    // on the same socket.  Without this flag the second error escapes all
+    // handlers and crashes the process.
+    let settled = false;
+    function settle(fn: () => void) {
+      if (settled) return;
+      settled = true;
+      fn();
+    }
+
+    // On Windows, Bun resolves "localhost" via happy-eyeballs (tries ::1 and
+    // 127.0.0.1 simultaneously).  When both fail the error events bypass
+    // user-space handlers and crash the process.  Force IPv4 to use a single
+    // connection attempt so our error handler is reliably invoked.
+    const connectHost = host === "localhost" ? "127.0.0.1" : host;
+    const rawRequest = JSON.stringify(request);
+    console.log(`[RPC →] ${rawRequest}`);
+    const socket = net.createConnection({ host: connectHost, port }, () => {
+      socket.write(`${rawRequest}\n`);
+    });
+
+    const rl = readline.createInterface({ input: socket });
+
+    const timer = setTimeout(() => {
+      settle(() => {
+        cleanup();
+        reject(
+          new Error(
+            `Studio RPC timed out (${method}).\n` +
+              `Make sure OVERDARE Studio is running. If the problem persists, restart the agent.`,
+          ),
+        );
+      });
+    }, TIMEOUT_MS);
+
+    function cleanup() {
+      clearTimeout(timer);
+      rl.close();
+      socket.destroy();
+    }
+
+    rl.once("line", (line) => {
+      settle(() => {
+        cleanup();
+        try {
+          const response = JSON.parse(line) as JsonRpcResponse;
+          console.log(`[RPC ←] ${line}`);
+          if (response.error) {
+            let errorMsg = `Studio RPC error [${response.error.code}]: ${response.error.message}`;
+            errorMsg += `\n\nRequest was:\n${rawRequest}`;
+            if (response.error.message?.toLowerCase().includes("guid")) {
+              errorMsg += `\n\nTip: Use studiorpc_level_browse first to get valid GUIDs.`;
+            }
+            reject(new Error(errorMsg));
+          } else {
+            resolve(response.result);
+          }
+        } catch {
+          reject(new Error(`Failed to parse Studio RPC response.\nReceived: ${line.substring(0, 200)}`));
+        }
+      });
+    });
+
+    socket.on("error", () => {
+      settle(() => {
+        cleanup();
+        reject(
+          new Error(
+            `Could not connect to Studio RPC server.\n` +
+              `Make sure OVERDARE Studio is running. If the problem persists, restart the agent.`,
+          ),
+        );
+      });
+    });
+  });
+}

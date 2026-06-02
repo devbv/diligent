@@ -6,6 +6,7 @@ import { RuntimeAgent } from "../agent/runtime-agent";
 import type { RuntimeConfig } from "../config/runtime";
 import { saveGlobalModel } from "../config/writer";
 import { type DiligentPaths, ensureDiligentDir } from "../infrastructure";
+import type { BundledToolProvider } from "../tools/bundled-provider";
 import { buildDefaultTools } from "../tools/defaults";
 import type { CreateAgentArgs, DiligentAppServerConfig } from "./server";
 
@@ -43,8 +44,9 @@ async function createRuntimeAgent(args: {
   request: CreateAgentArgs;
   runtimeConfig: RuntimeConfig;
   getPaths: () => Promise<DiligentPaths>;
+  bundledToolProviders?: BundledToolProvider[];
 }): Promise<RuntimeAgent> {
-  const { request, runtimeConfig, getPaths } = args;
+  const { request, runtimeConfig, getPaths, bundledToolProviders } = args;
   const { cwd, mode, effort, modelId, approve, ask, getSessionId, existingAgent, onChildStop, userId } = request;
   const guardedSystemPrompt = withSkillGuardrail(runtimeConfig);
   const paths = await getPaths();
@@ -67,6 +69,7 @@ async function createRuntimeAgent(args: {
     enableCollabTools: true,
     existingRegistry: existingAgent?.registry,
     host: { approve, ask },
+    bundledToolProviders,
   });
 
   const activeMode = (mode ?? "default") as Mode;
@@ -96,6 +99,7 @@ async function createRuntimeAgent(args: {
 export interface CreateAppServerConfigOptions {
   cwd: string;
   runtimeConfig: RuntimeConfig;
+  bundledToolProviders?: BundledToolProvider[];
   overrides?: Partial<
     Pick<
       DiligentAppServerConfig,
@@ -105,7 +109,7 @@ export interface CreateAppServerConfigOptions {
 }
 
 export function createAppServerConfig(opts: CreateAppServerConfigOptions): DiligentAppServerConfig {
-  const { cwd, runtimeConfig, overrides } = opts;
+  const { cwd, runtimeConfig, bundledToolProviders = [], overrides } = opts;
   const modelInfoList = getModelInfoList();
   const initialEffort = runtimeConfig.effort;
 
@@ -128,7 +132,7 @@ export function createAppServerConfig(opts: CreateAppServerConfigOptions): Dilig
     }),
     resolvePaths: (requestCwd) => ensureDiligentDir(requestCwd),
     createAgent: (args: CreateAgentArgs): Promise<RuntimeAgent> =>
-      createRuntimeAgent({ request: args, runtimeConfig, getPaths }),
+      createRuntimeAgent({ request: args, runtimeConfig, getPaths, bundledToolProviders }),
     streamFunction: runtimeConfig.streamFunction,
     createNativeCompaction: (provider: ProviderName) =>
       runtimeConfig.providerManager.createNativeCompactionForProvider(provider),
@@ -165,6 +169,7 @@ export function createAppServerConfig(opts: CreateAppServerConfigOptions): Dilig
     permissionEngine: runtimeConfig.permissionEngine,
     skillNames: runtimeConfig.skills.map((skill) => skill.name),
     hooks: runtimeConfig.diligent.hooks,
+    bundledToolProviders,
     userId: runtimeConfig.diligent.userId,
     ...overrides,
   };

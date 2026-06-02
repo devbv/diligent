@@ -278,6 +278,7 @@ export const ToolStateReasonSchema = z.enum([
   "plugin_load_failed",
   "conflict_dropped",
   "invalid_plugin_tool",
+  "superseded_by_bundled",
 ]);
 export type ToolStateReason = z.infer<typeof ToolStateReasonSchema>;
 

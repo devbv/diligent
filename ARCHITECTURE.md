@@ -33,7 +33,8 @@ The architecture is organized around four product goals:
 | `packages/web` | Bun web server + React web client over WebSocket JSON-RPC |
 | `packages/debug-viewer` | Viewer for inspecting `.diligent/` data |
 | `packages/e2e` | End-to-end tests spanning protocol and runtime behavior |
-| `apps/overdare-ai-agent` | Rust CLI launcher for the Overdare product: bootstraps the TypeScript runtime, manages self-update, and launches the Bun web server as a child process. Owns compile-time storage namespace defaults, migration from legacy `.diligent/` directories, and Overdare-specific bundled assets (plugins, bootstrap defaults, Supabase config). |
+| `apps/overdare-ai-agent` | Rust CLI launcher for the Overdare product: bootstraps the TypeScript runtime, manages self-update, and launches the Bun web server as a child process. Owns compile-time storage namespace defaults, migration from legacy `.diligent/` directories, and launcher-managed bootstrap assets. |
+| `apps/overdare-ai-agent/sidecar` | OVERDARE-owned TypeScript sidecar assembly. Imports the generic `@diligent/web/server`, injects product bundled tool providers, and is compiled as the packaged `diligent-web-server` sidecar. |
 | `apps/vscode-extension` | VS Code extension host: provides an activity bar entry, thread tree view, and conversation panel backed by a stdio JSON-RPC transport to the Diligent runtime. Shares the same protocol contract as the CLI and Web clients. |
 
 ## Architecture Overview
@@ -76,9 +77,11 @@ The `apps/` directory contains application hosts that wrap the TypeScript runtim
 `apps/overdare-ai-agent` is a Rust CLI binary that acts as the process supervisor and bootstrapper for the Overdare product variant:
 
 1. `init` command — resolves storage namespace, performs `.diligent/` → `.overdare/` directory migration if needed, and initializes the local project directory.
-2. `webserver` command — extracts the bundled Bun runtime, normalizes the working directory path (including Windows `/c/path` → `C:\path` conversion), and launches `packages/web` as a child process over stdio.
+2. `webserver` command — extracts the bundled Bun runtime, normalizes the working directory path (including Windows `/c/path` → `C:\path` conversion), and launches the packaged TypeScript sidecar over stdio.
 
 The Rust launcher owns **migration** and **process lifecycle**. The TypeScript runtime owns **directory creation** and **all agent/session logic**. Both sides resolve the storage namespace via the `DILIGENT_STORAGE_NAMESPACE` environment variable.
+
+`apps/overdare-ai-agent/sidecar` owns OVERDARE TypeScript runtime composition. It depends on the product-neutral web server entrypoint (`@diligent/web/server`) and supplies bundled product tool providers from `apps/overdare-ai-agent/sidecar/src/tools`. Product tools must stay here rather than in `packages/runtime` or `packages/web`; those packages only expose generic bundled-provider plumbing. Migrated bundled providers may declare `supersedesPluginPackages` so stale first-party plugin copies are suppressed by the runtime catalog while external plugins remain supported.
 
 ### Dual-language storage namespace
 

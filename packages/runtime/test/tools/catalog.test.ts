@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Tool } from "@diligent/core/tool/types";
 import { z } from "zod";
+import type { BundledToolProvider } from "../../src/tools/bundled-provider";
 import { buildToolCatalog } from "../../src/tools/catalog";
 import { getGlobalPluginPath, getGlobalPluginRoot } from "../../src/tools/plugin-loader";
 
@@ -69,6 +70,18 @@ mock.module("@test/plugin-conflict-bash", () => ({
       description: "Attempt override builtin tool",
       parameters: z.object({}),
       execute: async () => ({ output: "plugin bash" }),
+    },
+  ],
+}));
+
+mock.module("@test/plugin-conflict-bundled", () => ({
+  manifest: { name: "@test/plugin-conflict-bundled", apiVersion: "1.0", version: "0.1.0" },
+  createTools: () => [
+    {
+      name: "bundled_tool",
+      description: "Plugin tool that conflicts with bundled tool",
+      parameters: z.object({}),
+      execute: async () => ({ output: "plugin bundled" }),
     },
   ],
 }));
@@ -304,6 +317,101 @@ describe("buildToolCatalog", () => {
       enabled: true,
       available: true,
       reason: "enabled",
+    });
+  });
+
+  it("merges bundled provider tools between builtins and external plugins", async () => {
+    const provider: BundledToolProvider = {
+      id: "@product/bundled-tools",
+      createTools: () => [mockTool("bundled_tool")],
+    };
+
+    const result = await buildToolCatalog(
+      standardBuiltins(),
+      { plugins: [{ package: "@test/catalog-plugin", enabled: true }] },
+      "/tmp",
+      undefined,
+      { bundledProviders: [provider] },
+    );
+
+    expect(toolNames(result.tools)).toEqual([
+      "plan",
+      "request_user_input",
+      "skill",
+      "bash",
+      "read",
+      "web_action",
+      "write",
+      "bundled_tool",
+      "plugin_tool",
+    ]);
+    expect(result.state.find((s) => s.name === "bundled_tool")).toMatchObject({
+      source: "plugin",
+      pluginPackage: "@product/bundled-tools",
+      enabled: true,
+      available: true,
+      reason: "enabled",
+    });
+  });
+
+  it("keeps bundled provider tools ahead of conflicting external plugin tools", async () => {
+    const provider: BundledToolProvider = {
+      id: "@product/bundled-tools",
+      createTools: () => [mockTool("bundled_tool")],
+    };
+
+    const result = await buildToolCatalog(
+      standardBuiltins(),
+      { conflictPolicy: "plugin_wins", plugins: [{ package: "@test/plugin-conflict-bundled", enabled: true }] },
+      "/tmp",
+      undefined,
+      { bundledProviders: [provider] },
+    );
+
+    expect(toolNames(result.tools).filter((name) => name === "bundled_tool")).toHaveLength(1);
+    expect(
+      result.state.find((s) => s.name === "bundled_tool" && s.pluginPackage === "@product/bundled-tools"),
+    ).toMatchObject({
+      enabled: true,
+      reason: "enabled",
+    });
+    expect(
+      result.state.find((s) => s.name === "bundled_tool" && s.pluginPackage === "@test/plugin-conflict-bundled"),
+    ).toMatchObject({
+      enabled: false,
+      available: false,
+      reason: "conflict_dropped",
+    });
+  });
+
+  it("suppresses explicit legacy plugins superseded by bundled providers", async () => {
+    const provider: BundledToolProvider = {
+      id: "@product/bundled-tools",
+      supersedesPluginPackages: ["@test/catalog-plugin"],
+      createTools: () => [mockTool("bundled_tool")],
+    };
+
+    const result = await buildToolCatalog(
+      standardBuiltins(),
+      { plugins: [{ package: "@test/catalog-plugin", enabled: true, tools: { plugin_tool: true } }] },
+      "/tmp",
+      undefined,
+      { bundledProviders: [provider] },
+    );
+
+    expect(toolNames(result.tools)).toContain("bundled_tool");
+    expect(toolNames(result.tools)).not.toContain("plugin_tool");
+    expect(result.plugins.find((p) => p.package === "@test/catalog-plugin")).toMatchObject({
+      enabled: true,
+      loaded: false,
+      loadError: "Plugin '@test/catalog-plugin' is superseded by a bundled tool provider.",
+    });
+    expect(
+      result.state.find((s) => s.name === "plugin_tool" && s.pluginPackage === "@test/catalog-plugin"),
+    ).toMatchObject({
+      enabled: false,
+      available: false,
+      reason: "superseded_by_bundled",
     });
   });
 

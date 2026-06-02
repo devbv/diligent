@@ -13,6 +13,7 @@ const DIST = resolve(ROOT, "dist");
 const DIAGNOSTICS_DIR = resolve(OVERDARE_CLI, ".diligent/diagnostics");
 const BOOTSTRAP_DIR = resolve(OVERDARE_CLI, "bootstrap");
 const PLUGINS_DIR = resolve(OVERDARE_CLI, "plugins");
+const VALIDATOR_PLUGIN = resolve(PLUGINS_DIR, "plugin-validator");
 
 type PlatformConfig = {
   id: string;
@@ -72,14 +73,10 @@ function ensureWebClientBuilt(): void {
 }
 
 function buildSidecar(platform: PlatformConfig): string {
-  run(["bun", "run", "scripts/build-overdare-sidecar.ts"], ROOT);
-  const source = resolve(DIAGNOSTICS_DIR, `diligent-web-server${process.platform === "win32" ? ".exe" : ""}`);
-  if (!existsSync(source)) {
-    throw new Error(`Built sidecar not found: ${source}`);
-  }
   const target = resolve(DIAGNOSTICS_DIR, `diligent-web-server-${platform.id}${platform.ext}`);
-  if (source !== target) {
-    cpSync(source, target);
+  run(["bun", "run", "scripts/build-overdare-sidecar.ts", `--platform=${platform.id}`, `--outfile=${target}`], ROOT);
+  if (!existsSync(target)) {
+    throw new Error(`Built sidecar not found: ${target}`);
   }
   return target;
 }
@@ -119,6 +116,14 @@ function maybeStageRg(platform: PlatformConfig, stageDir: string): void {
   cpSync(source, target);
 }
 
+function stageSidecarAssets(platform: PlatformConfig, stageDir: string): void {
+  const validatorDir = join(stageDir, "validator");
+  mkdirSync(validatorDir, { recursive: true });
+  const luauLspName = platform.id === "windows-x64" ? "luau-lsp.exe" : "luau-lsp";
+  cpSync(resolve(VALIDATOR_PLUGIN, luauLspName), join(validatorDir, luauLspName));
+  cpSync(resolve(VALIDATOR_PLUGIN, "overdare-types.d.lua"), join(validatorDir, "overdare-types.d.lua"));
+}
+
 function zipRuntimeBundle(stageDir: string, outPath: string): void {
   if (process.platform === "win32") {
     run(
@@ -142,6 +147,7 @@ async function main(): Promise<void> {
 
   cpSync(sidecarPath, join(stageDir, `diligent-web-server${platform.ext}`));
   cpSync(resolve(WEB, "dist/client"), join(stageDir, "dist/client"), { recursive: true });
+  stageSidecarAssets(platform, stageDir);
   stageBootstrap(stageDir);
   maybeStageRg(platform, stageDir);
 
