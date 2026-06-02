@@ -7,6 +7,7 @@ import {
   initialThreadState,
   reduceServerNotification,
 } from "../../../src/client/lib/thread-store";
+import { USER_FACING_NETWORK_ERROR_MESSAGE } from "../../../src/client/lib/user-facing-errors";
 import { WEB_IMAGE_ROUTE_PREFIX } from "../../../src/shared/image-routes";
 
 function reduce(state: typeof initialThreadState, notification: DiligentServerNotification) {
@@ -334,6 +335,35 @@ test("error event appends a RenderItem and preserves providerErrorType", () => {
   expect(next.toast?.message).toBe("ChatGPT API error (401): unauthorized");
 });
 
+test("network error event shows a user-facing message instead of raw transport details", () => {
+  resetAdapter();
+
+  const next = reduce(
+    { ...initialThreadState, activeThreadId: "t1", threadStatus: "busy" },
+    {
+      method: DILIGENT_SERVER_NOTIFICATION_METHODS.ERROR,
+      params: {
+        threadId: "t1",
+        error: {
+          message: "The socket connection was closed unexpectedly. For more information, pass verbose: true.",
+          name: "ProviderError",
+          providerErrorType: "network",
+          isRetryable: true,
+        },
+        fatal: false,
+      },
+    },
+  );
+
+  const errorItem = next.items.find((item) => item.kind === "error");
+  expect(errorItem).toBeDefined();
+  if (errorItem?.kind === "error") {
+    expect(errorItem.providerErrorType).toBe("network");
+    expect(errorItem.message).toBe(USER_FACING_NETWORK_ERROR_MESSAGE);
+  }
+  expect(next.toast?.message).toBe(USER_FACING_NETWORK_ERROR_MESSAGE);
+});
+
 test("hydrateFromThreadRead preserves providerErrorType on history error entries", () => {
   const hydrated = hydrateFromThreadRead(initialThreadState, {
     threadId: "t1",
@@ -358,6 +388,34 @@ test("hydrateFromThreadRead preserves providerErrorType on history error entries
   if (errorItem?.kind === "error") {
     expect(errorItem.providerErrorType).toBe("auth");
     expect(errorItem.turnId).toBe("turn-1");
+  }
+});
+
+test("hydrateFromThreadRead shows a user-facing message for history network errors", () => {
+  const hydrated = hydrateFromThreadRead(initialThreadState, {
+    threadId: "t1",
+    items: [],
+    errors: [
+      {
+        id: "err-1",
+        error: {
+          message: "The socket connection was closed unexpectedly. For more information, pass verbose: true.",
+          name: "ProviderError",
+          providerErrorType: "network",
+          isRetryable: true,
+        },
+        fatal: false,
+        turnId: "turn-1",
+        timestamp: "2024-05-13T01:00:00.000Z",
+      },
+    ],
+  });
+
+  const errorItem = hydrated.items.find((item) => item.kind === "error");
+  expect(errorItem).toBeDefined();
+  if (errorItem?.kind === "error") {
+    expect(errorItem.providerErrorType).toBe("network");
+    expect(errorItem.message).toBe(USER_FACING_NETWORK_ERROR_MESSAGE);
   }
 });
 

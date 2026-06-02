@@ -12,6 +12,7 @@ export function isNetworkError(err: unknown): boolean {
   return (
     msg.includes("econnrefused") ||
     msg.includes("econnreset") ||
+    msg.includes("connection was closed") ||
     msg.includes("etimedout") ||
     msg.includes("timed out") ||
     msg.includes("timeout") ||

@@ -26,6 +26,7 @@ import {
 } from "./collab-reducer";
 import { extractUserTextAndImages, updateItem, withItem, zeroUsage } from "./thread-utils";
 import { isToolEvent, reduceToolEvent } from "./tool-reducer";
+import { getUserFacingErrorMessage } from "./user-facing-errors";
 
 export { hydrateFromThreadRead } from "./thread-hydration";
 
@@ -434,6 +435,7 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent): ThreadState {
     case "error": {
       const now = Date.now();
       const errorKey = `event:error:${now}`;
+      const message = getUserFacingErrorMessage(event.error);
       const settled = settleInFlightItems({
         ...merged,
         threadStatus: "idle",
@@ -446,14 +448,14 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent): ThreadState {
         toast: {
           id: `err-${now}`,
           kind: "error",
-          message: event.error.message,
+          message,
           fatal: event.fatal,
         },
       });
       return withItem(settled, errorKey, {
         id: errorKey,
         kind: "error",
-        message: event.error.message,
+        message,
         name: event.error.name,
         fatal: event.fatal,
         timestamp: now,

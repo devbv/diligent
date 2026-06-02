@@ -9,6 +9,7 @@ import {
 import type { PlanState, ThreadState } from "./thread-store";
 import { reduceServerNotification } from "./thread-store";
 import { normalizeToolName, parsePlanOutput, updateItem, withItem, zeroUsage } from "./thread-utils";
+import { getUserFacingErrorMessage } from "./user-facing-errors";
 
 function parseSpawnOutput(output: string): { threadId?: string; nickname?: string } {
   try {
@@ -103,7 +104,7 @@ function hydrateFromSnapshotItems(state: ThreadState, payload: ThreadReadRespons
     current = withItem(current, `history:error:${error.id}`, {
       id: `history:error:${error.id}`,
       kind: "error",
-      message: error.error.message,
+      message: getUserFacingErrorMessage(error.error),
       name: error.error.name,
       fatal: error.fatal,
       turnId: error.turnId,

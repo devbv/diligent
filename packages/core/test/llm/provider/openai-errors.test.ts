@@ -83,6 +83,10 @@ describe("isNetworkError", () => {
     expect(isNetworkError(new Error("The operation timed out."))).toBe(true);
   });
 
+  test("classifies unexpected socket closures as network retryable candidates", () => {
+    expect(isNetworkError(new Error("The socket connection was closed unexpectedly."))).toBe(true);
+  });
+
   test("does not classify user aborts as network retryable candidates", () => {
     const error = new DOMException("The operation was aborted.", "AbortError");
 
