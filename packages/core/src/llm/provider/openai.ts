@@ -172,7 +172,11 @@ function resolveOpenAIBaseUrl(baseUrl?: string): string {
   return resolved.endsWith("/v1") ? resolved : `${resolved}/v1`;
 }
 
-export function createOpenAINativeCompaction(apiKey: string, baseUrl?: string): NativeCompactFn {
+export function createOpenAINativeCompaction(
+  apiKey: string,
+  baseUrl?: string,
+  imageDetail?: OpenAIImageDetail,
+): NativeCompactFn {
   const compactEndpoint = `${resolveOpenAIBaseUrl(baseUrl)}/responses/compact`;
   return async (input) => {
     const body: Record<string, unknown> = {
@@ -181,6 +185,7 @@ export function createOpenAINativeCompaction(apiKey: string, baseUrl?: string): 
         messages: input.messages,
         cwd: input.cwd,
         compactionSummary: input.compactionSummary,
+        imageDetail,
       }),
     };
     if (input.systemPrompt.length > 0) body.instructions = flattenSections(input.systemPrompt);

@@ -179,7 +179,12 @@ export function createReadImageTool(): Tool<typeof ReadImageParams> {
       let encodedBytes = bytes;
       try {
         encodedBytes = await downscaleImageIfNeeded(bytes, declaredMediaType);
-      } catch {
+      } catch (err) {
+        // Don't block the read on a resize failure — fall back to the original bytes. But log it:
+        // a silently-failing resize path would otherwise look like success while never downscaling.
+        console.warn(
+          `read_image: downscale failed for ${basename(file_path)}, sending original resolution: ${err instanceof Error ? err.message : String(err)}`,
+        );
         encodedBytes = bytes;
       }
 

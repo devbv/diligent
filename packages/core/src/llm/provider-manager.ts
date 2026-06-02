@@ -155,6 +155,7 @@ class AuthStateManager {
 function createCompactionRegistry(
   authState: AuthStateManager,
   baseUrls: Partial<Record<ProviderName, string>>,
+  openaiImageDetail?: OpenAIImageDetail,
 ): NativeCompactionLookup {
   return (provider) => {
     const external = authState.getExternalAuth(provider as ProviderName);
@@ -165,7 +166,7 @@ function createCompactionRegistry(
     const key = authState.getApiKey(provider as ProviderName);
     if (!key) return undefined;
     if (provider === "anthropic") return createAnthropicNativeCompaction(key, baseUrls.anthropic);
-    if (provider === "openai") return createOpenAINativeCompaction(key, baseUrls.openai);
+    if (provider === "openai") return createOpenAINativeCompaction(key, baseUrls.openai, openaiImageDetail);
     return undefined;
   };
 }
@@ -229,7 +230,7 @@ export class ProviderManager {
   }
 
   createNativeCompactionRegistry(): NativeCompactionLookup {
-    return createCompactionRegistry(this.authState, this.baseUrls);
+    return createCompactionRegistry(this.authState, this.baseUrls, this.openaiImageDetail);
   }
 
   createNativeCompactionForProvider(
