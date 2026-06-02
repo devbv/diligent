@@ -5,6 +5,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ToolContext } from "@diligent/core/tool/types";
 import { createReadImageTool } from "@diligent/runtime/tools";
+// @ts-expect-error -- file import yields a path string at runtime
+import pngWasm from "@jsquash/png/codec/pkg/squoosh_png_bg.wasm" with { type: "file" };
+import decodePng, { init as initPngDecode } from "@jsquash/png/decode";
+import encodePng, { init as initPngEncode } from "@jsquash/png/encode";
 
 function makeCtx(signal?: AbortSignal): ToolContext {
   return {
@@ -163,6 +167,23 @@ describe("read_image tool", () => {
     const result = await tool.execute({ file_path: link }, makeCtx());
     expect(result.metadata?.error).toBe(true);
     expect(result.output).toContain("Symlink");
+  });
+
+  test("downscales an oversized PNG before returning the image block", async () => {
+    const mod = await WebAssembly.compile(await Bun.file(pngWasm).arrayBuffer());
+    await initPngEncode(mod);
+    await initPngDecode(mod);
+    const big = await encodePng({ data: new Uint8ClampedArray(3000 * 2000 * 4).fill(255), width: 3000, height: 2000 });
+    const filePath = join(tmpDir, "screenshot.png");
+    await writeFile(filePath, Buffer.from(big));
+
+    const result = await tool.execute({ file_path: filePath }, makeCtx());
+    expect(result.metadata?.error).toBeUndefined();
+    const data = result.outputImages?.[0]?.source.data;
+    expect(data).toBeDefined();
+    const decoded = await decodePng(Buffer.from(data as string, "base64"));
+    expect(Math.max(decoded.width, decoded.height)).toBe(1568);
+    expect(result.output).toContain("downscaled from");
   });
 
   test("honors AbortSignal — returns error when pre-aborted", async () => {

@@ -5,6 +5,7 @@ import { COLLAB_TOOL_NAMES } from "../collab";
 import type { DiligentConfig } from "../config/schema";
 import type { BundledToolProvider } from "./bundled-provider";
 import type { RuntimeToolHost } from "./capabilities";
+import { withImageDownscaling } from "./image-resize";
 import { isImmutableTool } from "./immutable";
 import { discoverGlobalPlugins, loadPlugin } from "./plugin-loader";
 
@@ -396,7 +397,9 @@ export async function buildToolCatalog(
   for (const entry of finalEntries) {
     const toolState = state.get(entry.tool.name);
     if (toolState?.enabled) {
-      tools.push(entry.tool);
+      // Downscale any images a tool returns at this single choke point — covers every enabled tool
+      // (read_image, screenshots, MCP image results), not just the ones that downscale themselves.
+      tools.push(withImageDownscaling(entry.tool));
     }
   }
 

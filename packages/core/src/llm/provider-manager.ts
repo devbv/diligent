@@ -3,6 +3,7 @@ import { createAnthropicNativeCompaction, createAnthropicStream } from "./provid
 import { createGeminiStream } from "./provider/gemini";
 import type { NativeCompactionLookup } from "./provider/native-compaction";
 import { createOpenAINativeCompaction, createOpenAIStream } from "./provider/openai";
+import type { OpenAIImageDetail } from "./provider/openai-responses";
 import { createVertexStream } from "./provider/vertex";
 import { createZaiStream } from "./provider/zai";
 import type { ProviderName, StreamFunction } from "./types";
@@ -18,7 +19,7 @@ export interface ExternalProviderAuth {
 export interface ProviderManagerConfig {
   provider?: {
     anthropic?: { baseUrl?: string };
-    openai?: { baseUrl?: string };
+    openai?: { baseUrl?: string; imageDetail?: OpenAIImageDetail };
     chatgpt?: { baseUrl?: string };
     gemini?: { baseUrl?: string };
     vertex?: { baseUrl?: string };
@@ -54,7 +55,12 @@ export const PROVIDER_HINTS: Record<ProviderName, { apiKeyUrl: string; apiKeyPla
   zai: { apiKeyUrl: "https://platform.z.ai/console/api-keys", apiKeyPlaceholder: "zai_..." },
 };
 
-const PROVIDER_FACTORIES: Record<ProviderName, (key: string, baseUrl?: string) => StreamFunction> = {
+// imageDetail is OpenAI-only; other factories have fewer params and remain assignable (a function
+// taking fewer args satisfies a type expecting more), so they simply ignore the extra argument.
+const PROVIDER_FACTORIES: Record<
+  ProviderName,
+  (key: string, baseUrl?: string, imageDetail?: OpenAIImageDetail) => StreamFunction
+> = {
   anthropic: createAnthropicStream,
   openai: createOpenAIStream,
   chatgpt: () => {
@@ -68,14 +74,19 @@ const PROVIDER_FACTORIES: Record<ProviderName, (key: string, baseUrl?: string) =
 class StreamFactoryCache {
   private cache = new Map<string, StreamFunction>();
 
-  getOrCreate(provider: ProviderName, apiKey: string, baseUrl?: string): StreamFunction {
-    const cacheKey = `${provider}:${apiKey}`;
+  getOrCreate(
+    provider: ProviderName,
+    apiKey: string,
+    baseUrl?: string,
+    imageDetail?: OpenAIImageDetail,
+  ): StreamFunction {
+    const cacheKey = `${provider}:${apiKey}:${imageDetail ?? ""}`;
     const cached = this.cache.get(cacheKey);
     if (cached) return cached;
 
     const factory = PROVIDER_FACTORIES[provider];
     if (!factory) throw new Error(`Unknown provider: ${provider}`);
-    const stream = factory(apiKey, baseUrl);
+    const stream = factory(apiKey, baseUrl, imageDetail);
     this.cache.set(cacheKey, stream);
     return stream;
   }
@@ -144,6 +155,7 @@ class AuthStateManager {
 function createCompactionRegistry(
   authState: AuthStateManager,
   baseUrls: Partial<Record<ProviderName, string>>,
+  openaiImageDetail?: OpenAIImageDetail,
 ): NativeCompactionLookup {
   return (provider) => {
     const external = authState.getExternalAuth(provider as ProviderName);
@@ -154,7 +166,7 @@ function createCompactionRegistry(
     const key = authState.getApiKey(provider as ProviderName);
     if (!key) return undefined;
     if (provider === "anthropic") return createAnthropicNativeCompaction(key, baseUrls.anthropic);
-    if (provider === "openai") return createOpenAINativeCompaction(key, baseUrls.openai);
+    if (provider === "openai") return createOpenAINativeCompaction(key, baseUrls.openai, openaiImageDetail);
     return undefined;
   };
 }
@@ -167,12 +179,14 @@ export function createStreamForProvider(provider: string, apiKey: string): Strea
 
 export class ProviderManager {
   private baseUrls: Partial<Record<ProviderName, string>> = {};
+  private openaiImageDetail: OpenAIImageDetail | undefined;
   private streamCache = new StreamFactoryCache();
   private authState: AuthStateManager;
 
   constructor(config: ProviderManagerConfig) {
     this.baseUrls.anthropic = config.provider?.anthropic?.baseUrl;
     this.baseUrls.openai = config.provider?.openai?.baseUrl;
+    this.openaiImageDetail = config.provider?.openai?.imageDetail;
     this.baseUrls.chatgpt = config.provider?.chatgpt?.baseUrl;
     this.baseUrls.gemini = config.provider?.gemini?.baseUrl;
     this.baseUrls.vertex = config.provider?.vertex?.baseUrl;
@@ -209,13 +223,14 @@ export class ProviderManager {
         throw new Error(`No authentication configured for ${provider}. Use /provider ${provider} to configure.`);
       }
 
-      const stream = this.streamCache.getOrCreate(provider, apiKey, this.baseUrls[provider]);
+      const imageDetail = provider === "openai" ? this.openaiImageDetail : undefined;
+      const stream = this.streamCache.getOrCreate(provider, apiKey, this.baseUrls[provider], imageDetail);
       return stream(model, context, options);
     };
   }
 
   createNativeCompactionRegistry(): NativeCompactionLookup {
-    return createCompactionRegistry(this.authState, this.baseUrls);
+    return createCompactionRegistry(this.authState, this.baseUrls, this.openaiImageDetail);
   }
 
   createNativeCompactionForProvider(
