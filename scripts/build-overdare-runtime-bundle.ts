@@ -58,7 +58,7 @@ function parseCliOptions(argv: string[]): {
     options: {
       version: { type: "string" },
       platform: { type: "string" },
-      env: { type: "string" },
+      "agent-env": { type: "string" },
     },
     strict: true,
     allowPositionals: false,
@@ -66,12 +66,12 @@ function parseCliOptions(argv: string[]): {
 
   const version = values.version?.trim();
   const platformId = values.platform?.trim();
-  const envRaw = values.env?.trim();
+  const envRaw = values["agent-env"]?.trim();
   if (!version) throw new Error("Missing required --version <semver>");
   if (!platformId) throw new Error("Missing required --platform <platform-id>");
-  if (!envRaw) throw new Error("Missing required --env <prod|dev>");
+  if (!envRaw) throw new Error("Missing required --agent-env <prod|dev>");
   if (envRaw !== "prod" && envRaw !== "dev") {
-    throw new Error(`Invalid --env value: '${envRaw}' (expected 'prod' or 'dev')`);
+    throw new Error(`Invalid --agent-env value: '${envRaw}' (expected 'prod' or 'dev')`);
   }
   const platform = PLATFORM_BY_ID.get(platformId);
   if (!platform) throw new Error(`Unsupported platform: ${platformId}`);

@@ -128,7 +128,7 @@ fn read_legacy_user_config_json() -> Option<serde_json::Value> {
     // the migration moves that file into ~/.overdare/. For dev runs migration
     // is SkippedByPolicy, so the legacy directory remains and the policy
     // must still apply — otherwise a pre-existing "updateMode: disabled"
-    // opt-out is silently bypassed the first time a user passes --env=dev.
+    // opt-out is silently bypassed the first time a user passes --agent-env=dev.
     let path = global_legacy_storage_dir()?.join("config.jsonc");
     read_jsonc_file(&path)
 }
@@ -268,7 +268,7 @@ fn report_progress(progress: &mut Option<&mut dyn FnMut(UpdateProgress)>, event:
 }
 
 fn validate_manifest_env(manifest: &UpdateManifest, requested: Env) -> Result<(), String> {
-    // Normalize the declared field the same way the CLI parses --env (trim +
+    // Normalize the declared field the same way the CLI parses --agent-env (trim +
     // lowercase). A pipeline that writes `"env": "Prod"` or accidentally
     // appends whitespace must not block updates for what is semantically the
     // same value.
@@ -289,7 +289,7 @@ fn validate_manifest_env(manifest: &UpdateManifest, requested: Env) -> Result<()
                 Ok(())
             } else {
                 Err(format!(
-                    "Manifest declares env='{declared}' but agent requested env='{}'. Check --env or DILIGENT_UPDATE_URL.",
+                    "Manifest declares env='{declared}' but agent requested env='{}'. Check --agent-env or DILIGENT_UPDATE_URL.",
                     requested.as_str()
                 ))
             }
@@ -681,7 +681,7 @@ mod tests {
 
     #[test]
     fn manifest_env_is_case_insensitive_and_trimmed() {
-        // Symmetric with the CLI's --env parsing, which lowercases + trims.
+        // Symmetric with the CLI's --agent-env parsing, which lowercases + trims.
         // A pipeline that produces `"Prod"` or `"prod\n"` must not block updates.
         assert!(validate_manifest_env(&manifest_with_env("1.0.0", Some("Prod")), Env::Prod).is_ok());
         assert!(validate_manifest_env(&manifest_with_env("1.0.0", Some("DEV")), Env::Dev).is_ok());

@@ -8,14 +8,14 @@ created: 2026-05-28
 
 ## Goal
 
-Split overdare-ai-agent builds and GitHub Releases into two environments — `prod` and `dev` — and let the agent select which one to download via a single `--env` argument. The same argument also supports pinning a specific version with `env@version` syntax so any release (latest or a named one) can be installed deterministically.
+Split overdare-ai-agent builds and GitHub Releases into two environments — `prod` and `dev` — and let the agent select which one to download via a single `--agent-env` argument. The same argument also supports pinning a specific version with `env@version` syntax so any release (latest or a named one) can be installed deterministically.
 
 End state:
 
-- `overdare-ai-agent --env=prod` (or no arg) downloads the latest **prod** release
-- `overdare-ai-agent --env=dev` downloads the latest **dev** release
-- `overdare-ai-agent --env=prod@1.2.3` downloads exactly **prod v1.2.3**
-- `overdare-ai-agent --env=dev@1.4.0-beta.2` downloads exactly **dev v1.4.0-beta.2**
+- `overdare-ai-agent --agent-env=prod` (or no arg) downloads the latest **prod** release
+- `overdare-ai-agent --agent-env=dev` downloads the latest **dev** release
+- `overdare-ai-agent --agent-env=prod@1.2.3` downloads exactly **prod v1.2.3**
+- `overdare-ai-agent --agent-env=dev@1.4.0-beta.2` downloads exactly **dev v1.4.0-beta.2**
 - prod and dev installs are isolated on disk: prod under `~/.overdare/`, dev under `~/.overdare-dev/` (independent runtime, plugins, config, logs)
 - GitHub Release tags carry an env prefix: `prod-v1.2.3` / `dev-v1.2.3`; dev releases are marked `prerelease=true`
 - All release artifacts encode the env in their filename so the two channels never cross-contaminate
@@ -24,10 +24,10 @@ End state:
 
 | Topic | Decision |
 |---|---|
-| User-facing flag name | `--env` (not `--channel`) |
+| User-facing flag name | `--agent-env` (not `--channel`) |
 | Default env when arg omitted | `prod` |
 | Env values | `prod`, `dev` (closed set; unknown values fail fast) |
-| Version pin syntax | `--env=<env>@<version>`, atomic single flag |
+| Version pin syntax | `--agent-env=<env>@<version>`, atomic single flag |
 | Tag scheme | `prod-v<semver>`, `dev-v<semver>` |
 | GitHub Release pre-release flag | `true` for dev, `false` for prod |
 | Storage isolation | `~/.overdare` (prod) vs `~/.overdare-dev` (dev) — both download/state fully separated |
@@ -39,20 +39,20 @@ End state:
 ## Argument grammar
 
 ```
---env=<env>[@<version>]
+--agent-env=<env>[@<version>]
 ```
 
 - `<env>` ∈ `{prod, dev}`
 - `<version>` is a SemVer string matching the release tag suffix (without the leading `v`)
 - Parsing rules:
-  - `--env=prod` → env=prod, version=latest
-  - `--env=dev@1.4.0` → env=dev, version=1.4.0 (pinned)
-  - `--env=prod@` → invalid (empty version)
-  - `--env=staging` → invalid (unknown env)
+  - `--agent-env=prod` → env=prod, version=latest
+  - `--agent-env=dev@1.4.0` → env=dev, version=1.4.0 (pinned)
+  - `--agent-env=prod@` → invalid (empty version)
+  - `--agent-env=staging` → invalid (unknown env)
 
 Equivalent inputs (lower priority than the CLI flag, same grammar):
 
-1. CLI flag: `--env=<env>[@<version>]`
+1. CLI flag: `--agent-env=<env>[@<version>]`
 2. Env var: `DILIGENT_ENV=<env>[@<version>]`
 3. Compile-time: `option_env!("DILIGENT_ENV")` (so a packaged build can ship with a baked-in default)
 4. Fallback default: `prod`
@@ -161,7 +161,7 @@ What is **not** in scope for P067: actually provisioning a separate dev Supabase
 
 | Area | What changes |
 |---|---|
-| `apps/overdare-ai-agent/src/cli.rs` | Add `--env=<env>[@<version>]` parsing; route resolved `EnvSelection` into `init` / `start` |
+| `apps/overdare-ai-agent/src/cli.rs` | Add `--agent-env=<env>[@<version>]` parsing; route resolved `EnvSelection` into `init` / `start` |
 | `apps/overdare-ai-agent/src/update.rs` | Introduce `EnvSelection { env: Env, pinned_version: Option<String> }`; env-aware manifest URL resolver; pinned-mode update path; manifest `env` validation |
 | `apps/overdare-ai-agent/src/storage.rs` | `storage_namespace(env)` returns `"overdare"` for prod, `"overdare-dev"` for dev; `option_env!("DILIGENT_STORAGE_NAMESPACE")` override retained for non-env special builds |
 | `apps/overdare-ai-agent/src/webserver.rs` | Carry env through `WebServerOptions`; forward `DILIGENT_STORAGE_NAMESPACE` and `DILIGENT_ENV` to child runtime |
@@ -171,9 +171,9 @@ What is **not** in scope for P067: actually provisioning a separate dev Supabase
 | `packages/plugin-sdk/test/env.test.ts` (NEW) | Cover default-prod, dev, trimming, case, unrecognized, empty/whitespace inputs |
 | ~~`apps/overdare-ai-agent/bootstrap/env-config.json`~~ | Dropped from PR3 — no concrete consumer; revisit when a real env-keyed dataset appears |
 | ~~Runtime call sites that currently hard-code service URLs~~ | Not migrated. Analytics intentionally follows `HUB_DOMAIN` (data plane); RAG has no dev endpoint |
-| `scripts/build-overdare-runtime-bundle.ts` | New required arg `--env=<env>`; output filename uses env-prefixed pattern; bundle content unchanged across envs |
+| `scripts/build-overdare-runtime-bundle.ts` | New required arg `--agent-env=<env>`; output filename uses env-prefixed pattern; bundle content unchanged across envs |
 | `.github/workflows/release.yml` | Add `inputs.env: { type: choice, options: [prod, dev] }`; build with env-prefixed filenames; tag as `{env}-v{version}`; `--prerelease` for dev; rolling `dev-latest` release maintenance; legacy alias upload for prod migration window |
-| `apps/overdare-ai-agent/README.md` | Document `--env`, pinning syntax, storage paths, dev/prod coexistence |
+| `apps/overdare-ai-agent/README.md` | Document `--agent-env`, pinning syntax, storage paths, dev/prod coexistence |
 | `docs/guide/packaging.md` | Document the env-prefixed release artifact contract and rolling `dev-latest` semantics |
 | `ARCHITECTURE.md` | Brief mention of dual-env release model in the overdare-ai-agent section |
 
@@ -193,7 +193,7 @@ What is **not** in scope for P067: actually provisioning a separate dev Supabase
 
 | File | Action | Description |
 |---|---|---|
-| `cli.rs` | MODIFY | Parse `--env=<env>[@<version>]` once at the top of `run()`; thread resolved selection into all subcommands; update `print_help` |
+| `cli.rs` | MODIFY | Parse `--agent-env=<env>[@<version>]` once at the top of `run()`; thread resolved selection into all subcommands; update `print_help` |
 | `update.rs` | MODIFY | Add `Env`, `EnvSelection`; replace `resolve_manifest_url()` with env+pin-aware variant; add pinned-mode short-circuit in `run_with_progress`; validate `manifest.env`; write `env.json` alongside `version.json` |
 | `storage.rs` | MODIFY | Take `Env` in `storage_namespace`; derive `~/.overdare-dev` for dev; keep `option_env!` override for special builds |
 | `webserver.rs` | MODIFY | Plumb `env` through `WebServerOptions`; export `DILIGENT_ENV` and env-correct `DILIGENT_STORAGE_NAMESPACE` to child |
@@ -203,7 +203,7 @@ What is **not** in scope for P067: actually provisioning a separate dev Supabase
 
 | File | Action | Description |
 |---|---|---|
-| `build-overdare-runtime-bundle.ts` | MODIFY | Require `--env`; encode env into output filename |
+| `build-overdare-runtime-bundle.ts` | MODIFY | Require `--agent-env`; encode env into output filename |
 | `build-overdare-sidecar.ts` | NO CHANGE | Sidecar binary is env-agnostic; env is supplied via runtime env vars |
 
 ### packages/runtime/
@@ -219,7 +219,7 @@ What is **not** in scope for P067: actually provisioning a separate dev Supabase
 | File | Action | Description |
 |---|---|---|
 | `bootstrap/env-config.json` | NEW | Source-of-truth map of env → backing service identifiers |
-| `README.md` | MODIFY | Document `--env`, pinning, storage paths, dev/prod coexistence |
+| `README.md` | MODIFY | Document `--agent-env`, pinning, storage paths, dev/prod coexistence |
 
 ### .github/workflows/
 
@@ -238,7 +238,7 @@ What is **not** in scope for P067: actually provisioning a separate dev Supabase
 
 | File | Action | Description |
 |---|---|---|
-| `env_parse.rs` | NEW | `--env=prod`, `--env=dev`, `--env=prod@1.2.3`, malformed inputs, env var precedence, compile-time fallback |
+| `env_parse.rs` | NEW | `--agent-env=prod`, `--agent-env=dev`, `--agent-env=prod@1.2.3`, malformed inputs, env var precedence, compile-time fallback |
 | `manifest_url.rs` | NEW | URL composition matrix for latest/pinned × prod/dev |
 | `storage_namespace.rs` | NEW | `storage_namespace(Env::Prod)` == `"overdare"`, `(Env::Dev)` == `"overdare-dev"`, override behavior |
 | `manifest_env_validation.rs` | NEW | Manifest with mismatching `env` rejected; missing `env` permitted only in compatibility mode |
@@ -255,7 +255,7 @@ What is **not** in scope for P067: actually provisioning a separate dev Supabase
 - **`dev-latest` mismarked as `prerelease=false`** would surface dev to the prod `latest` URL. Mitigation: workflow includes a verification step (`gh release view dev-latest --json isPrerelease` checked to be `true`) before completing.
 - **`DILIGENT_UPDATE_URL` override** can silently point either env at the wrong artifact. The manifest `env` validation catches this on the agent side; we document the override clearly in README.
 - **Dev release proliferation** — every push will accumulate. Out of scope here, but worth a follow-up retention job (keep N most recent dev releases).
-- **Pinned version typo** — `--env=prod@1.2.4` for a non-existent tag → agent gets a 404 on manifest. Mitigation: agent surfaces "version 1.2.4 not found for prod" with the constructed URL, not a raw HTTP error.
+- **Pinned version typo** — `--agent-env=prod@1.2.4` for a non-existent tag → agent gets a 404 on manifest. Mitigation: agent surfaces "version 1.2.4 not found for prod" with the constructed URL, not a raw HTTP error.
 
 ## Implementation order (PR breakdown)
 
@@ -269,7 +269,7 @@ What is **not** in scope for P067: actually provisioning a separate dev Supabase
 
 ### PR2 — build/release: env split
 
-- `build-overdare-runtime-bundle.ts --env`
+- `build-overdare-runtime-bundle.ts --agent-env`
 - `release.yml`: env input, env-prefixed filenames, `{env}-v{version}` tag, conditional `--prerelease`, `dev-latest` rolling release
 - Prod releases also upload legacy alias filenames during migration window
 - Verify-prerelease guard step
@@ -293,8 +293,8 @@ What is **not** in scope for P067: actually provisioning a separate dev Supabase
 - **Unit (Rust)**: `cargo test --manifest-path apps/overdare-ai-agent/Cargo.toml` covers env parsing, manifest URL composition, namespace derivation, manifest validation.
 - **Unit (TS)**: `bun test packages/runtime/` covers env-config resolution and the `DILIGENT_ENV` default.
 - **Integration (manual)**:
-  - On one workstation: `overdare-ai-agent --env=prod init` then `overdare-ai-agent --env=dev init` — confirm `~/.overdare/` and `~/.overdare-dev/` populated independently, no cross-writes.
-  - `overdare-ai-agent --env=prod@1.2.3 init` while a newer prod release exists — confirm 1.2.3 installed, no drift to latest.
+  - On one workstation: `overdare-ai-agent --agent-env=prod init` then `overdare-ai-agent --agent-env=dev init` — confirm `~/.overdare/` and `~/.overdare-dev/` populated independently, no cross-writes.
+  - `overdare-ai-agent --agent-env=prod@1.2.3 init` while a newer prod release exists — confirm 1.2.3 installed, no drift to latest.
   - Trigger the workflow with `env=dev` — confirm `dev-v<version>` and `dev-latest` releases both created, both `prerelease=true`, prod `latest` URL still serves the previous prod release.
   - Old prod agent build (pre-P067) against post-P067 prod release — confirm successful update via legacy alias URL.
 

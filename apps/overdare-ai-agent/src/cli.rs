@@ -14,7 +14,7 @@ pub fn run() -> Result<(), String> {
         return Ok(());
     };
 
-    // Help must remain reachable even when `--env=<invalid>` is supplied —
+    // Help must remain reachable even when `--agent-env=<invalid>` is supplied —
     // resolving the env first would block the very flag the help text
     // documents.
     if matches!(command.as_str(), "help" | "--help" | "-h") {
@@ -31,41 +31,41 @@ pub fn run() -> Result<(), String> {
     }
 }
 
-/// Extracts the `--env=<value>` / `--env <value>` flag from `args`, returning
+/// Extracts the `--agent-env=<value>` / `--agent-env <value>` flag from `args`, returning
 /// the remaining (non-env) arguments untouched.
 ///
 /// Behavior:
-/// - `--env=<value>` and bare `--env <value>` are both accepted; mixing them is
+/// - `--agent-env=<value>` and bare `--agent-env <value>` are both accepted; mixing them is
 ///   fine in different positions but specifying more than one is an error.
-/// - A bare `--env` with no following token is rejected — silently treating it
-///   as "no env" would route a user who typed `--env dev` (with a space) to
+/// - A bare `--agent-env` with no following token is rejected — silently treating it
+///   as "no env" would route a user who typed `--agent-env dev` (with a space) to
 ///   prod by default, which is a release-channel footgun.
-/// - Duplicate `--env=` flags are rejected so a script that accidentally
+/// - Duplicate `--agent-env=` flags are rejected so a script that accidentally
 ///   stacks them does not silently overwrite the first value.
 fn extract_env_flag(args: &[String]) -> Result<(Option<String>, Vec<String>), String> {
     let mut env_flag: Option<String> = None;
     let mut remaining = Vec::with_capacity(args.len());
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
-        if let Some(value) = arg.strip_prefix("--env=") {
+        if let Some(value) = arg.strip_prefix("--agent-env=") {
             if env_flag.is_some() {
                 return Err(
-                    "Conflicting --env flags. Specify --env exactly once.".to_string(),
+                    "Conflicting --agent-env flags. Specify --agent-env exactly once.".to_string(),
                 );
             }
             env_flag = Some(value.to_string());
             continue;
         }
-        if arg == "--env" {
+        if arg == "--agent-env" {
             let Some(value) = iter.next() else {
                 return Err(
-                    "--env requires a value (e.g. --env=dev, --env=prod@1.2.3, or --env dev)."
+                    "--agent-env requires a value (e.g. --agent-env=dev, --agent-env=prod@1.2.3, or --agent-env dev)."
                         .to_string(),
                 );
             };
             if env_flag.is_some() {
                 return Err(
-                    "Conflicting --env flags. Specify --env exactly once.".to_string(),
+                    "Conflicting --agent-env flags. Specify --agent-env exactly once.".to_string(),
                 );
             }
             env_flag = Some(value.clone());
@@ -108,7 +108,7 @@ fn run_init(selection: &EnvSelection, args: Vec<String>) -> Result<(), String> {
     let skip_update = args.iter().any(|arg| arg == "--skip-update");
 
     // Echo the resolved env/pin before doing any network work so a user
-    // troubleshooting "is --env even being picked up?" sees the parsed
+    // troubleshooting "is --agent-env even being picked up?" sees the parsed
     // selection even if the manifest fetch later errors out.
     println!("Env: {}", selection.env.as_str());
     if let Some(pin) = selection.pinned_version.as_deref() {
@@ -154,7 +154,7 @@ fn run_webserver(selection: &EnvSelection, args: Vec<String>) -> Result<(), Stri
 
 fn print_help() {
     println!(
-        "overdare-ai-agent\n\nGlobal flags:\n  --env=<env>[@<version>]   Select release env (prod|dev). Optionally pin a version, e.g. prod@1.2.3 or dev@1.4.0-beta.2. Defaults to prod.\n\nCommands:\n  init [--skip-update]   Ensure runtime exists, print current/latest, and update unless skipped\n  start [options]        Run updated runtime diligent-web-server as a subprocess"
+        "overdare-ai-agent\n\nGlobal flags:\n  --agent-env=<env>[@<version>]   Select release env (prod|dev). Optionally pin a version, e.g. prod@1.2.3 or dev@1.4.0-beta.2. Defaults to prod.\n\nCommands:\n  init [--skip-update]   Ensure runtime exists, print current/latest, and update unless skipped\n  start [options]        Run updated runtime diligent-web-server as a subprocess"
     );
 }
 
@@ -173,7 +173,7 @@ mod tests {
     #[test]
     fn extract_env_flag_picks_up_before_subcommand() {
         let args = vec![
-            "--env=dev@1.2.3".to_string(),
+            "--agent-env=dev@1.2.3".to_string(),
             "start".to_string(),
             "--cwd=/tmp".to_string(),
         ];
@@ -187,7 +187,7 @@ mod tests {
         let args = vec![
             "init".to_string(),
             "--skip-update".to_string(),
-            "--env=prod".to_string(),
+            "--agent-env=prod".to_string(),
         ];
         let (flag, rest) = extract_env_flag(&args).expect("parse env flag");
         assert_eq!(flag.as_deref(), Some("prod"));
@@ -207,11 +207,11 @@ mod tests {
 
     #[test]
     fn extract_env_flag_accepts_space_form() {
-        // `--env dev` was previously silently dropped (the bare token didn't
-        // match `--env=` and the value flowed into the subcommand args). A
+        // `--agent-env dev` was previously silently dropped (the bare token didn't
+        // match `--agent-env=` and the value flowed into the subcommand args). A
         // user typing the space form must get the env they asked for.
         let args = vec![
-            "--env".to_string(),
+            "--agent-env".to_string(),
             "dev@1.2.3".to_string(),
             "init".to_string(),
         ];
@@ -222,27 +222,27 @@ mod tests {
 
     #[test]
     fn extract_env_flag_rejects_duplicate_env_flags() {
-        // Stacked `--env=` flags previously silently took the last value,
+        // Stacked `--agent-env=` flags previously silently took the last value,
         // routing a wrapper script's intended env to a caller's override.
-        let args = vec!["--env=prod".to_string(), "--env=dev".to_string()];
+        let args = vec!["--agent-env=prod".to_string(), "--agent-env=dev".to_string()];
         let err = extract_env_flag(&args).unwrap_err();
-        assert!(err.contains("Conflicting --env"));
+        assert!(err.contains("Conflicting --agent-env"));
     }
 
     #[test]
     fn extract_env_flag_rejects_mixed_form_duplicates() {
         let args = vec![
-            "--env=prod".to_string(),
-            "--env".to_string(),
+            "--agent-env=prod".to_string(),
+            "--agent-env".to_string(),
             "dev".to_string(),
         ];
         let err = extract_env_flag(&args).unwrap_err();
-        assert!(err.contains("Conflicting --env"));
+        assert!(err.contains("Conflicting --agent-env"));
     }
 
     #[test]
     fn extract_env_flag_rejects_bare_env_with_no_value() {
-        let args = vec!["--env".to_string()];
+        let args = vec!["--agent-env".to_string()];
         let err = extract_env_flag(&args).unwrap_err();
         assert!(err.contains("requires a value"));
     }

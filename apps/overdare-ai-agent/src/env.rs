@@ -46,7 +46,7 @@ impl EnvSelection {
     pub fn parse(raw: &str) -> Result<Self, String> {
         let trimmed = raw.trim();
         if trimmed.is_empty() {
-            return Err("Empty --env value".to_string());
+            return Err("Empty --agent-env value".to_string());
         }
         let (env_part, version_part) = match trimmed.split_once('@') {
             Some((e, v)) => (e, Some(v)),
@@ -56,7 +56,7 @@ impl EnvSelection {
         let pinned_version = match version_part {
             Some(v) if v.trim().is_empty() => {
                 return Err(format!(
-                    "Empty version after '@' in --env={trimmed} (use --env={env_part} or --env={env_part}@<version>)"
+                    "Empty version after '@' in --agent-env={trimmed} (use --agent-env={env_part} or --agent-env={env_part}@<version>)"
                 ));
             }
             Some(v) => {

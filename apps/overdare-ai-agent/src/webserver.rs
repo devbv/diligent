@@ -102,7 +102,7 @@ pub fn parse_args(args: &[String], env: Env) -> Result<WebServerOptions, String>
         }
         if matches!(arg.as_str(), "--help" | "-h") {
             return Err(
-                "Usage: overdare-ai-agent [--env=prod|dev[@version]] start --cwd=/path/to/project [--userid=abc] [--project-id=project] [--studio-rpc-port=12345] [--web-server-port=3000] [--hub-domain=hub.example.com]"
+                "Usage: overdare-ai-agent [--agent-env=prod|dev[@version]] start --cwd=/path/to/project [--userid=abc] [--project-id=project] [--studio-rpc-port=12345] [--web-server-port=3000] [--hub-domain=hub.example.com]"
                     .to_string(),
             );
         }
@@ -250,14 +250,14 @@ pub async fn start_foreground(options: WebServerOptions) -> Result<RunningWebSer
 
     let binary = resolve_updated_sidecar_path(options.env).ok_or_else(
         || format!(
-            "Updated runtime binary not found. Run 'overdare-ai-agent --env={} init' first so ~/.{}/updates/runtime/diligent-web-server exists.",
+            "Updated runtime binary not found. Run 'overdare-ai-agent --agent-env={} init' first so ~/.{}/updates/runtime/diligent-web-server exists.",
             options.env.as_str(),
             storage_namespace(options.env)
         ),
     )?;
     let dist_dir = resolve_updated_dist_dir(options.env).ok_or_else(|| {
         format!(
-            "Updated runtime dist/client not found. Run 'overdare-ai-agent --env={} init' first.",
+            "Updated runtime dist/client not found. Run 'overdare-ai-agent --agent-env={} init' first.",
             options.env.as_str()
         )
     })?;

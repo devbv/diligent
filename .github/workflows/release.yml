@@ -97,7 +97,7 @@ jobs:
           bun run overdare-ai-agent:build-runtime-bundle -- \
             --version "$VERSION" \
             --platform windows-x64 \
-            --env "$RELEASE_ENV"
+            --agent-env "$RELEASE_ENV"
 
       - name: Upload runtime bundle artifact
         uses: actions/upload-artifact@v4

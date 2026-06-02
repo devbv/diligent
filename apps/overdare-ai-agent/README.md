@@ -9,14 +9,14 @@ It currently provides two commands:
 
 ## Release env selection
 
-A single global flag `--env=<env>[@<version>]` controls which release channel the agent talks to.
+A single global flag `--agent-env=<env>[@<version>]` controls which release channel the agent talks to.
 
 - `<env>` is `prod` or `dev`.
 - `@<version>` is optional. When omitted, the agent fetches the **latest** release for that env. When supplied, the agent pins to that exact version and skips drift checks.
 
 Resolution priority (high → low):
 
-1. `--env=<env>[@<version>]` CLI flag
+1. `--agent-env=<env>[@<version>]` CLI flag
 2. `DILIGENT_ENV` environment variable (same grammar)
 3. `option_env!("DILIGENT_ENV")` baked at build time
 4. Default: `prod` (latest)
@@ -58,10 +58,10 @@ bun run overdare-ai-agent:build
 cargo run --manifest-path apps/overdare-ai-agent/Cargo.toml -- init
 
 # Same, but target the dev env (downloads/stores under ~/.overdare-dev/)
-cargo run --manifest-path apps/overdare-ai-agent/Cargo.toml -- --env=dev init
+cargo run --manifest-path apps/overdare-ai-agent/Cargo.toml -- --agent-env=dev init
 
 # Pin to a specific version (no auto-update beyond this version)
-cargo run --manifest-path apps/overdare-ai-agent/Cargo.toml -- --env=prod@1.2.3 init
+cargo run --manifest-path apps/overdare-ai-agent/Cargo.toml -- --agent-env=prod@1.2.3 init
 
 # Skip update only if runtime was already downloaded before
 cargo run --manifest-path apps/overdare-ai-agent/Cargo.toml -- init --skip-update
