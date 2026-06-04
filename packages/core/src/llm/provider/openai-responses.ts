@@ -6,7 +6,14 @@ import type { FunctionToolDefinition, ProviderBuiltinToolDefinition, ToolDefinit
 
 export type ResponsesReasoningEffort = "none" | "low" | "medium" | "high" | "xhigh";
 
-export async function convertMessages(messages: Message[], cwd?: string): Promise<ResponseInputItem[]> {
+// OpenAI vision `detail`: "low" = fixed 512px (~85 tokens), "high" = tiled, "auto" = server picks by size.
+export type OpenAIImageDetail = "auto" | "low" | "high";
+
+export async function convertMessages(
+  messages: Message[],
+  cwd?: string,
+  imageDetail: OpenAIImageDetail = "auto",
+): Promise<ResponseInputItem[]> {
   const result: ResponseInputItem[] = [];
   const pendingCalls = new Map<string, number>();
 
@@ -24,7 +31,7 @@ export async function convertMessages(messages: Message[], cwd?: string): Promis
             content.push({
               type: "input_image",
               image_url: `data:${block.source.media_type};base64,${block.source.data}`,
-              detail: "auto",
+              detail: imageDetail,
             });
           }
         }
@@ -57,7 +64,7 @@ export async function convertMessages(messages: Message[], cwd?: string): Promis
         const imageContent: ResponseInputMessageContentList = msg.outputImages.map((img) => ({
           type: "input_image",
           image_url: `data:${img.source.media_type};base64,${img.source.data}`,
-          detail: "auto",
+          detail: imageDetail,
         }));
         result.push({ type: "message", role: "user", content: imageContent });
       }
@@ -83,8 +90,9 @@ export async function toResponseInputItems(input: {
   messages: Message[];
   cwd?: string;
   compactionSummary?: Record<string, unknown>;
+  imageDetail?: OpenAIImageDetail;
 }): Promise<ResponseInputItem[]> {
-  const convertedMessages = await convertMessages(input.messages, input.cwd);
+  const convertedMessages = await convertMessages(input.messages, input.cwd, input.imageDetail);
   if (input.compactionSummary) {
     return [input.compactionSummary as unknown as ResponseInputItem, ...convertedMessages];
   }
@@ -205,6 +213,7 @@ export async function buildResponsesRequestBody(input: {
   store?: boolean;
   promptCacheRetention?: string;
   strictTools?: boolean;
+  imageDetail?: OpenAIImageDetail;
 }): Promise<Record<string, unknown>> {
   const body: Record<string, unknown> = {
     model: input.model,
@@ -213,6 +222,7 @@ export async function buildResponsesRequestBody(input: {
       messages: input.messages,
       cwd: input.cwd,
       compactionSummary: input.compactionSummary,
+      imageDetail: input.imageDetail,
     }),
   };
   if (input.systemInstructions) body.instructions = input.systemInstructions;

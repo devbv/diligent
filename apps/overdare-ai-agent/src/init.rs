@@ -2,6 +2,7 @@ use std::fmt::Write as FmtWrite;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::env::Env;
 use crate::storage::global_storage_dir;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -17,8 +18,8 @@ fn should_copy_entry(dest_exists: bool, mode: DeployMode) -> bool {
     }
 }
 
-fn resolve_updated_bootstrap_dir(log: &mut String) -> Option<PathBuf> {
-    let bootstrap = global_storage_dir()?.join("updates/runtime/bootstrap");
+fn resolve_updated_bootstrap_dir(env: Env, log: &mut String) -> Option<PathBuf> {
+    let bootstrap = global_storage_dir(env)?.join("updates/runtime/bootstrap");
     if bootstrap.exists() {
         let _ = writeln!(
             log,
@@ -28,7 +29,7 @@ fn resolve_updated_bootstrap_dir(log: &mut String) -> Option<PathBuf> {
         return Some(bootstrap);
     }
 
-    let defaults = global_storage_dir()?.join("updates/runtime/defaults");
+    let defaults = global_storage_dir(env)?.join("updates/runtime/defaults");
     if defaults.exists() {
         let _ = writeln!(
             log,
@@ -111,18 +112,18 @@ fn deploy_plugins(
     Ok(())
 }
 
-pub fn run(update_applied: bool) -> Result<(), String> {
+pub fn run(env: Env, update_applied: bool) -> Result<(), String> {
     let mut log = String::new();
     let mode = if update_applied {
         DeployMode::FullSync
     } else {
         DeployMode::MissingOnly
     };
-    let Some(global) = global_storage_dir() else {
+    let Some(global) = global_storage_dir(env) else {
         return Ok(());
     };
     fs::create_dir_all(&global).map_err(|e| format!("Cannot create {}: {e}", global.display()))?;
-    let Some(bootstrap) = resolve_updated_bootstrap_dir(&mut log) else {
+    let Some(bootstrap) = resolve_updated_bootstrap_dir(env, &mut log) else {
         return Ok(());
     };
     let entries =

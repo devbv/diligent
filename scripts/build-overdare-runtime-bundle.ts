@@ -46,12 +46,19 @@ function run(command: string[], cwd: string): void {
   }
 }
 
-function parseCliOptions(argv: string[]): { version: string; platform: PlatformConfig } {
+type ReleaseEnv = "prod" | "dev";
+
+function parseCliOptions(argv: string[]): {
+  version: string;
+  platform: PlatformConfig;
+  env: ReleaseEnv;
+} {
   const { values } = parseArgs({
     args: argv,
     options: {
       version: { type: "string" },
       platform: { type: "string" },
+      "agent-env": { type: "string" },
     },
     strict: true,
     allowPositionals: false,
@@ -59,11 +66,16 @@ function parseCliOptions(argv: string[]): { version: string; platform: PlatformC
 
   const version = values.version?.trim();
   const platformId = values.platform?.trim();
+  const envRaw = values["agent-env"]?.trim();
   if (!version) throw new Error("Missing required --version <semver>");
   if (!platformId) throw new Error("Missing required --platform <platform-id>");
+  if (!envRaw) throw new Error("Missing required --agent-env <prod|dev>");
+  if (envRaw !== "prod" && envRaw !== "dev") {
+    throw new Error(`Invalid --agent-env value: '${envRaw}' (expected 'prod' or 'dev')`);
+  }
   const platform = PLATFORM_BY_ID.get(platformId);
   if (!platform) throw new Error(`Unsupported platform: ${platformId}`);
-  return { version, platform };
+  return { version, platform, env: envRaw };
 }
 
 function ensureWebClientBuilt(): void {
@@ -136,12 +148,12 @@ function zipRuntimeBundle(stageDir: string, outPath: string): void {
 }
 
 async function main(): Promise<void> {
-  const { version, platform } = parseCliOptions(process.argv.slice(2));
+  const { version, platform, env } = parseCliOptions(process.argv.slice(2));
   await mkdir(DIST, { recursive: true });
   ensureWebClientBuilt();
   const sidecarPath = buildSidecar(platform);
 
-  const stageDir = resolve(DIST, `runtime-${platform.id}`);
+  const stageDir = resolve(DIST, `runtime-${env}-${platform.id}`);
   if (existsSync(stageDir)) rmSync(stageDir, { recursive: true, force: true });
   mkdirSync(stageDir, { recursive: true });
 
@@ -151,7 +163,7 @@ async function main(): Promise<void> {
   stageBootstrap(stageDir);
   maybeStageRg(platform, stageDir);
 
-  const artifactName = `overdare-ai-agent-runtime-${version}-${platform.id}.zip`;
+  const artifactName = `overdare-ai-agent-runtime-${env}-${version}-${platform.id}.zip`;
   const artifactPath = join(DIST, artifactName);
   if (existsSync(artifactPath)) rmSync(artifactPath, { force: true });
   zipRuntimeBundle(stageDir, artifactPath);

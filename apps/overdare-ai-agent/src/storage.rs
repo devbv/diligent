@@ -1,67 +1,105 @@
 use std::path::{Path, PathBuf};
 
-pub const DEFAULT_STORAGE_NAMESPACE: &str = "diligent";
-pub const PACKAGED_STORAGE_NAMESPACE: &str = "overdare";
+use crate::env::Env;
 
-pub fn storage_namespace() -> &'static str {
-    match option_env!("DILIGENT_STORAGE_NAMESPACE") {
-        Some(value) if !value.trim().is_empty() => value,
-        _ => PACKAGED_STORAGE_NAMESPACE,
+pub const DEFAULT_STORAGE_NAMESPACE: &str = "diligent";
+pub const PACKAGED_STORAGE_NAMESPACE_PROD: &str = "overdare";
+pub const PACKAGED_STORAGE_NAMESPACE_DEV: &str = "overdare-dev";
+
+pub fn storage_namespace(env: Env) -> &'static str {
+    match env {
+        // Legacy P060 escape-hatch: a packaged single-env build can override the
+        // prod namespace at compile time. Dev intentionally never honors this
+        // override — P067's prod/dev isolation must hold for any packaging that
+        // is sensitive to env selection. A build that wants to relocate the dev
+        // namespace should fork PACKAGED_STORAGE_NAMESPACE_DEV instead.
+        Env::Prod => {
+            if let Some(value) = option_env!("DILIGENT_STORAGE_NAMESPACE") {
+                if !value.trim().is_empty() {
+                    return value;
+                }
+            }
+            PACKAGED_STORAGE_NAMESPACE_PROD
+        }
+        Env::Dev => PACKAGED_STORAGE_NAMESPACE_DEV,
     }
 }
 
-pub fn hidden_dir_name() -> String {
-    format!(".{}", storage_namespace())
+pub fn hidden_dir_name(env: Env) -> String {
+    format!(".{}", storage_namespace(env))
 }
 
+/// The pre-P067 directory name (`.diligent`), shared across all envs.
+///
+/// Legacy paths intentionally do NOT take an `Env` argument: there was no
+/// per-env directory before P067, so there is only one possible legacy
+/// location per host/project. Migration callers pair this with an
+/// `env`-aware target path produced by [`hidden_dir_name`].
 pub fn legacy_hidden_dir_name() -> String {
     format!(".{}", DEFAULT_STORAGE_NAMESPACE)
 }
 
-pub fn global_storage_dir() -> Option<PathBuf> {
+fn home_dir() -> Option<PathBuf> {
     #[cfg(windows)]
     let home = std::env::var_os("USERPROFILE").map(PathBuf::from);
     #[cfg(not(windows))]
     let home = std::env::var_os("HOME").map(PathBuf::from);
+    home
+}
 
-    home.map(|h| h.join(hidden_dir_name()))
+pub fn global_storage_dir(env: Env) -> Option<PathBuf> {
+    home_dir().map(|h| h.join(hidden_dir_name(env)))
 }
 
 pub fn global_legacy_storage_dir() -> Option<PathBuf> {
-    #[cfg(windows)]
-    let home = std::env::var_os("USERPROFILE").map(PathBuf::from);
-    #[cfg(not(windows))]
-    let home = std::env::var_os("HOME").map(PathBuf::from);
-
-    home.map(|h| h.join(legacy_hidden_dir_name()))
+    home_dir().map(|h| h.join(legacy_hidden_dir_name()))
 }
 
-pub fn local_storage_dir(cwd: &str) -> PathBuf {
-    PathBuf::from(cwd).join(hidden_dir_name())
+pub fn local_storage_dir(cwd: &str, env: Env) -> PathBuf {
+    PathBuf::from(cwd).join(hidden_dir_name(env))
 }
 
 pub fn local_legacy_storage_dir(cwd: &str) -> PathBuf {
     PathBuf::from(cwd).join(legacy_hidden_dir_name())
 }
 
-pub fn migrate_global_namespace_if_needed() -> Result<MigrationOutcome, String> {
+pub fn migrate_global_namespace_if_needed(env: Env) -> Result<MigrationOutcome, String> {
+    if !env_uses_legacy_migration(env) {
+        return Ok(MigrationOutcome::SkippedByPolicy);
+    }
     let legacy =
         global_legacy_storage_dir().ok_or("Cannot determine home directory for migration")?;
-    let target = global_storage_dir().ok_or("Cannot determine home directory for migration")?;
+    let target = global_storage_dir(env).ok_or("Cannot determine home directory for migration")?;
     migrate_namespace_if_needed(&legacy, &target)
 }
 
-pub fn migrate_local_namespace_if_needed(cwd: &str) -> Result<MigrationOutcome, String> {
+pub fn migrate_local_namespace_if_needed(
+    cwd: &str,
+    env: Env,
+) -> Result<MigrationOutcome, String> {
+    if !env_uses_legacy_migration(env) {
+        return Ok(MigrationOutcome::SkippedByPolicy);
+    }
     let legacy = local_legacy_storage_dir(cwd);
-    let target = local_storage_dir(cwd);
+    let target = local_storage_dir(cwd, env);
     migrate_namespace_if_needed(&legacy, &target)
+}
+
+fn env_uses_legacy_migration(env: Env) -> bool {
+    matches!(env, Env::Prod)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MigrationOutcome {
+    /// Successfully moved the legacy directory onto the target path.
     Migrated { from: PathBuf, to: PathBuf },
+    /// No legacy directory existed to migrate from. Treated as a clean install.
     SkippedNoLegacy,
+    /// The target directory already exists; legacy data was left untouched.
     SkippedTargetExists,
+    /// The current env's policy disables legacy migration entirely (e.g. dev,
+    /// which has no `.diligent-dev` predecessor on disk).
+    SkippedByPolicy,
 }
 
 pub fn migrate_namespace_if_needed(
@@ -92,8 +130,9 @@ pub fn migrate_namespace_if_needed(
 mod tests {
     use super::{
         hidden_dir_name, legacy_hidden_dir_name, migrate_namespace_if_needed, storage_namespace,
-        MigrationOutcome, PACKAGED_STORAGE_NAMESPACE,
+        MigrationOutcome, PACKAGED_STORAGE_NAMESPACE_DEV, PACKAGED_STORAGE_NAMESPACE_PROD,
     };
+    use crate::env::Env;
     use std::fs;
     use std::path::PathBuf;
 
@@ -107,10 +146,41 @@ mod tests {
     }
 
     #[test]
-    fn packaged_namespace_defaults_to_overdare() {
-        assert_eq!(storage_namespace(), PACKAGED_STORAGE_NAMESPACE);
-        assert_eq!(hidden_dir_name(), ".overdare");
+    fn prod_namespace_defaults_to_overdare() {
+        assert_eq!(storage_namespace(Env::Prod), PACKAGED_STORAGE_NAMESPACE_PROD);
+        assert_eq!(hidden_dir_name(Env::Prod), ".overdare");
         assert_eq!(legacy_hidden_dir_name(), ".diligent");
+    }
+
+    #[test]
+    fn dev_namespace_defaults_to_overdare_dev() {
+        assert_eq!(storage_namespace(Env::Dev), PACKAGED_STORAGE_NAMESPACE_DEV);
+        assert_eq!(hidden_dir_name(Env::Dev), ".overdare-dev");
+    }
+
+    #[test]
+    fn dev_namespace_is_never_static_overdare() {
+        // Guards the env-isolation contract: even a build packaged with a
+        // legacy `DILIGENT_STORAGE_NAMESPACE` override must not collapse dev
+        // onto the prod root. (The override is intentionally prod-only.)
+        assert_ne!(
+            storage_namespace(Env::Dev),
+            PACKAGED_STORAGE_NAMESPACE_PROD,
+            "dev namespace must not equal the prod namespace"
+        );
+    }
+
+    #[test]
+    fn dev_env_skips_global_migration_by_policy() {
+        let outcome = super::migrate_global_namespace_if_needed(Env::Dev).expect("dev skip");
+        assert_eq!(outcome, MigrationOutcome::SkippedByPolicy);
+    }
+
+    #[test]
+    fn dev_env_skips_local_migration_by_policy() {
+        let outcome = super::migrate_local_namespace_if_needed("/tmp/whatever", Env::Dev)
+            .expect("dev skip local");
+        assert_eq!(outcome, MigrationOutcome::SkippedByPolicy);
     }
 
     #[test]

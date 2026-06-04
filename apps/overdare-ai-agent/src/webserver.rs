@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use tokio::io::{AsyncBufReadExt, BufReader};
 
+use crate::env::Env;
 use crate::storage::{
     global_storage_dir, migrate_global_namespace_if_needed, migrate_local_namespace_if_needed,
     storage_namespace,
@@ -11,6 +12,7 @@ use crate::update::installed_version;
 
 pub struct WebServerOptions {
     pub cwd: String,
+    pub env: Env,
     pub userid: Option<String>,
     pub project_id: Option<String>,
     pub studio_rpc_port: Option<u16>,
@@ -47,7 +49,7 @@ fn normalize_cwd(raw: &str) -> String {
     raw.to_string()
 }
 
-pub fn parse_args(args: &[String]) -> Result<WebServerOptions, String> {
+pub fn parse_args(args: &[String], env: Env) -> Result<WebServerOptions, String> {
     let mut cwd: Option<String> = None;
     let mut userid: Option<String> = None;
     let mut project_id: Option<String> = None;
@@ -100,7 +102,7 @@ pub fn parse_args(args: &[String]) -> Result<WebServerOptions, String> {
         }
         if matches!(arg.as_str(), "--help" | "-h") {
             return Err(
-                "Usage: overdare-ai-agent start --cwd=/path/to/project [--userid=abc] [--project-id=project] [--studio-rpc-port=12345] [--web-server-port=3000] [--hub-domain=hub.example.com]"
+                "Usage: overdare-ai-agent [--agent-env=prod|dev[@version]] start --cwd=/path/to/project [--userid=abc] [--project-id=project] [--studio-rpc-port=12345] [--web-server-port=3000] [--hub-domain=hub.example.com]"
                     .to_string(),
             );
         }
@@ -114,6 +116,7 @@ pub fn parse_args(args: &[String]) -> Result<WebServerOptions, String> {
     }));
     Ok(WebServerOptions {
         cwd,
+        env,
         userid,
         project_id,
         studio_rpc_port,
@@ -122,8 +125,8 @@ pub fn parse_args(args: &[String]) -> Result<WebServerOptions, String> {
     })
 }
 
-fn default_web_log_path() -> Result<PathBuf, String> {
-    let global = global_storage_dir().ok_or("Cannot determine home directory for web logs")?;
+fn default_web_log_path(env: Env) -> Result<PathBuf, String> {
+    let global = global_storage_dir(env).ok_or("Cannot determine home directory for web logs")?;
     let logs_dir = global.join("logs");
     std::fs::create_dir_all(&logs_dir).map_err(|e| {
         format!(
@@ -136,13 +139,13 @@ fn default_web_log_path() -> Result<PathBuf, String> {
     Ok(logs_dir.join(format!("{}-{}.log", date, pid)))
 }
 
-fn resolve_updated_sidecar_path() -> Option<PathBuf> {
+fn resolve_updated_sidecar_path(env: Env) -> Option<PathBuf> {
     let bin_name = if cfg!(windows) {
         "diligent-web-server.exe"
     } else {
         "diligent-web-server"
     };
-    let path = global_storage_dir()?.join("updates/runtime").join(bin_name);
+    let path = global_storage_dir(env)?.join("updates/runtime").join(bin_name);
     if path.exists() {
         Some(path)
     } else {
@@ -150,8 +153,8 @@ fn resolve_updated_sidecar_path() -> Option<PathBuf> {
     }
 }
 
-fn resolve_updated_dist_dir() -> Option<PathBuf> {
-    let candidate = global_storage_dir()?.join("updates/runtime/dist/client");
+fn resolve_updated_dist_dir(env: Env) -> Option<PathBuf> {
+    let candidate = global_storage_dir(env)?.join("updates/runtime/dist/client");
     if candidate.exists() {
         Some(candidate)
     } else {
@@ -159,9 +162,9 @@ fn resolve_updated_dist_dir() -> Option<PathBuf> {
     }
 }
 
-fn resolve_updated_rg_bin() -> Option<PathBuf> {
+fn resolve_updated_rg_bin(env: Env) -> Option<PathBuf> {
     let bin_name = if cfg!(windows) { "rg.exe" } else { "rg" };
-    let path = global_storage_dir()?.join("updates/runtime").join(bin_name);
+    let path = global_storage_dir(env)?.join("updates/runtime").join(bin_name);
     if path.exists() {
         Some(path)
     } else {
@@ -169,8 +172,8 @@ fn resolve_updated_rg_bin() -> Option<PathBuf> {
     }
 }
 
-fn resolve_installed_runtime_version() -> Option<String> {
-    let version = installed_version()?.version;
+fn resolve_installed_runtime_version(env: Env) -> Option<String> {
+    let version = installed_version(env)?.version;
     let trimmed = version.trim();
     if trimmed.is_empty() {
         return None;
@@ -242,20 +245,24 @@ impl RunningWebServer {
 }
 
 pub async fn start_foreground(options: WebServerOptions) -> Result<RunningWebServer, String> {
-    migrate_global_namespace_if_needed().map(|_| ())?;
-    migrate_local_namespace_if_needed(&options.cwd).map(|_| ())?;
+    migrate_global_namespace_if_needed(options.env).map(|_| ())?;
+    migrate_local_namespace_if_needed(&options.cwd, options.env).map(|_| ())?;
 
-    let binary = resolve_updated_sidecar_path().ok_or(
-        format!(
-            "Updated runtime binary not found. Run 'overdare-ai-agent update' first so ~/.{}/updates/runtime/diligent-web-server exists.",
-            storage_namespace()
+    let binary = resolve_updated_sidecar_path(options.env).ok_or_else(
+        || format!(
+            "Updated runtime binary not found. Run 'overdare-ai-agent --agent-env={} init' first so ~/.{}/updates/runtime/diligent-web-server exists.",
+            options.env.as_str(),
+            storage_namespace(options.env)
         ),
     )?;
-    let dist_dir = resolve_updated_dist_dir().ok_or(
-        "Updated runtime dist/client not found. Run 'overdare-ai-agent update' first.".to_string(),
-    )?;
-    let log_path = default_web_log_path()?;
-    let rg_path = resolve_updated_rg_bin();
+    let dist_dir = resolve_updated_dist_dir(options.env).ok_or_else(|| {
+        format!(
+            "Updated runtime dist/client not found. Run 'overdare-ai-agent --agent-env={} init' first.",
+            options.env.as_str()
+        )
+    })?;
+    let log_path = default_web_log_path(options.env)?;
+    let rg_path = resolve_updated_rg_bin(options.env);
 
     let desired_port = options.web_server_port.unwrap_or(0);
 
@@ -292,8 +299,9 @@ pub async fn start_foreground(options: WebServerOptions) -> Result<RunningWebSer
     if let Some(project_id) = options.project_id.as_deref().filter(|v| !v.is_empty()) {
         cmd.env("OVERDARE_PROJECT_ID", project_id);
     }
-    cmd.env("DILIGENT_STORAGE_NAMESPACE", storage_namespace());
-    if let Some(version) = resolve_installed_runtime_version() {
+    cmd.env("DILIGENT_STORAGE_NAMESPACE", storage_namespace(options.env));
+    cmd.env("DILIGENT_ENV", options.env.as_str());
+    if let Some(version) = resolve_installed_runtime_version(options.env) {
         cmd.env("DILIGENT_SERVER_VERSION", version);
     }
 
@@ -346,33 +354,10 @@ pub async fn start_foreground(options: WebServerOptions) -> Result<RunningWebSer
 #[cfg(test)]
 mod tests {
     use super::{parse_args, resolve_installed_runtime_version};
+    use crate::env::Env;
     use crate::storage::storage_namespace;
+    use crate::testutil::with_temp_home;
     use std::fs;
-
-    fn with_temp_home<T>(test: T)
-    where
-        T: FnOnce(),
-    {
-        let temp_root = std::env::temp_dir().join(format!(
-            "overdare-ai-agent-webserver-test-{}-{}",
-            std::process::id(),
-            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
-        ));
-        fs::create_dir_all(&temp_root).expect("create temp root");
-
-        let previous_home = std::env::var_os("HOME");
-        std::env::set_var("HOME", &temp_root);
-
-        test();
-
-        if let Some(home) = previous_home {
-            std::env::set_var("HOME", home);
-        } else {
-            std::env::remove_var("HOME");
-        }
-
-        let _ = fs::remove_dir_all(temp_root);
-    }
 
     #[test]
     fn parse_args_reads_cwd_and_userid() {
@@ -384,8 +369,9 @@ mod tests {
             "--web-server-port=4567".to_string(),
             "--hub-domain=hub.example.com".to_string(),
         ];
-        let parsed = parse_args(&args).expect("parse args");
+        let parsed = parse_args(&args, Env::Prod).expect("parse args");
         assert_eq!(parsed.cwd, "/tmp/project");
+        assert_eq!(parsed.env, Env::Prod);
         assert_eq!(parsed.userid.as_deref(), Some("user-1"));
         assert_eq!(parsed.project_id.as_deref(), Some("project-1"));
         assert_eq!(parsed.studio_rpc_port, Some(8123));
@@ -413,16 +399,14 @@ mod tests {
 
     #[test]
     fn packaged_webserver_uses_packaged_namespace() {
-        assert_eq!(storage_namespace(), "overdare");
+        assert_eq!(storage_namespace(Env::Prod), "overdare");
+        assert_eq!(storage_namespace(Env::Dev), "overdare-dev");
     }
 
     #[test]
     fn resolve_installed_runtime_version_reads_version_json() {
-        with_temp_home(|| {
-            let runtime_dir = std::env::var_os("HOME")
-                .map(std::path::PathBuf::from)
-                .expect("home path")
-                .join(".overdare/updates/runtime");
+        with_temp_home("webserver-installed-version", |home| {
+            let runtime_dir = home.join(".overdare/updates/runtime");
             fs::create_dir_all(&runtime_dir).expect("create runtime dir");
             fs::write(
                 runtime_dir.join("version.json"),
@@ -430,7 +414,7 @@ mod tests {
             )
             .expect("write version json");
 
-            assert_eq!(resolve_installed_runtime_version().as_deref(), Some("1.2.3"));
+            assert_eq!(resolve_installed_runtime_version(Env::Prod).as_deref(), Some("1.2.3"));
         });
     }
 }

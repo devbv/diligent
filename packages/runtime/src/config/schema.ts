@@ -27,6 +27,9 @@ export const DiligentConfigSchema = z
           .object({
             apiKey: z.string().optional(),
             baseUrl: z.string().url().optional(),
+            // OpenAI vision detail for images: "low" caps each image at ~85 tokens (512px, lossy),
+            // "high" keeps full detail (more tokens), "auto" (default) lets the server pick by size.
+            imageDetail: z.enum(["auto", "low", "high"]).optional(),
           })
           .optional(),
         gemini: z

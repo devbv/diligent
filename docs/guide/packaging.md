@@ -62,6 +62,23 @@ Each platform maps packaging-time concerns together:
 - executable extension
 - OS/architecture metadata
 
+## Release env (prod / dev)
+
+The runtime bundle release flow is parameterized by a `prod` / `dev` env that is selected at release time and threaded through every artifact name, manifest, and GitHub Release tag.
+
+- Tag scheme: `prod-v<version>` (published, non-prerelease) and `dev-v<version>` (published, prerelease)
+- Runtime bundle filename: `overdare-ai-agent-runtime-{env}-{version}-{platform}.zip`
+- Agent launcher filename: `overdare-ai-agent-{env}-{version}-{platform}.exe`
+- Manifest filename: `update-manifest-{env}.json` (carries an `"env"` field that matches)
+- Manifest URL the agent fetches (resolved from env + optional pin):
+  - prod latest → `releases/latest/download/update-manifest-prod.json` (relies on GitHub's "latest" skipping prereleases)
+  - dev latest → `releases/download/dev-latest/update-manifest-dev.json` (rolling release re-created on every dev publish)
+  - `{env}@<version>` pin → `releases/download/{env}-v<version>/update-manifest-{env}.json`
+
+Dev publishes also re-create a rolling `dev-latest` release pointing at the same artifacts as the most recent `dev-v<version>` release, so the agent's dev-latest URL is always live. The release workflow verifies after creation that both releases are marked `prerelease=true` and aborts if not, to prevent dev artifacts from polluting the prod "latest" redirect.
+
+For one to two prod release cycles after this contract lands, prod releases additionally upload legacy alias files (`update-manifest.json`, `release-meta.json`, `checksums.sha256`) so agents built before the env split keep updating cleanly. After the migration window those aliases are removed.
+
 ## Defaults resource assembly
 
 OVERDARE-owned defaults now live under `apps/overdare-ai-agent/`:
