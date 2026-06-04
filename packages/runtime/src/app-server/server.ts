@@ -617,8 +617,14 @@ export class DiligentAppServer {
     if (!manager) throw Object.assign(new Error("Tool config not available"), { code: -32601 });
 
     if (threadId || this.activeThreadId) {
-      const runtime = await this.resolveThreadRuntime(threadId);
-      return { cwd: runtime.cwd, tools: manager.getTools() };
+      try {
+        const runtime = await this.resolveThreadRuntime(threadId);
+        return { cwd: runtime.cwd, tools: manager.getTools() };
+      } catch {
+        // A stale thread pointer (e.g. a deleted thread still referenced by the
+        // connection or the global active id) must not break the read-only tools
+        // listing — tool config is global, so fall back to the default cwd.
+      }
     }
 
     const cwd = this.config.cwd ?? process.cwd();
@@ -676,7 +682,7 @@ export class DiligentAppServer {
       setConnectionCurrentThreadId: (connectionId, threadId) => {
         const conn = this.connections.get(connectionId);
         if (conn) conn.currentThreadId = threadId;
-        this.config.onCurrentThreadChange?.(threadId);
+        if (threadId) this.config.onCurrentThreadChange?.(threadId);
       },
       threadHandlersCtx: this.buildThreadHandlersContext(),
       turnInitiators: this.turnInitiators,
