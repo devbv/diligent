@@ -497,5 +497,6 @@ export function useAppState({
     approvalPrompt,
     questionPrompt,
     loadChildThread,
+    showPlan: state.planState?.steps.some((s) => s.status !== "done") ?? false,
   };
 }

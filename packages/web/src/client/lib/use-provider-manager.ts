@@ -191,6 +191,9 @@ export function useProviderManager(rpcRef: RefObject<WebRpcClient | null>) {
   return {
     providers,
     providerStatusResolved,
+    hasProvider: providers.some((p) => p.configured),
+    effectiveHasProvider: providers.some((p) => p.configured) || !providerStatusResolved,
+    contextWindow: availableModels.find((m) => m.id === currentModel)?.contextWindow ?? 0,
     availableModels,
     currentModel,
     currentModelRef,
