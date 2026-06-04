@@ -285,7 +285,7 @@ function RenderCommand({ block }: { block: CommandBlock }) {
 
   return (
     <div className="overflow-hidden rounded-lg border border-border/100 bg-surface-dark font-mono text-xs">
-      <div className="flex items-center gap-2 border-b border-border/100 bg-surface-default px-3 py-2">
+      <div className="flex items-start gap-2 border-b border-border/100 bg-surface-default px-3 py-2">
         <span className="shrink-0 text-muted">$</span>
         <pre className="min-w-0 flex-1 whitespace-pre-wrap text-text">{block.command}</pre>
         <CopyButton text={block.command} />

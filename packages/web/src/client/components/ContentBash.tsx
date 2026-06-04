@@ -22,7 +22,7 @@ export function ContentBash({ command, output, isError = false }: ContentBashPro
   return (
     <div className="overflow-hidden rounded-lg border border-border/10 bg-bg/60 font-mono text-xs">
       {command && (
-        <div className="flex items-center gap-2 border-b border-border/10 bg-surface/60 px-3 py-2">
+        <div className="flex items-start gap-2 border-b border-border/10 bg-surface/60 px-3 py-2">
           <span className="shrink-0 text-muted">$</span>
           <pre className="min-w-0 flex-1 whitespace-pre-wrap text-text">{command}</pre>
           <CopyButton text={command} />
