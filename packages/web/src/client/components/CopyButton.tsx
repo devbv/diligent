@@ -1,6 +1,7 @@
 // @summary Copy-to-clipboard button with transient "copied!" feedback
 
 import { useState } from "react";
+import { copyTextToClipboard } from "../lib/clipboard";
 
 interface CopyButtonProps {
   text: string;
@@ -11,7 +12,8 @@ export function CopyButton({ text, className = "" }: CopyButtonProps) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(text);
+    const ok = await copyTextToClipboard(text);
+    if (!ok) return;
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };

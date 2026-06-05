@@ -77,6 +77,25 @@
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--color-text) 16%, transparent) transparent;
 }
+/* Force an always-visible horizontal scrollbar for overflowing code blocks.
+   Without explicit ::-webkit-scrollbar styling, Chromium/WebKit uses overlay
+   scrollbars (hidden until scroll, e.g. on macOS), so wide code lines get
+   clipped with no way to reach the overflow. Styling the pseudo-elements opts
+   the element into a classic, persistent scrollbar. */
+.prose-content pre::-webkit-scrollbar {
+  height: 10px;
+}
+.prose-content pre::-webkit-scrollbar-track {
+  background: color-mix(in srgb, var(--color-text) 6%, transparent);
+  border-radius: 0 0 0.75rem 0.75rem;
+}
+.prose-content pre::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--color-text) 24%, transparent);
+  border-radius: 5px;
+}
+.prose-content pre::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--color-text) 36%, transparent);
+}
 .prose-content code {
   background: color-mix(in srgb, var(--color-text) 5%, transparent);
   border: 1px solid color-mix(in srgb, var(--color-text) 8%, transparent);

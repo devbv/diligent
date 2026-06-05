@@ -285,7 +285,7 @@ function RenderCommand({ block }: { block: CommandBlock }) {
 
   return (
     <div className="overflow-hidden rounded-lg border border-border/100 bg-surface-dark font-mono text-xs">
-      <div className="flex items-center gap-2 border-b border-border/100 bg-surface-default px-3 py-2">
+      <div className="flex items-start gap-2 border-b border-border/100 bg-surface-default px-3 py-2">
         <span className="shrink-0 text-muted">$</span>
         <pre className="min-w-0 flex-1 whitespace-pre-wrap text-text">{block.command}</pre>
         <CopyButton text={block.command} />
@@ -380,15 +380,17 @@ function DiffHunkView({ oldString, newString }: { oldString?: string; newString?
   );
 }
 
-const ACTION_BADGE: Record<string, string> = {
-  Add: "bg-fill-secondary text-success",
-  Update: "bg-fill-active text-text",
-  Delete: "bg-fill-secondary text-danger",
-  Move: "bg-fill-secondary text-warning",
+// Informational status of a diff'd file — past-tense label + a colored status dot
+// (intentionally not a filled pill, so it reads as metadata rather than a button/CTA).
+const ACTION_STATUS: Record<string, { label: string; color: string }> = {
+  Add: { label: "added", color: "text-success" },
+  Update: { label: "updated", color: "text-muted" },
+  Delete: { label: "deleted", color: "text-danger" },
+  Move: { label: "moved", color: "text-warning" },
 };
 
 function DiffFileView({ file }: { file: DiffFile }) {
-  const badgeCls = ACTION_BADGE[file.action ?? "Update"] ?? ACTION_BADGE.Update;
+  const status = ACTION_STATUS[file.action ?? "Update"] ?? ACTION_STATUS.Update;
   const displayPath = file.action === "Move" && file.movedTo ? `${file.filePath} → ${file.movedTo}` : file.filePath;
 
   return (
@@ -397,7 +399,10 @@ function DiffFileView({ file }: { file: DiffFile }) {
         <span className="shrink-0 text-text-secondary">✎</span>
         <span className="min-w-0 flex-1 truncate text-text/80">{displayPath}</span>
         {file.action ? (
-          <span className={cn("shrink-0 rounded px-1.5 py-0.5 text-2xs font-medium", badgeCls)}>{file.action}</span>
+          <span className={cn("flex shrink-0 items-center gap-1.5 text-2xs font-medium", status.color)}>
+            <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />
+            {status.label}
+          </span>
         ) : null}
       </div>
       {file.hunks.length > 0 && (

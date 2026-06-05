@@ -84,7 +84,7 @@ export interface ClientRequestDispatchContext {
 
   // Connection access
   getConnection(id: string): ConnectedPeer | undefined;
-  setConnectionCurrentThreadId(connectionId: string, threadId: string): void;
+  setConnectionCurrentThreadId(connectionId: string, threadId: string | null): void;
 
   // Thread operations
   threadHandlersCtx: ThreadHandlersContext;
@@ -252,8 +252,17 @@ export async function dispatchClientRequest(
     case DILIGENT_CLIENT_REQUEST_METHODS.KNOWLEDGE_UPDATE:
       return handleKnowledgeUpdate(ctx.threadHandlersCtx, request.params.threadId, request.params);
 
-    case DILIGENT_CLIENT_REQUEST_METHODS.THREAD_DELETE:
-      return handleThreadDelete(ctx.threadHandlersCtx, request.params.threadId);
+    case DILIGENT_CLIENT_REQUEST_METHODS.THREAD_DELETE: {
+      const result = await handleThreadDelete(ctx.threadHandlersCtx, request.params.threadId);
+      // Drop the connection's current-thread pointer if it referenced the deleted
+      // thread. Otherwise later thread-scoped requests (e.g. TOOLS_LIST) would
+      // inherit a dead thread id via applySessionDefaults and fail to resolve it.
+      const conn = ctx.getConnection(connectionId);
+      if (conn?.currentThreadId === request.params.threadId) {
+        ctx.setConnectionCurrentThreadId(connectionId, null);
+      }
+      return result;
+    }
 
     case DILIGENT_CLIENT_REQUEST_METHODS.TOOLS_LIST:
       return handleToolsList(ctx.threadHandlersCtx, request.params.threadId);
