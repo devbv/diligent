@@ -82,7 +82,7 @@ export function ContentEdit({
 
       {/* Result message */}
       {output ? (
-        <div className={`border-t border-border/10 px-3 py-1.5 ${isError ? "text-danger/80" : "text-muted/80"}`}>
+        <div className={`border-t border-border/10 px-3 py-1.5 ${isError ? "text-muted" : "text-muted/80"}`}>
           {output.split("\n")[0]}
         </div>
       ) : null}
@@ -103,7 +103,7 @@ function ContentPreview({ text, isError }: { text: string; isError: boolean }) {
       </div>
       <pre
         className={`overflow-x-auto whitespace-pre-wrap px-3 py-2 leading-relaxed ${
-          isError ? "text-danger/80" : "text-text/70"
+          isError ? "text-muted" : "text-text/70"
         }`}
       >
         {visible}

@@ -1,7 +1,7 @@
 // @summary Zod schemas for structured tool result render blocks (P040)
 import { z } from "zod";
 
-export const RenderToneSchema = z.enum(["default", "success", "warning", "danger", "info"]);
+export const RenderToneSchema = z.enum(["default", "success", "warning", "danger", "info", "muted"]);
 export type RenderTone = z.infer<typeof RenderToneSchema>;
 
 export const SummaryBlockSchema = z.object({

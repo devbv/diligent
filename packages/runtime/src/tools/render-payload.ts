@@ -313,7 +313,7 @@ export function createUpdateKnowledgeRenderPayload(
   if (tags.length > 0) {
     blocks.push({ type: "status_badges", title: "Tags", items: tags.map((tag) => ({ label: tag })) });
   }
-  if (outputSummary) blocks.push({ type: "summary", text: outputSummary, tone: isError ? "danger" : "success" });
+  if (outputSummary) blocks.push({ type: "summary", text: outputSummary, tone: isError ? "muted" : "success" });
   if (blocks.length === 0) return undefined;
 
   return {
@@ -358,7 +358,7 @@ export function createSearchKnowledgeRenderPayload(
     .split("\n")
     .map((line) => line.trim())
     .find(Boolean);
-  if (firstLine) blocks.push({ type: "summary", text: firstLine, tone: isError ? "danger" : "info" });
+  if (firstLine) blocks.push({ type: "summary", text: firstLine, tone: isError ? "muted" : "info" });
   if (blocks.length === 0) return undefined;
 
   return {

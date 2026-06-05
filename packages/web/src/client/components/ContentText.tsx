@@ -32,7 +32,7 @@ export function ContentText({
         <CopyButton text={text} />
       </div>
       <pre
-        className={`overflow-x-auto whitespace-pre-wrap px-3 py-3 font-mono leading-relaxed ${isError ? "text-danger/80" : "text-text/80"} ${compact ? "text-xs-" : "text-xs"}`}
+        className={`overflow-x-auto whitespace-pre-wrap px-3 py-3 font-mono leading-relaxed ${isError ? "text-muted" : "text-text/80"} ${compact ? "text-xs-" : "text-xs"}`}
         style={!expanded && isLong ? { maxHeight: `${maxLines * 1.5}em`, overflow: "hidden" } : undefined}
       >
         {text}
