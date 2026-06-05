@@ -38,9 +38,9 @@ export const params = z
     items: z
       .array(itemParams)
       .min(1)
-      .max(20)
+      .max(100)
       .describe(
-        "Batch items inferred as add or update by their fields. Do not mix adds and updates in a single call — use one call for all adds, another for all updates. Start with a small number first, then increase up to 10 if needed.",
+        "Batch items inferred as add or update by their fields. Do not mix adds and updates in a single call — use one call for all adds, another for all updates. Start with a small number first, then increase up to 100 if needed.",
       ),
   })
   .strict();
@@ -50,7 +50,7 @@ export const method = "instance.upsert";
 export const description =
   "Upsert instances in batch. " +
   "Do not mix adds and updates in a single call — use one call for all adds, another for all updates. " +
-  "Start with a small number of items first, then increase up to 10 if needed. " +
+  "Start with a small number of items first, then increase up to 100 if needed. " +
   "Each item is inferred by its fields: add uses parentGuid/class/name/properties, update uses guid with optional name and properties. " +
   "To create nested hierarchies, add the parent first so its GUID is returned, then add children using that GUID as parentGuid in subsequent items. " +
   "Services (Workspace, Lighting, Atmosphere, Players, StarterPlayer, MaterialService, etc.) are singletons — they cannot be added, only updated by guid. " +

@@ -74,11 +74,13 @@ async function executeInstanceUpsert(
   }
 }
 
-async function executeInstanceUpsertInner(
+export async function executeInstanceUpsertInner(
   parsedArgs: ReturnType<typeof instanceUpsert.parseArgs>,
   cwd: string,
+  options: { applyAndSaveChanges?: boolean } = {},
 ): Promise<ToolResult> {
   let ovdrjmRoot: OvdrjmNode | undefined;
+  const applyAndSaveChanges = options.applyAndSaveChanges ?? true;
 
   const fileResult = (() => {
     try {
@@ -140,7 +142,9 @@ async function executeInstanceUpsertInner(
     return fileResult;
   }
 
-  await applyLevelChanges();
+  if (applyAndSaveChanges) {
+    await applyLevelChanges();
+  }
   const diag = ovdrjmRoot ? collectUiDiagnostics(ovdrjmRoot) : { warnings: [], info: [] };
   const addedGuids = fileResult.added.map((item) => item.guid);
   const updatedGuids = parsedArgs.items.flatMap((item) => (instanceUpsert.isUpdateItem(item) ? [item.guid] : []));

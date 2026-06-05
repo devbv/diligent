@@ -9,6 +9,7 @@ import { createInstanceDeleteTool } from "./tools/instance-delete-tool";
 import { createInstanceMoveTool } from "./tools/instance-move-tool";
 import { createInstanceReadTool } from "./tools/instance-read-tool";
 import { createInstanceUpsertTool } from "./tools/instance-upsert-tool";
+import { createProceduralJsonApplyTool } from "./tools/procedural-json-apply-tool";
 import { createRollbackTool } from "./tools/rollback-tool";
 import { createScriptAddTool } from "./tools/script-add-tool";
 import { createScriptDeleteTool } from "./tools/script-delete-tool";
@@ -118,6 +119,7 @@ export async function createStudioRpcTools(ctx: {
   const tools: Tool[] = [
     wrapTool(createInstanceReadTool(ctx.cwd), ctx.host),
     wrapTool(withSnapshot(createInstanceUpsertTool(ctx.cwd, writeLock)), ctx.host),
+    wrapTool(withSnapshot(createProceduralJsonApplyTool(ctx.cwd, writeLock)), ctx.host),
     wrapTool(withSnapshot(createInstanceDeleteTool(ctx.cwd, writeLock)), ctx.host),
     wrapTool(withSnapshot(createInstanceMoveTool(ctx.cwd, writeLock)), ctx.host),
     wrapTool(createScriptReadTool(ctx.cwd), ctx.host),
