@@ -38,7 +38,7 @@ export function ContentRead({ filePath, offset, limit, output, isError = false }
         <div>
           <pre
             className={`overflow-x-auto whitespace-pre-wrap px-3 py-2 leading-relaxed ${
-              isError ? "text-danger/90" : "text-text/70"
+              isError ? "text-muted" : "text-text/70"
             }`}
           >
             {visibleOutput}

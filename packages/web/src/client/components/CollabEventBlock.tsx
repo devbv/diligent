@@ -87,7 +87,10 @@ function statusBadge(status?: string): { text: string; className: string } | nul
     case "completed":
       return { text: "completed", className: "text-success" };
     case "errored":
-      return { text: "error", className: "text-danger" };
+      // Recoverable from the parent agent's perspective (it observes the sub-agent
+      // failure and decides how to proceed) — muted/gray, like the tool "error" label.
+      // A genuine data-load failure (below) stays red.
+      return { text: "error", className: "text-muted" };
     case "running":
       return { text: "running", className: "text-accent" };
     case "shutdown":

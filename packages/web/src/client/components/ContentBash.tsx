@@ -32,7 +32,7 @@ export function ContentBash({ command, output, isError = false }: ContentBashPro
         <div>
           <pre
             className={`overflow-x-auto whitespace-pre-wrap px-3 py-2 leading-relaxed ${
-              isError ? "text-danger/90" : "text-text/80"
+              isError ? "text-muted" : "text-text/80"
             }`}
           >
             {visibleOutput}

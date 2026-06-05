@@ -45,6 +45,7 @@ const TONE_TEXT: Record<string, string> = {
   warning: "text-warning",
   danger: "text-danger",
   info: "text-text-secondary",
+  muted: "text-muted",
 };
 
 function toneText(tone?: string) {
@@ -65,7 +66,7 @@ function RenderText({ block }: { block: ToolRenderTextBlock }) {
       <pre
         className={cn(
           "overflow-x-auto whitespace-pre-wrap px-3 py-2 font-mono text-xs leading-relaxed",
-          block.isError ? "text-danger/90" : "text-text/80",
+          block.isError ? "text-muted" : "text-text/80",
         )}
       >
         {block.text}
@@ -202,6 +203,7 @@ const TONE_BADGE: Record<string, string> = {
   warning: "bg-fill-secondary text-warning",
   danger: "bg-fill-secondary text-danger",
   info: "bg-fill-active text-text",
+  muted: "bg-fill-secondary text-muted",
 };
 
 function toneBadge(tone?: string) {
@@ -255,7 +257,7 @@ function RenderFile({ block }: { block: FileBlock }) {
           <pre
             className={cn(
               "overflow-x-auto whitespace-pre-wrap px-3 py-2 leading-relaxed",
-              block.isError ? "text-danger/90" : "text-text/70",
+              block.isError ? "text-muted" : "text-text/70",
             )}
           >
             {visibleContent}
@@ -295,7 +297,7 @@ function RenderCommand({ block }: { block: CommandBlock }) {
           <pre
             className={cn(
               "overflow-x-auto whitespace-pre-wrap px-3 py-2 leading-relaxed",
-              block.isError ? "text-danger/90" : "text-text/80",
+              block.isError ? "text-muted" : "text-text/80",
             )}
           >
             {visibleOutput}
@@ -425,7 +427,7 @@ function RenderDiff({ block }: { block: DiffBlock }) {
         <DiffFileView key={i} file={file} />
       ))}
       {block.output ? (
-        <div className={cn("px-1 font-mono text-xs", block.isError ? "text-danger/70" : "text-muted/70")}>
+        <div className={cn("px-1 font-mono text-xs", block.isError ? "text-muted" : "text-muted/70")}>
           {block.output.split("\n")[0]}
         </div>
       ) : null}

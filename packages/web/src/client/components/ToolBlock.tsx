@@ -59,7 +59,9 @@ export function ToolBlock({ item }: ToolBlockProps) {
         <span>running</span>
       </span>
     ) : item.isError ? (
-      <span className="shrink-0 text-xs text-danger">error</span>
+      // Recoverable tool error (the agent can self-correct). Rendered muted/gray so it
+      // reads as informational rather than a fatal failure (cf. ErrorMessage in MessageList).
+      <span className="shrink-0 text-xs text-muted">error</span>
     ) : null;
 
   const chevronEl = !isStreaming ? (
