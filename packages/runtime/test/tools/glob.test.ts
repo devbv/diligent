@@ -98,4 +98,13 @@ describe("glob tool", () => {
     expect(result.output).toContain("path must be absolute");
     expect(result.metadata?.error).toBe(true);
   });
+
+  test("returns error for filesystem root path", async () => {
+    if (!rgAvailable) return;
+
+    const tool = createGlobTool(tmpDir);
+    const result = await tool.execute({ pattern: "**/*shim*", path: "/" }, makeCtx());
+    expect(result.output).toContain("refusing to glob the filesystem root");
+    expect(result.metadata?.error).toBe(true);
+  });
 });

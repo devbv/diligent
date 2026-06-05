@@ -129,6 +129,56 @@ describe("AgentRegistry", () => {
     }
   });
 
+  it("emits wait_end when waiting on an already completed agent", async () => {
+    const events: AgentEvent[] = [];
+    const registry = new AgentRegistry(
+      makeCollabDeps({
+        onCollabEvent: (event) => events.push(event),
+        sessionManagerFactory: makeMockSessionManagerFactory(makeAssistant("already done")),
+      }),
+    );
+
+    const { threadId } = registry.spawn({ prompt: "task", description: "", agentType: "general" });
+    await registry.wait([threadId], 5000);
+    events.length = 0;
+
+    const { status, timedOut } = await registry.wait([threadId], 5000);
+
+    expect(timedOut).toBe(false);
+    expect(status[threadId]?.kind).toBe("completed");
+    expect(
+      events.some(
+        (event) =>
+          event.type === "collab_wait_end" &&
+          event.timedOut === false &&
+          event.agentStatuses.some((agent) => agent.threadId === threadId && agent.status === "completed"),
+      ),
+    ).toBe(true);
+  });
+
+  it("emits completed spawn_end when child finishes normally", async () => {
+    const events: AgentEvent[] = [];
+    const registry = new AgentRegistry(
+      makeCollabDeps({
+        onCollabEvent: (event) => events.push(event),
+        sessionManagerFactory: makeMockSessionManagerFactory(makeAssistant("final output")),
+      }),
+    );
+
+    const { threadId } = registry.spawn({ prompt: "task", description: "", agentType: "general" });
+    await registry.wait([threadId], 5000);
+
+    expect(
+      events.some(
+        (event) =>
+          event.type === "collab_spawn_end" &&
+          event.childThreadId === threadId &&
+          event.status === "completed" &&
+          event.message === "final output",
+      ),
+    ).toBe(true);
+  });
+
   it("rejects spawn when depth is 0", () => {
     const registry = new AgentRegistry(
       makeCollabDeps({
@@ -353,6 +403,60 @@ describe("AgentRegistry", () => {
     expect(spawnEndErrored).toBeDefined();
   });
 
+  it("marks child run exceptions as errored instead of completed with no output", async () => {
+    const events: AgentEvent[] = [];
+    const registry = new AgentRegistry(
+      makeCollabDeps({
+        onCollabEvent: (event) => events.push(event),
+        sessionManagerFactory: () => {
+          const sessionId = "run-throws-session-1";
+          const listeners = new Set<(event: AgentEvent) => void>();
+          return {
+            create: async () => {},
+            resume: async () => false,
+            list: async () => [],
+            getContext: () => [],
+            subscribe: (fn: (event: AgentEvent) => void) => {
+              listeners.add(fn);
+              return () => listeners.delete(fn);
+            },
+            run: async () => {
+              throw new Error("child failed before first message");
+            },
+            waitForWrites: async () => {},
+            steer: () => {},
+            hasPendingMessages: () => false,
+            popPendingMessages: () => null,
+            appendModeChange: () => {},
+            get sessionPath() {
+              return null;
+            },
+            get sessionId() {
+              return sessionId;
+            },
+            get entryCount() {
+              return 0;
+            },
+          } as never;
+        },
+      }),
+    );
+
+    const { threadId } = registry.spawn({ prompt: "task", description: "", agentType: "general" });
+    const { status } = await registry.wait([threadId], 5000);
+
+    expect(status[threadId]).toEqual({ kind: "errored", error: "child failed before first message" });
+    expect(
+      events.some(
+        (event) =>
+          event.type === "collab_spawn_end" &&
+          event.childThreadId === threadId &&
+          event.status === "errored" &&
+          event.message === "child failed before first message",
+      ),
+    ).toBe(true);
+  });
+
   it("allows custom agent names to resolve through the shared definition layer", () => {
     const registry = new AgentRegistry(
       makeCollabDeps({
@@ -377,11 +481,13 @@ describe("AgentRegistry", () => {
 
   it("excludes collab tools from child agents by default", async () => {
     let childToolNames: string[] = [];
+    let childCwd: string | undefined;
     const registry = new AgentRegistry(
       makeCollabDeps({
         parentTools: [makeTool("read"), makeTool("spawn_agent"), makeTool("wait")],
         sessionManagerFactory: makeInspectingSessionManagerFactory((agent) => {
           childToolNames = agent.tools.map((tool) => tool.name);
+          childCwd = agent.cwd;
         }),
       }),
     );
@@ -392,6 +498,7 @@ describe("AgentRegistry", () => {
     expect(childToolNames).toContain("read");
     expect(childToolNames).not.toContain("spawn_agent");
     expect(childToolNames).not.toContain("wait");
+    expect(childCwd).toBe("/tmp/collab-test");
   });
 
   it("allows collab tools only when nested agents are explicitly enabled", async () => {

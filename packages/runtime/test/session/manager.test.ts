@@ -205,6 +205,45 @@ describe("SessionManager", () => {
     }
   });
 
+  test("run() persists user message before provider response completes", async () => {
+    const dir = await setupDir();
+    let releaseProvider: (() => void) | undefined;
+    const mgr = new SessionManager({
+      cwd: dir,
+      paths: resolvePaths(dir),
+      agent: new Agent(TEST_MODEL, [{ label: "test", content: "test" }], [], {
+        effort: "medium",
+        llmMsgStreamFn: () => {
+          const stream = new EventStream<ProviderEvent, ProviderResult>(
+            (event) => event.type === "done" || event.type === "error",
+            (event) => {
+              if (event.type === "done") return { message: event.message };
+              throw (event as { type: "error"; error: Error }).error;
+            },
+          );
+          stream.push({ type: "start" });
+          releaseProvider = () => stream.push({ type: "done", stopReason: "end_turn", message: makeAssistant("done") });
+          return stream;
+        },
+      }),
+    });
+    await mgr.create();
+
+    const runPromise = mgr.run({ role: "user", content: "visible immediately", timestamp: Date.now() });
+
+    await waitFor(() => mgr.entryCount === 1);
+    await mgr.waitForWrites();
+    const beforeCompletion = await readSessionFile(mgr.sessionPath!);
+    expect(beforeCompletion.entries).toHaveLength(1);
+    expect(beforeCompletion.entries[0]?.type === "message" ? beforeCompletion.entries[0].message : null).toMatchObject({
+      role: "user",
+      content: "visible immediately",
+    });
+
+    releaseProvider?.();
+    await runPromise;
+  });
+
   test("run() persists staged user message and non-fatal error when provider fails after streaming starts", async () => {
     const dir = await setupDir();
     const mgr = new SessionManager({

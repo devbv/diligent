@@ -18,7 +18,6 @@ const GlobParams = z.object({
 });
 
 const MAX_FILES = 100;
-
 export function createGlobTool(cwd: string): Tool<typeof GlobParams> {
   return {
     name: "glob",
@@ -27,7 +26,7 @@ export function createGlobTool(cwd: string): Tool<typeof GlobParams> {
       "When you are doing an open-ended search that may require multiple rounds of globbing and grepping, use spawn_agent with agent_type='explore' instead.",
     parameters: GlobParams,
     supportParallel: true,
-    async execute(args): Promise<ToolResult> {
+    async execute(args, ctx): Promise<ToolResult> {
       const searchPath = stripExtendedLengthPrefix(args.path ?? cwd)
         .replace(/\\/g, "/")
         .replace(/\/{2,}/g, "/");
@@ -36,17 +35,15 @@ export function createGlobTool(cwd: string): Tool<typeof GlobParams> {
         return { output, render: createTextRenderPayload(undefined, output, true), metadata: { error: true } };
       }
 
+      if (isFilesystemRoot(searchPath)) {
+        const output = `Error: refusing to glob the filesystem root: ${searchPath}. Provide a narrower absolute directory.`;
+        return { output, render: createTextRenderPayload(undefined, output, true), metadata: { error: true } };
+      }
+
       try {
         const rgBin = process.env.DILIGENT_RG_PATH ?? "rg";
-        const [stdout, , exitCode] = await spawnCollect([
-          rgBin,
-          "--files",
-          "--no-ignore",
-          "--hidden",
-          "--glob",
-          args.pattern,
-          searchPath,
-        ]);
+        const command = [rgBin, "--files", "--no-ignore", "--hidden", "--glob", args.pattern, searchPath];
+        const [stdout, , exitCode] = await spawnCollect(command, { signal: ctx.signal });
 
         if (exitCode !== 0 && !stdout.trim()) {
           const output = "No files found matching pattern.";
@@ -95,4 +92,9 @@ export function createGlobTool(cwd: string): Tool<typeof GlobParams> {
       }
     },
   };
+}
+
+function isFilesystemRoot(path: string): boolean {
+  const normalized = path.replace(/\\/g, "/").replace(/\/{2,}/g, "/");
+  return normalized === "/" || /^[a-zA-Z]:\/$/.test(normalized);
 }

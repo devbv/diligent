@@ -251,7 +251,7 @@ export class AgentRegistry {
           childModel.id,
           childSystemPrompt,
           filteredTools,
-          { effort: childEffort, llmMsgStreamFn: this.deps.streamFn },
+          { cwd: this.deps.cwd, effort: childEffort, llmMsgStreamFn: this.deps.streamFn },
           result.registry,
         );
       },
@@ -288,7 +288,7 @@ export class AgentRegistry {
     };
 
     // Background promise — always resolves, never rejects
-    const emitErroredSpawnEnd = (message: string): void => {
+    const emitSpawnEnd = (status: CollabStatusString, message?: string): void => {
       this.emit({
         type: "collab_spawn_end",
         callId,
@@ -297,7 +297,7 @@ export class AgentRegistry {
         agentType: params.agentType,
         description: params.description || undefined,
         prompt: params.prompt,
-        status: "errored",
+        status,
         message,
       });
     };
@@ -354,8 +354,8 @@ export class AgentRegistry {
 
       try {
         await childManager.run(userMessage, { signal: abortController.signal });
-      } catch {
-        // Abort or run error — handled below via fatalError or entry.status
+      } catch (err) {
+        fatalError = err instanceof Error ? err.message : String(err);
       } finally {
         unsub();
       }
@@ -364,35 +364,27 @@ export class AgentRegistry {
         await childManager.waitForWrites();
         const status: AgentStatus = { kind: "errored", error: fatalError };
         entry.status = status;
-        emitErroredSpawnEnd(fatalError);
+        emitSpawnEnd("errored", fatalError);
         return status;
       }
 
       await childManager.waitForWrites();
       const status: AgentStatus = { kind: "completed", output };
       entry.status = status;
+      emitSpawnEnd("completed", statusMessage(status));
       return status;
     })().catch((err: unknown): AgentStatus => {
       const message = String(err);
       const status: AgentStatus = { kind: "errored", error: message };
       entry.status = status;
-      emitErroredSpawnEnd(message);
+      emitSpawnEnd("errored", message);
       return status;
     });
 
     entry.promise = promise;
     this.agents.set(threadId, entry);
 
-    this.emit({
-      type: "collab_spawn_end",
-      callId,
-      childThreadId: threadId,
-      nickname,
-      agentType: params.agentType,
-      description: params.description || undefined,
-      prompt: params.prompt,
-      status: "running",
-    });
+    emitSpawnEnd("running");
 
     return { threadId, nickname };
   }
@@ -435,7 +427,26 @@ export class AgentRegistry {
       }
     }
 
+    const emitWaitEnd = (statuses: Record<string, AgentStatus>, timedOut: boolean): void => {
+      this.emit({
+        type: "collab_wait_end",
+        callId: waitCallId,
+        agentStatuses: ids.map((id) => {
+          const entry = this.agents.get(id)!;
+          const status = statuses[id] ?? entry.status;
+          return {
+            threadId: id,
+            nickname: entry.nickname,
+            status: toCollabStatus(status),
+            message: statusMessage(status),
+          };
+        }),
+        timedOut,
+      });
+    };
+
     if (pending.length === 0) {
+      emitWaitEnd(result, false);
       return { status: result, timedOut: false };
     }
 
@@ -499,21 +510,7 @@ export class AgentRegistry {
       }
     }
 
-    this.emit({
-      type: "collab_wait_end",
-      callId: waitCallId,
-      agentStatuses: ids.map((id) => {
-        const entry = this.agents.get(id)!;
-        const status = result[id] ?? entry.status;
-        return {
-          threadId: id,
-          nickname: entry.nickname,
-          status: toCollabStatus(status),
-          message: statusMessage(status),
-        };
-      }),
-      timedOut,
-    });
+    emitWaitEnd(result, timedOut);
 
     return { status: result, timedOut };
   }

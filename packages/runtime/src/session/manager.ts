@@ -344,6 +344,7 @@ export class SessionManager {
     const turnStager = new TurnStager(this.state.getCommittedLeafId(), context.messages, userMessage);
     const snapshot = turnStager.getSnapshot();
     this.state.setPending(snapshot.entries, snapshot.leafId);
+    this.flushTurnProgress(turnStager);
 
     const agentResult = this.resolveAgent();
     const agent = agentResult instanceof Promise ? await agentResult : agentResult;
