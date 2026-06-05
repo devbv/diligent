@@ -153,7 +153,7 @@ End state for the runtime in this plan:
 
 A bundled `env-config.json` file and `getEnvConfig()` loader were considered and dropped: with no current consumer, the JSON file would carry only placeholder values and the loader would add disk I/O on every plugin boot for no benefit. If a real env-keyed config dataset emerges later, the helper can grow into one.
 
-What is **not** in scope for P067: actually provisioning a separate dev Supabase project / dev analytics ingestion endpoint, or building the env-config.json + loader pair. Those become operational work tracked separately and can plug into `currentEnv()` when their values are real.
+What is **not** in scope for P067: actually provisioning a separate dev analytics ingestion endpoint, or building the env-config.json + loader pair. Those become operational work tracked separately and can plug into `currentEnv()` when their values are real.
 
 ## Scope
 
@@ -185,7 +185,7 @@ What is **not** in scope for P067: actually provisioning a separate dev Supabase
 - Internal Rust module names, TypeScript symbols, or binary protocol names
 - Bun-target / Rust-target matrix; envs share the same compilation targets
 - Plugin contract or bootstrap layout
-- Provisioning of an actual separate dev Supabase / dev analytics ingestion endpoint (operational, out of scope)
+- Provisioning of an actual separate dev analytics ingestion endpoint (operational, out of scope)
 
 ## File Manifest
 
@@ -211,7 +211,7 @@ What is **not** in scope for P067: actually provisioning a separate dev Supabase
 | File | Action | Description |
 |---|---|---|
 | `src/config/env.ts` | NEW | Load `bootstrap/env-config.json`; `getEnvConfig(env)`; `currentEnv()` reads `DILIGENT_ENV`, defaults to `prod` |
-| Existing call sites with hard-coded Supabase/analytics/hub URLs | MODIFY | Switch to `getEnvConfig(currentEnv()).<field>` |
+| Existing call sites with hard-coded analytics/hub URLs | MODIFY | Switch to `getEnvConfig(currentEnv()).<field>` |
 | `test/**` | ADD | Unit test that env-config resolves correctly for prod/dev, defaults to prod when unset |
 
 ### apps/overdare-ai-agent/
@@ -300,7 +300,7 @@ What is **not** in scope for P067: actually provisioning a separate dev Supabase
 
 ## Out of scope
 
-- Provisioning a real dev Supabase project, dev analytics ingestion, or dev hub domain (operational follow-up)
+- Provisioning a real dev analytics ingestion endpoint or dev hub domain (operational follow-up)
 - Retention/cleanup of accumulating dev releases (separate housekeeping plan)
 - Self-update of the `overdare-ai-agent` binary itself (currently agent only updates the runtime bundle; binary updates remain manual)
 - Channel switching that preserves shared state (intentional: envs are isolated)

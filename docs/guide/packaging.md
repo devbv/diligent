@@ -85,7 +85,6 @@ OVERDARE-owned defaults now live under `apps/overdare-ai-agent/`:
 
 - `apps/overdare-ai-agent/bootstrap/`
 - `apps/overdare-ai-agent/plugins/`
-- `apps/overdare-ai-agent/supabase/`
 
 At bundle assembly time these assets are staged under `defaults/` for compatibility with existing updater expectations. The launcher prefers an updated `bootstrap/` directory if present at runtime and otherwise falls back to the legacy `defaults/` path.
 
@@ -118,5 +117,4 @@ Common outputs include the compiled sidecar binary and runtime bundle contents u
 - `apps/overdare-ai-agent/README.md`
 - `apps/overdare-ai-agent/bootstrap/`
 - `apps/overdare-ai-agent/plugins/`
-- `apps/overdare-ai-agent/supabase/`
 - `package.json`

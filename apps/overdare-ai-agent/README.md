@@ -103,6 +103,5 @@ Additional OVERDARE-owned assets now live here as well:
 
 - `apps/overdare-ai-agent/bootstrap/`
 - `apps/overdare-ai-agent/plugins/`
-- `apps/overdare-ai-agent/supabase/`
 - `apps/overdare-ai-agent/scripts/deploy.ts`
 - `apps/overdare-ai-agent/scripts/tool-cli.ts`
