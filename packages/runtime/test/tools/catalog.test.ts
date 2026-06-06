@@ -1,4 +1,4 @@
-// @summary Tests for buildToolCatalog — builtin toggles, immutable enforcement, state metadata
+// @summary Tests for buildToolCatalog and catalog pipeline phases
 import { afterAll, describe, expect, it, mock } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -6,7 +6,21 @@ import { join } from "node:path";
 import type { Tool } from "@diligent/core/tool/types";
 import { z } from "zod";
 import type { BundledToolProvider } from "../../src/tools/bundled-provider";
-import { buildToolCatalog } from "../../src/tools/catalog";
+import type {
+  PluginConfig,
+  PluginLoadError,
+  ProviderToolBatch,
+  ToolMapEntry,
+  ToolStateEntry,
+} from "../../src/tools/catalog";
+import {
+  buildToolCatalog,
+  freeze,
+  loadBuiltins,
+  loadBundledBatches,
+  loadPluginBatches,
+  resolveConflicts,
+} from "../../src/tools/catalog";
 import { getGlobalPluginPath, getGlobalPluginRoot } from "../../src/tools/plugin-loader";
 
 const TEST_HOME = join(tmpdir(), `diligent-catalog-home-${Date.now()}`);
@@ -771,5 +785,285 @@ describe("buildToolCatalog", () => {
     });
 
     await rm(pluginDir, { recursive: true, force: true });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase unit tests
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("loadBuiltins", () => {
+  it("adds all non-collab builtins to toolMap and state with stable order", () => {
+    const builtins = standardBuiltins();
+    const { toolMap, state } = loadBuiltins(builtins, {});
+
+    expect(toolMap.size).toBe(builtins.length);
+    for (const tool of builtins) {
+      expect(toolMap.has(tool.name)).toBe(true);
+      expect(state.has(tool.name)).toBe(true);
+    }
+    const orders = [...toolMap.values()].map((e) => e.order);
+    expect(orders).toEqual([...orders].sort((a, b) => a - b));
+  });
+
+  it("excludes collab tools from the catalog", () => {
+    const builtins = [...standardBuiltins(), mockTool("spawn_agent")];
+    const { toolMap } = loadBuiltins(builtins, {});
+    expect(toolMap.has("spawn_agent")).toBe(false);
+  });
+
+  it("marks immutable tools as enabled even when toggle is false", () => {
+    const { state } = loadBuiltins(standardBuiltins(), { plan: false, request_user_input: false, skill: false });
+    expect(state.get("plan")?.enabled).toBe(true);
+    expect(state.get("plan")?.reason).toBe("immutable_forced_on");
+  });
+
+  it("disables non-immutable builtins when toggle is false", () => {
+    const { toolMap, state } = loadBuiltins(standardBuiltins(), { bash: false });
+    expect(state.get("bash")?.enabled).toBe(false);
+    expect(state.get("bash")?.reason).toBe("disabled_by_user");
+    expect(toolMap.has("bash")).toBe(true);
+  });
+
+  it("marks all builtins as source 'builtin'", () => {
+    const { state } = loadBuiltins(standardBuiltins(), {});
+    for (const entry of state.values()) {
+      expect(entry.source).toBe("builtin");
+    }
+  });
+});
+
+describe("loadBundledBatches", () => {
+  it("returns a batch for each provider that succeeds", async () => {
+    const provider: BundledToolProvider = {
+      id: "test-bundled",
+      createTools: () => [mockTool("bundled_a"), mockTool("bundled_b")],
+    };
+    const { batches, errors } = await loadBundledBatches([provider], "/tmp", undefined, 100);
+    expect(batches).toHaveLength(1);
+    expect(batches[0].id).toBe("test-bundled");
+    expect(batches[0].tools).toHaveLength(2);
+    expect(batches[0].orderBase).toBe(100);
+    expect(batches[0].label).toBe("Bundled provider");
+    expect(errors).toHaveLength(0);
+  });
+
+  it("records an error and skips the batch when createTools throws", async () => {
+    const provider: BundledToolProvider = {
+      id: "broken-provider",
+      createTools: () => {
+        throw new Error("provider exploded");
+      },
+    };
+    const { batches, errors } = await loadBundledBatches([provider], "/tmp", undefined, 0);
+    expect(batches).toHaveLength(0);
+    expect(errors).toHaveLength(1);
+    expect(errors[0].package).toBe("broken-provider");
+    expect(errors[0].error).toContain("provider exploded");
+  });
+
+  it("assigns distinct orderBase values across providers", async () => {
+    const makeProvider = (id: string): BundledToolProvider => ({
+      id,
+      createTools: () => [mockTool(`${id}_tool`)],
+    });
+    const { batches } = await loadBundledBatches([makeProvider("p1"), makeProvider("p2")], "/tmp", undefined, 50);
+    expect(batches[0].orderBase).toBe(50);
+    expect(batches[1].orderBase).toBe(1050);
+  });
+
+  it("returns empty results for an empty provider list", async () => {
+    const { batches, errors } = await loadBundledBatches([], "/tmp", undefined, 0);
+    expect(batches).toHaveLength(0);
+    expect(errors).toHaveLength(0);
+  });
+});
+
+describe("loadPluginBatches", () => {
+  it("emits deferredStateEntries for tools in a superseded plugin", async () => {
+    const config: PluginConfig[] = [{ package: "@test/superseded-pkg", enabled: true, tools: { my_tool: true } }];
+    const superseded = new Set(["@test/superseded-pkg"]);
+    const { batches, plugins, errors, deferredStateEntries } = await loadPluginBatches(
+      config,
+      superseded,
+      "/tmp",
+      undefined,
+      0,
+    );
+    expect(batches).toHaveLength(0);
+    expect(plugins[0].loadError).toContain("superseded");
+    expect(errors).toHaveLength(1);
+    expect(deferredStateEntries).toHaveLength(1);
+    expect(deferredStateEntries[0][0]).toContain("superseded:");
+    expect(deferredStateEntries[0][1].reason).toBe("superseded_by_bundled");
+  });
+
+  it("emits deferredStateEntries for explicitly disabled tools in a disabled plugin", async () => {
+    const config: PluginConfig[] = [
+      { package: "@test/disabled-pkg", enabled: false, tools: { tool_off: false, tool_on: true } },
+    ];
+    const { batches, deferredStateEntries } = await loadPluginBatches(config, new Set(), "/tmp", undefined, 0);
+    expect(batches).toHaveLength(0);
+    const disabledEntry = deferredStateEntries.find(([k]) => k.includes("tool_off"));
+    expect(disabledEntry?.[1].reason).toBe("plugin_disabled");
+    const onEntry = deferredStateEntries.find(([k]) => k.includes("tool_on"));
+    expect(onEntry).toBeUndefined();
+  });
+
+  it("returns a batch for a successfully loaded plugin", async () => {
+    const config: PluginConfig[] = [{ package: "@test/catalog-plugin", enabled: true }];
+    const { batches, plugins, errors } = await loadPluginBatches(config, new Set(), "/tmp", undefined, 200);
+    expect(batches).toHaveLength(1);
+    expect(batches[0].id).toBe("@test/catalog-plugin");
+    expect(batches[0].label).toBe("Plugin");
+    expect(batches[0].orderBase).toBe(200);
+    expect(plugins[0].loaded).toBe(true);
+    expect(errors).toHaveLength(0);
+  });
+});
+
+describe("resolveConflicts", () => {
+  function makeToolMap(tools: Tool[]): Map<string, ToolMapEntry> {
+    const toolMap = new Map<string, ToolMapEntry>();
+    tools.forEach((t, i) => toolMap.set(t.name, { tool: t, source: "builtin", order: i }));
+    return toolMap;
+  }
+
+  function makeStateMap(tools: Tool[]): Map<string, ToolStateEntry> {
+    const state = new Map<string, ToolStateEntry>();
+    for (const t of tools) {
+      state.set(t.name, {
+        name: t.name,
+        source: "builtin",
+        enabled: true,
+        immutable: false,
+        configurable: true,
+        available: true,
+        reason: "enabled",
+      });
+    }
+    return state;
+  }
+
+  it("adds a new plugin tool with no conflict", () => {
+    const toolMap = makeToolMap([mockTool("bash")]);
+    const state = makeStateMap([mockTool("bash")]);
+    const errors: PluginLoadError[] = [];
+    const batch: ProviderToolBatch = {
+      id: "@test/pkg",
+      tools: [mockTool("new_tool")],
+      orderBase: 100,
+      toolToggles: {},
+      label: "Plugin",
+    };
+    resolveConflicts([batch], toolMap, state, errors, "error");
+    expect(toolMap.has("new_tool")).toBe(true);
+    expect(state.get("new_tool")?.source).toBe("plugin");
+    expect(errors).toHaveLength(0);
+  });
+
+  it("blocks a plugin from overriding an immutable builtin (plan)", () => {
+    const { toolMap, state } = loadBuiltins(standardBuiltins(), {});
+    const errors: PluginLoadError[] = [];
+    const batch: ProviderToolBatch = {
+      id: "@test/pkg",
+      tools: [mockTool("plan")],
+      orderBase: 100,
+      toolToggles: {},
+      label: "Plugin",
+    };
+    resolveConflicts([batch], toolMap, state, errors, "error");
+    expect(state.get("plan")?.source).toBe("builtin");
+    expect(errors).toHaveLength(1);
+    expect(errors[0].error).toContain("immutable");
+  });
+
+  it("drops a conflicting non-immutable builtin under error policy and records error", () => {
+    const toolMap = makeToolMap([mockTool("bash")]);
+    const state = makeStateMap([mockTool("bash")]);
+    const errors: PluginLoadError[] = [];
+    const batch: ProviderToolBatch = {
+      id: "@test/pkg",
+      tools: [mockTool("bash")],
+      orderBase: 100,
+      toolToggles: {},
+      label: "Plugin",
+    };
+    resolveConflicts([batch], toolMap, state, errors, "error");
+    expect(toolMap.get("bash")?.source).toBe("builtin");
+    expect(errors).toHaveLength(1);
+    expect(errors[0].error).toContain("conflicts with built-in tool");
+  });
+
+  it("lets plugin win over non-immutable builtin under plugin_wins policy", () => {
+    const toolMap = makeToolMap([mockTool("bash")]);
+    const state = makeStateMap([mockTool("bash")]);
+    const errors: PluginLoadError[] = [];
+    const pluginBash = mockTool("bash");
+    const batch: ProviderToolBatch = {
+      id: "@test/pkg",
+      tools: [pluginBash],
+      orderBase: 100,
+      toolToggles: {},
+      label: "Plugin",
+    };
+    resolveConflicts([batch], toolMap, state, errors, "plugin_wins");
+    expect(toolMap.get("bash")?.source).toBe("plugin");
+    expect(errors).toHaveLength(0);
+  });
+
+  it("drops a later plugin tool that conflicts with an earlier plugin tool", () => {
+    const toolMap = new Map<string, ToolMapEntry>();
+    const state = new Map<string, ToolStateEntry>();
+    const errors: PluginLoadError[] = [];
+    const batch1: ProviderToolBatch = {
+      id: "@test/pkg1",
+      tools: [mockTool("shared_tool")],
+      orderBase: 0,
+      toolToggles: {},
+      label: "Plugin",
+    };
+    const batch2: ProviderToolBatch = {
+      id: "@test/pkg2",
+      tools: [mockTool("shared_tool")],
+      orderBase: 1000,
+      toolToggles: {},
+      label: "Plugin",
+    };
+    resolveConflicts([batch1, batch2], toolMap, state, errors, "error");
+    expect(toolMap.get("shared_tool")?.pluginPackage).toBe("@test/pkg1");
+    const conflictEntry = [...state.entries()].find(([k]) => k.startsWith("conflict:@test/pkg2:"));
+    expect(conflictEntry?.[1].reason).toBe("conflict_dropped");
+  });
+});
+
+describe("freeze", () => {
+  it("returns only enabled tools wrapped with image downscaling", () => {
+    const { toolMap, state } = loadBuiltins(standardBuiltins(), { bash: false });
+    const result = freeze(toolMap, state, [], []);
+    expect(result.tools.some((t) => t.name === "bash")).toBe(false);
+    expect(result.tools.every((t) => typeof t.execute === "function")).toBe(true);
+  });
+
+  it("orders state entries with builtins first in insertion order", () => {
+    const { toolMap, state } = loadBuiltins(standardBuiltins(), {});
+    const result = freeze(toolMap, state, [], []);
+    const names = result.state.map((e) => e.name);
+    const builtinNames = standardBuiltins().map((t) => t.name);
+    for (const name of builtinNames) {
+      expect(names).toContain(name);
+    }
+    expect(names.indexOf(builtinNames[0])).toBeLessThan(names.indexOf(builtinNames[builtinNames.length - 1]));
+  });
+
+  it("passes through plugins and pluginErrors unchanged", () => {
+    const { toolMap, state } = loadBuiltins(standardBuiltins(), {});
+    const plugins = [
+      { package: "p", configured: true, enabled: true, loaded: true, toolCount: 1, warnings: [] as string[] },
+    ];
+    const pluginErrors = [{ package: "p", enabled: true, error: "oops" }];
+    const result = freeze(toolMap, state, plugins, pluginErrors);
+    expect(result.plugins).toBe(plugins);
+    expect(result.pluginErrors).toBe(pluginErrors);
   });
 });
