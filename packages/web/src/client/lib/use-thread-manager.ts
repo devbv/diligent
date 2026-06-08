@@ -4,7 +4,7 @@ import type { Mode, SessionSummary, ThinkingEffort, ThreadReadResponse } from "@
 import { DILIGENT_CLIENT_REQUEST_METHODS } from "@diligent/protocol";
 import type { RefObject } from "react";
 import { useCallback, useRef, useState } from "react";
-import { type AgentContextItem, getAgentContextItemKey } from "./agent-native-bridge";
+import { type AgentContextItem, getAgentContextItemKey, mergeAgentContextItems } from "./agent-native-bridge";
 import { replaceDraftUrl, replaceThreadUrl } from "./app-utils";
 import type { WebRpcClient } from "./rpc-client";
 
@@ -28,6 +28,28 @@ export function clearDraftThreadContextItems(
   const next = { ...threadContextItems };
   delete next[DRAFT_INPUT_KEY];
   return next;
+}
+
+export function mergeThreadContextItems(
+  threadContextItems: Record<string, AgentContextItem[]>,
+  threadKey: string,
+  items: AgentContextItem[],
+): Record<string, AgentContextItem[]> {
+  // An empty incoming list is an explicit clear signal (host/composer reset).
+  if (items.length === 0) {
+    if (!(threadKey in threadContextItems)) {
+      return threadContextItems;
+    }
+    const next = { ...threadContextItems };
+    delete next[threadKey];
+    return next;
+  }
+  // Accumulate incoming selections onto whatever is already attached, deduping by
+  // context-item key (e.g. instance GUID) so re-selecting an existing item is a no-op.
+  return {
+    ...threadContextItems,
+    [threadKey]: mergeAgentContextItems(threadContextItems[threadKey] ?? [], items),
+  };
 }
 
 type ThreadHydrateAction = {
@@ -101,17 +123,7 @@ export function useThreadManager({
   const activeSubscriptionRef = useRef<ActiveThreadSubscription | null>(null);
 
   const updateThreadContextItems = useCallback((threadKey: string, items: AgentContextItem[]): void => {
-    setThreadContextItems((prev) => {
-      if (items.length === 0) {
-        if (!(threadKey in prev)) {
-          return prev;
-        }
-        const next = { ...prev };
-        delete next[threadKey];
-        return next;
-      }
-      return { ...prev, [threadKey]: items };
-    });
+    setThreadContextItems((prev) => mergeThreadContextItems(prev, threadKey, items));
   }, []);
 
   const removeThreadContextItem = useCallback((threadKey: string, itemKey: string): void => {
