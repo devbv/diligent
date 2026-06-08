@@ -1,11 +1,17 @@
 // @summary Tests for web thread manager helpers that manage draft composer input entries and subscriptions
 
 import { expect, mock, test } from "bun:test";
+import type { AgentContextItem } from "../../../src/client/lib/agent-native-bridge";
 import {
   clearDraftThreadInput,
   DRAFT_INPUT_KEY,
+  mergeThreadContextItems,
   switchThreadSubscription,
 } from "../../../src/client/lib/use-thread-manager";
+
+function instance(name: string, guid = name.toLowerCase()): AgentContextItem {
+  return { kind: "instance", source: "studiorpc", Name: name, ClassType: "Part", GUID: guid };
+}
 
 test("clearDraftThreadInput removes only the draft composer entry", () => {
   const next = clearDraftThreadInput({
@@ -68,4 +74,47 @@ test("switchThreadSubscription reuses active subscription when already on target
 
 test("new draft input key remains stable so draft-specific effort/input can persist across new thread resets", () => {
   expect(DRAFT_INPUT_KEY).toBe("__draft__");
+});
+
+test("mergeThreadContextItems attaches a multi-select batch to an empty thread", () => {
+  const next = mergeThreadContextItems({}, "t1", [instance("A"), instance("B"), instance("C")]);
+
+  expect(next.t1.map((i) => i.Name)).toEqual(["A", "B", "C"]);
+});
+
+test("mergeThreadContextItems accumulates a later single selection instead of resetting", () => {
+  const prev = { t1: [instance("A"), instance("B"), instance("C")] };
+  const next = mergeThreadContextItems(prev, "t1", [instance("D")]);
+
+  expect(next.t1.map((i) => i.Name)).toEqual(["A", "B", "C", "D"]);
+});
+
+test("mergeThreadContextItems dedups a re-selected item by GUID and keeps its position", () => {
+  const prev = { t1: [instance("A"), instance("B"), instance("C")] };
+  const next = mergeThreadContextItems(prev, "t1", [instance("B")]);
+
+  expect(next.t1.map((i) => i.Name)).toEqual(["A", "B", "C"]);
+});
+
+test("mergeThreadContextItems only touches the targeted thread key", () => {
+  const prev = { t1: [instance("A")], t2: [instance("Z")] };
+  const next = mergeThreadContextItems(prev, "t1", [instance("B")]);
+
+  expect(next.t1.map((i) => i.Name)).toEqual(["A", "B"]);
+  expect(next.t2).toBe(prev.t2);
+});
+
+test("mergeThreadContextItems treats an empty incoming list as an explicit clear", () => {
+  const prev = { t1: [instance("A"), instance("B")], t2: [instance("Z")] };
+  const next = mergeThreadContextItems(prev, "t1", []);
+
+  expect(next).not.toHaveProperty("t1");
+  expect(next.t2).toBe(prev.t2);
+});
+
+test("mergeThreadContextItems returns the same object when clearing an absent thread key", () => {
+  const prev = { t1: [instance("A")] };
+  const next = mergeThreadContextItems(prev, "t2", []);
+
+  expect(next).toBe(prev);
 });
