@@ -1,0 +1,384 @@
+// @summary Orchestrates agent run loop, steering queue, and compaction for a session
+
+import type { CoreAgentEvent } from "@diligent/core/agent";
+import {
+  type Agent,
+  formatSerializableErrorForLog,
+  selectForCompaction,
+  toSerializableError,
+} from "@diligent/core/agent";
+import type { Message } from "@diligent/core/types";
+import type { AgentEvent } from "../agent-event";
+import { calculateUsageCost } from "../cost";
+import { createToolStartRenderPayload } from "../tools/render-strategies";
+import { buildSessionContext } from "./context-builder";
+import type { SessionPersistence } from "./persistence";
+import type { SessionCache } from "./session-cache";
+import type { SessionStateStore } from "./state-store";
+import { TurnStager } from "./turn-stager";
+import type { CompactionEntry, ErrorEntry, SessionEntry, SessionManagerConfig } from "./types";
+import { generateEntryId } from "./types";
+
+export interface TurnOrchestratorContext {
+  state: SessionStateStore;
+  persistence: SessionPersistence;
+  config: SessionManagerConfig;
+  sessionCache: SessionCache;
+  emit: (event: AgentEvent) => void;
+  appendEntries: (entries: SessionEntry[]) => void;
+  appendAndPersist: (entry: SessionEntry) => void;
+  appendError: (error: ErrorEntry["error"], opts?: { fatal?: boolean; turnId?: string; persist?: boolean }) => void;
+  repairEntries: () => void;
+  getContext: () => Message[];
+}
+
+export class TurnOrchestrator {
+  /** Cached agent instance — persists between runs for the session lifetime */
+  private _agent: Agent | null = null;
+  /** Track which agent instance has been restored with session history */
+  private _initializedAgent: Agent | null = null;
+  /** Pre-agent steering queue — drained into agent at start of run() */
+  private pendingMessages: Message[] = [];
+
+  constructor(private ctx: TurnOrchestratorContext) {}
+
+  get currentAgent(): Agent | null {
+    return this._agent;
+  }
+
+  /** Reset agent state when the session is re-created or resumed. */
+  resetAgentState(): void {
+    this._agent = null;
+    this._initializedAgent = null;
+    this.pendingMessages = [];
+  }
+
+  /**
+   * Run the agent loop with the current session context.
+   * Persists user message and agent response to session.
+   */
+  async run(userMessage: Message, opts?: { signal?: AbortSignal }): Promise<void> {
+    await this.runInternal(userMessage, opts, false);
+  }
+
+  private async runInternal(
+    userMessage: Message,
+    opts: { signal?: AbortSignal } | undefined,
+    isRerun: boolean,
+  ): Promise<void> {
+    this.emitBusyStatus();
+
+    const prepared = await this.prepareRun(userMessage);
+    const { unsubscribe, getCurrentTurnId, getLastAgentError } = this.subscribeRunEvents(prepared);
+
+    let normalCompletion = false;
+    try {
+      await this.executeRun(prepared.agent, userMessage, opts?.signal);
+      this.commitRun(prepared.turnStager);
+      normalCompletion = true;
+    } catch (err) {
+      this.handleRunError(err, prepared.turnStager, getCurrentTurnId(), getLastAgentError());
+    } finally {
+      this.finishRun(unsubscribe);
+    }
+
+    this.throwIfAborted(opts?.signal);
+
+    if (normalCompletion && this.ctx.config.onStop) {
+      const result = await this.ctx.config.onStop(this.ctx.getContext(), isRerun);
+      if (result?.continueWith && !opts?.signal?.aborted) {
+        await this.runInternal(result.continueWith, opts, true);
+      }
+    }
+  }
+
+  async compactNow(): Promise<{
+    compacted: boolean;
+    entryCount: number;
+    tokensBefore: number;
+    tokensAfter: number;
+    summary: string;
+  }> {
+    await this.ctx.persistence.waitForWrites();
+    const context = buildSessionContext(this.ctx.state.getCommittedEntries(), this.ctx.state.getCommittedLeafId(), {});
+    const compactionConfig = this.ctx.config.compaction ?? {
+      enabled: true,
+      reservePercent: 16,
+      keepRecentTokens: 20000,
+      timeoutMs: 180_000,
+    };
+
+    const agentResult = this.resolveAgent();
+    const agent = agentResult instanceof Promise ? await agentResult : agentResult;
+    agent.restoreCompactionState(context.providerMessages, context.compactionSummary);
+    agent.setCompactionConfig({
+      reservePercent: compactionConfig.reservePercent,
+      keepRecentTokens: compactionConfig.keepRecentTokens,
+    });
+    this._initializedAgent = agent;
+
+    let tokensBefore = 0;
+    let tokensAfter = 0;
+    let summary = "";
+    const unsub = agent.agentStream.subscribe((event: CoreAgentEvent) => {
+      this.ctx.emit(this.enrichEvent(event, agent));
+      if (event.type === "compaction_end") {
+        tokensBefore = event.tokensBefore;
+        tokensAfter = event.tokensAfter;
+        summary = event.summary;
+        this.persistCompactionEntry({
+          summary: event.summary,
+          displaySummary: event.compactionSummary ? "Compacted" : event.summary,
+          recentUserMessages: selectForCompaction(context.messages, compactionConfig.keepRecentTokens)
+            .recentUserMessages,
+          compactionSummary: event.compactionSummary,
+          tokensBefore: event.tokensBefore,
+          tokensAfter: event.tokensAfter,
+        });
+      }
+    });
+
+    try {
+      await agent.compact();
+    } finally {
+      unsub();
+    }
+
+    await this.ctx.persistence.waitForWrites();
+    return {
+      compacted: true,
+      entryCount: this.ctx.state.entryCount,
+      tokensBefore,
+      tokensAfter,
+      summary,
+    };
+  }
+
+  /** Queue a steering message. If agent is active, steers directly; otherwise queues locally. */
+  steer(message: Message | string): void {
+    const msg: Message =
+      typeof message === "string"
+        ? {
+            role: "user",
+            content: message,
+            timestamp: Date.now(),
+          }
+        : message;
+    if (this._agent) {
+      this._agent.steer(msg);
+    } else {
+      this.pendingMessages.push(msg);
+    }
+  }
+
+  /** Check if pending messages exist (steering or follow-up). */
+  hasPendingMessages(): boolean {
+    if (this._agent) return this._agent.hasPendingMessages();
+    return this.pendingMessages.length > 0;
+  }
+
+  /** Pop any undrained pending messages (from agent queue or pre-agent queue). Returns null if empty. */
+  popPendingMessages(): string[] | null {
+    const msgs: Message[] = [];
+
+    if (this._agent) {
+      msgs.push(...this._agent.drainPendingMessages());
+    }
+
+    msgs.push(...this.pendingMessages.splice(0));
+
+    if (msgs.length === 0) return null;
+    return msgs.map((m) => (m.role === "user" && typeof m.content === "string" ? m.content : ""));
+  }
+
+  private emitBusyStatus(): void {
+    this.ctx.emit({ type: "status_change", status: "busy" });
+  }
+
+  private async prepareRun(userMessage: Message): Promise<{ agent: Agent; turnStager: TurnStager }> {
+    this.ctx.repairEntries();
+
+    const context = buildSessionContext(this.ctx.state.getCommittedEntries(), this.ctx.state.getCommittedLeafId(), {});
+    const turnStager = new TurnStager(this.ctx.state.getCommittedLeafId(), context.messages, userMessage);
+    const snapshot = turnStager.getSnapshot();
+    this.ctx.state.setPending(snapshot.entries, snapshot.leafId);
+    this.flushTurnProgress(turnStager);
+
+    const agentResult = this.resolveAgent();
+    const agent = agentResult instanceof Promise ? await agentResult : agentResult;
+    this._agent = agent;
+
+    agent.setSessionId(this.ctx.persistence.sessionId);
+
+    for (const msg of this.pendingMessages.splice(0)) {
+      agent.steer(msg);
+    }
+
+    const compactionConfig = this.ctx.config.compaction;
+    if (compactionConfig?.enabled) {
+      agent.setCompactionConfig({
+        reservePercent: compactionConfig.reservePercent,
+        keepRecentTokens: compactionConfig.keepRecentTokens,
+        timeoutMs: compactionConfig.timeoutMs,
+      });
+    }
+
+    if (agent !== this._initializedAgent) {
+      agent.restoreCompactionState(context.providerMessages, context.compactionSummary);
+      this._initializedAgent = agent;
+    }
+
+    return { agent, turnStager };
+  }
+
+  private subscribeRunEvents(prepared: { agent: Agent; turnStager: TurnStager }): {
+    unsubscribe: () => void;
+    getCurrentTurnId: () => string | undefined;
+    getLastAgentError: () => { error: ErrorEntry["error"]; fatal: boolean } | undefined;
+  } {
+    const { agent, turnStager } = prepared;
+    let currentTurnId: string | undefined;
+    let lastAgentError: { error: ErrorEntry["error"]; fatal: boolean } | undefined;
+
+    const unsubscribe = agent.subscribe((event: CoreAgentEvent) => {
+      if (event.type === "turn_start") currentTurnId = event.turnId;
+      if (event.type === "error") {
+        lastAgentError = { error: event.error, fatal: event.fatal };
+      }
+      if (event.type === "usage") {
+        this.ctx.sessionCache.handleUsage(this.ctx.persistence.sessionId, event.usage);
+      }
+      if (event.type === "prompt_signature") {
+        this.ctx.sessionCache.handlePromptSignature(this.ctx.persistence.sessionId, event.hashes);
+      }
+
+      const keepRecentTokens = this.ctx.config.compaction?.keepRecentTokens ?? 20_000;
+      turnStager.handleEvent(event, keepRecentTokens);
+      this.ctx.emit(this.enrichEvent(event, agent));
+
+      if (shouldFlushTurnProgress(event)) {
+        this.flushTurnProgress(turnStager);
+      }
+
+      const snapshot = turnStager.getSnapshot();
+      this.ctx.state.setPending(snapshot.entries, snapshot.leafId);
+    });
+
+    return {
+      unsubscribe,
+      getCurrentTurnId: () => currentTurnId,
+      getLastAgentError: () => lastAgentError,
+    };
+  }
+
+  private async executeRun(agent: Agent, userMessage: Message, signal?: AbortSignal): Promise<void> {
+    await agent.prompt(userMessage, signal);
+  }
+
+  private commitRun(turnStager: TurnStager): void {
+    this.ctx.appendEntries(turnStager.flushPendingEntries());
+  }
+
+  private handleRunError(
+    err: unknown,
+    turnStager: TurnStager,
+    turnId?: string,
+    agentError?: { error: ErrorEntry["error"]; fatal: boolean },
+  ): void {
+    const pendingEntries = turnStager.flushPendingEntries();
+    this.ctx.appendEntries(pendingEntries);
+    const serializable = agentError?.error ?? toSerializableError(err);
+    console.error(
+      "[SessionManager] Run error session=%s %s lastPersisted=%s",
+      this.ctx.persistence.sessionId,
+      formatSerializableErrorForLog(serializable),
+      summarizeLastPersistedMessage(this.ctx.state.getCommittedEntries()),
+    );
+    this.ctx.appendError(serializable, { fatal: false, turnId, persist: true });
+  }
+
+  private finishRun(unsubscribe: () => void): void {
+    this.ctx.state.clearPending();
+    unsubscribe();
+  }
+
+  private throwIfAborted(signal?: AbortSignal): void {
+    if (signal?.aborted) {
+      throw new Error("Aborted");
+    }
+  }
+
+  private persistCompactionEntry(event: {
+    summary: string;
+    displaySummary?: string;
+    recentUserMessages?: Message[];
+    compactionSummary?: Record<string, unknown>;
+    tokensBefore: number;
+    tokensAfter: number;
+  }): void {
+    const entry: CompactionEntry = {
+      type: "compaction",
+      id: generateEntryId(),
+      parentId: this.ctx.state.getCommittedLeafId(),
+      timestamp: new Date().toISOString(),
+      summary: event.summary,
+      displaySummary: event.compactionSummary ? "Compacted" : event.displaySummary,
+      recentUserMessages: event.recentUserMessages,
+      compactionSummary: event.compactionSummary,
+      tokensBefore: event.tokensBefore,
+      tokensAfter: event.tokensAfter,
+    };
+    this.ctx.appendAndPersist(entry);
+  }
+
+  private flushTurnProgress(turnStager: TurnStager): void {
+    const entries = turnStager.flushPendingEntries();
+    if (entries.length === 0) return;
+    this.ctx.appendEntries(entries);
+    this.ctx.state.clearPending();
+  }
+
+  private enrichEvent(event: CoreAgentEvent, agent: Agent): AgentEvent {
+    if (event.type === "usage") {
+      return { ...event, cost: calculateUsageCost(agent.model, event.usage) };
+    }
+    if (event.type === "tool_start") {
+      return {
+        ...event,
+        render: createToolStartRenderPayload(event.toolName, event.input),
+      };
+    }
+    return event as AgentEvent;
+  }
+
+  /**
+   * Resolve the agent. When the factory returns a Promise, this returns a Promise.
+   * When it returns synchronously, this returns synchronously.
+   */
+  private resolveAgent(): Agent | Promise<Agent> {
+    return typeof this.ctx.config.agent === "function" ? this.ctx.config.agent() : this.ctx.config.agent;
+  }
+}
+
+export function summarizeLastPersistedMessage(entries: SessionEntry[]): string {
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const entry = entries[i];
+    if (entry.type !== "message") continue;
+    const { message } = entry;
+    if (message.role === "tool_result") {
+      return `tool_result:${message.toolName}:error=${message.isError}`;
+    }
+    if (message.role === "assistant") {
+      const blockTypes = message.content.map((block) => block.type).join(",") || "-";
+      return `assistant:stop=${message.stopReason}:blocks=${blockTypes}`;
+    }
+    if (message.role === "user") {
+      return "user";
+    }
+  }
+  return "none";
+}
+
+function shouldFlushTurnProgress(event: CoreAgentEvent): boolean {
+  return (event.type === "message_end" && event.message.stopReason === "tool_use") || event.type === "tool_end";
+}
