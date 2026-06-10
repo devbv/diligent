@@ -43,6 +43,21 @@ describe("TextInput", () => {
     expect(input.getValue()).toBe("abc");
   });
 
+  test("bracketed paste inserts full value", () => {
+    const { input } = createInput();
+    input.handleInput("\x1b[200~sk-test-key\x1b[201~");
+    expect(input.getValue()).toBe("sk-test-key");
+  });
+
+  test("bracketed paste inserts at cursor", () => {
+    const { input } = createInput();
+    input.handleInput("a");
+    input.handleInput("c");
+    input.handleInput("\x1b[D");
+    input.handleInput("\x1b[200~b\x1b[201~");
+    expect(input.getValue()).toBe("abc");
+  });
+
   test("backspace deletes character", () => {
     const { input } = createInput();
     input.handleInput("a");

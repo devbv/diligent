@@ -1,5 +1,6 @@
 // @summary Single-line text input component with validation support
 import { isPrintable, matchesKey } from "../framework/keys";
+import { BRACKETED_PASTE_END, BRACKETED_PASTE_START } from "../framework/stdin-buffer";
 import type { Component } from "../framework/types";
 import { t } from "../theme";
 
@@ -110,6 +111,15 @@ export class TextInput implements Component {
   }
 
   handleInput(data: string): void {
+    if (matchesKey(data, "bracketed_paste")) {
+      const pasted = data.slice(BRACKETED_PASTE_START.length, data.length - BRACKETED_PASTE_END.length);
+      const singleLinePaste = pasted.replace(/\r\n|\r|\n/g, "");
+      if (singleLinePaste.length > 0) {
+        this.insertText(singleLinePaste);
+      }
+      return;
+    }
+
     // Submit
     if (matchesKey(data, "enter")) {
       this.onResult(this.value || null);
@@ -176,8 +186,7 @@ export class TextInput implements Component {
 
     // Printable character
     if (isPrintable(data)) {
-      this.value = this.value.slice(0, this.cursorPos) + data + this.value.slice(this.cursorPos);
-      this.cursorPos++;
+      this.insertText(data);
     }
   }
 
@@ -188,6 +197,11 @@ export class TextInput implements Component {
   /** Get the current input value (for testing) */
   getValue(): string {
     return this.value;
+  }
+
+  private insertText(text: string): void {
+    this.value = this.value.slice(0, this.cursorPos) + text + this.value.slice(this.cursorPos);
+    this.cursorPos += text.length;
   }
 
   private wrapText(text: string, maxWidth: number): string[] {
