@@ -1,7 +1,8 @@
-import type { SerializableError } from "@diligent/core/agent";
+import type { Agent, SerializableError } from "@diligent/core/agent";
 import type { ThinkingEffort } from "@diligent/core/llm/types";
 import type { Message } from "@diligent/core/types";
 import type { Mode } from "../agent/mode";
+import type { DiligentPaths } from "../infrastructure";
 
 /** Session file format version. Increment when entry schema changes. */
 export const SESSION_VERSION = 9;
@@ -145,4 +146,36 @@ export interface SessionInfo {
   messageCount: number;
   firstUserMessage?: string;
   parentSession?: string;
+}
+
+// --- Session Manager Config ---
+
+export interface SessionManagerConfig {
+  cwd: string;
+  paths: DiligentPaths;
+  // D087: Factory allows per-run config (e.g. collaboration mode, mid-session knowledge refresh)
+  agent: Agent | (() => Agent | Promise<Agent>);
+  compaction?: {
+    enabled: boolean;
+    reservePercent: number;
+    keepRecentTokens: number;
+    timeoutMs?: number;
+  };
+  knowledgePath?: string;
+  sessionId?: string;
+  parentSession?: string;
+  /** When spawned as a sub-agent, identity info persisted in session header */
+  collabMeta?: CollabSessionMeta;
+  /**
+   * Called after each successful turn (normal completion, not abort or error).
+   * Return `{ continueWith }` to re-run the agent with a follow-up message
+   * (e.g. when a Stop hook blocks). On re-runs, `isRerun` is true so hooks
+   * can set `stop_hook_active` and avoid infinite loops.
+   */
+  onStop?: (context: Message[], isRerun: boolean) => Promise<{ continueWith?: Message } | undefined>;
+}
+
+export interface ResumeSessionOptions {
+  sessionId?: string;
+  mostRecent?: boolean;
 }
