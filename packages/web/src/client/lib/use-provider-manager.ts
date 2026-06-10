@@ -3,7 +3,7 @@
 import type { AuthOAuthStartResponse, ModelInfo, ProviderAuthStatus } from "@diligent/protocol";
 import { DILIGENT_CLIENT_REQUEST_METHODS } from "@diligent/protocol";
 import type { RefObject } from "react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { cancelOAuthFlow, fetchProviderStatus, removeProviderKey, setProviderKey, startOAuthFlow } from "./auth-api";
 import type { WebRpcClient } from "./rpc-client";
 
@@ -188,6 +188,16 @@ export function useProviderManager(rpcRef: RefObject<WebRpcClient | null>) {
     [rpcRef],
   );
 
+  const hasProvider = useMemo(() => providers.some((p) => p.configured), [providers]);
+  const effectiveHasProvider = useMemo(
+    () => hasProvider || !providerStatusResolved,
+    [hasProvider, providerStatusResolved],
+  );
+  const contextWindow = useMemo(
+    () => availableModels.find((m) => m.id === currentModel)?.contextWindow ?? 0,
+    [availableModels, currentModel],
+  );
+
   return {
     providers,
     providerStatusResolved,
@@ -195,6 +205,9 @@ export function useProviderManager(rpcRef: RefObject<WebRpcClient | null>) {
     currentModel,
     currentModelRef,
     availableModelsRef,
+    hasProvider,
+    effectiveHasProvider,
+    contextWindow,
     setInitialModel,
     resetDraftModel,
     refreshProviders,
