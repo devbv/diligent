@@ -139,7 +139,7 @@ describe("createAppServerConfig", () => {
       const config = createAppServerConfig({ cwd: "/tmp/test", runtimeConfig });
 
       config.modelConfig?.onModelChange("claude-haiku-4-5");
-      expect(runtimeConfig.model?.id).toBe("claude-haiku-4-5");
+      expect(runtimeConfig.model?.id).toBe("claude-haiku-4-5-20251001");
     } finally {
       if (originalHome === undefined) {
         delete process.env.HOME;
