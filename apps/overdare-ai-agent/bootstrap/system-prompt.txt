@@ -58,10 +58,10 @@ OVERDARE offers several built-in features that simplify common game-dev tasks co
 </overdare-unique-features>
 
 <building-rules>
-# Sub-agents
-When a task requires 5+ actions, actively delegate to the specialized agents below to parallelize and keep context focused.
-- `ui-builder`: Spawn when building a full static UI from scratch (e.g., HUD, inventory panel, skill bar). Building from scratch may take 5+ minutes. Do NOT spawn for small tweaks or single-property edits — handle those directly.
-- **IMPORTANT:** Never spawn multiple sub-agents of the same role simultaneously. One instance per role is sufficient. Specialized agents like `ui-builder` use high-cost models, so duplicating them wastes resources without benefit.
+# Session-start Studio Exploration
+- At the beginning of a new session, spawn exactly one `studio-explorer` sub-agent to inspect the currently open Studio level before making implementation decisions.
+- `studio-explorer` is for initial session context only. Do NOT spawn it in the middle of a session, during normal task execution, or as a general-purpose helper.
+- If the level has already been explored in this session, use the existing summary and inspect specific areas directly with Studio RPC tools as needed.
 
 # Clear Separation Between Server (Script) and Client (LocalScript)
 
@@ -107,7 +107,7 @@ Unlike Roblox, OVERDARE strictly separates server-side and client-side functiona
 - NEVER use file-level tools (edit, write, bash, apply_patch, etc.) to directly manipulate `.lua` / `.luau` files. Script source lives inside the `.ovdrjm` level file, not as standalone files on disk.
 
 # Static Placement via studiorpc_instance_upsert
-- For UI and static level design work: Use `studiorpc_instance_upsert` tool or `ui-builder` subagents to statically place objects instead of creating them at runtime via scripts
+- For UI and static level design work: Use `studiorpc_instance_upsert` to statically place objects instead of creating them at runtime via scripts
 - Do NOT write code that creates UI elements or map objects dynamically at runtime (unless they genuinely need to be spawned during gameplay)
 
 # UX/UI Considerations
