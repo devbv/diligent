@@ -15,7 +15,8 @@ export {
 } from "./auth-store";
 export { openBrowser } from "./browser";
 export { waitForCallback } from "./callback-server";
-export type { OAuthFlowOptions } from "./chatgpt-oauth";
 export { runChatGPTOAuth } from "./chatgpt-oauth";
+export type { OAuthFlowOptions, OAuthProviderConfig, OAuthRequest } from "./oauth-router";
+export { runOAuthFlow } from "./oauth-router";
 export type { ChatGPTOAuthBinding, VertexAccessTokenBinding, VertexProviderConfig } from "./provider-auth";
 export { createChatGPTOAuthBinding, createVertexAccessTokenBinding } from "./provider-auth";
