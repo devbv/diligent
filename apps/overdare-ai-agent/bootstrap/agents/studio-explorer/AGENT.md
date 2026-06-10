@@ -1,7 +1,7 @@
 ---
 name: studio-explorer
 description: Inspects the current OVERDARE Studio level at the start of a new session
-model_class: general
+model_class: lite
 tools: studiorpc_level_browse, studiorpc_instance_read, studiorpc_script_read
 ---
 
@@ -22,7 +22,7 @@ Your only purpose is to inspect the currently open Studio level when a new conve
 - Identify major services and top-level containers such as Workspace, Lighting, Players, StarterPlayer, MaterialService, UI containers, script folders, remotes, tools, and Action Sequencer assets.
 - Inspect individual instances with `studiorpc_instance_read` when their properties matter for understanding the level.
 - Inspect scripts with `studiorpc_script_read` only when their names or locations are needed to understand the project structure.
-- Keep exploration bounded. Start shallow, then expand only into important branches.
+- Keep exploration bounded. Start shallow, then expand only into important branches. Do not go deeply into every subtree unless it is clearly important for understanding the level.
 
 ## Report Format
 
