@@ -20,13 +20,13 @@ const numberSequence = z
 const numberRange = z.object({ Min: z.number(), Max: z.number() });
 const surfaceGuiBaseProperties = {
   Active: z.boolean().default(true),
+  Adornee: z.string().optional(),
   AlwaysOnTop: z.boolean().optional(),
-  Brightness: z.number().default(10),
+  Brightness: z.number().default(1),
   ClipsDescendants: z.boolean().default(true),
   Enabled: z.boolean().default(true),
   LightInfluence: z.number().describe("(0~1)").default(1),
   MaxDistance: z.number().default(3000),
-  Size: udim2.describe("UI size (UDim2)").optional(),
   ZIndexBehavior: z.string().describe('e.g. "Sibling"').optional(),
 };
 
@@ -139,8 +139,86 @@ export const materialEnum = z.enum([
   "Glass",
   "Paving",
   "MossyRock",
+  "Plank",
   "Wood",
   "Neon",
+  "Asphalt",
+  "Concrete",
+  "Marble",
+  "MetalPlate",
+  "Rust",
+  "Snow",
+  "StoneBrick",
+  "StoneFloor",
+  "SilverMetal",
+  "CorrugatedSteel",
+  "Sand",
+  "Grass",
+  "PavingStones",
+  "Road",
+  "WhiteGrayBrick",
+  "ConcretePlate",
+  "Roof",
+  "GridQuad",
+  "DistroyedBronze",
+  "HalfLeafyGround",
+  "PavingWall",
+  "GridBox",
+  "RustBrass",
+  "PavingFloor",
+  "GridTile",
+  "PavingBrick",
+  "GridPentagon",
+  "GridMarble",
+  "Copper",
+  "TerrazzoFloor",
+  "CheckerTileFloor",
+  "SoilRockGround",
+  "PavingBlock",
+  "MixRoad",
+  "HouseBricks",
+  "BrokenConcrete",
+  "DamagedRoof",
+  "OfficeCeilingWhite",
+  "CementWall",
+  "CrackedSmallCeramicTile",
+  "CrackedMiddleCeramicTile",
+  "TakenOffCeramicTile",
+  "MosaicCarpet",
+  "BrushMetal",
+  "PaintedMetal",
+  "PaintedWood",
+  "IndustrialRibbedSteel",
+  "PeelingPaintSteel",
+  "RustySteel",
+  "UrbanSlateFloor",
+  "BeigeTerrazzoFloor",
+  "GreyWovenFabric",
+  "ThickCarpet",
+  "EmeraldGridTile",
+  "OceanPanelTile",
+  "BrickCeramicTile",
+  "SquareCeramicTile",
+  "GridBorder",
+  "GalvanizedMetal",
+  "WeatheredPlasterBrick",
+  "WhiteCementBrick",
+  "SandstoneBrick",
+  "BrokenRoof",
+  "Foil",
+  "RustMetal",
+  "PaintedWornWood",
+  "Chainmail",
+  "WoodTileFloor",
+  "Tatami",
+  "OfficeCeilingLight",
+  "WoodSidingWall",
+  "WoodLogSidingWall",
+  "FabricDenim",
+  "FabricWeave",
+  "GrainLeather",
+  "CrocEmbossedLeather",
+  "MatteRubber",
 ]);
 
 // --- Service property schemas (update-only, not insertable) ---
@@ -155,9 +233,11 @@ const workspaceServiceSchema = z
 
 const lightingServiceSchema = z
   .object({
+    Ambient: rgb.optional(),
     AmbientSkyBrightness: z.number().optional(),
     AmbientSkyColor: rgb.optional(),
-    AutoTimeCycle: z.number().optional(),
+    AutoTimeCycle: z.boolean().optional(),
+    Brightness: z.number().optional(),
     ClockTime: z.number().optional(),
     Contrast: z.number().optional(),
     GroundReflectionColor: rgb.optional(),
@@ -169,13 +249,13 @@ const lightingServiceSchema = z
     MoonPathAngle: z.number().optional(),
     MoonPhase: z.number().optional(),
     NightBrightness: z.number().optional(),
-    RealTimeDayDuration: z.number().optional(),
     Saturation: z.number().optional(),
+    ShadowDetailLevel: z.string().describe('e.g. "Low"').optional(),
     SkyColorInfluence: z.number().optional(),
     StarsBrightness: z.number().optional(),
     StarsColor: rgb.optional(),
     SunBrightness: z.number().optional(),
-    SunCastShadow: z.number().optional(),
+    SunCastShadow: z.boolean().optional(),
     SunLightColor: rgb.optional(),
     SunMaxHeight: z.number().optional(),
     SunPathAngle: z.number().optional(),
@@ -190,15 +270,19 @@ const atmosphereServiceSchema = z
     CloudAmount: z.number().optional(),
     CloudSpeed: z.number().optional(),
     CloudTexture: z.string().optional(),
+    Color: rgb.optional(),
+    Density: z.number().optional(),
     FogColor: rgb.optional(),
     FogDensity: z.number().optional(),
     FogFalloff: z.number().optional(),
+    FogFalloffClear: z.number().optional(),
     FogHorizon: z.boolean().optional(),
     FogStart: z.number().optional(),
     GlareColor: rgb.optional(),
     GlareFalloff: z.number().optional(),
     HazeColor: rgb.optional(),
     HazeSpread: z.number().optional(),
+    StartDistance: z.number().optional(),
   })
   .strict()
   .describe("Use when updating Atmosphere service. Controls fog, haze, glare, and cloud settings.");
@@ -215,7 +299,6 @@ const playersServiceSchema = z
 const starterPlayerServiceSchema = z
   .object({
     AirControl: z.number().optional(),
-    AllowCustomAnimations: z.number().optional(),
     CameraMaxZoomDistance: z.number().optional(),
     CameraMinZoomDistance: z.number().optional(),
     CapsuleHeight: z.number().optional(),
@@ -347,19 +430,18 @@ export const instancePropertiesSchema = z
         CFrame: z.object({ Position: vec3, Orientation: vec3 }).optional(),
         Size: vec3.describe("units in cm").optional(),
         Anchored: z.boolean().default(true),
+        BrickColor: z.string().optional(),
+        CanClimb: z.boolean().optional(),
         CanCollide: z.boolean().default(true),
         CanQuery: z.boolean().default(true),
         CanTouch: z.boolean().default(true),
         CastShadow: z.boolean().optional(),
         CollisionGroup: z.string().optional(),
+        CollisionProfile: z.string().describe('e.g. "BlockAll"').optional(),
         Color: rgb.optional(),
         Locked: z.boolean().optional(),
-        Mass: z.number().optional(),
-        Massless: z.boolean().optional(),
         Material: materialEnum.optional(),
         MaterialVariant: z.string().optional(),
-        Reflectance: z.number().describe("(0~1)").optional(),
-        RootPriority: z.number().optional(),
         Transparency: z.number().describe("(0~1)").optional(),
       })
       .strict()
@@ -386,9 +468,6 @@ export const instancePropertiesSchema = z
     z
       .object({
         ...guiObjectProperties,
-        BorderColor3: rgb.optional(),
-        BorderMode: z.enum(["Insert", "Middle", "Outline"]).optional(),
-        BorderPixelSize: z.number().optional(),
       })
       .strict()
       .describe("Use when class=Frame. Layout and visual properties with optional border styling."),
@@ -423,13 +502,17 @@ export const instancePropertiesSchema = z
     z
       .object({
         SoundId: z.string().optional(),
-        Volume: z.number().describe("multiplier (0~10)").default(1),
+        Volume: z.number().describe("multiplier (0~10)").default(0.5),
         Looped: z.boolean().optional(),
+        LoopRegion: z.object({ Min: z.number(), Max: z.number() }).optional(),
+        PlaybackRegion: z.object({ Min: z.number(), Max: z.number() }).optional(),
+        PlaybackRegionsEnabled: z.boolean().default(false),
         PlaybackSpeed: z.number().default(1),
+        Playing: z.boolean().optional(),
         PlayOnRemove: z.boolean().optional(),
         RollOffMaxDistance: z.number().default(5000),
         RollOffMinDistance: z.number().default(10),
-        RollOffMode: z.string().describe('e.g. "InverseTapered"').optional(),
+        RollOffMode: z.enum(["Inverse", "InverseTapered", "Linear", "LinearSquare"]).optional(),
         StartTimePosition: z.number().optional(),
       })
       .strict()
@@ -442,9 +525,6 @@ export const instancePropertiesSchema = z
       .object({
         CanBeDropped: z.boolean().default(true),
         Enabled: z.boolean().optional(),
-        ManualActivationOnly: z.boolean().optional(),
-        RequiresHandle: z.boolean().optional(),
-        ToolTip: z.string().optional(),
       })
       .strict()
       .describe("Use when class=Tool. An equippable item a player can pick up and activate."),
@@ -467,7 +547,6 @@ export const instancePropertiesSchema = z
         MaxTorque: z.number().default(1000),
         ReactionTorqueEnabled: z.boolean().optional(),
         RelativeTo: z.string().describe('e.g. "World"').optional(),
-        Visible: z.boolean().optional(),
       })
       .strict()
       .describe("Use when class=AngularVelocity. Applies a target rotational velocity to a physics body."),
@@ -482,11 +561,8 @@ export const instancePropertiesSchema = z
         SecondaryTangentAxis: vec3.optional(),
         Enabled: z.boolean().default(true),
         ForceLimitsEnabled: z.boolean().default(true),
-        ForceLimitMode: z.string().describe('e.g. "Magnitude"').optional(),
         MaxForce: z.number().default(10),
-        MaxAxesForce: vec3.optional(),
         RelativeTo: z.string().describe('e.g. "World"').optional(),
-        Visible: z.boolean().optional(),
       })
       .strict()
       .describe(
@@ -498,7 +574,6 @@ export const instancePropertiesSchema = z
         ApplyAtCenterOfMass: z.boolean().optional(),
         Enabled: z.boolean().default(true),
         RelativeTo: z.string().describe('e.g. "World"').optional(),
-        Visible: z.boolean().optional(),
       })
       .strict()
       .describe(
@@ -506,6 +581,7 @@ export const instancePropertiesSchema = z
       ),
     z
       .object({
+        CastShadow: z.boolean().optional(),
         PrimaryPart: z.string().describe("InstanceGuid of the primary part").optional(),
         WorldPivot: z.object({ Position: vec3, Orientation: vec3 }).optional(),
       })
@@ -566,6 +642,7 @@ export const instancePropertiesSchema = z
         DistanceUpperLimit: z.number().optional(),
         ExtentsOffsetWorldSpace: vec3.optional(),
         PositionOffset: vec3.optional(),
+        PositionOffsetWorldSpace: vec3.optional(),
         SizeOffset: z
           .object({ X: z.number(), Y: z.number() })
           .describe("Screen-space size offset (Vector2)")
@@ -638,7 +715,7 @@ export const instancePropertiesSchema = z
         FlipbookLayout: z.enum(["None", "Grid2x2", "Grid4x4", "Grid8x8"]).optional(),
         FlipbookMode: z.enum(["Loop", "OneShot", "PingPong", "Random"]).optional(),
         FlipbookStartRandom: z.boolean().optional(),
-        LifeTime: numberRange.optional(),
+        Lifetime: numberRange.optional(),
         LightEmission: z.number().describe("(0~1)").optional(),
         LockedToPart: z.boolean().optional(),
         Orientation: z
@@ -667,7 +744,6 @@ export const instancePropertiesSchema = z
         Color: rgb.optional(),
         Enabled: z.boolean().optional(),
         Range: z.number().describe("Radius of illumination in studs").default(300),
-        Shadows: z.boolean().optional(),
       })
       .strict()
       .describe("Use when class=PointLight. Omnidirectional point light source."),
@@ -679,7 +755,6 @@ export const instancePropertiesSchema = z
         Enabled: z.boolean().optional(),
         Face: normalIdEnum.optional(),
         Range: z.number().describe("Radius of illumination in studs").default(300),
-        Shadows: z.boolean().optional(),
       })
       .strict()
       .describe("Use when class=SpotLight. Cone-shaped directional light source."),
@@ -705,21 +780,22 @@ export const instancePropertiesSchema = z
         CFrame: z.object({ Position: vec3, Orientation: vec3 }).optional(),
         Size: vec3.describe("units in cm").optional(),
         Anchored: z.boolean().default(true),
+        BrickColor: z.string().optional(),
+        CanClimb: z.boolean().optional(),
         CanCollide: z.boolean().default(true),
         CanQuery: z.boolean().default(true),
         CanTouch: z.boolean().default(true),
         CastShadow: z.boolean().optional(),
         CollisionGroup: z.string().optional(),
+        CollisionProfile: z.string().describe('e.g. "BlockAll"').optional(),
         Color: rgb.optional(),
         DoubleSided: z.boolean().optional(),
         EnableMeshShadowDetails: z.boolean().optional(),
         Locked: z.boolean().optional(),
-        Massless: z.boolean().optional(),
         Material: materialEnum.optional(),
         MaterialVariant: z.string().optional(),
         MeshId: z.string().describe("Mesh asset ID").optional(),
-        Reflectance: z.number().describe("(0~1)").optional(),
-        RootPriority: z.number().optional(),
+        MeshShadowDetailLevel: z.enum(["Original", "Medium", "Low"]).optional(),
         TextureId: z.string().describe("Surface texture asset ID").optional(),
         Transparency: z.number().describe("(0~1)").optional(),
       })
@@ -782,6 +858,7 @@ export const instancePropertiesSchema = z
         BackAccessory: z.string().describe("Back accessory asset ID").optional(),
         WaistAccessory: z.string().describe("Waist accessory asset ID").optional(),
         AccessoryBlob: z.string().describe("JSON accessory blob").optional(),
+        IdleVariations: z.array(z.string()).optional(),
       })
       .strict()
       .describe(
@@ -798,8 +875,8 @@ export const instancePropertiesSchema = z
         EnableSmoothFollow: z.boolean().optional(),
         EnableSmoothRotation: z.boolean().optional(),
         FieldOfView: z.number().optional(),
-        Focus: z.object({ Position: vec3, Orientation: vec3 }).optional(),
         FollowMaxDistance: z.number().optional(),
+        RotationInput: vec3.optional(),
         SmoothFollowSpeed: z.number().optional(),
         SmoothRotationSpeed: z.number().optional(),
       })
@@ -808,7 +885,6 @@ export const instancePropertiesSchema = z
     z
       .object({
         BaseMaterial: materialEnum.optional(),
-        Color: rgb.optional(),
         ColorMap: z.string().describe("Texture asset ID").optional(),
         Emissive: rgb.optional(),
         EmissiveIntensity: z.number().optional(),
@@ -831,8 +907,9 @@ export const instancePropertiesSchema = z
       .describe("Use when class=ScreenGui. Full-screen GUI container for HUD and menu elements."),
     z
       .object({
+        BallMeshCollisionProfile: z.string().optional(),
         BallRadius: z.number().optional(),
-        BallState: z.string().describe('e.g. "Idle"').optional(),
+        BallTraceChannel: z.number().optional(),
         CFrame: z.object({ Position: vec3, Orientation: vec3 }).optional(),
         Color: rgb.optional(),
         EnablePathMarker: z.boolean().optional(),
@@ -842,6 +919,7 @@ export const instancePropertiesSchema = z
         PathMarkerScale: z.number().optional(),
         SlomoFactor: z.number().optional(),
         TextureId: z.string().describe("Texture asset ID").optional(),
+        Transparency: z.number().describe("(0~1)").optional(),
       })
       .strict()
       .describe("Use when class=SimulationBall. Physics-simulated ball with trajectory and path marker."),
@@ -857,23 +935,22 @@ export const instancePropertiesSchema = z
         CFrame: z.object({ Position: vec3, Orientation: vec3 }).optional(),
         Size: vec3.describe("units in cm").optional(),
         Anchored: z.boolean().default(true),
+        BrickColor: z.string().optional(),
+        CanClimb: z.boolean().optional(),
         CanCollide: z.boolean().default(true),
         CanQuery: z.boolean().default(true),
         CanTouch: z.boolean().default(true),
         CastShadow: z.boolean().optional(),
         CollisionGroup: z.string().optional(),
+        CollisionProfile: z.string().describe('e.g. "BlockAll"').optional(),
         Color: rgb.optional(),
+        Enabled: z.boolean().optional(),
         Locked: z.boolean().optional(),
-        Mass: z.number().optional(),
-        Massless: z.boolean().optional(),
         Material: materialEnum.optional(),
         MaterialVariant: z.string().optional(),
-        Reflectance: z.number().describe("(0~1)").optional(),
-        RootPriority: z.number().optional(),
-        Transparency: z.number().describe("(0~1)").optional(),
-        Enabled: z.boolean().optional(),
         Neutral: z.boolean().optional(),
         TeamColor: rgb.optional(),
+        Transparency: z.number().describe("(0~1)").optional(),
       })
       .strict()
       .describe("Use when class=SpawnLocation. Player spawn point. Inherits all Part physics/collision properties."),
@@ -889,13 +966,14 @@ export const instancePropertiesSchema = z
       .object({
         KeyboardKeyCode: z.string().describe('e.g. "E"'),
         UIOffset: z.object({ X: z.number(), Y: z.number() }).optional(),
+        ActionText: z.string(),
+        AutoLocalize: z.boolean().default(true),
+        ClickablePrompt: z.boolean().default(true),
+        Enabled: z.boolean().default(true),
         Exclusivity: z.enum(["OnePerButton", "OneGlobally", "AlwaysShow"]).optional(),
         HoldDuration: z.number().default(0),
         MaxActivationDistance: z.number().default(200),
         ObjectText: z.string(),
-        ActionText: z.string(),
-        ClickablePrompt: z.boolean().default(true),
-        Enabled: z.boolean().default(true),
         RequiresLineOfSight: z.boolean().default(true),
       })
       .strict()
