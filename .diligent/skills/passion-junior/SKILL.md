@@ -62,7 +62,10 @@ For the claimed issue only, sequentially:
 1. Determine the branch name: `fix/passion-junior/issue-<number>-<slug>`
 2. Create the branch from `main`
 3. Read the target files and implement only what the issue asks for
-4. Run `bun run typecheck` to verify no type errors were introduced
+4. Verify locally with the same checks CI runs, in order. All must pass before opening a PR:
+   - `bun run lint`
+   - `bun run typecheck`
+   - `bun test`
 5. Commit with message: `fix: <issue title>`
 6. Push and open a PR with:
    - Title: `fix: <issue title> (#<number>)`
@@ -85,7 +88,7 @@ After finishing the claimed issue, output a one-row summary table:
 
 - Never use the latest tech-lead review document as the task queue when an actionable GitHub Issue already exists
 - Never modify code beyond what the claimed issue explicitly requires
-- If `bun run typecheck` fails after a fix, stop and report the issue as failed
+- If any of `bun run lint`, `bun run typecheck`, or `bun test` fails after a fix, stop and report the issue as failed instead of opening a PR
 - Do not combine multiple issues into one PR
 - Each branch must be based on the latest main
 - If the issue is ambiguous, use repository context and linked issue discussion to choose the best responsible implementation

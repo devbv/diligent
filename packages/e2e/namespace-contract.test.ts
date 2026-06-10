@@ -135,13 +135,7 @@ describe("namespace contract: env var override", () => {
 });
 
 describe("namespace contract: invalid namespace values", () => {
-  const invalidValues = [
-    "with spaces",
-    "with/slash",
-    "with.dot",
-    "with_underscore",
-    "with@special",
-  ];
+  const invalidValues = ["with spaces", "with/slash", "with.dot", "with_underscore", "with@special"];
 
   for (const value of invalidValues) {
     test(`rejects invalid namespace "${value}"`, async () => {

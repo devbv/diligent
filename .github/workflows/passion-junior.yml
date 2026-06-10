@@ -17,6 +17,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          # Use a PAT so that branches/PRs created by this job trigger CI.
+          # Pushes/PRs made with the default GITHUB_TOKEN do NOT start new
+          # workflow runs, which is why CI never ran on bot PRs.
+          token: ${{ secrets.PASSION_JUNIOR_TOKEN || github.token }}
 
       - name: Download latest diligent Linux binary
         env:
@@ -65,7 +69,9 @@ jobs:
       - name: Run passion-junior skill
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          # PR creation must use a PAT; PRs opened with GITHUB_TOKEN do not
+          # trigger the CI workflow (on: pull_request).
+          GH_TOKEN: ${{ secrets.PASSION_JUNIOR_TOKEN || github.token }}
         run: |
           set -euo pipefail
           ./.bin/diligent --yolo --prompt "/passion-junior"
