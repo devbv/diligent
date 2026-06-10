@@ -1,4 +1,4 @@
-// @summary Tests OVERDARE tool CLI command parsing and plugin-backed tool dispatch.
+// @summary Tests OVERDARE tool CLI command parsing and bundled tool dispatch.
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
@@ -6,7 +6,7 @@ const levelBrowseMock = mock(async () => [
   { guid: "WORKSPACE_GUID", name: "Workspace", class: "Folder", children: [] },
 ]);
 
-mock.module("../../plugins/plugin-studiorpc/src/rpc.ts", () => ({
+mock.module("../../sidecar/src/tools/studiorpc/rpc.ts", () => ({
   applyAndSave: async () => ({ ok: true }),
   call: (method: string) => {
     if (method === "level.browse") return levelBrowseMock();
@@ -62,7 +62,7 @@ describe("overdare tool cli", () => {
     });
   });
 
-  test("list command prints plugin source names without plugin- prefix", async () => {
+  test("list command prints bundled provider source names", async () => {
     const { stdout, streams } = createStreams();
 
     const exitCode = await runOverdareToolsCli(["list"], streams);
@@ -83,7 +83,7 @@ describe("overdare tool cli", () => {
     expect(payload.source).toBe("studiorpc");
   });
 
-  test("run executes a plugin tool and returns structured json", async () => {
+  test("run executes a bundled tool and returns structured json", async () => {
     const { stdout, streams } = createStreams();
 
     const exitCode = await runOverdareToolsCli(["run", "studiorpc_level_browse", "--args", "{}", "--json"], streams);

@@ -1,7 +1,7 @@
 // @summary Build an OVERDARE runtime bundle zip for overdare-ai-agent releases.
 
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, rmSync, statSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
@@ -12,8 +12,7 @@ const OVERDARE_CLI = resolve(ROOT, "apps/overdare-ai-agent");
 const DIST = resolve(ROOT, "dist");
 const DIAGNOSTICS_DIR = resolve(OVERDARE_CLI, ".diligent/diagnostics");
 const BOOTSTRAP_DIR = resolve(OVERDARE_CLI, "bootstrap");
-const PLUGINS_DIR = resolve(OVERDARE_CLI, "plugins");
-const VALIDATOR_PLUGIN = resolve(PLUGINS_DIR, "plugin-validator");
+const SIDECAR_ASSETS = resolve(OVERDARE_CLI, "sidecar/assets");
 
 type PlatformConfig = {
   id: string;
@@ -93,47 +92,29 @@ function buildSidecar(platform: PlatformConfig): string {
   return target;
 }
 
-function createPluginBundle(pluginDir: string, outDir: string): void {
-  const pkg = JSON.parse(readFileSync(join(pluginDir, "package.json"), "utf-8")) as { name: string; version: string };
-  mkdirSync(outDir, { recursive: true });
-  run(["bun", "build", "src/index.ts", "--target", "bun", "--outfile", join(outDir, "index.js")], pluginDir);
-  writeFileSync(
-    join(outDir, "package.json"),
-    `${JSON.stringify({ name: pkg.name, version: pkg.version, type: "module", main: "index.js" }, null, 2)}\n`,
-  );
-  for (const entry of readdirSync(pluginDir, { withFileTypes: true })) {
-    if (!entry.isFile()) continue;
-    if (["package.json", "tsconfig.json", "bun.lock", "bun.lockb"].includes(entry.name)) continue;
-    if (entry.name.endsWith(".ts")) continue;
-    cpSync(join(pluginDir, entry.name), join(outDir, entry.name));
-  }
-}
-
 function stageBootstrap(stageDir: string): void {
   const defaultsOut = join(stageDir, "defaults");
   cpSync(BOOTSTRAP_DIR, defaultsOut, { recursive: true });
-  const bundledPluginsRoot = join(defaultsOut, "plugins", "@overdare");
-  mkdirSync(bundledPluginsRoot, { recursive: true });
-  for (const entry of readdirSync(PLUGINS_DIR, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
-    createPluginBundle(join(PLUGINS_DIR, entry.name), join(bundledPluginsRoot, entry.name));
-  }
 }
 
 function maybeStageRg(platform: PlatformConfig, stageDir: string): void {
   if (!platform.rgBinaryName) return;
   const source = resolve(ROOT, "thirdparty/rg", platform.rgBinaryName);
   if (!existsSync(source)) return;
-  const target = join(stageDir, `rg${platform.ext}`);
+  const binDir = join(stageDir, "assets", "bin");
+  mkdirSync(binDir, { recursive: true });
+  const target = join(binDir, `rg${platform.ext}`);
   cpSync(source, target);
 }
 
 function stageSidecarAssets(platform: PlatformConfig, stageDir: string): void {
-  const validatorDir = join(stageDir, "validator");
-  mkdirSync(validatorDir, { recursive: true });
+  const binDir = join(stageDir, "assets", "bin");
+  const luaDir = join(stageDir, "assets", "lua");
+  mkdirSync(binDir, { recursive: true });
+  mkdirSync(luaDir, { recursive: true });
   const luauLspName = platform.id === "windows-x64" ? "luau-lsp.exe" : "luau-lsp";
-  cpSync(resolve(VALIDATOR_PLUGIN, luauLspName), join(validatorDir, luauLspName));
-  cpSync(resolve(VALIDATOR_PLUGIN, "overdare-types.d.lua"), join(validatorDir, "overdare-types.d.lua"));
+  cpSync(resolve(SIDECAR_ASSETS, "bin", luauLspName), join(binDir, luauLspName));
+  cpSync(resolve(SIDECAR_ASSETS, "lua", "overdare-types.d.lua"), join(luaDir, "overdare-types.d.lua"));
 }
 
 function zipRuntimeBundle(stageDir: string, outPath: string): void {

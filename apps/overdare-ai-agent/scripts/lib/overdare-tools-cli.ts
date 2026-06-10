@@ -1,20 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import type { Tool, ToolContext, ToolResult } from "@diligent/plugin-sdk";
-import {
-  createTools as createStudioRpcTools,
-  manifest as studioRpcManifest,
-} from "../../plugins/plugin-studiorpc/src/index.ts";
-import {
-  createTools as createValidatorTools,
-  manifest as validatorManifest,
-} from "../../plugins/plugin-validator/src/index.ts";
+import type { Tool, ToolContext, ToolResult } from "@diligent/core/tool/types";
+import type { BundledToolProvider } from "@diligent/runtime";
+import { createStudioRpcToolProvider } from "../../sidecar/src/tools/studiorpc";
+import { createValidatorToolProvider } from "../../sidecar/src/tools/validator";
 
-type PluginFactory = {
-  manifest: { name: string; version: string };
-  createTools: (ctx: { cwd: string }) => Promise<Tool[]>;
-};
+type CliBundledToolProvider = Pick<BundledToolProvider, "id" | "createTools">;
 
 type ToolEntry = {
   tool: Tool;
@@ -37,22 +29,22 @@ export interface ParsedCliArgs {
   yes: boolean;
 }
 
-const pluginFactories: PluginFactory[] = [
-  { manifest: studioRpcManifest, createTools: createStudioRpcTools },
-  { manifest: validatorManifest, createTools: createValidatorTools },
-];
+const bundledToolProviders: CliBundledToolProvider[] = [createStudioRpcToolProvider(), createValidatorToolProvider()];
 
-function trimPluginPrefix(name: string): string {
-  return name.replace(/^@[^/]+\//, "").replace(/^plugin-/, "");
+function bundledProviderSource(id: string): string {
+  return id
+    .replace(/^@[^/]+\//, "")
+    .replace(/-tools$/, "")
+    .replace(/-hooks$/, "");
 }
 
 export async function loadOverdareTools(cwd: string): Promise<Map<string, ToolEntry>> {
   const registry = new Map<string, ToolEntry>();
-  for (const factory of pluginFactories) {
-    const source = trimPluginPrefix(factory.manifest.name);
-    const tools = await factory.createTools({ cwd });
+  for (const provider of bundledToolProviders) {
+    const source = bundledProviderSource(provider.id);
+    const tools = await provider.createTools({ cwd });
     for (const tool of tools) {
-      registry.set(tool.name, { tool, source, version: factory.manifest.version });
+      registry.set(tool.name, { tool, source, version: "built-in" });
     }
   }
   return registry;
@@ -130,14 +122,12 @@ function printResultPretty(streams: CliStreams, toolName: string, source: string
   }
 }
 
-function createToolContext(yes: boolean, streams: CliStreams): ToolContext {
+function createToolContext(streams: CliStreams): ToolContext {
   const controller = new AbortController();
   return {
     toolCallId: randomUUID(),
     signal: controller.signal,
     abort: () => controller.abort(),
-    approve: async () => (yes ? "always" : "once"),
-    ask: async () => null,
     onUpdate: (partialResult) => {
       if (typeof streams.stderr.write === "function") {
         streams.stderr.write(partialResult);
@@ -228,7 +218,7 @@ export async function runOverdareToolsCli(argv: string[], streams: CliStreams): 
   try {
     const rawArgs = await resolveToolArgs(parsed);
     const parsedArgs = entry.tool.parseArgs ? entry.tool.parseArgs(rawArgs) : entry.tool.parameters.parse(rawArgs);
-    const result = await entry.tool.execute(parsedArgs, createToolContext(parsed.yes, streams));
+    const result = await entry.tool.execute(parsedArgs, createToolContext(streams));
     if (parsed.json) {
       printJson(streams, {
         tool: parsed.toolName,

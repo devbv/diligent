@@ -110,11 +110,19 @@ function filterOutput(raw: string): string {
     .trim();
 }
 
-// ── Bundled asset directory resolution ───────────────────────────────────────
+// ── Bundled asset path resolution ────────────────────────────────────────────
 
-function getBundledAssetDir(): string {
-  const dir = path.dirname(fileURLToPath(import.meta.url));
-  return path.basename(dir) === "validator" ? dir : path.join(dir, "validator");
+function firstExistingPath(paths: string[]): string | undefined {
+  return paths.find((candidate) => existsSync(candidate));
+}
+
+function getRuntimeAssetPath(kind: "bin" | "lua", name: string): string | undefined {
+  const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+  const sidecarRoot = path.resolve(moduleDir, "../../..");
+  return firstExistingPath([
+    path.join(path.dirname(process.execPath), "assets", kind, name),
+    path.join(sidecarRoot, "assets", kind, name),
+  ]);
 }
 
 // ── Config resolution ────────────────────────────────────────────────────────
@@ -124,16 +132,14 @@ function resolveLuauLspPath(): string {
   const cfg = loadOverdareConfig();
   if (cfg.luauLspPath) return cfg.luauLspPath;
   const bin = process.platform === "win32" ? "luau-lsp.exe" : "luau-lsp";
-  const bundled = join(getBundledAssetDir(), bin);
-  return existsSync(bundled) ? bundled : "luau-lsp";
+  return getRuntimeAssetPath("bin", bin) ?? "luau-lsp";
 }
 
 function resolveTypesPath(): string | undefined {
   if (process.env.OVERDARE_TYPES_PATH) return process.env.OVERDARE_TYPES_PATH;
   const cfg = loadOverdareConfig();
   if (cfg.typesPath) return cfg.typesPath;
-  const bundled = join(getBundledAssetDir(), "overdare-types.d.lua");
-  return existsSync(bundled) ? bundled : undefined;
+  return getRuntimeAssetPath("lua", "overdare-types.d.lua");
 }
 
 // ── Exported tool shape ──────────────────────────────────────────────────────

@@ -7,8 +7,7 @@
   "workspaces": [
     "packages/*",
     "apps/*",
-    "apps/*/sidecar",
-    "apps/*/plugins/*"
+    "apps/*/sidecar"
   ],
   "overrides": {
     "@types/node": "25.3.0"
@@ -35,7 +34,6 @@
     "build:all": "bun run build:linux-x64 && bun run build:linux-arm64 && bun run build:darwin-arm64 && bun run build:darwin-x64 && bun run build:windows-x64",
     "typecheck": "NO_COLOR=1 FORCE_COLOR=0 ./packages/protocol/node_modules/.bin/tsc --pretty false --noEmit -p packages/protocol/tsconfig.json && NO_COLOR=1 FORCE_COLOR=0 ./packages/plugin-sdk/node_modules/.bin/tsc --pretty false --noEmit -p packages/plugin-sdk/tsconfig.json && NO_COLOR=1 FORCE_COLOR=0 ./packages/core/node_modules/.bin/tsc --pretty false --noEmit -p packages/core/tsconfig.json && NO_COLOR=1 FORCE_COLOR=0 ./packages/cli/node_modules/.bin/tsc --pretty false --noEmit -p packages/cli/tsconfig.json && NO_COLOR=1 FORCE_COLOR=0 ./packages/web/node_modules/.bin/tsc --pretty false --noEmit -p packages/web/tsconfig.json && NO_COLOR=1 FORCE_COLOR=0 ./apps/overdare-ai-agent/sidecar/node_modules/.bin/tsc --pretty false --noEmit -p apps/overdare-ai-agent/sidecar/tsconfig.json",
     "typecheck:examples": "NO_COLOR=1 FORCE_COLOR=0 ./thirdparty/examples/external-tool-plugin/node_modules/.bin/tsc --pretty false --noEmit -p thirdparty/examples/external-tool-plugin/tsconfig.json",
-    "typecheck:thirdparty": "NO_COLOR=1 FORCE_COLOR=0 ./apps/overdare-ai-agent/plugins/plugin-analytics/node_modules/.bin/tsc --pretty false --noEmit -p apps/overdare-ai-agent/plugins/plugin-analytics/tsconfig.json && NO_COLOR=1 FORCE_COLOR=0 ./apps/overdare-ai-agent/plugins/plugin-rag/node_modules/.bin/tsc --pretty false --noEmit -p apps/overdare-ai-agent/plugins/plugin-rag/tsconfig.json && NO_COLOR=1 FORCE_COLOR=0 ./apps/overdare-ai-agent/plugins/plugin-studiorpc/node_modules/.bin/tsc --pretty false --noEmit -p apps/overdare-ai-agent/plugins/plugin-studiorpc/tsconfig.json && NO_COLOR=1 FORCE_COLOR=0 ./apps/overdare-ai-agent/plugins/plugin-validator/node_modules/.bin/tsc --pretty false --noEmit -p apps/overdare-ai-agent/plugins/plugin-validator/tsconfig.json",
     "verify": "bun run typecheck && bun run test",
     "overdare-ai-agent:build": "cargo build --manifest-path apps/overdare-ai-agent/Cargo.toml --release",
     "overdare-ai-agent:test": "cargo test --manifest-path apps/overdare-ai-agent/Cargo.toml",
@@ -43,7 +41,6 @@
     "overdare-ai-agent:webserver": "cargo run --manifest-path apps/overdare-ai-agent/Cargo.toml -- webserver",
     "overdare-ai-agent:build-sidecar": "bun run scripts/build-overdare-sidecar.ts",
     "overdare-ai-agent:build-runtime-bundle": "bun run scripts/build-overdare-runtime-bundle.ts",
-    "overdare-ai-agent:deploy-plugins": "bun run apps/overdare-ai-agent/scripts/deploy.ts",
     "overdare-ai-agent:tools": "bun run apps/overdare-ai-agent/scripts/tool-cli.ts",
     "vscode:build": "bun run --cwd apps/vscode-extension build",
     "vscode:test": "bun run --cwd apps/vscode-extension test",

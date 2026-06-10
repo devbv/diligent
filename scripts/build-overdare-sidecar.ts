@@ -6,7 +6,7 @@ import { parseArgs } from "node:util";
 
 const ROOT = resolve(import.meta.dir, "..");
 const OVERDARE_SIDECAR = resolve(ROOT, "apps/overdare-ai-agent/sidecar");
-const VALIDATOR_PLUGIN = resolve(ROOT, "apps/overdare-ai-agent/plugins/plugin-validator");
+const SIDECAR_ASSETS = resolve(OVERDARE_SIDECAR, "assets");
 const OUT_DIR = resolve(ROOT, "apps/overdare-ai-agent/.diligent/diagnostics");
 
 const TARGET_BY_PLATFORM = new Map<string, string>([
@@ -70,11 +70,15 @@ async function run(): Promise<void> {
     throw new Error(`Fresh sidecar build failed for ${platformKey}`);
   }
 
-  const validatorAssetsDir = resolve(OUT_DIR, "validator");
-  await rm(validatorAssetsDir, { recursive: true, force: true });
-  await mkdir(validatorAssetsDir, { recursive: true });
-  await cp(resolve(VALIDATOR_PLUGIN, luauLspName(platformKey)), resolve(validatorAssetsDir, luauLspName(platformKey)));
-  await cp(resolve(VALIDATOR_PLUGIN, "overdare-types.d.lua"), resolve(validatorAssetsDir, "overdare-types.d.lua"));
+  const assetsDir = resolve(OUT_DIR, "assets");
+  await rm(assetsDir, { recursive: true, force: true });
+  await mkdir(resolve(assetsDir, "bin"), { recursive: true });
+  await mkdir(resolve(assetsDir, "lua"), { recursive: true });
+  await cp(
+    resolve(SIDECAR_ASSETS, "bin", luauLspName(platformKey)),
+    resolve(assetsDir, "bin", luauLspName(platformKey)),
+  );
+  await cp(resolve(SIDECAR_ASSETS, "lua", "overdare-types.d.lua"), resolve(assetsDir, "lua", "overdare-types.d.lua"));
 
   console.log(outPath);
 }
