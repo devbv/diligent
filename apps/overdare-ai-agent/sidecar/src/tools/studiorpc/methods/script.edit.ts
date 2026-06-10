@@ -6,8 +6,6 @@ export const description = `Edit a script's source via string replacement.
 
 IMPORTANT: Use tabs for indentation. Leading 4-space groups will be auto-converted to tabs.
 
-Read the current script with studiorpc_script_read before editing unless you have just read it in this turn.
-
 Matching first tries exact text, then falls back to line-based matching that tolerates trailing whitespace,
 leading/trailing whitespace, and common Unicode quote/dash/space variants.
 
