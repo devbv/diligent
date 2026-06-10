@@ -24,9 +24,13 @@ describe("createStudioRpcToolProvider", () => {
 
     const saveTool = tools.find((tool) => tool.name === "studiorpc_level_save_file")!;
     const hubLookupTool = tools.find((tool) => tool.name === "hub_world_lookup")!;
+    const scriptEditTool = tools.find((tool) => tool.name === "studiorpc_script_edit")!;
 
     expect(() => saveTool.parameters.parse({})).not.toThrow();
     expect(() => hubLookupTool.parameters.parse({ worldId: 123 })).not.toThrow();
+    expect(scriptEditTool.description).toContain("Read the current script with studiorpc_script_read before editing");
+    expect(scriptEditTool.description).toContain("call studiorpc_script_edit once per edited region");
+    expect(scriptEditTool.description).toContain("apply them sequentially or choose non-overlapping");
   });
 
   test("preserves generic RPC approval rejection behavior without calling Studio", async () => {
