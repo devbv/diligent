@@ -42,7 +42,7 @@ export interface Model {
   supportedEfforts?: ThinkingEffort[];
   supportsVision?: boolean;
   defaultBudgetTokens?: number; // fallback when thinkingBudgets absent
-  supportsAdaptiveThinking?: boolean; // claude-opus-4-6, sonnet-4-6: model decides budget
+  supportsAdaptiveThinking?: boolean; // opus/sonnet/fable: model decides budget
   thinkingBudgets?: {
     // effort-level budgets for non-adaptive models
     low: number;

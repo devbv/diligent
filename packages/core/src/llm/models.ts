@@ -20,11 +20,11 @@ const THINKING_EFFORTS_WITH_NONE: ThinkingEffort[] = ["none", "low", "medium", "
 const THINKING_EFFORTS_WITHOUT_NONE: ThinkingEffort[] = ["low", "medium", "high", "max"];
 
 export const KNOWN_MODELS: ModelDefinition[] = [
-  // Anthropic — opus/sonnet use adaptive thinking (model decides budget within cap)
+  // Anthropic — opus/sonnet/fable use adaptive thinking (model decides budget within cap)
   {
-    id: "claude-opus-4-6",
+    id: "claude-opus-4-8",
     provider: "anthropic",
-    contextWindow: 300_000,
+    contextWindow: 1_000_000,
     maxOutputTokens: 128_000,
     inputCostPer1M: 5.0,
     outputCostPer1M: 25.0,
@@ -35,30 +35,30 @@ export const KNOWN_MODELS: ModelDefinition[] = [
     supportsVision: true,
     supportsAdaptiveThinking: true,
     thinkingBudgets: { low: 2_000, medium: 8_000, high: 16_000, max: 32_000 },
-    aliases: ["claude-opus", "opus"],
+    aliases: ["claude-opus", "opus", "opus-4-8"],
     modelClass: "pro",
   },
   {
-    id: "claude-opus-4-7",
+    id: "claude-fable-5",
     provider: "anthropic",
-    contextWindow: 300_000,
+    contextWindow: 1_000_000,
     maxOutputTokens: 128_000,
-    inputCostPer1M: 5.0,
-    outputCostPer1M: 25.0,
-    cacheReadCostPer1M: 0.5,
-    cacheWriteCostPer1M: 6.25,
+    inputCostPer1M: 10.0,
+    outputCostPer1M: 50.0,
+    cacheReadCostPer1M: 1.0,
+    cacheWriteCostPer1M: 12.5,
     supportsThinking: true,
     supportedEfforts: THINKING_EFFORTS_WITHOUT_NONE,
     supportsVision: true,
     supportsAdaptiveThinking: true,
     thinkingBudgets: { low: 2_000, medium: 8_000, high: 16_000, max: 32_000 },
-    aliases: ["opus-4-7", "claude-opus-4-7-20260416"],
+    aliases: ["fable", "fable-5"],
     modelClass: "pro",
   },
   {
     id: "claude-sonnet-4-6",
     provider: "anthropic",
-    contextWindow: 300_000,
+    contextWindow: 1_000_000,
     maxOutputTokens: 64_000,
     inputCostPer1M: 3.0,
     outputCostPer1M: 15.0,
@@ -73,7 +73,7 @@ export const KNOWN_MODELS: ModelDefinition[] = [
     modelClass: "general",
   },
   {
-    id: "claude-haiku-4-5",
+    id: "claude-haiku-4-5-20251001",
     provider: "anthropic",
     contextWindow: 200_000,
     maxOutputTokens: 64_000,
@@ -85,7 +85,7 @@ export const KNOWN_MODELS: ModelDefinition[] = [
     supportedEfforts: THINKING_EFFORTS_WITHOUT_NONE,
     supportsVision: true,
     thinkingBudgets: { low: 1_024, medium: 3_000, high: 8_000, max: 16_000 },
-    aliases: ["claude-haiku", "haiku"],
+    aliases: ["claude-haiku", "haiku", "claude-haiku-4-5"],
     modelClass: "lite",
   },
   // Gemini

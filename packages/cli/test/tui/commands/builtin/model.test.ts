@@ -144,8 +144,8 @@ describe("modelCommand picker", () => {
     await modelCommand.handler("claude-haiku-4-5", ctx);
 
     expect(setModel).toHaveBeenCalledTimes(1);
-    expect(setModel).toHaveBeenCalledWith("claude-haiku-4-5");
-    expect(onModelChanged).toHaveBeenCalledWith("claude-haiku-4-5");
-    expect(config.model.id).toBe("claude-haiku-4-5");
+    expect(setModel).toHaveBeenCalledWith("claude-haiku-4-5-20251001");
+    expect(onModelChanged).toHaveBeenCalledWith("claude-haiku-4-5-20251001");
+    expect(config.model.id).toBe("claude-haiku-4-5-20251001");
   });
 });

@@ -29,8 +29,8 @@ function calculateUsageCost(
 
   if (!hasAnyPricing) {
     if (modelId.startsWith("claude-sonnet-4-")) model = resolveModel("claude-sonnet-4-6");
-    if (modelId.startsWith("claude-opus-4-")) model = resolveModel("claude-opus-4-6");
-    if (modelId.startsWith("claude-haiku-4-")) model = resolveModel("claude-haiku-4-5");
+    if (modelId.startsWith("claude-opus-4-")) model = resolveModel("claude-opus-4-8");
+    if (modelId.startsWith("claude-haiku-4-")) model = resolveModel("claude-haiku-4-5-20251001");
   }
 
   const inputCost = (usage.inputTokens / 1_000_000) * (model.inputCostPer1M ?? 0);

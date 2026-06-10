@@ -34,16 +34,20 @@ describe("resolveModel", () => {
     expect(model.contextWindow).toBe(300_000);
   });
 
-  it("uses 300k context for known Sonnet and Opus models", () => {
-    expect(resolveModel("claude-sonnet-4-6").contextWindow).toBe(300_000);
-    expect(resolveModel("claude-opus-4-6").contextWindow).toBe(300_000);
-    expect(resolveModel("claude-opus-4-7").contextWindow).toBe(300_000);
+  it("uses 1M context for known Sonnet and Opus models", () => {
+    expect(resolveModel("claude-sonnet-4-6").contextWindow).toBe(1_000_000);
+    expect(resolveModel("claude-opus-4-8").contextWindow).toBe(1_000_000);
   });
 
-  it("resolves claude-opus-4-7 dated alias", () => {
-    const model = resolveModel("claude-opus-4-7-20260416");
+  it("resolves claude-opus alias to the only retained Opus version", () => {
+    const model = resolveModel("opus");
     expect(model.provider).toBe("anthropic");
-    expect(model.id).toBe("claude-opus-4-7");
+    expect(model.id).toBe("claude-opus-4-8");
+  });
+
+  it("resolves fable aliases to Claude Fable 5", () => {
+    expect(resolveModel("fable").id).toBe("claude-fable-5");
+    expect(resolveModel("fable-5").id).toBe("claude-fable-5");
   });
 
   it("infers chatgpt from chatgpt- prefix", () => {
@@ -104,10 +108,10 @@ describe("model class annotations", () => {
   });
 
   it("anthropic classes map correctly", () => {
-    expect(KNOWN_MODELS.find((m) => m.id === "claude-opus-4-6")?.modelClass).toBe("pro");
-    expect(KNOWN_MODELS.find((m) => m.id === "claude-opus-4-7")?.modelClass).toBe("pro");
+    expect(KNOWN_MODELS.find((m) => m.id === "claude-opus-4-8")?.modelClass).toBe("pro");
+    expect(KNOWN_MODELS.find((m) => m.id === "claude-fable-5")?.modelClass).toBe("pro");
     expect(KNOWN_MODELS.find((m) => m.id === "claude-sonnet-4-6")?.modelClass).toBe("general");
-    expect(KNOWN_MODELS.find((m) => m.id === "claude-haiku-4-5")?.modelClass).toBe("lite");
+    expect(KNOWN_MODELS.find((m) => m.id === "claude-haiku-4-5-20251001")?.modelClass).toBe("lite");
   });
 
   it("openai classes map correctly", () => {
@@ -149,7 +153,7 @@ describe("getModelClass", () => {
     const sonnet = resolveModel("claude-sonnet-4-6");
     expect(getModelClass(sonnet)).toBe("general");
 
-    const opus = resolveModel("claude-opus-4-6");
+    const opus = resolveModel("claude-opus-4-8");
     expect(getModelClass(opus)).toBe("pro");
 
     const haiku = resolveModel("claude-haiku-4-5");
@@ -177,23 +181,23 @@ describe("resolveModelForClass", () => {
   it("resolves anthropic pro → opus", () => {
     const sonnet = resolveModel("claude-sonnet-4-6");
     const pro = resolveModelForClass(sonnet, "pro");
-    expect(pro.id).toBe("claude-opus-4-6");
+    expect(pro.id).toBe("claude-opus-4-8");
     expect(pro.provider).toBe("anthropic");
   });
 
-  it("keeps anthropic pro default pinned to opus 4.6", () => {
-    const opus47 = resolveModel("claude-opus-4-7");
-    const pro = resolveModelForClass(opus47, "pro");
-    expect(pro.id).toBe("claude-opus-4-7");
+  it("keeps anthropic pro models on their selected pro model", () => {
+    const fable = resolveModel("claude-fable-5");
+    const pro = resolveModelForClass(fable, "pro");
+    expect(pro.id).toBe("claude-fable-5");
 
     const sonnet = resolveModel("claude-sonnet-4-6");
-    expect(resolveModelForClass(sonnet, "pro").id).toBe("claude-opus-4-6");
+    expect(resolveModelForClass(sonnet, "pro").id).toBe("claude-opus-4-8");
   });
 
   it("resolves anthropic lite → haiku", () => {
     const sonnet = resolveModel("claude-sonnet-4-6");
     const lite = resolveModelForClass(sonnet, "lite");
-    expect(lite.id).toBe("claude-haiku-4-5");
+    expect(lite.id).toBe("claude-haiku-4-5-20251001");
     expect(lite.provider).toBe("anthropic");
   });
 
@@ -266,7 +270,7 @@ describe("agentTypeToModelClass", () => {
   });
 
   it("maps general → same class as parent (pro)", () => {
-    const opus = resolveModel("claude-opus-4-6");
+    const opus = resolveModel("claude-opus-4-8");
     expect(agentTypeToModelClass("general", opus)).toBe("pro");
   });
 
