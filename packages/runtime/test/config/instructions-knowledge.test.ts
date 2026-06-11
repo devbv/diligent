@@ -11,6 +11,9 @@ describe("buildSystemPromptWithKnowledge", () => {
     expect(flat).toContain("## Project Knowledge");
     expect(flat).toContain("[pattern] Use Bun");
     expect(flat).toContain("search_knowledge and update_knowledge tools");
+    expect(flat).toContain("exact id, id_prefix, or query text");
+    expect(flat).toContain("Knowledge ids may be stable caller-defined keys or generated UUIDs");
+    expect(flat).toContain("use stable ids for recurring entries");
     expect(flat).toContain("update_knowledge tool");
     expect(flat).toContain("Do not save transient current-turn intent");
     expect(flat).toContain("in most cases it is immediate task intent, not knowledge");

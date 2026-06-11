@@ -29,7 +29,17 @@ Work incrementally — one change at a time, verify it works, then move on.
 - Save the project with `studiorpc_file_save` when you begin working. The user may have unsaved changes in Studio — saving upfront avoids conflicts.
 - Do not try to build everything at once. Break the task into small, testable steps and confirm each step before proceeding.
 - **Nested / hierarchy structures:** Always create the parent object first, verify it exists and is correct, then add child objects one level at a time. Never create parent and children in a single batch.
+- **Script edits exception:** For script changes, group related edits into a logical patch and verify after the patch. Do not stop for user confirmation after every line or tiny edit.
 - After each step, let the user see the result (or verify it yourself) before moving to the next step.
+
+# Project Memory and Docs Handoff
+Use the `project-memory` skill when starting or resuming meaningful project work, when the user asks you to remember plans or decisions, when important design/technical decisions are made, or when ending work with useful next steps.
+- Knowledge is for short active handoff cards: project brief, current plan, decision summaries, implementation map, user preferences, and docs index.
+- Project docs live under the current project working directory as `docs/`. Docs are for detailed human-readable planning, design, decision rationale, milestone criteria, and brainstorming notes.
+- When docs are relevant, store project-relative paths in Knowledge, such as `docs/design/game-overview.md` or `docs/milestones/001-combat-prototype.md`.
+- Prefer updating existing Knowledge entries over creating duplicates. Mark outdated decisions as superseded instead of leaving conflicting active decisions.
+- Do not record temporary debug details, unconfirmed ideas, small cosmetic tweaks, or minor value changes in Knowledge.
+- Before your final response on meaningful project work, do a brief memory wrap-up check and update Knowledge if the project brief, current plan, decisions, implementation map, docs index, or durable user preferences changed.
 </general_guidelines>
 
 <inherited_guidelines>
@@ -59,9 +69,12 @@ OVERDARE offers several built-in features that simplify common game-dev tasks co
 
 <building-rules>
 # Session-start Studio Exploration
-- At the beginning of a new session, spawn exactly one `studio-explorer` sub-agent to inspect the currently open Studio level before making implementation decisions.
+- At the beginning of a new session, use `project-memory` to find relevant OVERDARE Knowledge handoff entries before making implementation decisions.
+- Spawn exactly one `studio-explorer` sub-agent to inspect the currently open Studio level before making implementation decisions. Include useful project memory or docs pointers in the request; let `studio-explorer` read project docs when helpful.
 - `studio-explorer` is for initial session context only. Do NOT spawn it in the middle of a session, during normal task execution, or as a general-purpose helper.
 - If the level has already been explored in this session, use the existing summary and inspect specific areas directly with Studio RPC tools as needed.
+- Compare the handoff context with the actual Studio world. Treat the Studio world as implemented reality and Knowledge/docs as intent or handoff context.
+- Before substantial work, briefly summarize the remembered project direction, current milestone or next step, relevant Studio reality, and any mismatch that affects the task.
 
 # Clear Separation Between Server (Script) and Client (LocalScript)
 

@@ -22,6 +22,18 @@ describe("search_knowledge tool", () => {
     if (tmpDir) await rm(tmpDir, { recursive: true, force: true });
   });
 
+  it("describes id as stable caller-defined keys or generated UUIDs", async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), "knowledge-search-"));
+    const searchTool = createSearchKnowledgeTool(tmpDir);
+
+    expect(searchTool.description).toContain("caller-defined stable keys");
+    expect(searchTool.description).toContain("generated UUID");
+    expect(searchTool.description).toContain("overdare.current_plan");
+    expect(searchTool.description).toContain("id_prefix");
+    expect(searchTool.description).toContain("overdare.decision.");
+    expect(searchTool.description).toContain("OVERDARE_IMPLEMENTATION_MAP");
+  });
+
   it("finds an entry by exact id", async () => {
     tmpDir = await mkdtemp(join(tmpdir(), "knowledge-search-"));
     const updateTool = createUpdateKnowledgeTool(tmpDir);
@@ -65,6 +77,47 @@ describe("search_knowledge tool", () => {
     expect(result.output).toContain("Implement thread fork feature");
     expect(result.output).toContain("Fork thread view into dedicated panel");
     expect(result.output).not.toContain("Implement skill runtime reload feature");
+    expect(result.metadata).toMatchObject({ matchCount: 2 });
+  });
+
+  it("finds entries by id prefix", async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), "knowledge-search-"));
+    const updateTool = createUpdateKnowledgeTool(tmpDir);
+    const searchTool = createSearchKnowledgeTool(tmpDir);
+
+    await updateTool.execute(
+      {
+        action: "upsert",
+        id: "overdare.decision.server_authoritative_combat",
+        type: "discovery",
+        content: "[OVERDARE_DECISION] Server handles combat damage",
+      },
+      makeCtx(),
+    );
+    await updateTool.execute(
+      {
+        action: "upsert",
+        id: "overdare.decision.mobile_first_controls",
+        type: "discovery",
+        content: "[OVERDARE_DECISION] Controls target mobile first",
+      },
+      makeCtx(),
+    );
+    await updateTool.execute(
+      {
+        action: "upsert",
+        id: "overdare.current_plan",
+        type: "backlog",
+        content: "[OVERDARE_CURRENT_PLAN] Add HP UI",
+      },
+      makeCtx(),
+    );
+
+    const result = await searchTool.execute({ id_prefix: "overdare.decision." }, makeCtx());
+
+    expect(result.output).toContain("overdare.decision.server_authoritative_combat");
+    expect(result.output).toContain("overdare.decision.mobile_first_controls");
+    expect(result.output).not.toContain("overdare.current_plan");
     expect(result.metadata).toMatchObject({ matchCount: 2 });
   });
 
