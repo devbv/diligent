@@ -1,6 +1,6 @@
 --#METADATA#{"CREATABLE_INSTANCES": ["ActionRunner", "ActionSequence", "ActionSequenceService", "AngularVelocity", "Animation", "AnimationTrack", "Animator", "Atmosphere", "Attachment", "Backpack", "BackpackItem", "BasePart", "BaseScript", "Beam", "BillboardGui", "BindableEvent", "Bone", "BoolValue", "Camera", "CharacterMesh", "CollectionService", "Constraint", "ContextActionService", "CoreGui", "DataModel", "DataStore", "DataStoreGetOptions", "DataStoreIncrementOptions", "DataStoreInfo", "DataStoreKeyInfo", "DataStoreKeyPages", "DataStoreListingPages", "DataStoreService", "DataStoreSetOptions", "Fill", "Folder", "FormFactorPart", "Frame", "GenericSettings", "GlobalDataStore", "GuiBase2d", "GuiButton", "GuiObject", "HttpService", "Humanoid", "HumanoidDescription", "ImageButton", "ImageLabel", "InputObject", "Instance", "IntValue", "LayerCollector", "Light", "Lighting", "LinearVelocity", "LocalScript", "LocalizationService", "LuaSourceContainer", "MarketplaceService", "MaterialService", "MaterialVariant", "MeshPart", "Model", "ModuleScript", "Mouse", "NumberValue", "OrderedDataStore", "Outline", "OverlayBase", "PVInstance", "Pages", "Part", "ParticleEmitter", "PhysicsService", "Player", "PlayerGui", "PlayerScripts", "Players", "PointLight", "ProximityPrompt", "ProximityPromptService", "RemoteEvent", "ReplicatedStorage", "RunService", "ScreenGui", "Script", "ScrollingFrame", "ServerScriptService", "ServerStorage", "ServiceProvider", "SimulationBall", "Skeleton", "Sound", "SoundGroup", "SoundService", "SpawnLocation", "SpotLight", "StarterCharacterScripts", "StarterGui", "StarterPack", "StarterPlayer", "StarterPlayerScripts", "StringValue", "SurfaceGui", "SurfaceGuiBase", "Team", "Teams", "TeleportAsyncResult", "TeleportOptions", "TeleportService", "TextButton", "TextLabel", "Tool", "Trail", "Translator", "Tween", "TweenBase", "TweenService", "UIAspectRatioConstraint", "UIGridLayout", "UIGridStyleLayout", "UIListLayout", "UserGameSettings", "UserInputService", "UserSettings", "VFXPreset", "ValueBase", "VectorForce", "Workspace", "WorldRankService", "WorldRoot", "WrapLayer", "WrapTarget"], "SERVICES": ["ActionSequenceService", "CollectionService", "ContextActionService", "DataStoreService", "HttpService", "Lighting", "LocalizationService", "MarketplaceService", "MaterialService", "PhysicsService", "Players", "ProximityPromptService", "ReplicatedStorage", "RunService", "ServerScriptService", "ServerStorage", "SoundService", "TeleportService", "TweenService", "UserInputService", "Workspace", "WorldRankService"]}
 -- Overdare API Type Definitions
--- Auto-generated on 2026-06-11 16:39:13
+-- Auto-generated on 2026-06-11 19:23:55
 -- DO NOT EDIT MANUALLY
 
 -- Event Types
@@ -1450,7 +1450,11 @@ end
 declare Enum: EnumContainer
 
 -- Classes
-declare class Instance
+declare class Object
+	function IsA(self, className: string): boolean
+end
+
+declare class Instance extends Object
 	Archivable: boolean
 	ClassName: string
 	DisableAdaptiveNetUpdateFrequency: boolean
@@ -1475,7 +1479,6 @@ declare class Instance
 	function GetPropertyChangedSignal(self, InPropertyName: string): ScriptSignal
 	function GetTags(self): {any}
 	function HasTag(self, tag: string): boolean
-	function IsA(self, InClassName: string): boolean
 	function IsDescendantOf(self, InAncestor: Instance): boolean
 	function RemoveTag(self, tag: string): ()
 	function SetAttribute(self, attribute: string, value: any): ()

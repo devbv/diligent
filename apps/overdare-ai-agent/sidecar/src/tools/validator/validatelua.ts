@@ -102,12 +102,38 @@ const IGNORED_PATTERNS = [
   "does not have key",
 ];
 
+// Matches a luau-lsp diagnostic header like `File.lua(39,1):`. A diagnostic may
+// span several lines (a header followed by continuation lines), so a header marks
+// the start of a new record.
+const DIAGNOSTIC_HEADER = /\(\d+,\d+\):/;
+
+// Groups raw output into diagnostic records. Lines without a header are treated
+// as continuation of the previous record, so multi-line messages stay intact
+// instead of being split (and partially dropped) on every newline.
+function splitDiagnostics(raw: string): string[] {
+  const records: string[] = [];
+  let current: string[] = [];
+  for (const line of raw.split("\n")) {
+    if (DIAGNOSTIC_HEADER.test(line) && current.length > 0) {
+      records.push(current.join("\n"));
+      current = [];
+    }
+    current.push(line);
+  }
+  if (current.length > 0) records.push(current.join("\n"));
+  return records;
+}
+
 function filterOutput(raw: string): string {
-  return raw
-    .split("\n")
-    .filter((line) => !IGNORED_PATTERNS.some((p) => line.includes(p)))
-    .join("\n")
-    .trim();
+  return (
+    splitDiagnostics(raw)
+      .filter((record) => record.trim())
+      // Classify the whole record (not individual lines) so a multi-line message
+      // is dropped as a unit.
+      .filter((record) => !IGNORED_PATTERNS.some((p) => record.includes(p)))
+      .join("\n")
+      .trim()
+  );
 }
 
 // ── Bundled asset path resolution ────────────────────────────────────────────
@@ -312,13 +338,12 @@ export async function execute(args: Params, ctx: ToolContext, cwd: string): Prom
     // ── Single script ──────────────────────────────────────────────────────────
     if (scripts.length === 1) {
       const script = scripts[0];
+      const label = `${script.name} [${script.guid}]`;
       // Replace temp file paths with script name in output
-      const output = rawOutput
-        ? rawOutput.replaceAll(luaFiles[0], `${script.name} [${script.guid}]`)
-        : "No issues found. Code is valid.";
+      const output = rawOutput ? rawOutput.replaceAll(luaFiles[0], label) : "No issues found. Code is valid.";
       return {
         output,
-        render: buildValidateLuaRender(`${script.name} [${script.guid}]`, output),
+        render: buildValidateLuaRender(label, output),
         metadata: { fileCount: 1, issueCount: rawOutput ? 1 : 0, scripts: [{ guid: script.guid, name: script.name }] },
       };
     }
@@ -333,21 +358,23 @@ export async function execute(args: Params, ctx: ToolContext, cwd: string): Prom
       fileNameToPath.set(path.basename(file), file);
     }
 
-    for (const line of rawOutput.split("\n")) {
-      if (!line.trim()) continue;
-      // Try exact full-path match first, then fall back to filename match
+    for (const record of splitDiagnostics(rawOutput)) {
+      if (!record.trim()) continue;
+      // Match on the record's header line (first line) for the full-path case,
+      // then fall back to a filename match anywhere in the record.
+      const header = record.split("\n", 1)[0];
       let matched = false;
       for (const file of luaFiles) {
-        if (line.startsWith(`${file}(`) || line.startsWith(`${file}:`)) {
-          fileIssues.get(file)!.push(line);
+        if (header.startsWith(`${file}(`) || header.startsWith(`${file}:`)) {
+          fileIssues.get(file)!.push(record);
           matched = true;
           break;
         }
       }
       if (!matched) {
         for (const [fileName, filePath] of fileNameToPath) {
-          if (line.includes(fileName)) {
-            fileIssues.get(filePath)!.push(line);
+          if (record.includes(fileName)) {
+            fileIssues.get(filePath)!.push(record);
             break;
           }
         }
@@ -366,7 +393,7 @@ export async function execute(args: Params, ctx: ToolContext, cwd: string): Prom
       } else {
         totalIssues += issues.length;
         const fileName = path.basename(file);
-        const mappedIssues = issues.map((line) => line.replaceAll(file, label).replaceAll(fileName, label));
+        const mappedIssues = issues.map((record) => record.replaceAll(file, label).replaceAll(fileName, label));
         sections.push(`[${issues.length} issue(s)] ${label}\n${mappedIssues.join("\n")}`);
       }
     }
