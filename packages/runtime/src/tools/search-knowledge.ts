@@ -1,4 +1,4 @@
-// @summary Search persistent knowledge entries by id and/or content for LM-friendly lookup before update/delete
+// @summary Search persistent knowledge entries by stable id and/or content for LM-friendly lookup before update/delete
 
 import type { Tool, ToolContext, ToolResult } from "@diligent/core/tool/types";
 import { z } from "zod";
@@ -7,7 +7,16 @@ import { createSearchKnowledgeRenderPayload } from "./render-payload";
 
 const searchKnowledgeSchema = z
   .object({
-    id: z.string().optional().describe("Optional exact knowledge entry id to search for."),
+    id: z
+      .string()
+      .optional()
+      .describe(
+        "Optional exact knowledge entry id. Ids may be caller-defined stable keys or generated UUIDs returned by search_knowledge.",
+      ),
+    id_prefix: z
+      .string()
+      .optional()
+      .describe("Optional knowledge entry id prefix for finding a group of stable ids, such as 'overdare.decision.'."),
     query: z
       .string()
       .optional()
@@ -17,12 +26,13 @@ const searchKnowledgeSchema = z
   })
   .superRefine((value, ctx) => {
     const hasId = typeof value.id === "string" && value.id.trim().length > 0;
+    const hasIdPrefix = typeof value.id_prefix === "string" && value.id_prefix.trim().length > 0;
     const hasQuery = typeof value.query === "string" && value.query.trim().length > 0;
-    if (!hasId && !hasQuery) {
+    if (!hasId && !hasIdPrefix && !hasQuery) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["id"],
-        message: "Provide at least one of id or query",
+        message: "Provide at least one of id, id_prefix, or query",
       });
     }
   });
@@ -31,12 +41,15 @@ export function createSearchKnowledgeTool(knowledgePath: string): Tool<typeof se
   return {
     name: "search_knowledge",
     description:
-      "Search persistent knowledge entries by id and/or query so you can find the right knowledge item before updating or deleting it. " +
-      "Use id for exact lookup, and use short keyword queries like 'thread fork' or 'draft state' for case-insensitive token matching. " +
+      "Search persistent knowledge entries by exact id, id prefix, and/or query so you can find the right knowledge item before updating or deleting it. " +
+      "Ids may be caller-defined stable keys like 'overdare.current_plan' or generated UUIDs returned by search_knowledge. " +
+      "Use id_prefix for groups of stable ids, such as 'overdare.decision.' or 'overdare.preference.'. " +
+      "Use short keyword queries like 'thread fork', 'draft state', or 'OVERDARE_IMPLEMENTATION_MAP' for case-insensitive token matching when you do not know the id. " +
       "If multiple matches appear, narrow the query or use the returned id with update_knowledge.",
     parameters: searchKnowledgeSchema,
     execute: async (args, _ctx: ToolContext): Promise<ToolResult> => {
       const id = args.id?.trim();
+      const idPrefix = args.id_prefix?.trim();
       const queryTokens = tokenize(args.query);
       const entries = await readKnowledge(knowledgePath);
       const matches = entries
@@ -46,6 +59,7 @@ export function createSearchKnowledgeTool(knowledgePath: string): Tool<typeof se
         }))
         .filter(({ entry, score }) => {
           if (id && entry.id !== id) return false;
+          if (idPrefix && !entry.id.startsWith(idPrefix)) return false;
           if (queryTokens.length > 0 && score.matchedTokenCount === 0) return false;
           return true;
         })

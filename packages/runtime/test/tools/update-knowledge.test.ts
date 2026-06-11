@@ -46,6 +46,28 @@ describe("update_knowledge tool", () => {
     expect(entries[0].sessionId).toBe("session-123");
   });
 
+  it("creates a new knowledge entry with a caller-defined stable id", async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), "knowledge-"));
+    const tool = createUpdateKnowledgeTool(tmpDir, "session-123");
+
+    const result = await tool.execute(
+      {
+        action: "upsert",
+        id: "overdare.current_plan",
+        type: "backlog",
+        content: "[OVERDARE_CURRENT_PLAN]\nremaining:\n- Add HP UI",
+      },
+      makeCtx(),
+    );
+
+    expect(result.output).toContain("Knowledge saved");
+    expect(result.metadata).toMatchObject({ knowledgeId: "overdare.current_plan", updated: false });
+
+    const entries = await readKnowledge(tmpDir);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].id).toBe("overdare.current_plan");
+  });
+
   it("updates existing entry when id is provided", async () => {
     tmpDir = await mkdtemp(join(tmpdir(), "knowledge-"));
     const tool = createUpdateKnowledgeTool(tmpDir);
@@ -117,5 +139,6 @@ describe("update_knowledge tool", () => {
     expect(tool.description).toContain("durable cross-session value");
     expect(tool.description).toContain("in most cases it is immediate task intent, not knowledge");
     expect(tool.description).toContain("Do not store transient current-turn intent");
+    expect(tool.description).toContain("stable caller-defined id");
   });
 });

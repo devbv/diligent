@@ -14,7 +14,12 @@ const updateKnowledgeSchema = z
       .enum(["upsert", "delete"])
       .default("upsert")
       .describe("Knowledge operation. Use 'upsert' to create/update, 'delete' to remove by id."),
-    id: z.string().optional().describe("Knowledge entry id. Required for delete. Optional for upsert revisions."),
+    id: z
+      .string()
+      .optional()
+      .describe(
+        "Knowledge entry id. May be a caller-defined stable key or generated UUID. Required for delete. Optional for upsert; if provided for a new entry, that id is used.",
+      ),
     type: knowledgeTypeSchema.optional().describe("Knowledge category for upsert."),
     content: z.string().optional().describe("Knowledge text to store for upsert."),
     tags: z.array(z.string()).optional().describe("Optional tags for upsert."),
@@ -58,7 +63,7 @@ export function createUpdateKnowledgeTool(
       "Store only durable cross-session value such as preferences, patterns, discoveries, corrections, or real backlog items. " +
       "When the user says they want to do or build something, think carefully about whether that is durable knowledge or simply the work to do right now; in most cases it is immediate task intent, not knowledge. " +
       "Do not store transient current-turn intent or immediate implementation plans. " +
-      "Use action='upsert' to save/update an entry, or action='delete' with id to remove one.",
+      "Use action='upsert' to save/update an entry, optionally with a stable caller-defined id, or action='delete' with id to remove one.",
     parameters: updateKnowledgeSchema,
     execute: async (args, _ctx: ToolContext): Promise<ToolResult> => {
       const entries = await readKnowledge(knowledgePath);
@@ -109,7 +114,7 @@ export function createUpdateKnowledgeTool(
       }
 
       const entry: KnowledgeEntry = {
-        id: crypto.randomUUID(),
+        id: args.id?.trim() || crypto.randomUUID(),
         timestamp: now,
         sessionId,
         type: requestedType,

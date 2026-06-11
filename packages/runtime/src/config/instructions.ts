@@ -86,7 +86,7 @@ export function buildSystemPrompt(
 }
 
 const KNOWLEDGE_INSTRUCTION = `
-You have access to search_knowledge and update_knowledge tools. Use search_knowledge to find existing knowledge entries by id or content before revising or deleting them, and use update_knowledge to save, revise, or delete important information that should persist across sessions:
+You have access to search_knowledge and update_knowledge tools. Use search_knowledge to find existing knowledge entries by exact id, id_prefix, or query text before revising or deleting them, and use update_knowledge to save, revise, or delete important information that should persist across sessions. Knowledge ids may be stable caller-defined keys or generated UUIDs; use stable ids for recurring entries that should be updated in place:
 - Project patterns (naming conventions, preferred libraries, architectural patterns)
 - User preferences (workflow, style, communication)
 - Important backlog items to revisit later
@@ -94,6 +94,7 @@ You have access to search_knowledge and update_knowledge tools. Use search_knowl
 
 Use your judgment — save knowledge when you discover something that would be useful in future sessions.
 When the user says they want to do or build something, think carefully about whether that is durable knowledge or just the work to do right now; in most cases it is immediate task intent, not knowledge.
+Before your final response on a substantive task, do a brief wrap-up check: if this turn produced durable decisions, preferences, discoveries, reusable patterns, or real backlog items, update knowledge before replying.
 Do not save transient current-turn intent or immediate implementation plans as knowledge.
 Anti-pattern: storing “user wants to build X” right before implementing X in the same turn.`;
 
