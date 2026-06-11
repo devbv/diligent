@@ -1,6 +1,6 @@
 // @summary Resolves the effective userId using explicit config or a persisted global UUID fallback
 
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { resolveProjectDirName } from "../infrastructure/diligent-dir";
@@ -22,9 +22,7 @@ export async function resolveConfiguredUserId(configuredUserId?: string): Promis
   }
 
   const userIdPath = getGlobalUserIdPath();
-  const existing = await Bun.file(userIdPath)
-    .text()
-    .catch(() => "");
+  const existing = await readFile(userIdPath, "utf-8").catch(() => "");
   const normalized = existing.trim();
   if (normalized) {
     return normalized;
