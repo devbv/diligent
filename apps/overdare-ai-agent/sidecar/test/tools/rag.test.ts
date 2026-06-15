@@ -21,6 +21,14 @@ describe("createRagToolProvider", () => {
     expect(deepTool!.supportParallel).toBe(true);
     expect(() => searchTool!.parameters.parse({ query: "spawn location", source: "docs", topK: 3 })).not.toThrow();
     expect(() =>
+      searchTool!.parameters.parse({
+        query: "black screen with invisible buttons",
+        source: "debug",
+        topK: 5,
+        debugCaseFilter: { category: "ui", severity: "high", symptomTags: ["visibility", "safe-area"] },
+      }),
+    ).not.toThrow();
+    expect(() =>
       deepTool!.parameters.parse({
         action: "origin-file",
         urls: ["https://storage.googleapis.com/ovdr-docs-bucket/example.md"],
