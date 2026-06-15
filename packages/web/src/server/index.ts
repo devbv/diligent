@@ -42,7 +42,17 @@ interface ParsedArgs {
 
 export function resolveServerVersionOverride(env: NodeJS.ProcessEnv = process.env): string | undefined {
   const value = env.DILIGENT_SERVER_VERSION?.trim();
-  return value ? value : undefined;
+  if (!value) return undefined;
+  // Prefix the release channel so the UI reads "dev-v0.4.19" / "prod-v0.4.19",
+  // matching the GitHub release tag naming (<env>-v<version>). The channel
+  // mirrors plugin-sdk's currentEnv(): "dev" only when DILIGENT_ENV is exactly
+  // "dev" (case-insensitive); everything else — including a legacy launcher
+  // that never sets it — stays on "prod". Read from the same `env` arg (not
+  // process.env) so the override stays unit-testable. Only real values get the
+  // prefix: a bare version downstream means the launcher forwarded none and
+  // server.ts fell back to its hardcoded default — keep that distinguishable.
+  const channel = env.DILIGENT_ENV?.trim().toLowerCase() === "dev" ? "dev" : "prod";
+  return `${channel}-v${value.replace(/^v/, "")}`;
 }
 
 function isProcessAlive(pid: number): boolean {
