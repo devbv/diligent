@@ -3,7 +3,7 @@
 import * as instanceUpsert from "../methods/instance.upsert";
 import { collectUiDiagnostics } from "../methods/instance.upsert";
 import { buildInstanceUpsertRender } from "../render";
-import { applyAndSave } from "../rpc";
+import { applyLevelChanges } from "../rpc";
 import type { Tool, ToolContext, ToolResult } from "../types";
 import type { WriteLock } from "../write-lock";
 import { findNodeByActorGuid, isRecord, type OvdrjmNode, readAndWriteOvdrjm } from "./ovdrjm-utils";
@@ -122,7 +122,7 @@ async function executeInstanceUpsertInner(
     return { added };
   });
 
-  await applyAndSave();
+  await applyLevelChanges();
   const diag = ovdrjmRoot ? collectUiDiagnostics(ovdrjmRoot) : { warnings: [], info: [] };
   const addedGuids = fileResult.added.map((item) => item.guid);
   const updatedGuids = parsedArgs.items.flatMap((item) => (instanceUpsert.isUpdateItem(item) ? [item.guid] : []));

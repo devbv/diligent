@@ -3,8 +3,8 @@
 import { describe, expect, test } from "bun:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { HookInput } from "../../src/hooks/runner";
-import { getLastAssistantMessage, getTurnUsage, runHooks } from "../../src/hooks/runner";
+import type { HookInput, PluginHookFn } from "../../src/hooks/runner";
+import { getLastAssistantMessage, getTurnUsage, runHooks, runPluginHooks } from "../../src/hooks/runner";
 
 const FIXTURE_CWD = tmpdir();
 
@@ -16,8 +16,8 @@ const BASE_INPUT: HookInput = {
   prompt: "hello world",
 };
 
-function handler(command: string, timeout?: number) {
-  return { type: "command" as const, command, timeout };
+function handler(command: string, timeout?: number, mode?: "sync" | "async") {
+  return { type: "command" as const, command, timeout, mode };
 }
 
 describe("runHooks", () => {
@@ -123,6 +123,31 @@ describe("runHooks", () => {
     });
   });
 
+  describe("sync and async modes", () => {
+    test("sync hooks wait and can return additionalContext", async () => {
+      const result = await runHooks([handler('echo "sync context"', undefined, "sync")], BASE_INPUT, FIXTURE_CWD);
+      expect(result.blocked).toBe(false);
+      expect(result.additionalContext).toBe("sync context");
+    });
+
+    test("async hooks do not wait for output or block the turn", async () => {
+      const result = await runHooks(
+        [handler('sleep 0.2; echo \'{"decision":"block","reason":"too late"}\'', undefined, "async")],
+        BASE_INPUT,
+        FIXTURE_CWD,
+      );
+      expect(result.blocked).toBe(false);
+      expect(result.additionalContext).toBeUndefined();
+    });
+
+    test("sync hook timeout is configurable", async () => {
+      const startedAt = Date.now();
+      const result = await runHooks([handler("sleep 2", 0.1, "sync")], BASE_INPUT, FIXTURE_CWD);
+      expect(result.blocked).toBe(false);
+      expect(Date.now() - startedAt).toBeLessThan(1500);
+    });
+  });
+
   describe("hook input", () => {
     test("hook receives JSON on stdin with correct fields", async () => {
       const scriptPath = join(FIXTURE_CWD, "check-input.js");
@@ -148,6 +173,27 @@ process.stdin.on("end", () => {
       const result = await runHooks([handler(`node "${scriptPath}"`)], BASE_INPUT, FIXTURE_CWD);
       expect(result.blocked).toBe(false);
     });
+  });
+});
+
+describe("runPluginHooks", () => {
+  test("async plugin hooks do not block on returned results", async () => {
+    let completed = false;
+    const asyncHook: PluginHookFn = async () => {
+      await Bun.sleep(100);
+      completed = true;
+      return { blocked: true, reason: "too late" };
+    };
+    asyncHook.mode = "async";
+
+    const startedAt = Date.now();
+    const result = await runPluginHooks([asyncHook], BASE_INPUT);
+
+    expect(result.blocked).toBe(false);
+    expect(Date.now() - startedAt).toBeLessThan(80);
+
+    await Bun.sleep(150);
+    expect(completed).toBe(true);
   });
 });
 
