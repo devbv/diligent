@@ -1,155 +1,155 @@
 ---
 name: overdare-debug-expert
-description: OVERDARE 디버그 진입 스킬(장르 중립). 버그·깨진 동작·회귀를 script/ui/3d/tooling으로 먼저 분류한 뒤, RAG 케이스 DB를 진단 힌트로만 조회하여 로그 확인과 state tracing 방향을 좁히고, 절차에 따라 직접 해결한다. "디버그", "버그", "안 돼요", "왜 이래요", "고쳐줘", "깨졌어요" 등 결함 해결 요청 시 사용한다.
+description: Genre-neutral OVERDARE debugging entry skill. First classifies bugs, broken behavior, and regressions into script/ui/3d/tooling, then queries the RAG case DB only for diagnostic hints to narrow log checks and state tracing direction, and directly resolves the issue according to the procedure. Use for defect-fixing requests such as "debug", "bug", "it doesn't work", "why is this happening", "fix it", or "it's broken".
 ---
 
 # OVERDARE Debug Expert
 
-장르(액션/레이싱/퍼즐/시뮬 등)에 무관하게 동작하는 디버그 진입 스킬이다.
-이 스킬은 **절차**만 정의한다. 구체적 케이스 예시·증상별 처방은 RAG 케이스 DB가 제공하며,
-RAG 결과는 **진단 힌트로만** 사용한다. 최종 솔루션은 절차(§5)에 따라 직접 도출한다.
+This is a debugging entry skill that works regardless of genre (action/racing/puzzle/simulation, etc.).
+This skill defines the **procedure only**. Concrete case examples and symptom-specific treatments are provided by the RAG case DB,
+and RAG results are used **only as diagnostic hints**. Derive the final solution directly according to the procedure (§5).
 
 ---
 
-## 1. 항상 이 스킬부터 (선택 사항 아님)
+## 1. Always Start with This Skill (Not Optional)
 
-아래 중 **하나라도** 해당하면 다른 작업/스킬보다 먼저 이 스킬을 로드하고 **첫 응답 형식**(§3)을 출력한다.
+If **any one** of the following applies, load this skill before any other task/skill and output the **first response format** (§3).
 
-| 상황 | 이유 |
+| Situation | Reason |
 |------|------|
-| 버그, 에러, 깨진 동작, 회귀 | 원인 영역을 먼저 분류한 뒤 수정해야 함 |
-| 화면 요소가 안 보임/떠다님/어긋남 | ui / script / 3d를 분리해야 함 |
-| 배치·구조·레이아웃이 기대와 다름 (에러 없어도) | 3d 진단이 필요함 |
-| 도구/검증/적용이 코드와 무관하게 실패 | tooling 분리가 필요함 |
-| 원인이나 다음 단계가 불명확함 | 미분류 상태이므로 script부터 시작 |
+| Bug, error, broken behavior, regression | Must classify the cause area first, then fix |
+| Screen element is invisible/floating/misaligned | Must separate ui / script / 3d |
+| Placement, structure, or layout differs from expectation (even without errors) | Requires 3d diagnosis |
+| Tooling/validation/application fails independently of code | Requires tooling separation |
+| Cause or next step is unclear | Unclassified state, so start from script |
 
 ---
 
 ## 2. MUST / MUST NOT
 
 **MUST**
-- 구현/패치 전에 **첫 응답 형식**(§3)을 출력한다.
-- 수정 전에 **로그(Play.log 등) 또는 런타임 상태를 1회 이상 직접 확인**한다. (파일을 열기 전에 "로그 깨끗함"이라 말하지 않는다.)
-- **Decision order**(§4)로 작업 영역을 정하고, 분류 근거에 step 번호를 적는다.
-- 한 번에 **하나의 목표 · 하나의 작업 영역**만 다룬다.
-- 변경은 가장 의심되는 단일 원인에만 적용하고, 적용 후 **재현 경로로 검증**한다.
-- 루프 종료 시 무엇을 검증했는지 1–3줄로 남긴다.
+- Output the **first response format** (§3) before implementation/patching.
+- Before making changes, **directly check logs (Play.log, etc.) or runtime state at least once**. (Do not say "logs are clean" before opening the file.)
+- Choose the work area using the **Decision order** (§4), and include the step number in the classification rationale.
+- Handle only **one goal · one work area** at a time.
+- Apply changes only to the single most suspicious cause, then **verify through the reproduction path** after applying.
+- At loop end, leave 1–3 lines describing what was verified.
 
 **MUST NOT**
-- 로그/상태 확인 없이 추측만으로 코드를 바꾸지 않는다.
-- 분류·목표·근거 없이 코드/맵을 바꾸지 않는다.
-- RAG가 제시한 "해결 사례"를 그대로 패치로 복사하지 않는다(§6).
-- 한 루프에서 두 개 이상의 작업 영역을 동시에 건드리지 않는다.
-- 재현 경로 없이 "고쳤다"고 보고하지 않는다.
-- 최소 입력이 부족하면 **추측하지 않고 질문**한다.
+- Do not change code based only on guesses without checking logs/state.
+- Do not change code/maps without classification, goal, and rationale.
+- Do not copy a RAG-provided "solution case" directly into a patch (§6).
+- Do not touch two or more work areas in the same loop.
+- Do not report "fixed" without a reproduction path.
+- If minimum input is insufficient, **ask instead of guessing**.
 
 ---
 
-## 3. 첫 응답 형식 (구현 전 필수)
+## 3. First Response Format (Required Before Implementation)
 
 ```text
-스킬 사용: overdare-debug-expert
-작업 영역: script | ui | 3d | tooling
-분류 근거: decision step N — (한 문장 조건)
-재현 경로: (언제 / 어디서 / 무엇을 하면)
-참고 사례: {케이스 ID — 확인 우선순위} | 없음(사유)
-이번 루프 목표: (한 문장: 무엇을 재현하거나 검증할지)
-먼저 확인할 것: (로그/state 1~3개)
+Skill used: overdare-debug-expert
+Work area: script | ui | 3d | tooling
+Classification rationale: decision step N — (one-sentence condition)
+Reproduction path: (when / where / what action)
+Reference cases: {case ID — check priority} | none (reason)
+Goal for this loop: (one sentence: what to reproduce or verify)
+First checks: (1–3 logs/state items)
 ```
 
-최소 입력이 부족하면 먼저 질문한다(증상 / 재현 방법 / 최근 변경 / 에러 메시지 / 영향도). 추측하지 않는다.
-**분류 전:** `Play.log`(또는 동등 파일)를 **연다.** 3d/ui 작업이라도 생략하지 않는다.
+If minimum input is insufficient, ask first (symptom / reproduction method / recent changes / error message / impact). Do not guess.
+**Before classification:** **open** `Play.log` (or equivalent). Do not skip this even for 3d/ui work.
 
 ---
 
-## 4. Decision Order (작업 영역 분류 — 장르 중립, 위에서 먼저 맞는 것 우선)
+## 4. Decision Order (Work Area Classification — Genre-Neutral, First Match from the Top Wins)
 
-| Step | 조건 (하나라도 해당, 장르 무관) | 작업 영역 |
+| Step | Condition (any one applies, regardless of genre) | Work area |
 |------|--------------------------------|-----------|
-| 1 | **상태 전이(재진입·재시작·전환) 이후에만** 실패한다 | script |
-| 1 | 입력/트리거는 동작하는데 **상태·진행·전환이 바뀌지 않는다** | script |
-| 1 | 처음에는 정상인데 **특정 시점 이후 깨진다** | script |
-| 1 | `Play.log`에 **runtime error 또는 sync mismatch**가 있다 | script |
-| 1 | **레지스터 한계/large-script 징후**(`Out of local registers` 등)가 있다 | script |
-| 2 | edit/read/import/validator/apply가 **코드와 무관하게 3회 연속 실패**한다 | tooling |
-| 3 | 20분 이상 진전 없음 **또는** 같은 증상을 3번 설명 **또는** 한 요청에 영역·재현·로그가 과다(overload) | session(에스컬레이션) |
-| 4 | 월드 배치·레이아웃·좌표·충돌·스폰 문제가 **상태 전이와 무관하게 항상 보인다** | 3d |
-| 5 | **기존 표시(UI) 요소만** 잘못되었고 step 1–4가 아니며, 전이 없이 **같은 화면에서만** 재현된다 | ui |
-| 6 | 미분류 | script |
+| 1 | Fails **only after a state transition (re-entry/restart/switch)** | script |
+| 1 | Input/trigger works, but **state/progress/transition does not change** | script |
+| 1 | Starts normally, but **breaks after a specific point** | script |
+| 1 | `Play.log` contains a **runtime error or sync mismatch** | script |
+| 1 | Shows **register limit/large-script signs** (`Out of local registers`, etc.) | script |
+| 2 | edit/read/import/validator/apply **fails 3 times in a row independently of code** | tooling |
+| 3 | No progress for 20+ minutes **or** the same symptom was explained 3 times **or** one request has excessive areas/reproduction/logs (overload) | session (escalation) |
+| 4 | World placement/layout/coordinates/collision/spawn issue is **always visible regardless of state transitions** | 3d |
+| 5 | Only an **existing display (UI) element** is wrong, steps 1–4 do not apply, and it reproduces **only on the same screen** without transitions | ui |
+| 6 | Unclassified | script |
 
-분류 보조: **에러 로그가 있으면 script/tooling**, **눈에 보이는데 위치/표시만 이상하면 ui/3d**.
-**작업 영역 변경:** script에서 재현·로그·state tracing을 끝냈고 남은 blocker가 ui/3d/tooling 중 **정확히 하나**일 때만 바꾼다. 불확실하면 script에 남는다. 영역이 바뀌면 Decision order부터 **재분류**한다.
+Classification aid: **if there is an error log, script/tooling**; **if it is visible and only position/display is wrong, ui/3d**.
+**Changing work area:** Change only when reproduction, logs, and state tracing have been completed in script and the remaining blocker is **exactly one** of ui/3d/tooling. If uncertain, stay in script. If the area changes, **reclassify** from the Decision order.
 
-> 표현 계층(가시성·오프셋·텍스트)은 **ui**. anchor·collision·raycast 등 물리/좌표는 **3d**.
-
----
-
-## 5. 루프 구조 (하나의 목표 · 하나의 작업 영역 · 20분)
-
-1. **목표 선언** — 이번 루프에서 해결할 단일 증상 1개.
-2. **작업 영역 고정** — §4 분류 1개. 루프 중 변경 금지.
-3. **RAG 힌트 수집** — §6 쿼리 → "확인 방법" 항목만 추출.
-4. **로그/상태 확인** — RAG가 제시한 우선순위대로 로그/state를 직접 확인. 입력→판단→적용을 분리하고, 서버 권한과 클라이언트 표시를 따로 기록한다.
-5. **단일 가설 → 단일 변경 → 재현 검증.** 실패하면 **마지막 변경만** rollback한다.
-6. **루프 완료 판정**(§5.2).
-
-**같은 실패 2회 규칙:** 같은 증상이 두 번 반복되면 같은 속성만 계속 만지지 않는다. baseline으로 되돌리거나(rollback) 재현 범위를 더 좁히고, 루프마다 **한 축만** 바꾼다. 막히면 범위 축소 → 단일 대안 → 구조 재편(분리·모듈화) 순으로 간다. 크리에이터 요청이 연속 2회 이상이고 해결 확인이 없으면 → **§5.3 로그 삽입 진단**으로 전환한다.
-
-20분 안에 완료 기준을 못 채우면 루프를 끊고, 관찰 사실을 요약한 뒤 새 가설로 다음 루프를 시작한다(§4 step 3의 session 에스컬레이션 검토).
-
-### 5.1 막힘 / handoff
-
-- 같은 전이 버그가 2회 이상 반복되거나, 하나를 고치면 다른 곳이 연쇄로 깨지면 → 범위 축소 또는 session 리뷰.
-- ui 문제처럼 보이는데 script 작업만 했다면 → Decision step 5를 다시 확인.
-- 에러가 큰 함수들 사이에서만 이동하면 → large-script(분리) 절차.
-- 표현 문제만 남으면 → ui, 물리/좌표만 남으면 → 3d, 도구 3회 실패면 → tooling으로 handoff(왜 넘기는지·무엇이 남았는지 한 줄).
-
-### 5.2 루프 완료 기준
-
-아래를 **모두** 만족하면 완료:
-- 고정한 재현 경로로 증상이 더 이상 나타나지 않는다.
-- 변경이 실제 런타임에 반영된 것을 로그/상태로 확인했다.
-- 부작용(다른 작업 영역의 회귀)이 없음을 확인했다.
-
-하나라도 미충족이면 미완료 → 관찰 사실 1–3줄 정리 후 재루프, 또는 사유를 적고 handoff.
-
-### 5.3 반복 요청 시 로그 삽입 진단
-
-**트리거:** 동일 버그에 대해 크리에이터 요청이 연속 2회 이상이고, 크리에이터가 "해결됐다" / "고쳐졌다" 등 해결 확인을 하지 않은 경우.
-
-**절차:**
-
-1. **로그 삽입** — 지금까지의 관찰 사실과 RAG "확인 방법"을 기반으로 문제 지점으로 의심되는 위치(상태 전이, 조건 분기, 이벤트 핸들러 진입·종료, 주요 변수 변경 직전·직후)에 `print()` 구문을 삽입한다. 로그 외의 기능 변경은 **하지 않는다**.
-2. **재현 경로 명시 후 동작 요청** — 버그가 나타나는 구체적 행동 순서를 한 문장으로 적고 크리에이터에게 해당 경로로 플레이를 요청한다. 예: `"A 상황에서 B를 하면 C가 발생하는 경로로 플레이해 주시고, 끝나면 '테스트 완료'라고 알려주세요."` 크리에이터 응답 전에는 추가 수정을 하지 않는다.
-3. **로그 분석 → 재진단** — 크리에이터가 **"테스트 완료"** 신호를 보내면 즉시 로그를 열어 삽입한 출력을 확인한다. 실제 실행 경로·상태가 기존 가설과 다르면 §4부터 재분류하고 새 가설로 루프를 재시작한다. 같은 가설이 확인되면 §5 단일 변경 절차로 진행한다.
-4. **로그 제거** — 진단이 완료되면 삽입한 `print()` 구문을 모두 제거한다.
+> Presentation layer (visibility·offset·text) is **ui**. Physics/coordinates such as anchor·collision·raycast are **3d**.
 
 ---
 
-## 6. RAG 조회 및 응답 처리 (분류 직후, 진단 힌트 전용)
+## 5. Loop Structure (One Goal · One Work Area · 20 Minutes)
 
-작업 영역이 정해지면 **즉시** 쿼리한다. **`overdaresearch` 도구를 `source` `debug`로 호출한다.**
+1. **Declare the goal** — one single symptom to resolve in this loop.
+2. **Fix the work area** — one §4 classification. Do not change it during the loop.
+3. **Collect RAG hints** — query §6 → extract only the "how to check" items.
+4. **Check logs/state** — directly inspect logs/state in the priority order suggested by RAG. Separate input → judgment → application, and record server authority and client display separately.
+5. **Single hypothesis → single change → reproduction verification.** If it fails, roll back **only the last change**.
+6. **Judge loop completion** (§5.2).
 
-- `query`: 증상을 자연어로 요약한다 (예: `전이 후 표시 사라짐`, `weapon drops from hand`).
+**Same failure twice rule:** If the same symptom repeats twice, do not keep tweaking only the same property. Return to the baseline (rollback) or narrow the reproduction scope further, and change **only one axis** per loop. If stuck, proceed in this order: scope reduction → single alternative → structural rework (separation/modularization). If there are 2+ consecutive creator requests without confirmation of resolution → switch to **§5.3 log-insertion diagnosis**.
+
+If completion criteria are not met within 20 minutes, stop the loop, summarize observed facts, then start the next loop with a new hypothesis (consider session escalation from §4 step 3).
+
+### 5.1 Stuck / Handoff
+
+- If the same transition bug repeats 2+ times, or fixing one thing causes another to break in a chain → reduce scope or request session review.
+- If it looks like a ui issue but only script work was done → recheck Decision step 5.
+- If errors only move between large functions → follow the large-script (separation) procedure.
+- If only a presentation problem remains → hand off to ui; if only physics/coordinates remain → 3d; if tools failed 3 times → tooling (one line explaining why it is being handed off and what remains).
+
+### 5.2 Loop Completion Criteria
+
+Complete only when **all** of the following are satisfied:
+- The symptom no longer appears on the fixed reproduction path.
+- Logs/state confirm that the change was actually reflected at runtime.
+- Confirmed there are no side effects (regressions in other work areas).
+
+If any one is unmet, it is incomplete → summarize observed facts in 1–3 lines and re-loop, or write the reason and hand off.
+
+### 5.3 Log-Insertion Diagnosis for Repeated Requests
+
+**Trigger:** There are 2+ consecutive creator requests for the same bug, and the creator has not confirmed resolution with wording such as "resolved" / "fixed".
+
+**Procedure:**
+
+1. **Insert logs** — Based on observed facts so far and the RAG "how to check" items, insert `print()` statements at suspected problem points (state transitions, conditional branches, event handler entry/exit, immediately before/after major variable changes). **Do not** make functional changes other than logs.
+2. **State the reproduction path and request playthrough** — Write the exact action sequence that reveals the bug in one sentence and ask the creator to play through that path. Example: `"Please play through the path where doing B in situation A causes C, and tell me 'test complete' when finished."` Do not make additional changes before the creator responds.
+3. **Analyze logs → rediagnose** — When the creator sends the **"test complete"** signal, immediately open the logs and check the inserted output. If the actual execution path/state differs from the existing hypothesis, reclassify from §4 and restart the loop with a new hypothesis. If the same hypothesis is confirmed, proceed with the §5 single-change procedure.
+4. **Remove logs** — Once diagnosis is complete, remove all inserted `print()` statements.
+
+---
+
+## 6. RAG Query and Response Handling (Immediately After Classification, Diagnostic Hints Only)
+
+Once the work area is chosen, query **immediately**. **Call the `overdaresearch` tool with `source` set to `debug`.**
+
+- `query`: Summarize the symptom in natural language (for example: `display disappears after transition`, `weapon drops from hand`).
 - `source`: `debug`
 - `topK`: `3`
-- 작업 영역(§4)으로 좁히려면 `debugCaseFilter.category`에 `script` | `ui` | `3d` | `tooling`을 넣는다. 필요하면 `severity`·`caseId`(정확 일치), `symptomTags`·`genreTags`(태그 중 하나라도 포함)를 함께 줄 수 있다. 여러 필드는 AND로 결합되며, `overdareVersion` 필터는 미지원이다.
+- To narrow by work area (§4), put `script` | `ui` | `3d` | `tooling` in `debugCaseFilter.category`. If needed, also provide `severity`·`caseId` (exact match), `symptomTags`·`genreTags` (contains any of the tags). Multiple fields are combined with AND, and the `overdareVersion` filter is not supported.
 
-호출 예 (도구 인자):
+Example call (tool arguments):
 ```json
-{ "query": "전이 후 표시 사라짐", "source": "debug", "topK": 3, "debugCaseFilter": { "category": "script" } }
+{ "query": "display disappears after transition", "source": "debug", "topK": 3, "debugCaseFilter": { "category": "script" } }
 ```
 
-**응답 처리 규칙**
-- 유사도 상위 3개 케이스의 **"확인 방법"** 항목만 참조한다 → 로그에서 무엇을 먼저 볼지, state tracing 우선순위를 정하는 데만 쓴다.
-- 각 케이스의 **"해결 사례"는 참고로만 읽고, 그대로 패치하지 않는다.** 솔루션은 §5 절차로 직접 도출한다.
-- 케이스의 **"OVERDARE 특이사항"**(미지원 API 등)은 환경 제약으로 신뢰하고 반영한다.
-- 유사 케이스가 없거나 서버가 미응답이면 **절차를 그대로 진행**한다.
-- 결과를 첫 응답에 **한 줄로 기록**한다: `참고 사례: {케이스 ID} — {확인 우선순위 요약}` / 미사용 시 `참고 사례: 없음 (유사 케이스 없음 | 검색 미응답)`.
+**Response handling rules**
+- Refer only to the **"how to check"** items from the top 3 similar cases → use them only to decide what to inspect first in logs and how to prioritize state tracing.
+- Read each case's **"solution case" only as reference, and do not patch it verbatim.** Derive the solution directly through the §5 procedure.
+- Trust and apply each case's **"OVERDARE-specific notes"** (unsupported APIs, etc.) as environment constraints.
+- If there are no similar cases or the server does not respond, **continue the procedure as-is**.
+- Record the result in the first response in **one line**: `Reference cases: {case ID} — {check priority summary}` / if unused, `Reference cases: none (no similar cases | search unavailable)`.
 
 ---
 
-## 7. 관련 스킬 / 범위
+## 7. Related Skills / Scope
 
-- 이 스킬은 **디버그(결함 해결)** 진입점이다. 새 UI/콘텐츠를 **처음 생성**하는 작업은 해당 생성 전용 스킬이 맡고, 생성 후 이 스킬로 검증·통합한다.
-- 배포/publish 전용 작업은 디버그와 섞지 않는다.
+- This skill is the entry point for **debugging (defect resolution)**. Tasks that **create** new UI/content for the first time belong to the corresponding creation-specific skill; after creation, use this skill for verification and integration.
+- Do not mix deployment/publish-only work with debugging.
