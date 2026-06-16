@@ -123,7 +123,7 @@ export const parameters = z.object({
   debugCaseFilter: z
     .object({
       caseId: z.string().optional().describe("Exact match on case ID"),
-      category: z.string().optional().describe("Exact match on category (ui, script, tooling, 3d, ...)"),
+      category: z.string().optional().describe("Exact match on category (ui, script, 3d)"),
       severity: z.string().optional().describe("Exact match on severity (low/medium/high)"),
       symptomTags: z.array(z.string()).optional().describe("Match cases having ANY of these symptom tags (OR)"),
       genreTags: z.array(z.string()).optional().describe("Match cases having ANY of these genre tags (OR)"),

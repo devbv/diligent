@@ -1,12 +1,13 @@
 ---
 name: overdare-debug-expert
-description: Genre-neutral OVERDARE debugging entry skill. First classifies bugs, broken behavior, and regressions into script/ui/3d, then narrows log checks and state tracing direction, and directly resolves the issue according to the procedure. Use for defect-fixing requests such as "debug", "bug", "it doesn't work", "why is this happening", "fix it", or "it's broken".
+description: Genre-neutral OVERDARE debugging entry skill. First classifies bugs, broken behavior, and regressions into script/ui/3d, then queries the RAG case DB only for diagnostic hints to narrow log checks and state tracing direction, and directly resolves the issue according to the procedure. Use for defect-fixing requests such as "debug", "bug", "it doesn't work", "why is this happening", "fix it", or "it's broken".
 ---
 
 # OVERDARE Debug Expert
 
 This is a debugging entry skill that works regardless of genre (action/racing/puzzle/simulation, etc.).
-This skill defines the **procedure only**. Derive the final solution directly according to the procedure (§5).
+This skill defines the **procedure only**. Concrete case examples and symptom-specific treatments are provided by the RAG case DB,
+and RAG results are used **only as diagnostic hints**. Derive the final solution directly according to the procedure (§5).
 
 ---
 
@@ -36,6 +37,7 @@ If **any one** of the following applies, load this skill before any other task/s
 **MUST NOT**
 - Do not change code based only on guesses without checking logs/state.
 - Do not change code/maps without classification, goal, and rationale.
+- Do not copy a RAG-provided "solution case" directly into a patch (§6).
 - Do not touch two or more work areas in the same loop.
 - Do not report "fixed" without a reproduction path.
 - If minimum input is insufficient, **ask instead of guessing**.
@@ -49,6 +51,7 @@ Skill used: overdare-debug-expert
 Work area: script | ui | 3d
 Classification rationale: decision step N — (one-sentence condition)
 Reproduction path: (when / where / what action)
+Reference cases: {case ID — check priority} | none (reason)
 Goal for this loop: (one sentence: what to reproduce or verify)
 First checks: (1–3 logs/state items)
 ```
@@ -83,8 +86,8 @@ Classification aid: **if there is an error log, script**; **if it is visible and
 
 1. **Declare the goal** — one single symptom to resolve in this loop.
 2. **Fix the work area** — one §4 classification. Do not change it during the loop.
-3. **Check logs/state** — directly inspect the most relevant logs/state for the fixed work area. Separate input → judgment → application, and record server authority and client display separately.
-4. **Trace one path** — follow the reproduction path through the smallest observable state chain that can explain the symptom.
+3. **Collect RAG hints** — query §6 → extract only the "how to check" items.
+4. **Check logs/state** — directly inspect logs/state in the priority order suggested by RAG. Separate input → judgment → application, and record server authority and client display separately.
 5. **Single hypothesis → single change → reproduction verification.** If it fails, roll back **only the last change**.
 6. **Judge loop completion** (§5.2).
 
@@ -114,14 +117,37 @@ If any one is unmet, it is incomplete → summarize observed facts in 1–3 line
 
 **Procedure:**
 
-1. **Insert logs** — Based on observed facts so far, insert `print()` statements at suspected problem points (state transitions, conditional branches, event handler entry/exit, immediately before/after major variable changes). **Do not** make functional changes other than logs.
+1. **Insert logs** — Based on observed facts so far and the RAG "how to check" items, insert `print()` statements at suspected problem points (state transitions, conditional branches, event handler entry/exit, immediately before/after major variable changes). **Do not** make functional changes other than logs.
 2. **State the reproduction path and request playthrough** — Write the exact action sequence that reveals the bug in one sentence and ask the creator to play through that path. Example: `"Please play through the path where doing B in situation A causes C, and tell me 'test complete' when finished."` Do not make additional changes before the creator responds.
 3. **Analyze logs → rediagnose** — When the creator sends the **"test complete"** signal, immediately open the logs and check the inserted output. If the actual execution path/state differs from the existing hypothesis, reclassify from §4 and restart the loop with a new hypothesis. If the same hypothesis is confirmed, proceed with the §5 single-change procedure.
 4. **Remove logs** — Once diagnosis is complete, remove all inserted `print()` statements.
 
 ---
 
-## 6. Related Skills / Scope
+## 6. RAG Query and Response Handling (Immediately After Classification, Diagnostic Hints Only)
+
+Once the work area is chosen, query **immediately**. **Call the `overdaresearch` tool with `source` set to `debug`.**
+
+- `query`: Summarize the symptom in natural language (for example: `display disappears after transition`, `weapon drops from hand`).
+- `source`: `debug`
+- `topK`: `3`
+- To narrow by work area (§4), put `script` | `ui` | `3d` in `debugCaseFilter.category`. If needed, also provide `severity`·`caseId` (exact match), `symptomTags`·`genreTags` (contains any of the tags). Multiple fields are combined with AND, and the `overdareVersion` filter is not supported.
+
+Example call (tool arguments):
+```json
+{ "query": "display disappears after transition", "source": "debug", "topK": 3, "debugCaseFilter": { "category": "script" } }
+```
+
+**Response handling rules**
+- Refer only to the **"how to check"** items from the top 3 similar cases → use them only to decide what to inspect first in logs and how to prioritize state tracing.
+- Read each case's **"solution case" only as reference, and do not patch it verbatim.** Derive the solution directly through the §5 procedure.
+- Trust and apply each case's **"OVERDARE-specific notes"** (unsupported APIs, etc.) as environment constraints.
+- If there are no similar cases or the server does not respond, **continue the procedure as-is**.
+- Record the result in the first response in **one line**: `Reference cases: {case ID} — {check priority summary}` / if unused, `Reference cases: none (no similar cases | search unavailable)`.
+
+---
+
+## 7. Related Skills / Scope
 
 - This skill is the entry point for **debugging (defect resolution)**. Tasks that **create** new UI/content for the first time belong to the corresponding creation-specific skill; after creation, use this skill for verification and integration.
 - Do not mix deployment/publish-only work with debugging.
