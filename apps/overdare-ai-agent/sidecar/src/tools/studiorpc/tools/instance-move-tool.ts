@@ -3,7 +3,7 @@
 import * as instanceMove from "../methods/instance.move";
 import { serviceClassEnum } from "../methods/instance.params";
 import { buildInstanceMoveRender } from "../render";
-import { applyAndSave } from "../rpc";
+import { applyLevelChanges } from "../rpc";
 import type { Tool, ToolContext, ToolResult } from "../types";
 import type { WriteLock } from "../write-lock";
 import {
@@ -86,7 +86,7 @@ async function executeInstanceMoveInner(
     return { added: movedGuids.map((g) => ({ guid: g, name: "", class: "" })) };
   });
 
-  const result = await applyAndSave();
+  const result = await applyLevelChanges();
   const output = typeof result === "string" ? result : JSON.stringify(result, null, 2);
 
   return {

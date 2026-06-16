@@ -1,5 +1,5 @@
 import type { Tool as CoreTool, ToolContext as CoreToolContext } from "@diligent/core/tool/types";
-import type { BundledToolProvider, RuntimeToolHost } from "@diligent/runtime";
+import type { BundledToolProvider, HookInput, PluginHookFn, RuntimeToolHost } from "@diligent/runtime";
 import { call } from "./rpc";
 import { methodModules, mutatingMethods, renderBuilders } from "./tool-registry";
 import { createHubWorldCategoriesListTool } from "./tools/hub-world-categories-list-tool";
@@ -20,12 +20,25 @@ type StudioRpcToolContext = CoreToolContext & {
   approve: NonNullable<RuntimeToolHost["approve"]>;
 };
 
-export function createStudioRpcToolProvider(): BundledToolProvider {
+export interface StudioRpcToolProviderOptions {
+  callRpc?: typeof call;
+}
+
+export function createStudioRpcToolProvider(options: StudioRpcToolProviderOptions = {}): BundledToolProvider {
+  const callRpc = options.callRpc ?? call;
+  const saveLevel: PluginHookFn = async (_input: HookInput) => {
+    await callRpc("level.save.file", {});
+    return { blocked: false };
+  };
+  saveLevel.mode = "sync";
+
   return {
     id: "@overdare/studiorpc-tools",
     displayName: "OVERDARE Studio RPC Tools",
     supersedesPluginPackages: ["@overdare/plugin-studiorpc"],
-    createTools: async ({ cwd, host }) => createCoreTools(await createStudioRpcTools({ cwd, host })),
+    createTools: async ({ cwd, host }) => createCoreTools(await createStudioRpcTools({ cwd, host, callRpc })),
+    onUserPromptSubmit: saveLevel,
+    onStop: saveLevel,
   };
 }
 
@@ -40,8 +53,13 @@ function withApproval(ctx: CoreToolContext, host?: RuntimeToolHost): StudioRpcTo
   };
 }
 
-export async function createStudioRpcTools(ctx: { cwd: string; host?: RuntimeToolHost }): Promise<Tool[]> {
+export async function createStudioRpcTools(ctx: {
+  cwd: string;
+  host?: RuntimeToolHost;
+  callRpc?: typeof call;
+}): Promise<Tool[]> {
   const writeLock = createWriteLock();
+  const callRpc = ctx.callRpc ?? call;
 
   const tools: Tool[] = [
     wrapTool(createInstanceReadTool(ctx.cwd), ctx.host),
@@ -89,12 +107,9 @@ export async function createStudioRpcTools(ctx: { cwd: string; host?: RuntimeToo
           const normalizedArgs = mod.normalizeArgs
             ? mod.normalizeArgs(args as Record<string, unknown>)
             : (args as Record<string, unknown>);
-          let result: unknown = await call(rpcMethod, normalizedArgs);
+          let result: unknown = await callRpc(rpcMethod, normalizedArgs);
           if (mod.postProcess) {
             result = mod.postProcess(result, args as Record<string, unknown>);
-          }
-          if (isMutating) {
-            await call("level.save.file", {});
           }
           const output = typeof result === "string" ? result : JSON.stringify(result, null, 2);
           const renderBuilder = renderBuilders[toolName];

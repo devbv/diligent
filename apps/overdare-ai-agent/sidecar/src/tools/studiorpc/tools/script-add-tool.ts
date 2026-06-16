@@ -2,7 +2,7 @@
 
 import * as scriptAdd from "../methods/script.add";
 import { buildScriptAddRender } from "../render";
-import { applyAndSave } from "../rpc";
+import { applyLevelChanges } from "../rpc";
 import type { Tool, ToolContext, ToolResult } from "../types";
 import type { WriteLock } from "../write-lock";
 import {
@@ -89,7 +89,7 @@ async function executeScriptAdd(
       eolCount = eolNormalized.converted;
     });
 
-    await applyAndSave();
+    await applyLevelChanges();
 
     let output = `Script added: ${parsed.name} (${addedGuid})`;
     const normalizations: string[] = [];

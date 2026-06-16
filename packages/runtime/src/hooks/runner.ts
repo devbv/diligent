@@ -23,19 +23,44 @@ export interface HookResult {
   additionalContext?: string;
 }
 
-const DEFAULT_TIMEOUT_SECONDS = 60;
+export type HookMode = "sync" | "async";
 
-async function runSingleHook(handler: HookHandler, input: HookInput, cwd: string): Promise<HookResult> {
-  const timeoutMs = (handler.timeout ?? DEFAULT_TIMEOUT_SECONDS) * 1_000;
-  const inputJson = JSON.stringify(input);
+const DEFAULT_SYNC_TIMEOUT_SECONDS = 10;
 
-  const proc = Bun.spawn(["bash", "-c", handler.command], {
+function getSyncTimeoutMs(handler: HookHandler): number {
+  return (handler.timeout ?? DEFAULT_SYNC_TIMEOUT_SECONDS) * 1_000;
+}
+
+function spawnHookCommand(handler: HookHandler, inputJson: string, cwd: string) {
+  return Bun.spawn(["bash", "-c", handler.command], {
     cwd,
     stdin: Buffer.from(inputJson),
     stdout: "pipe",
     stderr: "pipe",
     env: process.env as Record<string, string>,
   });
+}
+
+function runAsyncHook(handler: HookHandler, inputJson: string, cwd: string): void {
+  const proc = spawnHookCommand(handler, inputJson, cwd);
+  void Promise.all([proc.exited, new Response(proc.stdout).text(), new Response(proc.stderr).text()]).catch(() => {
+    try {
+      proc.kill();
+    } catch {
+      // ignore async hook cleanup errors
+    }
+  });
+}
+
+async function runSingleHook(handler: HookHandler, input: HookInput, cwd: string): Promise<HookResult> {
+  const inputJson = JSON.stringify(input);
+  if (handler.mode === "async") {
+    runAsyncHook(handler, inputJson, cwd);
+    return { blocked: false };
+  }
+
+  const timeoutMs = getSyncTimeoutMs(handler);
+  const proc = spawnHookCommand(handler, inputJson, cwd);
 
   const timeoutHandle = setTimeout(() => proc.kill(), timeoutMs);
 
@@ -98,12 +123,21 @@ async function runSingleHook(handler: HookHandler, input: HookInput, cwd: string
 }
 
 /** Plugin-provided hook handler function. */
-export type PluginHookFn = (input: HookInput) => Promise<Partial<HookResult>>;
+export type PluginHookFn = ((input: HookInput) => Promise<Partial<HookResult>>) & { mode?: HookMode };
+
+function runAsyncPluginHook(handler: PluginHookFn, input: HookInput): void {
+  void handler(input).catch(() => {});
+}
 
 /** Run plugin hook handlers sequentially; stop and return on first block. Errors are non-blocking. */
 export async function runPluginHooks(handlers: PluginHookFn[], input: HookInput): Promise<HookResult> {
   let combinedContext: string | undefined;
   for (const handler of handlers) {
+    if (handler.mode === "async") {
+      runAsyncPluginHook(handler, input);
+      continue;
+    }
+
     let result: Partial<HookResult>;
     try {
       result = await handler(input);

@@ -77,4 +77,25 @@ describe("DEFAULT_CONFIG", () => {
     const result = DiligentConfigSchema.safeParse(DEFAULT_CONFIG);
     expect(result.success).toBe(true);
   });
+
+  it("accepts sync and async hook command modes", () => {
+    const result = DiligentConfigSchema.safeParse({
+      hooks: {
+        UserPromptSubmit: [{ type: "command", command: "echo start", mode: "sync" }],
+        Stop: [{ type: "command", command: "echo stop", mode: "async" }],
+      },
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects invalid hook command modes", () => {
+    const result = DiligentConfigSchema.safeParse({
+      hooks: {
+        UserPromptSubmit: [{ type: "command", command: "echo start", mode: "background" }],
+      },
+    });
+
+    expect(result.success).toBe(false);
+  });
 });

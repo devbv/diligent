@@ -62,7 +62,7 @@ export const methodModules: MethodModule[] = [
   hubTokenRead,
 ];
 
-/** Methods that mutate the level and should trigger an automatic save after execution. */
+/** Methods that mutate the level and should be serialized with the write lock. */
 export const mutatingMethods = new Set([
   assetDrawerImport.method,
   assetManagerImageImport.method,
