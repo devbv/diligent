@@ -112,6 +112,8 @@ test("question card always renders custom input row", () => {
 
   expect(html).toContain('placeholder="or type a custom answer…"');
   expect(html).toContain('aria-label="Reason"');
+  expect(html).toContain("flex min-w-0 flex-1 flex-col");
+  expect(html).toContain("min-w-0 truncate bg-transparent");
 });
 
 test("question card renders multi-select options as clear checkboxes", () => {
@@ -1157,6 +1159,45 @@ test("MessageList shows Reconnect button on auth error", () => {
   );
 
   expect(html).toContain("Reconnect");
+});
+
+test("MessageList renders shrink-safe question prompts in the feed", () => {
+  const html = renderToStaticMarkup(
+    <MessageList
+      items={[]}
+      threadStatus="idle"
+      hasProvider={true}
+      onOpenProviders={() => {}}
+      onQuickConnectChatGPT={() => {}}
+      questionPrompt={{
+        request: {
+          questions: [
+            {
+              id: "build_scope",
+              header: "Build",
+              question: "How far should I build in this pass?",
+              options: [
+                {
+                  label: "Full Prototype",
+                  description: "Add selection, different shooting, and first weapon-specific upgrades.",
+                },
+              ],
+            },
+          ],
+        },
+        answers: { build_scope: "Full Prototype" },
+        onAnswerChange: () => {},
+        onSubmit: () => {},
+        onCancel: () => {},
+      }}
+    />,
+  );
+
+  expect(html).toContain("How far should I build in this pass?");
+  expect(html).toContain('placeholder="or type a custom answer…"');
+  expect(html).toContain("flex min-w-0 flex-1 flex-col");
+  expect(html).toContain("min-w-0 truncate bg-transparent");
+  expect(html).not.toContain("Start a new conversation");
 });
 
 test("MessageList does not show Reconnect button on non-auth error", () => {

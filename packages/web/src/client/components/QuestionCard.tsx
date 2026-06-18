@@ -112,7 +112,7 @@ export function QuestionCard({ request, answers, onAnswerChange, onSubmit, onCan
                     {question.options.length + 1}
                   </span>
                 ) : null}
-                <div className="flex flex-1 flex-col rounded-lg bg-transparent">
+                <div className="flex min-w-0 flex-1 flex-col rounded-lg bg-transparent">
                   <input
                     id={question.id}
                     aria-label={question.header}
@@ -133,7 +133,7 @@ export function QuestionCard({ request, answers, onAnswerChange, onSubmit, onCan
                     onKeyDown={(e) => {
                       if (e.key === "Enter") onSubmit();
                     }}
-                    className="bg-transparent text-sm text-text placeholder:text-muted/50 focus:outline-none"
+                    className="min-w-0 truncate bg-transparent text-sm text-text placeholder:text-muted/50 focus:outline-none"
                   />
                   <div className="border-b border-border/10 pt-1" />
                 </div>
