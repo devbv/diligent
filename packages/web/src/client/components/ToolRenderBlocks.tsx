@@ -1,6 +1,8 @@
 // @summary Renders structured P040 ToolRenderPayload blocks matching the existing Content* component style
 
 import type {
+  AssetGalleryBlock,
+  AssetGalleryItem,
   CommandBlock,
   DiffBlock,
   DiffFile,
@@ -153,6 +155,124 @@ function RenderTable({ block }: { block: TableBlock }) {
         </table>
       </div>
     </BlockShell>
+  );
+}
+
+/* ── AssetGalleryBlock ───────────────────────────────────────────── */
+
+function assetGalleryKey(item: AssetGalleryItem, index: number): string {
+  return item.id ?? item.insertValue ?? item.previewUrl ?? item.thumbnailUrl ?? `${item.title}-${index}`;
+}
+
+function assetInitial(title: string): string {
+  const trimmed = title.trim();
+  return trimmed.length > 0 ? trimmed.slice(0, 1).toUpperCase() : "?";
+}
+
+function AssetImage({ item, className }: { item: AssetGalleryItem; className?: string }) {
+  const [failed, setFailed] = useState(false);
+  const src = item.thumbnailUrl ?? item.previewUrl;
+
+  if (!src || failed) {
+    return (
+      <div
+        className={cn(
+          "flex h-full w-full flex-col items-center justify-center gap-1 bg-fill-secondary text-center",
+          className,
+        )}
+      >
+        <span className="text-2xl font-semibold leading-none text-text-soft">{assetInitial(item.title)}</span>
+        {item.subtitle ? <span className="max-w-[9rem] truncate px-2 text-2xs text-muted">{item.subtitle}</span> : null}
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt={item.title}
+      loading="eager"
+      className={cn("h-full w-full object-contain", className)}
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
+function dispatchAssetSelect(item: AssetGalleryItem) {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent("diligent:asset-gallery-select", { detail: item }));
+}
+
+function RenderAssetGallery({ block }: { block: AssetGalleryBlock }) {
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const countLabel = `${block.items.length} result${block.items.length === 1 ? "" : "s"}`;
+  const title = block.title ?? "Assets";
+
+  if (block.items.length === 0) {
+    return <RenderSummary block={{ type: "summary", text: "No assets found.", tone: "warning" }} />;
+  }
+
+  return (
+    <div className="space-y-3 rounded-md border border-border/70 bg-surface-dark px-3 py-3">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+        <span className="font-mono text-2xs uppercase text-muted">{title}</span>
+        <span className="min-w-0 truncate text-sm text-text-soft">
+          {block.query ? `${countLabel} for "${block.query}"` : countLabel}
+        </span>
+      </div>
+
+      <div className="-mx-1 overflow-x-auto pb-1">
+        <div className="grid auto-cols-[8.75rem] grid-flow-col gap-3 px-1">
+          {block.items.map((item, index) => {
+            const key = assetGalleryKey(item, index);
+            const selected = selectedKey === key;
+            const metadataTitle = [
+              item.title,
+              item.subtitle,
+              item.id ? `ID: ${item.id}` : undefined,
+              ...(item.metadata ?? []).map((meta) => `${meta.key}: ${meta.value}`),
+            ]
+              .filter(Boolean)
+              .join("\n");
+
+            return (
+              <button
+                key={key}
+                type="button"
+                title={metadataTitle}
+                aria-pressed={selected}
+                aria-label={`Select ${item.title}`}
+                data-asset-id={item.id}
+                className={cn(
+                  "group grid w-[8.75rem] grid-rows-[1.5rem_8.75rem] gap-1 rounded-md text-left outline-none transition",
+                  "focus-visible:ring-2 focus-visible:ring-border-focus focus-visible:ring-offset-2 focus-visible:ring-offset-bg",
+                )}
+                onClick={() => {
+                  setSelectedKey(key);
+                  dispatchAssetSelect(item);
+                }}
+              >
+                <span className="truncate text-center text-sm leading-6 text-text-soft">
+                  {item.price ?? item.subtitle ?? ""}
+                </span>
+                <span
+                  className={cn(
+                    "block aspect-square overflow-hidden rounded-md border bg-fill-secondary shadow-sm transition",
+                    selected
+                      ? "border-accent ring-2 ring-accent/30"
+                      : "border-border/30 group-hover:border-border-hover",
+                  )}
+                >
+                  <AssetImage item={item} />
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {block.actionLabel ? <div className="px-1 text-sm text-text-tertiary">{block.actionLabel}</div> : null}
+    </div>
   );
 }
 
@@ -449,6 +569,8 @@ function RenderBlock({ block }: { block: ToolRenderBlock }) {
       return <RenderList block={block} />;
     case "table":
       return <RenderTable block={block} />;
+    case "asset_gallery":
+      return <RenderAssetGallery block={block} />;
     case "tree":
       return <RenderTree block={block} />;
     case "status_badges":

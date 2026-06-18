@@ -859,6 +859,55 @@ test("tool block treats namespaced request_user_input as user-input tool (hides 
   expect(html).not.toContain("↳ Answer submitted");
 });
 
+test("tool block renders asset gallery previews expanded", () => {
+  const html = renderToStaticMarkup(
+    <ToolBlock
+      item={{
+        id: "tool-assets",
+        kind: "tool",
+        toolName: "overdaresearch",
+        inputText: '{"source":"assets","query":"fountain classic stone"}',
+        outputText: "Found assets",
+        isError: false,
+        status: "done",
+        timestamp: 500,
+        toolCallId: "call-assets",
+        startedAt: 450,
+        durationMs: 42,
+        render: {
+          inputSummary: "assets: fountain classic stone",
+          outputSummary: "5 assets",
+          blocks: [
+            {
+              type: "asset_gallery",
+              title: "Assets",
+              query: "fountain classic stone",
+              actionLabel: "Click a result to insert it",
+              items: [
+                {
+                  id: "asset-fountain-1",
+                  title: "Classic Stone Fountain",
+                  subtitle: "MODEL",
+                  price: "Free",
+                  thumbnailUrl: "https://assets.example/fountain.png",
+                  insertValue: "asset-fountain-1",
+                  metadata: [{ key: "assetType", value: "MODEL" }],
+                },
+              ],
+            },
+          ],
+        },
+      }}
+    />,
+  );
+
+  expect(html).toContain('data-asset-id="asset-fountain-1"');
+  expect(html).toContain('src="https://assets.example/fountain.png"');
+  expect(html).toContain('aria-label="Select Classic Stone Fountain"');
+  expect(html).toContain("1 result for &quot;fountain classic stone&quot;");
+  expect(html).toContain("Click a result to insert it");
+});
+
 test("collab event block uses clickable card semantics without explicit expand labels", () => {
   const html = renderToStaticMarkup(
     <CollabEventBlock

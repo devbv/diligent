@@ -1,5 +1,6 @@
 // @summary Terminal text renderer for P040 ToolRenderPayload structured blocks
 import type {
+  AssetGalleryBlock,
   CommandBlock,
   DiffBlock,
   DiffFile,
@@ -94,6 +95,25 @@ function renderTable(block: TableBlock): string[] {
   for (const row of block.rows) {
     const cells = block.columns.map((_, columnIndex) => row[columnIndex] ?? "");
     lines.push(`  ${formatRow(cells)}`);
+  }
+
+  return lines;
+}
+
+function renderAssetGallery(block: AssetGalleryBlock): string[] {
+  const lines: string[] = [...blockTitle(block.title ?? "Assets")];
+  const resultLabel = `${block.items.length} result${block.items.length === 1 ? "" : "s"}`;
+  lines.push(`  ${t.dim}${block.query ? `${resultLabel} for "${block.query}"` : resultLabel}${t.reset}`);
+
+  block.items.forEach((item, index) => {
+    const price = item.price ? `${t.dim}[${item.price}]${t.reset} ` : "";
+    const subtitle = item.subtitle ? `${t.dim} ${item.subtitle}${t.reset}` : "";
+    const id = item.id ? `${t.dim} (${item.id})${t.reset}` : "";
+    lines.push(`  ${index + 1}. ${price}${item.title}${subtitle}${id}`);
+  });
+
+  if (block.actionLabel) {
+    lines.push(`  ${t.dim}${block.actionLabel}${t.reset}`);
   }
 
   return lines;
@@ -273,6 +293,8 @@ function renderBlock(block: ToolRenderBlock): string[] {
       return renderList(block);
     case "table":
       return renderTable(block);
+    case "asset_gallery":
+      return renderAssetGallery(block);
     case "tree":
       return renderTree(block);
     case "status_badges":

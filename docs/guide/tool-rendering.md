@@ -12,7 +12,7 @@ Structured tool rendering is part of the shared protocol contract.
 - `outputSummary?`
 - `blocks`
 
-The protocol package also defines the supported block types, including `summary`, `text`, `key_value`, `list`, `table`, `tree`, `status_badges`, `file`, `command`, and `diff`.
+The protocol package also defines the supported block types, including `summary`, `text`, `key_value`, `list`, `table`, `asset_gallery`, `tree`, `status_badges`, `file`, `command`, and `diff`.
 
 Tool render payloads can appear on tool events and on `tool_result` messages.
 
