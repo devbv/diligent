@@ -20,6 +20,7 @@ import { Modal } from "../../../src/client/components/Modal";
 import { ProviderSettingsModal } from "../../../src/client/components/ProviderSettingsModal";
 import { QuestionCard } from "../../../src/client/components/QuestionCard";
 import { SlashMenu } from "../../../src/client/components/SlashMenu";
+import { Toast } from "../../../src/client/components/Toast";
 import { ToolBlock } from "../../../src/client/components/ToolBlock";
 import { ToolSettingsModal } from "../../../src/client/components/ToolSettingsModal";
 import { UserMessage } from "../../../src/client/components/UserMessage";
@@ -157,6 +158,47 @@ test("modal renders dialog role", () => {
 
   expect(html).toContain('role="dialog"');
   expect(html).toContain("Approval required");
+});
+
+test("toast keeps long provider errors bounded and wrappable", () => {
+  const message =
+    "ProviderError: An error occurred while processing your request. Please include the request ID 00f97018-852a-44a9-8da4-ffa4773df9d5 in your message.";
+  const html = renderToStaticMarkup(
+    <Toast toast={{ id: "err-1", kind: "error", message, fatal: false }} onDismiss={() => {}} />,
+  );
+
+  expect(html).toContain('role="alert"');
+  expect(html).toContain("fixed right-4 top-20 z-50");
+  expect(html).toContain("w-[calc(100vw-2rem)]");
+  expect(html).toContain("sm:w-[28rem]");
+  expect(html).toContain("whitespace-pre-wrap break-words");
+  expect(html).toContain("00f97018-852a-44a9-8da4-ffa4773df9d5");
+});
+
+test("message list error cards wrap provider error text", () => {
+  const html = renderToStaticMarkup(
+    <MessageList
+      items={[
+        {
+          id: "err-1",
+          kind: "error",
+          name: "ProviderError",
+          message:
+            "An error occurred while processing your request. Please include the request ID 00f97018-852a-44a9-8da4-ffa4773df9d5 in your message.",
+          fatal: false,
+          timestamp: 1,
+          providerErrorType: "unknown",
+        },
+      ]}
+      threadStatus="idle"
+      hasProvider={true}
+      onOpenProviders={() => {}}
+    />,
+  );
+
+  expect(html).toContain("ProviderError: An error occurred");
+  expect(html).toContain("max-w-full break-words");
+  expect(html).toContain("whitespace-pre-wrap");
 });
 
 test("markdown content renders external links and fenced code blocks cleanly", () => {

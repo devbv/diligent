@@ -12,8 +12,10 @@ export function ErrorMessage({
   const isAuthError = item.providerErrorType === "auth";
   return (
     <div className="py-1">
-      <div className="rounded-md border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-text-soft">
-        <div className="font-medium">{item.name ? `${item.name}: ${item.message}` : item.message}</div>
+      <div className="max-w-full break-words rounded-md border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-text-soft">
+        <div className="whitespace-pre-wrap font-medium">
+          {item.name ? `${item.name}: ${item.message}` : item.message}
+        </div>
         {item.turnId ? <div className="mt-1 text-xs text-danger/80">Turn: {item.turnId}</div> : null}
         {isAuthError && onOpenProviders ? (
           <button
