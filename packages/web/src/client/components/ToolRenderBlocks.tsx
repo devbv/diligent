@@ -161,12 +161,25 @@ function RenderTable({ block }: { block: TableBlock }) {
 /* ── AssetGalleryBlock ───────────────────────────────────────────── */
 
 function assetGalleryKey(item: AssetGalleryItem, index: number): string {
-  return item.id ?? item.insertValue ?? item.previewUrl ?? item.thumbnailUrl ?? `${item.title}-${index}`;
+  return item.id ?? item.previewUrl ?? item.thumbnailUrl ?? `${item.title}-${index}`;
 }
 
 function assetInitial(title: string): string {
   const trimmed = title.trim();
   return trimmed.length > 0 ? trimmed.slice(0, 1).toUpperCase() : "?";
+}
+
+function assetMetadataValue(item: AssetGalleryItem, keys: string[]): string | undefined {
+  const keySet = new Set(keys.map((key) => key.toLowerCase()));
+  const value = item.metadata?.find((meta) => keySet.has(meta.key.toLowerCase()))?.value.trim();
+  return value && value !== "(unknown)" ? value : undefined;
+}
+
+function assetMetaLine(item: AssetGalleryItem): string {
+  const category = assetMetadataValue(item, ["category", "categoryId"]);
+  const assetType = assetMetadataValue(item, ["assetType", "type"]) ?? item.subtitle;
+  const parts = [category, assetType].filter((part): part is string => Boolean(part && part !== "(unknown)"));
+  return Array.from(new Set(parts)).join(" · ");
 }
 
 function AssetImage({ item, className }: { item: AssetGalleryItem; className?: string }) {
@@ -198,13 +211,7 @@ function AssetImage({ item, className }: { item: AssetGalleryItem; className?: s
   );
 }
 
-function dispatchAssetSelect(item: AssetGalleryItem) {
-  if (typeof window === "undefined") return;
-  window.dispatchEvent(new CustomEvent("diligent:asset-gallery-select", { detail: item }));
-}
-
 function RenderAssetGallery({ block }: { block: AssetGalleryBlock }) {
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const countLabel = `${block.items.length} result${block.items.length === 1 ? "" : "s"}`;
   const title = block.title ?? "Assets";
 
@@ -225,10 +232,10 @@ function RenderAssetGallery({ block }: { block: AssetGalleryBlock }) {
         <div className="grid auto-cols-[8.75rem] grid-flow-col gap-3 px-1">
           {block.items.map((item, index) => {
             const key = assetGalleryKey(item, index);
-            const selected = selectedKey === key;
+            const metaLine = assetMetaLine(item);
             const metadataTitle = [
               item.title,
-              item.subtitle,
+              metaLine || item.subtitle,
               item.id ? `ID: ${item.id}` : undefined,
               ...(item.metadata ?? []).map((meta) => `${meta.key}: ${meta.value}`),
             ]
@@ -236,42 +243,33 @@ function RenderAssetGallery({ block }: { block: AssetGalleryBlock }) {
               .join("\n");
 
             return (
-              <button
+              <div
                 key={key}
-                type="button"
                 title={metadataTitle}
-                aria-pressed={selected}
-                aria-label={`Select ${item.title}`}
                 data-asset-id={item.id}
-                className={cn(
-                  "group grid w-[8.75rem] grid-rows-[1.5rem_8.75rem] gap-1 rounded-md text-left outline-none transition",
-                  "focus-visible:ring-2 focus-visible:ring-border-focus focus-visible:ring-offset-2 focus-visible:ring-offset-bg",
-                )}
-                onClick={() => {
-                  setSelectedKey(key);
-                  dispatchAssetSelect(item);
-                }}
+                className="flex w-[8.75rem] flex-col gap-1.5 rounded-md"
               >
-                <span className="truncate text-center text-sm leading-6 text-text-soft">
-                  {item.price ?? item.subtitle ?? ""}
-                </span>
-                <span
-                  className={cn(
-                    "block aspect-square overflow-hidden rounded-md border bg-fill-secondary shadow-sm transition",
-                    selected
-                      ? "border-accent ring-2 ring-accent/30"
-                      : "border-border/30 group-hover:border-border-hover",
-                  )}
-                >
+                <span className="block h-[7.75rem] w-full overflow-hidden rounded-md border border-border/30 bg-fill-secondary shadow-sm">
                   <AssetImage item={item} />
                 </span>
-              </button>
+                <span className="min-w-0">
+                  <span
+                    className="block overflow-hidden text-sm leading-snug text-text-soft"
+                    style={{
+                      display: "-webkit-box",
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: "vertical",
+                    }}
+                  >
+                    {item.title}
+                  </span>
+                  {metaLine ? <span className="mt-0.5 block truncate text-xs text-muted">{metaLine}</span> : null}
+                </span>
+              </div>
             );
           })}
         </div>
       </div>
-
-      {block.actionLabel ? <div className="px-1 text-sm text-text-tertiary">{block.actionLabel}</div> : null}
     </div>
   );
 }

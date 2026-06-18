@@ -86,14 +86,13 @@ describe("renderToolPayload", () => {
     expect(lines.some((line) => line.includes("/tmp"))).toBe(true);
   });
 
-  test("renders asset gallery blocks as selectable text rows", () => {
+  test("renders asset gallery blocks as preview text rows", () => {
     const payload: ToolRenderPayload = {
       blocks: [
         {
           type: "asset_gallery",
           title: "OVERDARE Assets",
           query: "fountain classic stone",
-          actionLabel: "Select an asset to add it to the scene",
           items: [
             {
               id: "asset-fountain-1",
@@ -112,7 +111,6 @@ describe("renderToolPayload", () => {
     expect(lines.some((line) => line.includes('1 result for "fountain classic stone"'))).toBe(true);
     expect(lines.some((line) => line.includes("Classic Stone Fountain"))).toBe(true);
     expect(lines.some((line) => line.includes("[Free]"))).toBe(true);
-    expect(lines.some((line) => line.includes("Select an asset to add it to the scene"))).toBe(true);
   });
 
   test("keeps rendering when payload includes unknown block shape", () => {

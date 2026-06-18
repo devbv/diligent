@@ -882,7 +882,6 @@ test("tool block renders asset gallery previews expanded", () => {
               type: "asset_gallery",
               title: "OVERDARE Assets",
               query: "fountain classic stone",
-              actionLabel: "Select an asset to add it to the scene",
               items: [
                 {
                   id: "asset-fountain-1",
@@ -890,8 +889,10 @@ test("tool block renders asset gallery previews expanded", () => {
                   subtitle: "MODEL",
                   price: "Free",
                   thumbnailUrl: "https://assets.example/fountain.png",
-                  insertValue: "asset-fountain-1",
-                  metadata: [{ key: "assetType", value: "MODEL" }],
+                  metadata: [
+                    { key: "assetType", value: "MODEL" },
+                    { key: "category", value: "ENVIRONMENT" },
+                  ],
                 },
               ],
             },
@@ -903,9 +904,12 @@ test("tool block renders asset gallery previews expanded", () => {
 
   expect(html).toContain('data-asset-id="asset-fountain-1"');
   expect(html).toContain('src="https://assets.example/fountain.png"');
-  expect(html).toContain('aria-label="Select Classic Stone Fountain"');
+  expect(html).toContain("Classic Stone Fountain");
+  expect(html).toContain("ENVIRONMENT · MODEL");
+  expect(html).toContain("OVERDARE Assets");
   expect(html).toContain("1 result for &quot;fountain classic stone&quot;");
-  expect(html).toContain("Select an asset to add it to the scene");
+  expect(html).not.toContain('aria-label="Select Classic Stone Fountain"');
+  expect(html).not.toContain("aria-pressed");
 });
 
 test("collab event block uses clickable card semantics without explicit expand labels", () => {

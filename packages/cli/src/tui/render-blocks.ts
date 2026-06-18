@@ -112,10 +112,6 @@ function renderAssetGallery(block: AssetGalleryBlock): string[] {
     lines.push(`  ${index + 1}. ${price}${item.title}${subtitle}${id}`);
   });
 
-  if (block.actionLabel) {
-    lines.push(`  ${t.dim}${block.actionLabel}${t.reset}`);
-  }
-
   return lines;
 }
 

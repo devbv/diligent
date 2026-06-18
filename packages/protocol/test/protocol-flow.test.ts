@@ -480,7 +480,6 @@ describe("protocol/flow", () => {
           type: "asset_gallery",
           title: "OVERDARE Assets",
           query: "fountain classic stone",
-          actionLabel: "Select an asset to add it to the scene",
           items: [
             {
               id: "asset-1",
@@ -489,7 +488,6 @@ describe("protocol/flow", () => {
               price: "Free",
               thumbnailUrl: "https://assets.example/fountain.png",
               previewUrl: "https://assets.example/fountain",
-              insertValue: "asset-1",
               metadata: [{ key: "assetType", value: "MODEL" }],
             },
           ],

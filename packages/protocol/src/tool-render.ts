@@ -50,7 +50,6 @@ export const AssetGalleryItemSchema = z.object({
   thumbnailUrl: z.string().optional(),
   previewUrl: z.string().optional(),
   sourceUrl: z.string().optional(),
-  insertValue: z.string().optional(),
   metadata: z.array(z.object({ key: z.string(), value: z.string() })).optional(),
 });
 export type AssetGalleryItem = z.infer<typeof AssetGalleryItemSchema>;
@@ -59,7 +58,6 @@ export const AssetGalleryBlockSchema = z.object({
   type: z.literal("asset_gallery"),
   title: z.string().optional(),
   query: z.string().optional(),
-  actionLabel: z.string().optional(),
   items: z.array(AssetGalleryItemSchema),
 });
 export type AssetGalleryBlock = z.infer<typeof AssetGalleryBlockSchema>;

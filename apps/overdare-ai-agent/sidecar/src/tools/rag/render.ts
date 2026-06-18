@@ -58,7 +58,6 @@ type ToolRenderBlock =
       type: "asset_gallery";
       title?: string;
       query?: string;
-      actionLabel?: string;
       items: Array<{
         id?: string;
         title: string;
@@ -67,7 +66,6 @@ type ToolRenderBlock =
         thumbnailUrl?: string;
         previewUrl?: string;
         sourceUrl?: string;
-        insertValue?: string;
         metadata?: Array<{ key: string; value: string }>;
       }>;
     }
@@ -167,7 +165,6 @@ function buildAssetGalleryBlock(query: string, results: AssetResult[]): ToolRend
     thumbnailUrl: result.thumbnailUrl,
     previewUrl: result.previewUrl,
     sourceUrl: result.sourceUrl,
-    insertValue: result.assetId || undefined,
     metadata: [
       { key: "assetId", value: result.assetId },
       { key: "assetType", value: result.assetType },
@@ -183,44 +180,8 @@ function buildAssetGalleryBlock(query: string, results: AssetResult[]): ToolRend
     type: "asset_gallery",
     title: "OVERDARE Assets",
     query,
-    actionLabel: "Select an asset to add it to the scene",
     items,
   };
-}
-
-function buildAssetPreviewBlock(result: AssetResult): ToolRenderBlock[] {
-  const blocks: ToolRenderBlock[] = [
-    {
-      type: "key_value",
-      title: "Top asset",
-      items: [
-        { key: "title", value: result.title },
-        { key: "assetId", value: result.assetId },
-        { key: "assetType", value: result.assetType },
-        { key: "category", value: result.categoryId },
-        { key: "subcategory", value: result.subCategoryId },
-        { key: "score", value: String(result.score) },
-      ],
-    },
-  ];
-
-  if (nonEmpty(result.text)) {
-    blocks.push({
-      type: "text",
-      title: "Top asset details",
-      text: result.text,
-    });
-  }
-
-  if (result.keywords.length > 0) {
-    blocks.push({
-      type: "text",
-      title: "Top asset keywords",
-      text: result.keywords.join(", "),
-    });
-  }
-
-  return blocks;
 }
 
 export function buildSearchRender(args: { source: string; query: string }, results: RagResult[]): ToolRenderPayload {
@@ -236,15 +197,6 @@ export function buildSearchRender(args: { source: string; query: string }, resul
       }
       return normalizeAssetForRender(raw);
     });
-    const rows = assetResults
-      .slice(0, 10)
-      .map((entry) => [
-        clip(entry.title, 28),
-        clip(entry.assetType, 12),
-        clip(entry.categoryId, 18),
-        clip(entry.subCategoryId, 24),
-        clip(String(entry.score), 8),
-      ]);
     const galleryBlock = buildAssetGalleryBlock(args.query, assetResults);
     return {
       inputSummary: clip(`${args.source}: ${args.query}`, 100),
@@ -262,18 +214,7 @@ export function buildSearchRender(args: { source: string; query: string }, resul
         ...(assetResults.length === 0
           ? [{ type: "summary" as const, text: "No results found.", tone: "warning" as const }]
           : []),
-        ...(rows.length > 0
-          ? [
-              {
-                type: "table" as const,
-                title: "Assets",
-                columns: ["Title", "Type", "Category", "Subcategory", "Score"],
-                rows,
-              },
-            ]
-          : []),
         ...(galleryBlock ? [galleryBlock] : []),
-        ...(assetResults[0] ? buildAssetPreviewBlock(assetResults[0]) : []),
       ],
     };
   }
