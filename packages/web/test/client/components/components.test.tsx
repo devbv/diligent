@@ -114,6 +114,38 @@ test("question card always renders custom input row", () => {
   expect(html).toContain('aria-label="Reason"');
 });
 
+test("question card renders multi-select options as clear checkboxes", () => {
+  const html = renderToStaticMarkup(
+    <QuestionCard
+      request={{
+        questions: [
+          {
+            id: "next-steps",
+            header: "Next steps",
+            question: "Choose next steps",
+            options: [
+              { label: "Fix UI", description: "Recommended" },
+              { label: "Wait", description: "No changes" },
+            ],
+            allow_multiple: true,
+            is_secret: false,
+          },
+        ],
+      }}
+      answers={{ "next-steps": ["Fix UI"] }}
+      onAnswerChange={() => {}}
+      onSubmit={() => {}}
+      onCancel={() => {}}
+    />,
+  );
+
+  expect(html).toContain('type="checkbox"');
+  expect(html).toContain('checked=""');
+  expect(html).toContain("✓");
+  expect(html).not.toContain("[x]");
+  expect(html).not.toContain("[ ]");
+});
+
 test("modal renders dialog role", () => {
   const html = renderToStaticMarkup(
     <Modal title="Approval required" description="test">
