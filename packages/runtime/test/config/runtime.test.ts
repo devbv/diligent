@@ -211,7 +211,7 @@ describe("loadRuntimeConfig", () => {
     }
   });
 
-  it("loads zai auth from auth.jsonc and selects glm-5.1 when no model is configured", async () => {
+  it("loads zai auth from auth.jsonc and selects glm-5.2 when no model is configured", async () => {
     tmpRoot = await mkdtemp(join(tmpdir(), "diligent-runtime-zai-"));
     const paths = makePaths(tmpRoot);
     const isolatedHome = join(tmpRoot, ".isolated-home");
@@ -232,7 +232,7 @@ describe("loadRuntimeConfig", () => {
       expect(config.providerManager.hasKeyFor("zai")).toBe(true);
       expect(config.providerManager.getMaskedKey("zai")).toBe("zai-tes...");
       expect(config.model?.provider).toBe("zai");
-      expect(config.model?.id).toBe("glm-5.1");
+      expect(config.model?.id).toBe("glm-5.2");
     } finally {
       process.env.HOME = originalHome;
       process.env.USERPROFILE = originalUserProfile;

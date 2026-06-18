@@ -66,6 +66,13 @@ describe("resolveModel", () => {
     expect(model.provider).toBe("vertex");
     expect(model.supportsThinking).toBe(false);
   });
+
+  it("resolves GLM aliases to the current z.ai default", () => {
+    expect(resolveModel("glm").id).toBe("glm-5.2");
+    expect(resolveModel("glm-5").id).toBe("glm-5.2");
+    expect(resolveModel("glm5.2").id).toBe("glm-5.2");
+    expect(resolveModel("glm5.1").id).toBe("glm-5.1");
+  });
 });
 
 describe("model class annotations", () => {
@@ -145,6 +152,12 @@ describe("model class annotations", () => {
 
   it("vertex classes map correctly", () => {
     expect(KNOWN_MODELS.find((m) => m.id === "vertex-gemma-4-26b-it")?.modelClass).toBe("general");
+  });
+
+  it("z.ai classes map correctly", () => {
+    expect(KNOWN_MODELS.find((m) => m.id === "glm-5.2")?.modelClass).toBe("pro");
+    expect(KNOWN_MODELS.find((m) => m.id === "glm-5.2")?.supportsThinking).toBe(true);
+    expect(KNOWN_MODELS.find((m) => m.id === "glm-5.1")?.modelClass).toBe("general");
   });
 });
 

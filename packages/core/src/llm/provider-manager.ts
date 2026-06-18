@@ -40,7 +40,7 @@ export const DEFAULT_MODELS: Record<ProviderName, string> = {
   chatgpt: "chatgpt-5.5",
   gemini: "gemini-2.5-flash",
   vertex: "vertex-gemma-4-26b-it",
-  zai: "glm-5.1",
+  zai: "glm-5.2",
 };
 
 export const PROVIDER_HINTS: Record<ProviderName, { apiKeyUrl: string; apiKeyPlaceholder: string }> = {

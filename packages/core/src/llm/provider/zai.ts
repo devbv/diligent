@@ -11,7 +11,7 @@ import {
 } from "./openai-compatible";
 import { isContextOverflow } from "./openai-responses";
 
-const DEFAULT_ZAI_BASE_URL = "https://api.z.ai/api/coding/paas/v4";
+const DEFAULT_ZAI_BASE_URL = "https://api.z.ai/api/paas/v4";
 
 export function createZaiStream(apiKey?: string, baseUrl?: string): StreamFunction {
   return (model: Model, context: StreamContext, options: StreamOptions): EventStream<ProviderEvent, ProviderResult> => {
@@ -33,6 +33,10 @@ export function createZaiStream(apiKey?: string, baseUrl?: string): StreamFuncti
           stream: true,
           stream_options: { include_usage: true },
         };
+        if (model.supportsThinking && options.effort && options.effort !== "none") {
+          body.thinking = { type: "enabled" };
+          body.reasoning_effort = options.effort;
+        }
         const instructions = flattenSections(context.systemPrompt);
         if (instructions.length > 0) {
           body.messages = [{ role: "system", content: instructions }, ...(body.messages as unknown[])];

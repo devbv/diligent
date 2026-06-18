@@ -91,8 +91,8 @@ Practical notes:
 
 - configure with `auth/set` or `~/.diligent/auth.jsonc`
 - runtime stores the plain API key in the same auth store as other API-key providers
-- the default built-in model for this provider is `glm-5.1`
-- the default base URL is `https://api.z.ai/api/coding/paas/v4`
+- the default built-in model for this provider is `glm-5.2`
+- the default base URL is `https://api.z.ai/api/paas/v4`
 - environment fallback is supported through `ZAI_API_KEY`
 
 ## Vertex AI access-token flow
