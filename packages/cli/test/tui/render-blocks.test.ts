@@ -91,9 +91,9 @@ describe("renderToolPayload", () => {
       blocks: [
         {
           type: "asset_gallery",
-          title: "Assets",
+          title: "OVERDARE Assets",
           query: "fountain classic stone",
-          actionLabel: "Click a result to insert it",
+          actionLabel: "Select an asset to add it to the scene",
           items: [
             {
               id: "asset-fountain-1",
@@ -108,11 +108,11 @@ describe("renderToolPayload", () => {
     };
 
     const lines = renderToolPayload(payload);
-    expect(lines.some((line) => line.includes("Assets"))).toBe(true);
+    expect(lines.some((line) => line.includes("OVERDARE Assets"))).toBe(true);
     expect(lines.some((line) => line.includes('1 result for "fountain classic stone"'))).toBe(true);
     expect(lines.some((line) => line.includes("Classic Stone Fountain"))).toBe(true);
     expect(lines.some((line) => line.includes("[Free]"))).toBe(true);
-    expect(lines.some((line) => line.includes("Click a result to insert it"))).toBe(true);
+    expect(lines.some((line) => line.includes("Select an asset to add it to the scene"))).toBe(true);
   });
 
   test("keeps rendering when payload includes unknown block shape", () => {

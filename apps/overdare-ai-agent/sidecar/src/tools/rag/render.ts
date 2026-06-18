@@ -181,9 +181,9 @@ function buildAssetGalleryBlock(query: string, results: AssetResult[]): ToolRend
 
   return {
     type: "asset_gallery",
-    title: "Assets",
+    title: "OVERDARE Assets",
     query,
-    actionLabel: "Click a result to insert it",
+    actionLabel: "Select an asset to add it to the scene",
     items,
   };
 }

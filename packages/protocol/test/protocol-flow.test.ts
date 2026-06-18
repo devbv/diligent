@@ -478,9 +478,9 @@ describe("protocol/flow", () => {
         { type: "table", title: "Results", columns: ["Name", "Status"], rows: [["foo", "ok"]] },
         {
           type: "asset_gallery",
-          title: "Assets",
+          title: "OVERDARE Assets",
           query: "fountain classic stone",
-          actionLabel: "Click a result to insert it",
+          actionLabel: "Select an asset to add it to the scene",
           items: [
             {
               id: "asset-1",
