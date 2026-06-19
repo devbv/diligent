@@ -127,12 +127,12 @@ describe("file storage", () => {
 
   test("loads valid auth keys", async () => {
     const path = join(TEST_ROOT, "auth.jsonc");
-    await Bun.write(path, JSON.stringify({ anthropic: "sk-ant-123", openai: "sk-456", zai: "zai-789" }));
+    await Bun.write(path, JSON.stringify({ anthropic: "sk-ant-123", openai: "sk-456", "zai-coding-plan": "zai-789" }));
 
     const result = await loadAuthStore(authOptions(path, "file"));
     expect(result.anthropic).toBe("sk-ant-123");
     expect(result.openai).toBe("sk-456");
-    expect(result.zai).toBe("zai-789");
+    expect(result["zai-coding-plan"]).toBe("zai-789");
   });
 
   test("parses JSONC comments", async () => {

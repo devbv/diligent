@@ -45,7 +45,7 @@ export const DiligentConfigSchema = z
             baseUrl: z.string().url().optional(),
           })
           .optional(),
-        zai: z
+        "zai-coding-plan": z
           .object({
             apiKey: z.string().optional(),
             baseUrl: z.string().url().optional(),

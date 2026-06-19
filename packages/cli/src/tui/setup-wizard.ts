@@ -4,6 +4,7 @@ import type { AppConfig } from "../config";
 import {
   DEFAULT_MODELS,
   DEFAULT_PROVIDER,
+  PROVIDER_DISPLAY_NAMES,
   PROVIDER_HINTS,
   PROVIDER_NAMES,
   type ProviderName,
@@ -29,7 +30,7 @@ export function createSetupWizard(deps: SetupWizardDeps): SetupWizard {
   function wizardPickProvider(): Promise<ProviderName | null> {
     const ctx = deps.buildCommandContext();
     const items: ListPickerItem[] = PROVIDER_NAMES.map((p) => ({
-      label: p,
+      label: PROVIDER_DISPLAY_NAMES[p],
       description: deps.config.providerManager.hasKeyFor(p) ? "configured" : "no key",
       value: p,
     }));
@@ -41,8 +42,8 @@ export function createSetupWizard(deps: SetupWizardDeps): SetupWizard {
     const ctx = deps.buildCommandContext();
     const { apiKeyUrl: hint, apiKeyPlaceholder: placeholder } = PROVIDER_HINTS[provider];
     return ctx.app.prompt({
-      title: `${provider} API Key`,
-      message: `Enter your ${provider} API key (${hint})`,
+      title: `${PROVIDER_DISPLAY_NAMES[provider]} API Key`,
+      message: `Enter your ${PROVIDER_DISPLAY_NAMES[provider]} API key (${hint})`,
       placeholder,
       masked: true,
     });

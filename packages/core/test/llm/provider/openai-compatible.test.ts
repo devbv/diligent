@@ -1,4 +1,4 @@
-// @summary Contract tests for openai-compatible.ts shared helpers used by zai, vertex, and openai providers
+// @summary Contract tests for openai-compatible.ts shared helpers used by zai-coding-plan, vertex, and openai providers
 import { describe, expect, test } from "bun:test";
 import { EventStream } from "../../../src/event-stream";
 import {

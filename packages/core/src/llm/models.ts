@@ -142,7 +142,7 @@ export const KNOWN_MODELS: ModelDefinition[] = [
   },
   {
     id: "glm-5.2",
-    provider: "zai",
+    provider: "zai-coding-plan",
     contextWindow: 1_000_000,
     maxOutputTokens: 128_000,
     supportsThinking: true,
@@ -153,7 +153,7 @@ export const KNOWN_MODELS: ModelDefinition[] = [
   },
   {
     id: "glm-5.1",
-    provider: "zai",
+    provider: "zai-coding-plan",
     contextWindow: 200_000,
     maxOutputTokens: 128_000,
     supportsThinking: false,
@@ -388,7 +388,7 @@ export function resolveModel(modelId: string): Model {
   if (modelId.startsWith("glm-")) {
     return {
       id: modelId,
-      provider: "zai",
+      provider: "zai-coding-plan",
       contextWindow: 200_000,
       maxOutputTokens: 128_000,
       supportsThinking: false,

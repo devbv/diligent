@@ -90,7 +90,7 @@ describe("/provider command", () => {
     await providerCommand.handler("status", ctx);
 
     const output = lines.join("\n");
-    expect(output).toContain("anthropic");
+    expect(output).toContain("Anthropic");
     expect(output).toContain("configured");
     expect(output).toContain("sk-ant-...");
   });
@@ -111,16 +111,16 @@ describe("/provider command", () => {
 
     await providerCommand.handler("set openai", ctx);
 
-    expect(prompts).toEqual([{ title: "openai API Key" }]);
+    expect(prompts).toEqual([{ title: "OpenAI API Key" }]);
   });
 
-  test("set zai opens inline prompt", async () => {
+  test("set zai-coding-plan opens inline prompt", async () => {
     const pm = new ProviderManager({});
     const { ctx, prompts } = createMockContext(pm);
 
-    await providerCommand.handler("set zai", ctx);
+    await providerCommand.handler("set zai-coding-plan", ctx);
 
-    expect(prompts).toEqual([{ title: "zai API Key" }]);
+    expect(prompts).toEqual([{ title: "z.ai Coding Plan API Key" }]);
   });
 
   test("set without provider opens inline provider picker", async () => {

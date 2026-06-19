@@ -1,4 +1,4 @@
-// @summary z.ai provider using the OpenAI-compatible Chat Completions endpoint
+// @summary z.ai Coding Plan provider using the OpenAI-compatible Chat Completions endpoint
 import { EventStream } from "../../event-stream";
 import { isNetworkError } from "../errors";
 import { flattenSections } from "../system-sections";
@@ -11,9 +11,9 @@ import {
 } from "./openai-compatible";
 import { isContextOverflow } from "./openai-responses";
 
-const DEFAULT_ZAI_BASE_URL = "https://api.z.ai/api/paas/v4";
+const DEFAULT_ZAI_CODING_PLAN_BASE_URL = "https://api.z.ai/api/coding/paas/v4";
 
-export function createZaiStream(apiKey?: string, baseUrl?: string): StreamFunction {
+export function createZaiCodingPlanStream(apiKey?: string, baseUrl?: string): StreamFunction {
   return (model: Model, context: StreamContext, options: StreamOptions): EventStream<ProviderEvent, ProviderResult> => {
     const stream = new EventStream<ProviderEvent, ProviderResult>(
       (event) => event.type === "done" || event.type === "error",
@@ -26,7 +26,7 @@ export function createZaiStream(apiKey?: string, baseUrl?: string): StreamFuncti
 
     (async () => {
       try {
-        const resolvedApiKey = resolveZaiApiKey(apiKey);
+        const resolvedApiKey = resolveZaiCodingPlanApiKey(apiKey);
         const body: Record<string, unknown> = {
           model: model.id,
           messages: await buildOpenAICompatibleMessages(context.messages, context.cwd),
@@ -49,7 +49,7 @@ export function createZaiStream(apiKey?: string, baseUrl?: string): StreamFuncti
         if (options.maxTokens !== undefined) body.max_tokens = options.maxTokens;
         if (options.temperature !== undefined) body.temperature = options.temperature;
 
-        const response = await fetch(`${resolveZaiBaseUrl(baseUrl)}/chat/completions`, {
+        const response = await fetch(`${resolveZaiCodingPlanBaseUrl(baseUrl)}/chat/completions`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -62,9 +62,9 @@ export function createZaiStream(apiKey?: string, baseUrl?: string): StreamFuncti
 
         if (!response.ok) {
           const errorBody = (await response.text().catch(() => "")).trim();
-          throw classifyZaiError({
+          throw classifyZaiCodingPlanError({
             status: response.status,
-            message: errorBody || `z.ai API error (${response.status})`,
+            message: errorBody || `z.ai Coding Plan API error (${response.status})`,
           });
         }
 
@@ -98,7 +98,7 @@ export function createZaiStream(apiKey?: string, baseUrl?: string): StreamFuncti
 
         await handleChatCompletionsEvents(parseSse(), stream, model, options.signal);
       } catch (err) {
-        stream.push({ type: "error", error: classifyZaiError(err) });
+        stream.push({ type: "error", error: classifyZaiCodingPlanError(err) });
       }
     })();
 
@@ -106,7 +106,7 @@ export function createZaiStream(apiKey?: string, baseUrl?: string): StreamFuncti
   };
 }
 
-export function classifyZaiError(err: unknown): ProviderError {
+export function classifyZaiCodingPlanError(err: unknown): ProviderError {
   if (err instanceof ProviderError) return err;
   if (isNetworkError(err)) {
     return new ProviderError(
@@ -142,12 +142,14 @@ export function classifyZaiError(err: unknown): ProviderError {
   );
 }
 
-function resolveZaiApiKey(apiKey?: string): string {
-  const resolved = apiKey?.trim() || process.env.ZAI_API_KEY?.trim();
+function resolveZaiCodingPlanApiKey(apiKey?: string): string {
+  const resolved = apiKey?.trim() || process.env.ZAI_CODING_PLAN_API_KEY?.trim();
   if (resolved) return resolved;
-  throw new Error("z.ai API key is required. Set ZAI_API_KEY or pass apiKey to createZaiStream().");
+  throw new Error(
+    "z.ai Coding Plan API key is required. Set ZAI_CODING_PLAN_API_KEY or pass apiKey to createZaiCodingPlanStream().",
+  );
 }
 
-function resolveZaiBaseUrl(baseUrl?: string): string {
-  return (baseUrl ?? DEFAULT_ZAI_BASE_URL).replace(/\/+$/, "");
+function resolveZaiCodingPlanBaseUrl(baseUrl?: string): string {
+  return (baseUrl ?? DEFAULT_ZAI_CODING_PLAN_BASE_URL).replace(/\/+$/, "");
 }

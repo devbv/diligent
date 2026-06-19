@@ -211,8 +211,8 @@ describe("loadRuntimeConfig", () => {
     }
   });
 
-  it("loads zai auth from auth.jsonc and selects glm-5.2 when no model is configured", async () => {
-    tmpRoot = await mkdtemp(join(tmpdir(), "diligent-runtime-zai-"));
+  it("loads zai-coding-plan auth from auth.jsonc and selects glm-5.2 when no model is configured", async () => {
+    tmpRoot = await mkdtemp(join(tmpdir(), "diligent-runtime-zai-coding-plan-"));
     const paths = makePaths(tmpRoot);
     const isolatedHome = join(tmpRoot, ".isolated-home");
     await mkdir(paths.sessions, { recursive: true });
@@ -220,8 +220,14 @@ describe("loadRuntimeConfig", () => {
     await mkdir(paths.skills, { recursive: true });
     await mkdir(paths.images, { recursive: true });
     await mkdir(join(isolatedHome, ".diligent"), { recursive: true });
-    await writeFile(join(isolatedHome, ".diligent", "auth.jsonc"), JSON.stringify({ zai: "zai-test-key" }));
-    await writeFile(join(tmpRoot, ".diligent", "config.jsonc"), JSON.stringify({ provider: { zai: {} } }));
+    await writeFile(
+      join(isolatedHome, ".diligent", "auth.jsonc"),
+      JSON.stringify({ "zai-coding-plan": "zai-test-key" }),
+    );
+    await writeFile(
+      join(tmpRoot, ".diligent", "config.jsonc"),
+      JSON.stringify({ provider: { "zai-coding-plan": {} } }),
+    );
 
     const originalHome = process.env.HOME;
     const originalUserProfile = process.env.USERPROFILE;
@@ -229,9 +235,9 @@ describe("loadRuntimeConfig", () => {
     process.env.USERPROFILE = isolatedHome;
     try {
       const config = await loadRuntimeConfig(tmpRoot, paths);
-      expect(config.providerManager.hasKeyFor("zai")).toBe(true);
-      expect(config.providerManager.getMaskedKey("zai")).toBe("zai-tes...");
-      expect(config.model?.provider).toBe("zai");
+      expect(config.providerManager.hasKeyFor("zai-coding-plan")).toBe(true);
+      expect(config.providerManager.getMaskedKey("zai-coding-plan")).toBe("zai-tes...");
+      expect(config.model?.provider).toBe("zai-coding-plan");
       expect(config.model?.id).toBe("glm-5.2");
     } finally {
       process.env.HOME = originalHome;
