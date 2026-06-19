@@ -18,6 +18,7 @@
     "@diligent/runtime": "workspace:*",
     "@diligent/protocol": "workspace:*",
     "highlight.js": "^11.11.1",
+    "core-js": "^3.49.0",
     "marked": "^17.0.0",
     "marked-highlight": "^2.2.3",
     "react": "^19.0.0",
