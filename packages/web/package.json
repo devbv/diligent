@@ -17,7 +17,6 @@
     "@diligent/protocol": "workspace:*",
     "@diligent/runtime": "workspace:*",
     "@tauri-apps/plugin-notification": "^2",
-    "core-js": "^3.49.0",
     "highlight.js": "^11.11.1",
     "marked": "^17.0.0",
     "marked-highlight": "^2.2.3",
