@@ -11,6 +11,7 @@ import { PlanPanel } from "./components/PlanPanel";
 import { ProviderSettingsModal } from "./components/ProviderSettingsModal";
 import { Sidebar } from "./components/Sidebar";
 import { SteeringQueuePanel } from "./components/SteeringQueuePanel";
+import { Toast } from "./components/Toast";
 import { ToolSettingsModal } from "./components/ToolSettingsModal";
 import { createAgentNativeBridge, installAgentNativeBridgeMock } from "./lib/agent-native-bridge";
 import { getReconnectAttemptLimit } from "./lib/rpc-client";
@@ -284,19 +285,7 @@ export function App() {
         </Panel>
       </div>
 
-      {state.toast ? (
-        <div
-          className={`toast-animate fixed bottom-12 left-1/2 -translate-x-1/2 rounded-md border px-3 py-2 text-sm shadow-panel ${
-            state.toast.kind === "error"
-              ? "border-danger/40 bg-surface-default text-danger"
-              : "border-accent/40 bg-surface-default text-accent"
-          } ${state.toast.fatal ? "cursor-pointer" : ""}`}
-          onClick={state.toast.fatal ? () => dispatch({ type: "clear_toast" }) : undefined}
-        >
-          {state.toast.message}
-          {state.toast.fatal && <span className="ml-2 opacity-50">×</span>}
-        </div>
-      ) : null}
+      {state.toast ? <Toast toast={state.toast} onDismiss={() => dispatch({ type: "clear_toast" })} /> : null}
 
       {showProviderModal ? (
         <ProviderSettingsModal
