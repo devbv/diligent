@@ -26,6 +26,33 @@ function resetAdapter() {
 // Reset before each test sequence
 resetAdapter();
 
+test("thread identity notifications do not switch visible history without hydrate", () => {
+  resetAdapter();
+
+  const seeded = {
+    ...initialThreadState,
+    activeThreadId: "thread-old",
+    activeThreadCwd: "/old",
+    items: [
+      {
+        id: "old-user",
+        kind: "user" as const,
+        text: "old visible history",
+        images: [],
+        timestamp: 1,
+      },
+    ],
+  };
+
+  const next = reduce(seeded, {
+    method: "thread/resumed",
+    params: { threadId: "thread-new" },
+  });
+
+  expect(next.activeThreadId).toBe("thread-old");
+  expect(next.items).toBe(seeded.items);
+});
+
 test("merges item started/delta/completed into single assistant item", () => {
   resetAdapter();
   const started: DiligentServerNotification = {
