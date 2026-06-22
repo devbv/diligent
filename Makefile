@@ -3,13 +3,20 @@
 	       setup check-env config \
 	       web-dev web-build web-start \
 	       debug-dev debug-build \
+	       dev-agent dev-cross \
 	       check
 
 help:
 	@echo "Usage: make <target>"
 	@echo ""
 	@echo "Development:"
-	@echo "  dev             Install deps and run CLI"
+	@echo "  dev             Run the diligent CLI (interactive terminal coding agent;"
+	@echo "                  uses .diligent — dev/CI assistant, NOT the OVERDARE product)"
+	@echo "  dev-agent       Run the OVERDARE agent in dev (sidecar + Vite, local Studio;"
+	@echo "                  uses .overdare). STUDIO_HOST defaults to localhost"
+	@echo "                  [STUDIO_PORT=13377] [STUDIO_PROJECT_DIR=/path for editing]"
+	@echo "  dev-cross       Same as dev-agent but for a remote Studio (e.g. Windows):"
+	@echo "                  STUDIO_HOST=<ip> [STUDIO_PORT=13377] [STUDIO_PROJECT_DIR=/Volumes/...]"
 	@echo "  web-dev         Run web frontend dev server (Vite)"
 	@echo "  web-start       Run web backend server"
 	@echo "  debug-dev       Run debug-viewer dev server"
@@ -34,6 +41,15 @@ help:
 	@echo "  setup           Create .env from .env.example (won't overwrite)"
 	@echo "  check-env       Verify API keys are configured"
 	@echo "  config          Show current provider configuration"
+
+# 스토리지 네임스페이스 해석: 셸 env > .env.local > overdare(제품 기본).
+# (TS 런타임은 env 미설정 시 'diligent'로 갈리지만, 이 repo/exe 는 overdare 를 쓰므로
+#  진단 출력은 .env.local 값을 그대로 반영한다. bun 이 .env.local 을 로드하는 것과 동일 취지.)
+STORAGE_NS := $(shell ns="$${DILIGENT_STORAGE_NAMESPACE}"; \
+	if [ -z "$$ns" ] && [ -f .env.local ]; then \
+		ns=$$(grep -E '^[[:space:]]*DILIGENT_STORAGE_NAMESPACE=' .env.local | tail -1 | cut -d= -f2- | tr -d ' "'); \
+	fi; \
+	echo "$${ns:-overdare}")
 
 # --- Development ---
 
@@ -72,6 +88,19 @@ web-build: node_modules
 
 web-start: node_modules
 	bun run --cwd packages/web start
+
+# OVERDARE 에이전트(제품)를 dev 로 실행 — 같은 머신의 Studio 에 연결, .overdare 사용.
+# (make dev 는 diligent CLI 개발 도우미이고, 이건 OVERDARE 에이전트 자체다.)
+#   make dev-agent [STUDIO_PORT=13377] [STUDIO_PROJECT_DIR=/path/to/StudioProject]
+# STUDIO_HOST 미지정 시 localhost. 같은 스크립트를 쓰되 호스트만 로컬로 둔다.
+dev-agent: node_modules
+	@STUDIO_HOST="$(or $(STUDIO_HOST),localhost)" STUDIO_PORT="$(STUDIO_PORT)" STUDIO_PROJECT_DIR="$(STUDIO_PROJECT_DIR)" bash scripts/dev-cross-studio.sh
+
+# 위와 동일하되 원격 Studio(예: Windows)용 — STUDIO_HOST 를 명시해야 한다.
+#   make dev-cross STUDIO_HOST=192.168.0.42 [STUDIO_PORT=13377] [STUDIO_PROJECT_DIR=/Volumes/StudioProject]
+# 값은 .env.local 에서도 읽으므로 인자 없이 `make dev-cross` 도 가능.
+dev-cross: node_modules
+	@STUDIO_HOST="$(STUDIO_HOST)" STUDIO_PORT="$(STUDIO_PORT)" STUDIO_PROJECT_DIR="$(STUDIO_PROJECT_DIR)" bash scripts/dev-cross-studio.sh
 
 # --- Debug Viewer ---
 
@@ -142,10 +171,11 @@ check-env:
 	else \
 		echo "  OpenAI:    not set"; \
 	fi; \
-	if [ -n "$$DILIGENT_MODEL" ]; then \
-		echo "  Model:     $$DILIGENT_MODEL"; \
+	model=$$(grep -hoE '"model"[[:space:]]*:[[:space:]]*"[^"]*"' "$$HOME/.$(STORAGE_NS)/config.jsonc" ".$(STORAGE_NS)/config.jsonc" 2>/dev/null | tail -1 | sed -E 's/.*"([^"]*)"$$/\1/'); \
+	if [ -n "$$model" ]; then \
+		echo "  Model:     $$model (from config.jsonc)"; \
 	else \
-		echo "  Model:     (default: claude-sonnet-4-20250514)"; \
+		echo "  Model:     (set 'model' in config.jsonc to override default)"; \
 	fi; \
 	if [ $$has_any -eq 0 ]; then \
 		echo ""; \
@@ -157,9 +187,10 @@ config:
 	@echo "=== Environment ==="
 	@if [ -n "$$ANTHROPIC_API_KEY" ]; then echo "  ANTHROPIC_API_KEY: set"; else echo "  ANTHROPIC_API_KEY: (empty)"; fi
 	@if [ -n "$$OPENAI_API_KEY" ]; then echo "  OPENAI_API_KEY: set"; else echo "  OPENAI_API_KEY: (empty)"; fi
-	@if [ -n "$$DILIGENT_MODEL" ]; then echo "  DILIGENT_MODEL: $$DILIGENT_MODEL"; else echo "  DILIGENT_MODEL: (not set)"; fi
+	@model=$$(grep -hoE '"model"[[:space:]]*:[[:space:]]*"[^"]*"' "$$HOME/.$(STORAGE_NS)/config.jsonc" ".$(STORAGE_NS)/config.jsonc" 2>/dev/null | tail -1 | sed -E 's/.*"([^"]*)"$$/\1/'); \
+	if [ -n "$$model" ]; then echo "  model (config.jsonc): $$model"; else echo "  model (config.jsonc): (not set)"; fi
 	@echo ""
-	@echo "=== Config Files ==="
+	@echo "=== Config Files (namespace: $(STORAGE_NS)) ==="
 	@if [ -f .env ]; then echo "  .env: exists"; else echo "  .env: missing (run: make setup)"; fi
-	@if [ -f .diligent/config.jsonc ]; then echo "  .diligent/config.jsonc (project): exists"; else echo "  .diligent/config.jsonc (project): none"; fi
-	@if [ -f "$HOME/.diligent/config.jsonc" ]; then echo "  ~/.diligent/config.jsonc (global): exists"; else echo "  ~/.diligent/config.jsonc (global): none"; fi
+	@if [ -f ".$(STORAGE_NS)/config.jsonc" ]; then echo "  .$(STORAGE_NS)/config.jsonc (project): exists"; else echo "  .$(STORAGE_NS)/config.jsonc (project): none"; fi
+	@if [ -f "$$HOME/.$(STORAGE_NS)/config.jsonc" ]; then echo "  ~/.$(STORAGE_NS)/config.jsonc (global): exists"; else echo "  ~/.$(STORAGE_NS)/config.jsonc (global): none"; fi
