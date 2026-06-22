@@ -395,6 +395,26 @@ export function useAppState({
       setShowProviderModal(true);
     });
   }, [providerMgr]);
+  const handleProviderModalClose = useCallback(() => {
+    setShowProviderModal(false);
+    setFocusedProvider(null);
+    setOauthError(null);
+  }, []);
+  const handleProviderOAuthStart = useCallback(
+    async (provider: string): Promise<{ authUrl: string }> => {
+      setOauthPending(true);
+      setOauthError(null);
+      const result = await providerMgr.handleOAuthStart(provider);
+      return result;
+    },
+    [providerMgr],
+  );
+  const handleProviderOAuthCancel = useCallback(
+    async (provider: string): Promise<void> => {
+      await providerMgr.handleOAuthCancel(provider);
+    },
+    [providerMgr],
+  );
   const approvalPrompt = useMemo(
     () =>
       serverRequests.approvalPrompt?.request.method === DILIGENT_SERVER_REQUEST_METHODS.APPROVAL_REQUEST
@@ -494,6 +514,9 @@ export function useAppState({
     handleQuestionCancel,
     handleOpenProviders,
     handleQuickConnectChatGPT,
+    handleProviderModalClose,
+    handleProviderOAuthStart,
+    handleProviderOAuthCancel,
     approvalPrompt,
     questionPrompt,
     loadChildThread,
