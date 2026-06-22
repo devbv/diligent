@@ -29,7 +29,7 @@ Check whether the request corresponds to any of these `overdare-ui-templates` te
 
 **Step 2 — MUST branch as follows. No exceptions.**
 
-- **If the request matches (or is similar to) an official template above → you MUST invoke the `overdare-ui-templates` skill and follow it instead of starting here.** Do NOT build the matching UI directly from this skill. `overdare-ui-templates` owns template selection, the mandatory `AskQuestion` confirmation flow, and `user_confirmed_spec`; it will call back into `ui-generator` for the actual GUI work.
+- **If the request matches (or is similar to) an official template above → you MUST invoke the `overdare-ui-templates` skill and follow it instead of starting here.** Do NOT build the matching UI directly from this skill. `overdare-ui-templates` owns template selection, the mandatory `request_user_input` confirmation flow, and `user_confirmed_spec`; it will call back into `ui-generator` for the actual GUI work.
 - **If the request does NOT match any official template → handle it with this skill (`ui-generator`) as normal.** Examples of no-template cases: custom/bespoke layouts, health/stamina/cooldown bars not covered by a template, quick slots, message toasts, mobile action button clusters, world-space GUI (nameplates, signs, floating labels), and ad-hoc panels with no official template equivalent.
 - **If it is a mix** (part matches a template, part does not): the matching part MUST go through `overdare-ui-templates`; only the genuinely template-less part is handled directly here.
 
@@ -694,4 +694,3 @@ Ask a short question when the UI type, target screen, or desired approach would 
 - Use strong contrast and large touch targets.
 - Create stable hierarchy names before wiring scripts.
 - Avoid dynamic runtime UI creation unless the UI truly needs to be generated during gameplay.
-

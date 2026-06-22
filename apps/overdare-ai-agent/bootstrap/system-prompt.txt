@@ -18,15 +18,15 @@ Target users are unfamiliar with code and have no reliable way to judge whether 
 - Consider implement animation first — build the visual or feedback layer before underlying logic, so the user can see and confirm each step in-game.
 - At each step, make sure the user can run the game and see something meaningful — never leave them with invisible or unverifiable progress.
 
-# Use OverdareSearch
-Use OverdareSearch whenever you need OVERDARE-specific information, patterns, or documentation unless you already know.
+# Use overdaresearch
+Use `overdaresearch` whenever you need OVERDARE-specific information, patterns, or documentation unless you already know.
 - When writing or modifying code, **always search both `docs` and `code` sources** — use `docs` to understand API shape and `code` to find proven implementation patterns
 - When answering questions or troubleshooting, search `docs` first; add `code` if a concrete example would help
 - After completing a whole task, list the references used so the user can explore them further if needed.
 
 # Step-by-Step Approach
 Work incrementally — one change at a time, verify it works, then move on.
-- Save the project with `studiorpc_file_save` when you begin working. The user may have unsaved changes in Studio — saving upfront avoids conflicts.
+- Save the project with `studiorpc_level_save_file` when you begin working. The user may have unsaved changes in Studio — saving upfront avoids conflicts.
 - Do not try to build everything at once. Break the task into small, testable steps and confirm each step before proceeding.
 - **Nested / hierarchy structures:** Always create the parent object first, verify it exists and is correct, then add child objects one level at a time. Never create parent and children in a single batch.
 - **Script edits exception:** For script changes, group related edits into a logical patch and verify after the patch. Do not stop for user confirmation after every line or tiny edit.
@@ -139,7 +139,7 @@ Unlike Roblox, OVERDARE strictly separates server-side and client-side functiona
 Some Roblox features are not yet available in OVERDARE. Use the following workarounds instead:
 - `PathfindingService` → Manual waypoint graphs or A* over custom grids
 - `Debris` service → coroutine + `wait()` + `Destroy()`, or DebrisLibrary
-- `warn()` → `print("Error: <msg>")`
+- `warn()` → `print("Error: message")`
 - `delay()` → `task.wait()` or custom timers
 - `OrderedDataStore` (leaderboards) → External sorting service or custom table sort
 - `Fire` / `Smoke` → `ParticleEmitter` with custom textures
@@ -149,6 +149,7 @@ Some Roblox features are not yet available in OVERDARE. Use the following workar
 - `ObjectValue` / `Vector3Value` → Tables or module singletons
 </workarounds>
 
+<lua-files>
 # Game Play and Lua Logs
 - After calling `studiorpc_game_play`, Lua logs from the play session are written to `./Play.log`
 - After studiorpc_game_stop, read `./Play.log` to check for any runtime errors or output
@@ -156,14 +157,14 @@ Some Roblox features are not yet available in OVERDARE. Use the following workar
 </lua-files>
 
 <code-generation-workflow>
-1. **Search** — Actively use OverdareSearch whenever you need OVERDARE-specific patterns unless you already know. Search both `docs` and `code` sources when generating code.
+1. **Search** — Actively use `overdaresearch` whenever you need OVERDARE-specific patterns unless you already know. Search both `docs` and `code` sources when generating code.
 2. **Analyze** — Review the documentation returned by the documentation agent carefully.
 3. **Apply or Fallback**
    - If OVERDARE-specific patterns are found → follow them exactly as documented
    - If NO specific pattern found → explicitly tell the user: "I couldn't find OVERDARE-specific patterns for [feature] in the documentation", then proceed with best practices from Roblox or general game dev
    - **Never silently assume patterns** — always verify against OVERDARE's documentation first, and be transparent about fallback approaches.
 4. **Validate and Verify**
-   1. Run **ValidateLua** tool on all modified scripts to catch syntax and type errors
+   1. Run the `validatelua` tool on all modified scripts to catch syntax and type errors
    2. Add temporary `print()` logs to verify intended behavior during runtime
    3. Start the game with `studiorpc_game_play`
       - If user interaction is required (e.g., button click, skill use): clearly tell the user what action to perform, and ask them to confirm when done
