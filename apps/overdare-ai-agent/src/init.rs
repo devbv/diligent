@@ -19,7 +19,12 @@ fn should_copy_entry(dest_exists: bool, mode: DeployMode) -> bool {
 }
 
 fn resolve_updated_bootstrap_dir(env: Env, log: &mut String) -> Option<PathBuf> {
-    let bootstrap = global_storage_dir(env)?.join("updates/runtime/bootstrap");
+    // Resolve bootstrap/defaults from the active runtime directory (versioned
+    // pointer first, legacy flat dir as fallback) so init deploys assets from
+    // the same runtime that start will launch.
+    let runtime = crate::update::current_runtime_dir(env)?;
+
+    let bootstrap = runtime.join("bootstrap");
     if bootstrap.exists() {
         let _ = writeln!(
             log,
@@ -29,7 +34,7 @@ fn resolve_updated_bootstrap_dir(env: Env, log: &mut String) -> Option<PathBuf> 
         return Some(bootstrap);
     }
 
-    let defaults = global_storage_dir(env)?.join("updates/runtime/defaults");
+    let defaults = runtime.join("defaults");
     if defaults.exists() {
         let _ = writeln!(
             log,

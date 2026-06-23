@@ -143,7 +143,7 @@ fn run_init(selection: &EnvSelection, args: Vec<String>) -> Result<(), String> {
 }
 
 fn run_webserver(selection: &EnvSelection, args: Vec<String>) -> Result<(), String> {
-    let options = webserver::parse_args(&args, selection.env)?;
+    let options = webserver::parse_args(&args, selection)?;
     let runtime = tokio::runtime::Runtime::new()
         .map_err(|e| format!("failed to create tokio runtime: {e}"))?;
     let running = runtime.block_on(webserver::start_foreground(options))?;

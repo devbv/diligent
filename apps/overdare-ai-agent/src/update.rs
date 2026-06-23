@@ -62,8 +62,270 @@ fn updates_dir(env: Env) -> Option<PathBuf> {
     global_storage_dir(env).map(|g| g.join("updates"))
 }
 
-fn runtime_dir(env: Env) -> Option<PathBuf> {
+/// Legacy flat runtime directory (`updates/runtime`). Kept as a fallback for
+/// installs that predate the versioned layout.
+fn legacy_runtime_dir(env: Env) -> Option<PathBuf> {
     updates_dir(env).map(|u| u.join("runtime"))
+}
+
+/// Versioned runtime directory for a specific version, e.g.
+/// `updates/runtime-v1.2.3`.
+fn runtime_version_dir(env: Env, version: &str) -> Option<PathBuf> {
+    updates_dir(env).map(|u| u.join(format!("runtime-v{version}")))
+}
+
+/// Path to the active-version pointer file (`updates/runtime-current.json`).
+fn runtime_current_metadata_path(env: Env) -> Option<PathBuf> {
+    updates_dir(env).map(|u| u.join("runtime-current.json"))
+}
+
+fn sidecar_bin_name() -> &'static str {
+    if cfg!(windows) {
+        "diligent-web-server.exe"
+    } else {
+        "diligent-web-server"
+    }
+}
+
+/// A directory has a usable runtime layout when it contains both the sidecar
+/// binary and the bundled web client.
+fn runtime_layout_exists(dir: &Path) -> bool {
+    dir.join(sidecar_bin_name()).exists() && dir.join("dist/client").exists()
+}
+
+/// Active-version pointer. Holds exactly one version — the one the next
+/// no-pin `start` launches. It is not a list and does not track previous
+/// versions; on-disk directories and live processes are the source of truth
+/// for "what exists" and "what is running".
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuntimeCurrent {
+    pub version: String,
+    pub dir: String,
+    pub sha256: String,
+    pub updated_at: String,
+}
+
+/// Reject a pointer `dir` that is not a bare directory name. This blocks path
+/// traversal and absolute paths from steering runtime resolution outside the
+/// updates root.
+fn is_valid_pointer_dir(dir: &str) -> bool {
+    !dir.is_empty()
+        && !dir.contains('/')
+        && !dir.contains('\\')
+        && !dir.split(['/', '\\']).any(|c| c == "..")
+        && dir != "."
+        && dir != ".."
+}
+
+/// Read and validate the active pointer. Returns `Ok(None)` when the file is
+/// absent (a fresh or legacy install). A malformed or out-of-bounds pointer is
+/// an error so callers can decide whether to fall back to the legacy layout.
+fn read_runtime_current(env: Env) -> Result<Option<RuntimeCurrent>, String> {
+    let path = match runtime_current_metadata_path(env) {
+        Some(p) => p,
+        None => return Ok(None),
+    };
+    let content = match fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(format!("read runtime-current.json: {e}")),
+    };
+    let parsed: RuntimeCurrent = serde_json::from_str(&content)
+        .map_err(|e| format!("parse runtime-current.json: {e}"))?;
+    if !is_valid_pointer_dir(&parsed.dir) {
+        return Err(format!(
+            "runtime-current.json points at an invalid dir: {}",
+            parsed.dir
+        ));
+    }
+    Ok(Some(parsed))
+}
+
+/// Atomically write the active pointer via temp-file + rename so a crash
+/// mid-write never leaves a half-written pointer.
+fn write_runtime_current_atomic(env: Env, current: &RuntimeCurrent) -> Result<(), String> {
+    let path =
+        runtime_current_metadata_path(env).ok_or("cannot resolve runtime-current.json path")?;
+    let tmp = path.with_file_name("runtime-current.json.tmp");
+    let json = serde_json::to_string_pretty(current)
+        .map(|json| format!("{json}\n"))
+        .map_err(|e| format!("serialize runtime-current.json: {e}"))?;
+    fs::write(&tmp, json).map_err(|e| format!("write runtime-current.json.tmp: {e}"))?;
+    retry_fs_op("finalize runtime-current.json", || fs::rename(&tmp, &path))?;
+    Ok(())
+}
+
+/// Resolve the active runtime directory used by no-pin `start` and by `init`.
+///
+/// Order: valid pointer with a usable layout -> legacy flat `updates/runtime`.
+/// A corrupt or stale pointer falls through to the legacy layout rather than
+/// failing, so an existing install stays bootable.
+pub fn current_runtime_dir(env: Env) -> Option<PathBuf> {
+    if let Some(current) = read_runtime_current(env).ok().flatten() {
+        let dir = updates_dir(env)?.join(&current.dir);
+        if runtime_layout_exists(&dir) {
+            return Some(dir);
+        }
+    }
+    let legacy = legacy_runtime_dir(env)?;
+    runtime_layout_exists(&legacy).then_some(legacy)
+}
+
+/// True when `dir` is the directory the active pointer currently resolves to.
+/// Used to avoid deleting a runtime that may still be in use.
+fn is_current_runtime(env: Env, dir: &Path) -> bool {
+    current_runtime_dir(env).is_some_and(|c| c.as_path() == dir)
+}
+
+/// A freshly extracted bundle must contain the sidecar and web client before we
+/// promote it to a versioned runtime directory.
+fn validate_runtime_layout(dir: &Path) -> Result<(), String> {
+    if runtime_layout_exists(dir) {
+        Ok(())
+    } else {
+        Err(format!(
+            "runtime bundle is missing the sidecar binary or dist/client under {}",
+            dir.display()
+        ))
+    }
+}
+
+/// Promote a validated staging directory to `runtime-v<version>` beside the
+/// active runtime, then atomically switch the pointer. The previously active
+/// version is never removed here — only stale, non-active leftovers are.
+fn finalize_runtime_install(
+    env: Env,
+    version: &str,
+    sha256: &str,
+    staging: &Path,
+) -> Result<(), String> {
+    let updates = updates_dir(env).ok_or("cannot resolve updates dir")?;
+    let target_name = format!("runtime-v{version}");
+    let target = updates.join(&target_name);
+
+    if target.exists() {
+        if is_current_runtime(env, &target) {
+            // Re-publish of the active version. The directory may be in use by a
+            // running sidecar, so never delete it; drop staging and just refresh
+            // the pointer below.
+            let _ = fs::remove_dir_all(staging);
+        } else {
+            // Stale or incomplete leftover from a previously interrupted update.
+            retry_fs_op("remove previous incomplete target runtime", || {
+                fs::remove_dir_all(&target)
+            })?;
+            retry_fs_op("move staging to versioned runtime", || {
+                fs::rename(staging, &target)
+            })?;
+        }
+    } else {
+        retry_fs_op("move staging to versioned runtime", || {
+            fs::rename(staging, &target)
+        })?;
+    }
+
+    write_runtime_current_atomic(
+        env,
+        &RuntimeCurrent {
+            version: version.to_string(),
+            dir: target_name,
+            sha256: sha256.to_string(),
+            updated_at: chrono::Local::now().to_rfc3339(),
+        },
+    )
+}
+
+/// All installed `runtime-v*` directories except the active one. In-use
+/// filtering is applied separately and is platform-specific. The legacy flat
+/// `runtime` directory is never a candidate.
+#[cfg_attr(not(any(windows, test)), allow(dead_code))]
+fn cleanup_candidate_dirs(env: Env) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    let updates = match updates_dir(env) {
+        Some(u) => u,
+        None => return out,
+    };
+    let current = current_runtime_dir(env);
+    let entries = match fs::read_dir(&updates) {
+        Ok(e) => e,
+        Err(_) => return out,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let is_versioned = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|n| n.starts_with("runtime-v"))
+            .unwrap_or(false);
+        if !is_versioned {
+            continue;
+        }
+        if current.as_deref() == Some(path.as_path()) {
+            continue;
+        }
+        out.push(path);
+    }
+    out
+}
+
+/// Windows in-use probe: open the sidecar binary with an exclusive (no-share)
+/// handle. A running process holds the image open, so the exclusive open fails
+/// with a sharing violation — report in-use. Any other open error is also
+/// treated as in-use so cleanup stays conservative (best-effort).
+#[cfg(windows)]
+fn runtime_in_use(dir: &Path) -> bool {
+    use std::os::windows::fs::OpenOptionsExt;
+    let bin = dir.join(sidecar_bin_name());
+    if !bin.exists() {
+        return false;
+    }
+    fs::OpenOptions::new()
+        .read(true)
+        .share_mode(0)
+        .open(&bin)
+        .is_err()
+}
+
+/// Best-effort cleanup of idle, non-active runtime directories. Runs after the
+/// pointer switch and never fails the update. Never deletes the active runtime
+/// or a version still in use.
+///
+/// Windows uses a probe-before-delete check (exclusive-open) and skips the whole
+/// directory if the version is in use — `remove_dir_all` is not atomic, so
+/// starting to delete and hitting a lock partway through could corrupt a dir.
+/// mac/Linux are not targeted by Studio yet; POSIX allows unlinking files held
+/// by a running process, so destructive cleanup is intentionally not run there
+/// until explicit in-use detection exists.
+fn cleanup_old_runtimes(env: Env, log: &mut String) {
+    #[cfg(not(windows))]
+    {
+        let _ = (env, log);
+    }
+    #[cfg(windows)]
+    {
+        for path in cleanup_candidate_dirs(env) {
+            let name = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("<runtime>")
+                .to_string();
+            if runtime_in_use(&path) {
+                let _ = writeln!(log, "[update] Keeping in-use runtime {name}");
+                continue;
+            }
+            match fs::remove_dir_all(&path) {
+                Ok(_) => {
+                    let _ = writeln!(log, "[update] Removed old runtime {name}");
+                }
+                Err(e) => {
+                    let _ = writeln!(log, "[update] Skipped cleanup of {name}: {e}");
+                }
+            }
+        }
+    }
 }
 
 fn current_platform() -> &'static str {
@@ -189,18 +451,10 @@ fn resolve_manifest_url(selection: &EnvSelection) -> String {
 }
 
 fn runtime_bootstrap_required(env: Env) -> bool {
-    let runtime = match runtime_dir(env) {
-        Some(path) => path,
-        None => return true,
-    };
-    let sidecar_name = if cfg!(windows) {
-        "diligent-web-server.exe"
-    } else {
-        "diligent-web-server"
-    };
-    let has_sidecar = runtime.join(sidecar_name).exists();
-    let has_dist = runtime.join("dist/client").exists();
-    !(has_sidecar && has_dist)
+    // `current_runtime_dir` already enforces the sidecar + dist/client layout
+    // (versioned pointer first, legacy flat dir as fallback), so a resolvable
+    // active runtime means no bootstrap is required.
+    current_runtime_dir(env).is_none()
 }
 
 fn should_download_update(
@@ -251,10 +505,38 @@ where
     Err(format!("{label}: unexpected retry state"))
 }
 
-pub fn installed_version(env: Env) -> Option<InstalledVersion> {
-    let path = updates_dir(env)?.join("runtime/version.json");
-    let content = fs::read_to_string(&path).ok()?;
+pub fn installed_version_at(dir: &Path) -> Option<InstalledVersion> {
+    let content = fs::read_to_string(dir.join("version.json")).ok()?;
     serde_json::from_str(&content).ok()
+}
+
+pub fn installed_version(env: Env) -> Option<InstalledVersion> {
+    installed_version_at(&current_runtime_dir(env)?)
+}
+
+/// Resolve the runtime directory `start` should launch from.
+///
+/// With a pinned version, resolve that exact installed version directory and
+/// fail clearly when it is not installed — never fall back to a different
+/// version. Without a pin, use the active pointer (then legacy fallback).
+pub fn resolve_runtime_dir(selection: &EnvSelection) -> Result<PathBuf, String> {
+    let env = selection.env;
+    if let Some(version) = selection.pinned_version.as_deref() {
+        let dir = runtime_version_dir(env, version).ok_or("cannot resolve updates dir")?;
+        if runtime_layout_exists(&dir) {
+            return Ok(dir);
+        }
+        return Err(format!(
+            "Pinned runtime v{version} is not installed for env '{env_str}'. Run 'overdare-ai-agent --agent-env={env_str}@{version} init' first.",
+            env_str = env.as_str(),
+        ));
+    }
+    current_runtime_dir(env).ok_or_else(|| {
+        format!(
+            "No runtime installed for env '{env_str}'. Run 'overdare-ai-agent --agent-env={env_str} init' first.",
+            env_str = env.as_str(),
+        )
+    })
 }
 
 pub fn runtime_installed(env: Env) -> bool {
@@ -564,7 +846,7 @@ pub fn run_with_progress(
         return Err("Downloaded bundle failed SHA256 verification".into());
     }
 
-    let staging = updates.join("runtime_staging");
+    let staging = updates.join(format!("runtime_staging_{}", fetched.version));
     report_progress(
         &mut progress,
         UpdateProgress::Extracting {
@@ -583,6 +865,10 @@ pub fn run_with_progress(
             }
         }
     }
+
+    validate_runtime_layout(&staging).inspect_err(|_| {
+        let _ = fs::remove_dir_all(&staging);
+    })?;
 
     report_progress(
         &mut progress,
@@ -603,12 +889,20 @@ pub fn run_with_progress(
     )
     .map_err(|e| format!("write staging version.json: {e}"))?;
 
-    let runtime = runtime_dir(selection.env).ok_or("cannot resolve runtime dir")?;
-    if runtime.exists() {
-        retry_fs_op("remove old runtime", || fs::remove_dir_all(&runtime))?;
-    }
-    retry_fs_op("move staging to runtime", || fs::rename(&staging, &runtime))?;
+    // Install beside the active runtime and atomically switch the pointer. The
+    // previously active runtime directory is intentionally left in place so a
+    // running sidecar is never deleted mid-update.
+    finalize_runtime_install(
+        selection.env,
+        &fetched.version,
+        &fetched.sha256,
+        &staging,
+    )?;
     let _ = fs::remove_file(&zip_path);
+
+    // Best-effort, runs after the pointer switch so it can never fail the
+    // update. Reclaims idle old versions; in-use and active dirs are preserved.
+    cleanup_old_runtimes(selection.env, log);
 
     let _ = writeln!(log, "[update] Updated runtime to v{}", fetched.version);
     report_progress(
@@ -859,6 +1153,240 @@ mod tests {
             assert!(super::resolve_manifest_url(&prod).contains("update-manifest-prod.json"));
             let dev = EnvSelection::latest(Env::Dev);
             assert!(super::resolve_manifest_url(&dev).contains("update-manifest-dev.json"));
+        });
+    }
+
+    use super::{
+        current_runtime_dir, installed_version, resolve_runtime_dir, runtime_bootstrap_required,
+        sidecar_bin_name, write_runtime_current_atomic, RuntimeCurrent,
+    };
+    use std::path::Path;
+
+    fn write_runtime_layout(dir: &Path, version: &str) {
+        fs::create_dir_all(dir.join("dist/client")).expect("create dist/client");
+        fs::write(dir.join(sidecar_bin_name()), b"#!/bin/sh\n").expect("write sidecar");
+        fs::write(
+            dir.join("version.json"),
+            format!("{{\"version\":\"{version}\",\"applied_at\":\"t\",\"sha256\":\"deadbeef\"}}\n"),
+        )
+        .expect("write version.json");
+    }
+
+    fn pointer(version: &str) -> RuntimeCurrent {
+        RuntimeCurrent {
+            version: version.to_string(),
+            dir: format!("runtime-v{version}"),
+            sha256: "deadbeef".to_string(),
+            updated_at: "t".to_string(),
+        }
+    }
+
+    #[test]
+    fn current_runtime_dir_uses_valid_pointer() {
+        with_temp_home("current-pointer", |home| {
+            let vdir = home.join(".overdare/updates/runtime-v1.2.4");
+            write_runtime_layout(&vdir, "1.2.4");
+            write_runtime_current_atomic(Env::Prod, &pointer("1.2.4")).expect("write pointer");
+            assert_eq!(current_runtime_dir(Env::Prod), Some(vdir));
+        });
+    }
+
+    #[test]
+    fn current_runtime_dir_falls_back_to_legacy_when_no_pointer() {
+        with_temp_home("legacy-fallback-dir", |home| {
+            let legacy = home.join(".overdare/updates/runtime");
+            write_runtime_layout(&legacy, "1.0.0");
+            assert_eq!(current_runtime_dir(Env::Prod), Some(legacy));
+        });
+    }
+
+    #[test]
+    fn current_runtime_dir_falls_back_when_pointer_target_missing() {
+        with_temp_home("stale-pointer", |home| {
+            let updates = home.join(".overdare/updates");
+            let legacy = updates.join("runtime");
+            write_runtime_layout(&legacy, "1.0.0");
+            // Pointer references a version dir that was never installed.
+            fs::write(
+                updates.join("runtime-current.json"),
+                "{\"version\":\"9.9.9\",\"dir\":\"runtime-v9.9.9\",\"sha256\":\"x\",\"updated_at\":\"t\"}\n",
+            )
+            .expect("write stale pointer");
+            assert_eq!(current_runtime_dir(Env::Prod), Some(legacy));
+        });
+    }
+
+    #[test]
+    fn current_runtime_dir_rejects_path_traversal_pointer() {
+        with_temp_home("traversal-pointer", |home| {
+            let updates = home.join(".overdare/updates");
+            fs::create_dir_all(&updates).expect("create updates");
+            fs::write(
+                updates.join("runtime-current.json"),
+                "{\"version\":\"9\",\"dir\":\"../evil\",\"sha256\":\"x\",\"updated_at\":\"t\"}\n",
+            )
+            .expect("write traversal pointer");
+            // No legacy install either -> nothing resolvable, never escapes updates.
+            assert_eq!(current_runtime_dir(Env::Prod), None);
+        });
+    }
+
+    #[test]
+    fn installed_version_reads_from_pointer_dir() {
+        with_temp_home("installed-version-pointer", |home| {
+            let vdir = home.join(".overdare/updates/runtime-v2.0.0");
+            write_runtime_layout(&vdir, "2.0.0");
+            write_runtime_current_atomic(Env::Prod, &pointer("2.0.0")).expect("write pointer");
+            assert_eq!(
+                installed_version(Env::Prod).map(|v| v.version),
+                Some("2.0.0".to_string())
+            );
+        });
+    }
+
+    #[test]
+    fn runtime_bootstrap_required_toggles_with_layout() {
+        with_temp_home("bootstrap-required", |home| {
+            assert!(runtime_bootstrap_required(Env::Prod));
+            let legacy = home.join(".overdare/updates/runtime");
+            write_runtime_layout(&legacy, "1.0.0");
+            assert!(!runtime_bootstrap_required(Env::Prod));
+        });
+    }
+
+    #[test]
+    fn finalize_install_keeps_previous_version() {
+        with_temp_home("finalize-keeps-old", |home| {
+            let updates = home.join(".overdare/updates");
+            let v1 = updates.join("runtime-v1.0.0");
+            write_runtime_layout(&v1, "1.0.0");
+            write_runtime_current_atomic(Env::Prod, &pointer("1.0.0")).expect("pointer v1");
+
+            let staging = updates.join("runtime_staging_2.0.0");
+            write_runtime_layout(&staging, "2.0.0");
+            super::finalize_runtime_install(Env::Prod, "2.0.0", "deadbeef", &staging)
+                .expect("finalize v2");
+
+            assert!(v1.exists(), "previous version dir must remain after update");
+            assert_eq!(
+                current_runtime_dir(Env::Prod),
+                Some(updates.join("runtime-v2.0.0"))
+            );
+            assert!(!staging.exists(), "staging must be consumed");
+        });
+    }
+
+    #[test]
+    fn resolve_runtime_dir_without_pin_uses_pointer() {
+        with_temp_home("resolve-no-pin", |home| {
+            let updates = home.join(".overdare/updates");
+            write_runtime_layout(&updates.join("runtime-v2.0.0"), "2.0.0");
+            write_runtime_current_atomic(Env::Prod, &pointer("2.0.0")).expect("pointer v2");
+            let sel = EnvSelection::latest(Env::Prod);
+            assert_eq!(
+                resolve_runtime_dir(&sel).expect("resolve"),
+                updates.join("runtime-v2.0.0")
+            );
+        });
+    }
+
+    #[test]
+    fn resolve_runtime_dir_with_pin_ignores_pointer() {
+        with_temp_home("resolve-pin", |home| {
+            let updates = home.join(".overdare/updates");
+            write_runtime_layout(&updates.join("runtime-v1.0.0"), "1.0.0");
+            write_runtime_layout(&updates.join("runtime-v2.0.0"), "2.0.0");
+            // Pointer says v2, but a pinned start for v1 must launch v1.
+            write_runtime_current_atomic(Env::Prod, &pointer("2.0.0")).expect("pointer v2");
+            let sel = EnvSelection::parse("prod@1.0.0").expect("parse pin");
+            assert_eq!(
+                resolve_runtime_dir(&sel).expect("resolve pin"),
+                updates.join("runtime-v1.0.0")
+            );
+        });
+    }
+
+    #[test]
+    fn resolve_runtime_dir_with_missing_pin_errors_without_fallback() {
+        with_temp_home("resolve-pin-missing", |home| {
+            let updates = home.join(".overdare/updates");
+            // A different version is installed and active, but the pin is absent.
+            write_runtime_layout(&updates.join("runtime-v2.0.0"), "2.0.0");
+            write_runtime_current_atomic(Env::Prod, &pointer("2.0.0")).expect("pointer v2");
+            let sel = EnvSelection::parse("prod@9.9.9").expect("parse pin");
+            let err = resolve_runtime_dir(&sel).unwrap_err();
+            assert!(err.contains("9.9.9"), "error names the missing version: {err}");
+            assert!(err.contains("init"), "error tells user to init: {err}");
+        });
+    }
+
+    #[test]
+    fn resolve_runtime_dir_without_install_errors() {
+        with_temp_home("resolve-none", |_home| {
+            let sel = EnvSelection::latest(Env::Prod);
+            assert!(resolve_runtime_dir(&sel).is_err());
+        });
+    }
+
+    #[test]
+    fn cleanup_candidates_exclude_current_and_legacy() {
+        with_temp_home("cleanup-candidates", |home| {
+            let updates = home.join(".overdare/updates");
+            write_runtime_layout(&updates.join("runtime-v1.0.0"), "1.0.0");
+            write_runtime_layout(&updates.join("runtime-v2.0.0"), "2.0.0");
+            // Legacy flat dir is not a runtime-v* candidate.
+            write_runtime_layout(&updates.join("runtime"), "0.9.0");
+            write_runtime_current_atomic(Env::Prod, &pointer("2.0.0")).expect("pointer v2");
+
+            let mut names: Vec<String> = super::cleanup_candidate_dirs(Env::Prod)
+                .iter()
+                .filter_map(|p| p.file_name()?.to_str().map(str::to_string))
+                .collect();
+            names.sort();
+            assert_eq!(names, vec!["runtime-v1.0.0".to_string()]);
+        });
+    }
+
+    #[test]
+    fn cleanup_never_removes_current() {
+        with_temp_home("cleanup-keeps-current", |home| {
+            let updates = home.join(".overdare/updates");
+            write_runtime_layout(&updates.join("runtime-v2.0.0"), "2.0.0");
+            write_runtime_current_atomic(Env::Prod, &pointer("2.0.0")).expect("pointer v2");
+
+            let mut log = String::new();
+            super::cleanup_old_runtimes(Env::Prod, &mut log);
+
+            assert!(
+                updates.join("runtime-v2.0.0").exists(),
+                "active runtime must survive cleanup"
+            );
+            assert_eq!(
+                current_runtime_dir(Env::Prod),
+                Some(updates.join("runtime-v2.0.0"))
+            );
+        });
+    }
+
+    #[test]
+    fn finalize_install_republish_of_current_does_not_wipe_running_dir() {
+        with_temp_home("finalize-republish", |home| {
+            let updates = home.join(".overdare/updates");
+            let v1 = updates.join("runtime-v1.0.0");
+            write_runtime_layout(&v1, "1.0.0");
+            write_runtime_current_atomic(Env::Prod, &pointer("1.0.0")).expect("pointer v1");
+            fs::write(v1.join("sentinel"), b"x").expect("write sentinel");
+
+            let staging = updates.join("runtime_staging_1.0.0");
+            write_runtime_layout(&staging, "1.0.0");
+            super::finalize_runtime_install(Env::Prod, "1.0.0", "deadbeef", &staging)
+                .expect("finalize re-publish");
+
+            assert!(
+                v1.join("sentinel").exists(),
+                "active dir must not be wiped when the same version is re-published"
+            );
+            assert!(!staging.exists(), "staging must be consumed");
         });
     }
 }
