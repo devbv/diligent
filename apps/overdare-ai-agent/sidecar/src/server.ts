@@ -28,6 +28,14 @@ function startParentWatchdog(parentPid?: number): (() => void) | null {
 }
 
 export async function startStudioServer(argv: string[] = process.argv.slice(2)): Promise<void> {
+  // Guarantee the OVERDARE storage namespace even when launched directly (e.g. `bun run`
+  // in dev) rather than via the Rust launcher, which always injects it (see
+  // apps/overdare-ai-agent/src/storage.rs + webserver.rs). Without this, the generic
+  // @diligent/runtime defaults to ".diligent" while this app's studio tools default to
+  // ".overdare" — a split-brain in the same process. Only set when unset, so a
+  // launcher-provided value (overdare / overdare-dev) still wins.
+  process.env.DILIGENT_STORAGE_NAMESPACE ??= "overdare";
+
   const args = parseArgs(argv);
   const cwd = args.cwd ?? process.cwd();
   const logFile = args.logFile ?? process.env.DILIGENT_WEB_LOG_FILE;
