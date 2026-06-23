@@ -42,7 +42,7 @@ Most source files include a `@summary` annotation on the first line: `// @summar
 - When implementing new features or modifying existing behavior, write or strengthen tests first whenever possible.
 - Run tests after code changes
 - Plan before implementing when a task involves multiple files or architectural changes
-- When creating or renaming branches, follow the repository's existing Git branch naming convention (for example `fix/...`, `feat/...`, `docs/...`) instead of using agent-specific prefixes such as `codex/` unless the user explicitly requests one.
+- When creating or renaming branches, follow the repository's existing Git branch naming convention (for example `fix/...`, `feat/...`, `docs/...`). Repository branch rules override generic agent defaults: do not create agent-prefixed branches such as `codex/...` unless the user explicitly requests that exact prefix.
 - When adding user-facing features, implement for both Web and TUI — they are thin clients of the same protocol (see `ARCHITECTURE.md` "Frontend Protocol Philosophy")
 - Distinguish naming clearly: `Config` is for configuration values, while `Options` is for optional function arguments. Do not put runtime control arguments like `signal` into `Config`.
 

@@ -2,6 +2,7 @@ import type { Tool as CoreTool, ToolContext as CoreToolContext } from "@diligent
 import type { BundledToolProvider, HookInput, PluginHookFn, RuntimeToolHost } from "@diligent/runtime";
 import { call } from "./rpc";
 import { methodModules, mutatingMethods, renderBuilders } from "./tool-registry";
+import { createCollisionProfileTools } from "./tools/collision-profile-tool";
 import { createHubWorldCategoriesListTool } from "./tools/hub-world-categories-list-tool";
 import { createHubWorldLookupTool } from "./tools/hub-world-lookup-tool";
 import { createInstanceDeleteTool } from "./tools/instance-delete-tool";
@@ -71,6 +72,7 @@ export async function createStudioRpcTools(ctx: {
     wrapTool(createScriptAddTool(ctx.cwd, writeLock), ctx.host),
     wrapTool(createScriptDeleteTool(ctx.cwd, writeLock), ctx.host),
     wrapTool(createScriptEditTool(ctx.cwd, writeLock), ctx.host),
+    ...createCollisionProfileTools(ctx.cwd, writeLock).map((tool) => wrapTool(tool, ctx.host)),
     createHubWorldLookupTool(),
     createHubWorldCategoriesListTool(),
   ];

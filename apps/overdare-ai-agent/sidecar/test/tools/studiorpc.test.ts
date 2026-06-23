@@ -18,6 +18,9 @@ describe("createStudioRpcToolProvider", () => {
     expect(toolNames).toContain("studiorpc_instance_read");
     expect(toolNames).toContain("studiorpc_instance_upsert");
     expect(toolNames).toContain("studiorpc_script_edit");
+    expect(toolNames).toContain("get_collision_channels");
+    expect(toolNames).toContain("create_collision_profile");
+    expect(toolNames).toContain("edit_collision_profile");
     expect(toolNames).toContain("hub_world_lookup");
     expect(toolNames).toContain("hub_world_categories_list");
     expect(toolNames).toContain("studiorpc_level_save_file");
@@ -28,6 +31,7 @@ describe("createStudioRpcToolProvider", () => {
     const scriptEditTool = tools.find((tool) => tool.name === "studiorpc_script_edit")!;
 
     expect(() => saveTool.parameters.parse({})).not.toThrow();
+    expect(() => tools.find((tool) => tool.name === "get_collision_profiles")!.parameters.parse({})).not.toThrow();
     expect(() => hubLookupTool.parameters.parse({ worldId: 123 })).not.toThrow();
     expect(scriptEditTool.description).toContain(
       "If an edit fails, call script_read to check the current source before retrying",
