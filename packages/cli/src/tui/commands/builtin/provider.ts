@@ -5,6 +5,7 @@ import { createChatGPTOAuthBinding, removeAuthKey, removeOAuthTokens, saveAuthKe
 import {
   DEFAULT_MODELS,
   DEFAULT_PROVIDER,
+  PROVIDER_DISPLAY_NAMES,
   PROVIDER_HINTS,
   PROVIDER_NAMES,
   type ProviderName,
@@ -12,6 +13,10 @@ import {
 import type { ListPickerItem } from "../../components/list-picker";
 import { t } from "../../theme";
 import type { Command, CommandContext } from "../types";
+
+function providerDisplayName(provider: ProviderName): string {
+  return PROVIDER_DISPLAY_NAMES[provider];
+}
 
 export const providerCommand: Command = {
   name: "provider",
@@ -59,7 +64,7 @@ function pickProvider(ctx: CommandContext): Promise<void> {
   return (async () => {
     const currentProvider = (ctx.config.model.provider ?? DEFAULT_PROVIDER) as ProviderName;
     const items: ListPickerItem[] = PROVIDER_NAMES.map((p) => ({
-      label: p,
+      label: providerDisplayName(p),
       description: p === currentProvider ? "active" : ctx.config.providerManager.hasKeyFor(p) ? "configured" : "no key",
       value: p,
     }));
@@ -116,7 +121,7 @@ function pickConnectedProviderAction(provider: ProviderName, ctx: CommandContext
       { label: "Cancel", description: "Keep current authentication", value: "cancel" },
     ];
     const value = await ctx.app.pick({
-      title: `${provider} is already connected`,
+      title: `${providerDisplayName(provider)} is already connected`,
       items,
       selectedIndex: 0,
       filterable: false,
@@ -147,7 +152,9 @@ async function switchProvider(provider: ProviderName, ctx: CommandContext): Prom
   ctx.config.model = model;
   await ctx.setModel(model.id);
   ctx.onModelChanged(model.id);
-  ctx.displayLines([`  Provider: ${t.bold}${provider}${t.reset}  Model: ${t.bold}${model.id}${t.reset}`]);
+  ctx.displayLines([
+    `  Provider: ${t.bold}${providerDisplayName(provider)}${t.reset}  Model: ${t.bold}${model.id}${t.reset}`,
+  ]);
 }
 
 export async function disconnectProvider(provider: ProviderName, ctx: CommandContext): Promise<void> {
@@ -156,7 +163,7 @@ export async function disconnectProvider(provider: ProviderName, ctx: CommandCon
     message:
       provider === "chatgpt"
         ? "Disconnect ChatGPT OAuth and remove saved authentication?"
-        : `Remove saved API key for ${provider}?`,
+        : `Remove saved API key for ${providerDisplayName(provider)}?`,
     confirmLabel: "Disconnect",
     cancelLabel: "Cancel",
   });
@@ -181,9 +188,11 @@ export async function disconnectProvider(provider: ProviderName, ctx: CommandCon
       ctx.config.providerManager.removeExternalAuth("chatgpt");
     }
 
-    ctx.displayLines([`  ${t.success}Disconnected ${provider}.${t.reset}`]);
+    ctx.displayLines([`  ${t.success}Disconnected ${providerDisplayName(provider)}.${t.reset}`]);
   } catch (err) {
-    ctx.displayError(`Failed to disconnect ${provider}: ${err instanceof Error ? err.message : String(err)}`);
+    ctx.displayError(
+      `Failed to disconnect ${providerDisplayName(provider)}: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 }
 
@@ -249,7 +258,7 @@ function showProviderStatus(ctx: CommandContext): void {
     const oauthNote = provider === "chatgpt" && pm.hasOAuthFor("chatgpt") ? ` ${t.dim}(OAuth)${t.reset}` : "";
     const status = maskedKey ? `${t.success}configured${t.reset} (${maskedKey})` : `${t.dim}not configured${t.reset}`;
     const marker = pm.hasKeyFor(provider) ? "\u2713" : "\u2717";
-    lines.push(`  ${marker} ${t.bold}${provider}${t.reset}: ${status}${oauthNote}${active}`);
+    lines.push(`  ${marker} ${t.bold}${providerDisplayName(provider)}${t.reset}: ${status}${oauthNote}${active}`);
   }
 
   lines.push("");
@@ -265,7 +274,7 @@ function showProviderStatus(ctx: CommandContext): void {
 function pickProviderThenSetKey(ctx: CommandContext): Promise<void> {
   return (async () => {
     const items: ListPickerItem[] = PROVIDER_NAMES.map((p) => ({
-      label: p,
+      label: providerDisplayName(p),
       description: ctx.config.providerManager.hasKeyFor(p) ? "configured" : "not configured",
       value: p,
     }));
@@ -283,8 +292,8 @@ export function promptApiKey(provider: ProviderName, ctx: CommandContext): Promi
   return (async () => {
     const { apiKeyUrl, apiKeyPlaceholder } = PROVIDER_HINTS[provider];
     const value = await ctx.app.prompt({
-      title: `${provider} API Key`,
-      message: `Enter your ${provider} API key (${apiKeyUrl})`,
+      title: `${providerDisplayName(provider)} API Key`,
+      message: `Enter your ${providerDisplayName(provider)} API key (${apiKeyUrl})`,
       placeholder: apiKeyPlaceholder,
       masked: true,
     });
@@ -292,7 +301,7 @@ export function promptApiKey(provider: ProviderName, ctx: CommandContext): Promi
       return;
     }
     ctx.config.providerManager.setApiKey(provider, value);
-    ctx.displayLines([`  ${t.success}API key set for ${provider}.${t.reset}`]);
+    ctx.displayLines([`  ${t.success}API key set for ${providerDisplayName(provider)}.${t.reset}`]);
     await promptSaveKey(provider, value, ctx);
   })();
 }
@@ -301,7 +310,7 @@ export function promptSaveKey(provider: ProviderName, apiKey: string, ctx: Comma
   return (async () => {
     const confirmed = await ctx.app.confirm({
       title: "Save API Key?",
-      message: `Save ${provider} key to ~/.diligent/auth.jsonc?`,
+      message: `Save ${providerDisplayName(provider)} key to ~/.diligent/auth.jsonc?`,
       confirmLabel: "Save",
       cancelLabel: "Skip",
     });

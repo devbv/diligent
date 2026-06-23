@@ -27,6 +27,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   "gemini-3-flash": "Gemini 3 Flash",
   "gemini-3.1-flash-lite": "Gemini 3.1 Flash Lite",
   vertex: "Vertex AI",
+  "zai-coding-plan": "z.ai Coding Plan",
 };
 
 const PROVIDER_INPUT_PLACEHOLDERS: Record<string, string> = {
@@ -37,6 +38,7 @@ const PROVIDER_INPUT_PLACEHOLDERS: Record<string, string> = {
   "gemini-3-flash": "API key",
   "gemini-3.1-flash-lite": "API key",
   vertex: "Google Cloud access token",
+  "zai-coding-plan": "API key",
 };
 
 export function ProviderSettingsModal({

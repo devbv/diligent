@@ -75,6 +75,7 @@ export {
   getThinkingEffortUsage,
   getThinkingEffortUsageValues,
   KNOWN_MODELS,
+  PROVIDER_DISPLAY_NAMES,
   PROVIDER_HINTS,
   PROVIDER_NAMES,
   ProviderError,
