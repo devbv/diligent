@@ -43,9 +43,10 @@ help:
 	@echo "  check-env       Verify API keys are configured"
 	@echo "  config          Show current provider configuration"
 
-# 스토리지 네임스페이스 해석: 셸 env > .env.local > overdare(제품 기본).
-# (TS 런타임은 env 미설정 시 'diligent'로 갈리지만, 이 repo/exe 는 overdare 를 쓰므로
-#  진단 출력은 .env.local 값을 그대로 반영한다. bun 이 .env.local 을 로드하는 것과 동일 취지.)
+# Storage namespace resolution: shell env > .env.local > overdare (product default).
+# (The TS runtime defaults to 'diligent' when env is unset, but this repo/exe uses
+#  overdare, so the diagnostic output reflects the .env.local value — same intent as
+#  bun loading .env.local.)
 STORAGE_NS := $(shell ns="$${DILIGENT_STORAGE_NAMESPACE}"; \
 	if [ -z "$$ns" ] && [ -f .env.local ]; then \
 		ns=$$(grep -E '^[[:space:]]*DILIGENT_STORAGE_NAMESPACE=' .env.local | tail -1 | cut -d= -f2- | tr -d ' "'); \
@@ -90,16 +91,16 @@ web-build: node_modules
 web-start: node_modules
 	bun run --cwd packages/web start
 
-# OVERDARE 에이전트(제품)를 dev 로 실행 — 같은 머신의 Studio 에 연결, .overdare 사용.
-# (make dev 는 diligent CLI 개발 도우미이고, 이건 OVERDARE 에이전트 자체다.)
+# Run the OVERDARE agent (the product) in dev — connect to a local Studio, use .overdare.
+# (make dev is the diligent CLI dev assistant; this is the OVERDARE agent itself.)
 #   make dev-agent [STUDIO_PORT=13377] [STUDIO_PROJECT_DIR=/path/to/StudioProject]
-# STUDIO_HOST 미지정 시 localhost. 같은 스크립트를 쓰되 호스트만 로컬로 둔다.
+# STUDIO_HOST defaults to localhost. Same script, just with the host kept local.
 dev-agent: node_modules
 	@STUDIO_HOST="$(or $(STUDIO_HOST),localhost)" STUDIO_PORT="$(STUDIO_PORT)" STUDIO_PROJECT_DIR="$(STUDIO_PROJECT_DIR)" bash scripts/dev-cross-studio.sh
 
-# 위와 동일하되 원격 Studio(예: Windows)용 — STUDIO_HOST 를 명시해야 한다.
+# Same as above but for a remote Studio (e.g. Windows) — STUDIO_HOST must be set.
 #   make dev-cross STUDIO_HOST=192.168.0.42 [STUDIO_PORT=13377] [STUDIO_PROJECT_DIR=/Volumes/StudioProject]
-# 값은 .env.local 에서도 읽으므로 인자 없이 `make dev-cross` 도 가능.
+# Values are also read from .env.local, so `make dev-cross` with no args works too.
 dev-cross: node_modules
 	@STUDIO_HOST="$(STUDIO_HOST)" STUDIO_PORT="$(STUDIO_PORT)" STUDIO_PROJECT_DIR="$(STUDIO_PROJECT_DIR)" bash scripts/dev-cross-studio.sh
 

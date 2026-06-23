@@ -1,86 +1,86 @@
-# Mac 로컬 Agent ↔ Windows Studio 연결 가이드
+# Local Mac Agent <-> Windows Studio Guide
 
-Mac에서 agent(사이드카 백엔드 + 프론트)를 띄우고, 별도의 **Windows PC에서 도는 OVERDARE Studio**와 연결해 실행하는 방법을 정리한다. 빌드된 exe나 GitHub release 다운로드 없이, dev 소스를 그대로 띄우는 방식이다.
+How to run the agent (sidecar backend + frontend) on a Mac and connect it to an **OVERDARE Studio running on a separate Windows PC**. This runs the dev source directly — no built exe or GitHub release download.
 
-## 왜 두 머신으로 쪼갤 수 있나
+## Why this can be split across two machines
 
-agent ↔ Studio 연결은 **순수 TCP JSON-RPC**다 (`apps/overdare-ai-agent/sidecar/src/tools/studiorpc/rpc.ts`, `net.createConnection`). 둘 사이에 공유 파일시스템이 없고, 모든 Studio 파일 접근은 Windows 쪽 Studio가 RPC로 처리한다. 따라서 agent와 Studio를 서로 다른 머신에 두는 게 구조적으로 자연스럽다.
+The agent <-> Studio connection is **pure TCP JSON-RPC** (`apps/overdare-ai-agent/sidecar/src/tools/studiorpc/rpc.ts`, `net.createConnection`). There is no shared filesystem between them, and all Studio file access is handled by the Windows-side Studio over RPC. So putting the agent and Studio on different machines is structurally natural.
 
 ```
-┌─────────────────── Mac ───────────────────┐        ┌──────── Windows PC ────────┐
-│  브라우저(5174, Vite)                       │        │                            │
-│      │                                     │        │                            │
-│      └ /rpc(WS) ─▶ 사이드카 백엔드(7433)     │        │                            │
-│                        │                   │        │                            │
-│                        └ TCP ──────────────┼────────┼─▶ OVERDARE Studio          │
-│                          (STUDIO_HOST:PORT) │  LAN   │   (STUDIO_PORT 리슨)        │
-└─────────────────────────────────────────────┘        └────────────────────────────┘
++------------------- Mac --------------------+        +-------- Windows PC --------+
+|  Browser (5174, Vite)                      |        |                            |
+|      |                                     |        |                            |
+|      +- /rpc(WS) -> sidecar backend(7433)  |        |                            |
+|                        |                   |        |                            |
+|                        +- TCP -------------+--------+-> OVERDARE Studio          |
+|                          (STUDIO_HOST:PORT) |  LAN   |   (listening on STUDIO_PORT)|
++---------------------------------------------+        +----------------------------+
 ```
 
-### 무엇이 어디에 저장되나
+### What is stored where
 
-| 항목 | 저장 위치 | 기준 경로 |
+| Item | Location | Base path |
 | --- | --- | --- |
-| skills, knowledge, sessions, images | **Mac** `<--cwd>/.overdare/` | `--cwd` (cwd 상대) |
-| 설정(`overdare.jsonc`: host/port), `user-id` | **Mac** `~/.overdare/` | HOME |
-| Studio 프로젝트 파일(레벨/콘텐츠 원본) | **Windows** | Studio가 관리 |
+| skills, knowledge, sessions, images | **Mac** `<--cwd>/.overdare/` | `--cwd` (relative to cwd) |
+| config (`overdare.jsonc`: host/port), `user-id` | **Mac** `~/.overdare/` | HOME |
+| Studio project files (level/content originals) | **Windows** | managed by Studio |
 
-> agent의 "두뇌"(스킬·지식·대화기록·설정)는 전부 **Mac**에 있고, 게임 콘텐츠 원본만 **Windows**에 있다. `--cwd`에는 **Mac 경로**를 넣는다(Windows 경로 아님).
+> The agent's "brain" (skills, knowledge, conversation history, config) all lives on the **Mac**; only the game content originals are on **Windows**. Put a **Mac path** in `--cwd` (not a Windows path).
 
 ---
 
-## 사전 준비
+## Prerequisites
 
-### Mac 쪽
+### On the Mac
 
 ```bash
 bun install
 ```
 
-- AI provider: 앱 UI `Config → AI connection`에서 연결하거나, 자격증명이 keychain/`.env.local`에 있으면 자동 사용.
-- 대화 기록은 `--cwd`(기본 `process.cwd()`)의 `<cwd>/.overdare/sessions`에 저장된다.
+- AI provider: connect in the app UI under `Config -> AI connection`, or it is used automatically if credentials are in the keychain / `.env.local`.
+- Conversation history is stored in `<cwd>/.overdare/sessions` under `--cwd` (default `process.cwd()`).
 
-### Windows 쪽 (이게 실제 관건)
+### On Windows (this is the real crux)
 
-1. **Studio가 LAN 인터페이스(`0.0.0.0` 또는 자기 LAN IP)로 RPC를 리슨해야 한다.** `127.0.0.1`에만 바인딩하면 Mac에서 접속이 안 된다 → 이 경우 [SSH 터널](#studio가-localhost에만-리슨할-때--ssh-터널)로 우회.
-2. **방화벽에서 Studio RPC 포트(기본 13377) 인바운드 허용.**
-3. Windows의 LAN IP 확인: `ipconfig` → IPv4 주소(예: `192.168.0.42`).
+1. **Studio must listen for RPC on a LAN interface (`0.0.0.0` or its LAN IP).** If it binds only to `127.0.0.1`, the Mac cannot connect -> work around it with an [SSH tunnel](#when-studio-listens-only-on-localhost--ssh-tunnel).
+2. **Allow inbound on the Studio RPC port (default 13377) in the firewall.**
+3. Find the Windows LAN IP: `ipconfig` -> IPv4 address (e.g. `192.168.0.42`).
 
-### 도달 확인 (Mac에서)
+### Reachability check (from the Mac)
 
 ```bash
-nc -vz 192.168.0.42 13377   # Windows IP / Studio 포트
+nc -vz 192.168.0.42 13377   # Windows IP / Studio port
 ```
 
-연결되면 OK. 안 되면 Windows 리슨 바인딩·방화벽부터 점검.
+If it connects, OK. Otherwise check the Windows listen binding and firewall first.
 
 ---
 
-## 방법 1 — env로 직접 실행 (가장 빠름)
+## Option 1 — run directly with env (fastest)
 
-매번 환경변수로 Windows의 host/port를 지정한다.
+Specify the Windows host/port via environment variables each time.
 
 ```bash
-# 터미널 1 — Mac: 사이드카 백엔드(7433) + Windows Studio 연결
+# Terminal 1 — Mac: sidecar backend (7433) + Windows Studio connection
 STUDIO_HOST=192.168.0.42 \
 STUDIO_PORT=13377 \
 bun run apps/overdare-ai-agent/sidecar/src/server.ts --dev --port=7433 --cwd="$PWD"
 
-# 터미널 2 — Mac: 프론트(Vite, 5174)
+# Terminal 2 — Mac: frontend (Vite, 5174)
 bun run --cwd packages/web dev
 ```
 
-브라우저: **http://localhost:5174**
+Browser: **http://localhost:5174**
 
-> ⚠️ 반드시 **사이드카 진입점**(`apps/overdare-ai-agent/sidecar/src/server.ts`)으로 띄워야 `studiorpc_*` 도구가 로드된다. `bun run web:dev`(web 단독, Studio 도구 없음)에는 Studio 도구가 붙지 않는다.
+> WARNING: you must use the **sidecar entrypoint** (`apps/overdare-ai-agent/sidecar/src/server.ts`) for `studiorpc_*` tools to load. `bun run web:dev` (web-only, no Studio tools) does not attach the Studio tools.
 
-호스트/포트 해석 우선순위 (`rpc.ts:22-40`):
+Host/port resolution order (`rpc.ts:22-40`):
 
-1. `STUDIO_HOST` / `STUDIO_PORT` 환경변수
-2. config 파일 `~/.overdare/overdare.jsonc`
-3. 기본값 `localhost:13377`
+1. `STUDIO_HOST` / `STUDIO_PORT` environment variables
+2. config file `~/.overdare/overdare.jsonc`
+3. default `localhost:13377`
 
-매번 env 지정이 귀찮으면 Mac 홈에 한 번 적어둔다:
+If specifying env every time is tedious, write it once in the Mac home:
 
 ```jsonc
 // ~/.overdare/overdare.jsonc
@@ -89,190 +89,190 @@ bun run --cwd packages/web dev
 
 ---
 
-## 방법 2 — 번들 스킬 심링크 후 실행 (스킬까지 완비, macOS)
+## Option 2 — symlink bundle skills, then run (skills included, macOS)
 
-방법 1은 동작하지만, dev에서는 번들 스킬(`actionsequence`, `tpa`, `ui-generator`, `studio-explorer` 등)이 자동으로 깔리지 않는다. exe는 첫 실행 시 `init.rs`가 번들 스킬을 `~/.overdare/skills`로 복사하지만, dev로 직접 띄우면 이 단계를 건너뛰기 때문이다.
+Option 1 works, but in dev the bundle skills (`actionsequence`, `tpa`, `ui-generator`, `studio-explorer`, etc.) are not installed automatically. On first run the exe's `init.rs` copies bundle skills into `~/.overdare/skills`, but running the dev source directly skips that step.
 
-스킬 탐색 경로는 ① 프로젝트 `<cwd>/.overdare/skills` → ② 글로벌 `~/.overdare/skills` → ③ config `skills.paths[]` 순이다 (`packages/runtime/src/skills/discovery.ts:47-55`). macOS이므로 **심링크로 글로벌(②)에 번들 스킬을 연결**한다. (심링크라 repo의 스킬을 고치면 즉시 반영된다.)
+Skill discovery order is (1) project `<cwd>/.overdare/skills` -> (2) global `~/.overdare/skills` -> (3) config `skills.paths[]` (`packages/runtime/src/skills/discovery.ts:47-55`). On macOS, **symlink the bundle skills into the global location (2)**. (Being symlinks, edits to the repo skills take effect immediately.)
 
-### 0) 번들 스킬·에이전트 심링크 (한 번만)
+### 0) Symlink bundle skills/agents (one time)
 
 ```bash
-# 저장소 루트에서 실행
+# run from the repo root
 mkdir -p ~/.overdare/skills ~/.overdare/agents
 
 ln -sfn "$PWD/apps/overdare-ai-agent/bootstrap/skills/"* ~/.overdare/skills/
 ln -sfn "$PWD/apps/overdare-ai-agent/bootstrap/agents/"* ~/.overdare/agents/
 ```
 
-확인:
+Verify:
 
 ```bash
-ls -l ~/.overdare/skills/    # actionsequence, tpa, ui-generator ... 가 심링크로 보이면 OK
+ls -l ~/.overdare/skills/    # OK if actionsequence, tpa, ui-generator ... appear as symlinks
 ```
 
-### 1) 사이드카 + 프론트 실행
+### 1) Run sidecar + frontend
 
 ```bash
-# 터미널 1 — Mac: 사이드카 백엔드 + Windows Studio 연결
+# Terminal 1 — Mac: sidecar backend + Windows Studio connection
 STUDIO_HOST=192.168.0.42 \
 STUDIO_PORT=13377 \
 bun run apps/overdare-ai-agent/sidecar/src/server.ts --dev --port=7433 --cwd="$PWD"
 
-# 터미널 2 — Mac: 프론트(Vite, 5174)
+# Terminal 2 — Mac: frontend (Vite, 5174)
 bun run --cwd packages/web dev
 ```
 
-브라우저: **http://localhost:5174**
+Browser: **http://localhost:5174**
 
-> 심링크 해제(원위치): `rm ~/.overdare/skills/*` 는 **심링크만** 지운다(원본 repo 파일은 그대로). 디렉터리 전체를 비우려면 `find ~/.overdare/skills -maxdepth 1 -type l -delete`.
+> To undo the symlinks: `rm ~/.overdare/skills/*` removes **only the symlinks** (the original repo files stay). To clear the whole directory: `find ~/.overdare/skills -maxdepth 1 -type l -delete`.
 
 ---
 
-## 스크립트로 한 번에 (권장)
+## All in one script (recommended)
 
-위 방법 1·2의 모든 단계(번들 스킬 심링크 → 권한 config 보장 → 7433/5174 정리 → 사이드카+Vite 동시 실행 → Ctrl+C 일괄 종료)를 한 번에 수행하는 런처가 있다.
+There is a launcher that performs all the steps from Options 1 & 2 (symlink bundle skills -> ensure permission config -> free 7433/5174 -> run sidecar + Vite together -> tear down both on Ctrl+C) in one go.
 
-Studio 접속 정보는 `.env.local` 에 한 번 적어두는 게 기본이다 (bun이 자동 로드하므로 사이드카도, 스크립트도 이 값을 읽는다):
+By default, put the Studio connection info in `.env.local` once (bun auto-loads it, so both the sidecar and the script read these values):
 
 ```bash
 # .env.local
 STUDIO_HOST=10.40.32.103
-# STUDIO_PORT=13377   # 기본 13377이면 생략 가능
+# STUDIO_PORT=13377   # omit if the default 13377
 ```
 
-그러면 인자 없이 그대로 실행한다:
+Then run it with no arguments:
 
 ```bash
-make dev-cross                 # .env.local 의 STUDIO_HOST 사용
-# 또는
+make dev-cross                 # uses STUDIO_HOST from .env.local
+# or
 scripts/dev-cross-studio.sh
 ```
 
-일회성으로 다른 Studio에 붙고 싶으면 인자/환경변수로 오버라이드한다 (이게 `.env.local`보다 우선):
+To connect to a different Studio one-off, override via arg/env (this wins over `.env.local`):
 
 ```bash
 make dev-cross STUDIO_HOST=192.168.0.42 STUDIO_PORT=13377
 scripts/dev-cross-studio.sh 192.168.0.42 13377
 ```
 
-> Studio가 **같은 머신**(로컬)에 있으면 `make dev-cross` 대신 **`make dev-agent`** 를 쓴다 — 같은 스크립트지만 `STUDIO_HOST`가 `localhost` 기본이라 인자가 필요 없다. (일반 로컬 개발은 [`local-development.md`](./local-development.md) 참고.)
+> If Studio is on the **same machine** (local), use **`make dev-agent`** instead of `make dev-cross` — same script, but `STUDIO_HOST` defaults to `localhost` so no argument is needed. (For general local development see [`local-development.md`](./local-development.md).)
 
-> `.env.local` 은 `.gitignore` 로 무시된다(API 키 등 비밀값 포함). 커밋 금지.
+> `.env.local` is gitignored (it holds secrets like API keys). Do not commit it.
 
-### 편집까지 하려면 — 월드 디렉터리(마운트 경로) 지정
+### To also edit — specify the world directory (mount path)
 
-⚠️ **중요한 한계**: `level.browse` 같은 읽기는 순수 RPC라 위 설정만으로 크로스머신으로 동작하지만, **`instance_upsert`/`instance_read` 등 편집·속성조회 도구는 로컬 `.ovdrjm` 파일을 직접 읽고 쓴다** (그 뒤 `level.apply` RPC로 Studio가 리로드). 따라서 편집을 하려면 agent가 **Studio가 여는 바로 그 라이브 월드 파일**에 파일시스템으로 접근해야 한다.
+WARNING — **important limitation**: reads like `level.browse` are pure RPC and work cross-machine with the setup above, but **edit/property tools such as `instance_upsert` / `instance_read` read and write the local `.ovdrjm` file directly** (then `level.apply` RPC makes Studio reload). So to edit, the agent must have filesystem access to **the exact live world file that Studio has open**.
 
-방법: Windows의 Studio 프로젝트 폴더를 SMB로 공유해 Mac에 마운트한 뒤, 그 경로를 넘긴다.
+How: share the Windows Studio project folder over SMB, mount it on the Mac, and pass that path.
 
 ```bash
-# 3번째 인자로 마운트 경로
+# mount path as the 3rd argument
 scripts/dev-cross-studio.sh 10.40.32.103 13377 /Volumes/StudioProject
 
-# 또는 .env.local 에:  STUDIO_PROJECT_DIR=/Volumes/StudioProject
+# or in .env.local:  STUDIO_PROJECT_DIR=/Volumes/StudioProject
 make dev-cross
 ```
 
-지정 시 사이드카 `--cwd` 가 이 경로가 되어 편집 도구가 라이브 월드를 직접 수정한다. **미지정이면 cwd=repo 가 되어 browse 만 가능하고 편집은 불가**하다.
+When set, the sidecar `--cwd` becomes this path so edit tools modify the live world directly. **If unset, cwd=repo so only browse works and editing is not possible.**
 
-> 📌 **심링크(스킬)와 마운트(월드 파일)는 별개다.** 헷갈리기 쉬우니 구분:
-> - **마운트** = Windows Studio **프로젝트 폴더**를 Mac에서 접근 → 라이브 `.ovdrjm` **월드 파일**을 읽고/쓰기 위함. `--cwd` 가 이 경로.
-> - **심링크**(방법 2 / 스크립트) = 번들 **스킬**(actionsequence·tpa·ui-generator 등)을 Mac 글로벌 `~/.overdare/skills` 에 연결. cwd 와 무관(탐색 경로 ②).
+> NOTE: **The symlink (skills) and the mount (world file) are separate things.** Easy to confuse, so to be clear:
+> - **Mount** = access the Windows Studio **project folder** from the Mac to read/write the live `.ovdrjm` **world file**. `--cwd` is this path.
+> - **Symlink** (Option 2 / the script) = link the bundle **skills** (actionsequence, tpa, ui-generator, etc.) into the Mac global `~/.overdare/skills`. Unrelated to cwd (discovery path 2).
 >
-> 마운트된 프로젝트 폴더에는 번들 스킬이 **없다** — exe 는 스킬을 프로젝트가 아니라 **HOME `~/.overdare/skills`** 에 깐다(`init.rs` → `global_storage_dir`). 그래서 "마운트해서 월드를 편집"해도 **스킬은 여전히 심링크된 Mac 글로벌에서** 와야 한다. 둘 다 필요.
+> The mounted project folder does **not** contain the bundle skills — the exe installs skills into **HOME `~/.overdare/skills`**, not the project (`init.rs` -> `global_storage_dir`). So even when you "mount and edit the world", **skills still come from the symlinked Mac global**. You need both.
 
-#### SMB 공유 + 마운트 + 쓰기 권한 (편집의 필수 조건)
+#### SMB share + mount + write permission (required for editing)
 
-편집은 곧 마운트된 `.ovdrjm` 에 **쓰는** 동작이다. 마운트가 read-only 면 `EACCES: permission denied ... .ovdrjm` 로 실패한다. 다음을 모두 만족해야 한다.
+Editing means **writing** to the mounted `.ovdrjm`. If the mount is read-only it fails with `EACCES: permission denied ... .ovdrjm`. All of the following must hold.
 
-1. **Windows: 폴더 공유 + 쓰기 권한** — 권한이 두 군데이고 **둘의 교집합(더 엄격한 쪽)** 이 적용되므로 둘 다 열어야 한다.
-   - **공유 권한**: 폴더 우클릭 → 속성 → 공유 → 고급 공유 → 권한 → 해당 계정에 **변경(Change)**
-   - **NTFS 권한**: 같은 창 → 보안(Security) 탭 → 편집 → 해당 계정에 **수정(Modify)**
-   - ⚠️ 권한을 준 Windows 계정이 **Mac에서 마운트할 때 인증하는 계정과 동일**해야 한다.
+1. **Windows: folder share + write permission** — there are two permission layers and **their intersection (the stricter one)** applies, so open both.
+   - **Share permission**: right-click the folder -> Properties -> Sharing -> Advanced Sharing -> Permissions -> grant the account **Change**
+   - **NTFS permission**: same window -> Security tab -> Edit -> grant the account **Modify**
+   - WARNING: the Windows account you grant must be **the same account you authenticate as when mounting from the Mac**.
 
-2. **Mac: 마운트** — Finder `Cmd+K` → `smb://<windows-ip>/<공유이름>` → 등록된 사용자로 로그인(게스트 ❌). `/Volumes/<공유이름>` 에 잡힌다.
+2. **Mac: mount** — Finder `Cmd+K` -> `smb://<windows-ip>/<share>` -> log in as a registered user (not guest). It mounts at `/Volumes/<share>`.
 
-3. **권한 변경 후에는 반드시 재마운트** — SMB는 자격증명/권한을 마운트 시점에 캐싱한다. Windows에서 권한을 바꿔도 기존 연결은 옛 권한 그대로다. 캐시까지 비우려면:
+3. **After changing permissions, always remount** — SMB caches credentials/permissions at mount time. Changing Windows permissions does not affect an existing connection. To also clear the cache:
    ```bash
-   umount /Volumes/<공유이름>
-   security delete-internet-password -s <windows-ip>   # Keychain 캐시 제거
-   # 그다음 Finder Cmd+K 로 재연결
+   umount /Volumes/<share>
+   security delete-internet-password -s <windows-ip>   # remove the Keychain cache
+   # then reconnect via Finder Cmd+K
    ```
 
-4. **쓰기 확인** — 아래가 `✅` 여야 편집이 된다(스크립트도 시작 시 자동 점검한다):
+4. **Verify write access** — the following must succeed for editing to work (the script also checks this at startup):
    ```bash
-   touch /Volumes/<공유이름>/.__t && echo "✅ 쓰기 OK" && rm /Volumes/<공유이름>/.__t
+   touch /Volumes/<share>/.__t && echo "write OK" && rm /Volumes/<share>/.__t
    ```
 
-> macOS Finder가 표시하는 `-rwx------` 같은 권한 표기는 합성값이라 신뢰할 수 없다. 실제 접근은 Windows ACL이 결정하므로 위 `touch` 테스트로만 판정한다.
+> The permission bits macOS Finder shows (e.g. `-rwx------`) are synthetic and not reliable. Actual access is decided by the Windows ACL, so judge only by the `touch` test above.
 >
-> 회사 관리(IT 정책) PC라 공유 쓰기를 끝내 못 받으면, 이 방식(Mac agent 편집)은 불가능하다 → 아래 "agent 를 Windows 에서 실행" 대안으로 전환.
+> If this is a managed (IT-policy) PC and you cannot get share write access, this approach (editing from the Mac agent) is not possible -> switch to the "run the agent on Windows" alternative below.
 
-> `--cwd` 는 월드 파일 위치이자 `.overdare`(세션·지식·config) 저장 위치를 **동시에** 결정한다. 마운트 경로를 주면 세션 등 런타임 데이터가 그 폴더(=Windows 공유)에 쌓인다(SMB라 느릴 수 있음). 번들 스킬만은 글로벌 `~/.overdare/skills`(Mac) 심링크에서 로드되므로 영향받지 않는다.
+> `--cwd` decides **both** the world-file location and the `.overdare` (sessions/knowledge/config) store location. If you pass a mount path, runtime data like sessions accumulates in that folder (= the Windows share, which may be slow over SMB). Only the bundle skills are unaffected, since they load from the global `~/.overdare/skills` (Mac) symlink.
 >
-> 주의: SMB 환경에선 파일 락/지연/개행·인코딩 차이로 편집이 불안정할 수 있다. 안 되면 대안으로 **agent 를 Windows 에서 실행하고 Mac 은 브라우저(`http://<windows-ip>:5174`)로만 접속**하는 구성을 고려한다(파일이 항상 로컬이라 편집이 안정적, 단 코드 HMR 은 소스가 있는 머신에서만 됨).
+> Caveat: over SMB, editing can be unstable due to file locking, latency, and line-ending/encoding differences. If it doesn't work, consider **running the agent on Windows and connecting from the Mac with just a browser (`http://<windows-ip>:5174`)** — the file is always local so editing is stable, though code HMR only runs on the machine where the source lives.
 
-- 번들 스킬/에이전트 심링크는 **없을 때만** 생성하므로 반복 실행해도 안전하다(idempotent).
-- 권한 config(`yolo`)는 글로벌 `~/.overdare/config.jsonc` 에 **없을 때만** 생성한다(이미 있으면 그대로 둠). 글로벌에 두는 이유: cwd가 무엇이든(특히 read-only 마운트여도) 항상 로드되고, 마운트에 쓰기를 시도하지 않아 안전하기 때문.
-- 브라우저: **http://localhost:5174**, 종료는 **Ctrl+C** 한 번(백엔드·프론트 같이 내려감).
+- The bundle skill/agent symlinks are created **only if missing**, so it is safe to rerun (idempotent).
+- The permission config (`yolo`) is created in the global `~/.overdare/config.jsonc` **only if missing** (left as-is if it already exists). It lives in the global location because it is loaded regardless of cwd (even a read-only mount) and never attempts to write to the mount.
+- Browser: **http://localhost:5174**, quit with a single **Ctrl+C** (backend and frontend go down together).
 
-스크립트 본체: `scripts/dev-cross-studio.sh`. 동작 원리를 이해하려면 아래 수동 단계를 참고.
+The script itself is `scripts/dev-cross-studio.sh`. To understand how it works, see the manual steps above.
 
-## 빌드는 필요 없다
+## No build needed
 
-- **런타임**: `bun run`이 TypeScript를 네이티브로 직접 실행한다. exe 컴파일도, release 다운로드도 불필요.
-- **프론트**: dev에선 Vite가 소스에서 서빙(`bun run --cwd packages/web dev`)하므로 dist 빌드 불필요.
-- **번들 스킬**: 빌드가 아니라 "탐색 경로에 올리기"만 하면 된다(방법 2의 심링크).
+- **Runtime**: `bun run` executes the TypeScript natively. No exe compile, no release download.
+- **Frontend**: in dev Vite serves from source (`bun run --cwd packages/web dev`), so no dist build.
+- **Bundle skills**: not a build — just "put them on the discovery path" (the Option 2 symlink).
 
-exe가 하던 일을 dev에선 **`bun run`(런타임) + 심링크 한 번(부트스트랩)** 이 대신한다.
+In dev, **`bun run` (runtime) + a one-time symlink (bootstrap)** replaces what the exe did.
 
 ---
 
-## 동작 확인 (스모크 테스트)
+## Sanity check (smoke test)
 
-부팅 확인 (Mac):
+Confirm it booted (Mac):
 
 ```bash
-lsof -nP -iTCP:7433 -sTCP:LISTEN   # 백엔드
-lsof -nP -iTCP:5174 -sTCP:LISTEN   # 프론트
+lsof -nP -iTCP:7433 -sTCP:LISTEN   # backend
+lsof -nP -iTCP:5174 -sTCP:LISTEN   # frontend
 ```
 
-백엔드 로그에 다음이 보이면 정상:
+The backend log shows this when healthy:
 
 ```
 DILIGENT_PORT=7433
 RPC endpoint: ws://localhost:7433/rpc
 ```
 
-- **웹 UI**: http://localhost:5174 → 채팅 UI가 뜨고 우상단 연결 상태 connected.
-- **Studio 연동**: agent에게 `studiorpc_level_browse` 같은 작업을 시켜 Windows Studio 응답이 오는지 확인. 실패 시 `STUDIO_HOST`/`STUDIO_PORT`와 Windows 리슨 여부부터 점검.
+- **Web UI**: http://localhost:5174 -> the chat UI appears and the connection status (top-right) is connected.
+- **Studio integration**: ask the agent to do something like `studiorpc_level_browse` and check that the Windows Studio responds. On failure, first check `STUDIO_HOST`/`STUDIO_PORT` and whether Windows is listening.
 
 ---
 
-## 트러블슈팅
+## Troubleshooting
 
-| 증상 | 원인 / 조치 |
+| Symptom | Cause / fix |
 | --- | --- |
-| 화면은 뜨는데 RPC 연결 안 됨 | 백엔드(7433)가 안 떠 있음. Vite 프록시 대상은 7433 고정 — 백엔드 포트를 7433으로 맞출 것 |
-| `studiorpc_*` 도구가 안 보임 | web 단독 백엔드(`web:dev`)로 띄움. **사이드카 진입점**으로 다시 띄울 것 |
-| 번들 스킬(actionsequence 등)이 안 보임 | 방법 2의 심링크 미실행. `~/.overdare/skills`에 심링크 확인 |
-| Studio 연결 타임아웃 | `STUDIO_HOST`/`STUDIO_PORT` 오설정, 또는 Windows Studio가 해당 포트로 리슨 안 함 / 방화벽 차단 |
-| `nc -vz`는 되는데 RPC만 실패 | Studio가 RPC 프로토콜로 응답 안 함(다른 프로세스가 포트 점유). Studio 재시작 |
-| 포트 충돌(`EADDRINUSE`) | 기존 프로세스 종료 후 재실행: `lsof -ti:7433 \| xargs kill` |
-| `EACCES: permission denied ... .ovdrjm` / 세션 저장 실패 | 마운트가 read-only. [SMB 쓰기 권한](#smb-공유--마운트--쓰기-권한-편집의-필수-조건) (공유+NTFS) 부여 후 **재마운트**. `browse`는 되는데 편집만 실패하면 거의 이 경우 |
-| 권한 고쳤는데도 계속 거부 | SMB 자격증명 캐싱. `umount` + `security delete-internet-password -s <ip>` 후 재연결. Finder 표기 권한 말고 `touch` 테스트로 판정 |
+| UI loads but RPC won't connect | Backend (7433) is not up. The Vite proxy target is fixed at 7433 — set the backend port to 7433 |
+| `studiorpc_*` tools not visible | Started with the web-only backend (`web:dev`). Restart with the **sidecar entrypoint** |
+| Bundle skills (actionsequence, etc.) not visible | Option 2 symlink not done. Check the symlinks under `~/.overdare/skills` |
+| Studio connection timeout | `STUDIO_HOST`/`STUDIO_PORT` wrong, or Windows Studio not listening on that port / firewall blocked |
+| `nc -vz` works but only RPC fails | Studio isn't speaking the RPC protocol (another process holds the port). Restart Studio |
+| Port conflict (`EADDRINUSE`) | Kill the existing process and rerun: `lsof -ti:7433 \| xargs kill` |
+| `EACCES: permission denied ... .ovdrjm` / session save fails | Mount is read-only. Grant [SMB write permission](#smb-share--mount--write-permission-required-for-editing) (share + NTFS) and **remount**. If browse works but only editing fails, this is almost always it |
+| Still denied after fixing permissions | SMB credential caching. `umount` + `security delete-internet-password -s <ip>`, then reconnect. Judge by the `touch` test, not Finder's displayed permissions |
 
-### Studio가 localhost에만 리슨할 때 — SSH 터널
+### When Studio listens only on localhost — SSH tunnel
 
-Windows Studio가 `127.0.0.1`에만 바인딩해 LAN 접속이 막히면, Mac에서 SSH 터널로 우회한다:
+If Windows Studio binds only to `127.0.0.1` and LAN access is blocked, tunnel from the Mac:
 
 ```bash
-# Mac: Windows의 13377을 Mac의 13377로 포워딩
+# Mac: forward Windows' 13377 to the Mac's 13377
 ssh -L 13377:localhost:13377 <windows-user>@192.168.0.42
 ```
 
-터널을 띄운 채로 사이드카는 **localhost**를 보게 한다:
+With the tunnel up, point the sidecar at **localhost**:
 
 ```bash
 STUDIO_HOST=localhost STUDIO_PORT=13377 \
@@ -281,51 +281,51 @@ bun run apps/overdare-ai-agent/sidecar/src/server.ts --dev --port=7433 --cwd="$P
 
 ---
 
-## 대안 — agent 를 Windows 에서 실행 (SMB 쓰기를 못 받을 때)
+## Alternative — run the agent on Windows (when you can't get SMB write access)
 
-회사 정책 등으로 공유 쓰기 권한을 끝내 못 받으면, Mac에서 월드를 편집하는 건 불가능하다. 이때는 **agent 를 Windows(= Studio 옆)에서 돌린다.** 월드 파일이 로컬이라 권한 문제가 사라지고, 프로덕션 exe 구조와도 일치한다. 이건 사실 `local-development.md` 의 **모드 B(같은 머신 사이드카)** 를 Windows에서 하는 것이다.
+If you cannot get share write permission (company policy, etc.), editing the world from the Mac is impossible. In that case **run the agent on Windows (next to Studio).** The world file is local so permission issues disappear, and it matches the production exe topology. This is really just `local-development.md`'s **Mode B (same-machine sidecar)** done on Windows.
 
 ```bash
-# Windows (Git Bash / PowerShell), repo + bun 설치 후:
+# Windows (Git Bash / PowerShell), after installing the repo + bun:
 bun install
 
-# Studio가 로컬이라 STUDIO_HOST 불필요(기본 localhost)
+# Studio is local so STUDIO_HOST is not needed (defaults to localhost)
 STUDIO_PORT=13377 bun run apps/overdare-ai-agent/sidecar/src/server.ts \
-  --dev --port=7433 --cwd="C:/path/to/StudioProject"   # 실제 .umap 있는 폴더(로컬 경로)
+  --dev --port=7433 --cwd="C:/path/to/StudioProject"   # the folder that has the actual .umap (local path)
 
 bun run --cwd packages/web dev
 ```
 
-- `--cwd` 는 이제 **Windows 로컬 경로**(`C:/...`)다. 로컬이라 읽기/쓰기 모두 됨.
-- Mac에서 보려면 브라우저로 `http://<windows-ip>:5174` 접속(프론트는 얇은 WS 클라이언트). Studio 3D 결과는 Windows 화면(또는 원격데스크톱)에서 본다.
+- `--cwd` is now a **Windows local path** (`C:/...`). Being local, both read and write work.
+- To view from the Mac, open `http://<windows-ip>:5174` in a browser (the frontend is a thin WS client). The Studio 3D result is seen on the Windows screen (or via remote desktop).
 
-### Mac에서 코드 짜며 HMR 유지하기
+### Keeping HMR while coding from the Mac
 
-HMR은 소스가 있는 머신(이 경우 Windows)에서 돌아야 한다. Mac에서 개발하려면 **Windows 파일을 Mac에서 원격 편집**한다:
+HMR has to run on the machine where the source lives (here, Windows). To develop from the Mac, **edit the Windows files remotely from the Mac**:
 
-- **VS Code / Cursor Remote-SSH** (권장): Mac UI로 Windows 파일을 직접 편집 → 저장 시 Windows 로컬 파일이 바뀌어 Vite/사이드카가 HMR로 즉시 반영. 포트 포워딩으로 `http://localhost:5174` 를 Mac에서 봄.
-- **파일 동기화**(Mutagen/Syncthing): Remote-SSH가 안 되는 환경의 대안. Mac↔Windows repo 양방향 sync.
+- **VS Code / Cursor Remote-SSH** (recommended): edit Windows files directly from the Mac UI -> on save the Windows local file changes, so Vite/sidecar pick it up via HMR immediately. Port-forward to view `http://localhost:5174` on the Mac.
+- **File sync** (Mutagen/Syncthing): an alternative when Remote-SSH isn't available. Two-way sync between the Mac and Windows repo.
 
 ---
 
-## 종료 / 정리
+## Shutdown / cleanup
 
 ```bash
-lsof -ti:7433 | xargs kill   # 백엔드
-lsof -ti:5174 | xargs kill   # 프론트
+lsof -ti:7433 | xargs kill   # backend
+lsof -ti:5174 | xargs kill   # frontend
 ```
 
 ---
 
-## 참고 (코드 위치)
+## Reference (code locations)
 
-- 사이드카 진입점: `apps/overdare-ai-agent/sidecar/src/server.ts`
-- Studio RPC(연결·host/port 해석): `apps/overdare-ai-agent/sidecar/src/tools/studiorpc/rpc.ts`, `config.ts`
-- 번들 스킬·에이전트 원본: `apps/overdare-ai-agent/bootstrap/skills/`, `bootstrap/agents/`
-- 스킬/에이전트 탐색 경로: `packages/runtime/src/skills/discovery.ts`, `agents/discovery.ts`
-- exe 인자→env 변환(`--studio-rpc-port` → `STUDIO_PORT`): `apps/overdare-ai-agent/src/webserver.rs`
-- exe 부트스트랩 복사(번들→글로벌): `apps/overdare-ai-agent/src/init.rs`
-- 런타임 번들 다운로드: `apps/overdare-ai-agent/src/update.rs`
-- Vite 프록시 설정: `packages/web/vite.config.ts`
+- sidecar entrypoint: `apps/overdare-ai-agent/sidecar/src/server.ts`
+- Studio RPC (connection, host/port resolution): `apps/overdare-ai-agent/sidecar/src/tools/studiorpc/rpc.ts`, `config.ts`
+- bundle skills/agents source: `apps/overdare-ai-agent/bootstrap/skills/`, `bootstrap/agents/`
+- skill/agent discovery paths: `packages/runtime/src/skills/discovery.ts`, `agents/discovery.ts`
+- exe arg -> env conversion (`--studio-rpc-port` -> `STUDIO_PORT`): `apps/overdare-ai-agent/src/webserver.rs`
+- exe bootstrap copy (bundle -> global): `apps/overdare-ai-agent/src/init.rs`
+- runtime bundle download: `apps/overdare-ai-agent/src/update.rs`
+- Vite proxy config: `packages/web/vite.config.ts`
 
-> 같은 머신(Mac)에 Studio까지 두는 일반 로컬 개발은 [`local-development.md`](./local-development.md) 참고.
+> For general local development with Studio on the same machine (Mac), see [`local-development.md`](./local-development.md).
