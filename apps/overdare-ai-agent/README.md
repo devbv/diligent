@@ -82,6 +82,41 @@ bun run overdare-ai-agent:test
 DILIGENT_UPDATE_URL=https://example.com/update-manifest.json cargo run --manifest-path apps/overdare-ai-agent/Cargo.toml -- init
 ```
 
+## Studio RPC collision profile tools
+
+The sidecar exposes a small Studio RPC tool surface for editing collision settings in an OVERDARE world file. The tools operate on the first `.ovdrjm` found under the active `--cwd` and read or update its `WorldProfileData` JSON object.
+
+Collision data uses two concepts:
+
+| Concept | Meaning |
+|---|---|
+| Collision channel | Object or trace category, such as `WorldStatic`, `Pawn`, `Camera`, or a custom channel. |
+| Collision profile | Named rule set that chooses an object type and per-channel responses. |
+
+Supported response values are `ECR_Block`, `ECR_Overlap`, and `ECR_Ignore`. Supported profile `collisionEnabled` values are `NoCollision`, `QueryOnly`, `PhysicsOnly`, and `QueryAndPhysics`.
+
+### Tool surface
+
+| Tool | Purpose |
+|---|---|
+| `get_collision_channels` | List default and custom collision channels. |
+| `add_collision_channel` | Add a custom channel on an unused `ECC_GameTraceChannel1` through `ECC_GameTraceChannel18` slot. |
+| `update_collision_channel` | Rename a custom channel or change its default response/type flags. |
+| `delete_collision_channel` | Remove a custom channel. |
+| `get_collision_profiles` | List default and custom collision profiles. |
+| `create_collision_profile` | Create a custom profile. |
+| `edit_collision_profile` | Update a custom profile. |
+| `delete_collision_profile` | Remove a custom profile. |
+
+### Guardrails
+
+- Default engine channels and profiles are read-only.
+- Custom profiles are always written with `bCanModify: true`.
+- Profile `objectTypeName` must reference an object channel, not a trace channel.
+- `customResponses[].channel` must reference a known channel or profile name.
+- Renaming a custom channel updates profile `objectTypeName` and `customResponses` references.
+- Deleting a channel, or converting an object channel into a trace channel, is rejected if it would leave any profile `objectTypeName` unresolved.
+
 ## Notes
 
 - `start` does not execute repo TypeScript directly; it launches the updated runtime subprocess
