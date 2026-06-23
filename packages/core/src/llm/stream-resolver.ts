@@ -2,14 +2,14 @@
 import { createAnthropicStream } from "./provider/anthropic";
 import { createGeminiStream } from "./provider/gemini";
 import { createOpenAIStream } from "./provider/openai";
-import { createZaiStream } from "./provider/zai";
+import { createZaiCodingPlanStream } from "./provider/zai-coding-plan";
 import type { ProviderName, StreamFunction } from "./types";
 
 const STATIC_STREAM_FACTORIES: Partial<Record<ProviderName, () => StreamFunction>> = {
   anthropic: () => createAnthropicStream(),
   openai: () => createOpenAIStream(),
   gemini: () => createGeminiStream(),
-  zai: () => createZaiStream(),
+  "zai-coding-plan": () => createZaiCodingPlanStream(),
 };
 
 /** Resolve a StreamFunction for the given provider from static factory definitions. */

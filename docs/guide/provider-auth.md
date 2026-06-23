@@ -18,7 +18,7 @@ Supported providers in the protocol/runtime are:
 - `chatgpt`
 - `gemini`
 - `vertex`
-- `zai`
+- `zai-coding-plan`
 
 ## Auth storage
 
@@ -55,7 +55,7 @@ Current persisted shape:
   "openai": "sk-...", // optional
   "chatgpt": "...", // optional, legacy/plain-key slot
   "gemini": "AIza...", // optional
-  "zai": "zai_...", // optional
+  "zai-coding-plan": "your-api-key", // optional
   "chatgpt_oauth": {
     "access_token": "...",
     "refresh_token": "...",
@@ -79,21 +79,21 @@ The auth store currently supports plain API keys for:
 - `anthropic`
 - `openai`
 - `gemini`
-- `zai`
+- `zai-coding-plan`
 
 Vertex uses runtime-managed access-token auth instead of a long-lived API key.
 
-## z.ai API-key flow
+## z.ai Coding Plan API-key flow
 
-z.ai support uses the `zai` provider and currently targets the z.ai OpenAI-compatible Chat Completions endpoint for `glm-*` models.
+z.ai Coding Plan support uses the `zai-coding-plan` provider and targets the z.ai Coding Plan OpenAI-compatible Chat Completions endpoint for `glm-*` models.
 
 Practical notes:
 
 - configure with `auth/set` or `~/.diligent/auth.jsonc`
 - runtime stores the plain API key in the same auth store as other API-key providers
-- the default built-in model for this provider is `glm-5.1`
+- the default built-in model for this provider is `glm-5.2`
 - the default base URL is `https://api.z.ai/api/coding/paas/v4`
-- environment fallback is supported through `ZAI_API_KEY`
+- environment fallback is supported through `ZAI_CODING_PLAN_API_KEY`
 
 ## Vertex AI access-token flow
 

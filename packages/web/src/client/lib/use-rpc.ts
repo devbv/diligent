@@ -1,6 +1,6 @@
-// @summary React hook for WebRpcClient lifecycle: creation, connection state, and reconnect
-import { useEffect, useRef, useState } from "react";
-import { type ConnectionState, WebRpcClient } from "./rpc-client";
+// @summary React hook for WebRpcClient lifecycle: creation, connection state, reconnect, and connection modal visibility
+import { useEffect, useMemo, useRef, useState } from "react";
+import { type ConnectionState, getReconnectAttemptLimit, WebRpcClient } from "./rpc-client";
 
 export function useRpcClient(url: string) {
   const rpcRef = useRef<WebRpcClient | null>(null);
@@ -33,5 +33,11 @@ export function useRpcClient(url: string) {
     void rpc.connect();
   };
 
-  return { rpcRef, connection, reconnectAttempts, retryConnection };
+  const retryLimit = getReconnectAttemptLimit();
+  const showConnectionModal = useMemo(
+    () => connection === "reconnecting" || (connection === "disconnected" && reconnectAttempts > 0),
+    [connection, reconnectAttempts],
+  );
+
+  return { rpcRef, connection, reconnectAttempts, retryConnection, retryLimit, showConnectionModal };
 }

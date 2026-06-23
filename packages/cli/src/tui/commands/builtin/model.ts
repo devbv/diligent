@@ -1,10 +1,14 @@
 // @summary Model selection command - allows switching between available LLM models
 import { getThinkingEffortLabel, KNOWN_MODELS, resolveModel, supportsThinkingNone } from "@diligent/runtime";
-import { DEFAULT_PROVIDER, PROVIDER_NAMES, type ProviderName } from "../../../provider-manager";
+import { DEFAULT_PROVIDER, PROVIDER_DISPLAY_NAMES, PROVIDER_NAMES, type ProviderName } from "../../../provider-manager";
 import type { ListPickerItem } from "../../components/list-picker";
 import { t } from "../../theme";
 import type { Command } from "../types";
 import { promptApiKey } from "./provider";
+
+function providerDisplayName(provider: ProviderName): string {
+  return PROVIDER_DISPLAY_NAMES[provider];
+}
 
 export const modelCommand: Command = {
   name: "model",
@@ -18,7 +22,7 @@ export const modelCommand: Command = {
 
         // Check if provider has API key
         if (!ctx.config.providerManager.hasKeyFor(provider)) {
-          ctx.displayLines([`  ${t.warn}No API key for ${provider}. Please enter one:${t.reset}`]);
+          ctx.displayLines([`  ${t.warn}No API key for ${providerDisplayName(provider)}. Please enter one:${t.reset}`]);
           await promptApiKey(provider, ctx);
           // After key input, check again
           if (!ctx.config.providerManager.hasKeyFor(provider)) {
@@ -62,7 +66,7 @@ export const modelCommand: Command = {
     for (const prov of sortedProviders) {
       const models = KNOWN_MODELS.filter((m) => (m.provider ?? DEFAULT_PROVIDER) === prov);
       if (models.length === 0) continue;
-      items.push({ label: prov, value: "", header: true });
+      items.push({ label: providerDisplayName(prov), value: "", header: true });
       for (const m of models) {
         const aliases = m.aliases?.length ? m.aliases.join(", ") : "";
         items.push({ label: m.id, description: aliases, value: m.id });
@@ -84,7 +88,7 @@ export const modelCommand: Command = {
     const provider = (model.provider ?? DEFAULT_PROVIDER) as ProviderName;
 
     if (!ctx.config.providerManager.hasKeyFor(provider)) {
-      ctx.displayLines([`  ${t.warn}No API key for ${provider}. Please enter one:${t.reset}`]);
+      ctx.displayLines([`  ${t.warn}No API key for ${providerDisplayName(provider)}. Please enter one:${t.reset}`]);
       await promptApiKey(provider, ctx);
       if (!ctx.config.providerManager.hasKeyFor(provider)) {
         ctx.displayError("Model switch cancelled — no API key provided.");

@@ -5,7 +5,7 @@ import type { NativeCompactionLookup } from "./provider/native-compaction";
 import { createOpenAINativeCompaction, createOpenAIStream } from "./provider/openai";
 import type { OpenAIImageDetail } from "./provider/openai-responses";
 import { createVertexStream } from "./provider/vertex";
-import { createZaiStream } from "./provider/zai";
+import { createZaiCodingPlanStream } from "./provider/zai-coding-plan";
 import type { ProviderName, StreamFunction } from "./types";
 
 export interface ExternalProviderAuth {
@@ -23,7 +23,7 @@ export interface ProviderManagerConfig {
     chatgpt?: { baseUrl?: string };
     gemini?: { baseUrl?: string };
     vertex?: { baseUrl?: string };
-    zai?: { baseUrl?: string };
+    "zai-coding-plan"?: { baseUrl?: string };
   };
   auth?: Partial<Record<ProviderName, ExternalProviderAuth>>;
 }
@@ -32,7 +32,16 @@ export type { ProviderName };
 
 export const DEFAULT_PROVIDER: ProviderName = "anthropic";
 
-export const PROVIDER_NAMES: ProviderName[] = ["anthropic", "openai", "chatgpt", "gemini", "vertex", "zai"];
+export const PROVIDER_NAMES: ProviderName[] = ["anthropic", "openai", "chatgpt", "gemini", "vertex", "zai-coding-plan"];
+
+export const PROVIDER_DISPLAY_NAMES: Record<ProviderName, string> = {
+  anthropic: "Anthropic",
+  openai: "OpenAI",
+  chatgpt: "ChatGPT",
+  gemini: "Gemini",
+  vertex: "Vertex AI",
+  "zai-coding-plan": "z.ai Coding Plan",
+};
 
 export const DEFAULT_MODELS: Record<ProviderName, string> = {
   anthropic: "claude-sonnet-4-6",
@@ -40,7 +49,7 @@ export const DEFAULT_MODELS: Record<ProviderName, string> = {
   chatgpt: "chatgpt-5.5",
   gemini: "gemini-2.5-flash",
   vertex: "vertex-gemma-4-26b-it",
-  zai: "glm-5.1",
+  "zai-coding-plan": "glm-5.2",
 };
 
 export const PROVIDER_HINTS: Record<ProviderName, { apiKeyUrl: string; apiKeyPlaceholder: string }> = {
@@ -52,7 +61,7 @@ export const PROVIDER_HINTS: Record<ProviderName, { apiKeyUrl: string; apiKeyPla
     apiKeyUrl: "https://cloud.google.com/vertex-ai/generative-ai/docs/migrate/openai/overview",
     apiKeyPlaceholder: "Google Cloud access token",
   },
-  zai: { apiKeyUrl: "https://platform.z.ai/console/api-keys", apiKeyPlaceholder: "zai_..." },
+  "zai-coding-plan": { apiKeyUrl: "https://platform.z.ai/console/api-keys", apiKeyPlaceholder: "API key" },
 };
 
 // imageDetail is OpenAI-only; other factories have fewer params and remain assignable (a function
@@ -68,7 +77,7 @@ const PROVIDER_FACTORIES: Record<
   },
   gemini: createGeminiStream,
   vertex: (token: string, baseUrl?: string) => createVertexStream(() => token, { baseUrl }),
-  zai: createZaiStream,
+  "zai-coding-plan": createZaiCodingPlanStream,
 };
 
 class StreamFactoryCache {
@@ -190,7 +199,7 @@ export class ProviderManager {
     this.baseUrls.chatgpt = config.provider?.chatgpt?.baseUrl;
     this.baseUrls.gemini = config.provider?.gemini?.baseUrl;
     this.baseUrls.vertex = config.provider?.vertex?.baseUrl;
-    this.baseUrls.zai = config.provider?.zai?.baseUrl;
+    this.baseUrls["zai-coding-plan"] = config.provider?.["zai-coding-plan"]?.baseUrl;
     this.authState = new AuthStateManager(config.auth);
   }
 
