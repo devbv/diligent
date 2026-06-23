@@ -18,8 +18,12 @@ function makeProject(worldProfileData: Record<string, unknown>): string {
   return cwd;
 }
 
+function readOvdrjmRaw(cwd: string): string {
+  return readFileSync(join(cwd, "Test.ovdrjm"), "utf-8");
+}
+
 function readWorldProfileData(cwd: string): Record<string, unknown> {
-  const raw = readFileSync(join(cwd, "Test.ovdrjm"), "utf-8");
+  const raw = readOvdrjmRaw(cwd);
   const parsed = JSON.parse(raw) as { WorldProfileData: Record<string, unknown> };
   return parsed.WorldProfileData;
 }
@@ -44,6 +48,47 @@ afterEach(() => {
 });
 
 describe("collision channel tools", () => {
+  test("reads channels and profiles without modifying the ovdrjm file", async () => {
+    const cwd = makeProject({
+      DefaultChannelResponses: [
+        {
+          channel: "ECC_GameTraceChannel1",
+          defaultResponse: "ECR_Block",
+          bTraceType: false,
+          bStaticObject: false,
+          name: "Bullet",
+        },
+      ],
+      Profiles: [
+        {
+          name: "PlayerProfile",
+          collisionEnabled: "QueryAndPhysics",
+          bCanModify: true,
+          objectTypeName: "Pawn",
+          customResponses: [{ channel: "Bullet", response: "ECR_Overlap" }],
+        },
+      ],
+      EditProfiles: {
+        BlockAll: {
+          customResponses: [{ channel: "Bullet", response: "ECR_Ignore" }],
+        },
+      },
+    });
+    const tools = await loadCollisionTools(cwd);
+    const before = readOvdrjmRaw(cwd);
+
+    const channelResult = await tools.get("get_collision_channels")!.execute({}, toolContext());
+    const profileResult = await tools.get("get_collision_profiles")!.execute({}, toolContext());
+
+    expect(channelResult.metadata?.result).toMatchObject({
+      customChannels: [{ name: "Bullet" }],
+    });
+    expect(profileResult.metadata?.result).toMatchObject({
+      customProfiles: [expect.objectContaining({ name: "PlayerProfile" })],
+    });
+    expect(readOvdrjmRaw(cwd)).toBe(before);
+  });
+
   test("lists, adds, renames, and deletes custom channels with profile response synchronization", async () => {
     const cwd = makeProject({
       DefaultChannelResponses: [
@@ -187,6 +232,56 @@ describe("collision channel tools", () => {
     expect(result.metadata).toMatchObject({ error: true, code: "PROTECTED_CHANNEL" });
   });
 
+  test("rejects protected channel updates and trace conversion when profiles use the channel as object type", async () => {
+    const cwd = makeProject({
+      DefaultChannelResponses: [
+        {
+          channel: "ECC_WorldStatic",
+          defaultResponse: "ECR_Block",
+          bTraceType: false,
+          bStaticObject: true,
+          name: "WorldStatic",
+        },
+        {
+          channel: "ECC_GameTraceChannel1",
+          defaultResponse: "ECR_Block",
+          bTraceType: false,
+          bStaticObject: false,
+          name: "Projectile",
+        },
+      ],
+      Profiles: [
+        {
+          name: "ProjectileProfile",
+          collisionEnabled: "QueryAndPhysics",
+          bCanModify: true,
+          objectTypeName: "Projectile",
+          customResponses: [],
+        },
+      ],
+      EditProfiles: {},
+    });
+    const tools = await loadCollisionTools(cwd);
+
+    const protectedResult = await tools.get("update_collision_channel")!.execute(
+      {
+        channel: "ECC_WorldStatic",
+        defaultResponse: "ECR_Ignore",
+      },
+      toolContext(),
+    );
+    expect(protectedResult.metadata).toMatchObject({ error: true, code: "PROTECTED_CHANNEL" });
+
+    const traceResult = await tools.get("update_collision_channel")!.execute(
+      {
+        channel: "ECC_GameTraceChannel1",
+        bTraceType: true,
+      },
+      toolContext(),
+    );
+    expect(traceResult.metadata).toMatchObject({ error: true, code: "INVALID_CHANNEL" });
+  });
+
   test("uses spec error codes for duplicate channels and invalid responses", async () => {
     const cwd = makeProject({
       DefaultChannelResponses: [
@@ -214,6 +309,30 @@ describe("collision channel tools", () => {
       toolContext(),
     );
     expect(duplicateResult.metadata).toMatchObject({ error: true, code: "DUPLICATE_NAME" });
+
+    const duplicateNameResult = await tools.get("add_collision_channel")!.execute(
+      {
+        channel: "ECC_GameTraceChannel2",
+        name: "Bullet",
+        defaultResponse: "ECR_Block",
+        bTraceType: false,
+        bStaticObject: false,
+      },
+      toolContext(),
+    );
+    expect(duplicateNameResult.metadata).toMatchObject({ error: true, code: "DUPLICATE_NAME" });
+
+    const invalidChannelIdResult = await tools.get("add_collision_channel")!.execute(
+      {
+        channel: "ECC_GameTraceChannel19",
+        name: "OutOfRange",
+        defaultResponse: "ECR_Block",
+        bTraceType: false,
+        bStaticObject: false,
+      },
+      toolContext(),
+    );
+    expect(invalidChannelIdResult.metadata).toMatchObject({ error: true, code: "INVALID_CHANNEL" });
 
     const invalidResponseResult = await tools.get("add_collision_channel")!.execute(
       {
@@ -271,6 +390,7 @@ describe("collision profile tools", () => {
         objectTypeName: "Pawn",
         customResponses: [{ channel: "Bullet", response: "ECR_Ignore" }],
         helpMessage: "Ghost profile",
+        bCanModify: false,
       },
       toolContext(),
     );
@@ -334,5 +454,66 @@ describe("collision profile tools", () => {
     const result = await tools.get("delete_collision_profile")!.execute({ name: "BlockAll" }, toolContext());
 
     expect(result.metadata).toMatchObject({ error: true, code: "PROTECTED_PROFILE" });
+  });
+
+  test("rejects invalid profile references and protected default profile field edits", async () => {
+    const cwd = makeProject({
+      DefaultChannelResponses: [
+        {
+          channel: "ECC_GameTraceChannel1",
+          defaultResponse: "ECR_Block",
+          bTraceType: false,
+          bStaticObject: false,
+          name: "Bullet",
+        },
+        {
+          channel: "ECC_GameTraceChannel2",
+          defaultResponse: "ECR_Ignore",
+          bTraceType: true,
+          bStaticObject: false,
+          name: "HitScan",
+        },
+      ],
+      Profiles: [],
+      EditProfiles: {},
+    });
+    const tools = await loadCollisionTools(cwd);
+
+    const defaultNameResult = await tools.get("create_collision_profile")!.execute(
+      {
+        name: "BlockAll",
+        objectTypeName: "Pawn",
+      },
+      toolContext(),
+    );
+    expect(defaultNameResult.metadata).toMatchObject({ error: true, code: "DUPLICATE_NAME" });
+
+    const traceObjectTypeResult = await tools.get("create_collision_profile")!.execute(
+      {
+        name: "TraceProfile",
+        objectTypeName: "HitScan",
+      },
+      toolContext(),
+    );
+    expect(traceObjectTypeResult.metadata).toMatchObject({ error: true, code: "INVALID_CHANNEL" });
+
+    const unknownResponseResult = await tools.get("create_collision_profile")!.execute(
+      {
+        name: "UnknownChannelProfile",
+        objectTypeName: "Pawn",
+        customResponses: [{ channel: "MissingChannel", response: "ECR_Block" }],
+      },
+      toolContext(),
+    );
+    expect(unknownResponseResult.metadata).toMatchObject({ error: true, code: "INVALID_CHANNEL" });
+
+    const defaultFieldEditResult = await tools.get("edit_collision_profile")!.execute(
+      {
+        name: "BlockAll",
+        collisionEnabled: "QueryOnly",
+      },
+      toolContext(),
+    );
+    expect(defaultFieldEditResult.metadata).toMatchObject({ error: true, code: "PROTECTED_PROFILE" });
   });
 });
