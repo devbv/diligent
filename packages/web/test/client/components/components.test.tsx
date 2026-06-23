@@ -18,7 +18,7 @@ import { MarkdownContent } from "../../../src/client/components/MarkdownContent"
 import { MessageList } from "../../../src/client/components/MessageList";
 import { Modal } from "../../../src/client/components/Modal";
 import { ProviderSettingsModal } from "../../../src/client/components/ProviderSettingsModal";
-import { QuestionCard } from "../../../src/client/components/QuestionCard";
+import { isUserInputComplete, QuestionCard } from "../../../src/client/components/QuestionCard";
 import { SlashMenu } from "../../../src/client/components/SlashMenu";
 import { Toast } from "../../../src/client/components/Toast";
 import { ToolBlock } from "../../../src/client/components/ToolBlock";
@@ -115,6 +115,74 @@ test("question card always renders custom input row", () => {
   expect(html).toContain('aria-label="Reason"');
   expect(html).toContain("flex min-w-0 flex-1 flex-col");
   expect(html).toContain("min-w-0 truncate bg-transparent");
+  expect(html).toContain('disabled=""');
+});
+
+test("question card enables submit only after every question has an answer", () => {
+  const request = {
+    questions: [
+      {
+        id: "move",
+        header: "Move",
+        question: "How should the character move?",
+        options: [{ label: "Dash", description: "Move fast." }],
+      },
+      {
+        id: "direction",
+        header: "Direction",
+        question: "Which direction should it use?",
+        options: [{ label: "Forward", description: "Move ahead." }],
+      },
+    ],
+  };
+
+  expect(isUserInputComplete(request, {})).toBe(false);
+  expect(isUserInputComplete(request, { move: "Dash" })).toBe(false);
+  expect(isUserInputComplete(request, { move: "Dash", direction: "   " })).toBe(false);
+  expect(isUserInputComplete(request, { move: "Dash", direction: "Forward" })).toBe(true);
+
+  const incompleteHtml = renderToStaticMarkup(
+    <QuestionCard
+      request={request}
+      answers={{ move: "Dash" }}
+      onAnswerChange={() => {}}
+      onSubmit={() => {}}
+      onCancel={() => {}}
+    />,
+  );
+  const completeHtml = renderToStaticMarkup(
+    <QuestionCard
+      request={request}
+      answers={{ move: "Dash", direction: "Forward" }}
+      onAnswerChange={() => {}}
+      onSubmit={() => {}}
+      onCancel={() => {}}
+    />,
+  );
+
+  expect(incompleteHtml).toContain('disabled=""');
+  expect(completeHtml).not.toContain('disabled=""');
+});
+
+test("question card treats empty multi-select answers as incomplete", () => {
+  const request = {
+    questions: [
+      {
+        id: "effects",
+        header: "Effects",
+        question: "Pick effects",
+        allow_multiple: true,
+        options: [
+          { label: "Particles", description: "Add visual feedback." },
+          { label: "Sound", description: "Add audio feedback." },
+        ],
+      },
+    ],
+  };
+
+  expect(isUserInputComplete(request, { effects: [] })).toBe(false);
+  expect(isUserInputComplete(request, { effects: ["   "] })).toBe(false);
+  expect(isUserInputComplete(request, { effects: ["Particles"] })).toBe(true);
 });
 
 test("question card renders multi-select options as clear checkboxes", () => {
