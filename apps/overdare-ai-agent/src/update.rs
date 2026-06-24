@@ -235,6 +235,85 @@ fn finalize_runtime_install(
     )
 }
 
+fn copy_dir_recursive(src: &Path, dest: &Path) -> std::io::Result<()> {
+    fs::create_dir_all(dest)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let from = entry.path();
+        let to = dest.join(entry.file_name());
+        if from.is_dir() {
+            copy_dir_recursive(&from, &to)?;
+        } else {
+            fs::copy(&from, &to)?;
+        }
+    }
+    Ok(())
+}
+
+/// One-time migration for installs created before the versioned layout.
+///
+/// When no pointer exists yet but a legacy flat `updates/runtime` is present,
+/// copy it into `runtime-v<version>` and write the pointer so versioned and
+/// pinned launches resolve. We copy (not move) so a sidecar still running from
+/// the flat directory is never disturbed. Best-effort: any failure is logged and
+/// ignored — the no-pin legacy fallback keeps the agent bootable either way.
+fn migrate_flat_runtime_if_needed(env: Env, log: &mut String) {
+    // Already on the versioned layout?
+    if runtime_current_metadata_path(env)
+        .map(|p| p.exists())
+        .unwrap_or(false)
+    {
+        return;
+    }
+    let Some(legacy) = legacy_runtime_dir(env) else {
+        return;
+    };
+    if !runtime_layout_exists(&legacy) {
+        return; // nothing to migrate (fresh install or no flat runtime)
+    }
+    let Some(installed) = installed_version_at(&legacy) else {
+        let _ = writeln!(
+            log,
+            "[update] Skipping flat-runtime migration: legacy runtime has no readable version.json"
+        );
+        return;
+    };
+    let version = installed.version.trim().to_string();
+    if version.is_empty() {
+        return;
+    }
+    let Some(target) = runtime_version_dir(env, &version) else {
+        return;
+    };
+
+    if !runtime_layout_exists(&target) {
+        // Clear any incomplete leftover before copying.
+        if target.exists() {
+            let _ = fs::remove_dir_all(&target);
+        }
+        if let Err(e) = copy_dir_recursive(&legacy, &target) {
+            let _ = fs::remove_dir_all(&target);
+            let _ = writeln!(log, "[update] Flat-runtime migration copy failed: {e}");
+            return;
+        }
+    }
+
+    let current = RuntimeCurrent {
+        version: version.clone(),
+        dir: format!("runtime-v{version}"),
+        sha256: installed.sha256.clone(),
+        updated_at: chrono::Local::now().to_rfc3339(),
+    };
+    if let Err(e) = write_runtime_current_atomic(env, &current) {
+        let _ = writeln!(
+            log,
+            "[update] Flat-runtime migration pointer write failed: {e}"
+        );
+        return;
+    }
+    let _ = writeln!(log, "[update] Migrated flat runtime to runtime-v{version}");
+}
+
 /// All installed `runtime-v*` directories except the active one. In-use
 /// filtering is applied separately and is platform-specific. The legacy flat
 /// `runtime` directory is never a candidate.
@@ -785,6 +864,11 @@ pub fn run_with_progress(
         return Ok(false);
     }
 
+    // Adopt a pre-versioned flat runtime into the versioned layout before
+    // deciding anything else, so an already-up-to-date install still gains a
+    // pointer and a runtime-v<version> directory (needed for pinned `start`).
+    migrate_flat_runtime_if_needed(selection.env, log);
+
     let bootstrap_required = runtime_bootstrap_required(selection.env);
     if bootstrap_required {
         let _ = writeln!(
@@ -1325,6 +1409,60 @@ mod tests {
         with_temp_home("resolve-none", |_home| {
             let sel = EnvSelection::latest(Env::Prod);
             assert!(resolve_runtime_dir(&sel).is_err());
+        });
+    }
+
+    #[test]
+    fn migrate_flat_runtime_promotes_and_writes_pointer() {
+        with_temp_home("migrate-flat", |home| {
+            let updates = home.join(".overdare/updates");
+            let legacy = updates.join("runtime");
+            write_runtime_layout(&legacy, "0.5.4"); // pre-versioned flat install
+            assert!(!updates.join("runtime-current.json").exists());
+
+            let mut log = String::new();
+            super::migrate_flat_runtime_if_needed(Env::Prod, &mut log);
+
+            // Versioned dir created with a valid layout, pointer written to it.
+            let versioned = updates.join("runtime-v0.5.4");
+            assert!(super::runtime_layout_exists(&versioned));
+            assert_eq!(current_runtime_dir(Env::Prod), Some(versioned.clone()));
+            // Flat runtime left intact (copy, not move) so a running sidecar is safe.
+            assert!(legacy.join(sidecar_bin_name()).exists());
+            // A pinned start for the installed version now resolves.
+            let sel = EnvSelection::parse("prod@0.5.4").expect("parse pin");
+            assert_eq!(resolve_runtime_dir(&sel).expect("resolve pin"), versioned);
+        });
+    }
+
+    #[test]
+    fn migrate_flat_runtime_is_noop_when_pointer_exists() {
+        with_temp_home("migrate-noop", |home| {
+            let updates = home.join(".overdare/updates");
+            write_runtime_layout(&updates.join("runtime-v1.0.0"), "1.0.0");
+            write_runtime_current_atomic(Env::Prod, &pointer("1.0.0")).expect("pointer");
+            // A stale flat runtime is present but must be ignored once migrated.
+            write_runtime_layout(&updates.join("runtime"), "0.0.1");
+
+            let mut log = String::new();
+            super::migrate_flat_runtime_if_needed(Env::Prod, &mut log);
+
+            assert_eq!(
+                current_runtime_dir(Env::Prod),
+                Some(updates.join("runtime-v1.0.0"))
+            );
+            assert!(!updates.join("runtime-v0.0.1").exists());
+        });
+    }
+
+    #[test]
+    fn migrate_flat_runtime_is_noop_without_flat_runtime() {
+        with_temp_home("migrate-none", |home| {
+            let updates = home.join(".overdare/updates");
+            fs::create_dir_all(&updates).expect("create updates");
+            let mut log = String::new();
+            super::migrate_flat_runtime_if_needed(Env::Prod, &mut log);
+            assert!(!updates.join("runtime-current.json").exists());
         });
     }
 

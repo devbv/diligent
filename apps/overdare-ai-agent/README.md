@@ -65,8 +65,13 @@ locked).
   holds exactly one version (the one a no-pin `start` launches) — it is not a
   list and does not track previous versions.
 - **`updates/runtime`** (flat, unversioned) is the legacy layout and is used only
-  as a fallback for installs that predate versioning. The first successful
-  versioned update writes the pointer and stops using the flat layout.
+  as a fallback for installs that predate versioning. On the next `init`, a flat
+  install is migrated into the versioned layout: the flat directory is copied to
+  `runtime-v<version>` (copied, not moved, so a running sidecar is undisturbed)
+  and the pointer is written. This runs even when the version is already up to
+  date, so pinned `start` (`@<version>`) works without waiting for a real update.
+  Migration is best-effort; if it fails, the no-pin legacy fallback still boots
+  the agent.
 - Each `runtime-v<version>/` keeps the same internal bundle shape (sidecar
   binary, `dist/client`, `bootstrap/`, optional `rg`, `version.json`).
 
