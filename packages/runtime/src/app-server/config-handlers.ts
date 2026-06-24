@@ -18,6 +18,8 @@ import {
 } from "../auth/index";
 import { resolveProjectDirName } from "../infrastructure/diligent-dir";
 import {
+  type ConsentSetParams,
+  type ConsentState,
   DILIGENT_SERVER_NOTIFICATION_METHODS,
   type DiligentServerNotification,
   type ProviderAuthStatus,
@@ -26,6 +28,20 @@ import {
 } from "../protocol/index";
 
 type EmitFn = (notification: DiligentServerNotification) => Promise<void>;
+
+/** Reads/writes the resolved AI-data consent state (OVDR-11475 §3.A). */
+export interface ConsentConfigManager {
+  get: () => ConsentState;
+  set: (params: ConsentSetParams) => ConsentState;
+}
+
+export function handleConsentSet(
+  consentConfig: ConsentConfigManager | undefined,
+  params: ConsentSetParams,
+): ConsentState {
+  if (!consentConfig) throw Object.assign(new Error("Consent config not available"), { code: -32601 });
+  return consentConfig.set(params);
+}
 
 export async function handleConfigSet(
   modelConfig:

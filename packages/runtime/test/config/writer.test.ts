@@ -8,6 +8,7 @@ import {
   getGlobalConfigPath,
   getProjectConfigPath,
   normalizeStoredToolsConfig,
+  saveGlobalConsent,
   writeGlobalToolsConfig,
   writeProjectToolsConfig,
 } from "../../src/config/writer";
@@ -280,6 +281,34 @@ describe("writeGlobalToolsConfig", () => {
       expect(text).toContain('"web_action": false');
       expect(text).toContain('"package": "@acme/diligent-tools"');
       expect(text).toContain('"jira_comment": false');
+    } finally {
+      if (originalHome !== undefined) process.env.HOME = originalHome;
+      else delete process.env.HOME;
+    }
+  });
+});
+
+describe("saveGlobalConsent", () => {
+  it("writes the consent subtree to ~/.diligent/config.jsonc and preserves existing keys/comments", async () => {
+    const cwd = await makeTempProject();
+    const originalHome = process.env.HOME;
+    process.env.HOME = cwd;
+
+    try {
+      const configPath = getGlobalConfigPath();
+      await Bun.write(configPath, '{\n  // keep me\n  "model": "claude-sonnet-4-6"\n}\n');
+
+      await saveGlobalConsent({
+        noticeAcknowledgedVersion: "2026-06",
+        serviceImprovement: false,
+        updatedAt: "2026-06-23T00:00:00.000Z",
+      });
+
+      const text = await Bun.file(configPath).text();
+      expect(text).toContain("// keep me");
+      expect(text).toContain('"model": "claude-sonnet-4-6"');
+      expect(text).toContain('"consent"');
+      expect(text).toContain('"serviceImprovement": false');
     } finally {
       if (originalHome !== undefined) process.env.HOME = originalHome;
       else delete process.env.HOME;

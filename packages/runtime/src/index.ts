@@ -80,6 +80,7 @@ export type {
   WriteToolsConfigResult,
 } from "./config";
 export {
+  applyConsentPatch,
   applyToolConfigPatch,
   buildSystemPrompt,
   buildSystemPromptWithKnowledge,
@@ -94,6 +95,7 @@ export {
   mergeConfig,
   normalizeStoredToolsConfig,
   resolveConfiguredUserId,
+  resolveConsentState,
   saveGlobalModel,
   writeGlobalToolsConfig,
   writeProjectToolsConfig,
@@ -117,6 +119,7 @@ export {
   RpcClientSession,
 } from "./rpc";
 export type {
+  AppendedEntryInfo,
   CompactionEntry,
   ModeChangeEntry,
   ModelChangeEntry,

@@ -3,8 +3,9 @@ import { getModelInfoList, resolveModel } from "@diligent/core/llm/models";
 import type { ProviderName } from "@diligent/core/llm/types";
 import { MODE_SYSTEM_PROMPT_SUFFIXES, type Mode, PLAN_MODE_ALLOWED_TOOLS } from "../agent/mode";
 import { RuntimeAgent } from "../agent/runtime-agent";
+import { applyConsentPatch, resolveConsentState } from "../config/consent";
 import type { RuntimeConfig } from "../config/runtime";
-import { saveGlobalModel } from "../config/writer";
+import { saveGlobalConsent, saveGlobalModel } from "../config/writer";
 import { type DiligentPaths, ensureDiligentDir } from "../infrastructure";
 import type { BundledToolProvider } from "../tools/bundled-provider";
 import { buildDefaultTools } from "../tools/defaults";
@@ -129,6 +130,7 @@ export function createAppServerConfig(opts: CreateAppServerConfigOptions): Dilig
       effort: initialEffort,
       currentModel: runtimeConfig.model?.id,
       availableModels: modelInfoList,
+      consent: resolveConsentState(runtimeConfig.diligent.consent),
     }),
     resolvePaths: (requestCwd) => ensureDiligentDir(requestCwd),
     createAgent: (args: CreateAgentArgs): Promise<RuntimeAgent> =>
@@ -162,6 +164,17 @@ export function createAppServerConfig(opts: CreateAppServerConfigOptions): Dilig
             console.warn("[config] Failed to persist model selection:", err);
           });
         }
+      },
+    },
+    consentConfig: {
+      get: () => resolveConsentState(runtimeConfig.diligent.consent),
+      set: (params) => {
+        const next = applyConsentPatch(runtimeConfig.diligent.consent, params, new Date().toISOString());
+        runtimeConfig.diligent = { ...runtimeConfig.diligent, consent: next };
+        saveGlobalConsent(next).catch((err) => {
+          console.warn("[config] Failed to persist consent selection:", err);
+        });
+        return resolveConsentState(next);
       },
     },
     providerManager: runtimeConfig.providerManager,

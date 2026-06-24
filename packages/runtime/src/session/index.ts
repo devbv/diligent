@@ -15,6 +15,7 @@ export {
 export { SessionStateStore } from "./state-store";
 export { TurnStager } from "./turn-stager";
 export type {
+  AppendedEntryInfo,
   CompactionEntry,
   ModeChangeEntry,
   ModelChangeEntry,

@@ -1,6 +1,7 @@
 // @summary App lifecycle hooks for RPC notification wiring and bootstrap resume flow
 
 import type {
+  ConsentState,
   DiligentServerNotification,
   DiligentServerRequest,
   InitializeResponse,
@@ -199,6 +200,7 @@ export function useAppBootstrap({
   setEffortState,
   setSkills,
   setRuntimeVersion,
+  setConsent,
   setInitialModel,
   applySessionModel,
   refreshThreadList,
@@ -212,6 +214,7 @@ export function useAppBootstrap({
   setEffortState: Dispatch<SetStateAction<ThinkingEffort>>;
   setSkills: Dispatch<SetStateAction<SkillInfo[]>>;
   setRuntimeVersion: Dispatch<SetStateAction<string>>;
+  setConsent: (consent: ConsentState | null) => void;
   setInitialModel: (modelId: string, models?: InitializeResponse["availableModels"]) => void;
   applySessionModel: (sessionModel?: string) => Promise<void>;
   refreshThreadList: (rpc?: WebRpcClient | null) => Promise<void>;
@@ -255,6 +258,7 @@ export function useAppBootstrap({
         setEffortState(meta.effort ?? "medium");
         setSkills(meta.skills ?? []);
         setRuntimeVersion(meta.serverVersion ?? "");
+        setConsent(meta.consent ?? null);
         setInitialModel(meta.currentModel ?? "", meta.availableModels ?? []);
         rpc.notify(DILIGENT_CLIENT_NOTIFICATION_METHODS.INITIALIZED, { ready: true });
 
@@ -299,6 +303,7 @@ export function useAppBootstrap({
     setEffortState,
     setSkills,
     setRuntimeVersion,
+    setConsent,
     setInitialModel,
     applySessionModel,
     refreshThreadList,

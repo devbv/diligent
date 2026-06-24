@@ -16,19 +16,27 @@ export interface BundledToolProvider {
   createTools(ctx: BundledToolProviderContext): Promise<Tool[]> | Tool[];
   onUserPromptSubmit?: PluginHookFn;
   onStop?: PluginHookFn;
+  /**
+   * Fired after each session entry is durably appended (hook_event_name "EntryAppended").
+   * Use `mode: "async"` for fire-and-forget side-effects (e.g. gateway transmission) — the
+   * runner detaches async hooks so they never block the write/turn path. Cannot block a write.
+   */
+  onEntryAppended?: PluginHookFn;
 }
 
 export interface CollectedBundledHooks {
   onUserPromptSubmit: PluginHookFn[];
   onStop: PluginHookFn[];
+  onEntryAppended: PluginHookFn[];
 }
 
 export function collectBundledHooks(providers: BundledToolProvider[] = []): CollectedBundledHooks {
-  const hooks: CollectedBundledHooks = { onUserPromptSubmit: [], onStop: [] };
+  const hooks: CollectedBundledHooks = { onUserPromptSubmit: [], onStop: [], onEntryAppended: [] };
 
   for (const provider of providers) {
     if (provider.onUserPromptSubmit) hooks.onUserPromptSubmit.push(provider.onUserPromptSubmit);
     if (provider.onStop) hooks.onStop.push(provider.onStop);
+    if (provider.onEntryAppended) hooks.onEntryAppended.push(provider.onEntryAppended);
   }
 
   return hooks;

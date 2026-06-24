@@ -14,6 +14,7 @@ import {
   loadRuntimeConfig,
   type PROVIDER_NAMES,
   type RuntimeAgent,
+  resolveConsentState,
 } from "@diligent/runtime";
 import { decodeWebImageRelativePath, toWebImageUrl, WEB_IMAGE_ROUTE_PREFIX } from "../shared/image-routes";
 
@@ -132,6 +133,7 @@ export async function createWebServer(options: CreateServerOptions = {}): Promis
           name: s.name,
           description: s.description,
         })),
+        consent: resolveConsentState(runtimeConfig.diligent.consent),
       }),
     },
   });

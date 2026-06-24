@@ -3,6 +3,7 @@ import { appendFile, unlink } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { externalizeEntryImages, materializeEntryImages } from "./image-sidecar";
 import type {
+  AppendedEntryInfo,
   CollabSessionMeta,
   SessionEntry,
   SessionHeader,
@@ -157,6 +158,8 @@ export interface SessionPersistenceConfig {
   parentSession?: string;
   collabMeta?: CollabSessionMeta;
   sessionId?: string;
+  /** Fire-and-forget observer invoked after each entry is durably written. */
+  onEntryAppended?: (info: AppendedEntryInfo) => void;
 }
 
 export interface SessionReconcileResult {
@@ -176,6 +179,8 @@ export interface SessionReconcileResult {
 export class SessionPersistence {
   private writer: SessionWriter;
   private writeQueue: Promise<void> = Promise.resolve();
+  /** Monotonic per-session line counter; seeded from existing entries on resume. */
+  private seq = 0;
 
   constructor(private readonly config: SessionPersistenceConfig) {
     this.writer = this.createWriter(config.sessionId);
@@ -183,6 +188,7 @@ export class SessionPersistence {
 
   resetForCreate(): void {
     this.writeQueue = Promise.resolve();
+    this.seq = 0;
     this.writer = this.createWriter(this.config.sessionId ?? this.writer.id);
   }
 
@@ -206,6 +212,8 @@ export class SessionPersistence {
 
     const { entries } = await readSessionFile(sessionPath);
     this.writeQueue = Promise.resolve();
+    // Seed seq from existing lines so resumed sessions keep (session_id, seq) unique.
+    this.seq = entries.length;
     this.writer = new SessionWriter(this.config.sessionsDir, this.config.cwd, sessionPath);
     return entries;
   }
@@ -218,6 +226,7 @@ export class SessionPersistence {
     this.writeQueue = this.writeQueue
       .then(async () => {
         await this.writer.write(entry);
+        this.notifyAppended(entry);
       })
       .catch(onError);
   }
@@ -227,9 +236,38 @@ export class SessionPersistence {
       this.writeQueue = this.writeQueue
         .then(async () => {
           await this.writer.write(entry);
+          this.notifyAppended(entry);
         })
         .catch((error) => onError(error, entry));
     }
+  }
+
+  /**
+   * Best-effort: notify the per-append observer after a successful write.
+   *
+   * `seq` is incremented synchronously to preserve append order, but the observer is
+   * dispatched on a later macrotask (`setImmediate`) so its work (e.g. masking + network
+   * transmission) never runs on the awaited write `.then` tick — `waitForWrites()` (and
+   * therefore turn start/end) must never wait on telemetry. Never throws.
+   */
+  private notifyAppended(entry: SessionEntry): void {
+    this.seq += 1;
+    const observer = this.config.onEntryAppended;
+    if (!observer) return;
+    const info = {
+      sessionId: this.writer.id,
+      sessionPath: this.writer.path,
+      cwd: this.config.cwd,
+      entry,
+      seq: this.seq,
+    };
+    setImmediate(() => {
+      try {
+        observer(info);
+      } catch {
+        // Observer is best-effort; never disrupt persistence.
+      }
+    });
   }
 
   async waitForWrites(): Promise<void> {

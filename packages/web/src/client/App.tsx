@@ -3,6 +3,7 @@
 import { AppHeader } from "./components/AppHeader";
 import { ConnectionModal } from "./components/ConnectionModal";
 import { DeleteThreadModal } from "./components/DeleteThreadModal";
+import { FirstRunNoticeModal } from "./components/FirstRunNoticeModal";
 import { InputDock } from "./components/InputDock";
 import { KnowledgeManagerModal } from "./components/KnowledgeManagerModal";
 import { MessageList } from "./components/MessageList";
@@ -41,6 +42,8 @@ export function App() {
     oauthError,
     attentionThreadIds,
     runtimeVersion,
+    consent,
+    updateConsent,
     desktopNotificationsEnabled,
     setDesktopNotificationsEnabled,
     slashCommands,
@@ -197,6 +200,8 @@ export function App() {
               runtimeVersion={runtimeVersion}
               providers={providerMgr.providers}
               desktopNotificationsEnabled={desktopNotificationsEnabled}
+              consent={consent}
+              onConsentChange={updateConsent}
               onList={listTools}
               onSave={saveTools}
               onDesktopNotificationsEnabledChange={setDesktopNotificationsEnabled}
@@ -249,6 +254,13 @@ export function App() {
           reconnectAttempts={reconnectAttempts}
           retryLimit={retryLimit}
           onRetry={retryConnection}
+        />
+      ) : null}
+
+      {consent && !consent.noticeAcknowledged ? (
+        <FirstRunNoticeModal
+          privacyPolicyUrl={consent.privacyPolicyUrl}
+          onGetStarted={() => void updateConsent({ noticeAcknowledged: true })}
         />
       ) : null}
     </div>

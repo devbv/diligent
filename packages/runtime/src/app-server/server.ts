@@ -11,7 +11,13 @@ import type { ApprovalRequest, ApprovalResponse, PermissionEngine } from "../app
 import { type AuthStoreOptions, loadOAuthTokens } from "../auth/auth-store";
 import type { ChildStopInfo } from "../collab/types";
 import type { DiligentConfig } from "../config/schema";
-import { getLastAssistantMessage, getTurnUsage, runCombinedHooks } from "../hooks/runner";
+import {
+  getLastAssistantMessage,
+  getTurnUsage,
+  type HookInput,
+  runCombinedHooks,
+  runPluginHooks,
+} from "../hooks/runner";
 import type { DiligentPaths } from "../infrastructure";
 import {
   AgentEventSchema,
@@ -30,9 +36,11 @@ import {
 } from "../protocol/index";
 import { isRpcNotification, isRpcRequest, isRpcResponse, type RpcPeer } from "../rpc/channel";
 import { SessionManager, type SessionManagerConfig } from "../session/manager";
+import type { AppendedEntryInfo } from "../session/types";
 import { type BundledToolProvider, collectBundledHooks } from "../tools/bundled-provider";
 import { collectPluginHooks } from "../tools/plugin-loader";
 import type { UserInputRequest, UserInputResponse } from "../tools/user-input-types";
+import type { ConsentConfigManager } from "./config-handlers";
 import {
   applySessionDefaults,
   type ClientRequestDispatchContext,
@@ -54,6 +62,7 @@ import {
   type ThreadRuntime,
 } from "./thread-handlers";
 
+export type { ConsentConfigManager } from "./config-handlers";
 export type { ConnectedPeer, ModelConfig, ToolConfigManager } from "./request-dispatcher";
 
 export interface CreateAgentArgs {
@@ -87,6 +96,8 @@ export interface DiligentAppServerConfig {
   modelConfig?: ModelConfig;
   /** Tool config management — required for TOOLS_LIST and TOOLS_SET */
   toolConfig?: ToolConfigManager;
+  /** AI-data consent management — required for CONSENT_SET (OVDR-11475 §3.A) */
+  consentConfig?: ConsentConfigManager;
   /** Provider manager — required for AUTH_* methods */
   providerManager?: ProviderManager;
   /** Open a URL in the browser — defaults to the built-in openBrowser from @diligent/core */
@@ -541,6 +552,7 @@ export class DiligentAppServer {
           context,
           isRerun,
         }),
+      onEntryAppended: (info) => this.runEntryAppendedHooks(runtime, info),
     });
 
     if (createNew) {
@@ -633,6 +645,33 @@ export class DiligentAppServer {
   }
 
   /**
+   * Dispatch an "EntryAppended" lifecycle hook for a durably-appended session entry,
+   * gated on AI-data consent (OVDR-11475). Runs through the plugin-hook runner so
+   * `mode: "async"` hooks (e.g. gateway transmission) fire-and-forget without blocking
+   * the write/turn path. Per-append hooks cannot block a write, so the result is ignored.
+   */
+  private runEntryAppendedHooks(runtime: ThreadRuntime, info: AppendedEntryInfo): void {
+    // Consent gate: skip when the user has opted out of service improvement.
+    const consent = this.config.consentConfig?.get();
+    if (consent && !consent.serviceImprovement) return;
+
+    const { onEntryAppended: entryHooks } = collectBundledHooks(this.config.bundledToolProviders);
+    if (entryHooks.length === 0) return;
+
+    const input: HookInput = {
+      session_id: info.sessionId,
+      transcript_path: info.sessionPath ?? "",
+      cwd: info.cwd,
+      hook_event_name: "EntryAppended",
+      user_id: info.userId ?? runtime.currentTurnUserId,
+      seq: info.seq,
+      entry: info.entry,
+    };
+    // Fire-and-forget: never await on the write path. mode:"async" hooks detach inside the runner.
+    void runPluginHooks(entryHooks, input);
+  }
+
+  /**
    * Unified Stop hook runner — called by SessionManager.onStop for both parent and child agents.
    * Returns `{ continueWith }` when a hook blocks to re-run the agent with the reason.
    */
@@ -687,6 +726,7 @@ export class DiligentAppServer {
       threadHandlersCtx: this.buildThreadHandlersContext(),
       turnInitiators: this.turnInitiators,
       toolConfig: this.config.toolConfig,
+      consentConfig: this.config.consentConfig,
       subscribeToThread: (connectionId, threadId) => this.subscribeToThread(connectionId, threadId),
       unsubscribeFromThread: (subscriptionId) => this.unsubscribeFromThread(subscriptionId),
       resolveThreadRuntime: (threadId) => this.resolveThreadRuntime(threadId),

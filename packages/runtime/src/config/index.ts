@@ -1,3 +1,4 @@
+export { applyConsentPatch, resolveConsentState } from "./consent";
 export type { DiscoveredInstruction } from "./instructions";
 export { buildSystemPrompt, buildSystemPromptWithKnowledge, discoverInstructions } from "./instructions";
 export { loadDiligentConfig, mergeConfig } from "./loader";
