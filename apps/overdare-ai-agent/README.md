@@ -5,7 +5,7 @@ Rust CLI for OVERDARE runtime bootstrap, plugin/bootstrap ownership, and webserv
 It currently provides two commands:
 
 - `init` — show current/latest version and ensure the runtime is downloaded; updates unless `--skip-update` is used
-- `start` — run the updated runtime binary `~/.overdare/updates/runtime/diligent-web-server` as a subprocess
+- `start` — run the active runtime's `diligent-web-server` binary as a subprocess (see [Runtime install layout](#runtime-install-layout))
 
 ## Release env selection
 
@@ -45,6 +45,59 @@ Project-local storage follows the same rule (`<cwd>/.overdare/` vs `<cwd>/.overd
 
 Override the manifest URL entirely with `DILIGENT_UPDATE_URL` (runtime env var) for diagnostics or local mirroring. The downloaded manifest must still carry an `env` field that matches the requested env, otherwise the agent rejects it.
 
+## Runtime install layout
+
+Runtime bundles install into version-specific directories inside the env-specific
+updates root, and a small pointer file selects the active version. An update
+installs the new bundle **beside** the active one and atomically flips the
+pointer, so an update never deletes a runtime that a running sidecar may still be
+using (this matters most on Windows, where a running `diligent-web-server.exe` is
+locked).
+
+```text
+~/.overdare/updates/
+  runtime-current.json     # active-version pointer (single version)
+  runtime-v1.2.3/          # diligent-web-server, dist/client/, bootstrap/, version.json
+  runtime-v1.2.4/
+```
+
+- **`runtime-current.json`** is the source of truth for the active runtime. It
+  holds exactly one version (the one a no-pin `start` launches) — it is not a
+  list and does not track previous versions.
+- **`updates/runtime`** (flat, unversioned) is the legacy layout and is used only
+  as a fallback for installs that predate versioning. On the next `init`, a flat
+  install is migrated into the versioned layout: the flat directory is copied to
+  `runtime-v<version>` (copied, not moved, so a running sidecar is undisturbed)
+  and the pointer is written. This runs even when the version is already up to
+  date, so pinned `start` (`@<version>`) works without waiting for a real update.
+  Migration is best-effort; if it fails, the no-pin legacy fallback still boots
+  the agent.
+- Each `runtime-v<version>/` keeps the same internal bundle shape (sidecar
+  binary, `dist/client`, `bootstrap/`, optional `rg`, `version.json`).
+
+### Version-pinned start
+
+`start --agent-env=<env>@<version>` launches that exact installed version,
+independent of the pointer — so multiple agents can run different versions
+concurrently. If the pinned version is not installed, `start` fails with a clear
+"run init first" message and never falls back to a different version. Without a
+pin, `start` uses `runtime-current.json` (then the legacy fallback).
+
+### Old-version retention
+
+After the pointer switch, the updater best-effort cleans up idle, non-active
+version directories. It never deletes the active runtime or a version still in
+use, and a cleanup failure can never fail an otherwise-successful update.
+
+- **Windows:** before deleting, it probes whether a version's sidecar binary is
+  locked (in use) and skips the whole directory if so, so a running version is
+  preserved and partially-deleted directories are avoided.
+- **mac / Linux:** not targeted by Studio yet, so destructive cleanup is not run
+  there (POSIX would let an in-use runtime be unlinked). Old directories simply
+  accumulate until this is enabled with explicit in-use detection.
+
+Both prod (`~/.overdare/`) and dev (`~/.overdare-dev/`) roots follow this layout.
+
 ## Commands
 
 ```bash
@@ -66,8 +119,11 @@ cargo run --manifest-path apps/overdare-ai-agent/Cargo.toml -- --agent-env=prod@
 # Skip update only if runtime was already downloaded before
 cargo run --manifest-path apps/overdare-ai-agent/Cargo.toml -- init --skip-update
 
-# Start the updated local web server runtime
+# Start the active local web server runtime
 cargo run --manifest-path apps/overdare-ai-agent/Cargo.toml -- start --cwd=/path/to/project
+
+# Start a specific installed version (must have been init'd first); independent of the active pointer
+cargo run --manifest-path apps/overdare-ai-agent/Cargo.toml -- --agent-env=prod@1.2.3 start --cwd=/path/to/project
 
 # Start the web server and forward a Studio RPC port to plugins via STUDIO_PORT
 cargo run --manifest-path apps/overdare-ai-agent/Cargo.toml -- start --cwd=/path/to/project --studio-rpc-port=13377
