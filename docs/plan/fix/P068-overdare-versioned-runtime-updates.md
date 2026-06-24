@@ -149,9 +149,11 @@ fn resolve_runtime_dir(selection: &EnvSelection) -> Result<PathBuf, String>;
 
 1. If `runtime-current.json` exists and points to a valid installed runtime, use it.
 2. Else, fall back to legacy `updates/runtime` for existing installs.
-3. During the first successful versioned update, write `runtime-current.json` and stop writing the flat runtime layout.
 
-This keeps old installations bootable and avoids a forced migration before the next successful update.
+This keeps old installations bootable. No-pin `start` works on a legacy install via
+the fallback alone; the legacy install is converted to the versioned layout by the
+migration step below (which runs on `init`), so pinned `start` also works without
+waiting for a real update.
 
 ### Version-pinned launch (fixes the start bug)
 
@@ -173,6 +175,30 @@ Because a version-pinned `start` resolves its directory directly, several agents
 can run different versions at the same time without depending on the shared
 mutable pointer — there is no race where one instance's `init` changes the
 pointer that another instance's `start` is about to read.
+
+### Migrating a legacy flat install
+
+A machine installed before this change has only the flat `updates/runtime`
+directory and no pointer. If it is already on the latest version, `init` would
+otherwise short-circuit ("already up to date") and never create the versioned
+layout — so a pinned `start` (`@<version>`) would fail, because the pin path
+requires `runtime-v<version>` and intentionally does not fall back. (No-pin
+`start` still works via the legacy fallback; the old launcher "worked" only
+because it ignored the pin and used the flat directory.)
+
+To converge, `run_with_progress` performs a one-time migration before deciding
+whether to update:
+
+1. If `runtime-current.json` already exists, do nothing.
+2. Else, if a legacy `updates/runtime` with a valid layout and readable
+   `version.json` exists, **copy** it to `runtime-v<version>` and write the
+   pointer.
+
+Copy, not move, so a sidecar still running from the flat directory is not
+disturbed (a moved/locked `.exe` would fail on Windows). The step runs even when
+the install is already up to date, so existing machines gain the versioned layout
+on their next `init` and pinned `start` resolves. Migration is best-effort: any
+failure is logged and ignored, leaving the no-pin legacy fallback intact.
 
 ### Applying an update
 
@@ -289,7 +315,7 @@ If a stable path is later needed for external tools, add `updates/runtime-latest
 
 | File | Action | Description |
 |------|--------|-------------|
-| `update.rs` | MODIFY | Add `RuntimeCurrent`; replace flat `runtime_dir` usage with current/versioned runtime helpers and `resolve_runtime_dir`; install into `runtime-v<version>`; atomically update pointer; usage-based cleanup with Windows probe-before-delete. |
+| `update.rs` | MODIFY | Add `RuntimeCurrent`; replace flat `runtime_dir` usage with current/versioned runtime helpers and `resolve_runtime_dir`; install into `runtime-v<version>`; atomically update pointer; one-time migration of a legacy flat install into the versioned layout; usage-based cleanup with Windows probe-before-delete. |
 | `cli.rs` | MODIFY | Thread `EnvSelection` into `run_webserver` / `webserver::parse_args` so `start` honors `@<version>`. |
 | `webserver.rs` | MODIFY | Resolve the runtime directory via `resolve_runtime_dir(selection)`; derive sidecar binary, `dist/client`, and optional `rg` from it. Clear error when a pinned version is not installed. |
 | `init.rs` | MODIFY | Use the active runtime resolver for `bootstrap` / legacy `defaults` lookup. |
@@ -396,6 +422,21 @@ only `selection.env`. When a pin is present, `start` launches
 - `start --agent-env=<env>@<missing>` fails with a clear "not installed; run init first" message and no fallback.
 - `start --agent-env=<env>` (no pin) launches the pointer target.
 
+### Task 4b: Migrate a legacy flat install into the versioned layout
+
+**Files:** `apps/overdare-ai-agent/src/update.rs`
+
+Add `migrate_flat_runtime_if_needed(env, log)` and call it at the start of
+`run_with_progress` (after the update-disabled check). When no pointer exists but
+a valid flat `updates/runtime` is present, copy it to `runtime-v<version>` and
+write the pointer. Copy (not move) so a running sidecar is undisturbed; run even
+when already up to date; best-effort (log and continue on failure).
+
+**Verify:**
+
+- Flat install with no pointer → after `init`, `runtime-v<version>` and the pointer exist, the flat dir remains, and `start --agent-env=<env>@<version>` resolves.
+- No-op when a pointer already exists or when no flat runtime is present.
+
 ### Task 5: Add usage-based retention cleanup outside the critical update swap
 
 **Files:** `apps/overdare-ai-agent/src/update.rs`
@@ -447,9 +488,10 @@ Document:
 4. `start --agent-env=<env>@<version>` with a missing/invalid version directory fails with a clear "run init … @version first" error and never falls back to a different version.
 5. `init` deploys bootstrap assets from the active runtime directory.
 6. Existing flat `updates/runtime` installs still launch when no pointer and no pin exist.
-7. SHA mismatch for an existing version directory is rejected or handled without silently reusing stale content.
-8. On Windows, cleanup never partially deletes a locked version directory; the current and any in-use directories are preserved.
-9. Cleanup of old runtime directories is best-effort and cannot fail an otherwise successful update.
+7. On a legacy flat install with no pointer, `init` migrates it into `runtime-v<version>` and writes the pointer even when already up to date, so a pinned `start` for that version resolves afterward. The flat directory is left in place (copied, not moved), and a migration failure does not break the no-pin fallback.
+8. SHA mismatch for an existing version directory is rejected or handled without silently reusing stale content.
+9. On Windows, cleanup never partially deletes a locked version directory; the current and any in-use directories are preserved.
+10. Cleanup of old runtime directories is best-effort and cannot fail an otherwise successful update.
 
 ## Testing Strategy
 
@@ -458,6 +500,7 @@ Document:
 | Unit | Pointer parsing, relative-dir validation, legacy fallback | Rust tests with temp home. |
 | Unit | `resolve_runtime_dir`: pin exists, pin missing (error), no pin → pointer/legacy | Rust tests with temp updates root. |
 | Unit | Update finalization preserves old runtime | Temp updates root with fake sidecar/dist layout. |
+| Unit | Flat-install migration: promotes + writes pointer; no-op with pointer / without flat runtime | Temp updates root with a flat `runtime/` layout. |
 | Integration | `start` honors `@<version>`; `init` and `start` resolve active runtime | Existing Rust command tests or focused resolver tests. |
 | Manual Windows | Update + cleanup while old `diligent-web-server.exe` is running | Start old sidecar, run update flow, verify probe skips the locked dir with no partial deletion and no lock failure. |
 
