@@ -1,7 +1,7 @@
 import type { ToolContext, ToolResult } from "@diligent/core/tool/types";
-import { type RuntimeToolHost, requestToolApproval } from "@diligent/runtime";
+import { type RuntimeToolHost, requestToolApproval, requestToolUserInput } from "@diligent/runtime";
 import { z } from "zod";
-import { buildSearchRender } from "./render";
+import { buildSearchRender, normalizeAssetForRender } from "./render";
 
 const BASE_URL = "https://aiguide.overdare.com";
 const TIMEOUT_MS = 10_000;
@@ -72,9 +72,52 @@ export const parameters = z.object({
       "docs = API references and guides. code = working Lua implementation examples and patterns. assets = asset catalog search with asset metadata fields.",
     ),
   topK: z.number().int().min(1).max(10).describe("Number of results to return"),
+  selectable: z
+    .boolean()
+    .optional()
+    .describe(
+      "Assets only. When true and 2+ assets match, ask the user to pick one and return the chosen assetId; exactly 1 match auto-selects; 0 matches returns not-found. Use when the user should choose a specific asset.",
+    ),
 });
 
 type Params = z.infer<typeof parameters>;
+
+async function selectAsset(
+  host: RuntimeToolHost | undefined,
+  query: string,
+  rawAssets: Array<Partial<AssetResult>>,
+): Promise<string> {
+  const normalized = rawAssets.map(normalizeAssetForRender);
+  const response = await requestToolUserInput(host, {
+    questions: [
+      {
+        id: "asset",
+        header: "Asset",
+        question: `Pick an asset for "${query}"`,
+        display: "asset",
+        options: normalized.map((a) => ({
+          label: a.title,
+          description: a.price ? `${a.assetType} · ${a.price}` : a.assetType,
+          value: a.assetId,
+          asset: {
+            thumbnailUrl: a.thumbnailUrl,
+            previewUrl: a.previewUrl,
+            price: a.price,
+            subtitle: a.assetType,
+          },
+        })),
+      },
+    ],
+  });
+
+  const answer = response?.answers.asset;
+  const chosen = Array.isArray(answer) ? answer[0] : answer;
+  if (!chosen || chosen.trim().length === 0) {
+    return "[Cancelled by user]";
+  }
+  const match = normalized.find((a) => a.assetId === chosen);
+  return match ? `Selected asset: ${match.title} (assetId: ${match.assetId})` : `Selected assetId: ${chosen}`;
+}
 
 export async function execute(args: Params, _ctx: ToolContext, host?: RuntimeToolHost): Promise<ToolResult> {
   const approval = await requestToolApproval(host, {
@@ -128,6 +171,22 @@ export async function execute(args: Params, _ctx: ToolContext, host?: RuntimeToo
     if (args.source === "assets") {
       const rawAssets = results.filter(isAssetResult);
       const assetResults = rawAssets.map(normalizeAssetResult);
+
+      if (args.selectable) {
+        if (rawAssets.length === 0) {
+          return { output: "No results found.", metadata: { resultCount: 0 } };
+        }
+        if (rawAssets.length === 1) {
+          const only = normalizeAssetForRender(rawAssets[0]);
+          return {
+            output: `Selected asset: ${only.title} (assetId: ${only.assetId})`,
+            metadata: { resultCount: 1, assetId: only.assetId },
+          };
+        }
+        const output = await selectAsset(host, args.query, rawAssets);
+        return { output, metadata: { resultCount: rawAssets.length } };
+      }
+
       return {
         output: assetResults.length
           ? JSON.stringify({ results: assetResults, totalCount: data?.totalCount ?? assetResults.length }, null, 2)

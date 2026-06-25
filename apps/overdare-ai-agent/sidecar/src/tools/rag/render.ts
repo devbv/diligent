@@ -130,7 +130,7 @@ function buildDocsPreviewBlock(result: RagResult): ToolRenderBlock | undefined {
   };
 }
 
-function normalizeAssetForRender(raw: Partial<AssetResult>): AssetResult {
+export function normalizeAssetForRender(raw: Partial<AssetResult>): AssetResult {
   const rawRecord = raw as Record<string, unknown>;
   return {
     text: raw.text ?? "",
