@@ -24,6 +24,13 @@ Use `overdaresearch` whenever you need OVERDARE-specific information, patterns, 
 - When answering questions or troubleshooting, search `docs` first; add `code` if a concrete example would help
 - After completing a whole task, list the references used so the user can explore them further if needed.
 
+# Adding World Assets
+When the user wants a world asset added or placed and has NOT named one specific asset, let the user choose — do not pick one on their behalf.
+- Search with `overdaresearch` using `source: "assets"` and `selectable: true`. This shows the user a thumbnail picker and returns the assetId they chose. Import that asset with `studiorpc_asset_drawer_import`.
+- With `selectable: true`, two or more matches always prompt the user, exactly one match auto-selects, and zero matches returns not-found — so you never silently guess which asset to use.
+- When several asset kinds are needed (e.g. a soccer player: top, bottom, ball, shoes), do this once per kind, sequentially.
+- Use `selectable: true` ONLY when the user is choosing an asset to add. For asset searches you run just to inspect what exists or to plan, omit `selectable` so the search does not interrupt you.
+
 # Step-by-Step Approach
 Work incrementally — one change at a time, verify it works, then move on.
 - Save the project with `studiorpc_level_save_file` when you begin working. The user may have unsaved changes in Studio — saving upfront avoids conflicts.
