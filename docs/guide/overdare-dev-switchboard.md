@@ -1,7 +1,7 @@
 # OVERDARE Dev Switchboard
 
-Use this workflow when a Windows test machine must keep one fixed URL while the
-Mac swaps between multiple Diligent/OVERDARE dev worktrees.
+Use this workflow when a Windows test machine must keep one fixed Mac URL while
+the Mac swaps between multiple Diligent/OVERDARE dev worktrees.
 
 ## Shape
 
@@ -11,11 +11,11 @@ Windows
 
 Mac
   dev-switchboard :11000
-    active target -> <worktree-host>.localhost
+    active target -> <worktree-host>.diligent.localhost
 
   portless proxy :11001
-    diligent.localhost             -> main worktree Vite port
-    fix-autoplay.diligent.localhost -> feature worktree Vite port
+    diligent.localhost           -> main worktree Vite port
+    fix-ui.diligent.localhost    -> feature worktree Vite port
 
   each worktree
     sidecar backend -> private free port
@@ -23,7 +23,8 @@ Mac
     Vite /rpc proxy -> that worktree's sidecar backend
 ```
 
-The Windows URL stays fixed. The Mac changes only the active switchboard target.
+The switchboard owns only the fixed Windows-facing port and the active target
+state. Portless still owns worktree names and app port assignment.
 
 ## One-Time Local Env
 
@@ -51,31 +52,26 @@ Run this from each git worktree you want available:
 bun run dev:overdare
 ```
 
-The first run also starts the fixed Windows-facing gateway. Later worktrees
-detect the gateway and only start their own Portless-managed dev instance.
-
-Open the control UI from either machine:
-
-```text
-http://<mac-ip>:11000/_dev
-```
-
-The launcher starts both processes:
+The first run starts the fixed switchboard. Every run registers the current
+worktree and makes it active, then starts:
 
 ```text
 bun run apps/overdare-ai-agent/sidecar/src/server.ts --dev --port=<free-port> --cwd=$OVERDARE_PROJECT_CWD
 bun run --cwd packages/web dev --host $HOST --port $PORT
 ```
 
-It also wires Vite's `/rpc` proxy to the matching sidecar backend using
-`DILIGENT_WEB_RPC_TARGET`.
+Open the small control UI from either machine:
+
+```text
+http://<mac-ip>:11000/_dev
+```
 
 ## Switch Targets
 
-Use the GUI at `/_dev`, or switch from the terminal:
+Use the UI, or switch from the terminal:
 
 ```sh
-bun run dev:overdare use fix-autoplay.diligent.localhost
+bun run dev:overdare use fix-ui.diligent.localhost
 bun run dev:overdare list
 ```
 
@@ -96,20 +92,17 @@ Use a different OVERDARE project cwd:
 bun run dev:overdare -- --project-cwd /Volumes/other-game
 ```
 
-Use a custom Portless state directory or an already-running Portless proxy:
+Use a different fixed Windows-facing port or an already-running Portless proxy:
 
 ```sh
 bun run dev:overdare \
-  --routes-file ~/.portless-lan/routes.json \
+  --listen 0.0.0.0:12000 \
   --portless http://127.0.0.1:11001
 ```
 
-Use explicit subcommands only when debugging the wrapper or running the gateway
-without an instance:
+For lower-level debugging:
 
 ```sh
-bun run dev:overdare gateway
-bun run dev:overdare instance
-bun run dev:overdare-instance --help
 bun run dev:switchboard --help
+bun run dev:overdare-instance --help
 ```

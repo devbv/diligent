@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// @summary Friendly OVERDARE worktree dev workflow wrapper around Portless, switchboard, and instance startup.
+// @summary Friendly OVERDARE worktree dev workflow wrapper around Portless and the fixed switchboard.
 
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
@@ -8,20 +8,15 @@ import { parseArgs } from "node:util";
 const ROOT = resolve(import.meta.dir, "..");
 const DEFAULT_LISTEN = "0.0.0.0:11000";
 const DEFAULT_PORTLESS_PORT = "11001";
-const DEFAULT_DEFAULT_HOST = "diligent.localhost";
+const DEFAULT_NAME = "diligent";
 
-interface GatewayOptions {
+interface DevOverdareOptions {
   listen: string;
   portlessPort: string;
   portlessOrigin?: string;
-  defaultHost: string;
   stateFile?: string;
-  routesFile?: string;
   noProxyStart: boolean;
   lan: boolean;
-}
-
-interface InstanceOptions {
   name: string;
   force: boolean;
   appPort?: string;
@@ -31,39 +26,28 @@ interface InstanceOptions {
   instanceArgs: string[];
 }
 
-interface AutoOptions {
-  gateway: GatewayOptions;
-  instance: InstanceOptions;
-}
-
 function printHelp(): void {
   console.log(`Usage:
   bun run dev:overdare [options] [-- <dev-instance-options>]
-  bun run dev:overdare gateway [options]
-  bun run dev:overdare instance [options] [-- <dev-instance-options>]
   bun run dev:overdare use <portless-host>
   bun run dev:overdare list
 
 Common workflow:
   # Run this in each git worktree you want available.
-  # The first one also starts the fixed Windows-facing gateway.
+  # The first one also starts the fixed Windows-facing switchboard.
   bun run dev:overdare
 
   # Optional terminal switching:
   bun run dev:overdare use fix-ui.diligent.localhost
 
-Gateway options:
+Options:
   --listen <host:port>       Windows-facing address (default: ${DEFAULT_LISTEN})
   --portless-port <number>   Local Portless proxy port (default: ${DEFAULT_PORTLESS_PORT})
   --portless <origin>        Explicit Portless origin
-  --default-host <host>      Initial active host (default: ${DEFAULT_DEFAULT_HOST})
   --state-file <path>        Switchboard state file
-  --routes-file <path>       Portless routes file
   --no-proxy-start           Do not run "portless proxy start" first
   --lan                      Start Portless with LAN mode enabled
-
-Instance options:
-  --name <name>              Portless base app name (default: diligent)
+  --name <name>              Portless base app name (default: ${DEFAULT_NAME})
   --force                    Replace an existing Portless route
   --app-port <number>        Fixed app port for this instance
   --tailscale                Ask Portless to share over Tailscale
@@ -130,46 +114,31 @@ function runChecked(args: string[]): void {
   }
 }
 
-function parseGatewayOptions(argv: string[]): GatewayOptions | null {
-  const { values } = parseArgs({
-    args: argv,
-    options: {
-      listen: { type: "string" },
-      "portless-port": { type: "string" },
-      portless: { type: "string" },
-      "default-host": { type: "string" },
-      "state-file": { type: "string" },
-      "routes-file": { type: "string" },
-      "no-proxy-start": { type: "boolean" },
-      lan: { type: "boolean" },
-      help: { type: "boolean", short: "h" },
-    },
-    strict: true,
-    allowPositionals: false,
+function runCaptured(args: string[]): string {
+  const result = Bun.spawnSync(args, {
+    cwd: ROOT,
+    env: process.env,
+    stdout: "pipe",
+    stderr: "pipe",
   });
-
-  if (values.help) {
-    printHelp();
-    return null;
+  if (result.exitCode !== 0) {
+    const stderr = result.stderr.toString().trim();
+    throw new Error(stderr || `Command failed: ${args.join(" ")}`);
   }
-
-  return {
-    listen: values.listen?.trim() || DEFAULT_LISTEN,
-    portlessPort: values["portless-port"]?.trim() || DEFAULT_PORTLESS_PORT,
-    portlessOrigin: values.portless?.trim() || undefined,
-    defaultHost: values["default-host"]?.trim() || DEFAULT_DEFAULT_HOST,
-    stateFile: values["state-file"]?.trim() || undefined,
-    routesFile: values["routes-file"]?.trim() || undefined,
-    noProxyStart: values["no-proxy-start"] === true,
-    lan: values.lan === true,
-  };
+  return result.stdout.toString().trim();
 }
 
-function parseInstanceOptions(argv: string[]): InstanceOptions | null {
+function parseOptions(argv: string[]): DevOverdareOptions | null {
   const { head, passthrough } = splitPassthrough(argv);
   const { values } = parseArgs({
     args: head,
     options: {
+      listen: { type: "string" },
+      "portless-port": { type: "string" },
+      portless: { type: "string" },
+      "state-file": { type: "string" },
+      "no-proxy-start": { type: "boolean" },
+      lan: { type: "boolean" },
       name: { type: "string" },
       force: { type: "boolean" },
       "app-port": { type: "string" },
@@ -188,7 +157,13 @@ function parseInstanceOptions(argv: string[]): InstanceOptions | null {
   }
 
   return {
-    name: values.name?.trim() || "diligent",
+    listen: values.listen?.trim() || DEFAULT_LISTEN,
+    portlessPort: values["portless-port"]?.trim() || DEFAULT_PORTLESS_PORT,
+    portlessOrigin: values.portless?.trim() || undefined,
+    stateFile: values["state-file"]?.trim() || undefined,
+    noProxyStart: values["no-proxy-start"] === true,
+    lan: values.lan === true,
+    name: values.name?.trim() || DEFAULT_NAME,
     force: values.force === true,
     appPort: values["app-port"]?.trim() || undefined,
     tailscale: values.tailscale === true,
@@ -198,19 +173,53 @@ function parseInstanceOptions(argv: string[]): InstanceOptions | null {
   };
 }
 
-function startPortlessProxy(options: GatewayOptions): void {
-  if (!options.noProxyStart) {
-    const proxyArgs = ["proxy", "start", "--no-tls", "--port", options.portlessPort];
-    if (options.lan) {
-      proxyArgs.push("--lan");
-    }
-    runChecked(portlessCommand(proxyArgs));
+function listenPort(listen: string): string {
+  const trimmed = listen.trim();
+  if (/^\d+$/.test(trimmed)) {
+    return trimmed;
+  }
+  if (trimmed.includes(":")) {
+    return trimmed.slice(trimmed.lastIndexOf(":") + 1);
+  }
+  return "11000";
+}
+
+function startPortlessProxy(options: DevOverdareOptions): void {
+  if (options.noProxyStart) {
+    return;
+  }
+
+  const proxyArgs = ["proxy", "start", "--no-tls", "--port", options.portlessPort];
+  if (options.lan) {
+    proxyArgs.push("--lan");
+  }
+  runChecked(portlessCommand(proxyArgs));
+}
+
+function resolvePortlessUrl(options: DevOverdareOptions): string {
+  const output = runCaptured(portlessCommand(["get", options.name]));
+  const urlText = output
+    .split(/\r?\n/)
+    .findLast((line) => line.trim().startsWith("http"))
+    ?.trim();
+  if (!urlText) {
+    throw new Error(`Could not resolve Portless URL for ${options.name}`);
+  }
+  return urlText;
+}
+
+function hostFromUrl(urlText: string): string {
+  try {
+    return new URL(urlText).hostname.toLowerCase();
+  } catch {
+    throw new Error(`Portless returned an invalid URL: ${urlText}`);
   }
 }
 
-function buildSwitchboardArgs(options: GatewayOptions): string[] {
+function buildSwitchboardStartArgs(options: DevOverdareOptions, currentHost: string): string[] {
   const portlessOrigin = options.portlessOrigin ?? `http://127.0.0.1:${options.portlessPort}`;
-  const switchboardArgs = [
+  return [
+    "bun",
     "run",
     "dev:switchboard",
     "start",
@@ -219,40 +228,50 @@ function buildSwitchboardArgs(options: GatewayOptions): string[] {
     "--portless",
     portlessOrigin,
     "--default-host",
-    options.defaultHost,
+    currentHost,
+    ...(options.stateFile ? ["--state-file", options.stateFile] : []),
   ];
-  if (options.stateFile) {
-    switchboardArgs.push("--state-file", options.stateFile);
-  }
-  if (options.routesFile) {
-    switchboardArgs.push("--routes-file", options.routesFile);
-  }
-  return ["bun", ...switchboardArgs];
 }
 
-async function isSwitchboardRunning(options: GatewayOptions): Promise<boolean> {
-  const port = options.listen.includes(":")
-    ? options.listen.slice(options.listen.lastIndexOf(":") + 1)
-    : options.listen;
+function registerCurrentTarget(options: DevOverdareOptions, host: string, portlessUrl: string): void {
+  const args = [
+    "bun",
+    "run",
+    "dev:switchboard",
+    "register",
+    host,
+    "--cwd",
+    ROOT,
+    "--url",
+    portlessUrl,
+    ...(options.stateFile ? ["--state-file", options.stateFile] : []),
+  ];
+  runChecked(args);
+}
+
+async function isSwitchboardRunning(options: DevOverdareOptions): Promise<boolean> {
   try {
-    const response = await fetch(`http://127.0.0.1:${port}/_dev/api/state`, { signal: AbortSignal.timeout(500) });
+    const response = await fetch(`http://127.0.0.1:${listenPort(options.listen)}/_dev/api/state`, {
+      signal: AbortSignal.timeout(500),
+    });
     return response.ok;
   } catch {
     return false;
   }
 }
 
-async function gatewayCommand(argv: string[]): Promise<void> {
-  const options = parseGatewayOptions(argv);
-  if (!options) {
-    return;
+async function waitForSwitchboard(options: DevOverdareOptions): Promise<void> {
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    if (await isSwitchboardRunning(options)) {
+      return;
+    }
+    await Bun.sleep(150);
   }
-
-  startPortlessProxy(options);
-  await runInherited(buildSwitchboardArgs(options));
+  throw new Error(`Timed out waiting for switchboard on port ${listenPort(options.listen)}`);
 }
 
-function buildInstanceArgs(options: InstanceOptions): string[] {
+function buildInstanceArgs(options: DevOverdareOptions): string[] {
   const portlessArgs = ["run", "--name", options.name];
   if (options.force) {
     portlessArgs.push("--force");
@@ -273,80 +292,18 @@ function buildInstanceArgs(options: InstanceOptions): string[] {
   return portlessCommand([...portlessArgs, "bun", "run", "dev:overdare-instance", ...options.instanceArgs]);
 }
 
-async function instanceCommand(argv: string[]): Promise<void> {
-  const options = parseInstanceOptions(argv);
-  if (!options) {
-    return;
-  }
-
-  await runInherited(buildInstanceArgs(options));
-}
-
-async function switchboardCommand(commandName: "use" | "list", argv: string[]): Promise<void> {
-  await runInherited(["bun", "run", "dev:switchboard", commandName, ...argv]);
-}
-
-function parseAutoOptions(argv: string[]): AutoOptions | null {
-  const { head, passthrough } = splitPassthrough(argv);
-  const { values } = parseArgs({
-    args: head,
-    options: {
-      listen: { type: "string" },
-      "portless-port": { type: "string" },
-      portless: { type: "string" },
-      "default-host": { type: "string" },
-      "state-file": { type: "string" },
-      "routes-file": { type: "string" },
-      "no-proxy-start": { type: "boolean" },
-      lan: { type: "boolean" },
-      name: { type: "string" },
-      force: { type: "boolean" },
-      "app-port": { type: "string" },
-      tailscale: { type: "boolean" },
-      funnel: { type: "boolean" },
-      ngrok: { type: "boolean" },
-      help: { type: "boolean", short: "h" },
-    },
-    strict: true,
-    allowPositionals: false,
-  });
-
-  if (values.help) {
-    printHelp();
-    return null;
-  }
-
-  return {
-    gateway: {
-      listen: values.listen?.trim() || DEFAULT_LISTEN,
-      portlessPort: values["portless-port"]?.trim() || DEFAULT_PORTLESS_PORT,
-      portlessOrigin: values.portless?.trim() || undefined,
-      defaultHost: values["default-host"]?.trim() || DEFAULT_DEFAULT_HOST,
-      stateFile: values["state-file"]?.trim() || undefined,
-      routesFile: values["routes-file"]?.trim() || undefined,
-      noProxyStart: values["no-proxy-start"] === true,
-      lan: values.lan === true,
-    },
-    instance: {
-      name: values.name?.trim() || "diligent",
-      force: values.force === true,
-      appPort: values["app-port"]?.trim() || undefined,
-      tailscale: values.tailscale === true,
-      funnel: values.funnel === true,
-      ngrok: values.ngrok === true,
-      instanceArgs: passthrough,
-    },
-  };
-}
-
 async function autoCommand(argv: string[]): Promise<void> {
-  const options = parseAutoOptions(argv);
+  const options = parseOptions(argv);
   if (!options) {
     return;
   }
 
-  startPortlessProxy(options.gateway);
-  const switchboardWasRunning = await isSwitchboardRunning(options.gateway);
+  startPortlessProxy(options);
+  const portlessUrl = resolvePortlessUrl(options);
+  const currentHost = hostFromUrl(portlessUrl);
+  registerCurrentTarget(options, currentHost, portlessUrl);
+
+  const switchboardWasRunning = await isSwitchboardRunning(options);
   const children: ReturnType<typeof Bun.spawn>[] = [];
   let stopping = false;
 
@@ -369,15 +326,16 @@ async function autoCommand(argv: string[]): Promise<void> {
   });
 
   if (!switchboardWasRunning) {
-    console.log("[dev:overdare] starting switchboard gateway");
-    children.push(spawnInherited(buildSwitchboardArgs(options.gateway)));
-    await Bun.sleep(500);
+    console.log("[dev:overdare] starting switchboard");
+    children.push(spawnInherited(buildSwitchboardStartArgs(options, currentHost)));
+    await waitForSwitchboard(options);
   } else {
-    console.log("[dev:overdare] switchboard gateway is already running");
+    console.log("[dev:overdare] switchboard is already running");
   }
 
+  console.log(`[dev:overdare] active target: ${currentHost}`);
   console.log("[dev:overdare] starting current worktree instance");
-  children.push(spawnInherited(buildInstanceArgs(options.instance)));
+  children.push(spawnInherited(buildInstanceArgs(options)));
 
   const firstExit = await Promise.race(
     children.map(async (child) => ({
@@ -385,6 +343,10 @@ async function autoCommand(argv: string[]): Promise<void> {
     })),
   );
   await stopChildren(firstExit.code ?? 1);
+}
+
+async function switchboardCommand(commandName: "use" | "list", argv: string[]): Promise<void> {
+  await runInherited(["bun", "run", "dev:switchboard", commandName, ...argv]);
 }
 
 async function run(): Promise<void> {
@@ -399,15 +361,6 @@ async function run(): Promise<void> {
   }
   if (commandName.startsWith("-")) {
     await autoCommand(process.argv.slice(2));
-    return;
-  }
-
-  if (commandName === "gateway") {
-    await gatewayCommand(rest);
-    return;
-  }
-  if (commandName === "instance") {
-    await instanceCommand(rest);
     return;
   }
   if (commandName === "use" || commandName === "list") {

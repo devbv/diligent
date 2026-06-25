@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// @summary Fixed-port development switchboard that proxies Windows traffic to the active Portless route.
+// @summary Fixed-port development switchboard for the active OVERDARE Portless target.
 
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -9,13 +9,19 @@ import { parseArgs } from "node:util";
 
 const DEFAULT_LISTEN = "0.0.0.0:11000";
 const DEFAULT_PORTLESS_ORIGIN = "http://127.0.0.1:11001";
-const DEFAULT_STATE_DIR = join(homedir(), ".diligent-dev-switchboard");
-const DEFAULT_STATE_FILE = join(DEFAULT_STATE_DIR, "state.json");
-const DEFAULT_ROUTES_FILE = join(homedir(), ".portless", "routes.json");
+const DEFAULT_STATE_FILE = join(homedir(), ".diligent-dev-switchboard", "state.json");
+
+interface DevTarget {
+  host: string;
+  cwd?: string;
+  url?: string;
+  updatedAt: string;
+}
 
 interface SwitchboardState {
   activeHost?: string;
   updatedAt?: string;
+  targets?: Record<string, DevTarget>;
 }
 
 interface ListenAddress {
@@ -25,13 +31,19 @@ interface ListenAddress {
 
 interface CommonOptions {
   stateFile: string;
-  routesFile: string;
 }
 
 interface StartOptions extends CommonOptions {
   listen: ListenAddress;
   portlessOrigin: string;
   defaultHost?: string;
+}
+
+interface RegisterOptions extends CommonOptions {
+  host: string;
+  activate: boolean;
+  cwd?: string;
+  url?: string;
 }
 
 interface SwitchboardWsData {
@@ -45,22 +57,28 @@ interface SwitchboardWsData {
 function printHelp(): void {
   console.log(`Usage:
   bun run scripts/dev-switchboard.ts start [options]
+  bun run scripts/dev-switchboard.ts register <portless-host> [options]
   bun run scripts/dev-switchboard.ts use <portless-host> [options]
   bun run scripts/dev-switchboard.ts list [options]
 
 Commands:
-  start    Start the fixed-port proxy and GUI
-  use      Switch the active Portless host
-  list     Print active host and discovered route hosts
+  start       Start the fixed Windows-facing proxy and small control UI
+  register    Add or refresh a worktree target; activates it by default
+  use         Switch the active target
+  list        Print active target and registered worktree targets
 
 Start options:
   --listen <host:port>       Fixed Windows-facing address (default: ${DEFAULT_LISTEN})
   --portless <origin>        Portless proxy origin (default: ${DEFAULT_PORTLESS_ORIGIN})
   --default-host <host>      Fallback host when no active state exists
 
+Register options:
+  --cwd <path>               Worktree cwd shown in the UI
+  --url <url>                Full Portless URL for the target
+  --no-activate              Register without switching to this target
+
 Common options:
   --state-file <path>        State file (default: ${DEFAULT_STATE_FILE})
-  --routes-file <path>       Portless routes file (default: ${DEFAULT_ROUTES_FILE})
   --help                     Show this help
 `);
 }
@@ -78,7 +96,6 @@ function parseListenAddress(value: string): ListenAddress {
   if (!trimmed) {
     throw new Error("--listen cannot be empty");
   }
-
   if (/^\d+$/.test(trimmed)) {
     return { hostname: "0.0.0.0", port: parsePort(trimmed, "--listen") };
   }
@@ -102,15 +119,13 @@ function normalizeTargetHost(value: string): string {
   try {
     return new URL(trimmed).hostname.toLowerCase();
   } catch {
-    const parsed = new URL(`http://${trimmed}`);
-    return parsed.hostname.toLowerCase();
+    return new URL(`http://${trimmed}`).hostname.toLowerCase();
   }
 }
 
 function parseCommonOptions(values: Record<string, string | boolean | undefined>): CommonOptions {
   return {
     stateFile: resolve(process.cwd(), String(values["state-file"] || DEFAULT_STATE_FILE)),
-    routesFile: resolve(process.cwd(), String(values["routes-file"] || DEFAULT_ROUTES_FILE)),
   };
 }
 
@@ -122,7 +137,6 @@ function parseStartOptions(argv: string[]): StartOptions | null {
       portless: { type: "string" },
       "default-host": { type: "string" },
       "state-file": { type: "string" },
-      "routes-file": { type: "string" },
       help: { type: "boolean", short: "h" },
     },
     strict: true,
@@ -147,7 +161,6 @@ function parseCommonCommandOptions(argv: string[]): { options: CommonOptions; po
     args: argv,
     options: {
       "state-file": { type: "string" },
-      "routes-file": { type: "string" },
       help: { type: "boolean", short: "h" },
     },
     strict: true,
@@ -159,9 +172,39 @@ function parseCommonCommandOptions(argv: string[]): { options: CommonOptions; po
     return null;
   }
 
+  return { options: parseCommonOptions(values), positionals };
+}
+
+function parseRegisterOptions(argv: string[]): RegisterOptions | null {
+  const { values, positionals } = parseArgs({
+    args: argv,
+    options: {
+      cwd: { type: "string" },
+      url: { type: "string" },
+      "no-activate": { type: "boolean" },
+      "state-file": { type: "string" },
+      help: { type: "boolean", short: "h" },
+    },
+    strict: true,
+    allowPositionals: true,
+  });
+
+  if (values.help) {
+    printHelp();
+    return null;
+  }
+
+  const [host] = positionals;
+  if (!host) {
+    throw new Error("Missing host: dev-switchboard register <portless-host>");
+  }
+
   return {
-    options: parseCommonOptions(values),
-    positionals,
+    ...parseCommonOptions(values),
+    host: normalizeTargetHost(host),
+    activate: values["no-activate"] !== true,
+    cwd: values.cwd?.trim() || undefined,
+    url: values.url?.trim() || undefined,
   };
 }
 
@@ -171,7 +214,8 @@ async function readState(stateFile: string): Promise<SwitchboardState> {
   }
 
   try {
-    return JSON.parse(await readFile(stateFile, "utf8")) as SwitchboardState;
+    const parsed = JSON.parse(await readFile(stateFile, "utf8")) as SwitchboardState;
+    return parsed && typeof parsed === "object" ? parsed : {};
   } catch {
     return {};
   }
@@ -182,74 +226,24 @@ async function writeState(stateFile: string, next: SwitchboardState): Promise<vo
   await writeFile(stateFile, `${JSON.stringify(next, null, 2)}\n`, "utf8");
 }
 
-function addHostCandidate(hosts: Set<string>, value: string): void {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return;
-  }
-
-  const candidates = [trimmed];
-  const urlMatches = trimmed.matchAll(/\b(?:https?|wss?):\/\/[^\s"'<>]+/gi);
-  for (const match of urlMatches) {
-    candidates.push(match[0]);
-  }
-
-  const hostMatches = trimmed.matchAll(/\b([a-z0-9][a-z0-9-]*(?:\.[a-z0-9][a-z0-9-]*)+(?::\d+)?)\b/gi);
-  for (const match of hostMatches) {
-    candidates.push(match[1]);
-  }
-
-  for (const candidate of candidates) {
-    try {
-      const host = normalizeTargetHost(candidate);
-      if (!/^[0-9.]+$/.test(host) && host.includes(".")) {
-        hosts.add(host);
-      }
-    } catch {
-      // Ignore values that are not host-like.
-    }
-  }
-}
-
-function collectHosts(hosts: Set<string>, value: unknown): void {
-  if (typeof value === "string") {
-    addHostCandidate(hosts, value);
-    return;
-  }
-
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      collectHosts(hosts, item);
-    }
-    return;
-  }
-
-  if (value && typeof value === "object") {
-    for (const [key, item] of Object.entries(value)) {
-      addHostCandidate(hosts, key);
-      collectHosts(hosts, item);
-    }
-  }
-}
-
-async function readRouteHosts(routesFile: string): Promise<string[]> {
-  if (!existsSync(routesFile)) {
-    return [];
-  }
-
-  try {
-    const parsed = JSON.parse(await readFile(routesFile, "utf8")) as unknown;
-    const hosts = new Set<string>();
-    collectHosts(hosts, parsed);
-    return [...hosts].sort((a, b) => a.localeCompare(b));
-  } catch {
-    return [];
-  }
+function sortedTargets(state: SwitchboardState): DevTarget[] {
+  return Object.values(state.targets ?? {}).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
 async function resolveActiveHost(options: StartOptions): Promise<string | null> {
   const state = await readState(options.stateFile);
   return state.activeHost ?? options.defaultHost ?? null;
+}
+
+function targetUrl(requestUrl: string, activeHost: string, portlessOrigin: string, protocol?: "ws:" | "wss:"): URL {
+  const incoming = new URL(requestUrl);
+  const portless = new URL(portlessOrigin);
+  const target = new URL(`${incoming.pathname}${incoming.search}`, portless);
+  target.hostname = activeHost;
+  if (protocol) {
+    target.protocol = protocol;
+  }
+  return target;
 }
 
 function jsonResponse(value: unknown, init: ResponseInit = {}): Response {
@@ -272,129 +266,22 @@ function renderGui(): string {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Diligent Dev Switchboard</title>
   <style>
-    :root {
-      color-scheme: light dark;
-      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #f6f7f9;
-      color: #15171a;
-    }
-    body {
-      margin: 0;
-      min-height: 100vh;
-    }
-    main {
-      width: min(960px, calc(100vw - 32px));
-      margin: 0 auto;
-      padding: 32px 0 48px;
-    }
-    header {
-      display: flex;
-      align-items: flex-end;
-      justify-content: space-between;
-      gap: 16px;
-      border-bottom: 1px solid #d8dde6;
-      padding-bottom: 20px;
-    }
-    h1 {
-      font-size: 26px;
-      line-height: 1.2;
-      margin: 0;
-    }
-    .meta {
-      color: #5d6673;
-      font-size: 13px;
-      line-height: 1.5;
-      text-align: right;
-    }
-    .toolbar {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-      margin: 24px 0;
-    }
-    input {
-      flex: 1;
-      min-width: 0;
-      height: 38px;
-      border: 1px solid #c7ced8;
-      border-radius: 6px;
-      padding: 0 11px;
-      font: inherit;
-      background: #ffffff;
-      color: inherit;
-    }
-    button {
-      height: 38px;
-      border: 1px solid #b9c2cf;
-      border-radius: 6px;
-      background: #ffffff;
-      color: #15171a;
-      font: inherit;
-      padding: 0 12px;
-      cursor: pointer;
-    }
-    button.primary {
-      background: #22577a;
-      border-color: #22577a;
-      color: #ffffff;
-    }
-    button:disabled {
-      cursor: default;
-      opacity: 0.55;
-    }
-    .routes {
-      display: grid;
-      gap: 10px;
-    }
-    .route {
-      display: grid;
-      grid-template-columns: 1fr auto;
-      gap: 12px;
-      align-items: center;
-      border: 1px solid #d8dde6;
-      border-radius: 8px;
-      background: #ffffff;
-      padding: 12px;
-    }
-    .host {
-      overflow-wrap: anywhere;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-      font-size: 14px;
-    }
-    .active {
-      border-color: #22577a;
-      box-shadow: inset 3px 0 0 #22577a;
-    }
-    .empty {
-      border: 1px dashed #c7ced8;
-      border-radius: 8px;
-      color: #5d6673;
-      padding: 18px;
-    }
+    :root { color-scheme: light dark; font-family: system-ui, sans-serif; background: #f7f8fa; color: #16181c; }
+    body { margin: 0; }
+    main { width: min(900px, calc(100vw - 32px)); margin: 0 auto; padding: 28px 0; }
+    header, .target { display: flex; align-items: center; gap: 12px; }
+    header { justify-content: space-between; border-bottom: 1px solid #d7dde5; padding-bottom: 16px; }
+    h1 { margin: 0; font-size: 24px; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
+    button { height: 36px; padding: 0 12px; border: 1px solid #adb8c7; border-radius: 6px; background: #fff; color: inherit; font: inherit; cursor: pointer; }
+    button:disabled { opacity: .55; cursor: default; }
+    .target { justify-content: space-between; border-top: 1px solid #e0e5eb; padding: 12px 0; }
+    .meta { color: #5d6673; font-size: 13px; }
     @media (prefers-color-scheme: dark) {
-      :root {
-        background: #101418;
-        color: #eef2f6;
-      }
-      header,
-      .route,
-      .empty {
-        border-color: #2a333d;
-      }
-      .route,
-      input,
-      button {
-        background: #171d23;
-        color: #eef2f6;
-      }
-      input,
-      button {
-        border-color: #36424f;
-      }
-      .meta,
-      .empty {
-        color: #a8b3c1;
-      }
+      :root { background: #101418; color: #eef2f6; }
+      header, .target { border-color: #2a333d; }
+      button { background: #171d23; border-color: #36424f; }
+      .meta { color: #a8b3c1; }
     }
   </style>
 </head>
@@ -402,23 +289,16 @@ function renderGui(): string {
   <main>
     <header>
       <h1>Diligent Dev Switchboard</h1>
-      <div class="meta">
-        <div>Active: <span id="active">loading</span></div>
-        <div>Portless: <span id="portless">loading</span></div>
+      <div>
+        <div class="meta">Active: <code id="active">loading</code></div>
+        <button type="button" id="refresh">Refresh</button>
       </div>
     </header>
-    <form class="toolbar" id="manual-form">
-      <input id="manual-host" autocomplete="off" spellcheck="false" placeholder="feature-name.diligent.localhost" />
-      <button class="primary" type="submit">Use</button>
-      <button type="button" id="refresh">Refresh</button>
-    </form>
-    <section class="routes" id="routes"></section>
+    <section id="targets"></section>
   </main>
   <script>
     const activeEl = document.querySelector("#active");
-    const portlessEl = document.querySelector("#portless");
-    const routesEl = document.querySelector("#routes");
-    const manualHost = document.querySelector("#manual-host");
+    const targetsEl = document.querySelector("#targets");
 
     async function useHost(host) {
       await fetch("/_dev/api/use", {
@@ -431,34 +311,26 @@ function renderGui(): string {
 
     function render(state) {
       activeEl.textContent = state.activeHost || "none";
-      portlessEl.textContent = state.portlessOrigin;
-      routesEl.innerHTML = "";
-
-      if (!state.routes.length) {
-        const empty = document.createElement("div");
-        empty.className = "empty";
-        empty.textContent = "No Portless routes found.";
-        routesEl.appendChild(empty);
-        return;
-      }
-
-      for (const host of state.routes) {
+      targetsEl.replaceChildren();
+      for (const target of state.targets) {
         const row = document.createElement("div");
-        row.className = "route" + (host === state.activeHost ? " active" : "");
-
-        const label = document.createElement("div");
-        label.className = "host";
-        label.textContent = host;
-
+        row.className = "target";
+        const info = document.createElement("div");
+        const title = document.createElement("code");
+        title.textContent = target.host;
+        const meta = document.createElement("div");
+        meta.className = "meta";
+        meta.textContent = target.cwd || target.url || target.updatedAt;
+        info.append(title, meta);
         const button = document.createElement("button");
         button.type = "button";
-        button.textContent = host === state.activeHost ? "Active" : "Use";
-        button.disabled = host === state.activeHost;
-        button.addEventListener("click", () => useHost(host));
-
-        row.append(label, button);
-        routesEl.appendChild(row);
+        button.textContent = target.host === state.activeHost ? "Active" : "Use";
+        button.disabled = target.host === state.activeHost;
+        button.addEventListener("click", () => useHost(target.host));
+        row.append(info, button);
+        targetsEl.append(row);
       }
+      if (!state.targets.length) targetsEl.textContent = "No registered dev targets.";
     }
 
     async function load() {
@@ -466,12 +338,6 @@ function renderGui(): string {
       render(await response.json());
     }
 
-    document.querySelector("#manual-form").addEventListener("submit", (event) => {
-      event.preventDefault();
-      if (manualHost.value.trim()) {
-        useHost(manualHost.value.trim());
-      }
-    });
     document.querySelector("#refresh").addEventListener("click", load);
     load();
     setInterval(load, 3000);
@@ -480,62 +346,35 @@ function renderGui(): string {
 </html>`;
 }
 
-function buildTargetUrl(
-  requestUrl: string,
-  activeHost: string,
-  portlessOrigin: string,
-  protocol?: "http:" | "https:" | "ws:" | "wss:",
-): URL {
-  const incoming = new URL(requestUrl);
-  const portless = new URL(portlessOrigin);
-  const target = new URL(`${incoming.pathname}${incoming.search}`, portless);
-  target.hostname = activeHost;
-  target.protocol = protocol ?? portless.protocol;
-  return target;
-}
-
-function isWebSocketRequest(request: Request): boolean {
-  return request.headers.get("upgrade")?.toLowerCase() === "websocket";
-}
-
-async function handleApiRequest(request: Request, url: URL, options: StartOptions): Promise<Response | null> {
+async function handleControlRequest(request: Request, url: URL, options: StartOptions): Promise<Response | null> {
   if (request.method === "GET" && url.pathname === "/_dev") {
     return htmlResponse(renderGui());
   }
 
   if (request.method === "GET" && url.pathname === "/_dev/api/state") {
     const state = await readState(options.stateFile);
-    const activeHost = state.activeHost ?? options.defaultHost;
     return jsonResponse({
-      activeHost: activeHost ?? null,
+      activeHost: state.activeHost ?? options.defaultHost ?? null,
       updatedAt: state.updatedAt ?? null,
-      routes: await readRouteHosts(options.routesFile),
+      targets: sortedTargets(state),
       portlessOrigin: options.portlessOrigin,
       stateFile: options.stateFile,
-      routesFile: options.routesFile,
     });
   }
 
   if (request.method === "POST" && url.pathname === "/_dev/api/use") {
-    let host: string | undefined;
-    const contentType = request.headers.get("content-type") ?? "";
-    if (contentType.includes("application/json")) {
-      const body = (await request.json()) as { host?: string };
-      host = body.host;
-    } else if (
-      contentType.includes("application/x-www-form-urlencoded") ||
-      contentType.includes("multipart/form-data")
-    ) {
-      const form = await request.formData();
-      host = String(form.get("host") ?? "");
-    } else {
-      host = await request.text();
-    }
-
-    const activeHost = normalizeTargetHost(host ?? "");
+    const body = (await request.json()) as { host?: string };
+    const activeHost = normalizeTargetHost(body.host ?? "");
+    const state = await readState(options.stateFile);
+    const now = new Date().toISOString();
     await writeState(options.stateFile, {
+      ...state,
       activeHost,
-      updatedAt: new Date().toISOString(),
+      updatedAt: now,
+      targets: {
+        ...(state.targets ?? {}),
+        [activeHost]: state.targets?.[activeHost] ?? { host: activeHost, updatedAt: now },
+      },
     });
     return jsonResponse({ ok: true, activeHost });
   }
@@ -547,8 +386,12 @@ async function handleApiRequest(request: Request, url: URL, options: StartOption
   return null;
 }
 
+function isWebSocketRequest(request: Request): boolean {
+  return request.headers.get("upgrade")?.toLowerCase() === "websocket";
+}
+
 async function proxyHttp(request: Request, activeHost: string, options: StartOptions): Promise<Response> {
-  const target = buildTargetUrl(request.url, activeHost, options.portlessOrigin);
+  const target = targetUrl(request.url, activeHost, options.portlessOrigin);
   const headers = new Headers(request.headers);
   const incomingHost = headers.get("host");
   headers.delete("host");
@@ -592,9 +435,9 @@ async function startSwitchboard(options: StartOptions): Promise<void> {
     port: options.listen.port,
     async fetch(request, bunServer) {
       const url = new URL(request.url);
-      const apiResponse = await handleApiRequest(request, url, options);
-      if (apiResponse) {
-        return apiResponse;
+      const controlResponse = await handleControlRequest(request, url, options);
+      if (controlResponse) {
+        return controlResponse;
       }
 
       const activeHost = await resolveActiveHost(options);
@@ -603,7 +446,7 @@ async function startSwitchboard(options: StartOptions): Promise<void> {
       }
 
       if (isWebSocketRequest(request)) {
-        const targetUrl = buildTargetUrl(
+        const target = targetUrl(
           request.url,
           activeHost,
           options.portlessOrigin,
@@ -612,7 +455,7 @@ async function startSwitchboard(options: StartOptions): Promise<void> {
         const upgraded = bunServer.upgrade(request, {
           data: {
             activeHost,
-            targetUrl: targetUrl.toString(),
+            targetUrl: target.toString(),
             pending: [],
             upstreamOpen: false,
           },
@@ -626,7 +469,6 @@ async function startSwitchboard(options: StartOptions): Promise<void> {
       open(ws) {
         const upstream = new WebSocket(ws.data.targetUrl);
         ws.data.upstream = upstream;
-
         upstream.addEventListener("open", () => {
           ws.data.upstreamOpen = true;
           for (const message of ws.data.pending.splice(0)) {
@@ -663,6 +505,35 @@ async function startSwitchboard(options: StartOptions): Promise<void> {
   console.log(`State file: ${options.stateFile}`);
 }
 
+async function registerCommand(argv: string[]): Promise<void> {
+  const options = parseRegisterOptions(argv);
+  if (!options) {
+    return;
+  }
+
+  const state = await readState(options.stateFile);
+  const now = new Date().toISOString();
+  const current = state.targets?.[options.host];
+  const nextTarget: DevTarget = {
+    host: options.host,
+    cwd: options.cwd ?? current?.cwd,
+    url: options.url ?? current?.url,
+    updatedAt: now,
+  };
+
+  await writeState(options.stateFile, {
+    ...state,
+    activeHost: options.activate ? options.host : state.activeHost,
+    updatedAt: options.activate ? now : state.updatedAt,
+    targets: {
+      ...(state.targets ?? {}),
+      [options.host]: nextTarget,
+    },
+  });
+
+  console.log(`${options.activate ? "Active" : "Registered"} dev target: ${options.host}`);
+}
+
 async function useCommand(argv: string[]): Promise<void> {
   const parsed = parseCommonCommandOptions(argv);
   if (!parsed) {
@@ -672,10 +543,18 @@ async function useCommand(argv: string[]): Promise<void> {
   if (!host) {
     throw new Error("Missing host: dev-switchboard use <portless-host>");
   }
+
   const activeHost = normalizeTargetHost(host);
+  const state = await readState(parsed.options.stateFile);
+  const now = new Date().toISOString();
   await writeState(parsed.options.stateFile, {
+    ...state,
     activeHost,
-    updatedAt: new Date().toISOString(),
+    updatedAt: now,
+    targets: {
+      ...(state.targets ?? {}),
+      [activeHost]: state.targets?.[activeHost] ?? { host: activeHost, updatedAt: now },
+    },
   });
   console.log(`Active dev target: ${activeHost}`);
 }
@@ -686,8 +565,7 @@ async function listCommand(argv: string[]): Promise<void> {
     return;
   }
   const state = await readState(parsed.options.stateFile);
-  const routes = await readRouteHosts(parsed.options.routesFile);
-  console.log(JSON.stringify({ activeHost: state.activeHost ?? null, routes }, null, 2));
+  console.log(JSON.stringify({ activeHost: state.activeHost ?? null, targets: sortedTargets(state) }, null, 2));
 }
 
 async function run(): Promise<void> {
@@ -697,6 +575,10 @@ async function run(): Promise<void> {
 
   if (command === "help" || command === "--help" || command === "-h") {
     printHelp();
+    return;
+  }
+  if (command === "register") {
+    await registerCommand(rest);
     return;
   }
   if (command === "use") {
