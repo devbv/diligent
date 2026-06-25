@@ -14,20 +14,28 @@ export const PRIVACY_POLICY_BASE_URL = "https://www.overdare.com/legal/privacy";
 export const PRIVACY_POLICY_LATEST_URL = "https://static.overdare.com/legal/privacy/en/latest.json";
 
 let cachedPrivacyPolicyUrl: string | undefined;
+let cachedAt: number | undefined;
+
+/** Time-to-live for the cached privacy-policy URL. Default: 24 hours. */
+export const PRIVACY_POLICY_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Resolve the privacy-policy URL by reading {@link PRIVACY_POLICY_LATEST_URL} for `latestVersion`
  * and building `<base>?version=<latestVersion>`. Cached after the first success; bounded by a 3s
- * timeout and falls back to the base URL (uncached → retried) on any failure. Awaited from
- * `getInitializeResult` so clients receive the versioned URL.
+ * timeout and falls back to the base URL (uncached → retried) on any failure. The cached result
+ * expires after {@link PRIVACY_POLICY_CACHE_TTL_MS} so long-running processes re-fetch updated
+ * URLs. Awaited from `getInitializeResult` so clients receive the versioned URL.
  */
-export async function refreshPrivacyPolicyUrl(): Promise<string> {
-  if (cachedPrivacyPolicyUrl) return cachedPrivacyPolicyUrl;
+export async function refreshPrivacyPolicyUrl(now = Date.now()): Promise<string> {
+  if (cachedPrivacyPolicyUrl && cachedAt !== undefined && now - cachedAt < PRIVACY_POLICY_CACHE_TTL_MS) {
+    return cachedPrivacyPolicyUrl;
+  }
   try {
     const res = await fetch(PRIVACY_POLICY_LATEST_URL, { signal: AbortSignal.timeout(3000) });
     const data = res.ok ? ((await res.json()) as { latestVersion?: unknown }) : undefined;
     if (data && typeof data.latestVersion === "string" && data.latestVersion) {
       cachedPrivacyPolicyUrl = `${PRIVACY_POLICY_BASE_URL}?version=${encodeURIComponent(data.latestVersion)}`;
+      cachedAt = now;
     }
   } catch {
     // Network/timeout/parse failure — leave uncached so the next call retries.
@@ -43,6 +51,7 @@ export function currentPrivacyPolicyUrl(): string {
 /** Test-only: clear the cached privacy-policy URL so tests stay order-independent. */
 export function resetPrivacyPolicyUrlCache(): void {
   cachedPrivacyPolicyUrl = undefined;
+  cachedAt = undefined;
 }
 
 /** Map stored config consent → resolved ConsentState exposed over the protocol. */
