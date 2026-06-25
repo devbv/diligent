@@ -43,7 +43,12 @@ export { RuntimeAgent } from "./agent/runtime-agent";
 export type { AgentEvent, RuntimeAgentEvent } from "./agent-event";
 export type { AgentDiscoveryOptions, AgentFrontmatter, AgentLoadError, AgentLoadResult, AgentMetadata } from "./agents";
 export { discoverAgents, parseAgentFrontmatter, renderAgentsSection, validateAgentName } from "./agents";
-export type { CreateAgentArgs, CreateAppServerConfigOptions, DiligentAppServerConfig } from "./app-server";
+export type {
+  ConsentConfigManager,
+  CreateAgentArgs,
+  CreateAppServerConfigOptions,
+  DiligentAppServerConfig,
+} from "./app-server";
 export { bindAppServer, createAppServerConfig, DiligentAppServer } from "./app-server";
 export type { ApprovalRequest, ApprovalResponse, PermissionAction, PermissionEngine, PermissionRule } from "./approval";
 export { createPermissionEngine, createYoloPermissionEngine } from "./approval";
@@ -84,6 +89,7 @@ export {
   applyToolConfigPatch,
   buildSystemPrompt,
   buildSystemPromptWithKnowledge,
+  currentPrivacyPolicyUrl,
   DEFAULT_CONFIG,
   DiligentConfigSchema,
   discoverInstructions,
@@ -109,6 +115,7 @@ export { appendKnowledge, buildKnowledgeSection, rankKnowledge, readKnowledge, w
 export { ProtocolNotificationAdapter } from "./notification-adapter";
 export type { SystemPromptVars } from "./prompt";
 export { buildBaseSystemPrompt } from "./prompt";
+export type { ConsentSetParams, ConsentState } from "./protocol";
 export type { NdjsonParser, RpcMessageSink, RpcMessageSource, RpcPeer, WebSocketSender } from "./rpc";
 export {
   createNdjsonParser,

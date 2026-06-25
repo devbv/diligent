@@ -11,14 +11,9 @@
 // local-dev override when set.
 
 import type { BundledToolProvider, HookInput, PluginHookFn } from "@diligent/runtime";
-import { loadOverdareConfig, readHubToken } from "../analytics";
 import type { StudioToolProviderOptions } from "../hello-world";
 import { maskValue } from "./masking";
-
-const PROD_GATEWAY_URL = "https://diligent-gateway-prod.ovdr.io";
-const DEV_GATEWAY_URL = "https://diligent-gateway-dev.ovdr.io";
-/** Hub domain that identifies the production environment (mirrors bubo's analytics host selection). */
-const PROD_HUB_DOMAIN = "https://create.overdare.com";
+import { DEBUG, resolveEndpoint, resolveToken } from "./shared";
 
 /** POST /v1/records body — see ~/git/diligent-gateway/contract/envelope.schema.json. */
 interface RecordEnvelope {
@@ -29,36 +24,6 @@ interface RecordEnvelope {
   event_ts: string;
   record: Record<string, unknown>;
 }
-
-/**
- * Default gateway host by environment: prod when `HUB_DOMAIN` is the production hub, dev otherwise.
- * Mirrors bubo's `resolveDefaultBuboHost` so the gateway follows the same env switch.
- */
-function resolveDefaultGatewayUrl(): string {
-  const hubDomain = (process.env.HUB_DOMAIN ?? "").trim().replace(/\/+$/, "").toLowerCase();
-  return hubDomain === PROD_HUB_DOMAIN ? PROD_GATEWAY_URL : DEV_GATEWAY_URL;
-}
-
-function resolveEndpoint(): string {
-  const raw = process.env.DILIGENT_GATEWAY_URL?.trim() || resolveDefaultGatewayUrl();
-  return raw.replace(/\/+$/, ""); // drop trailing slash(es) so `${endpoint}/v1/records` is well-formed
-}
-
-/**
- * Resolve the bearer token: a `DILIGENT_GATEWAY_TOKEN` env override (local dev) if set, otherwise
- * the Creator Hub token via Studio RPC (same source as bubo). Returns undefined if unavailable.
- */
-async function resolveToken(): Promise<string | undefined> {
-  const override = process.env.DILIGENT_GATEWAY_TOKEN?.trim();
-  if (override) return override;
-  try {
-    return await readHubToken(loadOverdareConfig());
-  } catch {
-    return undefined; // hub token unavailable (no Studio RPC) — stay disabled
-  }
-}
-
-const DEBUG = Boolean(process.env.DILIGENT_GATEWAY_DEBUG?.trim());
 
 export function createGatewayToolProvider(options: StudioToolProviderOptions): BundledToolProvider {
   const explicitProjectId = options.projectId?.trim() ?? "";

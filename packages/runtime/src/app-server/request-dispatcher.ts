@@ -314,7 +314,7 @@ export async function dispatchClientRequest(
     }
 
     case DILIGENT_CLIENT_REQUEST_METHODS.CONSENT_SET:
-      return handleConsentSet(ctx.consentConfig, request.params);
+      return await handleConsentSet(ctx.consentConfig, request.params);
 
     case DILIGENT_CLIENT_REQUEST_METHODS.AUTH_LIST: {
       const pm = ctx.providerManager;

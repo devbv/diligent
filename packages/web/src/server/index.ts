@@ -5,6 +5,7 @@ import { dirname, join, resolve, sep } from "node:path";
 import {
   type AgentRegistry,
   type BundledToolProvider,
+  type ConsentConfigManager,
   createAppServerConfig,
   createWsPeer,
   DiligentAppServer,
@@ -30,6 +31,8 @@ interface CreateServerOptions {
   userId?: string;
   distDir?: string;
   bundledToolProviders?: BundledToolProvider[];
+  /** Remote-backed consent manager (e.g. OVERDARE gateway `/v1/consent`); overrides local config. */
+  consentBackend?: ConsentConfigManager;
 }
 
 interface ParsedArgs {
@@ -116,12 +119,14 @@ export async function createWebServer(options: CreateServerOptions = {}): Promis
     cwd,
     runtimeConfig,
     bundledToolProviders,
+    consentBackend: options.consentBackend,
     overrides: {
       onCurrentThreadChange: (threadId) => threadAppServerLog.setThreadId(threadId),
       serverVersion: resolveServerVersionOverride(),
       toImageUrl: (absPath) => toWebImageUrl(absPath),
       getInitializeResult: async () => {
         await refreshPrivacyPolicyUrl(); // resolve the versioned privacy-policy URL (3s-bounded, cached)
+        await options.consentBackend?.refresh?.(); // re-sync remote-backed consent before the payload
         return {
           cwd,
           mode: runtimeConfig.mode,
@@ -136,7 +141,9 @@ export async function createWebServer(options: CreateServerOptions = {}): Promis
             name: s.name,
             description: s.description,
           })),
-          consent: resolveConsentState(runtimeConfig.diligent.consent),
+          consent: options.consentBackend
+            ? options.consentBackend.get()
+            : resolveConsentState(runtimeConfig.diligent.consent),
         };
       },
     },

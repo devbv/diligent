@@ -9,6 +9,7 @@ import { saveGlobalConsent, saveGlobalModel } from "../config/writer";
 import { type DiligentPaths, ensureDiligentDir } from "../infrastructure";
 import type { BundledToolProvider } from "../tools/bundled-provider";
 import { buildDefaultTools } from "../tools/defaults";
+import type { ConsentConfigManager } from "./config-handlers";
 import type { CreateAgentArgs, DiligentAppServerConfig } from "./server";
 
 function withSkillGuardrail(runtimeConfig: RuntimeConfig) {
@@ -101,6 +102,12 @@ export interface CreateAppServerConfigOptions {
   cwd: string;
   runtimeConfig: RuntimeConfig;
   bundledToolProviders?: BundledToolProvider[];
+  /**
+   * Optional remote-backed consent manager (e.g. the OVERDARE gateway's `/v1/consent`). When
+   * provided, it owns consent state instead of local `config.jsonc`; `refresh()` is awaited from
+   * `getInitializeResult` so the initialize payload carries the server's latest state.
+   */
+  consentBackend?: ConsentConfigManager;
   overrides?: Partial<
     Pick<
       DiligentAppServerConfig,
@@ -110,9 +117,23 @@ export interface CreateAppServerConfigOptions {
 }
 
 export function createAppServerConfig(opts: CreateAppServerConfigOptions): DiligentAppServerConfig {
-  const { cwd, runtimeConfig, bundledToolProviders = [], overrides } = opts;
+  const { cwd, runtimeConfig, bundledToolProviders = [], consentBackend, overrides } = opts;
   const modelInfoList = getModelInfoList();
   const initialEffort = runtimeConfig.effort;
+
+  // Consent is owned by `consentBackend` (remote source of truth) when injected; otherwise it
+  // falls back to the local `config.jsonc`-backed manager below.
+  const consentConfig: ConsentConfigManager = consentBackend ?? {
+    get: () => resolveConsentState(runtimeConfig.diligent.consent),
+    set: (params) => {
+      const next = applyConsentPatch(runtimeConfig.diligent.consent, params, new Date().toISOString());
+      runtimeConfig.diligent = { ...runtimeConfig.diligent, consent: next };
+      saveGlobalConsent(next).catch((err) => {
+        console.warn("[config] Failed to persist consent selection:", err);
+      });
+      return resolveConsentState(next);
+    },
+  };
 
   // Lazily resolve paths from the startup cwd — idempotent, cached after first call
   let pathsPromise: ReturnType<typeof ensureDiligentDir> | undefined;
@@ -126,13 +147,14 @@ export function createAppServerConfig(opts: CreateAppServerConfigOptions): Dilig
     defaultEffort: initialEffort,
     getInitializeResult: async () => {
       await refreshPrivacyPolicyUrl(); // resolve the versioned privacy-policy URL (3s-bounded, cached)
+      await consentConfig.refresh?.(); // re-sync remote-backed consent (no-op for the local manager)
       return {
         cwd,
         mode: runtimeConfig.mode,
         effort: initialEffort,
         currentModel: runtimeConfig.model?.id,
         availableModels: modelInfoList,
-        consent: resolveConsentState(runtimeConfig.diligent.consent),
+        consent: consentConfig.get(),
       };
     },
     resolvePaths: (requestCwd) => ensureDiligentDir(requestCwd),
@@ -169,17 +191,7 @@ export function createAppServerConfig(opts: CreateAppServerConfigOptions): Dilig
         }
       },
     },
-    consentConfig: {
-      get: () => resolveConsentState(runtimeConfig.diligent.consent),
-      set: (params) => {
-        const next = applyConsentPatch(runtimeConfig.diligent.consent, params, new Date().toISOString());
-        runtimeConfig.diligent = { ...runtimeConfig.diligent, consent: next };
-        saveGlobalConsent(next).catch((err) => {
-          console.warn("[config] Failed to persist consent selection:", err);
-        });
-        return resolveConsentState(next);
-      },
-    },
+    consentConfig,
     providerManager: runtimeConfig.providerManager,
     authStore: runtimeConfig.authStore,
     permissionEngine: runtimeConfig.permissionEngine,

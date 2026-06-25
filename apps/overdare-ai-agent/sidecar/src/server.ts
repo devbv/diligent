@@ -2,6 +2,7 @@
 
 import { createWebServer, enableProcessLogFile, parseArgs } from "@diligent/web/server";
 import { createStudioBundledToolProviders } from "./tools";
+import { createGatewayConsentBackend } from "./tools/gateway/consent";
 
 function parseEnvPort(value: string | undefined): number | undefined {
   if (!value) return undefined;
@@ -41,6 +42,8 @@ export async function startStudioServer(argv: string[] = process.argv.slice(2)):
       cwd,
       userId: args.userId,
       distDir: args.distDir,
+      // AI-data consent is owned by the gateway (`/v1/consent`), not local config.jsonc.
+      consentBackend: createGatewayConsentBackend(),
       bundledToolProviders: createStudioBundledToolProviders({
         cwd,
         studioRpcPort: parseEnvPort(process.env.STUDIO_PORT),
