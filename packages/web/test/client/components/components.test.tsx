@@ -113,6 +113,8 @@ test("question card always renders custom input row", () => {
 
   expect(html).toContain('placeholder="or type a custom answer…"');
   expect(html).toContain('aria-label="Reason"');
+  expect(html).toContain("items-start px-3 py-2");
+  expect(html).toContain('aria-hidden="true" class="mt-0.5 h-4 w-4 shrink-0"');
   expect(html).toContain("flex min-w-0 flex-1 flex-col");
   expect(html).toContain("min-w-0 truncate bg-transparent");
   expect(html).toContain('disabled=""');
@@ -212,9 +214,44 @@ test("question card renders multi-select options as clear checkboxes", () => {
 
   expect(html).toContain('type="checkbox"');
   expect(html).toContain('checked=""');
-  expect(html).toContain("✓");
+  expect(html).toContain("rounded-[2px]");
+  expect(html).toContain("bg-[#2b8cff]");
+  expect(html).toContain('stroke="currentColor"');
   expect(html).not.toContain("[x]");
   expect(html).not.toContain("[ ]");
+  expect(html).not.toContain("✓");
+});
+
+test("question card renders single-select options as design system radios", () => {
+  const html = renderToStaticMarkup(
+    <QuestionCard
+      request={{
+        questions: [
+          {
+            id: "direction",
+            header: "Direction",
+            question: "Choose direction",
+            options: [
+              { label: "Forward", description: "Move ahead" },
+              { label: "Back", description: "Move back" },
+            ],
+            allow_multiple: false,
+            is_secret: false,
+          },
+        ],
+      }}
+      answers={{ direction: "Forward" }}
+      onAnswerChange={() => {}}
+      onSubmit={() => {}}
+      onCancel={() => {}}
+    />,
+  );
+
+  expect(html).toContain('type="radio"');
+  expect(html).toContain('checked=""');
+  expect(html).toContain("rounded-full");
+  expect(html).toContain("bg-[#2b8cff]");
+  expect(html).toContain("bg-white");
 });
 
 test("modal renders dialog role", () => {
