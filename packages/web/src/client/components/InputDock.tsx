@@ -43,6 +43,7 @@ interface InputDockProps {
   pendingImages: Array<{ path: string; url: string; fileName?: string }>;
   contextItems: AgentContextItem[];
   isUploadingImages: boolean;
+  showImageUploadIndicator?: boolean;
   onAddImages: (files: FileList | File[]) => void;
   onRemoveImage: (path: string) => void;
   onRemoveContextItem: (key: string) => void;
@@ -77,6 +78,43 @@ const MODE_LABELS: Record<Mode, string> = {
   plan: "plan",
   execute: "execute",
 };
+
+function PendingImagePreview({
+  image,
+  isUploadingImages,
+  composerDisabled,
+  onRemoveImage,
+}: {
+  image: { path: string; url: string; fileName?: string };
+  isUploadingImages: boolean;
+  composerDisabled: boolean;
+  onRemoveImage: (path: string) => void;
+}) {
+  const [failed, setFailed] = useState(false);
+  const label = image.fileName ?? "Attached image";
+
+  return (
+    <div className="group relative overflow-hidden rounded-lg border border-border/100 bg-surface-light">
+      {failed ? (
+        <div className="flex h-20 w-20 flex-col items-center justify-center gap-1 px-2 text-center text-[10px] text-muted">
+          <span className="font-semibold text-text">IMG</span>
+          <span className="line-clamp-2 max-w-full break-all">{label}</span>
+        </div>
+      ) : (
+        <img src={image.url} alt={label} className="h-20 w-20 object-cover" onError={() => setFailed(true)} />
+      )}
+      <button
+        type="button"
+        aria-label={`Remove ${image.fileName ?? "image"}`}
+        onClick={() => onRemoveImage(image.path)}
+        disabled={isUploadingImages || composerDisabled}
+        className="absolute right-1 top-1 rounded-full bg-bg/80 px-1.5 py-0.5 text-[10px] text-text opacity-90 transition hover:bg-bg-elevated disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        ×
+      </button>
+    </div>
+  );
+}
 
 export type ComposerEnterAction = "send" | "steer" | "none";
 
@@ -151,6 +189,7 @@ export function InputDock({
   pendingImages,
   contextItems,
   isUploadingImages,
+  showImageUploadIndicator = isUploadingImages,
   onAddImages,
   onRemoveImage,
   onRemoveContextItem,
@@ -340,34 +379,22 @@ export function InputDock({
       <div
         className={`relative rounded-sm border px-4 py-3 ${hasProvider ? "border-white/10 !bg-[#21262C]" : "border-danger/30 !bg-[#21262C]"}${isBusy ? " input-dock-glow" : ""}`}
       >
-        {pendingImages.length > 0 ? (
+        {pendingImages.length > 0 || showImageUploadIndicator ? (
           <div className="mb-3 flex flex-wrap gap-2">
             {pendingImages.map((image) => (
-              <div
+              <PendingImagePreview
                 key={image.path}
-                className="group relative overflow-hidden rounded-lg border border-border/100 bg-surface-light"
-              >
-                <img src={image.url} alt={image.fileName ?? "Attached image"} className="h-20 w-20 object-cover" />
-                <button
-                  type="button"
-                  aria-label={`Remove ${image.fileName ?? "image"}`}
-                  onClick={() => onRemoveImage(image.path)}
-                  disabled={isUploadingImages || composerDisabled}
-                  className="absolute right-1 top-1 rounded-full bg-bg/80 px-1.5 py-0.5 text-[10px] text-text opacity-90 transition hover:bg-bg-elevated disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  ×
-                </button>
-              </div>
+                image={image}
+                isUploadingImages={isUploadingImages}
+                composerDisabled={composerDisabled}
+                onRemoveImage={onRemoveImage}
+              />
             ))}
-            {isUploadingImages ? (
-              <div className="flex h-20 min-w-[120px] items-center justify-center rounded-lg border border-dashed border-border/100 bg-surface-dark px-3 text-xs text-muted">
-                Uploading images…
+            {showImageUploadIndicator ? (
+              <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-lg border border-dashed border-border/100 bg-surface-dark px-2 text-center text-xs text-muted">
+                Uploading…
               </div>
             ) : null}
-          </div>
-        ) : isUploadingImages ? (
-          <div className="mb-3 flex h-20 items-center justify-center rounded-lg border border-dashed border-border/100 bg-surface-dark px-3 text-xs text-muted">
-            Uploading images…
           </div>
         ) : null}
 

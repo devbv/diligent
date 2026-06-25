@@ -7,9 +7,12 @@ import type { PendingImage } from "../../../src/client/lib/app-state";
 import {
   clearComposerInputAfterSend,
   getModelChangeThreadId,
+  normalizeUploadedImageAttachment,
   prepareNewThreadForFirstMessage,
   runThreadCompaction,
+  waitForDelayedIndicator,
 } from "../../../src/client/lib/use-app-actions";
+import { WEB_IMAGE_ROUTE_PREFIX } from "../../../src/shared/image-routes";
 
 test("clearComposerInputAfterSend clears draft input when sending first message from new conversation", () => {
   const clearThreadInput = mock(() => {});
@@ -71,6 +74,88 @@ test("prependContextToMessage serializes mixed context items before typed text",
 test("getModelChangeThreadId scopes model changes to the active thread when present", () => {
   expect(getModelChangeThreadId("thread-1")).toBe("thread-1");
   expect(getModelChangeThreadId(null)).toBeUndefined();
+});
+
+test("normalizeUploadedImageAttachment keeps canonical webUrl from image/upload", () => {
+  expect(
+    normalizeUploadedImageAttachment({
+      type: "local_image",
+      path: "/repo/.diligent/images/thread-1/shot.png",
+      mediaType: "image/png",
+      fileName: "shot.png",
+      webUrl: `${WEB_IMAGE_ROUTE_PREFIX}thread-1/shot.png`,
+    }),
+  ).toEqual({
+    type: "local_image",
+    path: "/repo/.diligent/images/thread-1/shot.png",
+    mediaType: "image/png",
+    fileName: "shot.png",
+    webUrl: `${WEB_IMAGE_ROUTE_PREFIX}thread-1/shot.png`,
+  });
+});
+
+test("normalizeUploadedImageAttachment derives webUrl for persisted legacy image/upload responses", () => {
+  expect(
+    normalizeUploadedImageAttachment({
+      type: "local_image",
+      path: "/repo/.diligent/images/drafts/floor.png",
+      mediaType: "image/png",
+      fileName: "floor.png",
+    }),
+  ).toEqual({
+    type: "local_image",
+    path: "/repo/.diligent/images/drafts/floor.png",
+    mediaType: "image/png",
+    fileName: "floor.png",
+    webUrl: `${WEB_IMAGE_ROUTE_PREFIX}drafts/floor.png`,
+  });
+});
+
+test("normalizeUploadedImageAttachment rejects non-web-addressable image/upload responses", () => {
+  expect(() =>
+    normalizeUploadedImageAttachment({
+      type: "local_image",
+      path: "/tmp/floor.png",
+      mediaType: "image/png",
+      fileName: "floor.png",
+    }),
+  ).toThrow("browser-accessible URL");
+});
+
+test("waitForDelayedIndicator skips the indicator for quick tasks", async () => {
+  let shown = 0;
+
+  const result = await waitForDelayedIndicator({
+    task: Promise.resolve("uploaded"),
+    delayMs: 20,
+    showIndicator: () => {
+      shown += 1;
+    },
+  });
+
+  expect(result).toBe("uploaded");
+  expect(shown).toBe(0);
+});
+
+test("waitForDelayedIndicator shows the indicator for slower tasks", async () => {
+  let shown = 0;
+  let finish!: (value: string) => void;
+  const task = new Promise<string>((resolve) => {
+    finish = resolve;
+  });
+
+  const resultPromise = waitForDelayedIndicator({
+    task,
+    delayMs: 1,
+    showIndicator: () => {
+      shown += 1;
+    },
+  });
+
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  expect(shown).toBe(1);
+  finish("uploaded");
+  expect(await resultPromise).toBe("uploaded");
 });
 
 test("mock bridge update semantics replace prior context with latest snapshot", async () => {

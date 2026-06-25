@@ -61,8 +61,8 @@ describe("executeSteer", () => {
       threadId: "thread-1",
       content: "check this",
       images: [
-        { path: "/tmp/a.png", mediaType: "image/png", fileName: "a.png", dataUrl: "data:image/png;base64,abc" },
-        { path: "/tmp/b.jpg", mediaType: "image/jpeg", fileName: "b.jpg", dataUrl: "data:image/jpeg;base64,xyz" },
+        { type: "local_image", path: "/tmp/a.png", mediaType: "image/png", fileName: "a.png", webUrl: "blob:a" },
+        { type: "local_image", path: "/tmp/b.jpg", mediaType: "image/jpeg", fileName: "b.jpg", webUrl: "blob:b" },
       ],
       dispatch: mock(() => {}),
       clearThreadInput: mock(() => {}),

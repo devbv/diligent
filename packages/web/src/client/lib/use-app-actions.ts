@@ -1,8 +1,9 @@
 // @summary App action handlers for sending, image uploads, slash commands, and turn controls
 
-import type { Mode, ModelInfo, ThinkingEffort, ThreadReadResponse } from "@diligent/protocol";
+import type { ImageUploadAttachment, Mode, ModelInfo, ThinkingEffort, ThreadReadResponse } from "@diligent/protocol";
 import { DILIGENT_CLIENT_REQUEST_METHODS } from "@diligent/protocol";
 import { type Dispatch, type MutableRefObject, type RefObject, type SetStateAction, useCallback } from "react";
+import { toWebImageUrl } from "../../shared/image-routes";
 import { type AgentContextItem, prependContextToMessage } from "./agent-native-bridge";
 import type { AppAction, PendingImage } from "./app-state";
 import { fileToBase64, normalizeImageFileName, replaceThreadUrl } from "./app-utils";
@@ -10,6 +11,8 @@ import { findModelInfo, getThinkingEffortUsage, supportsThinkingNone } from "./m
 import type { WebRpcClient } from "./rpc-client";
 import { parseSlashCommand, type SlashCommand } from "./slash-commands";
 import type { ThreadState } from "./thread-store";
+
+const IMAGE_UPLOAD_INDICATOR_DELAY_MS = 200;
 
 export function clearComposerInputAfterSend({
   activeThreadId,
@@ -107,6 +110,47 @@ export function getModelChangeThreadId(activeThreadId: string | null): string | 
   return activeThreadId ?? undefined;
 }
 
+export function normalizeUploadedImageAttachment(attachment: ImageUploadAttachment): PendingImage {
+  const webUrl = attachment.webUrl ?? toWebImageUrl(attachment.path);
+  if (!attachment.webUrl && webUrl === attachment.path) {
+    throw new Error("Image upload did not return a browser-accessible URL.");
+  }
+  return { ...attachment, webUrl };
+}
+
+export async function waitForDelayedIndicator<T>({
+  task,
+  delayMs,
+  showIndicator,
+}: {
+  task: Promise<T>;
+  delayMs: number;
+  showIndicator: () => void;
+}): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const delay = new Promise<"show">((resolve) => {
+    timer = setTimeout(() => resolve("show"), delayMs);
+  });
+
+  try {
+    const first = await Promise.race([
+      task.then((value) => ({ type: "complete" as const, value })),
+      delay.then(() => ({ type: "show" as const })),
+    ]);
+
+    if (first.type === "complete") {
+      return first.value;
+    }
+
+    showIndicator();
+    return await task;
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
+}
+
 export function useAppActions({
   rpcRef,
   state,
@@ -128,6 +172,7 @@ export function useAppActions({
   clearActiveContextItems,
   setPendingImages,
   setIsUploadingImages,
+  setShowImageUploadIndicator,
   setEffortState,
   changeModel,
   startNewThread,
@@ -159,6 +204,7 @@ export function useAppActions({
   clearActiveContextItems: () => void;
   setPendingImages: Dispatch<SetStateAction<PendingImage[]>>;
   setIsUploadingImages: Dispatch<SetStateAction<boolean>>;
+  setShowImageUploadIndicator: Dispatch<SetStateAction<boolean>>;
   setEffortState: Dispatch<SetStateAction<ThinkingEffort>>;
   changeModel: (modelId: string, threadId?: string) => Promise<void>;
   startNewThread: () => Promise<void>;
@@ -319,31 +365,54 @@ export function useAppActions({
       }
 
       const allowedTypes = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
-      const uploaded: PendingImage[] = [];
       const uploadTimestamp = Date.now();
+      const uploads: Array<{
+        file: File;
+        fileName: string;
+        mediaType: "image/png" | "image/jpeg" | "image/webp" | "image/gif";
+      }> = [];
+
+      for (const [index, file] of fileList.entries()) {
+        const normalizedFileName = normalizeImageFileName(file, index, uploadTimestamp);
+        if (!allowedTypes.has(file.type)) {
+          dispatch({ type: "show_info_toast", payload: `Unsupported image type: ${normalizedFileName}` });
+          return;
+        }
+        if (file.size > 10 * 1024 * 1024) {
+          dispatch({ type: "show_info_toast", payload: `Image exceeds 10 MB: ${normalizedFileName}` });
+          return;
+        }
+
+        uploads.push({
+          file,
+          fileName: normalizedFileName,
+          mediaType: file.type as "image/png" | "image/jpeg" | "image/webp" | "image/gif",
+        });
+      }
 
       setIsUploadingImages(true);
+      setShowImageUploadIndicator(false);
       try {
-        for (const [index, file] of fileList.entries()) {
-          const normalizedFileName = normalizeImageFileName(file, index, uploadTimestamp);
-          if (!allowedTypes.has(file.type)) {
-            dispatch({ type: "show_info_toast", payload: `Unsupported image type: ${normalizedFileName}` });
-            return;
+        const uploadTask = (async (): Promise<PendingImage[]> => {
+          const uploaded: PendingImage[] = [];
+          for (const upload of uploads) {
+            const dataBase64 = await fileToBase64(upload.file);
+            const result = await rpc.webRequest(DILIGENT_CLIENT_REQUEST_METHODS.IMAGE_UPLOAD, {
+              threadId: state.activeThreadId ?? undefined,
+              fileName: upload.fileName,
+              mediaType: upload.mediaType,
+              dataBase64,
+            });
+            uploaded.push(normalizeUploadedImageAttachment(result.attachment));
           }
-          if (file.size > 10 * 1024 * 1024) {
-            dispatch({ type: "show_info_toast", payload: `Image exceeds 10 MB: ${normalizedFileName}` });
-            return;
-          }
+          return uploaded;
+        })();
 
-          const dataBase64 = await fileToBase64(file);
-          const result = await rpc.webRequest(DILIGENT_CLIENT_REQUEST_METHODS.IMAGE_UPLOAD, {
-            threadId: state.activeThreadId ?? undefined,
-            fileName: normalizedFileName,
-            mediaType: file.type as "image/png" | "image/jpeg" | "image/webp" | "image/gif",
-            dataBase64,
-          });
-          uploaded.push(result.attachment as PendingImage);
-        }
+        const uploaded = await waitForDelayedIndicator({
+          task: uploadTask,
+          delayMs: IMAGE_UPLOAD_INDICATOR_DELAY_MS,
+          showIndicator: () => setShowImageUploadIndicator(true),
+        });
 
         setPendingImages((previous) => [...previous, ...uploaded]);
       } catch (error) {
@@ -351,6 +420,7 @@ export function useAppActions({
         console.error(error);
       } finally {
         setIsUploadingImages(false);
+        setShowImageUploadIndicator(false);
       }
     },
     [
@@ -359,6 +429,7 @@ export function useAppActions({
       pendingImages.length,
       supportsVision,
       setIsUploadingImages,
+      setShowImageUploadIndicator,
       state.activeThreadId,
       setPendingImages,
       dispatch,
