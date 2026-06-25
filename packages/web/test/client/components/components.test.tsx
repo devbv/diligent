@@ -871,7 +871,8 @@ test("input dock shows uploading state and disables send affordance", () => {
     />,
   );
 
-  expect(html).toContain("Uploading images…");
+  expect(html).toContain("Uploading…");
+  expect(html).toContain("h-20 w-20 shrink-0");
   expect(html).toContain("disabled");
 });
 

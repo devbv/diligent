@@ -10,6 +10,7 @@ import {
   normalizeUploadedImageAttachment,
   prepareNewThreadForFirstMessage,
   runThreadCompaction,
+  waitForDelayedIndicator,
 } from "../../../src/client/lib/use-app-actions";
 import { WEB_IMAGE_ROUTE_PREFIX } from "../../../src/shared/image-routes";
 
@@ -119,6 +120,42 @@ test("normalizeUploadedImageAttachment rejects non-web-addressable image/upload 
       fileName: "floor.png",
     }),
   ).toThrow("browser-accessible URL");
+});
+
+test("waitForDelayedIndicator skips the indicator for quick tasks", async () => {
+  let shown = 0;
+
+  const result = await waitForDelayedIndicator({
+    task: Promise.resolve("uploaded"),
+    delayMs: 20,
+    showIndicator: () => {
+      shown += 1;
+    },
+  });
+
+  expect(result).toBe("uploaded");
+  expect(shown).toBe(0);
+});
+
+test("waitForDelayedIndicator shows the indicator for slower tasks", async () => {
+  let shown = 0;
+  let finish!: (value: string) => void;
+  const task = new Promise<string>((resolve) => {
+    finish = resolve;
+  });
+
+  const resultPromise = waitForDelayedIndicator({
+    task,
+    delayMs: 1,
+    showIndicator: () => {
+      shown += 1;
+    },
+  });
+
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  expect(shown).toBe(1);
+  finish("uploaded");
+  expect(await resultPromise).toBe("uploaded");
 });
 
 test("mock bridge update semantics replace prior context with latest snapshot", async () => {

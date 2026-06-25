@@ -2,8 +2,11 @@
 import legacy from "@vitejs/plugin-legacy";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
+import { WEB_IMAGE_ROUTE_PREFIX } from "./src/shared/image-routes";
 
 const DEFAULT_PROJECT_NAME = "Diligent";
+const BACKEND_HTTP_TARGET = "http://localhost:7433";
+const BACKEND_WS_TARGET = "ws://localhost:7433";
 
 export default defineConfig(({ mode }) => ({
   plugins: [
@@ -35,8 +38,11 @@ export default defineConfig(({ mode }) => ({
     port: 5174,
     proxy: {
       "/rpc": {
-        target: "ws://localhost:7433",
+        target: BACKEND_WS_TARGET,
         ws: true,
+      },
+      [WEB_IMAGE_ROUTE_PREFIX]: {
+        target: BACKEND_HTTP_TARGET,
       },
     },
   },

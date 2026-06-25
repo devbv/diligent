@@ -58,6 +58,7 @@ export function App() {
     pendingImagePreviews,
     effort,
     isUploadingImages,
+    showImageUploadIndicator,
     threadMgr,
     steeringQueue,
     actions,
@@ -186,6 +187,7 @@ export function App() {
             pendingImages={pendingImagePreviews}
             contextItems={activeContextItems}
             isUploadingImages={isUploadingImages}
+            showImageUploadIndicator={showImageUploadIndicator}
             onAddImages={handleAddImagesToDock}
             onRemoveImage={handleRemovePendingImage}
             onRemoveContextItem={removeActiveContextItem}

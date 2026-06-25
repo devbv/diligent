@@ -59,6 +59,7 @@ export function useAppState({
 
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const [isUploadingImages, setIsUploadingImages] = useState(false);
+  const [showImageUploadIndicator, setShowImageUploadIndicator] = useState(false);
   const [effort, setEffortState] = useState<ThinkingEffort>("medium");
   const [showProviderModal, setShowProviderModal] = useState(false);
   const [showToolModal, setShowToolModal] = useState(false);
@@ -304,6 +305,7 @@ export function useAppState({
     clearActiveContextItems,
     setPendingImages,
     setIsUploadingImages,
+    setShowImageUploadIndicator,
     setEffortState,
     changeModel: providerMgr.changeModel,
     startNewThread: threadMgr.startNewThread,
@@ -466,6 +468,8 @@ export function useAppState({
     setPendingImages,
     isUploadingImages,
     setIsUploadingImages,
+    showImageUploadIndicator,
+    setShowImageUploadIndicator,
     effort,
     setEffortState,
     showProviderModal,
