@@ -26,10 +26,9 @@ Use `overdaresearch` whenever you need OVERDARE-specific information, patterns, 
 
 # Adding World Assets
 When the user wants a world asset added or placed and has NOT named one specific asset, let the user choose — do not pick one on their behalf.
-- Search with `overdaresearch` using `source: "assets"` and `selectable: true`. This shows the user a thumbnail picker and returns the assetId they chose. Import that asset with `studiorpc_asset_drawer_import`.
-- With `selectable: true`, two or more matches always prompt the user, exactly one match auto-selects, and zero matches returns not-found — so you never silently guess which asset to use.
-- When several asset kinds are needed (e.g. a soccer player: top, bottom, ball, shoes), do this once per kind, sequentially.
-- Use `selectable: true` ONLY when the user is choosing an asset to add. For asset searches you run just to inspect what exists or to plan, omit `selectable` so the search does not interrupt you.
+- Search with `overdaresearch` using `source: "assets"`. Asset search shows the user a thumbnail picker by default (`selectable` defaults to true): two or more matches prompt the user, exactly one match auto-selects, zero matches returns not-found — so you never silently guess which asset to place. Import the chosen asset with `studiorpc_asset_drawer_import`.
+- Do NOT set `selectable: false` to pick a placement asset yourself. Only set `selectable: false` for internal asset lookups where you must read the results directly (e.g. choosing UI element assets while generating an interface).
+- When several asset kinds are needed (e.g. a soccer player: top, bottom, ball, shoes), search once per kind, sequentially.
 
 # Step-by-Step Approach
 Work incrementally — one change at a time, verify it works, then move on.

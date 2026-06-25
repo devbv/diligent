@@ -45,6 +45,26 @@ async function searchTool(host: {
 }
 
 describe("overdaresearch selectable", () => {
+  test("default (selectable omitted): parsed args default to true and still prompt for 2+ assets", async () => {
+    mockRagFetch([asset("111", "Katana A"), asset("222", "Katana B")]);
+    let asked = false;
+    const tool = await searchTool({
+      approve: async () => "once",
+      ask: async (r) => {
+        asked = true;
+        return { answers: { [r.questions[0].id]: "111" } };
+      },
+    });
+
+    // The runtime parses tool args against the schema before execute, applying defaults.
+    const args = tool.parameters.parse({ query: "katana", source: "assets", topK: 8 });
+    expect(args.selectable).toBe(true);
+
+    const result = await tool.execute(args, ctx);
+    expect(asked).toBe(true);
+    expect(result.output).toContain("111");
+  });
+
   test("many results: asks the user and returns the chosen assetId", async () => {
     mockRagFetch([asset("111", "Katana A"), asset("222", "Katana B")]);
     let seen: UserInputRequest | undefined;

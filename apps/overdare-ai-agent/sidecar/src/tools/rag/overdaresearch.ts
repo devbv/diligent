@@ -122,9 +122,9 @@ export const parameters = z.object({
   topK: z.number().int().min(1).max(10).describe("Number of results to return"),
   selectable: z
     .boolean()
-    .optional()
+    .default(true)
     .describe(
-      "Assets only. When true and 2+ assets match, ask the user to pick one and return the chosen assetId; exactly 1 match auto-selects; 0 matches returns not-found. Use when the user should choose a specific asset.",
+      "Assets only (default true). When 2+ assets match, the user is asked to pick one and the chosen assetId is returned; exactly 1 match auto-selects; 0 matches returns not-found. Set false ONLY for internal/informational asset lookups where you must read the results yourself (e.g. choosing UI element assets while generating an interface); never set false to pick a placement asset on the user's behalf.",
     ),
   debugCaseFilter: z
     .object({
