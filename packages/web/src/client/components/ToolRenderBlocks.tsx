@@ -20,6 +20,7 @@ import type {
 } from "@diligent/protocol";
 import { useState } from "react";
 import { cn } from "../lib/cn";
+import { AssetThumbnail } from "./AssetThumbnail";
 import { CopyButton } from "./CopyButton";
 import { ExpandButton } from "./ExpandButton";
 
@@ -164,11 +165,6 @@ function assetGalleryKey(item: AssetGalleryItem, index: number): string {
   return item.id ?? item.previewUrl ?? item.thumbnailUrl ?? `${item.title}-${index}`;
 }
 
-function assetInitial(title: string): string {
-  const trimmed = title.trim();
-  return trimmed.length > 0 ? trimmed.slice(0, 1).toUpperCase() : "?";
-}
-
 function assetMetadataValue(item: AssetGalleryItem, keys: string[]): string | undefined {
   const keySet = new Set(keys.map((key) => key.toLowerCase()));
   const value = item.metadata?.find((meta) => keySet.has(meta.key.toLowerCase()))?.value.trim();
@@ -180,35 +176,6 @@ function assetMetaLine(item: AssetGalleryItem): string {
   const assetType = assetMetadataValue(item, ["assetType", "type"]) ?? item.subtitle;
   const parts = [category, assetType].filter((part): part is string => Boolean(part && part !== "(unknown)"));
   return Array.from(new Set(parts)).join(" · ");
-}
-
-function AssetImage({ item, className }: { item: AssetGalleryItem; className?: string }) {
-  const [failed, setFailed] = useState(false);
-  const src = item.thumbnailUrl ?? item.previewUrl;
-
-  if (!src || failed) {
-    return (
-      <div
-        className={cn(
-          "flex h-full w-full flex-col items-center justify-center gap-1 bg-fill-secondary text-center",
-          className,
-        )}
-      >
-        <span className="text-2xl font-semibold leading-none text-text-soft">{assetInitial(item.title)}</span>
-        {item.subtitle ? <span className="max-w-[9rem] truncate px-2 text-2xs text-muted">{item.subtitle}</span> : null}
-      </div>
-    );
-  }
-
-  return (
-    <img
-      src={src}
-      alt={item.title}
-      loading="eager"
-      className={cn("h-full w-full object-contain", className)}
-      onError={() => setFailed(true)}
-    />
-  );
 }
 
 function RenderAssetGallery({ block }: { block: AssetGalleryBlock }) {
@@ -250,7 +217,7 @@ function RenderAssetGallery({ block }: { block: AssetGalleryBlock }) {
                 className="flex w-[8.75rem] flex-col gap-1.5 rounded-md"
               >
                 <span className="block h-[7.75rem] w-full overflow-hidden rounded-md border border-border/30 bg-fill-secondary shadow-sm">
-                  <AssetImage item={item} />
+                  <AssetThumbnail asset={item} />
                 </span>
                 <span className="min-w-0">
                   <span

@@ -1,6 +1,7 @@
 // @summary Static render tests for core UI components and accessibility attributes
 import { expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
+import { AssetThumbnail } from "../../../src/client/components/AssetThumbnail";
 import { AssistantMessage } from "../../../src/client/components/AssistantMessage";
 import { Button } from "../../../src/client/components/Button";
 import {
@@ -1202,4 +1203,18 @@ test("MessageList does not show Reconnect button on non-auth error", () => {
   );
 
   expect(html).not.toContain("Reconnect");
+});
+
+test("AssetThumbnail renders the image when a url is present", () => {
+  const html = renderToStaticMarkup(
+    <AssetThumbnail asset={{ title: "Katana", thumbnailUrl: "https://assets.example/k.png" }} />,
+  );
+  expect(html).toContain("https://assets.example/k.png");
+  expect(html).toContain('alt="Katana"');
+});
+
+test("AssetThumbnail falls back to the title initial when no url is present", () => {
+  const html = renderToStaticMarkup(<AssetThumbnail asset={{ title: "katana" }} />);
+  expect(html).not.toContain("<img");
+  expect(html).toContain("K");
 });
