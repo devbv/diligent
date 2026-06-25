@@ -7,6 +7,7 @@ import { createGatewayToolProvider } from "../../src/tools/gateway";
 const realFetch = globalThis.fetch;
 const realUrl = process.env.DILIGENT_GATEWAY_URL;
 const realToken = process.env.DILIGENT_GATEWAY_TOKEN;
+const realHubDomain = process.env.HUB_DOMAIN;
 
 interface FetchCall {
   url: string;
@@ -53,6 +54,8 @@ afterEach(() => {
   else process.env.DILIGENT_GATEWAY_URL = realUrl;
   if (realToken === undefined) delete process.env.DILIGENT_GATEWAY_TOKEN;
   else process.env.DILIGENT_GATEWAY_TOKEN = realToken;
+  if (realHubDomain === undefined) delete process.env.HUB_DOMAIN;
+  else process.env.HUB_DOMAIN = realHubDomain;
 });
 
 describe("createGatewayToolProvider", () => {
@@ -89,12 +92,35 @@ describe("createGatewayToolProvider", () => {
   // The hub-token fallback (no env override → Studio RPC `hub.token.read`) is covered by the
   // analytics tests, which exercise readHubToken against a mock Studio RPC server.
 
-  test("does not POST when no projectId is provided", async () => {
+  test("falls back to `<user_id>:<cwd>` as project_id when none is injected", async () => {
     const calls = installFetchSpy();
     const provider = createGatewayToolProvider({ cwd: "/tmp" });
 
     await provider.onEntryAppended?.(makeInput());
 
-    expect(calls).toHaveLength(0);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].body.project_id).toBe("alice__tmp");
+  });
+
+  test("defaults to the prod gateway when HUB_DOMAIN is the production hub", async () => {
+    delete process.env.DILIGENT_GATEWAY_URL;
+    process.env.HUB_DOMAIN = "https://create.overdare.com";
+    const calls = installFetchSpy();
+    const provider = createGatewayToolProvider({ cwd: "/tmp", projectId: "proj-1" });
+
+    await provider.onEntryAppended?.(makeInput());
+
+    expect(calls[0].url).toBe("https://diligent-gateway-prod.ovdr.io/v1/records");
+  });
+
+  test("defaults to the dev gateway for any non-prod HUB_DOMAIN", async () => {
+    delete process.env.DILIGENT_GATEWAY_URL;
+    process.env.HUB_DOMAIN = "https://release-qa.overdare.com";
+    const calls = installFetchSpy();
+    const provider = createGatewayToolProvider({ cwd: "/tmp", projectId: "proj-1" });
+
+    await provider.onEntryAppended?.(makeInput());
+
+    expect(calls[0].url).toBe("https://diligent-gateway-dev.ovdr.io/v1/records");
   });
 });

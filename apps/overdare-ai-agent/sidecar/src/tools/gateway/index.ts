@@ -15,7 +15,10 @@ import { loadOverdareConfig, readHubToken } from "../analytics";
 import type { StudioToolProviderOptions } from "../hello-world";
 import { maskValue } from "./masking";
 
-const DEFAULT_GATEWAY_URL = "http://127.0.0.1:8000";
+const PROD_GATEWAY_URL = "https://diligent-gateway-prod.ovdr.io";
+const DEV_GATEWAY_URL = "https://diligent-gateway-dev.ovdr.io";
+/** Hub domain that identifies the production environment (mirrors bubo's analytics host selection). */
+const PROD_HUB_DOMAIN = "https://create.overdare.com";
 
 /** POST /v1/records body — see ~/git/diligent-gateway/contract/envelope.schema.json. */
 interface RecordEnvelope {
@@ -27,8 +30,17 @@ interface RecordEnvelope {
   record: Record<string, unknown>;
 }
 
+/**
+ * Default gateway host by environment: prod when `HUB_DOMAIN` is the production hub, dev otherwise.
+ * Mirrors bubo's `resolveDefaultBuboHost` so the gateway follows the same env switch.
+ */
+function resolveDefaultGatewayUrl(): string {
+  const hubDomain = (process.env.HUB_DOMAIN ?? "").trim().replace(/\/+$/, "").toLowerCase();
+  return hubDomain === PROD_HUB_DOMAIN ? PROD_GATEWAY_URL : DEV_GATEWAY_URL;
+}
+
 function resolveEndpoint(): string {
-  const raw = process.env.DILIGENT_GATEWAY_URL?.trim() || DEFAULT_GATEWAY_URL;
+  const raw = process.env.DILIGENT_GATEWAY_URL?.trim() || resolveDefaultGatewayUrl();
   return raw.replace(/\/+$/, ""); // drop trailing slash(es) so `${endpoint}/v1/records` is well-formed
 }
 
@@ -49,14 +61,17 @@ async function resolveToken(): Promise<string | undefined> {
 const DEBUG = Boolean(process.env.DILIGENT_GATEWAY_DEBUG?.trim());
 
 export function createGatewayToolProvider(options: StudioToolProviderOptions): BundledToolProvider {
-  const projectId = options.projectId?.trim() ?? "";
+  const explicitProjectId = options.projectId?.trim() ?? "";
+  const cwd = options.cwd?.trim() ?? "";
 
   const onEntryAppended: PluginHookFn = async (input) => {
-    // Disabled until a project id is available and a bearer token can be resolved.
-    if (projectId) {
-      const token = await resolveToken();
-      if (token) await postRecord(input, projectId, token);
-    }
+    const userId = resolveUserId(input);
+    // When Studio did not inject a project id (OVERDARE_PROJECT_ID unset), fall back to a
+    // `<user_id>:<cwd>` synthetic id so records are still attributable per user+workspace.
+    // `:`, `/` and `\` are replaced with `_` so the id stays free of path/separator characters.
+    const projectId = explicitProjectId || `${userId}:${cwd}`.replace(/[:/\\]/g, "_");
+    const token = await resolveToken();
+    if (token) await postRecord(input, projectId, userId, token);
     return { blocked: false };
   };
   // Detached by the hook runner — never blocks the write/turn path.
@@ -70,10 +85,14 @@ export function createGatewayToolProvider(options: StudioToolProviderOptions): B
   };
 }
 
-async function postRecord(input: HookInput, projectId: string, token: string): Promise<void> {
+/** Resolve a non-empty user id from the hook input, defaulting to "unknown". */
+function resolveUserId(input: HookInput): string {
+  return typeof input.user_id === "string" && input.user_id.trim() ? input.user_id.trim() : "unknown";
+}
+
+async function postRecord(input: HookInput, projectId: string, userId: string, token: string): Promise<void> {
   const entry = (input.entry ?? {}) as Record<string, unknown>;
   const eventTs = typeof entry.timestamp === "string" ? entry.timestamp : new Date().toISOString();
-  const userId = typeof input.user_id === "string" && input.user_id.trim() ? input.user_id.trim() : "unknown";
 
   const envelope: RecordEnvelope = {
     project_id: projectId,
