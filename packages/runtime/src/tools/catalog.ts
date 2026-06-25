@@ -1,4 +1,4 @@
-// @summary Tool catalog builder — resolution pipeline that merges builtins and plugins with config toggles
+// @summary Tool catalog builder — phase-based pipeline that merges builtins and plugins with config toggles
 
 import type { Tool } from "@diligent/core/tool/types";
 import { COLLAB_TOOL_NAMES } from "../collab";
@@ -58,7 +58,7 @@ export interface ToolCatalogResult {
   pluginErrors: PluginLoadError[];
 }
 
-type ToolMapEntry = {
+export type ToolMapEntry = {
   tool: Tool;
   source: "builtin" | "plugin";
   pluginPackage?: string;
@@ -69,7 +69,7 @@ export interface BuildToolCatalogOptions {
   bundledProviders?: BundledToolProvider[];
 }
 
-interface ProviderToolBatch {
+export interface ProviderToolBatch {
   id: string;
   tools: Tool[];
   orderBase: number;
@@ -77,54 +77,30 @@ interface ProviderToolBatch {
   label: "Bundled provider" | "Plugin";
 }
 
+export interface PluginConfig {
+  package: string;
+  enabled: boolean;
+  tools?: Record<string, boolean>;
+}
+
+type ConflictPolicy = "error" | "builtin_wins" | "plugin_wins";
+
 function compareEntries(a: ToolMapEntry, b: ToolMapEntry): number {
   return a.order - b.order || a.tool.name.localeCompare(b.tool.name);
 }
 
+// ---------------------------------------------------------------------------
+// Phase 1: loadBuiltins
+// ---------------------------------------------------------------------------
+
 /**
- * Build a resolved tool catalog from built-in tools, plugin tools, and config.
- *
- * Resolution pipeline:
- * 1. Build built-in catalog (ordered map by name)
- * 2. Load plugin tools (async, per configured plugin)
- * 3. Resolve name conflicts (by conflictPolicy)
- * 4. Apply immutable enforcement (force-enable immutable tools)
- * 5. Apply enable/disable state from config
- * 6. Return enabled tools + full state metadata + plugin errors
+ * Build the initial tool map and state from built-in tools.
+ * Collab tools are excluded from the configurable catalog.
  */
-export async function buildToolCatalog(
+export function loadBuiltins(
   builtinTools: Tool[],
-  toolsConfig: DiligentConfig["tools"],
-  cwd: string,
-  host?: RuntimeToolHost,
-  options: BuildToolCatalogOptions = {},
-): Promise<ToolCatalogResult> {
-  const config = toolsConfig ?? {};
-  const conflictPolicy = config.conflictPolicy ?? "error";
-  const builtinToggles = config.builtin ?? {};
-  const explicitPlugins = config.plugins ?? [];
-  const bundledProviders = options.bundledProviders ?? [];
-  const supersededPluginPackages = new Set(
-    bundledProviders.flatMap((provider) => provider.supersedesPluginPackages ?? []),
-  );
-
-  // Auto-discover plugins from ~/.diligent/plugins/ and merge with explicit config.
-  // Explicit config entries always take precedence (for enable/disable, per-tool toggles, etc.).
-  const discoveredNames = await discoverGlobalPlugins();
-  const explicitPackageNames = new Set(explicitPlugins.map((p) => p.package));
-  const autoPlugins = discoveredNames
-    .filter((name) => !explicitPackageNames.has(name))
-    .filter((name) => !supersededPluginPackages.has(name))
-    .map((name) => ({
-      package: name,
-      enabled: true as const,
-      tools: undefined as Record<string, boolean> | undefined,
-    }));
-
-  // Explicit entries first (preserving user-defined order), then auto-discovered ones.
-  const pluginConfigs = [...explicitPlugins, ...autoPlugins];
-
-  // 1. Build built-in catalog with stable order and exclude collab tools from configurable state.
+  builtinToggles: Record<string, boolean>,
+): { toolMap: Map<string, ToolMapEntry>; state: Map<string, ToolStateEntry> } {
   const toolMap = new Map<string, ToolMapEntry>();
   const state = new Map<string, ToolStateEntry>();
   let order = 0;
@@ -148,17 +124,32 @@ export async function buildToolCatalog(
     });
   }
 
-  // 2. Load plugin tools and separate package-level state from tool-level state.
-  const pluginErrors: PluginLoadError[] = [];
-  const plugins: PluginStateEntry[] = [];
-  const bundledOrderStart = order;
+  return { toolMap, state };
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2: loadBundledBatches
+// ---------------------------------------------------------------------------
+
+/**
+ * Invoke each bundled provider's createTools() and collect tool batches.
+ * Providers that throw are recorded as errors and skipped.
+ */
+export async function loadBundledBatches(
+  bundledProviders: BundledToolProvider[],
+  cwd: string,
+  host: RuntimeToolHost | undefined,
+  orderStart: number,
+): Promise<{ batches: ProviderToolBatch[]; errors: PluginLoadError[] }> {
+  const batches: ProviderToolBatch[] = [];
+  const errors: PluginLoadError[] = [];
 
   for (const [providerIndex, provider] of bundledProviders.entries()) {
     let providerTools: Tool[];
     try {
       providerTools = await Promise.resolve(provider.createTools({ cwd, host }));
     } catch (err) {
-      pluginErrors.push({
+      errors.push({
         package: provider.id,
         enabled: true,
         error: `Bundled provider '${provider.id}' createTools() threw: ${err instanceof Error ? err.message : String(err)}`,
@@ -166,16 +157,43 @@ export async function buildToolCatalog(
       continue;
     }
 
-    mergeProviderTools({
+    batches.push({
       id: provider.id,
       tools: providerTools,
-      orderBase: bundledOrderStart + providerIndex * 1000,
+      orderBase: orderStart + providerIndex * 1000,
       toolToggles: {},
       label: "Bundled provider",
     });
   }
 
-  const pluginOrderStart = bundledOrderStart + bundledProviders.length * 1000;
+  return { batches, errors };
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3: loadPluginBatches
+// ---------------------------------------------------------------------------
+
+/**
+ * Load plugin tools for all configured plugins and collect tool batches.
+ * Returns batches for enabled+loaded plugins, plus plugin-level state, errors,
+ * and pre-resolved state entries for disabled/superseded/invalid tools.
+ */
+export async function loadPluginBatches(
+  pluginConfigs: PluginConfig[],
+  supersededPackages: Set<string>,
+  cwd: string,
+  host: RuntimeToolHost | undefined,
+  orderStart: number,
+): Promise<{
+  batches: ProviderToolBatch[];
+  plugins: PluginStateEntry[];
+  errors: PluginLoadError[];
+  deferredStateEntries: Array<[string, ToolStateEntry]>;
+}> {
+  const batches: ProviderToolBatch[] = [];
+  const plugins: PluginStateEntry[] = [];
+  const errors: PluginLoadError[] = [];
+  const deferredStateEntries: Array<[string, ToolStateEntry]> = [];
 
   for (const [pluginIndex, pluginConfig] of pluginConfigs.entries()) {
     const pluginEnabled = pluginConfig.enabled ?? true;
@@ -189,31 +207,12 @@ export async function buildToolCatalog(
     };
     plugins.push(pluginState);
 
-    if (supersededPluginPackages.has(pluginConfig.package)) {
-      pluginState.loaded = false;
+    if (supersededPackages.has(pluginConfig.package)) {
       pluginState.loadError = `Plugin '${pluginConfig.package}' is superseded by a bundled tool provider.`;
       for (const toolName of Object.keys(pluginConfig.tools ?? {})) {
-        state.set(`superseded:${pluginConfig.package}:${toolName}`, {
-          name: toolName,
-          source: "plugin",
-          pluginPackage: pluginConfig.package,
-          enabled: false,
-          immutable: false,
-          configurable: true,
-          available: false,
-          reason: "superseded_by_bundled",
-          error: pluginState.loadError,
-        });
-      }
-      pluginErrors.push({ package: pluginConfig.package, enabled: pluginEnabled, error: pluginState.loadError });
-      continue;
-    }
-
-    if (!pluginEnabled) {
-      const toolToggles = pluginConfig.tools ?? {};
-      for (const toolName of Object.keys(toolToggles)) {
-        if (toolToggles[toolName] === false) {
-          state.set(`plugin-disabled:${pluginConfig.package}:${toolName}`, {
+        deferredStateEntries.push([
+          `superseded:${pluginConfig.package}:${toolName}`,
+          {
             name: toolName,
             source: "plugin",
             pluginPackage: pluginConfig.package,
@@ -221,8 +220,32 @@ export async function buildToolCatalog(
             immutable: false,
             configurable: true,
             available: false,
-            reason: "plugin_disabled",
-          });
+            reason: "superseded_by_bundled",
+            error: pluginState.loadError,
+          },
+        ]);
+      }
+      errors.push({ package: pluginConfig.package, enabled: pluginEnabled, error: pluginState.loadError });
+      continue;
+    }
+
+    if (!pluginEnabled) {
+      const toolToggles = pluginConfig.tools ?? {};
+      for (const toolName of Object.keys(toolToggles)) {
+        if (toolToggles[toolName] === false) {
+          deferredStateEntries.push([
+            `plugin-disabled:${pluginConfig.package}:${toolName}`,
+            {
+              name: toolName,
+              source: "plugin",
+              pluginPackage: pluginConfig.package,
+              enabled: false,
+              immutable: false,
+              configurable: true,
+              available: false,
+              reason: "plugin_disabled",
+            },
+          ]);
         }
       }
       continue;
@@ -234,9 +257,37 @@ export async function buildToolCatalog(
 
     if (result.error) {
       pluginState.loadError = result.error;
-      pluginErrors.push({ package: pluginConfig.package, enabled: true, error: result.error });
+      errors.push({ package: pluginConfig.package, enabled: true, error: result.error });
       for (const invalidTool of result.invalidTools ?? []) {
-        state.set(`invalid:${pluginConfig.package}:${invalidTool.name}`, {
+        deferredStateEntries.push([
+          `invalid:${pluginConfig.package}:${invalidTool.name}`,
+          {
+            name: invalidTool.name,
+            source: "plugin",
+            pluginPackage: pluginConfig.package,
+            enabled: false,
+            immutable: false,
+            configurable: true,
+            available: false,
+            reason: "invalid_plugin_tool",
+            error: invalidTool.error,
+          },
+        ]);
+      }
+      continue;
+    }
+
+    pluginState.loaded = true;
+    pluginState.warnings = result.warnings ?? [];
+    if ((result.warnings?.length ?? 0) > 0) {
+      for (const warning of result.warnings ?? []) {
+        errors.push({ package: pluginConfig.package, enabled: true, error: warning });
+      }
+    }
+    for (const invalidTool of result.invalidTools ?? []) {
+      deferredStateEntries.push([
+        `invalid:${pluginConfig.package}:${invalidTool.name}`,
+        {
           name: invalidTool.name,
           source: "plugin",
           pluginPackage: pluginConfig.package,
@@ -246,43 +297,38 @@ export async function buildToolCatalog(
           available: false,
           reason: "invalid_plugin_tool",
           error: invalidTool.error,
-        });
-      }
-      continue;
+        },
+      ]);
     }
 
-    pluginState.loaded = true;
-    pluginState.warnings = result.warnings ?? [];
-    if ((result.warnings?.length ?? 0) > 0) {
-      for (const warning of result.warnings ?? []) {
-        pluginErrors.push({ package: pluginConfig.package, enabled: true, error: warning });
-      }
-    }
-    for (const invalidTool of result.invalidTools ?? []) {
-      state.set(`invalid:${pluginConfig.package}:${invalidTool.name}`, {
-        name: invalidTool.name,
-        source: "plugin",
-        pluginPackage: pluginConfig.package,
-        enabled: false,
-        immutable: false,
-        configurable: true,
-        available: false,
-        reason: "invalid_plugin_tool",
-        error: invalidTool.error,
-      });
-    }
-
-    const pluginToolToggles = pluginConfig.tools ?? {};
-    mergeProviderTools({
+    batches.push({
       id: pluginConfig.package,
       tools: result.tools,
-      orderBase: pluginOrderStart + pluginIndex * 1000,
-      toolToggles: pluginToolToggles,
+      orderBase: orderStart + pluginIndex * 1000,
+      toolToggles: pluginConfig.tools ?? {},
       label: "Plugin",
     });
   }
 
-  function mergeProviderTools(batch: ProviderToolBatch): void {
+  return { batches, plugins, errors, deferredStateEntries };
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4: resolveConflicts
+// ---------------------------------------------------------------------------
+
+/**
+ * Merge a provider tool batch into the catalog, applying conflict resolution policy.
+ * Mutates toolMap, state, and pluginErrors in place.
+ */
+export function resolveConflicts(
+  batches: ProviderToolBatch[],
+  toolMap: Map<string, ToolMapEntry>,
+  state: Map<string, ToolStateEntry>,
+  pluginErrors: PluginLoadError[],
+  conflictPolicy: ConflictPolicy,
+): void {
+  for (const batch of batches) {
     for (const [toolIndex, tool] of batch.tools.entries()) {
       const pluginOrder = batch.orderBase + toolIndex;
       const existing = toolMap.get(tool.name);
@@ -389,16 +435,28 @@ export async function buildToolCatalog(
       });
     }
   }
+}
 
-  // 3. Build final tool list in deterministic order.
+// ---------------------------------------------------------------------------
+// Phase 5: freeze
+// ---------------------------------------------------------------------------
+
+/**
+ * Build the final ToolCatalogResult from the resolved tool map and state.
+ * Applies image downscaling to all enabled tools.
+ */
+export function freeze(
+  toolMap: Map<string, ToolMapEntry>,
+  state: Map<string, ToolStateEntry>,
+  plugins: PluginStateEntry[],
+  pluginErrors: PluginLoadError[],
+): ToolCatalogResult {
   const finalEntries = [...toolMap.values()].sort(compareEntries);
   const tools: Tool[] = [];
 
   for (const entry of finalEntries) {
     const toolState = state.get(entry.tool.name);
     if (toolState?.enabled) {
-      // Downscale any images a tool returns at this single choke point — covers every enabled tool
-      // (read_image, screenshots, MCP image results), not just the ones that downscale themselves.
       tools.push(withImageDownscaling(entry.tool));
     }
   }
@@ -415,4 +473,78 @@ export async function buildToolCatalog(
     .map((entry) => entry.value);
 
   return { tools, state: orderedState, plugins, pluginErrors };
+}
+
+// ---------------------------------------------------------------------------
+// Orchestrator
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a resolved tool catalog from built-in tools, plugin tools, and config.
+ *
+ * Runs the five-phase pipeline:
+ *   loadBuiltins → loadBundledBatches → loadPluginBatches → resolveConflicts → freeze
+ */
+export async function buildToolCatalog(
+  builtinTools: Tool[],
+  toolsConfig: DiligentConfig["tools"],
+  cwd: string,
+  host?: RuntimeToolHost,
+  options: BuildToolCatalogOptions = {},
+): Promise<ToolCatalogResult> {
+  const config = toolsConfig ?? {};
+  const conflictPolicy: ConflictPolicy = config.conflictPolicy ?? "error";
+  const builtinToggles = config.builtin ?? {};
+  const explicitPlugins = config.plugins ?? [];
+  const bundledProviders = options.bundledProviders ?? [];
+  const supersededPluginPackages = new Set(
+    bundledProviders.flatMap((provider) => provider.supersedesPluginPackages ?? []),
+  );
+
+  // Auto-discover plugins from ~/.diligent/plugins/ and merge with explicit config.
+  // Explicit config entries always take precedence (for enable/disable, per-tool toggles, etc.).
+  const discoveredNames = await discoverGlobalPlugins();
+  const explicitPackageNames = new Set(explicitPlugins.map((p) => p.package));
+  const autoPlugins = discoveredNames
+    .filter((name) => !explicitPackageNames.has(name))
+    .filter((name) => !supersededPluginPackages.has(name))
+    .map((name) => ({
+      package: name,
+      enabled: true as const,
+      tools: undefined as Record<string, boolean> | undefined,
+    }));
+  const pluginConfigs = [...explicitPlugins, ...autoPlugins];
+
+  // Phase 1: builtins
+  const { toolMap, state } = loadBuiltins(builtinTools, builtinToggles);
+
+  // Phase 2: bundled providers
+  const bundledOrderStart = toolMap.size;
+  const { batches: bundledBatches, errors: bundledErrors } = await loadBundledBatches(
+    bundledProviders,
+    cwd,
+    host,
+    bundledOrderStart,
+  );
+
+  // Phase 3: plugins
+  const pluginOrderStart = bundledOrderStart + bundledProviders.length * 1000;
+  const {
+    batches: pluginBatches,
+    plugins,
+    errors: pluginLoadErrors,
+    deferredStateEntries,
+  } = await loadPluginBatches(pluginConfigs, supersededPluginPackages, cwd, host, pluginOrderStart);
+
+  // Apply deferred state entries from disabled/superseded/invalid tools.
+  for (const [key, entry] of deferredStateEntries) {
+    state.set(key, entry);
+  }
+
+  // Phase 4: resolve conflicts across all batches
+  const pluginErrors: PluginLoadError[] = [...bundledErrors, ...pluginLoadErrors];
+  resolveConflicts([...bundledBatches, ...pluginBatches], toolMap, state, pluginErrors, conflictPolicy);
+
+  // Phase 5: freeze into final result
+  return freeze(toolMap, state, plugins, pluginErrors);
 }

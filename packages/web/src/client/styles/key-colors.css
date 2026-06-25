@@ -100,6 +100,7 @@
   --color-provider-chatgpt: #7dd3fc;
   --color-provider-gemini: #a78bfa;
   --color-provider-vertex: #c4b5fd;
+  --color-provider-zaicodingplan: #5b8def;
 
   --color-knowledge-pattern: #7dd3fc;
   --color-knowledge-backlog: #38bdf8;
@@ -208,6 +209,7 @@
   --color-provider-chatgpt-rgb: 125 211 252;
   --color-provider-gemini-rgb: 167 139 250;
   --color-provider-vertex-rgb: 196 181 253;
+  --color-provider-zaicodingplan-rgb: 91 141 239;
 
   --color-knowledge-pattern-rgb: 125 211 252;
   --color-knowledge-backlog-rgb: 56 189 248;

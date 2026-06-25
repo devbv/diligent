@@ -593,17 +593,11 @@ function applyAuthoritativeThreadStatus(state: ThreadState, params: Record<strin
   return authoritativeStatus ? { ...state, threadStatus: authoritativeStatus } : state;
 }
 
-function applyThreadIdentityNotification(
-  state: ThreadState,
-  notification: DiligentServerNotification,
-  params: Record<string, unknown> | null,
-): ThreadState | null {
-  if (notification.method !== DILIGENT_SERVER_NOTIFICATION_METHODS.THREAD_STARTED) {
-    if (notification.method !== DILIGENT_SERVER_NOTIFICATION_METHODS.THREAD_RESUMED) {
-      return null;
-    }
-  }
-  return typeof params?.threadId === "string" ? { ...state, activeThreadId: params.threadId } : state;
+function isThreadIdentityNotification(notification: DiligentServerNotification): boolean {
+  return (
+    notification.method === DILIGENT_SERVER_NOTIFICATION_METHODS.THREAD_STARTED ||
+    notification.method === DILIGENT_SERVER_NOTIFICATION_METHODS.THREAD_RESUMED
+  );
 }
 
 function getTurnTimingMetrics(state: ThreadState): { turnDurationMs?: number; reasoningDurationMs: number } {
@@ -691,9 +685,11 @@ export function reduceServerNotification(
   }
 
   const stateWithAuthoritativeStatus = applyAuthoritativeThreadStatus(state, params);
-  const identityState = applyThreadIdentityNotification(stateWithAuthoritativeStatus, notification, params);
-  if (identityState) {
-    return identityState;
+  if (isThreadIdentityNotification(notification)) {
+    // THREAD_STARTED/RESUMED can arrive before thread/read hydration. Keep
+    // activeThreadId and items atomic so MessageList never flashes an empty or
+    // previous transcript; explicit hydrate actions perform visible switches.
+    return stateWithAuthoritativeStatus;
   }
 
   if (notification.method === DILIGENT_SERVER_NOTIFICATION_METHODS.TURN_INTERRUPTED) {

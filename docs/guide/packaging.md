@@ -79,6 +79,40 @@ Dev publishes also re-create a rolling `dev-latest` release pointing at the same
 
 For one to two prod release cycles after this contract lands, prod releases additionally upload legacy alias files (`update-manifest.json`, `release-meta.json`, `checksums.sha256`) so agents built before the env split keep updating cleanly. After the migration window those aliases are removed.
 
+## Runtime install layout (on disk)
+
+The published bundle contents are unchanged, but the agent installs them into a
+versioned directory and selects the active version with a pointer file. This
+keeps an update from deleting a runtime that a running sidecar still holds (a
+locked `diligent-web-server.exe` on Windows).
+
+```text
+~/.overdare/updates/                 # ~/.overdare-dev/updates/ for dev
+  runtime-current.json               # active-version pointer (single version)
+  runtime-v<version>/                # one directory per installed version
+    diligent-web-server[.exe]
+    dist/client/
+    bootstrap/
+    version.json
+```
+
+- `runtime-current.json` is the source of truth for the active runtime: a single
+  `{ version, dir, sha256, updated_at }` record (not a list). It is written
+  atomically (temp-file + rename) after the new version directory is in place.
+- `updates/runtime` (flat, unversioned) is the legacy layout, kept only as a
+  fallback for installs predating versioning. The first successful versioned
+  update writes the pointer and stops using the flat layout.
+- An update installs to `runtime_staging_<version>/`, validates the layout
+  (sidecar + `dist/client`), promotes it to `runtime-v<version>/`, then flips the
+  pointer. The previously active version is **not** removed by the update step.
+- `start --agent-env=<env>@<version>` launches that exact version directly; with
+  no pin it follows the pointer (then legacy fallback). A pinned version that is
+  not installed is an error, never a silent fallback.
+- Old, idle version directories are cleaned up best-effort after the pointer
+  switch, never deleting the active or an in-use version. On Windows this uses an
+  exclusive-open probe before deleting; on mac/Linux destructive cleanup is not
+  run yet (not targeted by Studio).
+
 ## Defaults resource assembly
 
 OVERDARE-owned defaults now live under `apps/overdare-ai-agent/`:

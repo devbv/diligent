@@ -18,7 +18,7 @@ const runLiveE2E = process.env.DILIGENT_RUN_LIVE_E2E === "1";
 const bashTool = createBashTool(process.cwd());
 
 const TEST_MODEL: Model = {
-  id: process.env.DILIGENT_MODEL ?? "claude-sonnet-4-20250514",
+  id: process.env.DILIGENT_E2E_MODEL ?? "claude-sonnet-4-20250514",
   provider: "anthropic",
   contextWindow: 300_000,
   maxOutputTokens: 16_384,

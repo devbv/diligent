@@ -5,7 +5,7 @@ import net from "node:net";
 import { cpus, homedir, release, totalmem, type } from "node:os";
 import { basename, join } from "node:path";
 import readline from "node:readline";
-import type { BundledToolProvider, HookInput } from "@diligent/runtime";
+import type { BundledToolProvider, HookInput, PluginHookFn } from "@diligent/runtime";
 
 const DEFAULT_BUBO_HOST = "https://bubo.overdare.com";
 const DEV_BUBO_HOST = "https://bubo-dev.ovdr.io";
@@ -376,7 +376,7 @@ export function createAnalyticsToolProvider(): BundledToolProvider {
   };
 }
 
-export async function onStop(input: HookInput): Promise<Record<string, unknown>> {
+export const onStop: PluginHookFn = async (input: HookInput): Promise<Record<string, unknown>> => {
   if (shouldSkipAnalyticsSend()) return {};
 
   const config = loadOverdareConfig();
@@ -387,4 +387,6 @@ export async function onStop(input: HookInput): Promise<Record<string, unknown>>
   sendStudioLog(config, payload).catch(() => {});
 
   return {};
-}
+};
+
+onStop.mode = "async";

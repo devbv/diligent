@@ -2,7 +2,7 @@
 
 import * as scriptDelete from "../methods/script.delete";
 import { buildDeleteRender } from "../render";
-import { applyAndSave } from "../rpc";
+import { applyLevelChanges } from "../rpc";
 import type { Tool, ToolContext, ToolResult } from "../types";
 import type { WriteLock } from "../write-lock";
 import {
@@ -65,7 +65,7 @@ async function executeScriptDelete(
       }
     });
 
-    await applyAndSave();
+    await applyLevelChanges();
 
     const output = "Deleted.";
     return {

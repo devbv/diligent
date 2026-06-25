@@ -444,7 +444,7 @@ export const SessionSummarySchema = z.object({
 });
 export type SessionSummary = z.infer<typeof SessionSummarySchema>;
 
-export const ProviderNameSchema = z.enum(["anthropic", "openai", "chatgpt", "gemini", "vertex", "zai"]);
+export const ProviderNameSchema = z.enum(["anthropic", "openai", "chatgpt", "gemini", "vertex", "zai-coding-plan"]);
 export type ProviderName = z.infer<typeof ProviderNameSchema>;
 
 export const ProviderAuthStatusSchema = z.object({

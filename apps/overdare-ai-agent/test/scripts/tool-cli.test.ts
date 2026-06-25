@@ -7,7 +7,7 @@ const levelBrowseMock = mock(async () => [
 ]);
 
 mock.module("../../sidecar/src/tools/studiorpc/rpc.ts", () => ({
-  applyAndSave: async () => ({ ok: true }),
+  applyLevelChanges: async () => ({ ok: true }),
   call: (method: string) => {
     if (method === "level.browse") return levelBrowseMock();
     if (method === "level.save.file") return Promise.resolve("World file saved.");

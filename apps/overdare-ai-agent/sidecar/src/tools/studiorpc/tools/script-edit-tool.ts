@@ -2,7 +2,7 @@
 
 import * as scriptEdit from "../methods/script.edit";
 import { buildScriptEditRender } from "../render";
-import { applyAndSave } from "../rpc";
+import { applyLevelChanges } from "../rpc";
 import type { Tool, ToolContext, ToolResult } from "../types";
 import type { WriteLock } from "../write-lock";
 import {
@@ -227,7 +227,7 @@ async function executeScriptEdit(
       count = editCount;
     });
 
-    await applyAndSave();
+    await applyLevelChanges();
 
     let output = `Edited script ${targetGuid}: replaced ${count} occurrence(s)`;
     const normalizations: string[] = [];

@@ -4,7 +4,7 @@ import { access, readFile } from "node:fs/promises";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { KNOWN_MODELS, resolveModel } from "@diligent/core/llm/models";
 import { ProviderManager } from "@diligent/core/llm/provider-manager";
-import type { Model, StreamFunction, SystemSection, ThinkingEffort } from "@diligent/core/llm/types";
+import type { Model, ProviderName, StreamFunction, SystemSection, ThinkingEffort } from "@diligent/core/llm/types";
 import { getBuiltinAgentDefinitions } from "../agent/agent-types";
 import type { Mode } from "../agent/mode";
 import { type ResolvedAgentDefinition, resolveAvailableAgentDefinitions } from "../agent/resolved-agent";
@@ -71,7 +71,7 @@ export async function loadRuntimeConfig(cwd: string, paths: DiligentPaths): Prom
   const authKeys = await loadAuthStore(authStore);
   for (const [provider, key] of Object.entries(authKeys)) {
     if (typeof key === "string" && key) {
-      providerManager.setApiKey(provider as "anthropic" | "openai" | "gemini" | "vertex" | "zai", key);
+      providerManager.setApiKey(provider as ProviderName, key);
     }
   }
 
@@ -101,13 +101,10 @@ export async function loadRuntimeConfig(cwd: string, paths: DiligentPaths): Prom
 
   // Resolve model: use config.model if set, otherwise pick first available from configured providers
   const configured = providerManager.getConfiguredProviders();
-  const firstAvailable = KNOWN_MODELS.find((m) =>
-    configured.includes(m.provider as "anthropic" | "openai" | "chatgpt" | "gemini" | "vertex" | "zai"),
-  );
+  const firstAvailable = KNOWN_MODELS.find((m) => configured.includes(m.provider as ProviderName));
   const configuredModel = config.model ? resolveModel(config.model) : undefined;
   const modelId =
-    configuredModel &&
-    configured.includes(configuredModel.provider as "anthropic" | "openai" | "chatgpt" | "gemini" | "vertex" | "zai")
+    configuredModel && configured.includes(configuredModel.provider as ProviderName)
       ? configuredModel.id
       : (firstAvailable?.id ?? config.model);
   const model = modelId ? resolveModel(modelId) : undefined;

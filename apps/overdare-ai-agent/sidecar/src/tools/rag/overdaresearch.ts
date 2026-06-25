@@ -23,13 +23,38 @@ interface AssetResult {
   subCategoryId: string;
 }
 
+interface DebugResult {
+  text: string;
+  score: number;
+  title: string;
+  symptom: string;
+  causeClassification: string;
+  verification: string;
+  solution: string;
+  overdareNotes: string;
+  relatedCases: string[];
+  caseId: string;
+  category: string;
+  symptomTags: string[];
+  severity: string;
+  genreTags: string[];
+  overdareVersion: string;
+  keywords: string[];
+}
+
+type AnyResult = RagResult | AssetResult | DebugResult;
+
 interface RagResponse {
-  results: Array<RagResult | AssetResult>;
+  results: AnyResult[];
   totalCount: number;
 }
 
-function isAssetResult(result: RagResult | AssetResult): result is AssetResult {
+function isAssetResult(result: AnyResult): result is AssetResult {
   return "assetId" in result;
+}
+
+function isDebugResult(result: AnyResult): result is DebugResult {
+  return "caseId" in result;
 }
 
 function normalizeAssetResult(result: Partial<AssetResult>): Partial<AssetResult> {
@@ -45,16 +70,38 @@ function normalizeAssetResult(result: Partial<AssetResult>): Partial<AssetResult
   };
 }
 
+function normalizeDebugResult(result: Partial<DebugResult>): Partial<DebugResult> {
+  return {
+    text: result.text,
+    score: result.score,
+    title: result.title,
+    symptom: result.symptom,
+    causeClassification: result.causeClassification,
+    verification: result.verification,
+    solution: result.solution,
+    overdareNotes: result.overdareNotes,
+    relatedCases: result.relatedCases,
+    caseId: result.caseId,
+    category: result.category,
+    symptomTags: result.symptomTags,
+    severity: result.severity,
+    genreTags: result.genreTags,
+    overdareVersion: result.overdareVersion,
+    keywords: result.keywords,
+  };
+}
+
 export const name = "overdaresearch";
 
-export const description = `Searches OVERDARE documentation, code examples, and assets using RAG.
-Use this tool to find relevant OVERDARE API references, guides, code examples, Lua scripts, and asset metadata.
+export const description = `Searches OVERDARE documentation, code examples, assets, and debug cases using RAG.
+Use this tool to find relevant OVERDARE API references, guides, code examples, Lua scripts, asset metadata, and debugging cases.
 
 When to use each source:
-  - Default topK by source: docs=4, code=4, assets=8; only increase if results are insufficient
+  - Default topK by source: docs=4, code=4, assets=8, debug=5; only increase if results are insufficient
   - "docs": API references, conceptual guides, configuration details, service descriptions
   - "code": Working Lua implementation examples, proven patterns, real script snippets
   - "assets": Asset catalog search returning asset metadata such as title, keywords, assetId, assetType, categoryId, and subCategoryId
+  - "debug": Debugging-case knowledge base (symptom → cause → solution). Each result includes symptom, causeClassification, solution, and caseId. Use when diagnosing a bug or unexpected behavior — describe the symptom in natural language.
   - When writing or modifying code, search BOTH docs and code in parallel (two calls: one for docs, one for code) to get API shape + implementation patterns simultaneously
 
 Query tips:
@@ -62,14 +109,15 @@ Query tips:
   - Never include "OVERDARE" in query — all content is already scoped to OVERDARE
   - When querying for docs, do not include keywords like "doc" or "documentation" in the query — the source already targets the documentation store
   - When querying for code, do not include keywords like "Lua", "example", or "script" in the query — the source already targets the Lua code store
-  - When querying for assets, use short noun-based queries such as item names, themes, categories, or use cases`;
+  - When querying for assets, use short noun-based queries such as item names, themes, categories, or use cases
+  - When querying for debug, describe the symptom in natural language (e.g. "black screen with invisible buttons"); narrow with debugCaseFilter (category/severity/caseId exact match, symptomTags/genreTags match-any). overdareVersion filtering is NOT supported.`;
 
 export const parameters = z.object({
   query: z.string().describe("Search query for OVERDARE (English only)"),
   source: z
-    .enum(["docs", "code", "assets"])
+    .enum(["docs", "code", "assets", "debug"])
     .describe(
-      "docs = API references and guides. code = working Lua implementation examples and patterns. assets = asset catalog search with asset metadata fields.",
+      "docs = API references and guides. code = working Lua implementation examples and patterns. assets = asset catalog search with asset metadata fields. debug = debugging cases (symptom → cause → solution).",
     ),
   topK: z.number().int().min(1).max(10).describe("Number of results to return"),
   selectable: z
@@ -77,6 +125,18 @@ export const parameters = z.object({
     .optional()
     .describe(
       "Assets only. When true and 2+ assets match, ask the user to pick one and return the chosen assetId; exactly 1 match auto-selects; 0 matches returns not-found. Use when the user should choose a specific asset.",
+    ),
+  debugCaseFilter: z
+    .object({
+      caseId: z.string().optional().describe("Exact match on case ID"),
+      category: z.string().optional().describe("Exact match on category (ui, script, 3d)"),
+      severity: z.string().optional().describe("Exact match on severity (low/medium/high)"),
+      symptomTags: z.array(z.string()).optional().describe("Match cases having ANY of these symptom tags (OR)"),
+      genreTags: z.array(z.string()).optional().describe("Match cases having ANY of these genre tags (OR)"),
+    })
+    .optional()
+    .describe(
+      "Only used when source=debug. Fields combine with AND; omitted fields are not constrained. overdareVersion filtering is NOT supported.",
     ),
 });
 
@@ -145,6 +205,7 @@ export async function execute(args: Params, _ctx: ToolContext, host?: RuntimeToo
         source: args.source,
         topK: args.topK ?? 4,
         threshold: 0.5,
+        ...(args.source === "debug" && args.debugCaseFilter ? { debugCaseFilter: args.debugCaseFilter } : {}),
       }),
       signal: controller.signal,
     });
@@ -165,6 +226,8 @@ export async function execute(args: Params, _ctx: ToolContext, host?: RuntimeToo
     const results = (data?.results ?? []).filter((result) => {
       if ((result.text ?? "").length > 0) return true;
       if ("script" in result && ((result as RagResult).script ?? "").length > 0) return true;
+      // Debug cases are identified by caseId, not by having a solution (text=solution may be omitted).
+      if (args.source === "debug" && isDebugResult(result)) return true;
       return false;
     });
 
@@ -196,7 +259,21 @@ export async function execute(args: Params, _ctx: ToolContext, host?: RuntimeToo
       };
     }
 
-    const ragResults = results.filter((result): result is RagResult => !isAssetResult(result));
+    if (args.source === "debug") {
+      const rawDebug = results.filter(isDebugResult);
+      const debugResults = rawDebug.map(normalizeDebugResult);
+      return {
+        output: debugResults.length
+          ? JSON.stringify({ results: debugResults, totalCount: data?.totalCount ?? debugResults.length }, null, 2)
+          : "No results found.",
+        render: buildSearchRender({ source: args.source, query: args.query }, rawDebug),
+        metadata: { resultCount: debugResults.length, results: debugResults },
+      };
+    }
+
+    const ragResults = results.filter(
+      (result): result is RagResult => !isAssetResult(result) && !isDebugResult(result),
+    );
 
     return {
       output: ragResults.length ? JSON.stringify(ragResults, null, 2) : "No results found.",

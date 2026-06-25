@@ -49,7 +49,7 @@ test("newly activated thread accepts busy status notifications", () => {
   expect(shouldDispatchNotificationToActiveThread(notification, "thread-1")).toBe(true);
 });
 
-test("thread start and resume notifications are always dispatched", () => {
+test("thread start and resume notifications only dispatch for the active thread", () => {
   const started: DiligentServerNotification = {
     method: "thread/started",
     params: { threadId: "thread-1" },
@@ -59,6 +59,10 @@ test("thread start and resume notifications are always dispatched", () => {
     params: { threadId: "thread-1" },
   };
 
-  expect(shouldDispatchNotificationToActiveThread(started, null)).toBe(true);
-  expect(shouldDispatchNotificationToActiveThread(resumed, null)).toBe(true);
+  expect(shouldDispatchNotificationToActiveThread(started, null)).toBe(false);
+  expect(shouldDispatchNotificationToActiveThread(resumed, null)).toBe(false);
+  expect(shouldDispatchNotificationToActiveThread(started, "thread-2")).toBe(false);
+  expect(shouldDispatchNotificationToActiveThread(resumed, "thread-2")).toBe(false);
+  expect(shouldDispatchNotificationToActiveThread(started, "thread-1")).toBe(true);
+  expect(shouldDispatchNotificationToActiveThread(resumed, "thread-1")).toBe(true);
 });

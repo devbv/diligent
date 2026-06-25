@@ -16,23 +16,37 @@ Execute GitHub Issues that can be progressed independently from repo context, on
 
 ### 1. Find candidate GitHub Issues
 
-List open GitHub Issues that are suitable for autonomous implementation work.
+List open GitHub Issues and open pull requests so issues already being handled by a PR can be excluded before claiming.
 
 ```bash
 gh issue list --state open --limit 100 --json number,title,labels,assignees
+gh pr list --state open --limit 100 --json number,title,headRefName,body,closingIssuesReferences
 ```
 
 Prefer issues created from tech-lead output, especially issues labeled `tech-lead`.
 
 Exclude issues that:
 - already have an assignee other than yourself
+- already have an open PR that references, closes, or is clearly named for the issue
 - are clearly blocked on product decisions or missing external context
 - are too large to complete responsibly in one focused PR
 - are meta-tracking items rather than executable implementation work
 
-If no suitable unassigned issue exists, stop and report that there is nothing actionable to claim.
+Treat an issue as already in progress if any open PR has `closingIssuesReferences` containing that issue, a body/title containing `#<issue number>`, or a branch/title matching likely patterns such as `issue-<number>`. If no suitable unassigned issue without an existing PR exists, stop and report that there is nothing actionable to claim.
 
-### 2. Claim exactly one issue
+### 2. Check for an existing PR for the selected issue
+
+Before claiming the selected issue, verify again that there is no open PR already handling it. Prefer structured PR metadata, then use a targeted search as a fallback.
+
+```bash
+gh pr list --state open --search "#<issue number>"
+gh pr list --state open --search "issue-<issue number>"
+gh pr list --state open --search "<issue number> in:title"
+```
+
+Also inspect likely branch names if needed. If an open PR already covers the issue, do not assign yourself and do not implement it; skip the issue and either choose another eligible issue or report it as already in progress.
+
+### 3. Claim exactly one issue
 
 Select the best single issue that can be completed independently, then assign it to yourself before doing implementation work.
 
@@ -44,16 +58,6 @@ gh issue edit <number> --add-assignee <login>
 ```
 
 After claiming, read the full issue body and any linked context before making changes.
-
-### 3. Check for an existing PR for that issue
-
-Before implementing, verify there is no open PR already handling the claimed issue.
-
-```bash
-gh pr list --state open --search "in:title <issue number>"
-```
-
-Also inspect likely branch names if needed. If an open PR already covers the issue, unassign yourself if appropriate, skip the issue, and report it as already in progress.
 
 ### 4. Execute the claimed issue as one PR
 

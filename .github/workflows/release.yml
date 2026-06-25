@@ -4,8 +4,8 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Release version (e.g. 1.0.0)"
-        required: true
+        description: "New release version, e.g. 1.0.0 — REQUIRED when running from main (minting a new version). LEAVE BLANK when running from a release tag; the version is taken from the tag name."
+        required: false
         type: string
       env:
         description: "Release env (prod or dev)"
@@ -32,14 +32,14 @@ jobs:
       - name: Resolve version and env
         id: resolve
         shell: bash
+        env:
+          # Pass user/context inputs through env (not inline ${{ }}) to avoid
+          # shell injection from the free-text version field.
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          RELEASE_ENV: ${{ inputs.env }}
         run: |
-          RELEASE_VERSION="${{ inputs.version }}"
-          VERSION="${RELEASE_VERSION#v}"
-          if [ -z "$VERSION" ]; then
-            echo "Failed to resolve version from RELEASE_VERSION=$RELEASE_VERSION" >&2
-            exit 1
-          fi
-          RELEASE_ENV="${{ inputs.env }}"
           case "$RELEASE_ENV" in
             prod|dev) ;;
             *)
@@ -47,6 +47,37 @@ jobs:
               exit 1
               ;;
           esac
+
+          # Normalize an optional leading 'v' on the typed version.
+          INPUT_VERSION="${INPUT_VERSION#v}"
+
+          if [ "$REF_TYPE" = "tag" ]; then
+            # Tag mode = re-deploy / cross-env. The version is DEFINED by the tag,
+            # never by free-text, so code and version can't diverge. Release tags
+            # are named "<env>-v<version>" (e.g. prod-v0.4.1); derive the version.
+            if [[ "$REF_NAME" =~ ^(prod|dev)-v(.+)$ ]]; then
+              VERSION="${BASH_REMATCH[2]}"
+            else
+              echo "Dispatched from tag '$REF_NAME', which is not a release tag (expected <prod|dev>-v<version>, e.g. prod-v0.4.1). Pick a release tag, or run from main with a version input to mint a new version." >&2
+              exit 1
+            fi
+            # A version typed in tag mode is ambiguous — only allow it if it agrees.
+            if [ -n "$INPUT_VERSION" ] && [ "$INPUT_VERSION" != "$VERSION" ]; then
+              echo "Version input '$INPUT_VERSION' conflicts with tag '$REF_NAME' (version '$VERSION'). Leave the version blank when dispatching from a release tag." >&2
+              exit 1
+            fi
+            echo "Tag mode: building the commit at '$REF_NAME' as version '$VERSION' for env '$RELEASE_ENV'."
+          else
+            # Branch mode = a new version is born here (from main HEAD). This is the
+            # ONLY place free-text is allowed, and it can't mismatch: the version you
+            # type is the declaration that this commit IS that version.
+            if [ -z "$INPUT_VERSION" ]; then
+              echo "Running from branch '$REF_NAME' requires a 'version' input — new versions are typed once, here. (To re-deploy or cross-deploy an existing version, run from its release tag instead.)" >&2
+              exit 1
+            fi
+            VERSION="$INPUT_VERSION"
+            echo "Branch mode: minting new version '$VERSION' from '$REF_NAME' (HEAD) for env '$RELEASE_ENV'."
+          fi
 
           TAG="${RELEASE_ENV}-v${VERSION}"
           {

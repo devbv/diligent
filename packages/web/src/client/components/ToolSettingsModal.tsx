@@ -11,6 +11,7 @@ const PROVIDER_BADGE_STYLE: Record<string, string> = {
   chatgpt: "border-provider-chatgpt/30 bg-provider-chatgpt/10 text-provider-chatgpt",
   gemini: "border-provider-gemini/30 bg-provider-gemini/10 text-provider-gemini",
   vertex: "border-provider-vertex/30 bg-provider-vertex/10 text-provider-vertex",
+  "zai-coding-plan": "border-provider-zaicodingplan/30 bg-provider-zaicodingplan/10 text-provider-zaicodingplan",
 };
 
 const PROVIDER_LABELS: Record<string, string> = {
@@ -21,6 +22,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   "gemini-3-flash": "Gemini 3 Flash",
   "gemini-3.1-flash-lite": "Gemini 3.1 Flash Lite",
   vertex: "Vertex AI",
+  "zai-coding-plan": "z.ai Coding Plan",
 };
 
 interface ToolSettingsModalProps {

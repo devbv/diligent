@@ -1,18 +1,19 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use tokio::io::{AsyncBufReadExt, BufReader};
 
-use crate::env::Env;
+use crate::env::{Env, EnvSelection};
 use crate::storage::{
     global_storage_dir, migrate_global_namespace_if_needed, migrate_local_namespace_if_needed,
     storage_namespace,
 };
-use crate::update::installed_version;
+use crate::update::{installed_version_at, resolve_runtime_dir};
 
 pub struct WebServerOptions {
     pub cwd: String,
     pub env: Env,
+    pub pinned_version: Option<String>,
     pub userid: Option<String>,
     pub project_id: Option<String>,
     pub studio_rpc_port: Option<u16>,
@@ -49,7 +50,7 @@ fn normalize_cwd(raw: &str) -> String {
     raw.to_string()
 }
 
-pub fn parse_args(args: &[String], env: Env) -> Result<WebServerOptions, String> {
+pub fn parse_args(args: &[String], selection: &EnvSelection) -> Result<WebServerOptions, String> {
     let mut cwd: Option<String> = None;
     let mut userid: Option<String> = None;
     let mut project_id: Option<String> = None;
@@ -116,7 +117,8 @@ pub fn parse_args(args: &[String], env: Env) -> Result<WebServerOptions, String>
     }));
     Ok(WebServerOptions {
         cwd,
-        env,
+        env: selection.env,
+        pinned_version: selection.pinned_version.clone(),
         userid,
         project_id,
         studio_rpc_port,
@@ -139,41 +141,27 @@ fn default_web_log_path(env: Env) -> Result<PathBuf, String> {
     Ok(logs_dir.join(format!("{}-{}.log", date, pid)))
 }
 
-fn resolve_updated_sidecar_path(env: Env) -> Option<PathBuf> {
+fn sidecar_bin_path(runtime_dir: &Path) -> PathBuf {
     let bin_name = if cfg!(windows) {
         "diligent-web-server.exe"
     } else {
         "diligent-web-server"
     };
-    let path = global_storage_dir(env)?.join("updates/runtime").join(bin_name);
-    if path.exists() {
-        Some(path)
-    } else {
-        None
-    }
+    runtime_dir.join(bin_name)
 }
 
-fn resolve_updated_dist_dir(env: Env) -> Option<PathBuf> {
-    let candidate = global_storage_dir(env)?.join("updates/runtime/dist/client");
-    if candidate.exists() {
-        Some(candidate)
-    } else {
-        None
-    }
+fn dist_dir_path(runtime_dir: &Path) -> PathBuf {
+    runtime_dir.join("dist/client")
 }
 
-fn resolve_updated_rg_bin(env: Env) -> Option<PathBuf> {
+fn rg_bin_path(runtime_dir: &Path) -> Option<PathBuf> {
     let bin_name = if cfg!(windows) { "rg.exe" } else { "rg" };
-    let path = global_storage_dir(env)?.join("updates/runtime").join(bin_name);
-    if path.exists() {
-        Some(path)
-    } else {
-        None
-    }
+    let path = runtime_dir.join(bin_name);
+    path.exists().then_some(path)
 }
 
-fn resolve_installed_runtime_version(env: Env) -> Option<String> {
-    let version = installed_version(env)?.version;
+fn resolve_installed_runtime_version(runtime_dir: &Path) -> Option<String> {
+    let version = installed_version_at(runtime_dir)?.version;
     let trimmed = version.trim();
     if trimmed.is_empty() {
         return None;
@@ -248,21 +236,18 @@ pub async fn start_foreground(options: WebServerOptions) -> Result<RunningWebSer
     migrate_global_namespace_if_needed(options.env).map(|_| ())?;
     migrate_local_namespace_if_needed(&options.cwd, options.env).map(|_| ())?;
 
-    let binary = resolve_updated_sidecar_path(options.env).ok_or_else(
-        || format!(
-            "Updated runtime binary not found. Run 'overdare-ai-agent --agent-env={} init' first so ~/.{}/updates/runtime/diligent-web-server exists.",
-            options.env.as_str(),
-            storage_namespace(options.env)
-        ),
-    )?;
-    let dist_dir = resolve_updated_dist_dir(options.env).ok_or_else(|| {
-        format!(
-            "Updated runtime dist/client not found. Run 'overdare-ai-agent --agent-env={} init' first.",
-            options.env.as_str()
-        )
-    })?;
+    // Resolve a single runtime directory (pinned version, else the active
+    // pointer), then derive every runtime path from it. resolve_runtime_dir
+    // validates the layout, so the sidecar binary and dist/client are present.
+    let selection = EnvSelection {
+        env: options.env,
+        pinned_version: options.pinned_version.clone(),
+    };
+    let runtime_dir = resolve_runtime_dir(&selection)?;
+    let binary = sidecar_bin_path(&runtime_dir);
+    let dist_dir = dist_dir_path(&runtime_dir);
     let log_path = default_web_log_path(options.env)?;
-    let rg_path = resolve_updated_rg_bin(options.env);
+    let rg_path = rg_bin_path(&runtime_dir);
 
     let desired_port = options.web_server_port.unwrap_or(0);
 
@@ -301,7 +286,7 @@ pub async fn start_foreground(options: WebServerOptions) -> Result<RunningWebSer
     }
     cmd.env("DILIGENT_STORAGE_NAMESPACE", storage_namespace(options.env));
     cmd.env("DILIGENT_ENV", options.env.as_str());
-    if let Some(version) = resolve_installed_runtime_version(options.env) {
+    if let Some(version) = resolve_installed_runtime_version(&runtime_dir) {
         cmd.env("DILIGENT_SERVER_VERSION", version);
     }
 
@@ -354,7 +339,7 @@ pub async fn start_foreground(options: WebServerOptions) -> Result<RunningWebSer
 #[cfg(test)]
 mod tests {
     use super::{parse_args, resolve_installed_runtime_version};
-    use crate::env::Env;
+    use crate::env::{Env, EnvSelection};
     use crate::storage::storage_namespace;
     use crate::testutil::with_temp_home;
     use std::fs;
@@ -369,14 +354,23 @@ mod tests {
             "--web-server-port=4567".to_string(),
             "--hub-domain=hub.example.com".to_string(),
         ];
-        let parsed = parse_args(&args, Env::Prod).expect("parse args");
+        let parsed = parse_args(&args, &EnvSelection::latest(Env::Prod)).expect("parse args");
         assert_eq!(parsed.cwd, "/tmp/project");
         assert_eq!(parsed.env, Env::Prod);
+        assert_eq!(parsed.pinned_version, None);
         assert_eq!(parsed.userid.as_deref(), Some("user-1"));
         assert_eq!(parsed.project_id.as_deref(), Some("project-1"));
         assert_eq!(parsed.studio_rpc_port, Some(8123));
         assert_eq!(parsed.web_server_port, Some(4567));
         assert_eq!(parsed.hub_domain.as_deref(), Some("hub.example.com"));
+    }
+
+    #[test]
+    fn parse_args_carries_pinned_version_from_selection() {
+        let selection = EnvSelection::parse("dev@1.2.3").expect("parse selection");
+        let parsed = parse_args(&["--cwd=/tmp/p".to_string()], &selection).expect("parse args");
+        assert_eq!(parsed.env, Env::Dev);
+        assert_eq!(parsed.pinned_version.as_deref(), Some("1.2.3"));
     }
 
     #[cfg(windows)]
@@ -406,15 +400,27 @@ mod tests {
     #[test]
     fn resolve_installed_runtime_version_reads_version_json() {
         with_temp_home("webserver-installed-version", |home| {
+            // installed_version now resolves through current_runtime_dir, which
+            // requires a usable layout (sidecar + dist/client), not just
+            // version.json.
             let runtime_dir = home.join(".overdare/updates/runtime");
-            fs::create_dir_all(&runtime_dir).expect("create runtime dir");
+            fs::create_dir_all(runtime_dir.join("dist/client")).expect("create dist/client");
+            let bin_name = if cfg!(windows) {
+                "diligent-web-server.exe"
+            } else {
+                "diligent-web-server"
+            };
+            fs::write(runtime_dir.join(bin_name), b"#!/bin/sh\n").expect("write sidecar");
             fs::write(
                 runtime_dir.join("version.json"),
                 "{\n  \"version\": \"1.2.3\",\n  \"applied_at\": \"2026-01-01T00:00:00Z\",\n  \"sha256\": \"abc\"\n}\n",
             )
             .expect("write version json");
 
-            assert_eq!(resolve_installed_runtime_version(Env::Prod).as_deref(), Some("1.2.3"));
+            assert_eq!(
+                resolve_installed_runtime_version(&runtime_dir).as_deref(),
+                Some("1.2.3")
+            );
         });
     }
 }

@@ -1,4 +1,4 @@
-// @summary Contract tests for openai-compatible.ts shared helpers used by zai, vertex, and openai providers
+// @summary Contract tests for openai-compatible.ts shared helpers used by zai-coding-plan, vertex, and openai providers
 import { describe, expect, test } from "bun:test";
 import { EventStream } from "../../../src/event-stream";
 import {
@@ -321,6 +321,43 @@ describe("handleChatCompletionsEvents", () => {
       type: "text",
       text: "Hello, world!",
     });
+  });
+
+  test("reasoning_content response: emits thinking events before text", async () => {
+    const stream = makeStream();
+
+    const payloads = [
+      {
+        choices: [{ delta: { reasoning_content: "Think " }, finish_reason: null }],
+      },
+      {
+        choices: [{ delta: { reasoning_content: "step." }, finish_reason: null }],
+      },
+      {
+        choices: [{ delta: { content: "Answer." }, finish_reason: "stop" }],
+        usage: { prompt_tokens: 20, completion_tokens: 10 },
+      },
+    ];
+
+    await handleChatCompletionsEvents(makeAsyncIter(payloads), stream, TEST_MODEL);
+    const events = await collectEvents(stream);
+
+    expect(events.map((e) => e.type)).toEqual([
+      "thinking_delta",
+      "thinking_delta",
+      "thinking_end",
+      "text_delta",
+      "text_end",
+      "usage",
+      "done",
+    ]);
+
+    const thinkingEnd = events.find((e) => e.type === "thinking_end") as { type: "thinking_end"; thinking: string };
+    expect(thinkingEnd.thinking).toBe("Think step.");
+
+    const result = await stream.result();
+    expect((result.message as AssistantMessage).content[0]).toEqual({ type: "thinking", thinking: "Think step." });
+    expect((result.message as AssistantMessage).content[1]).toEqual({ type: "text", text: "Answer." });
   });
 
   test("tool call response: emits tool_call_start, deltas, tool_call_end, done", async () => {

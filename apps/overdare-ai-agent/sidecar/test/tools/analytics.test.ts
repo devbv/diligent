@@ -94,6 +94,7 @@ describe("createAnalyticsToolProvider", () => {
     expect(provider).toBeDefined();
     expect(provider!.supersedesPluginPackages).toContain("@overdare/plugin-analytics");
     expect(provider!.onStop).toBeFunction();
+    expect(provider!.onStop!.mode).toBe("async");
     expect(await provider!.createTools({ cwd: "/tmp/project" })).toEqual([]);
   });
 });

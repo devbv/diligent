@@ -4,6 +4,13 @@ import { z } from "zod";
 
 export const ModelId = z.string().describe("Model identifier, e.g. 'claude-sonnet-4-6', 'gpt-4o', 'gemini-2.5-flash'");
 
+const HookCommandSchema = z.object({
+  type: z.literal("command"),
+  command: z.string(),
+  mode: z.enum(["sync", "async"]).optional(),
+  timeout: z.number().positive().optional(),
+});
+
 export const DiligentConfigSchema = z
   .object({
     $schema: z.string().optional(),
@@ -38,7 +45,7 @@ export const DiligentConfigSchema = z
             baseUrl: z.string().url().optional(),
           })
           .optional(),
-        zai: z
+        "zai-coding-plan": z
           .object({
             apiKey: z.string().optional(),
             baseUrl: z.string().url().optional(),
@@ -136,24 +143,8 @@ export const DiligentConfigSchema = z
     // Lifecycle hooks — shell commands executed at specific points in the agent loop
     hooks: z
       .object({
-        UserPromptSubmit: z
-          .array(
-            z.object({
-              type: z.literal("command"),
-              command: z.string(),
-              timeout: z.number().positive().optional(),
-            }),
-          )
-          .optional(),
-        Stop: z
-          .array(
-            z.object({
-              type: z.literal("command"),
-              command: z.string(),
-              timeout: z.number().positive().optional(),
-            }),
-          )
-          .optional(),
+        UserPromptSubmit: z.array(HookCommandSchema).optional(),
+        Stop: z.array(HookCommandSchema).optional(),
       })
       .optional(),
 

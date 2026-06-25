@@ -162,6 +162,8 @@ export async function handleChatCompletionsEvents(
   const contentBlocks: ContentBlock[] = [];
   const toolState = new Map<number, { id: string; name: string; arguments: string; started: boolean }>();
   let currentText = "";
+  let currentThinking = "";
+  let thinkingEnded = false;
   let usage: Usage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
   let stopReason: StopReason = "end_turn";
 
@@ -184,7 +186,17 @@ export async function handleChatCompletionsEvents(
       if (!delta || typeof delta !== "object") continue;
       const deltaRecord = delta as Record<string, unknown>;
 
+      if (typeof deltaRecord.reasoning_content === "string" && deltaRecord.reasoning_content.length > 0) {
+        currentThinking += deltaRecord.reasoning_content;
+        stream.push({ type: "thinking_delta", delta: deltaRecord.reasoning_content });
+      }
+
       if (typeof deltaRecord.content === "string" && deltaRecord.content.length > 0) {
+        if (currentThinking.length > 0 && !thinkingEnded) {
+          stream.push({ type: "thinking_end", thinking: currentThinking });
+          contentBlocks.push({ type: "thinking", thinking: currentThinking });
+          thinkingEnded = true;
+        }
         currentText += deltaRecord.content;
         stream.push({ type: "text_delta", delta: deltaRecord.content });
       }
@@ -226,6 +238,11 @@ export async function handleChatCompletionsEvents(
   }
 
   if (signal?.aborted) return;
+
+  if (currentThinking.length > 0 && !thinkingEnded) {
+    stream.push({ type: "thinking_end", thinking: currentThinking });
+    contentBlocks.push({ type: "thinking", thinking: currentThinking });
+  }
 
   if (currentText.length > 0) {
     stream.push({ type: "text_end", text: currentText });

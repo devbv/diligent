@@ -62,7 +62,13 @@ export class QuestionInput implements Component {
       const isFocused = i === this.selectedIndex;
       const isChecked = this.selected.has(i);
       const marker = isFocused ? `${t.accent}▸${t.reset}` : " ";
-      const checkbox = this.allowMultiple ? (isChecked ? "[x]" : "[ ]") : isChecked ? "(●)" : "( )";
+      const checkbox = this.allowMultiple
+        ? isChecked
+          ? `${t.success}☑${t.reset}`
+          : `${t.dim}☐${t.reset}`
+        : isChecked
+          ? "(●)"
+          : "( )";
       const { label, description } = this.opts[i];
       const labelPart = isFocused ? `${t.bold}${label}${t.reset}` : label;
       const descPart = description ? `  ${t.dim}· ${description}${t.reset}` : "";

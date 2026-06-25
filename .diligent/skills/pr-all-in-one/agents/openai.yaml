@@ -1,0 +1,4 @@
+interface:
+  display_name: "PR All In One"
+  short_description: "Prepare Korean PRs with intent and logs"
+  default_prompt: "Use $pr-all-in-one to prepare and open a Diligent pull request."

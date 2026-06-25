@@ -40,11 +40,14 @@ export function shouldDispatchNotificationToActiveThread(
   if (!hasNotificationThreadId(notification.params)) {
     return true;
   }
+  // Identity notifications can arrive before thread/read hydration. Dispatch
+  // them only for the current thread so hydrate actions remain the single path
+  // that swaps MessageList history during thread changes.
   if (notification.method === DILIGENT_SERVER_NOTIFICATION_METHODS.THREAD_STARTED) {
-    return true;
+    return notification.params.threadId === activeThreadId;
   }
   if (notification.method === DILIGENT_SERVER_NOTIFICATION_METHODS.THREAD_RESUMED) {
-    return true;
+    return notification.params.threadId === activeThreadId;
   }
   if (activeThreadId === null) {
     return false;

@@ -34,6 +34,11 @@ export function createGrepTool(cwd: string): Tool<typeof GrepParams> {
         .replace(/\\/g, "/")
         .replace(/\/{2,}/g, "/");
 
+      if (isFilesystemRoot(searchPath)) {
+        const output = `Error: refusing to grep the filesystem root: ${searchPath}. Provide a narrower path.`;
+        return { output, render: createTextRenderPayload(undefined, output, true), metadata: { error: true } };
+      }
+
       const rgBin = process.env.DILIGENT_RG_PATH ?? "rg";
       const rgArgs: string[] = [rgBin, "-n"];
 
@@ -84,4 +89,9 @@ export function createGrepTool(cwd: string): Tool<typeof GrepParams> {
       }
     },
   };
+}
+
+function isFilesystemRoot(path: string): boolean {
+  const normalized = path.replace(/\\/g, "/").replace(/\/{2,}/g, "/");
+  return normalized === "/" || /^[a-zA-Z]:\/$/.test(normalized);
 }

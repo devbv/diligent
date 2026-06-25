@@ -1,0 +1,54 @@
+name: Build Agent exe (no release)
+
+# Build the OVERDARE agent launcher binary and upload it as a workflow artifact,
+# WITHOUT creating a GitHub Release or touching the dev-latest channel. Use this
+# to test a launcher change (e.g. on a feature branch) before merging.
+#
+# Trigger from any ref:
+#   gh workflow run build-agent-exe.yml --ref <branch> -f version=<label>
+# Then download the exe from the run's Artifacts (Actions UI or `gh run download`).
+#
+# Note: workflow_dispatch workflows must exist on the default branch to be
+# dispatchable, so this file has to land on main first; afterwards it can target
+# any branch via --ref.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Label used only in the artifact/file name (e.g. 1.2.4-p068test). Does not affect the binary."
+        required: false
+        default: "dev-test"
+        type: string
+
+jobs:
+  build-windows-x64:
+    name: Build agent launcher (Windows x64)
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    env:
+      LABEL: ${{ inputs.version }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build agent launcher (release)
+        shell: bash
+        run: |
+          cargo build --manifest-path apps/overdare-ai-agent/Cargo.toml --release
+          mkdir -p dist
+          # The launcher binary is env-agnostic (prod/dev is chosen at runtime via
+          # --agent-env); LABEL is only for human-friendly artifact naming.
+          cp apps/overdare-ai-agent/target/release/overdare-ai-agent.exe \
+             "dist/overdare-ai-agent-windows-x64-${LABEL}.exe"
+
+      - name: Upload launcher artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: overdare-ai-agent-windows-x64-${{ inputs.version }}
+          path: dist/overdare-ai-agent-windows-x64-*.exe
+          if-no-files-found: error

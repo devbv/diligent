@@ -126,6 +126,18 @@ Related operations:
 - `turn/interrupt`: aborts only when a turn is currently running
 - `turn/steer`: queues steering in session manager for a subsequent run boundary
 
+## Lifecycle hook modes
+
+Shell lifecycle hooks support two execution modes:
+
+- `mode: "sync"` (default): runtime waits for the hook result before continuing. Sync hooks can block the turn or return `additionalContext`. The default timeout is 10 seconds unless `timeout` is set.
+- `mode: "async"`: runtime starts the hook and immediately continues the turn. Async hook output is ignored and cannot block or inject context.
+
+Current hook events:
+
+- `UserPromptSubmit`: runs after the user submits a prompt and before the agent turn starts.
+- `Stop`: runs after a successful turn completion.
+
 ## Manual compaction
 
 `thread/compact/start` is explicit user-triggered compaction.

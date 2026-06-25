@@ -19,8 +19,9 @@ import { MarkdownContent } from "../../../src/client/components/MarkdownContent"
 import { MessageList } from "../../../src/client/components/MessageList";
 import { Modal } from "../../../src/client/components/Modal";
 import { ProviderSettingsModal } from "../../../src/client/components/ProviderSettingsModal";
-import { QuestionCard } from "../../../src/client/components/QuestionCard";
+import { isUserInputComplete, QuestionCard } from "../../../src/client/components/QuestionCard";
 import { SlashMenu } from "../../../src/client/components/SlashMenu";
+import { Toast } from "../../../src/client/components/Toast";
 import { ToolBlock } from "../../../src/client/components/ToolBlock";
 import { ToolSettingsModal } from "../../../src/client/components/ToolSettingsModal";
 import { UserMessage } from "../../../src/client/components/UserMessage";
@@ -113,6 +114,108 @@ test("question card always renders custom input row", () => {
 
   expect(html).toContain('placeholder="or type a custom answer…"');
   expect(html).toContain('aria-label="Reason"');
+  expect(html).toContain("flex min-w-0 flex-1 flex-col");
+  expect(html).toContain("min-w-0 truncate bg-transparent");
+  expect(html).toContain('disabled=""');
+});
+
+test("question card enables submit only after every question has an answer", () => {
+  const request = {
+    questions: [
+      {
+        id: "move",
+        header: "Move",
+        question: "How should the character move?",
+        options: [{ label: "Dash", description: "Move fast." }],
+      },
+      {
+        id: "direction",
+        header: "Direction",
+        question: "Which direction should it use?",
+        options: [{ label: "Forward", description: "Move ahead." }],
+      },
+    ],
+  };
+
+  expect(isUserInputComplete(request, {})).toBe(false);
+  expect(isUserInputComplete(request, { move: "Dash" })).toBe(false);
+  expect(isUserInputComplete(request, { move: "Dash", direction: "   " })).toBe(false);
+  expect(isUserInputComplete(request, { move: "Dash", direction: "Forward" })).toBe(true);
+
+  const incompleteHtml = renderToStaticMarkup(
+    <QuestionCard
+      request={request}
+      answers={{ move: "Dash" }}
+      onAnswerChange={() => {}}
+      onSubmit={() => {}}
+      onCancel={() => {}}
+    />,
+  );
+  const completeHtml = renderToStaticMarkup(
+    <QuestionCard
+      request={request}
+      answers={{ move: "Dash", direction: "Forward" }}
+      onAnswerChange={() => {}}
+      onSubmit={() => {}}
+      onCancel={() => {}}
+    />,
+  );
+
+  expect(incompleteHtml).toContain('disabled=""');
+  expect(completeHtml).not.toContain('disabled=""');
+});
+
+test("question card treats empty multi-select answers as incomplete", () => {
+  const request = {
+    questions: [
+      {
+        id: "effects",
+        header: "Effects",
+        question: "Pick effects",
+        allow_multiple: true,
+        options: [
+          { label: "Particles", description: "Add visual feedback." },
+          { label: "Sound", description: "Add audio feedback." },
+        ],
+      },
+    ],
+  };
+
+  expect(isUserInputComplete(request, { effects: [] })).toBe(false);
+  expect(isUserInputComplete(request, { effects: ["   "] })).toBe(false);
+  expect(isUserInputComplete(request, { effects: ["Particles"] })).toBe(true);
+});
+
+test("question card renders multi-select options as clear checkboxes", () => {
+  const html = renderToStaticMarkup(
+    <QuestionCard
+      request={{
+        questions: [
+          {
+            id: "next-steps",
+            header: "Next steps",
+            question: "Choose next steps",
+            options: [
+              { label: "Fix UI", description: "Recommended" },
+              { label: "Wait", description: "No changes" },
+            ],
+            allow_multiple: true,
+            is_secret: false,
+          },
+        ],
+      }}
+      answers={{ "next-steps": ["Fix UI"] }}
+      onAnswerChange={() => {}}
+      onSubmit={() => {}}
+      onCancel={() => {}}
+    />,
+  );
+
+  expect(html).toContain('type="checkbox"');
+  expect(html).toContain('checked=""');
+  expect(html).toContain("✓");
+  expect(html).not.toContain("[x]");
+  expect(html).not.toContain("[ ]");
 });
 
 test("modal renders dialog role", () => {
@@ -124,6 +227,47 @@ test("modal renders dialog role", () => {
 
   expect(html).toContain('role="dialog"');
   expect(html).toContain("Approval required");
+});
+
+test("toast keeps long provider errors bounded and wrappable", () => {
+  const message =
+    "ProviderError: An error occurred while processing your request. Please include the request ID 00f97018-852a-44a9-8da4-ffa4773df9d5 in your message.";
+  const html = renderToStaticMarkup(
+    <Toast toast={{ id: "err-1", kind: "error", message, fatal: false }} onDismiss={() => {}} />,
+  );
+
+  expect(html).toContain('role="alert"');
+  expect(html).toContain("fixed right-4 top-20 z-50");
+  expect(html).toContain("w-[calc(100vw-2rem)]");
+  expect(html).toContain("sm:w-[28rem]");
+  expect(html).toContain("whitespace-pre-wrap break-words");
+  expect(html).toContain("00f97018-852a-44a9-8da4-ffa4773df9d5");
+});
+
+test("message list error cards wrap provider error text", () => {
+  const html = renderToStaticMarkup(
+    <MessageList
+      items={[
+        {
+          id: "err-1",
+          kind: "error",
+          name: "ProviderError",
+          message:
+            "An error occurred while processing your request. Please include the request ID 00f97018-852a-44a9-8da4-ffa4773df9d5 in your message.",
+          fatal: false,
+          timestamp: 1,
+          providerErrorType: "unknown",
+        },
+      ]}
+      threadStatus="idle"
+      hasProvider={true}
+      onOpenProviders={() => {}}
+    />,
+  );
+
+  expect(html).toContain("ProviderError: An error occurred");
+  expect(html).toContain("max-w-full break-words");
+  expect(html).toContain("whitespace-pre-wrap");
 });
 
 test("markdown content renders external links and fenced code blocks cleanly", () => {
@@ -1179,6 +1323,45 @@ test("MessageList shows Reconnect button on auth error", () => {
   );
 
   expect(html).toContain("Reconnect");
+});
+
+test("MessageList renders shrink-safe question prompts in the feed", () => {
+  const html = renderToStaticMarkup(
+    <MessageList
+      items={[]}
+      threadStatus="idle"
+      hasProvider={true}
+      onOpenProviders={() => {}}
+      onQuickConnectChatGPT={() => {}}
+      questionPrompt={{
+        request: {
+          questions: [
+            {
+              id: "build_scope",
+              header: "Build",
+              question: "How far should I build in this pass?",
+              options: [
+                {
+                  label: "Full Prototype",
+                  description: "Add selection, different shooting, and first weapon-specific upgrades.",
+                },
+              ],
+            },
+          ],
+        },
+        answers: { build_scope: "Full Prototype" },
+        onAnswerChange: () => {},
+        onSubmit: () => {},
+        onCancel: () => {},
+      }}
+    />,
+  );
+
+  expect(html).toContain("How far should I build in this pass?");
+  expect(html).toContain('placeholder="or type a custom answer…"');
+  expect(html).toContain("flex min-w-0 flex-1 flex-col");
+  expect(html).toContain("min-w-0 truncate bg-transparent");
+  expect(html).not.toContain("Start a new conversation");
 });
 
 test("MessageList does not show Reconnect button on non-auth error", () => {

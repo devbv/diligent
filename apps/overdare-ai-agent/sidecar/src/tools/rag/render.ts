@@ -44,6 +44,25 @@ const AssetResultSchema = z.object({
   sourceUrl: z.string().optional(),
 });
 
+interface DebugResult {
+  text: string;
+  score: number;
+  title: string;
+  symptom: string;
+  causeClassification: string;
+  verification: string;
+  solution: string;
+  overdareNotes: string;
+  relatedCases: string[];
+  caseId: string;
+  category: string;
+  symptomTags: string[];
+  severity: string;
+  genreTags: string[];
+  overdareVersion: string;
+  keywords: string[];
+}
+
 interface OriginFileResult {
   originFileUrl: string;
   content: string | null;
@@ -94,6 +113,8 @@ function summarizeSearchOutput(source: string, count: number): string {
       return summarizeCount(count, "code match");
     case "assets":
       return summarizeCount(count, "asset");
+    case "debug":
+      return summarizeCount(count, "debug case");
     default:
       return summarizeCount(count, "result");
   }
@@ -184,7 +205,100 @@ function buildAssetGalleryBlock(query: string, results: AssetResult[]): ToolRend
   };
 }
 
+function normalizeDebugForRender(raw: Partial<DebugResult>): DebugResult {
+  return {
+    text: raw.text ?? "",
+    score: raw.score ?? 0,
+    title: raw.title ?? raw.symptom ?? "(untitled)",
+    symptom: raw.symptom ?? "",
+    causeClassification: raw.causeClassification ?? "",
+    verification: raw.verification ?? "",
+    solution: raw.solution ?? "",
+    overdareNotes: raw.overdareNotes ?? "",
+    relatedCases: raw.relatedCases ?? [],
+    caseId: raw.caseId ?? "(unknown)",
+    category: raw.category ?? "(unknown)",
+    symptomTags: raw.symptomTags ?? [],
+    severity: raw.severity ?? "(unknown)",
+    genreTags: raw.genreTags ?? [],
+    overdareVersion: raw.overdareVersion ?? "",
+    keywords: raw.keywords ?? [],
+  };
+}
+
+function buildDebugPreviewBlock(result: DebugResult): ToolRenderBlock[] {
+  const blocks: ToolRenderBlock[] = [
+    {
+      type: "key_value",
+      title: "Top debug case",
+      items: [
+        { key: "caseId", value: result.caseId },
+        { key: "category", value: result.category },
+        { key: "severity", value: result.severity },
+        { key: "score", value: String(result.score) },
+      ],
+    },
+  ];
+
+  if (nonEmpty(result.symptom)) {
+    blocks.push({ type: "text", title: "Symptom", text: result.symptom });
+  }
+  if (nonEmpty(result.causeClassification)) {
+    blocks.push({ type: "text", title: "Cause", text: result.causeClassification });
+  }
+  if (nonEmpty(result.solution)) {
+    blocks.push({ type: "text", title: "Solution", text: result.solution });
+  }
+  if (result.symptomTags.length > 0) {
+    blocks.push({ type: "text", title: "Symptom tags", text: result.symptomTags.join(", ") });
+  }
+
+  return blocks;
+}
+
 export function buildSearchRender(args: { source: string; query: string }, results: RagResult[]): ToolRenderPayload {
+  if (args.source === "debug") {
+    const rawDebug = results as unknown as Partial<DebugResult>[];
+    const debugResults = rawDebug.map(normalizeDebugForRender);
+    const rows = debugResults
+      .slice(0, 10)
+      .map((entry) => [
+        clip(entry.caseId, 12),
+        clip(entry.title, 40),
+        clip(entry.category, 12),
+        clip(entry.severity, 8),
+      ]);
+    return {
+      inputSummary: clip(`${args.source}: ${args.query}`, 100),
+      outputSummary: summarizeSearchOutput(args.source, debugResults.length),
+      blocks: [
+        {
+          type: "key_value",
+          title: "OVERDARE search",
+          items: [
+            { key: "source", value: args.source },
+            { key: "query", value: args.query },
+            { key: "results", value: String(debugResults.length) },
+          ],
+        },
+        ...(debugResults.length === 0
+          ? [{ type: "summary" as const, text: "No results found.", tone: "warning" as const }]
+          : []),
+        ...(rows.length > 0
+          ? [
+              {
+                type: "table" as const,
+                title: "Debug cases",
+                columns: ["Case", "Symptom", "Category", "Severity"],
+                rows,
+              },
+            ]
+          : []),
+        ...(debugResults[0] ? buildDebugPreviewBlock(debugResults[0]) : []),
+      ],
+    };
+  }
+
   if (args.source === "assets") {
     const rawAssets = results as unknown as Partial<AssetResult>[];
     const assetResults = rawAssets.map((raw) => {
