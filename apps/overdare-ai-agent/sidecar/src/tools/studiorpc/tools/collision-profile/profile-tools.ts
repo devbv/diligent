@@ -109,8 +109,24 @@ async function editCollisionProfile(
         const data = getWorldProfileData(document);
         if (parsed.customResponses !== undefined) validateCustomResponses(parsed.customResponses, data);
 
-        if (isDefaultProfileName(parsed.name)) {
+        if (parsed.profileType === "default") {
           return updateDefaultProfile(parsed, data);
+        }
+
+        if (
+          parsed.collisionEnabled === undefined &&
+          parsed.objectTypeName === undefined &&
+          parsed.customResponses === undefined &&
+          parsed.helpMessage === undefined
+        ) {
+          throw new CollisionToolError("NO_UPDATES", "At least one custom profile field must be provided.");
+        }
+
+        if (isDefaultProfileName(parsed.name)) {
+          throw new CollisionToolError(
+            "PROTECTED_PROFILE",
+            "Default profiles require profileType=default and only customResponses can be overridden.",
+          );
         }
 
         const profiles = ensureRecordArray(data, "Profiles");
@@ -153,18 +169,11 @@ function updateDefaultProfile(
   parsed: EditProfileInput,
   data: WorldProfileData,
 ): { updated: Record<string, unknown>; storedIn: "EditProfiles" } {
-  if (
-    parsed.collisionEnabled !== undefined ||
-    parsed.objectTypeName !== undefined ||
-    parsed.helpMessage !== undefined
-  ) {
-    throw new CollisionToolError(
-      "PROTECTED_PROFILE",
-      "Default profiles only allow customResponses updates through EditProfiles. Retry with only name and customResponses.",
-    );
+  if (parsed.profileType !== "default") {
+    throw new CollisionToolError("PROTECTED_PROFILE", "Default profile updates require profileType=default.");
   }
-  if (parsed.customResponses === undefined) {
-    throw new CollisionToolError("NO_UPDATES", "Default profile update requires customResponses.");
+  if (!isDefaultProfileName(parsed.name)) {
+    throw new CollisionToolError("PROFILE_NOT_FOUND", `Default collision profile not found: ${parsed.name}`);
   }
 
   const editProfile = ensureEditProfile(data, parsed.name);
@@ -244,7 +253,7 @@ export function createCollisionProfileCrudTools(
     {
       name: "edit_collision_profile",
       description:
-        "Update a custom collision profile, or update customResponses for a default profile through EditProfiles.",
+        "Update collision profiles. Use profileType=default to override only customResponses through EditProfiles; use profileType=custom to edit creator-defined profiles.",
       parameters: editProfileParams,
       async execute(args, ctx) {
         return editCollisionProfile(args, ctx, cwd, writeLock, applyLevelChanges);

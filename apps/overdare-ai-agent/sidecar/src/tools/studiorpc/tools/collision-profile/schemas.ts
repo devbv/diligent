@@ -61,31 +61,33 @@ export const createProfileParams = z
   })
   .strict();
 
-export const editProfileParams = z
+const editDefaultProfileParams = z
   .object({
-    name: nameSchema.describe("Collision profile name to update."),
-    collisionEnabled: collisionEnabledSchema
-      .optional()
-      .describe("Custom profiles only. For default profiles, omit this field."),
-    objectTypeName: z
-      .string()
-      .min(1)
-      .optional()
-      .describe("Custom profiles only. For default profiles, omit this field."),
+    profileType: z
+      .literal("default")
+      .describe("Use for default engine profiles. Only customResponses can be overridden."),
+    name: nameSchema.describe("Default collision profile name to override through EditProfiles."),
     customResponses: z
       .array(customResponseSchema)
-      .optional()
-      .describe("For default profiles, this is the only editable field and is stored through EditProfiles."),
+      .describe("Complete customResponses override for the default profile. Stored in EditProfiles."),
+  })
+  .strict();
+
+const editCustomProfileParams = z
+  .object({
+    profileType: z.literal("custom").describe("Use for creator-defined profiles stored in WorldProfileData.Profiles."),
+    name: nameSchema.describe("Collision profile name to update."),
+    collisionEnabled: collisionEnabledSchema.optional(),
+    objectTypeName: z.string().min(1).optional().describe("Object type channel name for this custom profile."),
+    customResponses: z.array(customResponseSchema).optional(),
     helpMessage: z.string().nullable().optional(),
   })
-  .strict()
-  .refine(
-    (value) =>
-      value.collisionEnabled !== undefined ||
-      value.objectTypeName !== undefined ||
-      value.customResponses !== undefined ||
-      value.helpMessage !== undefined,
-    { message: "At least one profile field must be provided." },
+  .strict();
+
+export const editProfileParams = z
+  .discriminatedUnion("profileType", [editDefaultProfileParams, editCustomProfileParams])
+  .describe(
+    "Use profileType=default to override only customResponses in EditProfiles. Use profileType=custom to edit creator-defined profiles.",
   );
 
 export const deleteProfileParams = z

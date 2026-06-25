@@ -307,6 +307,7 @@ describe("collision channel tools", () => {
 
     await tools.get("edit_collision_profile")!.execute(
       {
+        profileType: "custom",
         name: "ProjectileProfile",
         objectTypeName: "Pawn",
       },
@@ -527,6 +528,7 @@ describe("collision profile tools", () => {
 
     await tools.get("edit_collision_profile")!.execute(
       {
+        profileType: "default",
         name: "BlockAll",
         customResponses: [{ channel: "Bullet", response: "ECR_Overlap" }],
       },
@@ -535,6 +537,7 @@ describe("collision profile tools", () => {
 
     await tools.get("edit_collision_profile")!.execute(
       {
+        profileType: "custom",
         name: "Ghost",
         collisionEnabled: "QueryAndPhysics",
         objectTypeName: "WorldDynamic",
@@ -602,8 +605,19 @@ describe("collision profile tools", () => {
     });
     const tools = await loadCollisionTools(cwd);
 
+    expect(() =>
+      tools.get("edit_collision_profile")!.parameters.parse({
+        profileType: "default",
+        name: "BlockAll",
+        collisionEnabled: "QueryAndPhysics",
+        objectTypeName: "WorldStatic",
+        customResponses: [{ channel: "Bullet", response: "ECR_Ignore" }],
+      }),
+    ).toThrow();
+
     const rejectedResult = await tools.get("edit_collision_profile")!.execute(
       {
+        profileType: "custom",
         name: "BlockAll",
         collisionEnabled: "QueryAndPhysics",
         objectTypeName: "WorldStatic",
@@ -618,6 +632,7 @@ describe("collision profile tools", () => {
 
     const result = await tools.get("edit_collision_profile")!.execute(
       {
+        profileType: "default",
         name: "BlockAll",
         customResponses: [
           { channel: "WorldStatic", response: "ECR_Block" },
@@ -708,6 +723,7 @@ describe("collision profile tools", () => {
 
     const defaultFieldEditResult = await tools.get("edit_collision_profile")!.execute(
       {
+        profileType: "custom",
         name: "BlockAll",
         collisionEnabled: "QueryOnly",
       },
