@@ -61,6 +61,7 @@ export async function createStudioRpcTools(ctx: {
 }): Promise<Tool[]> {
   const writeLock = createWriteLock();
   const callRpc = ctx.callRpc ?? call;
+  const applyLevelChanges = () => callRpc("level.apply", {});
 
   const tools: Tool[] = [
     wrapTool(createInstanceReadTool(ctx.cwd), ctx.host),
@@ -72,7 +73,7 @@ export async function createStudioRpcTools(ctx: {
     wrapTool(createScriptAddTool(ctx.cwd, writeLock), ctx.host),
     wrapTool(createScriptDeleteTool(ctx.cwd, writeLock), ctx.host),
     wrapTool(createScriptEditTool(ctx.cwd, writeLock), ctx.host),
-    ...createCollisionProfileTools(ctx.cwd, writeLock).map((tool) => wrapTool(tool, ctx.host)),
+    ...createCollisionProfileTools(ctx.cwd, writeLock, applyLevelChanges).map((tool) => wrapTool(tool, ctx.host)),
     createHubWorldLookupTool(),
     createHubWorldCategoriesListTool(),
   ];

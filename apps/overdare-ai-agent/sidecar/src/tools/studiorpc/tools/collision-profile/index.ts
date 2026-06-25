@@ -5,6 +5,15 @@ import type { WriteLock } from "../../write-lock";
 import { createCollisionChannelTools } from "./channel-tools";
 import { createCollisionProfileCrudTools } from "./profile-tools";
 
-export function createCollisionProfileTools(cwd: string, writeLock: WriteLock): Tool[] {
-  return [...createCollisionChannelTools(cwd, writeLock), ...createCollisionProfileCrudTools(cwd, writeLock)];
+export type ApplyLevelChanges = () => Promise<unknown>;
+
+export function createCollisionProfileTools(
+  cwd: string,
+  writeLock: WriteLock,
+  applyLevelChanges: ApplyLevelChanges,
+): Tool[] {
+  return [
+    ...createCollisionChannelTools(cwd, writeLock, applyLevelChanges),
+    ...createCollisionProfileCrudTools(cwd, writeLock, applyLevelChanges),
+  ];
 }

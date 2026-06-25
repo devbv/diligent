@@ -1,7 +1,7 @@
 // @summary Shared result and approval helpers for collision profile tools.
 
 import { z } from "zod";
-import type { ToolContext, ToolResult } from "../../types";
+import type { ToolContext, ToolRenderPayload, ToolResult } from "../../types";
 
 export class CollisionToolError extends Error {
   constructor(
@@ -13,9 +13,14 @@ export class CollisionToolError extends Error {
   }
 }
 
-export function okResult(payload: unknown, metadata: Record<string, unknown> = {}): ToolResult {
+export function okResult(
+  payload: unknown,
+  metadata: Record<string, unknown> = {},
+  render?: ToolRenderPayload,
+): ToolResult {
   return {
     output: typeof payload === "string" ? payload : JSON.stringify(payload, null, 2),
+    render,
     metadata: { ...metadata, result: payload },
   };
 }

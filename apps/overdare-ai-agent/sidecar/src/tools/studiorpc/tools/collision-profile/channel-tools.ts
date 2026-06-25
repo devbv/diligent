@@ -3,6 +3,8 @@
 import type { Tool, ToolContext, ToolResult } from "../../types";
 import type { WriteLock } from "../../write-lock";
 import { readAndWriteOvdrjm, readOvdrjmDocument } from "../ovdrjm-utils";
+import type { ApplyLevelChanges } from ".";
+import { buildCollisionChannelsRender } from "./render";
 import { approveWrite, CollisionToolError, errorResult, okResult } from "./results";
 import {
   addChannelParams,
@@ -33,7 +35,7 @@ function getCollisionChannels(cwd: string): ToolResult {
     const { ovdrjmPath, document } = readOvdrjmDocument(cwd);
     const data = getWorldProfileData(document);
     const payload = buildChannelsPayload(data);
-    return okResult(payload, { toolName: "get_collision_channels", ovdrjmPath });
+    return okResult(payload, { toolName: "get_collision_channels", ovdrjmPath }, buildCollisionChannelsRender(payload));
   } catch (error) {
     return errorResult(error, "get_collision_channels");
   }
@@ -44,6 +46,7 @@ async function addCollisionChannel(
   ctx: ToolContext,
   cwd: string,
   writeLock: WriteLock,
+  applyLevelChanges: ApplyLevelChanges,
 ): Promise<ToolResult> {
   const toolName = "add_collision_channel";
   try {
@@ -68,8 +71,9 @@ async function addCollisionChannel(
         channels.push(added);
         return { added };
       });
+      const levelApplyResult = await applyLevelChanges();
       return okResult(
-        { channel: fileResult.added, ovdrjmPath: fileResult.ovdrjmPath },
+        { channel: fileResult.added, ovdrjmPath: fileResult.ovdrjmPath, levelApplyResult },
         { toolName, ovdrjmPath: fileResult.ovdrjmPath },
       );
     } finally {
@@ -107,6 +111,7 @@ async function updateCollisionChannel(
   ctx: ToolContext,
   cwd: string,
   writeLock: WriteLock,
+  applyLevelChanges: ApplyLevelChanges,
 ): Promise<ToolResult> {
   const toolName = "update_collision_channel";
   try {
@@ -164,8 +169,14 @@ async function updateCollisionChannel(
           sync: { ...customResponseSync, objectTypeNamesUpdated: objectTypeSync.profilesUpdated },
         };
       });
+      const levelApplyResult = await applyLevelChanges();
       return okResult(
-        { channel: fileResult.updated, sync: fileResult.sync, ovdrjmPath: fileResult.ovdrjmPath },
+        {
+          channel: fileResult.updated,
+          sync: fileResult.sync,
+          ovdrjmPath: fileResult.ovdrjmPath,
+          levelApplyResult,
+        },
         { toolName, ovdrjmPath: fileResult.ovdrjmPath },
       );
     } finally {
@@ -181,6 +192,7 @@ async function deleteCollisionChannel(
   ctx: ToolContext,
   cwd: string,
   writeLock: WriteLock,
+  applyLevelChanges: ApplyLevelChanges,
 ): Promise<ToolResult> {
   const toolName = "delete_collision_channel";
   try {
@@ -224,8 +236,14 @@ async function deleteCollisionChannel(
         const cleanup = removeCustomResponseChannel(data, deletedName);
         return { deleted: target.entry, cleanup };
       });
+      const levelApplyResult = await applyLevelChanges();
       return okResult(
-        { channel: fileResult.deleted, cleanup: fileResult.cleanup, ovdrjmPath: fileResult.ovdrjmPath },
+        {
+          channel: fileResult.deleted,
+          cleanup: fileResult.cleanup,
+          ovdrjmPath: fileResult.ovdrjmPath,
+          levelApplyResult,
+        },
         { toolName, ovdrjmPath: fileResult.ovdrjmPath },
       );
     } finally {
@@ -236,7 +254,11 @@ async function deleteCollisionChannel(
   }
 }
 
-export function createCollisionChannelTools(cwd: string, writeLock: WriteLock): Tool[] {
+export function createCollisionChannelTools(
+  cwd: string,
+  writeLock: WriteLock,
+  applyLevelChanges: ApplyLevelChanges,
+): Tool[] {
   return [
     {
       name: "get_collision_channels",
@@ -251,7 +273,7 @@ export function createCollisionChannelTools(cwd: string, writeLock: WriteLock): 
       description: "Add a custom ECC_GameTraceChannel collision channel to WorldProfileData.DefaultChannelResponses.",
       parameters: addChannelParams,
       async execute(args, ctx) {
-        return addCollisionChannel(args, ctx, cwd, writeLock);
+        return addCollisionChannel(args, ctx, cwd, writeLock, applyLevelChanges);
       },
     },
     {
@@ -260,7 +282,7 @@ export function createCollisionChannelTools(cwd: string, writeLock: WriteLock): 
         "Update a custom collision channel and synchronize renamed channel references in profile customResponses.",
       parameters: updateChannelParams,
       async execute(args, ctx) {
-        return updateCollisionChannel(args, ctx, cwd, writeLock);
+        return updateCollisionChannel(args, ctx, cwd, writeLock, applyLevelChanges);
       },
     },
     {
@@ -269,7 +291,7 @@ export function createCollisionChannelTools(cwd: string, writeLock: WriteLock): 
         "Delete a custom collision channel and remove matching channel responses from all collision profiles.",
       parameters: deleteChannelParams,
       async execute(args, ctx) {
-        return deleteCollisionChannel(args, ctx, cwd, writeLock);
+        return deleteCollisionChannel(args, ctx, cwd, writeLock, applyLevelChanges);
       },
     },
   ];

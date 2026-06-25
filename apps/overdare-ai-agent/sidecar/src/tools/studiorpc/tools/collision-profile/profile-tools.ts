@@ -3,6 +3,8 @@
 import type { Tool, ToolContext, ToolResult } from "../../types";
 import type { WriteLock } from "../../write-lock";
 import { readAndWriteOvdrjm, readOvdrjmDocument } from "../ovdrjm-utils";
+import type { ApplyLevelChanges } from ".";
+import { buildCollisionProfilesRender } from "./render";
 import { approveWrite, CollisionToolError, errorResult, okResult } from "./results";
 import {
   type CreateProfileInput,
@@ -29,7 +31,8 @@ function getCollisionProfiles(cwd: string): ToolResult {
   try {
     const { ovdrjmPath, document } = readOvdrjmDocument(cwd);
     const data = getWorldProfileData(document);
-    return okResult(buildProfilesPayload(data), { toolName: "get_collision_profiles", ovdrjmPath });
+    const payload = buildProfilesPayload(data);
+    return okResult(payload, { toolName: "get_collision_profiles", ovdrjmPath }, buildCollisionProfilesRender(payload));
   } catch (error) {
     return errorResult(error, "get_collision_profiles");
   }
@@ -40,6 +43,7 @@ async function createCollisionProfile(
   ctx: ToolContext,
   cwd: string,
   writeLock: WriteLock,
+  applyLevelChanges: ApplyLevelChanges,
 ): Promise<ToolResult> {
   const toolName = "create_collision_profile";
   try {
@@ -65,8 +69,9 @@ async function createCollisionProfile(
         profiles.push(profile);
         return { created: profile };
       });
+      const levelApplyResult = await applyLevelChanges();
       return okResult(
-        { profile: fileResult.created, ovdrjmPath: fileResult.ovdrjmPath },
+        { profile: fileResult.created, ovdrjmPath: fileResult.ovdrjmPath, levelApplyResult },
         { toolName, ovdrjmPath: fileResult.ovdrjmPath },
       );
     } finally {
@@ -90,6 +95,7 @@ async function editCollisionProfile(
   ctx: ToolContext,
   cwd: string,
   writeLock: WriteLock,
+  applyLevelChanges: ApplyLevelChanges,
 ): Promise<ToolResult> {
   const toolName = "edit_collision_profile";
   try {
@@ -125,8 +131,14 @@ async function editCollisionProfile(
 
         return { updated: target.profile, storedIn: "Profiles" };
       });
+      const levelApplyResult = await applyLevelChanges();
       return okResult(
-        { profile: fileResult.updated, storedIn: fileResult.storedIn, ovdrjmPath: fileResult.ovdrjmPath },
+        {
+          profile: fileResult.updated,
+          storedIn: fileResult.storedIn,
+          ovdrjmPath: fileResult.ovdrjmPath,
+          levelApplyResult,
+        },
         { toolName, ovdrjmPath: fileResult.ovdrjmPath },
       );
     } finally {
@@ -165,6 +177,7 @@ async function deleteCollisionProfile(
   ctx: ToolContext,
   cwd: string,
   writeLock: WriteLock,
+  applyLevelChanges: ApplyLevelChanges,
 ): Promise<ToolResult> {
   const toolName = "delete_collision_profile";
   try {
@@ -193,8 +206,9 @@ async function deleteCollisionProfile(
         profiles.splice(target.index, 1);
         return { deleted: target.profile };
       });
+      const levelApplyResult = await applyLevelChanges();
       return okResult(
-        { profile: fileResult.deleted, ovdrjmPath: fileResult.ovdrjmPath },
+        { profile: fileResult.deleted, ovdrjmPath: fileResult.ovdrjmPath, levelApplyResult },
         { toolName, ovdrjmPath: fileResult.ovdrjmPath },
       );
     } finally {
@@ -205,7 +219,11 @@ async function deleteCollisionProfile(
   }
 }
 
-export function createCollisionProfileCrudTools(cwd: string, writeLock: WriteLock): Tool[] {
+export function createCollisionProfileCrudTools(
+  cwd: string,
+  writeLock: WriteLock,
+  applyLevelChanges: ApplyLevelChanges,
+): Tool[] {
   return [
     {
       name: "get_collision_profiles",
@@ -220,7 +238,7 @@ export function createCollisionProfileCrudTools(cwd: string, writeLock: WriteLoc
       description: "Create a custom collision profile in WorldProfileData.Profiles.",
       parameters: createProfileParams,
       async execute(args, ctx) {
-        return createCollisionProfile(args, ctx, cwd, writeLock);
+        return createCollisionProfile(args, ctx, cwd, writeLock, applyLevelChanges);
       },
     },
     {
@@ -229,7 +247,7 @@ export function createCollisionProfileCrudTools(cwd: string, writeLock: WriteLoc
         "Update a custom collision profile, or update customResponses for a default profile through EditProfiles.",
       parameters: editProfileParams,
       async execute(args, ctx) {
-        return editCollisionProfile(args, ctx, cwd, writeLock);
+        return editCollisionProfile(args, ctx, cwd, writeLock, applyLevelChanges);
       },
     },
     {
@@ -237,7 +255,7 @@ export function createCollisionProfileCrudTools(cwd: string, writeLock: WriteLoc
       description: "Delete a custom collision profile from WorldProfileData.Profiles.",
       parameters: deleteProfileParams,
       async execute(args, ctx) {
-        return deleteCollisionProfile(args, ctx, cwd, writeLock);
+        return deleteCollisionProfile(args, ctx, cwd, writeLock, applyLevelChanges);
       },
     },
   ];

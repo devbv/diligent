@@ -32,8 +32,16 @@ function readWorldProfileData(cwd: string): Record<string, unknown> {
   return parsed.WorldProfileData;
 }
 
-async function loadCollisionTools(cwd: string): Promise<Map<string, Tool>> {
-  const provider = createStudioRpcToolProvider();
+async function loadCollisionTools(
+  cwd: string,
+  rpcCalls: Array<{ method: string; params?: Record<string, unknown> }> = [],
+): Promise<Map<string, Tool>> {
+  const provider = createStudioRpcToolProvider({
+    callRpc: async (method, params) => {
+      rpcCalls.push({ method, params });
+      return { ok: true };
+    },
+  });
   const tools = await provider.createTools({
     cwd,
     host: { approve: async () => "once" },
@@ -127,6 +135,10 @@ describe("collision channel tools", () => {
       customChannelCount: 1,
       totalChannelCount: 11,
     });
+    expect(channelResult.render).toMatchObject({
+      inputSummary: "list collision channels",
+      outputSummary: "11 channels (1 custom)",
+    });
     expect(profileResult.metadata?.result).toMatchObject({
       defaultProfiles: expect.arrayContaining([
         expect.objectContaining({
@@ -139,6 +151,10 @@ describe("collision channel tools", () => {
       defaultProfileCount: 22,
       customProfileCount: 1,
       totalProfileCount: 23,
+    });
+    expect(profileResult.render).toMatchObject({
+      inputSummary: "list collision profiles",
+      outputSummary: "23 profiles (1 custom)",
     });
   });
 
@@ -168,7 +184,8 @@ describe("collision channel tools", () => {
         },
       },
     });
-    const tools = await loadCollisionTools(cwd);
+    const rpcCalls: Array<{ method: string; params?: Record<string, unknown> }> = [];
+    const tools = await loadCollisionTools(cwd, rpcCalls);
     const before = readOvdrjmRaw(cwd);
 
     const channelResult = await tools.get("get_collision_channels")!.execute({}, toolContext());
@@ -181,6 +198,7 @@ describe("collision channel tools", () => {
       customProfiles: [expect.objectContaining({ name: "PlayerProfile" })],
     });
     expect(readOvdrjmRaw(cwd)).toBe(before);
+    expect(rpcCalls).toEqual([]);
   });
 
   test("lists, adds, renames, and deletes custom channels with profile response synchronization", async () => {
@@ -223,7 +241,8 @@ describe("collision channel tools", () => {
         },
       },
     });
-    const tools = await loadCollisionTools(cwd);
+    const rpcCalls: Array<{ method: string; params?: Record<string, unknown> }> = [];
+    const tools = await loadCollisionTools(cwd, rpcCalls);
 
     const listResult = await tools.get("get_collision_channels")!.execute({}, toolContext());
     expect(listResult.metadata?.result).toMatchObject({
@@ -241,6 +260,7 @@ describe("collision channel tools", () => {
       },
       toolContext(),
     );
+    expect(rpcCalls).toEqual([{ method: "level.apply", params: {} }]);
 
     const updateResult = await tools.get("update_collision_channel")!.execute(
       {
@@ -252,6 +272,7 @@ describe("collision channel tools", () => {
     );
     expect(updateResult.metadata?.result).toMatchObject({
       sync: { profilesUpdated: 2, responsesUpdated: 2, objectTypeNamesUpdated: 1 },
+      levelApplyResult: { ok: true },
     });
 
     let world = readWorldProfileData(cwd);
@@ -297,7 +318,14 @@ describe("collision channel tools", () => {
       .execute({ channel: "ECC_GameTraceChannel1" }, toolContext());
     expect(deleteAfterProfileUpdateResult.metadata?.result).toMatchObject({
       cleanup: { profilesUpdated: 2, responsesRemoved: 2 },
+      levelApplyResult: { ok: true },
     });
+    expect(rpcCalls).toEqual([
+      { method: "level.apply", params: {} },
+      { method: "level.apply", params: {} },
+      { method: "level.apply", params: {} },
+      { method: "level.apply", params: {} },
+    ]);
 
     world = readWorldProfileData(cwd);
     expect(world.DefaultChannelResponses).not.toContainEqual(expect.objectContaining({ name: "Projectile" }));
