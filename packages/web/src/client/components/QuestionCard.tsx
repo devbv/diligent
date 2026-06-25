@@ -24,19 +24,42 @@ function toStringArray(value: string | string[] | undefined): string[] {
   return [];
 }
 
+const choiceFocusRing =
+  "peer-focus-visible:ring-[3px] peer-focus-visible:ring-[#2b8cff]/30 peer-focus-visible:ring-offset-1 peer-focus-visible:ring-offset-[#11131a]";
+const choiceMarkerBase =
+  "mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center border-[1.5px] transition-colors duration-150";
+const uncheckedChoiceClasses = "border-[#8d96a3] bg-transparent text-transparent group-hover:border-[#c7d0dc]";
+const checkedChoiceClasses = "border-[#2b8cff] bg-[#2b8cff] text-white shadow-[0_0_0_1px_rgba(43,140,255,0.35)]";
+
 function ChoiceMarker({ checked, allowMultiple }: { checked: boolean; allowMultiple: boolean }) {
   if (allowMultiple) {
     return (
       <span
         aria-hidden="true"
         className={cn(
-          "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border text-[13px] font-semibold leading-none transition peer-focus-visible:ring-2 peer-focus-visible:ring-accent peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-[#11131a]",
-          checked
-            ? "border-success bg-success text-bg shadow-[0_0_0_1px_rgba(34,197,94,0.25)]"
-            : "border-border-strong/100 bg-transparent text-transparent",
+          choiceMarkerBase,
+          choiceFocusRing,
+          "rounded-[2px]",
+          checked ? checkedChoiceClasses : uncheckedChoiceClasses,
         )}
       >
-        {checked ? "✓" : ""}
+        {checked ? (
+          <svg
+            aria-hidden="true"
+            className="h-3 w-3"
+            fill="none"
+            viewBox="0 0 16 16"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              d="M3.5 8.4 6.7 11.2 12.5 4.8"
+              stroke="currentColor"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2.2"
+            />
+          </svg>
+        ) : null}
       </span>
     );
   }
@@ -45,11 +68,13 @@ function ChoiceMarker({ checked, allowMultiple }: { checked: boolean; allowMulti
     <span
       aria-hidden="true"
       className={cn(
-        "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition peer-focus-visible:ring-2 peer-focus-visible:ring-accent peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-[#11131a]",
-        checked ? "border-accent" : "border-border-strong/100",
+        choiceMarkerBase,
+        choiceFocusRing,
+        "rounded-full",
+        checked ? checkedChoiceClasses : uncheckedChoiceClasses,
       )}
     >
-      {checked ? <span className="h-2 w-2 rounded-full bg-accent" /> : null}
+      {checked ? <span className="h-1.5 w-1.5 rounded-full bg-white" /> : null}
     </span>
   );
 }
@@ -95,7 +120,7 @@ export function QuestionCard({ request, answers, onAnswerChange, onSubmit, onCan
                       return (
                         <label
                           key={opt.label}
-                          className={`flex w-full cursor-pointer items-start gap-3 rounded-lg px-3 py-2 text-left text-sm transition ${
+                          className={`group flex w-full cursor-pointer items-start gap-3 rounded-lg px-3 py-2 text-left text-sm transition ${
                             checked ? "bg-white/5 text-text" : "text-muted hover:bg-white/[.03] hover:text-text"
                           }`}
                         >
@@ -129,11 +154,14 @@ export function QuestionCard({ request, answers, onAnswerChange, onSubmit, onCan
                   </div>
                 ) : null}
 
-                <div className="flex items-center gap-3 px-2 py-1">
+                <div className={cn("flex gap-3", hasOptions ? "items-start px-3 py-2" : "items-center px-2 py-1")}>
                   {hasOptions ? (
-                    <span className="w-4 shrink-0 text-right font-mono text-xs opacity-40">
-                      {question.options.length + 1}
-                    </span>
+                    <>
+                      <span className="w-4 shrink-0 pt-0.5 text-right font-mono text-xs opacity-40">
+                        {question.options.length + 1}
+                      </span>
+                      <span aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
+                    </>
                   ) : null}
                   <div className="flex min-w-0 flex-1 flex-col rounded-lg bg-transparent">
                     <input
