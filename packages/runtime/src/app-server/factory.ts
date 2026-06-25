@@ -3,7 +3,7 @@ import { getModelInfoList, resolveModel } from "@diligent/core/llm/models";
 import type { ProviderName } from "@diligent/core/llm/types";
 import { MODE_SYSTEM_PROMPT_SUFFIXES, type Mode, PLAN_MODE_ALLOWED_TOOLS } from "../agent/mode";
 import { RuntimeAgent } from "../agent/runtime-agent";
-import { applyConsentPatch, resolveConsentState } from "../config/consent";
+import { applyConsentPatch, refreshPrivacyPolicyUrl, resolveConsentState } from "../config/consent";
 import type { RuntimeConfig } from "../config/runtime";
 import { saveGlobalConsent, saveGlobalModel } from "../config/writer";
 import { type DiligentPaths, ensureDiligentDir } from "../infrastructure";
@@ -124,14 +124,17 @@ export function createAppServerConfig(opts: CreateAppServerConfigOptions): Dilig
   const config: DiligentAppServerConfig = {
     cwd,
     defaultEffort: initialEffort,
-    getInitializeResult: async () => ({
-      cwd,
-      mode: runtimeConfig.mode,
-      effort: initialEffort,
-      currentModel: runtimeConfig.model?.id,
-      availableModels: modelInfoList,
-      consent: resolveConsentState(runtimeConfig.diligent.consent),
-    }),
+    getInitializeResult: async () => {
+      await refreshPrivacyPolicyUrl(); // resolve the versioned privacy-policy URL (3s-bounded, cached)
+      return {
+        cwd,
+        mode: runtimeConfig.mode,
+        effort: initialEffort,
+        currentModel: runtimeConfig.model?.id,
+        availableModels: modelInfoList,
+        consent: resolveConsentState(runtimeConfig.diligent.consent),
+      };
+    },
     resolvePaths: (requestCwd) => ensureDiligentDir(requestCwd),
     createAgent: (args: CreateAgentArgs): Promise<RuntimeAgent> =>
       createRuntimeAgent({ request: args, runtimeConfig, getPaths, bundledToolProviders }),

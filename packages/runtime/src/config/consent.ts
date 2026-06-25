@@ -8,18 +8,49 @@ type StoredConsent = NonNullable<DiligentConfig["consent"]>;
 /** Consent toggle default: service improvement ON (opt-out). */
 export const DEFAULT_SERVICE_IMPROVEMENT = true;
 
+/** Base privacy-policy URL; `?version=<latestVersion>` is appended once resolved. */
+export const PRIVACY_POLICY_BASE_URL = "https://www.overdare.com/legal/privacy";
+/** Manifest listing privacy-policy versions; `latestVersion` drives the surfaced URL. */
+export const PRIVACY_POLICY_LATEST_URL = "https://static.overdare.com/legal/privacy/en/latest.json";
+
+let cachedPrivacyPolicyUrl: string | undefined;
+
 /**
- * Placeholder privacy-policy URL surfaced to clients until the real URL is wired in.
- * TODO(OVDR-11475): replace with the deployed privacy-policy URL (or set `consent.privacyPolicyUrl` in config).
+ * Resolve the privacy-policy URL by reading {@link PRIVACY_POLICY_LATEST_URL} for `latestVersion`
+ * and building `<base>?version=<latestVersion>`. Cached after the first success; bounded by a 3s
+ * timeout and falls back to the base URL (uncached → retried) on any failure. Awaited from
+ * `getInitializeResult` so clients receive the versioned URL.
  */
-export const DEFAULT_PRIVACY_POLICY_URL = "https://overdare.com/privacy";
+export async function refreshPrivacyPolicyUrl(): Promise<string> {
+  if (cachedPrivacyPolicyUrl) return cachedPrivacyPolicyUrl;
+  try {
+    const res = await fetch(PRIVACY_POLICY_LATEST_URL, { signal: AbortSignal.timeout(3000) });
+    const data = res.ok ? ((await res.json()) as { latestVersion?: unknown }) : undefined;
+    if (data && typeof data.latestVersion === "string" && data.latestVersion) {
+      cachedPrivacyPolicyUrl = `${PRIVACY_POLICY_BASE_URL}?version=${encodeURIComponent(data.latestVersion)}`;
+    }
+  } catch {
+    // Network/timeout/parse failure — leave uncached so the next call retries.
+  }
+  return cachedPrivacyPolicyUrl ?? PRIVACY_POLICY_BASE_URL;
+}
+
+/** Best-known privacy-policy URL (cached versioned URL, else the base). Synchronous. */
+export function currentPrivacyPolicyUrl(): string {
+  return cachedPrivacyPolicyUrl ?? PRIVACY_POLICY_BASE_URL;
+}
+
+/** Test-only: clear the cached privacy-policy URL so tests stay order-independent. */
+export function resetPrivacyPolicyUrlCache(): void {
+  cachedPrivacyPolicyUrl = undefined;
+}
 
 /** Map stored config consent → resolved ConsentState exposed over the protocol. */
 export function resolveConsentState(stored: StoredConsent | undefined): ConsentState {
   return {
     noticeAcknowledged: stored?.noticeAcknowledgedVersion === CONSENT_NOTICE_VERSION,
     serviceImprovement: stored?.serviceImprovement ?? DEFAULT_SERVICE_IMPROVEMENT,
-    privacyPolicyUrl: stored?.privacyPolicyUrl ?? DEFAULT_PRIVACY_POLICY_URL,
+    privacyPolicyUrl: stored?.privacyPolicyUrl ?? currentPrivacyPolicyUrl(),
   };
 }
 

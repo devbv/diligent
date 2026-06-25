@@ -94,6 +94,7 @@ export {
   loadRuntimeConfig,
   mergeConfig,
   normalizeStoredToolsConfig,
+  refreshPrivacyPolicyUrl,
   resolveConfiguredUserId,
   resolveConsentState,
   saveGlobalModel,

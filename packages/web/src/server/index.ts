@@ -14,6 +14,7 @@ import {
   loadRuntimeConfig,
   type PROVIDER_NAMES,
   type RuntimeAgent,
+  refreshPrivacyPolicyUrl,
   resolveConsentState,
 } from "@diligent/runtime";
 import { decodeWebImageRelativePath, toWebImageUrl, WEB_IMAGE_ROUTE_PREFIX } from "../shared/image-routes";
@@ -119,22 +120,25 @@ export async function createWebServer(options: CreateServerOptions = {}): Promis
       onCurrentThreadChange: (threadId) => threadAppServerLog.setThreadId(threadId),
       serverVersion: resolveServerVersionOverride(),
       toImageUrl: (absPath) => toWebImageUrl(absPath),
-      getInitializeResult: async () => ({
-        cwd,
-        mode: runtimeConfig.mode,
-        effort: runtimeConfig.effort,
-        currentModel: runtimeConfig.model?.id,
-        availableModels: getModelInfoList().filter((m) =>
-          runtimeConfig.providerManager
-            .getConfiguredProviders()
-            .includes(m.provider as (typeof PROVIDER_NAMES)[number]),
-        ),
-        skills: runtimeConfig.skills.map((s) => ({
-          name: s.name,
-          description: s.description,
-        })),
-        consent: resolveConsentState(runtimeConfig.diligent.consent),
-      }),
+      getInitializeResult: async () => {
+        await refreshPrivacyPolicyUrl(); // resolve the versioned privacy-policy URL (3s-bounded, cached)
+        return {
+          cwd,
+          mode: runtimeConfig.mode,
+          effort: runtimeConfig.effort,
+          currentModel: runtimeConfig.model?.id,
+          availableModels: getModelInfoList().filter((m) =>
+            runtimeConfig.providerManager
+              .getConfiguredProviders()
+              .includes(m.provider as (typeof PROVIDER_NAMES)[number]),
+          ),
+          skills: runtimeConfig.skills.map((s) => ({
+            name: s.name,
+            description: s.description,
+          })),
+          consent: resolveConsentState(runtimeConfig.diligent.consent),
+        };
+      },
     },
   });
 
