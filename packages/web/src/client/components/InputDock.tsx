@@ -37,6 +37,7 @@ interface InputDockProps {
   currentContextTokens: number;
   contextWindow: number;
   hasProvider: boolean;
+  hasBlockingPrompt?: boolean;
   supportsVision: boolean;
   supportsThinking: boolean;
   pendingImages: Array<{ path: string; url: string; fileName?: string }>;
@@ -76,6 +77,21 @@ const MODE_LABELS: Record<Mode, string> = {
   plan: "plan",
   execute: "execute",
 };
+
+export type ComposerEnterAction = "send" | "steer" | "none";
+
+export function getComposerEnterAction(args: {
+  hasBlockingPrompt: boolean;
+  isBusy: boolean;
+  canSend: boolean;
+  canSteer: boolean;
+  isUploadingImages: boolean;
+  hasProvider: boolean;
+}): ComposerEnterAction {
+  if (args.hasBlockingPrompt) return "none";
+  if (args.isBusy) return args.canSteer ? "steer" : "none";
+  return args.canSend && !args.isUploadingImages && args.hasProvider ? "send" : "none";
+}
 
 function formatTokenCount(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -129,6 +145,7 @@ export function InputDock({
   currentContextTokens,
   contextWindow,
   hasProvider,
+  hasBlockingPrompt = false,
   supportsVision,
   supportsThinking,
   pendingImages,
@@ -300,12 +317,21 @@ export function InputDock({
     // Normal key handling
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      if (isBusy) onSteer();
-      else if (!isUploadingImages && hasProvider) onSend();
+      const action = getComposerEnterAction({
+        hasBlockingPrompt,
+        isBusy,
+        canSend,
+        canSteer,
+        isUploadingImages,
+        hasProvider,
+      });
+      if (action === "steer") onSteer();
+      if (action === "send") onSend();
     }
   };
 
   const composerDisabled = !hasProvider;
+  const sendDisabled = !canSend || composerDisabled || hasBlockingPrompt;
   const canRenderPlusMenuPortal = isPlusMenuOpen && plusMenuPosition && typeof document !== "undefined";
   const canRenderSlashMenuPortal = slashMenuOpen && slashMenuPosition && typeof document !== "undefined";
 
@@ -445,9 +471,11 @@ export function InputDock({
                   type="button"
                   aria-label="Steer agent"
                   onClick={() => {
+                    if (hasBlockingPrompt) return;
+                    if (!canSteer) return;
                     if (!composingRef.current) onSteer();
                   }}
-                  disabled={!canSteer}
+                  disabled={!canSteer || hasBlockingPrompt}
                   className="rounded-full bg-fill-secondary px-3 py-1.5 text-xs font-semibold text-text transition hover:bg-fill-ghost-hover disabled:cursor-not-allowed disabled:opacity-30"
                 >
                   Steer
@@ -466,9 +494,10 @@ export function InputDock({
                 type="button"
                 aria-label="Send message"
                 onClick={() => {
+                  if (sendDisabled) return;
                   if (!composingRef.current) onSend();
                 }}
-                disabled={!canSend || composerDisabled}
+                disabled={sendDisabled}
                 className="rounded-full bg-fill-primary px-3 py-1.5 text-xs font-semibold text-text transition hover:!bg-[#BB002F] disabled:cursor-not-allowed disabled:opacity-30"
               >
                 Send

@@ -13,6 +13,7 @@ import { Sidebar } from "./components/Sidebar";
 import { SteeringQueuePanel } from "./components/SteeringQueuePanel";
 import { Toast } from "./components/Toast";
 import { ToolSettingsModal } from "./components/ToolSettingsModal";
+import { hasPendingUserInputTool } from "./lib/thread-utils";
 import { useAgentNativeBridge } from "./lib/use-agent-native-bridge";
 import { useAppState } from "./lib/use-app-state";
 import { useProviderManager } from "./lib/use-provider-manager";
@@ -89,6 +90,7 @@ export function App() {
   } = actions;
 
   useAgentNativeBridge({ updateContextItems: updateActiveContextItems });
+  const hasBlockingPrompt = Boolean(approvalPrompt || questionPrompt || hasPendingUserInputTool(state.items));
 
   return (
     <div className="h-screen bg-black text-text">
@@ -178,6 +180,7 @@ export function App() {
             currentContextTokens={state.currentContextTokens}
             contextWindow={providerMgr.contextWindow}
             hasProvider={providerMgr.hasProvider}
+            hasBlockingPrompt={hasBlockingPrompt}
             supportsVision={supportsVision}
             supportsThinking={supportsThinking}
             pendingImages={pendingImagePreviews}

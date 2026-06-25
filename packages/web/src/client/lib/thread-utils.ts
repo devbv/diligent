@@ -1,12 +1,20 @@
 // @summary Shared helper functions and constants for thread state manipulation
 
+import { normalizeToolName } from "@diligent/protocol";
 import { toWebImageUrl } from "../../shared/image-routes";
 import type { PlanState, RenderItem, ThreadState, UsageState } from "./thread-store";
 
-export { normalizeToolName } from "@diligent/protocol";
+export { normalizeToolName };
 
 /** Tools that produce collab RenderItems — suppress duplicate ToolBlock rendering. */
 export const COLLAB_RENDERED_TOOLS = new Set(["spawn_agent", "wait", "close_agent"]);
+
+export function hasPendingUserInputTool(items: RenderItem[]): boolean {
+  return items.some(
+    (item) =>
+      item.kind === "tool" && item.status === "streaming" && normalizeToolName(item.toolName) === "request_user_input",
+  );
+}
 
 export const zeroUsage: UsageState = {
   inputTokens: 0,
