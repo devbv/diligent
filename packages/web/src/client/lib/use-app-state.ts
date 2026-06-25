@@ -1,5 +1,7 @@
 // @summary Consolidated app state hook: thread reducer, UI state, sub-hooks, and derived callbacks
 import type {
+  ConsentSetParams,
+  ConsentState,
   KnowledgeEntry,
   KnowledgeUpdateParams,
   SkillInfo,
@@ -71,6 +73,7 @@ export function useAppState({
   const [attentionThreadIds, setAttentionThreadIds] = useState<Set<string>>(new Set());
   const [skills, setSkills] = useState<SkillInfo[]>([]);
   const [runtimeVersion, setRuntimeVersion] = useState<string>("");
+  const [consent, setConsent] = useState<ConsentState | null>(null);
   const childThreadCacheRef = useRef<Map<string, ThreadReadResponse>>(new Map());
   const desktopNotificationsRef = useRef(createDesktopNotificationController());
   const [desktopNotificationsEnabled, setDesktopNotificationsEnabled] = useState(() =>
@@ -274,11 +277,22 @@ export function useAppState({
     setEffortState,
     setSkills,
     setRuntimeVersion,
+    setConsent,
     setInitialModel: providerMgr.setInitialModel,
     applySessionModel: providerMgr.applySessionModel,
     refreshThreadList: threadMgr.refreshThreadList,
     refreshProviders: providerMgr.refreshProviders,
   });
+
+  const updateConsent = useCallback(
+    async (patch: ConsentSetParams) => {
+      const rpc = rpcRef.current;
+      if (!rpc) return;
+      const next = await rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.CONSENT_SET, patch);
+      setConsent(next);
+    },
+    [rpcRef],
+  );
 
   const currentModelInfo = providerMgr.availableModels.find((m) => m.id === providerMgr.currentModel);
   const supportsVision = currentModelInfo?.supportsVision === true;
@@ -491,6 +505,8 @@ export function useAppState({
     setSkills,
     runtimeVersion,
     setRuntimeVersion,
+    consent,
+    updateConsent,
     desktopNotificationsEnabled,
     setDesktopNotificationsEnabled,
     desktopNotificationsRef,

@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { SessionMessageEntry } from "@diligent/runtime/session";
+import type { AppendedEntryInfo, SessionMessageEntry } from "@diligent/runtime/session";
 import {
   appendEntry,
   createSessionFile,
@@ -12,6 +12,7 @@ import {
   listSessions,
   readSessionFile,
   SESSION_VERSION,
+  SessionPersistence,
   SessionWriter,
 } from "@diligent/runtime/session";
 
@@ -252,5 +253,80 @@ describe("SessionWriter", () => {
 
     const { header } = await readSessionFile(writer.path!);
     expect(header.parentSession).toBe("parent-abc");
+  });
+});
+
+describe("SessionPersistence onEntryAppended", () => {
+  // Observers dispatch on a setImmediate macrotask (off the write tick), so wait one round.
+  const flushImmediate = () => new Promise((resolve) => setImmediate(resolve));
+
+  it("fires once per append with a monotonic seq", async () => {
+    const dir = await setupDir();
+    const seen: AppendedEntryInfo[] = [];
+    const persistence = new SessionPersistence({
+      sessionsDir: dir,
+      cwd: dir,
+      onEntryAppended: (info) => seen.push(info),
+    });
+    await persistence.create();
+
+    const user = makeUserEntry();
+    persistence.append(user, () => {});
+    persistence.append(makeAssistantEntry(user.id), () => {});
+    await persistence.waitForWrites();
+    await flushImmediate();
+
+    expect(seen.map((s) => s.seq)).toEqual([1, 2]);
+    expect(seen[0].entry.id).toBe(user.id);
+    expect(seen[0].sessionId).toBe(persistence.sessionId);
+    expect(seen[0].sessionPath).toBe(persistence.sessionPath);
+  });
+
+  it("seeds seq from existing entries on resume so it never collides", async () => {
+    const dir = await setupDir();
+    const first = new SessionPersistence({ sessionsDir: dir, cwd: dir });
+    await first.create();
+    const user = makeUserEntry();
+    first.append(user, () => {});
+    first.append(makeAssistantEntry(user.id), () => {});
+    await first.waitForWrites();
+    const sessionId = first.sessionId;
+
+    const seen: AppendedEntryInfo[] = [];
+    const resumed = new SessionPersistence({
+      sessionsDir: dir,
+      cwd: dir,
+      onEntryAppended: (info) => seen.push(info),
+    });
+    await resumed.resume({ sessionId });
+    resumed.append(makeUserEntry(), () => {});
+    await resumed.waitForWrites();
+    await flushImmediate();
+
+    // Two entries already on disk → next append is seq 3, not 1.
+    expect(seen.map((s) => s.seq)).toEqual([3]);
+  });
+
+  it("does not break the write path when the observer throws", async () => {
+    const dir = await setupDir();
+    const persistence = new SessionPersistence({
+      sessionsDir: dir,
+      cwd: dir,
+      onEntryAppended: () => {
+        throw new Error("observer boom");
+      },
+    });
+    await persistence.create();
+
+    let writeError: unknown;
+    persistence.append(makeUserEntry(), (err) => {
+      writeError = err;
+    });
+    await persistence.waitForWrites();
+    await flushImmediate();
+
+    expect(writeError).toBeUndefined();
+    const { entries } = await readSessionFile(persistence.sessionPath!);
+    expect(entries).toHaveLength(1);
   });
 });

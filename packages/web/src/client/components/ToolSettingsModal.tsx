@@ -1,6 +1,13 @@
 // @summary Modal for listing and updating built-in tool/plugin settings through shared RPC methods
 
-import type { ProviderAuthStatus, ToolsListResponse, ToolsSetParams, ToolsSetResponse } from "@diligent/protocol";
+import type {
+  ConsentSetParams,
+  ConsentState,
+  ProviderAuthStatus,
+  ToolsListResponse,
+  ToolsSetParams,
+  ToolsSetResponse,
+} from "@diligent/protocol";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "./Button";
 import { Input } from "./Input";
@@ -31,6 +38,8 @@ interface ToolSettingsModalProps {
   initialState?: ToolsListResponse;
   providers?: ProviderAuthStatus[];
   desktopNotificationsEnabled?: boolean;
+  consent?: ConsentState | null;
+  onConsentChange?: (patch: ConsentSetParams) => void | Promise<void>;
   onList: (threadId?: string) => Promise<ToolsListResponse>;
   onSave: (params: ToolsSetParams) => Promise<ToolsSetResponse>;
   onDesktopNotificationsEnabledChange?: (enabled: boolean) => void;
@@ -136,6 +145,8 @@ export function ToolSettingsModal({
   initialState,
   providers,
   desktopNotificationsEnabled,
+  consent,
+  onConsentChange,
   onList,
   onSave,
   onDesktopNotificationsEnabledChange,
@@ -383,6 +394,39 @@ export function ToolSettingsModal({
                       <p className="mt-0.5 text-xs text-muted">
                         Only notifies while the desktop app is not foregrounded.
                       </p>
+                    </div>
+                  </label>
+                </section>
+              ) : null}
+
+              {consent && onConsentChange ? (
+                <section className="space-y-2">
+                  <div>
+                    <h3 className="text-sm font-semibold text-text">AI Agent Data Use</h3>
+                    <p className="text-xs text-muted">Control how your conversations with the AI agent are used.</p>
+                    <a
+                      href={consent.privacyPolicyUrl}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      className="mt-1 inline-flex text-sm text-text-soft underline underline-offset-2 hover:text-text"
+                    >
+                      View Privacy Policy ›
+                    </a>
+                  </div>
+                  <label className="flex items-start gap-3 rounded-lg border border-border/100 bg-surface-dark px-3 py-2.5">
+                    <input
+                      type="checkbox"
+                      checked={consent.serviceImprovement}
+                      onChange={(event) => void onConsentChange({ serviceImprovement: event.target.checked })}
+                      className="mt-0.5"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium text-text">Improve service with your chats</div>
+                      <p className="mt-0.5 text-xs text-muted">
+                        We use your conversations with the AI agent to operate the service, improve quality, and
+                        diagnose errors. This data is not used to train AI models.
+                      </p>
+                      <p className="mt-1 text-xs text-muted">Default On · Turning off stops improvement use</p>
                     </div>
                   </label>
                 </section>

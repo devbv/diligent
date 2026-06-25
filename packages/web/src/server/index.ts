@@ -5,6 +5,7 @@ import { dirname, join, resolve, sep } from "node:path";
 import {
   type AgentRegistry,
   type BundledToolProvider,
+  type ConsentConfigManager,
   createAppServerConfig,
   createWsPeer,
   DiligentAppServer,
@@ -14,6 +15,8 @@ import {
   loadRuntimeConfig,
   type PROVIDER_NAMES,
   type RuntimeAgent,
+  refreshPrivacyPolicyUrl,
+  resolveConsentState,
 } from "@diligent/runtime";
 import { decodeWebImageRelativePath, toWebImageUrl, WEB_IMAGE_ROUTE_PREFIX } from "../shared/image-routes";
 
@@ -28,6 +31,8 @@ interface CreateServerOptions {
   userId?: string;
   distDir?: string;
   bundledToolProviders?: BundledToolProvider[];
+  /** Remote-backed consent manager (e.g. OVERDARE gateway `/v1/consent`); overrides local config. */
+  consentBackend?: ConsentConfigManager;
 }
 
 interface ParsedArgs {
@@ -114,25 +119,33 @@ export async function createWebServer(options: CreateServerOptions = {}): Promis
     cwd,
     runtimeConfig,
     bundledToolProviders,
+    consentBackend: options.consentBackend,
     overrides: {
       onCurrentThreadChange: (threadId) => threadAppServerLog.setThreadId(threadId),
       serverVersion: resolveServerVersionOverride(),
       toImageUrl: (absPath) => toWebImageUrl(absPath),
-      getInitializeResult: async () => ({
-        cwd,
-        mode: runtimeConfig.mode,
-        effort: runtimeConfig.effort,
-        currentModel: runtimeConfig.model?.id,
-        availableModels: getModelInfoList().filter((m) =>
-          runtimeConfig.providerManager
-            .getConfiguredProviders()
-            .includes(m.provider as (typeof PROVIDER_NAMES)[number]),
-        ),
-        skills: runtimeConfig.skills.map((s) => ({
-          name: s.name,
-          description: s.description,
-        })),
-      }),
+      getInitializeResult: async () => {
+        await refreshPrivacyPolicyUrl(); // resolve the versioned privacy-policy URL (3s-bounded, cached)
+        await options.consentBackend?.refresh?.(); // re-sync remote-backed consent before the payload
+        return {
+          cwd,
+          mode: runtimeConfig.mode,
+          effort: runtimeConfig.effort,
+          currentModel: runtimeConfig.model?.id,
+          availableModels: getModelInfoList().filter((m) =>
+            runtimeConfig.providerManager
+              .getConfiguredProviders()
+              .includes(m.provider as (typeof PROVIDER_NAMES)[number]),
+          ),
+          skills: runtimeConfig.skills.map((s) => ({
+            name: s.name,
+            description: s.description,
+          })),
+          consent: options.consentBackend
+            ? options.consentBackend.get()
+            : resolveConsentState(runtimeConfig.diligent.consent),
+        };
+      },
     },
   });
 

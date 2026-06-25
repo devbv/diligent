@@ -39,6 +39,7 @@ export class SessionManager {
       parentSession: config.parentSession,
       collabMeta: config.collabMeta,
       sessionId: config.sessionId,
+      onEntryAppended: config.onEntryAppended,
     });
     this.collabHandler = new CollabSessionHandler(() => this.state.getCommittedEntries());
     this.orchestrator = new TurnOrchestrator({

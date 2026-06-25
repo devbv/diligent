@@ -150,6 +150,21 @@ export interface SessionInfo {
 
 // --- Session Manager Config ---
 
+/**
+ * Context passed to {@link SessionManagerConfig.onEntryAppended} after a session
+ * entry is durably written. `seq` is monotonic per session (seeded from the existing
+ * line count on resume) — the dedup half-key for downstream sinks like diligent-gateway.
+ * `userId` is filled in at the app-server layer before fan-out to observers.
+ */
+export interface AppendedEntryInfo {
+  sessionId: string;
+  sessionPath: string | null;
+  cwd: string;
+  entry: SessionEntry;
+  seq: number;
+  userId?: string;
+}
+
 export interface SessionManagerConfig {
   cwd: string;
   paths: DiligentPaths;
@@ -173,6 +188,12 @@ export interface SessionManagerConfig {
    * can set `stop_hook_active` and avoid infinite loops.
    */
   onStop?: (context: Message[], isRerun: boolean) => Promise<{ continueWith?: Message } | undefined>;
+  /**
+   * Called after each session entry is durably appended to the JSONL file.
+   * Fire-and-forget — must never block or throw into the write path. Used to
+   * mirror records to external sinks (e.g. diligent-gateway).
+   */
+  onEntryAppended?: (info: AppendedEntryInfo) => void;
 }
 
 export interface ResumeSessionOptions {
