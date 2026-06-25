@@ -37,6 +37,7 @@ interface InputDockProps {
   currentContextTokens: number;
   contextWindow: number;
   hasProvider: boolean;
+  hasBlockingPrompt?: boolean;
   supportsVision: boolean;
   supportsThinking: boolean;
   pendingImages: Array<{ path: string; url: string; fileName?: string }>;
@@ -129,6 +130,7 @@ export function InputDock({
   currentContextTokens,
   contextWindow,
   hasProvider,
+  hasBlockingPrompt = false,
   supportsVision,
   supportsThinking,
   pendingImages,
@@ -300,12 +302,13 @@ export function InputDock({
     // Normal key handling
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
+      if (hasBlockingPrompt) return;
       if (isBusy) onSteer();
       else if (!isUploadingImages && hasProvider) onSend();
     }
   };
 
-  const composerDisabled = !hasProvider;
+  const composerDisabled = !hasProvider || hasBlockingPrompt;
   const canRenderPlusMenuPortal = isPlusMenuOpen && plusMenuPosition && typeof document !== "undefined";
   const canRenderSlashMenuPortal = slashMenuOpen && slashMenuPosition && typeof document !== "undefined";
 
@@ -351,9 +354,15 @@ export function InputDock({
           <div className="min-w-0 flex-1">
             <TextArea
               className="min-h-[52px] border-0 bg-transparent !px-1 py-0 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-transparent"
-              aria-label={isBusy ? "Steering input" : "Message input"}
+              aria-label={hasBlockingPrompt ? "Prompt response pending" : isBusy ? "Steering input" : "Message input"}
               placeholder={
-                isBusy ? "Steer the agent…" : supportsVision ? "Ask anything or attach images…" : "Ask anything…"
+                hasBlockingPrompt
+                  ? "Answer the prompt above…"
+                  : isBusy
+                    ? "Steer the agent…"
+                    : supportsVision
+                      ? "Ask anything or attach images…"
+                      : "Ask anything…"
               }
               value={input}
               onChange={(e) => handleInputChange(e.target.value)}
@@ -445,9 +454,10 @@ export function InputDock({
                   type="button"
                   aria-label="Steer agent"
                   onClick={() => {
+                    if (hasBlockingPrompt) return;
                     if (!composingRef.current) onSteer();
                   }}
-                  disabled={!canSteer}
+                  disabled={!canSteer || hasBlockingPrompt}
                   className="rounded-full bg-fill-secondary px-3 py-1.5 text-xs font-semibold text-text transition hover:bg-fill-ghost-hover disabled:cursor-not-allowed disabled:opacity-30"
                 >
                   Steer

@@ -488,6 +488,49 @@ test("input dock renders attached context chips", () => {
   expect(html).toContain("Clear all");
 });
 
+test("input dock disables steering while a blocking prompt is pending", () => {
+  const html = renderToStaticMarkup(
+    <InputDock
+      input="answer draft"
+      onInputChange={() => {}}
+      onSend={() => {}}
+      onSteer={() => {}}
+      onInterrupt={() => {}}
+      onCompactionClick={() => {}}
+      isCompacting={false}
+      canSend={false}
+      canSteer={true}
+      threadStatus="busy"
+      mode="plan"
+      onModeChange={() => {}}
+      effort="medium"
+      onEffortChange={() => {}}
+      currentModel="gpt-5"
+      availableModels={[]}
+      onModelChange={() => {}}
+      usage={{ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalCost: 0 }}
+      currentContextTokens={0}
+      contextWindow={0}
+      hasProvider={true}
+      hasBlockingPrompt={true}
+      supportsVision={false}
+      supportsThinking={false}
+      pendingImages={[]}
+      contextItems={[]}
+      isUploadingImages={false}
+      onAddImages={() => {}}
+      onRemoveImage={() => {}}
+      onRemoveContextItem={() => {}}
+      onClearContextItems={() => {}}
+      slashCommands={[]}
+    />,
+  );
+
+  expect(html).toContain('aria-label="Prompt response pending"');
+  expect(html).toContain('placeholder="Answer the prompt above…"');
+  expect(html).toContain('<button type="button" aria-label="Steer agent" disabled=""');
+});
+
 test("user message renders context chips above text", () => {
   const html = renderToStaticMarkup(
     <UserMessage

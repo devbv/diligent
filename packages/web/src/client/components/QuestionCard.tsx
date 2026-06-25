@@ -150,6 +150,7 @@ export function QuestionCard({ request, answers, onAnswerChange, onSubmit, onCan
                     onKeyDown={(e) => {
                       if (e.key !== "Enter") return;
                       e.preventDefault();
+                      e.stopPropagation();
                       submitIfComplete();
                     }}
                     className="min-w-0 truncate bg-transparent text-sm text-text placeholder:text-muted/50 focus:outline-none"

@@ -178,6 +178,7 @@ export function App() {
             currentContextTokens={state.currentContextTokens}
             contextWindow={providerMgr.contextWindow}
             hasProvider={providerMgr.hasProvider}
+            hasBlockingPrompt={Boolean(approvalPrompt || questionPrompt)}
             supportsVision={supportsVision}
             supportsThinking={supportsThinking}
             pendingImages={pendingImagePreviews}
