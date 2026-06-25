@@ -1,6 +1,6 @@
 ---
 name: overdare-ui-templates
-description: When generating UI, first determine template fit. Structure confirmation requires AskQuestion (choice UI); do not prompt free-text input. Element add/remove forbidden until user_confirmed_spec is finalized. If fit, edit via ui-generator; if not, switch to ui-generator.
+description: When generating UI, first determine template fit. Structure confirmation requires request_user_input (choice UI); do not prompt free-text input. Element add/remove forbidden until user_confirmed_spec is finalized. If fit, edit via ui-generator; if not, switch to ui-generator.
 ---
 
 # OVERDARE UI Template Guide
@@ -16,7 +16,7 @@ description: When generating UI, first determine template fit. Structure confirm
 7. Variations stay **within frames and screen boundaries**. Do not hide overflow with `ClipsDescendants = false`. Removal uses **Destroy** (do not leave elements with `Visible` turned off only).
 8. Rename the root `ScreenGui` and clearly role-defined child GUIs **to match their purpose** (keep layout values).
 9. **Before a completion response**, pass `Pre-response self-check`. Failure if structural add/remove was needed but proceeded without spec.
-10. **Fixed-choice confirmation** uses **`AskQuestion` only**. Do not list choices in chat and ask the user to type a reply.
+10. **Fixed-choice confirmation** uses **`request_user_input` only**. Do not list choices in chat and ask the user to type a reply.
 
 ## Structural Add/Remove — User Confirmation
 
@@ -36,58 +36,58 @@ description: When generating UI, first determine template fit. Structure confirm
 ### Questions · Recording (Deterministic)
 
 1. One-line template candidate + reason (in chat body).
-2. Present the **fixed choices** below **only via the `AskQuestion` tool** — **do not list bullets or numbered options in chat and ask the user to type a reply or give “reply examples”**.
-3. Record `AskQuestion` responses **verbatim** in **`user_confirmed_spec`** and edit **only within that scope**.
+2. Present the **fixed choices** below **only via the `request_user_input` tool** — **do not list bullets or numbered options in chat and ask the user to type a reply or give “reply examples”**.
+3. Record `request_user_input` responses **verbatim** in **`user_confirmed_spec`** and edit **only within that scope**.
 
-#### Choice UI (`AskQuestion`) — Required
+#### Choice UI (`request_user_input`) — Required
 
 | Rule | Content |
 |---|---|
-| **Tool** | When fixed choices exist, you must call **`AskQuestion`**. Run before UI creation or asset add on the confirmation turn. |
+| **Tool** | When fixed choices exist, you must call **`request_user_input`**. Run before UI creation or asset add on the confirmation turn. |
 | **Forbidden** | Showing choices only as a markdown list and asking the user to “type like below”, “reply example:”, etc. — **requiring free-text input**. |
 | **Chat** | Short context only (template recommendation · reason). Put choice item bodies in the **tool question**. |
-| **Multiple questions** | If there are **2 or more questions**, include **all** in the `questions` array in **one `AskQuestion` call** and show the question UI **at once**. **No sequential calls** (no second call after first response · confirmation). |
+| **Multiple questions** | If there are **2 or more questions**, include **all** in the `questions` array in **one `request_user_input` call** and show the question UI **at once**. **No sequential calls** (no second call after first response · confirmation). |
 | **Multiple selection** | Use `allow_multiple: true` for items that allow multiple regions · buttons. |
 | **IngameHUD · RPGIngameHUD** | Apply the **multiple questions** rule above. **One call** with `hud_regions` + `hud_layout` **shown together**. **First-choice options follow the template-specific table** (do not mix IngameHUD and RPGIngameHUD options). |
-| **Skip** | If `Questions May Be Skipped` applies, you may proceed without `AskQuestion`. |
+| **Skip** | If `Questions May Be Skipped` applies, you may proceed without `request_user_input`. |
 
-**IngameHUD** — mandatory `AskQuestion` procedure (fixed labels, **2 question panels shown together**):
+**IngameHUD** — mandatory `request_user_input` procedure (fixed labels, **2 question panels shown together**):
 
 **Default layout:** HP bar · menu/settings · 2 currency slots · 5 attack buttons
 
-**One `AskQuestion` call** — put both below in `questions` and show **together**:
+**One `request_user_input` call** — put both below in `questions` and show **together**:
 
 | Question id | prompt (summary) | options | allow_multiple |
 |---|---|---|---|
 | `hud_regions` | Regions to include | HP / resources (gold · crystal ×2) / actions (5 attacks) / menu · settings | true |
 | `hud_layout` | Layout | use as-is / tweak later / custom layout | false |
 
-- For IngameHUD, **do not skip the 2 AskQuestions above** even if the request partially specifies regions (exception: L2-only change requests). **No 2 sequential calls**.
+- For IngameHUD, **do not skip the 2 request_user_input calls above** even if the request partially specifies regions (exception: L2-only change requests). **No 2 sequential calls**.
 
-**RPGIngameHUD** — mandatory `AskQuestion` procedure (fixed labels, **2 question panels shown together**; **separate from IngameHUD**):
+**RPGIngameHUD** — mandatory `request_user_input` procedure (fixed labels, **2 question panels shown together**; **separate from IngameHUD**):
 
 **Default layout:** HP bar · energy bar · XP bar · level · 2 currency slots · 3 skill buttons · 2 quickslot buttons · dash button (**no menu · settings**)
 
-**One `AskQuestion` call** — put both below in `questions` and show **together**:
+**One `request_user_input` call** — put both below in `questions` and show **together**:
 
 | Question id | prompt (summary) | options | allow_multiple |
 |---|---|---|---|
 | `hud_regions` | Regions to include | HP / energy (energy bar) / XP · level / resources (gold · crystal ×2) / skills (3) / quickslots (2) / dash | true |
 | `hud_layout` | Layout | use as-is / tweak later / custom layout | false |
 
-- For RPGIngameHUD, **do not skip the 2 AskQuestions above** even if the request partially specifies regions (exception: L2-only change requests). **No 2 sequential calls**.
+- For RPGIngameHUD, **do not skip the 2 request_user_input calls above** even if the request partially specifies regions (exception: L2-only change requests). **No 2 sequential calls**.
 - Do **not** offer menu · settings in RPGIngameHUD `hud_regions`. Do **not** offer energy · XP · level · quickslots · dash in IngameHUD `hud_regions`.
 
-**PopupGui** — `AskQuestion` example (**one `AskQuestion` call**, 2 questions **shown together**):
+**PopupGui** — `request_user_input` example (**one `request_user_input` call**, 2 questions **shown together**):
 
 | Question id | prompt (summary) | options | allow_multiple |
 |---|---|---|---|
 | `popup_buttons` | Button layout | confirm only / confirm + cancel / keep default 2 | false |
 | `popup_body` | Body form | level number / fixed text only / include icon area | false |
 
-(For other templates, move items from the **template-specific question examples** table into `AskQuestion` options the same way. **If 2+ questions, one call · show together**.)
+(For other templates, move items from the **template-specific question examples** table into `request_user_input` options the same way. **If 2+ questions, one call · show together**.)
 
-**`user_confirmed_spec` mapping:** Record `AskQuestion` `id` and selected `label` **verbatim** in `keep_elements` / `remove_elements` / `content_notes`, etc. The rule “unselected IngameHUD · RPGIngameHUD regions are kept” still applies.
+**`user_confirmed_spec` mapping:** Record `request_user_input` `id` and selected `label` **verbatim** in `keep_elements` / `remove_elements` / `content_notes`, etc. The rule “unselected IngameHUD · RPGIngameHUD regions are kept” still applies.
 
 | Field | Content |
 |---|---|
@@ -99,26 +99,26 @@ description: When generating UI, first determine template fit. Structure confirm
 
 **Do not Destroy or add items not in `remove_elements` · `add_elements`.** Put “not needed” in `remove_elements` only when the user **chose or stated it in text**.
 
-### Template-Specific Question Examples (fixed items → `AskQuestion` option)
+### Template-Specific Question Examples (fixed items → `request_user_input` option)
 
-**PopupGui — “Level-up notification popup”** — use the **PopupGui `AskQuestion` table** above + title copy if needed (only one free-text field allowed)
+**PopupGui — “Level-up notification popup”** — use the **PopupGui `request_user_input` table** above + title copy if needed (only one free-text field allowed)
 
-**IngameHUD — “Action game HUD”** — use the **IngameHUD mandatory `AskQuestion` procedure** as-is (`hud_regions` + `hud_layout` **one call · shown together**)
+**IngameHUD — “Action game HUD”** — use the **IngameHUD mandatory `request_user_input` procedure** as-is (`hud_regions` + `hud_layout` **one call · shown together**)
 
-**RPGIngameHUD — “RPG in-game HUD”** — use the **RPGIngameHUD mandatory `AskQuestion` procedure** as-is (`hud_regions` + `hud_layout` **one call · shown together**). For RPG genre · HP · energy · XP · level · currency · skills · quickslots · dash requests, prefer this template over IngameHUD.
+**RPGIngameHUD — “RPG in-game HUD”** — use the **RPGIngameHUD mandatory `request_user_input` procedure** as-is (`hud_regions` + `hud_layout` **one call · shown together**). For RPG genre · HP · energy · XP · level · currency · skills · quickslots · dash requests, prefer this template over IngameHUD.
 
 - **Unselected regions are kept** (user must explicitly say “exclude” to delete)
 
 **DailyAttendanceGui — “Attendance / daily reward”**
 
 - The template default is **days 1–31** slots, but if the request differs only in **day count** while the purpose is attendance · reward claim (Claimed/Claim/Locked), **prefer DailyAttendanceGui**. Do **not** exclude the template or build anew with `ui-generator` solely because day count differs.
-- If day count is **not** in the prompt, confirm with `AskQuestion`.
+- If day count is **not** in the prompt, confirm with `request_user_input`.
 
 | Question id | prompt (summary) | options | allow_multiple |
 |---|---|---|---|
 | `attendance_days` | Attendance day count | 7 days / 14 days / 31 days (default) | false |
 
-- If day count is **already stated** in the prompt, the `AskQuestion` above may be skipped. Record `N days` (e.g., `7 days`) in `user_confirmed_spec` `content_notes`.
+- If day count is **already stated** in the prompt, the `request_user_input` above may be skipped. Record `N days` (e.g., `7 days`) in `user_confirmed_spec` `content_notes`.
 
 **DailyAttendanceGui — slot (day) count variation rules**
 
@@ -138,7 +138,7 @@ description: When generating UI, first determine template fit. Structure confirm
 
 1. Read this skill · **template table · exclusion criteria · conflict priority** below
 2. Lock candidate template with **4 similarity questions** (asset add only after step 4)
-3. If **structural add/remove needed** → **`AskQuestion`** → receive `user_confirmed_spec` (**no Destroy · structural add until then**)
+3. If **structural add/remove needed** → **`request_user_input`** → receive `user_confirmed_spec` (**no Destroy · structural add until then**)
 4. If **exclusion criteria** apply, reselect or use `ui-generator`
 5. Asset add → GUI names → add/remove within **spec scope** → L2 → **`ui-generator`**
 6. Verify reserved areas · frames · overflow → **self-check** → respond (include spec · judgment)
@@ -197,7 +197,7 @@ description: When generating UI, first determine template fit. Structure confirm
 
 1. Context mismatch (forcing persistent↔modal) 2. Interaction model mismatch (browse · equip vs. confirm only) 3. Information overload · readability · touch degradation 4. Must change group · slot meaning to accept 5. Repeated elements impossible even with scroll · split 6. Requires reserved-area · boundary overflow · ClipsDescendants dependency 7. Request’s main feature replaces template purpose at scale
 
-→ Reselect, switch to `ui-generator`, or split · prioritize via **`AskQuestion`** (do not infer deletions).
+→ Reselect, switch to `ui-generator`, or split · prioritize via **`request_user_input`** (do not infer deletions).
 
 **DailyAttendanceGui exception:** When the request is attendance · daily reward claim and **only day (slot) count** differs from the template default (31), the exclusion criteria above **do not apply**. Vary via slot Destroy · Duplicate and keep the template.
 
@@ -225,12 +225,12 @@ Common: structural add/remove **only after spec**. Before spec, keep default str
 | QuestProgressionHUD | Quest slots top-left; per slot name · description · progress; **persistent in-game quest status while playing** |
 | QuestGui | Top 2 tabs; tab with claimable quests `NotificationDotLabel`; vertical scroll; slot states In Progress/Claimed/Claim; footer overall progress rewards |
 
-`IngameHUD` · `RPGIngameHUD`: on the confirmation turn, call the **template-specific** `AskQuestion` **once** with `hud_regions` + `hud_layout` **2 questions shown together**, then finalize spec (**no 2 sequential calls**). Change `Position`/`Size`/`Anchor` **only when explicit in prompt · spec**.
+`IngameHUD` · `RPGIngameHUD`: on the confirmation turn, call the **template-specific** `request_user_input` **once** with `hud_regions` + `hud_layout` **2 questions shown together**, then finalize spec (**no 2 sequential calls**). Change `Position`/`Size`/`Anchor` **only when explicit in prompt · spec**.
 
 ## Forbidden
 
-- **Handling fixed-choice confirmation only via chat text · free-text replies** (skipping `AskQuestion`, prompting “reply examples”)
-- **Sequential `AskQuestion` calls when 2+ questions are needed** (second call after first response). **Must be one call · all in `questions` array · shown together**
+- **Handling fixed-choice confirmation only via chat text · free-text replies** (skipping `request_user_input`, prompting “reply examples”)
+- **Sequential `request_user_input` calls when 2+ questions are needed** (second call after first response). **Must be one call · all in `questions` array · shown together**
 - Destroy · structural add · button count change · hiding unconfirmed elements without spec · explicit statement
 - New blank-canvas or equivalent UI without template when similarity · fit judgment · spec are missing
 - GUI placement · edits without `ui-generator`
@@ -242,8 +242,8 @@ Common: structural add/remove **only after spec**. Before spec, keep default str
 
 **No completion response until all pass.**
 
-- [ ] If add/remove was needed, Destroy · add only **after receiving spec via `AskQuestion`** (failure if confirmed only via chat list · “reply examples”)
-- [ ] If 2+ questions, were they in **one `AskQuestion` call** with all in `questions` **shown together**? (**failure if 2 sequential calls**)
+- [ ] If add/remove was needed, Destroy · add only **after receiving spec via `request_user_input`** (failure if confirmed only via chat list · “reply examples”)
+- [ ] If 2+ questions, were they in **one `request_user_input` call** with all in `questions` **shown together**? (**failure if 2 sequential calls**)
 - [ ] For IngameHUD · RPGIngameHUD, were `hud_regions` + `hud_layout` **shown together at once**? **Do choices match the template-specific table**
 - [ ] Actual add/remove ⊆ `remove_elements` ∪ `add_elements` (everything else kept)
 - [ ] No coordinate · anchor · appearance changes without spec · explicit statement
@@ -251,6 +251,6 @@ Common: structural add/remove **only after spec**. Before spec, keep default str
 - [ ] Template · exclusion · `ui-generator` · spec (or “already stated in prompt”) recorded
 - [ ] For attendance requests with **only different day count** → used `DailyAttendanceGui` · varied slots (not new UI · not template exclusion)
 
-**A. Confirmation turn (before build):** Template candidate (1–2 sentences in chat) + **fixed choices via `AskQuestion`** → apply responses to spec, then build (do not list choices only in chat and collect typed input)
+**A. Confirmation turn (before build):** Template candidate (1–2 sentences in chat) + **fixed choices via `request_user_input`** → apply responses to spec, then build (do not list choices only in chat and collect typed input)
 
 **B. Completion turn:** Structure · purpose one line each | confirmation · `user_confirmed_spec` | template · asset ID | add/remove (remove/add/none) | L2 · names · boundaries · reserved | no inferred add/remove
