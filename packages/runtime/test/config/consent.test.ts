@@ -1,5 +1,5 @@
 // @summary Tests for AI-data consent resolver/patch (OVDR-11475 §3.A)
-import { afterEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import { CONSENT_NOTICE_VERSION } from "@diligent/protocol";
 
 import {
@@ -12,6 +12,13 @@ import {
 
 const NOW = "2026-06-23T00:00:00.000Z";
 const realFetch = globalThis.fetch;
+
+// Reset before each test too: the privacy-URL cache is module-scoped and bun shares the module
+// registry across files, so another file's refreshPrivacyPolicyUrl() can leave it populated before
+// this file's first test runs (afterEach alone only protects the second test onward).
+beforeEach(() => {
+  resetPrivacyPolicyUrlCache();
+});
 
 afterEach(() => {
   globalThis.fetch = realFetch;
