@@ -86,15 +86,8 @@ describe("createGatewayToolProvider", () => {
     expect(JSON.stringify(env.record)).toContain("[REDACTED:anthropic-key]");
   });
 
-  test("does not POST when no token is configured", async () => {
-    delete process.env.DILIGENT_GATEWAY_TOKEN;
-    const calls = installFetchSpy();
-    const provider = createGatewayToolProvider({ cwd: "/tmp", projectId: "proj-1" });
-
-    await provider.onEntryAppended?.(makeInput());
-
-    expect(calls).toHaveLength(0);
-  });
+  // The hub-token fallback (no env override → Studio RPC `hub.token.read`) is covered by the
+  // analytics tests, which exercise readHubToken against a mock Studio RPC server.
 
   test("does not POST when no projectId is provided", async () => {
     const calls = installFetchSpy();

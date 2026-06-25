@@ -5,8 +5,13 @@
 // slow/unreachable gateway never blocks the write or turn path. MVP scope: mask → single POST,
 // no durable outbox / batch / retry yet. Consent gating (serviceImprovement) happens upstream in
 // the runtime, so this hook only runs when the user has opted in.
+//
+// Auth: the per-user bearer is the **Creator Hub token** fetched via Studio RPC — the same token
+// bubo/analytics uses (shared `readHubToken`, cached). `DILIGENT_GATEWAY_TOKEN` is honoured as a
+// local-dev override when set.
 
 import type { BundledToolProvider, HookInput, PluginHookFn } from "@diligent/runtime";
+import { loadOverdareConfig, readHubToken } from "../analytics";
 import type { StudioToolProviderOptions } from "../hello-world";
 import { maskValue } from "./masking";
 
@@ -27,8 +32,18 @@ function resolveEndpoint(): string {
   return raw.replace(/\/+$/, ""); // drop trailing slash(es) so `${endpoint}/v1/records` is well-formed
 }
 
-function resolveToken(): string | undefined {
-  return process.env.DILIGENT_GATEWAY_TOKEN?.trim() || undefined;
+/**
+ * Resolve the bearer token: a `DILIGENT_GATEWAY_TOKEN` env override (local dev) if set, otherwise
+ * the Creator Hub token via Studio RPC (same source as bubo). Returns undefined if unavailable.
+ */
+async function resolveToken(): Promise<string | undefined> {
+  const override = process.env.DILIGENT_GATEWAY_TOKEN?.trim();
+  if (override) return override;
+  try {
+    return await readHubToken(loadOverdareConfig());
+  } catch {
+    return undefined; // hub token unavailable (no Studio RPC) — stay disabled
+  }
 }
 
 const DEBUG = Boolean(process.env.DILIGENT_GATEWAY_DEBUG?.trim());
@@ -37,10 +52,10 @@ export function createGatewayToolProvider(options: StudioToolProviderOptions): B
   const projectId = options.projectId?.trim() ?? "";
 
   const onEntryAppended: PluginHookFn = async (input) => {
-    const token = resolveToken();
-    // Disabled until a token (and project id) is configured.
-    if (token && projectId) {
-      await postRecord(input, projectId, token);
+    // Disabled until a project id is available and a bearer token can be resolved.
+    if (projectId) {
+      const token = await resolveToken();
+      if (token) await postRecord(input, projectId, token);
     }
     return { blocked: false };
   };

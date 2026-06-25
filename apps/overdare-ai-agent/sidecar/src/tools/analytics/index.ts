@@ -129,7 +129,7 @@ function configCandidates(): string[] {
   return currentPath === legacyPath ? [currentPath] : [currentPath, legacyPath];
 }
 
-function loadOverdareConfig(): OverdareConfig {
+export function loadOverdareConfig(): OverdareConfig {
   if (cached) return cached;
   for (const configPath of configCandidates()) {
     if (!existsSync(configPath)) continue;
@@ -243,7 +243,8 @@ async function callStudioRpc(
   });
 }
 
-async function readHubToken(config: OverdareConfig): Promise<string> {
+/** Read the Creator Hub bearer token via Studio RPC (shared with the gateway transmitter). Cached. */
+export async function readHubToken(config: OverdareConfig): Promise<string> {
   if (cachedHubToken) return cachedHubToken;
 
   const result = (await callStudioRpc("hub.token.read", {}, config)) as HubTokenReadResult | string | undefined;
