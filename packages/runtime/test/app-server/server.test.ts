@@ -25,6 +25,7 @@ import {
   createRequestUserInputTool,
   createYoloPermissionEngine,
   getBuiltinAgentDefinitions,
+  loadAuthStore,
   RuntimeAgent,
   saveOAuthTokens,
 } from "@diligent/runtime";
@@ -703,6 +704,144 @@ describe("DiligentAppServer", () => {
       params: { threadId: newThreadId },
     });
     expect((readResult(newThreadRead) as { currentModel?: string }).currentModel).toBe("gpt-5.4");
+  });
+
+  it("does not keep a failed Anthropic key path active after disconnecting it", async () => {
+    const projectRoot = await mkdtemp(join(process.env.TMPDIR ?? "/tmp", "diligent-app-server-"));
+    const paths = await ensureDiligentDir(projectRoot);
+    const authStore = { path: join(projectRoot, "auth.jsonc"), mode: "file" as const };
+    const providerManager = new ProviderManager({});
+    providerManager.setApiKey("openai", "valid-openai-key");
+
+    const server = new DiligentAppServer({
+      cwd: projectRoot,
+      defaultEffort: "medium",
+      providerManager,
+      authStore,
+      resolvePaths: async (cwd) => ensureDiligentDir(cwd),
+      createAgent: ({ modelId }) => {
+        return new RuntimeAgent(FAKE_MODEL, [{ label: "base", content: "test" }], [], {
+          effort: "medium",
+          ...fakeConfig(() => {
+            if (modelId.startsWith("claude") && providerManager.getApiKey("anthropic") !== "valid-anthropic-key") {
+              throw new Error("invalid Anthropic key");
+            }
+            if (modelId.startsWith("gpt") && !providerManager.hasKeyFor("openai")) {
+              throw new Error("missing OpenAI key");
+            }
+            const stream = new EventStream(
+              (event) => event.type === "done",
+              (event) => ({ message: (event as { message: unknown }).message }),
+            );
+            queueMicrotask(() => {
+              stream.push({ type: "start" });
+              stream.push({
+                type: "done",
+                stopReason: "end_turn",
+                message: {
+                  role: "assistant",
+                  content: [{ type: "text", text: modelId }],
+                  model: modelId,
+                  usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
+                  stopReason: "end_turn",
+                  timestamp: Date.now(),
+                },
+              });
+            });
+            return stream as never;
+          }),
+        });
+      },
+    });
+
+    const connection = connectTestPeer(server);
+    let resolveTurnOutcome: ((outcome: "completed" | "error") => void) | null = null;
+    connection.setNotificationListener((notification) => {
+      if (notification.method === DILIGENT_SERVER_NOTIFICATION_METHODS.TURN_COMPLETED) {
+        resolveTurnOutcome?.("completed");
+        resolveTurnOutcome = null;
+      }
+      if (notification.method === DILIGENT_SERVER_NOTIFICATION_METHODS.ERROR) {
+        resolveTurnOutcome?.("error");
+        resolveTurnOutcome = null;
+      }
+    });
+    const waitForTurnOutcome = () =>
+      new Promise<"completed" | "error">((resolve) => {
+        resolveTurnOutcome = resolve;
+      });
+
+    await server.handleRequest(TEST_CONNECTION_ID, {
+      id: 609,
+      method: "auth/set",
+      params: { provider: "anthropic", apiKey: "invalid-anthropic-key" },
+    });
+
+    const started = await server.handleRequest(TEST_CONNECTION_ID, {
+      id: 610,
+      method: "thread/start",
+      params: { cwd: projectRoot, model: "claude-sonnet-4-6" },
+    });
+    const threadId = (readResult(started) as { threadId: string }).threadId;
+
+    const firstOutcome = waitForTurnOutcome();
+    await server.handleRequest(TEST_CONNECTION_ID, {
+      id: 611,
+      method: "turn/start",
+      params: { threadId, message: "first" },
+    });
+    expect(await firstOutcome).toBe("completed");
+
+    const firstRead = await server.handleRequest(TEST_CONNECTION_ID, {
+      id: 612,
+      method: "thread/read",
+      params: { threadId },
+    });
+    const firstThread = readResult(firstRead) as {
+      errors?: Array<{ error: { message: string } }>;
+    };
+    expect(firstThread.errors?.at(-1)?.error.message).toContain("invalid Anthropic key");
+
+    await server.handleRequest(TEST_CONNECTION_ID, {
+      id: 613,
+      method: "auth/remove",
+      params: { provider: "anthropic" },
+    });
+
+    expect(providerManager.hasKeyFor("anthropic")).toBe(false);
+    expect((await loadAuthStore(authStore)).anthropic).toBeUndefined();
+
+    const secondOutcome = waitForTurnOutcome();
+    await server.handleRequest(TEST_CONNECTION_ID, {
+      id: 614,
+      method: "turn/start",
+      params: { threadId, message: "second", model: "gpt-5.4" },
+    });
+    expect(await secondOutcome).toBe("completed");
+
+    const secondRead = await server.handleRequest(TEST_CONNECTION_ID, {
+      id: 615,
+      method: "thread/read",
+      params: { threadId },
+    });
+    const secondThread = readResult(secondRead) as {
+      errors?: Array<{ error: { message: string } }>;
+    };
+    expect(secondThread.errors ?? []).toHaveLength(1);
+
+    const fileText = await readFile(join(paths.sessions, `${threadId}.jsonl`), "utf8");
+    const entries = fileText
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line)) as Array<{
+      type: string;
+      message?: { role?: string; model?: string };
+    }>;
+    const assistantModels = entries
+      .filter((entry) => entry.type === "message" && entry.message?.role === "assistant")
+      .map((entry) => entry.message?.model);
+
+    expect(assistantModels).toEqual(["gpt-5.4"]);
   });
 
   it("uses runtime config default effort for new threads", async () => {
