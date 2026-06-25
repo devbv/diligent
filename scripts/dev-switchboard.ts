@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// @summary Fixed-port development switchboard for the active OVERDARE Portless target.
+// @summary Fixed-port development switchboard for the active OVERDARE dev target.
 
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -8,13 +8,12 @@ import { dirname, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 
 const DEFAULT_LISTEN = "0.0.0.0:11000";
-const DEFAULT_PORTLESS_ORIGIN = "http://127.0.0.1:11001";
 const DEFAULT_STATE_FILE = join(homedir(), ".diligent-dev-switchboard", "state.json");
 
 interface DevTarget {
   host: string;
+  url: string;
   cwd?: string;
-  url?: string;
   updatedAt: string;
 }
 
@@ -35,15 +34,13 @@ interface CommonOptions {
 
 interface StartOptions extends CommonOptions {
   listen: ListenAddress;
-  portlessOrigin: string;
-  defaultHost?: string;
 }
 
 interface RegisterOptions extends CommonOptions {
   host: string;
+  url: string;
   activate: boolean;
   cwd?: string;
-  url?: string;
 }
 
 interface SwitchboardWsData {
@@ -57,8 +54,8 @@ interface SwitchboardWsData {
 function printHelp(): void {
   console.log(`Usage:
   bun run scripts/dev-switchboard.ts start [options]
-  bun run scripts/dev-switchboard.ts register <portless-host> [options]
-  bun run scripts/dev-switchboard.ts use <portless-host> [options]
+  bun run scripts/dev-switchboard.ts register <target-id> --url <url> [options]
+  bun run scripts/dev-switchboard.ts use <target-id> [options]
   bun run scripts/dev-switchboard.ts list [options]
 
 Commands:
@@ -69,12 +66,10 @@ Commands:
 
 Start options:
   --listen <host:port>       Fixed Windows-facing address (default: ${DEFAULT_LISTEN})
-  --portless <origin>        Portless proxy origin (default: ${DEFAULT_PORTLESS_ORIGIN})
-  --default-host <host>      Fallback host when no active state exists
 
 Register options:
+  --url <url>                Direct Vite URL for the target, for example http://127.0.0.1:5174
   --cwd <path>               Worktree cwd shown in the UI
-  --url <url>                Full Portless URL for the target
   --no-activate              Register without switching to this target
 
 Common options:
@@ -113,7 +108,7 @@ function parseListenAddress(value: string): ListenAddress {
 function normalizeTargetHost(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) {
-    throw new Error("Host cannot be empty");
+    throw new Error("Target id cannot be empty");
   }
 
   try {
@@ -121,6 +116,19 @@ function normalizeTargetHost(value: string): string {
   } catch {
     return new URL(`http://${trimmed}`).hostname.toLowerCase();
   }
+}
+
+function normalizeTargetUrl(value: string | undefined): string {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    throw new Error("--url is required for switchboard register");
+  }
+
+  const url = new URL(trimmed);
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error(`--url must be an HTTP URL: ${trimmed}`);
+  }
+  return url.toString().replace(/\/$/, "");
 }
 
 function parseCommonOptions(values: Record<string, string | boolean | undefined>): CommonOptions {
@@ -134,8 +142,6 @@ function parseStartOptions(argv: string[]): StartOptions | null {
     args: argv,
     options: {
       listen: { type: "string" },
-      portless: { type: "string" },
-      "default-host": { type: "string" },
       "state-file": { type: "string" },
       help: { type: "boolean", short: "h" },
     },
@@ -151,8 +157,6 @@ function parseStartOptions(argv: string[]): StartOptions | null {
   return {
     ...parseCommonOptions(values),
     listen: parseListenAddress(values.listen?.trim() || DEFAULT_LISTEN),
-    portlessOrigin: values.portless?.trim() || DEFAULT_PORTLESS_ORIGIN,
-    defaultHost: values["default-host"]?.trim() ? normalizeTargetHost(values["default-host"]) : undefined,
   };
 }
 
@@ -179,8 +183,8 @@ function parseRegisterOptions(argv: string[]): RegisterOptions | null {
   const { values, positionals } = parseArgs({
     args: argv,
     options: {
-      cwd: { type: "string" },
       url: { type: "string" },
+      cwd: { type: "string" },
       "no-activate": { type: "boolean" },
       "state-file": { type: "string" },
       help: { type: "boolean", short: "h" },
@@ -196,15 +200,15 @@ function parseRegisterOptions(argv: string[]): RegisterOptions | null {
 
   const [host] = positionals;
   if (!host) {
-    throw new Error("Missing host: dev-switchboard register <portless-host>");
+    throw new Error("Missing target id: dev-switchboard register <target-id> --url <url>");
   }
 
   return {
     ...parseCommonOptions(values),
     host: normalizeTargetHost(host),
+    url: normalizeTargetUrl(values.url),
     activate: values["no-activate"] !== true,
     cwd: values.cwd?.trim() || undefined,
-    url: values.url?.trim() || undefined,
   };
 }
 
@@ -230,16 +234,18 @@ function sortedTargets(state: SwitchboardState): DevTarget[] {
   return Object.values(state.targets ?? {}).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
-async function resolveActiveHost(options: StartOptions): Promise<string | null> {
+async function resolveActiveTarget(options: StartOptions): Promise<DevTarget | null> {
   const state = await readState(options.stateFile);
-  return state.activeHost ?? options.defaultHost ?? null;
+  if (!state.activeHost) {
+    return null;
+  }
+  return state.targets?.[state.activeHost] ?? null;
 }
 
-function targetUrl(requestUrl: string, activeHost: string, portlessOrigin: string, protocol?: "ws:" | "wss:"): URL {
+function targetUrl(requestUrl: string, targetBaseUrl: string, protocol?: "ws:" | "wss:"): URL {
   const incoming = new URL(requestUrl);
-  const portless = new URL(portlessOrigin);
-  const target = new URL(`${incoming.pathname}${incoming.search}`, portless);
-  target.hostname = activeHost;
+  const base = new URL(targetBaseUrl);
+  const target = new URL(`${incoming.pathname}${incoming.search}`, base);
   if (protocol) {
     target.protocol = protocol;
   }
@@ -320,7 +326,7 @@ function renderGui(): string {
         title.textContent = target.host;
         const meta = document.createElement("div");
         meta.className = "meta";
-        meta.textContent = target.cwd || target.url || target.updatedAt;
+        meta.textContent = target.url + (target.cwd ? " - " + target.cwd : "");
         info.append(title, meta);
         const button = document.createElement("button");
         button.type = "button";
@@ -354,10 +360,9 @@ async function handleControlRequest(request: Request, url: URL, options: StartOp
   if (request.method === "GET" && url.pathname === "/_dev/api/state") {
     const state = await readState(options.stateFile);
     return jsonResponse({
-      activeHost: state.activeHost ?? options.defaultHost ?? null,
+      activeHost: state.activeHost ?? null,
       updatedAt: state.updatedAt ?? null,
       targets: sortedTargets(state),
-      portlessOrigin: options.portlessOrigin,
       stateFile: options.stateFile,
     });
   }
@@ -366,15 +371,14 @@ async function handleControlRequest(request: Request, url: URL, options: StartOp
     const body = (await request.json()) as { host?: string };
     const activeHost = normalizeTargetHost(body.host ?? "");
     const state = await readState(options.stateFile);
-    const now = new Date().toISOString();
+    if (!state.targets?.[activeHost]?.url) {
+      return jsonResponse({ ok: false, error: `Unknown dev target: ${activeHost}` }, { status: 404 });
+    }
+
     await writeState(options.stateFile, {
       ...state,
       activeHost,
-      updatedAt: now,
-      targets: {
-        ...(state.targets ?? {}),
-        [activeHost]: state.targets?.[activeHost] ?? { host: activeHost, updatedAt: now },
-      },
+      updatedAt: new Date().toISOString(),
     });
     return jsonResponse({ ok: true, activeHost });
   }
@@ -390,18 +394,18 @@ function isWebSocketRequest(request: Request): boolean {
   return request.headers.get("upgrade")?.toLowerCase() === "websocket";
 }
 
-async function proxyHttp(request: Request, activeHost: string, options: StartOptions): Promise<Response> {
-  const target = targetUrl(request.url, activeHost, options.portlessOrigin);
+async function proxyHttp(request: Request, target: DevTarget): Promise<Response> {
+  const url = targetUrl(request.url, target.url);
   const headers = new Headers(request.headers);
   const incomingHost = headers.get("host");
   headers.delete("host");
   headers.delete("connection");
-  headers.set("x-diligent-switchboard-target", activeHost);
+  headers.set("x-diligent-switchboard-target", target.host);
   if (incomingHost) {
     headers.set("x-forwarded-host", incomingHost);
   }
 
-  return fetch(target, {
+  return fetch(url, {
     method: request.method,
     headers,
     body: request.method === "GET" || request.method === "HEAD" ? undefined : request.body,
@@ -440,21 +444,16 @@ async function startSwitchboard(options: StartOptions): Promise<void> {
         return controlResponse;
       }
 
-      const activeHost = await resolveActiveHost(options);
-      if (!activeHost) {
+      const activeTarget = await resolveActiveTarget(options);
+      if (!activeTarget?.url) {
         return htmlResponse('<a href="/_dev">Choose an active dev target</a>', { status: 503 });
       }
 
       if (isWebSocketRequest(request)) {
-        const target = targetUrl(
-          request.url,
-          activeHost,
-          options.portlessOrigin,
-          options.portlessOrigin.startsWith("https:") ? "wss:" : "ws:",
-        );
+        const target = targetUrl(request.url, activeTarget.url, activeTarget.url.startsWith("https:") ? "wss:" : "ws:");
         const upgraded = bunServer.upgrade(request, {
           data: {
-            activeHost,
+            activeHost: activeTarget.host,
             targetUrl: target.toString(),
             pending: [],
             upstreamOpen: false,
@@ -463,7 +462,7 @@ async function startSwitchboard(options: StartOptions): Promise<void> {
         return upgraded ? undefined : new Response("WebSocket upgrade failed", { status: 400 });
       }
 
-      return proxyHttp(request, activeHost, options);
+      return proxyHttp(request, activeTarget);
     },
     websocket: {
       open(ws) {
@@ -501,7 +500,6 @@ async function startSwitchboard(options: StartOptions): Promise<void> {
 
   console.log(`Diligent dev switchboard listening at http://${server.hostname}:${server.port}`);
   console.log(`Control UI: http://${server.hostname}:${server.port}/_dev`);
-  console.log(`Portless origin: ${options.portlessOrigin}`);
   console.log(`State file: ${options.stateFile}`);
 }
 
@@ -516,8 +514,8 @@ async function registerCommand(argv: string[]): Promise<void> {
   const current = state.targets?.[options.host];
   const nextTarget: DevTarget = {
     host: options.host,
+    url: options.url,
     cwd: options.cwd ?? current?.cwd,
-    url: options.url ?? current?.url,
     updatedAt: now,
   };
 
@@ -531,7 +529,7 @@ async function registerCommand(argv: string[]): Promise<void> {
     },
   });
 
-  console.log(`${options.activate ? "Active" : "Registered"} dev target: ${options.host}`);
+  console.log(`${options.activate ? "Active" : "Registered"} dev target: ${options.host} -> ${options.url}`);
 }
 
 async function useCommand(argv: string[]): Promise<void> {
@@ -541,20 +539,19 @@ async function useCommand(argv: string[]): Promise<void> {
   }
   const [host] = parsed.positionals;
   if (!host) {
-    throw new Error("Missing host: dev-switchboard use <portless-host>");
+    throw new Error("Missing target id: dev-switchboard use <target-id>");
   }
 
   const activeHost = normalizeTargetHost(host);
   const state = await readState(parsed.options.stateFile);
-  const now = new Date().toISOString();
+  if (!state.targets?.[activeHost]?.url) {
+    throw new Error(`Unknown dev target: ${activeHost}. Run bun run dev:overdare in that worktree first.`);
+  }
+
   await writeState(parsed.options.stateFile, {
     ...state,
     activeHost,
-    updatedAt: now,
-    targets: {
-      ...(state.targets ?? {}),
-      [activeHost]: state.targets?.[activeHost] ?? { host: activeHost, updatedAt: now },
-    },
+    updatedAt: new Date().toISOString(),
   });
   console.log(`Active dev target: ${activeHost}`);
 }

@@ -11,11 +11,7 @@ Windows
 
 Mac
   dev-switchboard :11000
-    active target -> <worktree-host>.diligent.localhost
-
-  portless proxy :11001
-    diligent.localhost           -> main worktree Vite port
-    fix-ui.diligent.localhost    -> feature worktree Vite port
+    active target -> http://127.0.0.1:<active-vite-port>
 
   each worktree
     sidecar backend -> private free port
@@ -24,7 +20,8 @@ Mac
 ```
 
 The switchboard owns only the fixed Windows-facing port and the active target
-state. Portless still owns worktree names and app port assignment.
+state. Portless still supplies worktree target names and app port assignment, but
+Windows traffic does not proxy through the Portless proxy.
 
 ## One-Time Local Env
 
@@ -52,8 +49,9 @@ Run this from each git worktree you want available:
 bun run dev:overdare
 ```
 
-The first run starts the fixed switchboard. Every run registers the current
-worktree and makes it active, then starts:
+The first run starts the fixed switchboard. Every run starts a Portless-managed
+instance. That instance registers its direct Vite URL with the switchboard and
+makes itself active, then starts:
 
 ```text
 bun run apps/overdare-ai-agent/sidecar/src/server.ts --dev --port=<free-port> --cwd=$OVERDARE_PROJECT_CWD
@@ -92,12 +90,10 @@ Use a different OVERDARE project cwd:
 bun run dev:overdare -- --project-cwd /Volumes/other-game
 ```
 
-Use a different fixed Windows-facing port or an already-running Portless proxy:
+Use a different fixed Windows-facing port:
 
 ```sh
-bun run dev:overdare \
-  --listen 0.0.0.0:12000 \
-  --portless http://127.0.0.1:11001
+bun run dev:overdare --listen 0.0.0.0:12000
 ```
 
 For lower-level debugging:

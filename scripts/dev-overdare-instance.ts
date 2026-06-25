@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// @summary Starts one OVERDARE sidecar plus Vite web dev instance for Portless/worktree routing.
+// @summary Starts one OVERDARE sidecar plus Vite web dev instance for switchboard routing.
 
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
@@ -27,6 +27,9 @@ interface CliOptions {
   host?: string;
   sidecarEntry: string;
   webCwd: string;
+  switchboardTarget?: string;
+  switchboardStateFile?: string;
+  noSwitchboardRegister: boolean;
   skipHealthWait: boolean;
   healthTimeoutMs: number;
 }
@@ -35,7 +38,7 @@ function printHelp(): void {
   console.log(`Usage: bun run scripts/dev-overdare-instance.ts [options]
 
 Starts the OVERDARE sidecar backend and the web Vite dev server as one dev
-instance. Use it under portless so each git worktree gets a stable host.
+instance. Use it under Portless so each git worktree gets an assigned Vite port.
 
 Options:
   --project-cwd <path>       OVERDARE project cwd passed to the sidecar
@@ -45,6 +48,10 @@ Options:
   --host <host>              Vite host (default: $HOST, then 0.0.0.0)
   --sidecar-entry <path>     Sidecar entrypoint
   --web-cwd <path>           Web package cwd
+  --switchboard-target <id>  Target id registered with dev-switchboard
+  --switchboard-state-file <path>
+                              State file passed to dev-switchboard register
+  --no-switchboard-register  Do not register this Vite target with dev-switchboard
   --skip-health-wait         Start Vite without waiting for backend /health
   --health-timeout-ms <ms>   Backend health wait timeout (default: 15000)
   --help                     Show this help
@@ -89,6 +96,9 @@ function parseCliOptions(argv: string[]): CliOptions | null {
       host: { type: "string" },
       "sidecar-entry": { type: "string" },
       "web-cwd": { type: "string" },
+      "switchboard-target": { type: "string" },
+      "switchboard-state-file": { type: "string" },
+      "no-switchboard-register": { type: "boolean" },
       "skip-health-wait": { type: "boolean" },
       "health-timeout-ms": { type: "string" },
       help: { type: "boolean", short: "h" },
@@ -110,6 +120,11 @@ function parseCliOptions(argv: string[]): CliOptions | null {
     host: values.host?.trim() || undefined,
     sidecarEntry: resolve(process.cwd(), values["sidecar-entry"]?.trim() || DEFAULT_SIDECAR_ENTRY),
     webCwd: resolve(process.cwd(), values["web-cwd"]?.trim() || DEFAULT_WEB_CWD),
+    switchboardTarget: values["switchboard-target"]?.trim() || undefined,
+    switchboardStateFile: values["switchboard-state-file"]?.trim()
+      ? resolve(process.cwd(), values["switchboard-state-file"].trim())
+      : undefined,
+    noSwitchboardRegister: values["no-switchboard-register"] === true,
     skipHealthWait: values["skip-health-wait"] === true,
     healthTimeoutMs: parsePositiveInt(values["health-timeout-ms"], "--health-timeout-ms") ?? DEFAULT_HEALTH_TIMEOUT_MS,
   };
@@ -217,6 +232,44 @@ function spawnManaged(name: string, command: string[], cwd: string, env: EnvMap)
   });
 }
 
+function localProxyHost(host: string): string {
+  if (host === "0.0.0.0" || host === "::" || host === "[::]") {
+    return "127.0.0.1";
+  }
+  return host;
+}
+
+function registerSwitchboardTarget(options: CliOptions, targetUrl: string): void {
+  if (options.noSwitchboardRegister || !options.switchboardTarget) {
+    return;
+  }
+
+  const args = [
+    "bun",
+    "run",
+    "dev:switchboard",
+    "register",
+    options.switchboardTarget,
+    "--url",
+    targetUrl,
+    "--cwd",
+    ROOT,
+  ];
+  if (options.switchboardStateFile) {
+    args.push("--state-file", options.switchboardStateFile);
+  }
+
+  const result = Bun.spawnSync(args, {
+    cwd: ROOT,
+    env: process.env,
+    stdout: "inherit",
+    stderr: "inherit",
+  });
+  if (result.exitCode !== 0) {
+    process.exit(result.exitCode ?? 1);
+  }
+}
+
 async function run(): Promise<void> {
   const options = parseCliOptions(process.argv.slice(2));
   if (!options) {
@@ -236,6 +289,7 @@ async function run(): Promise<void> {
     (await findFreePort(DEFAULT_BACKEND_PORT_START, DEFAULT_BACKEND_PORT_END));
   const webPort = options.webPort ?? parsePort(env.PORT, "PORT") ?? DEFAULT_WEB_PORT;
   const host = options.host ?? env.HOST ?? "0.0.0.0";
+  const webTargetUrl = `http://${localProxyHost(host)}:${webPort}`;
 
   env.DILIGENT_WEB_SERVER_PORT = String(backendPort);
   env.DILIGENT_WEB_RPC_TARGET = `ws://127.0.0.1:${backendPort}`;
@@ -244,6 +298,7 @@ async function run(): Promise<void> {
   console.log(`[dev-instance] project cwd: ${projectCwd}`);
   console.log(`[dev-instance] backend: http://127.0.0.1:${backendPort}`);
   console.log(`[dev-instance] web: http://${host}:${webPort}`);
+  console.log(`[dev-instance] switchboard target: ${webTargetUrl}`);
 
   const children: ManagedProcess[] = [];
   let stopping = false;
@@ -284,6 +339,8 @@ async function run(): Promise<void> {
       throw error;
     }
   }
+
+  registerSwitchboardTarget(options, webTargetUrl);
 
   const web = spawnManaged(
     "web",

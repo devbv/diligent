@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// @summary Friendly OVERDARE worktree dev workflow wrapper around Portless and the fixed switchboard.
+// @summary Friendly OVERDARE worktree dev workflow wrapper around Portless-managed Vite instances.
 
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
@@ -7,15 +7,11 @@ import { parseArgs } from "node:util";
 
 const ROOT = resolve(import.meta.dir, "..");
 const DEFAULT_LISTEN = "0.0.0.0:11000";
-const DEFAULT_PORTLESS_PORT = "11001";
 const DEFAULT_NAME = "diligent";
 
 interface DevOverdareOptions {
   listen: string;
-  portlessPort: string;
-  portlessOrigin?: string;
   stateFile?: string;
-  noProxyStart: boolean;
   lan: boolean;
   name: string;
   force: boolean;
@@ -42,11 +38,8 @@ Common workflow:
 
 Options:
   --listen <host:port>       Windows-facing address (default: ${DEFAULT_LISTEN})
-  --portless-port <number>   Local Portless proxy port (default: ${DEFAULT_PORTLESS_PORT})
-  --portless <origin>        Explicit Portless origin
   --state-file <path>        Switchboard state file
-  --no-proxy-start           Do not run "portless proxy start" first
-  --lan                      Start Portless with LAN mode enabled
+  --lan                      Ask Portless to run this instance in LAN mode
   --name <name>              Portless base app name (default: ${DEFAULT_NAME})
   --force                    Replace an existing Portless route
   --app-port <number>        Fixed app port for this instance
@@ -102,18 +95,6 @@ async function runInherited(args: string[]): Promise<never> {
   process.exit(code ?? 1);
 }
 
-function runChecked(args: string[]): void {
-  const result = Bun.spawnSync(args, {
-    cwd: ROOT,
-    env: process.env,
-    stdout: "inherit",
-    stderr: "inherit",
-  });
-  if (result.exitCode !== 0) {
-    process.exit(result.exitCode ?? 1);
-  }
-}
-
 function runCaptured(args: string[]): string {
   const result = Bun.spawnSync(args, {
     cwd: ROOT,
@@ -134,10 +115,7 @@ function parseOptions(argv: string[]): DevOverdareOptions | null {
     args: head,
     options: {
       listen: { type: "string" },
-      "portless-port": { type: "string" },
-      portless: { type: "string" },
       "state-file": { type: "string" },
-      "no-proxy-start": { type: "boolean" },
       lan: { type: "boolean" },
       name: { type: "string" },
       force: { type: "boolean" },
@@ -158,10 +136,7 @@ function parseOptions(argv: string[]): DevOverdareOptions | null {
 
   return {
     listen: values.listen?.trim() || DEFAULT_LISTEN,
-    portlessPort: values["portless-port"]?.trim() || DEFAULT_PORTLESS_PORT,
-    portlessOrigin: values.portless?.trim() || undefined,
     stateFile: values["state-file"]?.trim() || undefined,
-    noProxyStart: values["no-proxy-start"] === true,
     lan: values.lan === true,
     name: values.name?.trim() || DEFAULT_NAME,
     force: values.force === true,
@@ -184,18 +159,6 @@ function listenPort(listen: string): string {
   return "11000";
 }
 
-function startPortlessProxy(options: DevOverdareOptions): void {
-  if (options.noProxyStart) {
-    return;
-  }
-
-  const proxyArgs = ["proxy", "start", "--no-tls", "--port", options.portlessPort];
-  if (options.lan) {
-    proxyArgs.push("--lan");
-  }
-  runChecked(portlessCommand(proxyArgs));
-}
-
 function resolvePortlessUrl(options: DevOverdareOptions): string {
   const output = runCaptured(portlessCommand(["get", options.name]));
   const urlText = output
@@ -216,8 +179,7 @@ function hostFromUrl(urlText: string): string {
   }
 }
 
-function buildSwitchboardStartArgs(options: DevOverdareOptions, currentHost: string): string[] {
-  const portlessOrigin = options.portlessOrigin ?? `http://127.0.0.1:${options.portlessPort}`;
+function buildSwitchboardStartArgs(options: DevOverdareOptions): string[] {
   return [
     "bun",
     "run",
@@ -225,28 +187,8 @@ function buildSwitchboardStartArgs(options: DevOverdareOptions, currentHost: str
     "start",
     "--listen",
     options.listen,
-    "--portless",
-    portlessOrigin,
-    "--default-host",
-    currentHost,
     ...(options.stateFile ? ["--state-file", options.stateFile] : []),
   ];
-}
-
-function registerCurrentTarget(options: DevOverdareOptions, host: string, portlessUrl: string): void {
-  const args = [
-    "bun",
-    "run",
-    "dev:switchboard",
-    "register",
-    host,
-    "--cwd",
-    ROOT,
-    "--url",
-    portlessUrl,
-    ...(options.stateFile ? ["--state-file", options.stateFile] : []),
-  ];
-  runChecked(args);
 }
 
 async function isSwitchboardRunning(options: DevOverdareOptions): Promise<boolean> {
@@ -271,8 +213,11 @@ async function waitForSwitchboard(options: DevOverdareOptions): Promise<void> {
   throw new Error(`Timed out waiting for switchboard on port ${listenPort(options.listen)}`);
 }
 
-function buildInstanceArgs(options: DevOverdareOptions): string[] {
+function buildInstanceArgs(options: DevOverdareOptions, targetHost: string): string[] {
   const portlessArgs = ["run", "--name", options.name];
+  if (options.lan) {
+    portlessArgs.push("--lan");
+  }
   if (options.force) {
     portlessArgs.push("--force");
   }
@@ -289,7 +234,19 @@ function buildInstanceArgs(options: DevOverdareOptions): string[] {
     portlessArgs.push("--ngrok");
   }
 
-  return portlessCommand([...portlessArgs, "bun", "run", "dev:overdare-instance", ...options.instanceArgs]);
+  const instanceArgs = ["--switchboard-target", targetHost];
+  if (options.stateFile) {
+    instanceArgs.push("--switchboard-state-file", options.stateFile);
+  }
+
+  return portlessCommand([
+    ...portlessArgs,
+    "bun",
+    "run",
+    "dev:overdare-instance",
+    ...instanceArgs,
+    ...options.instanceArgs,
+  ]);
 }
 
 async function autoCommand(argv: string[]): Promise<void> {
@@ -298,10 +255,8 @@ async function autoCommand(argv: string[]): Promise<void> {
     return;
   }
 
-  startPortlessProxy(options);
   const portlessUrl = resolvePortlessUrl(options);
   const currentHost = hostFromUrl(portlessUrl);
-  registerCurrentTarget(options, currentHost, portlessUrl);
 
   const switchboardWasRunning = await isSwitchboardRunning(options);
   const children: ReturnType<typeof Bun.spawn>[] = [];
@@ -327,7 +282,7 @@ async function autoCommand(argv: string[]): Promise<void> {
 
   if (!switchboardWasRunning) {
     console.log("[dev:overdare] starting switchboard");
-    children.push(spawnInherited(buildSwitchboardStartArgs(options, currentHost)));
+    children.push(spawnInherited(buildSwitchboardStartArgs(options)));
     await waitForSwitchboard(options);
   } else {
     console.log("[dev:overdare] switchboard is already running");
@@ -335,7 +290,7 @@ async function autoCommand(argv: string[]): Promise<void> {
 
   console.log(`[dev:overdare] active target: ${currentHost}`);
   console.log("[dev:overdare] starting current worktree instance");
-  children.push(spawnInherited(buildInstanceArgs(options)));
+  children.push(spawnInherited(buildInstanceArgs(options, currentHost)));
 
   const firstExit = await Promise.race(
     children.map(async (child) => ({
