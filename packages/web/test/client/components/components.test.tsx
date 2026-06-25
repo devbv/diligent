@@ -1218,3 +1218,35 @@ test("AssetThumbnail falls back to the title initial when no url is present", ()
   expect(html).not.toContain("<img");
   expect(html).toContain("K");
 });
+
+test("QuestionCard renders an asset thumbnail grid for display:asset questions", () => {
+  const html = renderToStaticMarkup(
+    <QuestionCard
+      request={{
+        questions: [
+          {
+            id: "asset",
+            header: "Asset",
+            question: 'Pick an asset for "katana"',
+            display: "asset",
+            options: [
+              {
+                label: "Katana, Rusty",
+                description: "MODEL",
+                value: "6584600",
+                asset: { thumbnailUrl: "https://assets.example/k.png", price: "100" },
+              },
+            ],
+          },
+        ],
+      }}
+      answers={{}}
+      onAnswerChange={() => {}}
+      onSubmit={() => {}}
+      onCancel={() => {}}
+    />,
+  );
+  expect(html).toContain("https://assets.example/k.png");
+  expect(html).toContain("Katana, Rusty");
+  expect(html).toContain("100");
+});

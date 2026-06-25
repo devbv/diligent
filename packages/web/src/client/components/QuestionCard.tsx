@@ -1,6 +1,7 @@
 // @summary Inline chat card for agent user-input questions with text/password fields and always-on custom input
 
 import type { UserInputRequest } from "@diligent/protocol";
+import { AssetThumbnail } from "./AssetThumbnail";
 import { Button } from "./Button";
 import { SectionLabel } from "./SectionLabel";
 import { SystemCard } from "./SystemCard";
@@ -19,6 +20,10 @@ function toStringArray(value: string | string[] | undefined): string[] {
   return [];
 }
 
+function optionValue(option: { label: string; value?: string }): string {
+  return option.value ?? option.label;
+}
+
 export function QuestionCard({ request, answers, onAnswerChange, onSubmit, onCancel }: QuestionCardProps) {
   return (
     <SystemCard>
@@ -30,43 +35,75 @@ export function QuestionCard({ request, answers, onAnswerChange, onSubmit, onCan
           const hasOptions = question.options.length > 0;
           const allowMultiple = Boolean(question.allow_multiple);
           const selectedSet = new Set(selected);
-          const customValue = selected.find((value) => !question.options.some((o) => o.label === value)) ?? "";
+          const isAsset = question.display === "asset";
+          const customValue = selected.find((value) => !question.options.some((o) => optionValue(o) === value)) ?? "";
 
           return (
             <div key={question.id} className="rounded-lg border border-border/100 bg-[#11131a] px-4 py-4">
               <p className="mb-3 text-sm font-semibold leading-6 text-text">{question.question}</p>
 
-              {hasOptions
-                ? question.options.map((opt, i) => {
-                    const checked = selectedSet.has(opt.label);
+              {isAsset ? (
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {question.options.map((opt) => {
+                    const val = optionValue(opt);
+                    const checked = selectedSet.has(val);
+                    const meta = opt.asset?.price ?? opt.description;
                     return (
                       <button
-                        key={opt.label}
+                        key={val}
                         type="button"
-                        onClick={() => {
-                          if (allowMultiple) {
-                            const next = checked ? selected.filter((v) => v !== opt.label) : [...selected, opt.label];
-                            onAnswerChange(question.id, next);
-                            return;
-                          }
-                          onAnswerChange(question.id, opt.label);
-                        }}
-                        className={`flex w-full items-baseline gap-3 rounded-lg px-3 py-2 text-left text-sm transition ${
-                          checked ? "bg-white/5 text-text" : "text-muted hover:bg-white/[.03] hover:text-text"
+                        data-asset-value={val}
+                        onClick={() => onAnswerChange(question.id, val)}
+                        className={`flex flex-col gap-1.5 rounded-md border p-1.5 text-left transition ${
+                          checked ? "border-accent bg-white/5" : "border-border/30 hover:bg-white/[.03]"
                         }`}
                       >
-                        <span className="w-4 shrink-0 text-right font-mono text-xs opacity-40">{i + 1}</span>
-                        <span className="shrink-0 font-mono text-xs">
-                          {allowMultiple ? (checked ? "[x]" : "[ ]") : checked ? "(●)" : "( )"}
+                        <span className="block h-[7rem] w-full overflow-hidden rounded bg-fill-secondary">
+                          <AssetThumbnail
+                            asset={{
+                              title: opt.label,
+                              subtitle: opt.asset?.subtitle ?? opt.description,
+                              thumbnailUrl: opt.asset?.thumbnailUrl,
+                              previewUrl: opt.asset?.previewUrl,
+                            }}
+                          />
                         </span>
-                        <span className="flex-1">{opt.label}</span>
-                        {opt.description ? (
-                          <span className="shrink-0 text-xs opacity-40">{opt.description}</span>
-                        ) : null}
+                        <span className="block truncate text-sm text-text-soft">{opt.label}</span>
+                        {meta ? <span className="block truncate text-xs text-muted">{meta}</span> : null}
                       </button>
                     );
-                  })
-                : null}
+                  })}
+                </div>
+              ) : hasOptions ? (
+                question.options.map((opt, i) => {
+                  const val = optionValue(opt);
+                  const checked = selectedSet.has(val);
+                  return (
+                    <button
+                      key={opt.label}
+                      type="button"
+                      onClick={() => {
+                        if (allowMultiple) {
+                          const next = checked ? selected.filter((v) => v !== val) : [...selected, val];
+                          onAnswerChange(question.id, next);
+                          return;
+                        }
+                        onAnswerChange(question.id, val);
+                      }}
+                      className={`flex w-full items-baseline gap-3 rounded-lg px-3 py-2 text-left text-sm transition ${
+                        checked ? "bg-white/5 text-text" : "text-muted hover:bg-white/[.03] hover:text-text"
+                      }`}
+                    >
+                      <span className="w-4 shrink-0 text-right font-mono text-xs opacity-40">{i + 1}</span>
+                      <span className="shrink-0 font-mono text-xs">
+                        {allowMultiple ? (checked ? "[x]" : "[ ]") : checked ? "(●)" : "( )"}
+                      </span>
+                      <span className="flex-1">{opt.label}</span>
+                      {opt.description ? <span className="shrink-0 text-xs opacity-40">{opt.description}</span> : null}
+                    </button>
+                  );
+                })
+              ) : null}
 
               <div className="flex items-center gap-3 px-2 py-1">
                 {hasOptions ? (
@@ -84,7 +121,7 @@ export function QuestionCard({ request, answers, onAnswerChange, onSubmit, onCan
                     onChange={(e) => {
                       const typed = e.target.value;
                       const optionSelected = selected.filter((value) =>
-                        question.options.some((o) => o.label === value),
+                        question.options.some((o) => optionValue(o) === value),
                       );
                       if (typed.length === 0) {
                         onAnswerChange(question.id, allowMultiple ? optionSelected : (optionSelected[0] ?? ""));
