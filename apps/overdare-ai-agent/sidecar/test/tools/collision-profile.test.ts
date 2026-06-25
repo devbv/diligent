@@ -123,6 +123,9 @@ describe("collision channel tools", () => {
         expect.objectContaining({ name: "WeaponTrace", channel: "ECC_EngineTraceChannel5" }),
       ]),
       customChannels: [{ name: "Bullet" }],
+      defaultChannelCount: 10,
+      customChannelCount: 1,
+      totalChannelCount: 11,
     });
     expect(profileResult.metadata?.result).toMatchObject({
       defaultProfiles: expect.arrayContaining([
@@ -133,6 +136,9 @@ describe("collision channel tools", () => {
         expect.objectContaining({ name: "Ragdoll" }),
       ]),
       customProfiles: [expect.objectContaining({ name: "PlayerProfile" })],
+      defaultProfileCount: 22,
+      customProfileCount: 1,
+      totalProfileCount: 23,
     });
   });
 

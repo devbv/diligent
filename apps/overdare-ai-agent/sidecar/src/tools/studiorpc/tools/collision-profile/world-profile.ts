@@ -174,6 +174,9 @@ export function isCustomChannelEntry(entry: Record<string, unknown>): boolean {
 export function buildChannelsPayload(data: WorldProfileData): {
   defaultChannels: Record<string, unknown>[];
   customChannels: Record<string, unknown>[];
+  defaultChannelCount: number;
+  customChannelCount: number;
+  totalChannelCount: number;
 } {
   const channels = getRecordArray(data, "DefaultChannelResponses");
   const customChannels = channels.filter((entry) => isCustomChannelEntry(entry));
@@ -195,7 +198,14 @@ export function buildChannelsPayload(data: WorldProfileData): {
     ...storedDefaultsByName.get(channel.name),
   }));
 
-  return { defaultChannels: [...defaultChannels, ...extraDefaultChannels], customChannels };
+  const mergedDefaultChannels = [...defaultChannels, ...extraDefaultChannels];
+  return {
+    defaultChannels: mergedDefaultChannels,
+    customChannels,
+    defaultChannelCount: mergedDefaultChannels.length,
+    customChannelCount: customChannels.length,
+    totalChannelCount: mergedDefaultChannels.length + customChannels.length,
+  };
 }
 
 export function channelNameSet(data: WorldProfileData): Set<string> {
@@ -372,6 +382,9 @@ export function removeCustomResponseChannel(
 export function buildProfilesPayload(data: WorldProfileData): {
   defaultProfiles: Array<DefaultProfileDefinition & { bCanModify: false }>;
   customProfiles: Record<string, unknown>[];
+  defaultProfileCount: number;
+  customProfileCount: number;
+  totalProfileCount: number;
 } {
   const profiles = getRecordArray(data, "Profiles");
   const profilesByName = new Map(
@@ -403,5 +416,11 @@ export function buildProfilesPayload(data: WorldProfileData): {
       bCanModify: profile.bCanModify === undefined ? true : profile.bCanModify,
     }));
 
-  return { defaultProfiles, customProfiles };
+  return {
+    defaultProfiles,
+    customProfiles,
+    defaultProfileCount: defaultProfiles.length,
+    customProfileCount: customProfiles.length,
+    totalProfileCount: defaultProfiles.length + customProfiles.length,
+  };
 }
