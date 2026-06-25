@@ -33,6 +33,7 @@ import { SessionManager, type SessionManagerConfig } from "../session/manager";
 import { type BundledToolProvider, collectBundledHooks } from "../tools/bundled-provider";
 import { collectPluginHooks } from "../tools/plugin-loader";
 import type { UserInputRequest, UserInputResponse } from "../tools/user-input-types";
+import { createKeyedSerializer } from "./keyed-serializer";
 import {
   applySessionDefaults,
   type ClientRequestDispatchContext,
@@ -132,6 +133,10 @@ export class DiligentAppServer {
   private readonly subscriptionMap = new Map<string, { connectionId: string; threadId: string }>();
   private readonly turnInitiators = new Map<string, string>(); // threadId → connectionId
   private readonly pendingServerRequests = new Map<number, PendingServerRequest>();
+  // Serializes user-input prompts per thread so the agent fanning out several
+  // selectable searches in parallel never shows overlapping pickers (which a
+  // single-prompt client cannot resolve, deadlocking the turn).
+  private readonly userInputSerializer = createKeyedSerializer();
   private serverRequestSeq = 0;
 
   // Config/auth state
@@ -468,13 +473,18 @@ export class DiligentAppServer {
   }
 
   private async requestUserInput(threadId: string, request: UserInputRequest): Promise<UserInputResponse> {
-    return requestUserInputFromConnections({
-      threadId,
-      request,
-      connections: this.connections,
-      pendingServerRequests: this.pendingServerRequests,
-      allocateServerRequestId: () => this.allocateServerRequestId(),
-    });
+    // Serialize per thread: if the agent issues several user-input prompts at once
+    // (e.g. parallel selectable asset searches), present them one at a time so each
+    // is resolved before the next is broadcast.
+    return this.userInputSerializer(threadId, () =>
+      requestUserInputFromConnections({
+        threadId,
+        request,
+        connections: this.connections,
+        pendingServerRequests: this.pendingServerRequests,
+        allocateServerRequestId: () => this.allocateServerRequestId(),
+      }),
+    );
   }
 
   // ─── Thread runtime utilities ────────────────────────────────────────────────
