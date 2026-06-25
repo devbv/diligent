@@ -8,7 +8,7 @@ PATCH_MARKER="# git-bash-compat-patch"
 
 patch_hook() {
   hook="$1"
-  [ -f "$hook" ] || return
+  [ -f "$hook" ] || return 0
 
   # Skip if already patched
   grep -q "$PATCH_MARKER" "$hook" && return
@@ -48,6 +48,6 @@ PATCH_BLOCK
   echo "Patched: $hook"
 }
 
-patch_hook ".git/hooks/pre-commit"
-patch_hook ".git/hooks/commit-msg"
-patch_hook ".git/hooks/pre-push"
+patch_hook "$(git rev-parse --git-path hooks/pre-commit 2>/dev/null || printf '%s' .git/hooks/pre-commit)"
+patch_hook "$(git rev-parse --git-path hooks/commit-msg 2>/dev/null || printf '%s' .git/hooks/commit-msg)"
+patch_hook "$(git rev-parse --git-path hooks/pre-push 2>/dev/null || printf '%s' .git/hooks/pre-push)"

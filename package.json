@@ -19,6 +19,9 @@
     "test:e2e": "bun test packages/e2e/",
     "web:dev": "bun run packages/web/src/server/index.ts --dev",
     "web:build": "bun run --cwd packages/web build",
+    "dev:overdare": "bun run scripts/dev-overdare.ts",
+    "dev:overdare-instance": "bun run scripts/dev-overdare-instance.ts",
+    "dev:switchboard": "bun run scripts/dev-switchboard.ts",
     "debug-viewer:build": "bun run --cwd packages/debug-viewer build",
     "debug-viewer:start": "bun run --cwd packages/debug-viewer start",
     "debug-viewer:windows-exe": "bun run --cwd packages/debug-viewer build:windows-exe",
@@ -53,6 +56,7 @@
     "@types/node": "25.3.0",
     "bun-types": "^1.3.10",
     "lefthook": "^2.1.2",
+    "portless": "^0.15.0",
     "typescript": "^5.7.0"
   }
 }

@@ -2,6 +2,7 @@
 import legacy from "@vitejs/plugin-legacy";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
+import { resolveDevRpcProxyTarget } from "./src/server/dev-proxy-target";
 
 const DEFAULT_PROJECT_NAME = "Diligent";
 
@@ -35,7 +36,8 @@ export default defineConfig(({ mode }) => ({
     port: 5174,
     proxy: {
       "/rpc": {
-        target: "ws://localhost:7433",
+        target: resolveDevRpcProxyTarget(),
+        changeOrigin: true,
         ws: true,
       },
     },
