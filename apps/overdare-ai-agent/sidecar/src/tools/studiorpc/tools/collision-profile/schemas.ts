@@ -66,12 +66,12 @@ export const editProfileParams = z
     name: nameSchema.describe("Collision profile name to update."),
     collisionEnabled: collisionEnabledSchema
       .optional()
-      .describe("Custom profiles only. For default profiles, omit this or pass the existing unchanged value."),
+      .describe("Custom profiles only. For default profiles, omit this field."),
     objectTypeName: z
       .string()
       .min(1)
       .optional()
-      .describe("Custom profiles only. For default profiles, omit this or pass the existing unchanged value."),
+      .describe("Custom profiles only. For default profiles, omit this field."),
     customResponses: z
       .array(customResponseSchema)
       .optional()

@@ -4,7 +4,6 @@ import type { Tool, ToolContext, ToolResult } from "../../types";
 import type { WriteLock } from "../../write-lock";
 import { readAndWriteOvdrjm, readOvdrjmDocument } from "../ovdrjm-utils";
 import type { ApplyLevelChanges } from ".";
-import { DEFAULT_PROFILE_DEFINITIONS } from "./defaults";
 import { buildCollisionProfilesRender } from "./render";
 import { approveWrite, CollisionToolError, errorResult, okResult } from "./results";
 import {
@@ -154,7 +153,16 @@ function updateDefaultProfile(
   parsed: EditProfileInput,
   data: WorldProfileData,
 ): { updated: Record<string, unknown>; storedIn: "EditProfiles" } {
-  validateDefaultProfileNoOpFields(parsed, data);
+  if (
+    parsed.collisionEnabled !== undefined ||
+    parsed.objectTypeName !== undefined ||
+    parsed.helpMessage !== undefined
+  ) {
+    throw new CollisionToolError(
+      "PROTECTED_PROFILE",
+      "Default profiles only allow customResponses updates through EditProfiles. Retry with only name and customResponses.",
+    );
+  }
   if (parsed.customResponses === undefined) {
     throw new CollisionToolError("NO_UPDATES", "Default profile update requires customResponses.");
   }
@@ -162,27 +170,6 @@ function updateDefaultProfile(
   const editProfile = ensureEditProfile(data, parsed.name);
   editProfile.customResponses = parsed.customResponses;
   return { updated: editProfile, storedIn: "EditProfiles" };
-}
-
-function validateDefaultProfileNoOpFields(parsed: EditProfileInput, data: WorldProfileData): void {
-  const baseline = getDefaultProfileBaseline(parsed.name, data);
-  const rejects =
-    (parsed.collisionEnabled !== undefined && parsed.collisionEnabled !== baseline.collisionEnabled) ||
-    (parsed.objectTypeName !== undefined && parsed.objectTypeName !== baseline.objectTypeName) ||
-    (parsed.helpMessage !== undefined && parsed.helpMessage !== baseline.helpMessage);
-
-  if (rejects) {
-    throw new CollisionToolError(
-      "PROTECTED_PROFILE",
-      "Default profiles only allow customResponses updates through EditProfiles.",
-    );
-  }
-}
-
-function getDefaultProfileBaseline(name: string, data: WorldProfileData): Record<string, unknown> {
-  const stored = ensureRecordArray(data, "Profiles").find((profile) => profile.name === name);
-  if (stored) return stored;
-  return DEFAULT_PROFILE_DEFINITIONS.find((profile) => profile.name === name) ?? {};
 }
 
 async function deleteCollisionProfile(

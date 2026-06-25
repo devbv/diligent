@@ -578,7 +578,7 @@ describe("collision profile tools", () => {
     expect(result.metadata).toMatchObject({ error: true, code: "PROTECTED_PROFILE" });
   });
 
-  test("allows default profile custom response overrides when protected fields are unchanged", async () => {
+  test("stores default profile custom response overrides only when protected fields are omitted", async () => {
     const cwd = makeProject({
       DefaultChannelResponses: [
         {
@@ -602,11 +602,23 @@ describe("collision profile tools", () => {
     });
     const tools = await loadCollisionTools(cwd);
 
-    const result = await tools.get("edit_collision_profile")!.execute(
+    const rejectedResult = await tools.get("edit_collision_profile")!.execute(
       {
         name: "BlockAll",
         collisionEnabled: "QueryAndPhysics",
         objectTypeName: "WorldStatic",
+        customResponses: [
+          { channel: "WorldStatic", response: "ECR_Block" },
+          { channel: "Bullet", response: "ECR_Ignore" },
+        ],
+      },
+      toolContext(),
+    );
+    expect(rejectedResult.metadata).toMatchObject({ error: true, code: "PROTECTED_PROFILE" });
+
+    const result = await tools.get("edit_collision_profile")!.execute(
+      {
+        name: "BlockAll",
         customResponses: [
           { channel: "WorldStatic", response: "ECR_Block" },
           { channel: "Bullet", response: "ECR_Ignore" },
