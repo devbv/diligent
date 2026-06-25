@@ -64,9 +64,18 @@ export const createProfileParams = z
 export const editProfileParams = z
   .object({
     name: nameSchema.describe("Collision profile name to update."),
-    collisionEnabled: collisionEnabledSchema.optional(),
-    objectTypeName: z.string().min(1).optional(),
-    customResponses: z.array(customResponseSchema).optional(),
+    collisionEnabled: collisionEnabledSchema
+      .optional()
+      .describe("Custom profiles only. For default profiles, omit this or pass the existing unchanged value."),
+    objectTypeName: z
+      .string()
+      .min(1)
+      .optional()
+      .describe("Custom profiles only. For default profiles, omit this or pass the existing unchanged value."),
+    customResponses: z
+      .array(customResponseSchema)
+      .optional()
+      .describe("For default profiles, this is the only editable field and is stored through EditProfiles."),
     helpMessage: z.string().nullable().optional(),
   })
   .strict()

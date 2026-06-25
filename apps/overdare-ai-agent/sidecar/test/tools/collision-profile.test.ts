@@ -578,6 +578,71 @@ describe("collision profile tools", () => {
     expect(result.metadata).toMatchObject({ error: true, code: "PROTECTED_PROFILE" });
   });
 
+  test("allows default profile custom response overrides when protected fields are unchanged", async () => {
+    const cwd = makeProject({
+      DefaultChannelResponses: [
+        {
+          channel: "ECC_GameTraceChannel1",
+          defaultResponse: "ECR_Block",
+          bTraceType: false,
+          bStaticObject: false,
+          name: "Bullet",
+        },
+      ],
+      Profiles: [
+        {
+          name: "BlockAll",
+          collisionEnabled: "QueryAndPhysics",
+          bCanModify: false,
+          objectTypeName: "WorldStatic",
+          customResponses: [{ channel: "WorldStatic", response: "ECR_Block" }],
+        },
+      ],
+      EditProfiles: {},
+    });
+    const tools = await loadCollisionTools(cwd);
+
+    const result = await tools.get("edit_collision_profile")!.execute(
+      {
+        name: "BlockAll",
+        collisionEnabled: "QueryAndPhysics",
+        objectTypeName: "WorldStatic",
+        customResponses: [
+          { channel: "WorldStatic", response: "ECR_Block" },
+          { channel: "Bullet", response: "ECR_Ignore" },
+        ],
+      },
+      toolContext(),
+    );
+
+    expect(result.metadata?.result).toMatchObject({
+      storedIn: "EditProfiles",
+      profile: {
+        customResponses: [
+          { channel: "WorldStatic", response: "ECR_Block" },
+          { channel: "Bullet", response: "ECR_Ignore" },
+        ],
+      },
+      levelApplyResult: { ok: true },
+    });
+    const world = readWorldProfileData(cwd);
+    expect(world.Profiles).toContainEqual(
+      expect.objectContaining({
+        name: "BlockAll",
+        collisionEnabled: "QueryAndPhysics",
+        objectTypeName: "WorldStatic",
+      }),
+    );
+    expect(world.EditProfiles).toMatchObject({
+      BlockAll: {
+        customResponses: [
+          { channel: "WorldStatic", response: "ECR_Block" },
+          { channel: "Bullet", response: "ECR_Ignore" },
+        ],
+      },
+    });
+  });
+
   test("rejects invalid profile references and protected default profile field edits", async () => {
     const cwd = makeProject({
       DefaultChannelResponses: [
