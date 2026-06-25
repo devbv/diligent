@@ -418,6 +418,7 @@ async function initializeTurnRuntime(
     const model = resolveModel(effectiveModelId);
     runtime.manager.appendModelChange(model.provider, model.id);
     runtime.modelId = effectiveModelId;
+    runtime.agent = undefined; // force rebuild so per-turn model overrides update the provider stream
   }
 
   const turnId = `turn-${crypto.randomUUID().slice(0, 8)}`;
