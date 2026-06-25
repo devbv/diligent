@@ -86,6 +86,21 @@ export function readOvdrjmRoot(cwd: string): { umapPath: string; ovdrjmPath: str
   return { umapPath, ovdrjmPath, root: root as OvdrjmNode };
 }
 
+export function readOvdrjmDocument(cwd: string): {
+  umapPath: string;
+  ovdrjmPath: string;
+  document: Record<string, unknown>;
+} {
+  const { umapPath, ovdrjmPath } = resolveOvdrjmPathFromUmap(cwd);
+  const buf = readFileSync(ovdrjmPath);
+  const raw = decodeOvdrjm(buf);
+  const document = JSON.parse(raw) as Record<string, unknown>;
+  if (!isRecord(document)) {
+    throw new Error("Invalid .ovdrjm format: Root document is missing.");
+  }
+  return { umapPath, ovdrjmPath, document };
+}
+
 function isUtf16Le(buf: Buffer): boolean {
   return buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xfe;
 }
