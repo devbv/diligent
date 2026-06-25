@@ -3,6 +3,7 @@
 import { AppHeader } from "./components/AppHeader";
 import { ConnectionModal } from "./components/ConnectionModal";
 import { DeleteThreadModal } from "./components/DeleteThreadModal";
+import { ErrorBanner } from "./components/ErrorBanner";
 import { FirstRunNoticeModal } from "./components/FirstRunNoticeModal";
 import { InputDock } from "./components/InputDock";
 import { KnowledgeManagerModal } from "./components/KnowledgeManagerModal";
@@ -130,6 +131,8 @@ export function App() {
               setShowToolModal(true);
             }}
           />
+
+          {state.activeError ? <ErrorBanner error={state.activeError} onOpenProviders={handleOpenProviders} /> : null}
 
           <MessageList
             items={state.items}

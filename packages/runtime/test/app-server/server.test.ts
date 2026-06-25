@@ -826,8 +826,11 @@ describe("DiligentAppServer", () => {
     });
     const secondThread = readResult(secondRead) as {
       errors?: Array<{ error: { message: string } }>;
+      items?: Array<{ type: string }>;
     };
     expect(secondThread.errors ?? []).toHaveLength(1);
+    expect(secondThread.items?.some((item) => item.type === "agentMessage")).toBe(true);
+    expect(secondThread.items?.every((item) => item.type !== "error")).toBe(true);
 
     const fileText = await readFile(join(paths.sessions, `${threadId}.jsonl`), "utf8");
     const entries = fileText

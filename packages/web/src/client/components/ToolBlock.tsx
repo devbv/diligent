@@ -60,7 +60,7 @@ export function ToolBlock({ item }: ToolBlockProps) {
       </span>
     ) : item.isError ? (
       // Recoverable tool error (the agent can self-correct). Rendered muted/gray so it
-      // reads as informational rather than a fatal failure (cf. ErrorMessage in MessageList).
+      // reads as informational rather than a fatal provider/runtime failure.
       <span className="shrink-0 text-xs text-muted">error</span>
     ) : null;
 
