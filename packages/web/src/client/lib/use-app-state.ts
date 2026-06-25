@@ -380,7 +380,10 @@ export function useAppState({
     () => serverRequests.resolveQuestion(serverRequests.answers),
     [serverRequests],
   );
-  const handleQuestionCancel = useCallback(() => serverRequests.resolveQuestion({}), [serverRequests]);
+  const handleQuestionCancel = useCallback(
+    () => serverRequests.resolveQuestion({}, { allowIncomplete: true }),
+    [serverRequests],
+  );
   const handleOpenProviders = useCallback(() => {
     setFocusedProvider(null);
     setShowProviderModal(true);

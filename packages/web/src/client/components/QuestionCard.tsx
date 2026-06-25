@@ -1,10 +1,14 @@
 // @summary Inline chat card for agent user-input questions with text/password fields and always-on custom input
 
 import type { UserInputRequest } from "@diligent/protocol";
+import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { cn } from "../lib/cn";
+import { isUserInputComplete } from "../lib/user-input-completeness";
 import { Button } from "./Button";
 import { SectionLabel } from "./SectionLabel";
 import { SystemCard } from "./SystemCard";
+
+export { isQuestionAnswered, isUserInputComplete } from "../lib/user-input-completeness";
 
 interface QuestionCardProps {
   request: UserInputRequest;
@@ -18,17 +22,6 @@ function toStringArray(value: string | string[] | undefined): string[] {
   if (Array.isArray(value)) return value;
   if (typeof value === "string" && value.trim().length > 0) return [value];
   return [];
-}
-
-export function isQuestionAnswered(answer: string | string[] | undefined): answer is string | string[] {
-  if (Array.isArray(answer)) {
-    return answer.some((value) => value.trim().length > 0);
-  }
-  return typeof answer === "string" && answer.trim().length > 0;
-}
-
-export function isUserInputComplete(request: UserInputRequest, answers: Record<string, string | string[]>): boolean {
-  return request.questions.every((question) => isQuestionAnswered(answers[question.id]));
 }
 
 function ChoiceMarker({ checked, allowMultiple }: { checked: boolean; allowMultiple: boolean }) {
@@ -67,108 +60,116 @@ export function QuestionCard({ request, answers, onAnswerChange, onSubmit, onCan
     if (!canSubmit) return;
     onSubmit();
   };
+  const stopInputEnter = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== "Enter") return;
+    const shouldPrevent =
+      typeof HTMLInputElement !== "undefined" &&
+      e.target instanceof HTMLInputElement &&
+      (e.target.type === "text" || e.target.type === "password");
+    if (!shouldPrevent) return;
+    e.preventDefault();
+    e.stopPropagation();
+  };
 
   return (
     <SystemCard>
-      <SectionLabel>Input required</SectionLabel>
-      <div className="space-y-5">
-        {request.questions.map((question) => {
-          const rawSelected = answers[question.id];
-          const selected = toStringArray(rawSelected);
-          const hasOptions = question.options.length > 0;
-          const allowMultiple = Boolean(question.allow_multiple);
-          const selectedSet = new Set(selected);
-          const customValue = selected.find((value) => !question.options.some((o) => o.label === value)) ?? "";
+      <div onKeyDownCapture={stopInputEnter}>
+        <SectionLabel>Input required</SectionLabel>
+        <div className="space-y-5">
+          {request.questions.map((question) => {
+            const rawSelected = answers[question.id];
+            const selected = toStringArray(rawSelected);
+            const hasOptions = question.options.length > 0;
+            const allowMultiple = Boolean(question.allow_multiple);
+            const selectedSet = new Set(selected);
+            const customValue = selected.find((value) => !question.options.some((o) => o.label === value)) ?? "";
 
-          return (
-            <div key={question.id} className="rounded-lg border border-border/100 bg-[#11131a] px-4 py-4">
-              <p className="mb-3 text-sm font-semibold leading-6 text-text">{question.question}</p>
+            return (
+              <div key={question.id} className="rounded-lg border border-border/100 bg-[#11131a] px-4 py-4">
+                <p className="mb-3 text-sm font-semibold leading-6 text-text">{question.question}</p>
 
-              {hasOptions ? (
-                <div className="space-y-1">
-                  {question.options.map((opt, i) => {
-                    const checked = selectedSet.has(opt.label);
-                    return (
-                      <label
-                        key={opt.label}
-                        className={`flex w-full cursor-pointer items-start gap-3 rounded-lg px-3 py-2 text-left text-sm transition ${
-                          checked ? "bg-white/5 text-text" : "text-muted hover:bg-white/[.03] hover:text-text"
-                        }`}
-                      >
-                        <span className="w-4 shrink-0 pt-0.5 text-right font-mono text-xs opacity-40">{i + 1}</span>
-                        <input
-                          type={allowMultiple ? "checkbox" : "radio"}
-                          name={question.id}
-                          checked={checked}
-                          onChange={() => {
-                            if (allowMultiple) {
-                              const next = checked ? selected.filter((v) => v !== opt.label) : [...selected, opt.label];
-                              onAnswerChange(question.id, next);
-                              return;
-                            }
-                            onAnswerChange(question.id, opt.label);
-                          }}
-                          className="peer sr-only"
-                        />
-                        <ChoiceMarker checked={checked} allowMultiple={allowMultiple} />
-                        <span className="min-w-0 flex-1">
-                          <span className="block break-words">{opt.label}</span>
-                          {opt.description ? (
-                            <span className="mt-0.5 block break-words text-xs opacity-50">{opt.description}</span>
-                          ) : null}
-                        </span>
-                      </label>
-                    );
-                  })}
-                </div>
-              ) : null}
-
-              <div className="flex items-center gap-3 px-2 py-1">
                 {hasOptions ? (
-                  <span className="w-4 shrink-0 text-right font-mono text-xs opacity-40">
-                    {question.options.length + 1}
-                  </span>
-                ) : null}
-                <div className="flex min-w-0 flex-1 flex-col rounded-lg bg-transparent">
-                  <input
-                    id={question.id}
-                    aria-label={question.header}
-                    type={question.is_secret ? "password" : "text"}
-                    placeholder={hasOptions ? "or type a custom answer…" : "Type your answer…"}
-                    value={customValue}
-                    onChange={(e) => {
-                      const typed = e.target.value;
-                      const optionSelected = selected.filter((value) =>
-                        question.options.some((o) => o.label === value),
+                  <div className="space-y-1">
+                    {question.options.map((opt, i) => {
+                      const checked = selectedSet.has(opt.label);
+                      return (
+                        <label
+                          key={opt.label}
+                          className={`flex w-full cursor-pointer items-start gap-3 rounded-lg px-3 py-2 text-left text-sm transition ${
+                            checked ? "bg-white/5 text-text" : "text-muted hover:bg-white/[.03] hover:text-text"
+                          }`}
+                        >
+                          <span className="w-4 shrink-0 pt-0.5 text-right font-mono text-xs opacity-40">{i + 1}</span>
+                          <input
+                            type={allowMultiple ? "checkbox" : "radio"}
+                            name={question.id}
+                            checked={checked}
+                            onChange={() => {
+                              if (allowMultiple) {
+                                const next = checked
+                                  ? selected.filter((v) => v !== opt.label)
+                                  : [...selected, opt.label];
+                                onAnswerChange(question.id, next);
+                                return;
+                              }
+                              onAnswerChange(question.id, opt.label);
+                            }}
+                            className="peer sr-only"
+                          />
+                          <ChoiceMarker checked={checked} allowMultiple={allowMultiple} />
+                          <span className="min-w-0 flex-1">
+                            <span className="block break-words">{opt.label}</span>
+                            {opt.description ? (
+                              <span className="mt-0.5 block break-words text-xs opacity-50">{opt.description}</span>
+                            ) : null}
+                          </span>
+                        </label>
                       );
-                      if (typed.length === 0) {
-                        onAnswerChange(question.id, allowMultiple ? optionSelected : (optionSelected[0] ?? ""));
-                        return;
-                      }
-                      onAnswerChange(question.id, allowMultiple ? [...optionSelected, typed] : typed);
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key !== "Enter") return;
-                      e.preventDefault();
-                      e.stopPropagation();
-                      submitIfComplete();
-                    }}
-                    className="min-w-0 truncate bg-transparent text-sm text-text placeholder:text-muted/50 focus:outline-none"
-                  />
-                  <div className="border-b border-border/10 pt-1" />
+                    })}
+                  </div>
+                ) : null}
+
+                <div className="flex items-center gap-3 px-2 py-1">
+                  {hasOptions ? (
+                    <span className="w-4 shrink-0 text-right font-mono text-xs opacity-40">
+                      {question.options.length + 1}
+                    </span>
+                  ) : null}
+                  <div className="flex min-w-0 flex-1 flex-col rounded-lg bg-transparent">
+                    <input
+                      id={question.id}
+                      aria-label={question.header}
+                      type={question.is_secret ? "password" : "text"}
+                      placeholder={hasOptions ? "or type a custom answer…" : "Type your answer…"}
+                      value={customValue}
+                      onChange={(e) => {
+                        const typed = e.target.value;
+                        const optionSelected = selected.filter((value) =>
+                          question.options.some((o) => o.label === value),
+                        );
+                        if (typed.length === 0) {
+                          onAnswerChange(question.id, allowMultiple ? optionSelected : (optionSelected[0] ?? ""));
+                          return;
+                        }
+                        onAnswerChange(question.id, allowMultiple ? [...optionSelected, typed] : typed);
+                      }}
+                      className="min-w-0 truncate bg-transparent text-sm text-text placeholder:text-muted/50 focus:outline-none"
+                    />
+                    <div className="border-b border-border/10 pt-1" />
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
-      <div className="mt-5 flex justify-end gap-2">
-        <Button size="sm" intent="ghost" onClick={onCancel}>
-          Cancel
-        </Button>
-        <Button size="sm" onClick={submitIfComplete} disabled={!canSubmit} aria-disabled={!canSubmit}>
-          Submit
-        </Button>
+            );
+          })}
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <Button size="sm" intent="ghost" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button size="sm" onClick={submitIfComplete} disabled={!canSubmit} aria-disabled={!canSubmit}>
+            Submit
+          </Button>
+        </div>
       </div>
     </SystemCard>
   );

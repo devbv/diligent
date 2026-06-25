@@ -488,7 +488,7 @@ test("input dock renders attached context chips", () => {
   expect(html).toContain("Clear all");
 });
 
-test("input dock disables steering while a blocking prompt is pending", () => {
+test("input dock only blocks submission while a prompt is pending", () => {
   const html = renderToStaticMarkup(
     <InputDock
       input="answer draft"
@@ -526,8 +526,8 @@ test("input dock disables steering while a blocking prompt is pending", () => {
     />,
   );
 
-  expect(html).toContain('aria-label="Prompt response pending"');
-  expect(html).toContain('placeholder="Answer the prompt above…"');
+  expect(html).toContain('aria-label="Steering input"');
+  expect(html).toContain('placeholder="Steer the agent…"');
   expect(html).toContain('<button type="button" aria-label="Steer agent" disabled=""');
 });
 

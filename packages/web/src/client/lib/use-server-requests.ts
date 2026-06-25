@@ -9,10 +9,20 @@ import { DILIGENT_SERVER_NOTIFICATION_METHODS, DILIGENT_SERVER_REQUEST_METHODS }
 import type { RefObject } from "react";
 import { useCallback, useRef, useState } from "react";
 import type { WebRpcClient } from "./rpc-client";
+import { isUserInputComplete, type UserInputAnswers } from "./user-input-completeness";
 
 interface BufferedServerRequest {
   requestId: number;
   request: DiligentServerRequest;
+}
+
+type UserInputServerRequest = Extract<
+  DiligentServerRequest,
+  { method: typeof DILIGENT_SERVER_REQUEST_METHODS.USER_INPUT_REQUEST }
+>;
+
+export interface ResolveQuestionOptions {
+  allowIncomplete?: boolean;
 }
 
 export function useServerRequests(
@@ -29,10 +39,10 @@ export function useServerRequests(
     requestId: number;
     request: UserInputRequest;
   } | null>(null);
-  const [answers, setAnswers] = useState<Record<string, string | string[]>>({});
+  const [answers, setAnswers] = useState<UserInputAnswers>({});
 
   const approvalRef = useRef<{ requestId: number; request: DiligentServerRequest } | null>(null);
-  const questionRef = useRef<{ requestId: number; request: DiligentServerRequest } | null>(null);
+  const questionRef = useRef<{ requestId: number; request: UserInputServerRequest } | null>(null);
   const bufferedRef = useRef<Map<string, BufferedServerRequest>>(new Map());
 
   const dismissBuffered = useCallback(
@@ -131,15 +141,18 @@ export function useServerRequests(
   );
 
   const resolveQuestion = useCallback(
-    (respondAnswers: Record<string, string | string[]>): void => {
+    (respondAnswers: UserInputAnswers, options: ResolveQuestionOptions = {}): boolean => {
       const current = questionRef.current;
-      if (!current) return;
+      if (!current) return false;
+      const complete = isUserInputComplete(current.request.params.request, respondAnswers);
+      if (!options.allowIncomplete && !complete) return false;
       rpcRef.current?.respondServerRequest(current.requestId, {
         method: DILIGENT_SERVER_REQUEST_METHODS.USER_INPUT_REQUEST,
         result: { answers: respondAnswers },
       } as DiligentServerRequestResponse);
       questionRef.current = null;
       setQuestionPrompt(null);
+      return true;
     },
     [rpcRef],
   );
@@ -174,7 +187,7 @@ export function useServerRequests(
         approvalRef.current = buffered;
         setApprovalPrompt(buffered);
       } else {
-        questionRef.current = buffered;
+        questionRef.current = { requestId: buffered.requestId, request: buffered.request };
         setAnswers({});
         setQuestionPrompt({ requestId: buffered.requestId, request: buffered.request.params.request });
       }
