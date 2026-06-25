@@ -368,7 +368,12 @@ export function useAppState({
   }, [state.activeThreadId, state.threadList, state.items]);
 
   const pendingImagePreviews = useMemo(
-    () => pendingImages.map((image) => ({ path: image.path, url: image.webUrl, fileName: image.fileName })),
+    () =>
+      pendingImages.map((image) => ({
+        path: image.path,
+        url: image.webUrl,
+        fileName: image.fileName,
+      })),
     [pendingImages],
   );
 

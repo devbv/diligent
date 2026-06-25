@@ -7,9 +7,11 @@ import type { PendingImage } from "../../../src/client/lib/app-state";
 import {
   clearComposerInputAfterSend,
   getModelChangeThreadId,
+  normalizeUploadedImageAttachment,
   prepareNewThreadForFirstMessage,
   runThreadCompaction,
 } from "../../../src/client/lib/use-app-actions";
+import { WEB_IMAGE_ROUTE_PREFIX } from "../../../src/shared/image-routes";
 
 test("clearComposerInputAfterSend clears draft input when sending first message from new conversation", () => {
   const clearThreadInput = mock(() => {});
@@ -71,6 +73,52 @@ test("prependContextToMessage serializes mixed context items before typed text",
 test("getModelChangeThreadId scopes model changes to the active thread when present", () => {
   expect(getModelChangeThreadId("thread-1")).toBe("thread-1");
   expect(getModelChangeThreadId(null)).toBeUndefined();
+});
+
+test("normalizeUploadedImageAttachment keeps canonical webUrl from image/upload", () => {
+  expect(
+    normalizeUploadedImageAttachment({
+      type: "local_image",
+      path: "/repo/.diligent/images/thread-1/shot.png",
+      mediaType: "image/png",
+      fileName: "shot.png",
+      webUrl: `${WEB_IMAGE_ROUTE_PREFIX}thread-1/shot.png`,
+    }),
+  ).toEqual({
+    type: "local_image",
+    path: "/repo/.diligent/images/thread-1/shot.png",
+    mediaType: "image/png",
+    fileName: "shot.png",
+    webUrl: `${WEB_IMAGE_ROUTE_PREFIX}thread-1/shot.png`,
+  });
+});
+
+test("normalizeUploadedImageAttachment derives webUrl for persisted legacy image/upload responses", () => {
+  expect(
+    normalizeUploadedImageAttachment({
+      type: "local_image",
+      path: "/repo/.diligent/images/drafts/floor.png",
+      mediaType: "image/png",
+      fileName: "floor.png",
+    }),
+  ).toEqual({
+    type: "local_image",
+    path: "/repo/.diligent/images/drafts/floor.png",
+    mediaType: "image/png",
+    fileName: "floor.png",
+    webUrl: `${WEB_IMAGE_ROUTE_PREFIX}drafts/floor.png`,
+  });
+});
+
+test("normalizeUploadedImageAttachment rejects non-web-addressable image/upload responses", () => {
+  expect(() =>
+    normalizeUploadedImageAttachment({
+      type: "local_image",
+      path: "/tmp/floor.png",
+      mediaType: "image/png",
+      fileName: "floor.png",
+    }),
+  ).toThrow("browser-accessible URL");
 });
 
 test("mock bridge update semantics replace prior context with latest snapshot", async () => {

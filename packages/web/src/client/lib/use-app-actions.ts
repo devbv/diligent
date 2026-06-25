@@ -1,8 +1,9 @@
 // @summary App action handlers for sending, image uploads, slash commands, and turn controls
 
-import type { Mode, ModelInfo, ThinkingEffort, ThreadReadResponse } from "@diligent/protocol";
+import type { ImageUploadAttachment, Mode, ModelInfo, ThinkingEffort, ThreadReadResponse } from "@diligent/protocol";
 import { DILIGENT_CLIENT_REQUEST_METHODS } from "@diligent/protocol";
 import { type Dispatch, type MutableRefObject, type RefObject, type SetStateAction, useCallback } from "react";
+import { toWebImageUrl } from "../../shared/image-routes";
 import { type AgentContextItem, prependContextToMessage } from "./agent-native-bridge";
 import type { AppAction, PendingImage } from "./app-state";
 import { fileToBase64, normalizeImageFileName, replaceThreadUrl } from "./app-utils";
@@ -105,6 +106,14 @@ export async function runThreadCompaction({
 
 export function getModelChangeThreadId(activeThreadId: string | null): string | undefined {
   return activeThreadId ?? undefined;
+}
+
+export function normalizeUploadedImageAttachment(attachment: ImageUploadAttachment): PendingImage {
+  const webUrl = attachment.webUrl ?? toWebImageUrl(attachment.path);
+  if (!attachment.webUrl && webUrl === attachment.path) {
+    throw new Error("Image upload did not return a browser-accessible URL.");
+  }
+  return { ...attachment, webUrl };
 }
 
 export function useAppActions({
@@ -342,7 +351,7 @@ export function useAppActions({
             mediaType: file.type as "image/png" | "image/jpeg" | "image/webp" | "image/gif",
             dataBase64,
           });
-          uploaded.push(result.attachment as PendingImage);
+          uploaded.push(normalizeUploadedImageAttachment(result.attachment));
         }
 
         setPendingImages((previous) => [...previous, ...uploaded]);
