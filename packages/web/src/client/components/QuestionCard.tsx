@@ -20,6 +20,17 @@ function toStringArray(value: string | string[] | undefined): string[] {
   return [];
 }
 
+export function isQuestionAnswered(answer: string | string[] | undefined): answer is string | string[] {
+  if (Array.isArray(answer)) {
+    return answer.some((value) => value.trim().length > 0);
+  }
+  return typeof answer === "string" && answer.trim().length > 0;
+}
+
+export function isUserInputComplete(request: UserInputRequest, answers: Record<string, string | string[]>): boolean {
+  return request.questions.every((question) => isQuestionAnswered(answers[question.id]));
+}
+
 function ChoiceMarker({ checked, allowMultiple }: { checked: boolean; allowMultiple: boolean }) {
   if (allowMultiple) {
     return (
@@ -51,6 +62,12 @@ function ChoiceMarker({ checked, allowMultiple }: { checked: boolean; allowMulti
 }
 
 export function QuestionCard({ request, answers, onAnswerChange, onSubmit, onCancel }: QuestionCardProps) {
+  const canSubmit = isUserInputComplete(request, answers);
+  const submitIfComplete = () => {
+    if (!canSubmit) return;
+    onSubmit();
+  };
+
   return (
     <SystemCard>
       <SectionLabel>Input required</SectionLabel>
@@ -131,7 +148,9 @@ export function QuestionCard({ request, answers, onAnswerChange, onSubmit, onCan
                       onAnswerChange(question.id, allowMultiple ? [...optionSelected, typed] : typed);
                     }}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter") onSubmit();
+                      if (e.key !== "Enter") return;
+                      e.preventDefault();
+                      submitIfComplete();
                     }}
                     className="min-w-0 truncate bg-transparent text-sm text-text placeholder:text-muted/50 focus:outline-none"
                   />
@@ -146,7 +165,7 @@ export function QuestionCard({ request, answers, onAnswerChange, onSubmit, onCan
         <Button size="sm" intent="ghost" onClick={onCancel}>
           Cancel
         </Button>
-        <Button size="sm" onClick={onSubmit}>
+        <Button size="sm" onClick={submitIfComplete} disabled={!canSubmit} aria-disabled={!canSubmit}>
           Submit
         </Button>
       </div>
