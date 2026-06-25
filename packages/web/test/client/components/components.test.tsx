@@ -1,6 +1,7 @@
 // @summary Static render tests for core UI components and accessibility attributes
 import { expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
+import { AssetThumbnail } from "../../../src/client/components/AssetThumbnail";
 import { AssistantMessage } from "../../../src/client/components/AssistantMessage";
 import { Button } from "../../../src/client/components/Button";
 import {
@@ -1096,6 +1097,59 @@ test("tool block treats namespaced request_user_input as user-input tool (hides 
   expect(html).not.toContain("↳ Answer submitted");
 });
 
+test("tool block renders asset gallery previews expanded", () => {
+  const html = renderToStaticMarkup(
+    <ToolBlock
+      item={{
+        id: "tool-assets",
+        kind: "tool",
+        toolName: "overdaresearch",
+        inputText: '{"source":"assets","query":"fountain classic stone"}',
+        outputText: "Found assets",
+        isError: false,
+        status: "done",
+        timestamp: 500,
+        toolCallId: "call-assets",
+        startedAt: 450,
+        durationMs: 42,
+        render: {
+          inputSummary: "assets: fountain classic stone",
+          outputSummary: "5 assets",
+          blocks: [
+            {
+              type: "asset_gallery",
+              title: "OVERDARE Assets",
+              query: "fountain classic stone",
+              items: [
+                {
+                  id: "asset-fountain-1",
+                  title: "Classic Stone Fountain",
+                  subtitle: "MODEL",
+                  price: "Free",
+                  thumbnailUrl: "https://assets.example/fountain.png",
+                  metadata: [
+                    { key: "assetType", value: "MODEL" },
+                    { key: "category", value: "ENVIRONMENT" },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      }}
+    />,
+  );
+
+  expect(html).toContain('data-asset-id="asset-fountain-1"');
+  expect(html).toContain('src="https://assets.example/fountain.png"');
+  expect(html).toContain("Classic Stone Fountain");
+  expect(html).toContain("ENVIRONMENT · MODEL");
+  expect(html).toContain("OVERDARE Assets");
+  expect(html).toContain("1 result for &quot;fountain classic stone&quot;");
+  expect(html).not.toContain('aria-label="Select Classic Stone Fountain"');
+  expect(html).not.toContain("aria-pressed");
+});
+
 test("collab event block uses clickable card semantics without explicit expand labels", () => {
   const html = renderToStaticMarkup(
     <CollabEventBlock
@@ -1425,4 +1479,50 @@ test("MessageList does not show Reconnect button on non-auth error", () => {
   );
 
   expect(html).not.toContain("Reconnect");
+});
+
+test("AssetThumbnail renders the image when a url is present", () => {
+  const html = renderToStaticMarkup(
+    <AssetThumbnail asset={{ title: "Katana", thumbnailUrl: "https://assets.example/k.png" }} />,
+  );
+  expect(html).toContain("https://assets.example/k.png");
+  expect(html).toContain('alt="Katana"');
+});
+
+test("AssetThumbnail falls back to the title initial when no url is present", () => {
+  const html = renderToStaticMarkup(<AssetThumbnail asset={{ title: "katana" }} />);
+  expect(html).not.toContain("<img");
+  expect(html).toContain("K");
+});
+
+test("QuestionCard renders an asset thumbnail grid for display:asset questions", () => {
+  const html = renderToStaticMarkup(
+    <QuestionCard
+      request={{
+        questions: [
+          {
+            id: "asset",
+            header: "Asset",
+            question: 'Pick an asset for "katana"',
+            display: "asset",
+            options: [
+              {
+                label: "Katana, Rusty",
+                description: "MODEL",
+                value: "6584600",
+                asset: { thumbnailUrl: "https://assets.example/k.png", price: "100" },
+              },
+            ],
+          },
+        ],
+      }}
+      answers={{}}
+      onAnswerChange={() => {}}
+      onSubmit={() => {}}
+      onCancel={() => {}}
+    />,
+  );
+  expect(html).toContain("https://assets.example/k.png");
+  expect(html).toContain("Katana, Rusty");
+  expect(html).toContain("100");
 });

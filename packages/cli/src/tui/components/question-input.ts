@@ -6,6 +6,7 @@ import { t } from "../theme";
 export interface QuestionInputOption {
   label: string;
   description: string;
+  value?: string;
 }
 
 export interface QuestionInputOptions {
@@ -204,7 +205,7 @@ export class QuestionInput implements Component {
       if (this.allowMultiple) {
         const labels = [...this.selected]
           .sort((a, b) => a - b)
-          .map((idx) => this.opts[idx]?.label)
+          .map((idx) => this.opts[idx]?.value ?? this.opts[idx]?.label)
           .filter(Boolean);
         if (this.value.length > 0) labels.push(this.value);
         this.onResult(labels.length > 0 ? labels : null);
@@ -224,7 +225,7 @@ export class QuestionInput implements Component {
       return;
     }
 
-    this.onResult(this.opts[this.selectedIndex].label);
+    this.onResult(this.opts[this.selectedIndex].value ?? this.opts[this.selectedIndex].label);
   }
 
   invalidate(): void {}
