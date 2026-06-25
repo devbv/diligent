@@ -14,7 +14,7 @@ import {
 } from "./schemas";
 import {
   buildProfilesPayload,
-  ensureEditProfiles,
+  ensureEditProfile,
   ensureRecordArray,
   findCustomProfile,
   getWorldProfileData,
@@ -155,14 +155,8 @@ function updateDefaultProfile(
     throw new CollisionToolError("NO_UPDATES", "Default profile update requires customResponses.");
   }
 
-  const editProfiles = ensureEditProfiles(data);
-  const current = editProfiles[parsed.name];
-  const editProfile: Record<string, unknown> =
-    typeof current === "object" && current !== null && !Array.isArray(current)
-      ? (current as Record<string, unknown>)
-      : {};
+  const editProfile = ensureEditProfile(data, parsed.name);
   editProfile.customResponses = parsed.customResponses;
-  editProfiles[parsed.name] = editProfile;
   return { updated: editProfile, storedIn: "EditProfiles" };
 }
 

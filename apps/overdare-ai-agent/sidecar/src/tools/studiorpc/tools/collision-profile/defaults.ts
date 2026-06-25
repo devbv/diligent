@@ -58,7 +58,7 @@ export const DEFAULT_PROFILE_DEFINITIONS: DefaultProfileDefinition[] = [
     customResponses: [],
   },
   { name: "Trigger", objectTypeName: "WorldDynamic", collisionEnabled: "QueryOnly", customResponses: [] },
-  { name: "Ragboll", objectTypeName: "PhysicsBody", collisionEnabled: "QueryAndPhysics", customResponses: [] },
+  { name: "Ragdoll", objectTypeName: "PhysicsBody", collisionEnabled: "QueryAndPhysics", customResponses: [] },
   { name: "Vehicle", objectTypeName: "Vehicle", collisionEnabled: "QueryAndPhysics", customResponses: [] },
   { name: "UI", objectTypeName: "WorldDynamic", collisionEnabled: "QueryOnly", customResponses: [] },
   { name: "Debris", objectTypeName: "PhysicsBody", collisionEnabled: "QueryAndPhysics", customResponses: [] },
@@ -69,5 +69,5 @@ export const DEFAULT_PROFILE_DEFINITIONS: DefaultProfileDefinition[] = [
 
 export const DEFAULT_PROFILE_NAMES: Set<string> = new Set([
   ...DEFAULT_PROFILE_DEFINITIONS.map((profile) => profile.name),
-  "Ragdoll",
+  "Ragboll",
 ]);

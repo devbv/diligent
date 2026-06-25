@@ -10,10 +10,14 @@ import { createStudioRpcToolProvider } from "../../src/tools/studiorpc";
 const createdDirs: string[] = [];
 
 function makeProject(worldProfileData: Record<string, unknown>): string {
+  return makeProjectDocument({ WorldProfileData: worldProfileData });
+}
+
+function makeProjectDocument(document: Record<string, unknown>): string {
   const cwd = join(tmpdir(), `sidecar-collision-profile-${process.pid}-${Date.now()}-${createdDirs.length}`);
   mkdirSync(cwd, { recursive: true });
   writeFileSync(join(cwd, "Test.umap"), "");
-  writeFileSync(join(cwd, "Test.ovdrjm"), JSON.stringify({ WorldProfileData: worldProfileData }, null, 2));
+  writeFileSync(join(cwd, "Test.ovdrjm"), JSON.stringify(document, null, 2));
   createdDirs.push(cwd);
   return cwd;
 }
@@ -48,6 +52,90 @@ afterEach(() => {
 });
 
 describe("collision channel tools", () => {
+  test("reads WorldProfileData from the ovdrjm Root LuaChildren tree", async () => {
+    const cwd = makeProjectDocument({
+      FileVersion: 1,
+      Root: {
+        InstanceType: "World",
+        LuaChildren: [
+          { InstanceType: "Folder", Name: "Other" },
+          {
+            InstanceType: "WorldSettings",
+            WorldProfileData: {
+              DefaultChannelResponses: [
+                {
+                  channel: "ECC_EngineTraceChannel5",
+                  defaultResponse: "ECR_Ignore",
+                  bTraceType: true,
+                  bStaticObject: false,
+                  name: "WeaponTrace",
+                },
+                {
+                  channel: "ECC_GameTraceChannel1",
+                  defaultResponse: "ECR_Block",
+                  bTraceType: false,
+                  bStaticObject: false,
+                  name: "Bullet",
+                },
+              ],
+              Profiles: [
+                {
+                  name: "BlockAll",
+                  collisionEnabled: "QueryAndPhysics",
+                  bCanModify: false,
+                  objectTypeName: "WorldStatic",
+                  customResponses: [],
+                },
+                {
+                  name: "Ragdoll",
+                  collisionEnabled: "QueryAndPhysics",
+                  bCanModify: false,
+                  objectTypeName: "PhysicsBody",
+                  customResponses: [],
+                },
+                {
+                  name: "PlayerProfile",
+                  collisionEnabled: "QueryAndPhysics",
+                  bCanModify: true,
+                  objectTypeName: "Pawn",
+                  customResponses: [{ channel: "Bullet", response: "ECR_Overlap" }],
+                },
+              ],
+              EditProfiles: [
+                {
+                  name: "BlockAll",
+                  customResponses: [{ channel: "Bullet", response: "ECR_Ignore" }],
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    const tools = await loadCollisionTools(cwd);
+
+    const channelResult = await tools.get("get_collision_channels")!.execute({}, toolContext());
+    const profileResult = await tools.get("get_collision_profiles")!.execute({}, toolContext());
+
+    expect(channelResult.metadata?.result).toMatchObject({
+      defaultChannels: expect.arrayContaining([
+        expect.objectContaining({ name: "WorldStatic" }),
+        expect.objectContaining({ name: "WeaponTrace", channel: "ECC_EngineTraceChannel5" }),
+      ]),
+      customChannels: [{ name: "Bullet" }],
+    });
+    expect(profileResult.metadata?.result).toMatchObject({
+      defaultProfiles: expect.arrayContaining([
+        expect.objectContaining({
+          name: "BlockAll",
+          customResponses: [{ channel: "Bullet", response: "ECR_Ignore" }],
+        }),
+        expect.objectContaining({ name: "Ragdoll" }),
+      ]),
+      customProfiles: [expect.objectContaining({ name: "PlayerProfile" })],
+    });
+  });
+
   test("reads channels and profiles without modifying the ovdrjm file", async () => {
     const cwd = makeProject({
       DefaultChannelResponses: [
@@ -133,7 +221,7 @@ describe("collision channel tools", () => {
 
     const listResult = await tools.get("get_collision_channels")!.execute({}, toolContext());
     expect(listResult.metadata?.result).toMatchObject({
-      defaultChannels: [{ name: "WorldStatic" }],
+      defaultChannels: expect.arrayContaining([expect.objectContaining({ name: "WorldStatic" })]),
       customChannels: [{ name: "Bullet" }],
     });
 

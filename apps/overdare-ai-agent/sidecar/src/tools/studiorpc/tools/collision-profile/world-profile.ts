@@ -4,6 +4,7 @@ import { isRecord } from "../ovdrjm-utils";
 import {
   DEFAULT_CHANNEL_IDS,
   DEFAULT_CHANNEL_NAMES,
+  DEFAULT_CHANNELS,
   DEFAULT_OBJECT_TYPE_NAMES,
   DEFAULT_PROFILE_DEFINITIONS,
   DEFAULT_PROFILE_NAMES,
@@ -23,11 +24,34 @@ export function isCustomChannelId(value: string): boolean {
 }
 
 export function getWorldProfileData(document: Record<string, unknown>): WorldProfileData {
-  const data = document.WorldProfileData;
-  if (!isRecord(data) || Array.isArray(data)) {
+  const data = findWorldProfileData(document);
+  if (!data) {
     throw new CollisionToolError("INVALID_WORLD_PROFILE_DATA", "WorldProfileData is missing or invalid.");
   }
   return data;
+}
+
+function findWorldProfileData(document: Record<string, unknown>): WorldProfileData | undefined {
+  const direct = document.WorldProfileData;
+  if (isRecord(direct) && !Array.isArray(direct)) return direct;
+
+  const root = document.Root;
+  if (!isRecord(root) || Array.isArray(root)) return undefined;
+  return findWorldProfileDataInNode(root);
+}
+
+function findWorldProfileDataInNode(node: Record<string, unknown>): WorldProfileData | undefined {
+  const data = node.WorldProfileData;
+  if (isRecord(data) && !Array.isArray(data)) return data;
+
+  const children = node.LuaChildren;
+  if (!Array.isArray(children)) return undefined;
+  for (const child of children) {
+    if (!isRecord(child) || Array.isArray(child)) continue;
+    const found = findWorldProfileDataInNode(child);
+    if (found) return found;
+  }
+  return undefined;
 }
 
 export function getRecordArray(data: WorldProfileData, key: string): Record<string, unknown>[] {
@@ -49,23 +73,83 @@ export function ensureRecordArray(data: WorldProfileData, key: string): Record<s
   return getRecordArray(data, key);
 }
 
-export function getEditProfiles(data: WorldProfileData): Record<string, unknown> {
+type EditProfileEntry = {
+  name: string;
+  profile: Record<string, unknown>;
+  path: string;
+};
+
+export function getEditProfileEntries(data: WorldProfileData): EditProfileEntry[] {
   const value = data.EditProfiles;
-  if (value === undefined) return {};
-  if (!isRecord(value) || Array.isArray(value)) {
-    throw new CollisionToolError("INVALID_WORLD_PROFILE_DATA", "WorldProfileData.EditProfiles must be an object.");
+  if (value === undefined) return [];
+  if (Array.isArray(value)) {
+    return value.map((entry, index) => {
+      if (!isRecord(entry) || Array.isArray(entry)) {
+        throw new CollisionToolError(
+          "INVALID_WORLD_PROFILE_DATA",
+          `WorldProfileData.EditProfiles[${index}] must be an object.`,
+        );
+      }
+      if (typeof entry.name !== "string" || entry.name.length === 0) {
+        throw new CollisionToolError(
+          "INVALID_WORLD_PROFILE_DATA",
+          `WorldProfileData.EditProfiles[${index}].name is missing.`,
+        );
+      }
+      return { name: entry.name, profile: entry, path: `EditProfiles.${entry.name}` };
+    });
   }
-  return value;
+  if (!isRecord(value)) {
+    throw new CollisionToolError(
+      "INVALID_WORLD_PROFILE_DATA",
+      "WorldProfileData.EditProfiles must be an object or array.",
+    );
+  }
+  return Object.entries(value).map(([name, editProfile]) => {
+    if (!isRecord(editProfile) || Array.isArray(editProfile)) {
+      throw new CollisionToolError("INVALID_WORLD_PROFILE_DATA", `EditProfiles.${name} must be an object.`);
+    }
+    return { name, profile: editProfile, path: `EditProfiles.${name}` };
+  });
 }
 
-export function ensureEditProfiles(data: WorldProfileData): Record<string, unknown> {
+export function ensureEditProfile(data: WorldProfileData, name: string): Record<string, unknown> {
   const value = data.EditProfiles;
   if (value === undefined) {
     const created: Record<string, unknown> = {};
-    data.EditProfiles = created;
+    data.EditProfiles = { [name]: created };
     return created;
   }
-  return getEditProfiles(data);
+  if (Array.isArray(value)) {
+    for (const [index, entry] of value.entries()) {
+      if (!isRecord(entry) || Array.isArray(entry)) {
+        throw new CollisionToolError(
+          "INVALID_WORLD_PROFILE_DATA",
+          `WorldProfileData.EditProfiles[${index}] must be an object.`,
+        );
+      }
+      if (entry.name === name) return entry;
+    }
+    const created: Record<string, unknown> = { name };
+    value.push(created);
+    return created;
+  }
+  if (!isRecord(value)) {
+    throw new CollisionToolError(
+      "INVALID_WORLD_PROFILE_DATA",
+      "WorldProfileData.EditProfiles must be an object or array.",
+    );
+  }
+  const current = value[name];
+  if (current === undefined) {
+    const created: Record<string, unknown> = {};
+    value[name] = created;
+    return created;
+  }
+  if (!isRecord(current) || Array.isArray(current)) {
+    throw new CollisionToolError("INVALID_WORLD_PROFILE_DATA", `EditProfiles.${name} must be an object.`);
+  }
+  return current;
 }
 
 export function getCustomResponses(container: Record<string, unknown>, path: string): Record<string, unknown>[] {
@@ -85,6 +169,33 @@ export function channelDisplayName(entry: Record<string, unknown>): string | und
 
 export function isCustomChannelEntry(entry: Record<string, unknown>): boolean {
   return typeof entry.channel === "string" && isCustomChannelId(entry.channel);
+}
+
+export function buildChannelsPayload(data: WorldProfileData): {
+  defaultChannels: Record<string, unknown>[];
+  customChannels: Record<string, unknown>[];
+} {
+  const channels = getRecordArray(data, "DefaultChannelResponses");
+  const customChannels = channels.filter((entry) => isCustomChannelEntry(entry));
+  const storedDefaultsByName = new Map<string, Record<string, unknown>>();
+  const extraDefaultChannels: Record<string, unknown>[] = [];
+
+  for (const entry of channels) {
+    if (isCustomChannelEntry(entry)) continue;
+    const name = channelDisplayName(entry);
+    if (name && DEFAULT_CHANNEL_NAMES.has(name)) {
+      storedDefaultsByName.set(name, entry);
+    } else {
+      extraDefaultChannels.push(entry);
+    }
+  }
+
+  const defaultChannels = DEFAULT_CHANNELS.map((channel) => ({
+    ...channel,
+    ...storedDefaultsByName.get(channel.name),
+  }));
+
+  return { defaultChannels: [...defaultChannels, ...extraDefaultChannels], customChannels };
 }
 
 export function channelNameSet(data: WorldProfileData): Set<string> {
@@ -195,11 +306,8 @@ export function syncCustomResponseChannelNames(
     if (profileChanged) profilesUpdated++;
   }
 
-  for (const [profileName, editProfile] of Object.entries(getEditProfiles(data))) {
-    if (!isRecord(editProfile) || Array.isArray(editProfile)) {
-      throw new CollisionToolError("INVALID_WORLD_PROFILE_DATA", `EditProfiles.${profileName} must be an object.`);
-    }
-    const responses = getCustomResponses(editProfile, `EditProfiles.${profileName}`);
+  for (const { profile: editProfile, path } of getEditProfileEntries(data)) {
+    const responses = getCustomResponses(editProfile, path);
     let profileChanged = false;
     for (const response of responses) {
       if (response.channel !== oldName) continue;
@@ -249,11 +357,8 @@ export function removeCustomResponseChannel(
     responsesRemoved += responses.length - kept.length;
   }
 
-  for (const [profileName, editProfile] of Object.entries(getEditProfiles(data))) {
-    if (!isRecord(editProfile) || Array.isArray(editProfile)) {
-      throw new CollisionToolError("INVALID_WORLD_PROFILE_DATA", `EditProfiles.${profileName} must be an object.`);
-    }
-    const responses = getCustomResponses(editProfile, `EditProfiles.${profileName}`);
+  for (const { profile: editProfile, path } of getEditProfileEntries(data)) {
+    const responses = getCustomResponses(editProfile, path);
     const kept = responses.filter((response) => response.channel !== channelName);
     if (kept.length === responses.length) continue;
     editProfile.customResponses = kept;
@@ -268,25 +373,35 @@ export function buildProfilesPayload(data: WorldProfileData): {
   defaultProfiles: Array<DefaultProfileDefinition & { bCanModify: false }>;
   customProfiles: Record<string, unknown>[];
 } {
-  const editProfiles = getEditProfiles(data);
+  const profiles = getRecordArray(data, "Profiles");
+  const profilesByName = new Map(
+    profiles.flatMap((profile) => (typeof profile.name === "string" ? [[profile.name, profile]] : [])),
+  );
+  const editProfilesByName = new Map(getEditProfileEntries(data).map((entry) => [entry.name, entry.profile]));
   const defaultProfiles = DEFAULT_PROFILE_DEFINITIONS.map((profile) => {
-    const editProfile = editProfiles[profile.name];
+    const storedProfile = profilesByName.get(profile.name);
+    const baseProfile = storedProfile ?? profile;
+    const editProfile = editProfilesByName.get(profile.name);
     const customResponses =
       isRecord(editProfile) && !Array.isArray(editProfile)
         ? (getCustomResponses(editProfile, `EditProfiles.${profile.name}`) as CustomResponse[])
-        : profile.customResponses;
+        : ((getCustomResponses(baseProfile, `Profiles.${profile.name}`) as CustomResponse[]) ??
+          profile.customResponses);
 
     return {
       ...profile,
+      ...baseProfile,
       customResponses,
       bCanModify: false as const,
     };
   });
 
-  const customProfiles = getRecordArray(data, "Profiles").map((profile) => ({
-    ...profile,
-    bCanModify: profile.bCanModify === undefined ? true : profile.bCanModify,
-  }));
+  const customProfiles = profiles
+    .filter((profile) => typeof profile.name !== "string" || !isDefaultProfileName(profile.name))
+    .map((profile) => ({
+      ...profile,
+      bCanModify: profile.bCanModify === undefined ? true : profile.bCanModify,
+    }));
 
   return { defaultProfiles, customProfiles };
 }

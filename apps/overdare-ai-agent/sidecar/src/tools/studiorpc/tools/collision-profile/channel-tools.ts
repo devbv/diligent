@@ -12,10 +12,10 @@ import {
   updateChannelParams,
 } from "./schemas";
 import {
+  buildChannelsPayload,
   channelDisplayName,
   ensureRecordArray,
   findChannelEntry,
-  getRecordArray,
   getWorldProfileData,
   hasChannelName,
   isCustomChannelEntry,
@@ -32,11 +32,7 @@ function getCollisionChannels(cwd: string): ToolResult {
   try {
     const { ovdrjmPath, document } = readOvdrjmDocument(cwd);
     const data = getWorldProfileData(document);
-    const channels = getRecordArray(data, "DefaultChannelResponses");
-    const payload = {
-      defaultChannels: channels.filter((entry) => !isCustomChannelEntry(entry)),
-      customChannels: channels.filter((entry) => isCustomChannelEntry(entry)),
-    };
+    const payload = buildChannelsPayload(data);
     return okResult(payload, { toolName: "get_collision_channels", ovdrjmPath });
   } catch (error) {
     return errorResult(error, "get_collision_channels");
