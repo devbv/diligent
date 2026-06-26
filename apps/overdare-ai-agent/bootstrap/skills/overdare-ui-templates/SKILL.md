@@ -1,176 +1,256 @@
 ---
 name: overdare-ui-templates
-description: When generating UI, first determine whether a template is appropriate. For structure confirmation, request_user_input (choice UI) is mandatory; prompting free-text input is prohibited. Adding/removing elements is prohibited before user_confirmed_spec is finalized. If appropriate, edit with ui-generator; if not possible, switch to ui-generator.
+description: When generating UI, first determine template fit. Structure confirmation requires request_user_input (choice UI); do not prompt free-text input. Element add/remove forbidden until user_confirmed_spec is finalized. If fit, edit via ui-generator; if not, switch to ui-generator.
 ---
 
 # OVERDARE UI Template Guide
 
 ## Core Principles
 
-1. **Before judgment**, do not create or edit a UI instance. Complete `Required Procedure for UI Creation Requests` to the end (do not skip for speed or completeness).
-2. Official templates are prioritized **only when similar** to the request. If not a fit, switch to **`ui-generator`** without forcing application (do not create a blank canvas with this skill alone).
-3. Template path: keep **skeleton, layout, and frame**; GUI work **requires `ui-generator`**.
-4. **Structural add/remove** (deletion, addition, button count, slot removal) is allowed **only for items explicitly stated** in `user_confirmed_spec`. Before/outside that scope, **no inference** (e.g., "notification -> 1 button", "RPG -> remove currency").
-5. Before confirmation/explicit statement: keep **all default template elements**, and only **L2** (text, numbers, icons, GUI names, data, script linkage) may be changed.
-6. **Position / Size / Anchor / appearance and color**: if not in the prompt or spec, do not change. Do not invade reserved areas for joystick, jump, or mobile dashboard.
-7. Transformations must stay **inside frame and screen boundaries**. Do not hide overflow with `ClipsDescendants = false`. For removal, use **Destroy** (do not just disable `Visible` and leave objects).
-8. Rename root `ScreenGui` and clearly purposed child GUIs **appropriately to their usage** (keep layout values).
-9. **Before final response**, pass `Self-check Before Responding`. If structural add/remove was needed but done without spec, it is a failure.
-10. For **fixed-choice confirmation**, use **`request_user_input` only**. Do not list options in chat and ask users to type them.
+1. **Before judgment**, do not create or edit UI instances. Complete `Required procedure for UI generation requests` in full (do not skip for speed or completeness).
+2. Use official templates first only when they are **similar** to the request. If they do not fit, switch to **`ui-generator`** without forcing a match (this skill alone must not produce UI on a blank canvas).
+3. Template path: preserve **skeleton, layout, and frames**; GUI work **requires `ui-generator`**.
+4. **Structural changes** (delete, add, button count, slot removal) are allowed only for items **explicitly listed in `user_confirmed_spec`**. Before that and outside that scope, **no inference** (e.g., “notification → one button”, “RPG → remove currency”).
+5. Before confirmation or explicit specification: keep **all default template elements**, and change only **L2** (text, numbers, icons, GUI names, data, script bindings).
+6. **Position / Size / Anchor / appearance / colors**: do not change unless present in the prompt or spec. Do not encroach on **reserved areas** for joystick, jump, or mobile dashboard.
+7. Variations stay **within frames and screen boundaries**. Do not hide overflow with `ClipsDescendants = false`. Removal uses **Destroy** (do not leave elements with `Visible` turned off only).
+8. Rename the root `ScreenGui` and clearly role-defined child GUIs **to match their purpose** (keep layout values).
+9. **Before a completion response**, pass `Pre-response self-check`. Failure if structural add/remove was needed but proceeded without spec.
+10. **Fixed-choice confirmation** uses **`request_user_input` only**. Do not list choices in chat and ask the user to type a reply.
 
-## Structural Add/Remove - User Confirmation
+## Structural Add/Remove — User Confirmation
 
-### Questions required (before asset addition, Destroy, or button reconfiguration)
+### Questions Required (before asset add · Destroy · button reconfiguration)
 
-- Popup/modal/notification/confirmation request where **button count/types** are unspecified
-- Broad request like HUD/RPG/in-game where **included areas** (HP, currency, action, menu, etc.) are unspecified
-- **Buttons to keep** such as Lobby / Back / Retry are unspecified
-- Compared to template, the sentence does not specify what to reduce or increase
+- Popup · modal · notification · confirmation with **button count or types** not specified
+- Broad requests for HUD · RPG · in-game UI with **included regions** (HP, currency, actions, menu, etc.) not specified
+- Buttons to keep such as Lobby / Back / Retry not specified
+- **Targets to reduce or expand** vs. the template not stated in the request
 
-### Questions can be skipped
+### Questions May Be Skipped
 
-- Buttons/areas/removals are **already specified in the sentence** (e.g., "confirm only", "remove Lobby", "HP and currency only")
-- Change **L2 only**
-- Explicitly states **"use template as-is / keep default composition"**
+- Buttons · regions · removal targets **already specified in the request** (e.g., “confirm only”, “remove Lobby”, “HP and currency only”)
+- **L2-only** changes
+- **“Keep template as-is / maintain default layout”** explicitly stated
 
-### Questions and recording (deterministic)
+### Questions · Recording (Deterministic)
 
-1. One-line template candidate + reason (chat body).
-2. Present the fixed choices below **only through the `request_user_input` tool** - **do not** enumerate as bullets/numbered lists in chat and ask for direct input with "reply example."
-3. Copy `request_user_input` responses verbatim into **`user_confirmed_spec`** and edit **only within that scope**.
+1. One-line template candidate + reason (in chat body).
+2. Present the **fixed choices** below **only via the `request_user_input` tool** — **do not list bullets or numbered options in chat and ask the user to type a reply or give “reply examples”**.
+3. Record `request_user_input` responses **verbatim** in **`user_confirmed_spec`** and edit **only within that scope**.
 
-#### Choice UI (`request_user_input`) - Required
+#### Choice UI (`request_user_input`) — Required
 
 | Rule | Content |
 |---|---|
-| **Tool** | If fixed choices exist, must call **`request_user_input`**. Execute in the confirmation turn, **before** UI creation or asset addition. |
-| **Prohibited** | Showing only a markdown option list and requiring **free-text input** such as "please write like below" or "reply example:". |
-| **Chat** | Keep only short context (template recommendation/reason). Put the actual options in the **tool question**. |
-| **Multi-select** | For fields that allow multiple selections (areas/buttons), set `allow_multiple: true`. |
-| **Split** | By default, one call is allowed. **However, IngameHUD is an exception and must call `request_user_input` exactly twice** (1st: `hud_regions` only, 2nd: `hud_layout` only), showing **two separate question dialogs**. In each call, use option labels **identical** to this skill table. |
-| **Skip** | If it falls under `Questions can be skipped`, proceeding without `request_user_input` is allowed. |
+| **Tool** | When fixed choices exist, you must call **`request_user_input`**. Run before UI creation or asset add on the confirmation turn. |
+| **Forbidden** | Showing choices only as a markdown list and asking the user to “type like below”, “reply example:”, etc. — **requiring free-text input**. |
+| **Chat** | Short context only (template recommendation · reason). Put choice item bodies in the **tool question**. |
+| **Multiple questions** | If there are **2 or more questions**, include **all** in the `questions` array in **one `request_user_input` call** and show the question UI **at once**. **No sequential calls** (no second call after first response · confirmation). |
+| **Multiple selection** | Use `allow_multiple: true` for items that allow multiple regions · buttons. |
+| **IngameHUD · RPGIngameHUD** | Apply the **multiple questions** rule above. **One call** with `hud_regions` + `hud_layout` **shown together**. **First-choice options follow the template-specific table** (do not mix IngameHUD and RPGIngameHUD options). |
+| **Skip** | If `Questions May Be Skipped` applies, you may proceed without `request_user_input`. |
 
-**IngameHUD** - enforced `request_user_input` procedure (fixed labels, exactly 2 dialogs required):
+**IngameHUD** — mandatory `request_user_input` procedure (fixed labels, **2 question panels shown together**):
 
-| Call order | Question id | prompt (gist) | options | allow_multiple |
-|---|---|---|---|---|
-| 1st (modal 1) | `hud_regions` | Areas to include | HP / Resources (gold, coin) / Actions (attack, skill) / Menu, Settings | true |
-| 2nd (modal 2) | `hud_layout` | Layout | Use as-is / Slightly modify later / Directly desired composition | false |
+**Default layout:** HP bar · menu/settings · 2 currency slots · 5 attack buttons
 
-- For IngameHUD, even if some details are specified in the sentence, **do not skip the two request_user_input calls** (exception: L2-only changes).
+**One `request_user_input` call** — put both below in `questions` and show **together**:
 
-**PopupGui** - `request_user_input` example:
-
-| Question id | prompt (gist) | options | allow_multiple |
+| Question id | prompt (summary) | options | allow_multiple |
 |---|---|---|---|
-| `popup_buttons` | Button composition | 1 Confirm button / Confirm + Cancel / Keep default 2 buttons | false |
-| `popup_body` | Body format | Level number / Fixed phrase only / Include icon area | false |
+| `hud_regions` | Regions to include | HP / resources (gold · crystal ×2) / actions (5 attacks) / menu · settings | true |
+| `hud_layout` | Layout | use as-is / tweak later / custom layout | false |
 
-(For other templates as well, move the entries from each **template-specific question examples** table into `request_user_input` options identically.)
+- For IngameHUD, **do not skip the 2 request_user_input calls above** even if the request partially specifies regions (exception: L2-only change requests). **No 2 sequential calls**.
 
-**`user_confirmed_spec` mapping:** Record `request_user_input` `id` and selected option `label` into `keep_elements` / `remove_elements` / `content_notes`, etc., **using labels exactly as-is**. Keep applying the rule: "unselected IngameHUD regions are kept."
+**RPGIngameHUD** — mandatory `request_user_input` procedure (fixed labels, **2 question panels shown together**; **separate from IngameHUD**):
+
+**Default layout:** HP bar · energy bar · XP bar · level · 2 currency slots · 3 skill buttons · 2 quickslot buttons · dash button (**no menu · settings**)
+
+**One `request_user_input` call** — put both below in `questions` and show **together**:
+
+| Question id | prompt (summary) | options | allow_multiple |
+|---|---|---|---|
+| `hud_regions` | Regions to include | HP / energy (energy bar) / XP · level / resources (gold · crystal ×2) / skills (3) / quickslots (2) / dash | true |
+| `hud_layout` | Layout | use as-is / tweak later / custom layout | false |
+
+- For RPGIngameHUD, **do not skip the 2 request_user_input calls above** even if the request partially specifies regions (exception: L2-only change requests). **No 2 sequential calls**.
+- Do **not** offer menu · settings in RPGIngameHUD `hud_regions`. Do **not** offer energy · XP · level · quickslots · dash in IngameHUD `hud_regions`.
+
+**PopupGui** — `request_user_input` example (**one `request_user_input` call**, 2 questions **shown together**):
+
+| Question id | prompt (summary) | options | allow_multiple |
+|---|---|---|---|
+| `popup_buttons` | Button layout | confirm only / confirm + cancel / keep default 2 | false |
+| `popup_body` | Body form | level number / fixed text only / include icon area | false |
+
+(For other templates, move items from the **template-specific question examples** table into `request_user_input` options the same way. **If 2+ questions, one call · show together**.)
+
+**`user_confirmed_spec` mapping:** Record `request_user_input` `id` and selected `label` **verbatim** in `keep_elements` / `remove_elements` / `content_notes`, etc. The rule “unselected IngameHUD · RPGIngameHUD regions are kept” still applies.
 
 | Field | Content |
 |---|---|
-| `template` | Template name used |
-| `keep_elements` | Areas/buttons to keep (if omitted, **entire template default**) |
-| `remove_elements` | Elements to remove (only what user selected) |
-| `add_elements` | Elements to add (only what user selected) |
-| `content_notes` | L2 (phrases, icons, etc.) |
+| `template` | Template name in use |
+| `keep_elements` | Regions · buttons to keep (if omitted, **full template default**) |
+| `remove_elements` | Elements to delete (only what the user chose) |
+| `add_elements` | Elements to add (only what the user chose) |
+| `content_notes` | L2 (copy · icons, etc.) |
 
-**Do not Destroy or add items that are not in `remove_elements` or `add_elements`.** Put "not needed" into `remove_elements` only when the user **selected it or explicitly stated it in a sentence**.
+**Do not Destroy or add items not in `remove_elements` · `add_elements`.** Put “not needed” in `remove_elements` only when the user **chose or stated it in text**.
 
-### Template-specific question examples (fixed items -> `request_user_input` options)
+### Template-Specific Question Examples (fixed items → `request_user_input` option)
 
-**PopupGui - "Level-up notification popup"** - use the **PopupGui `request_user_input` table** above + title phrase if needed (allow only one free-text input)
+**PopupGui — “Level-up notification popup”** — use the **PopupGui `request_user_input` table** above + title copy if needed (only one free-text field allowed)
 
-**IngameHUD - "Action game/RPG HUD"** - use the **IngameHUD `request_user_input` enforced procedure** exactly (1st `hud_regions` -> 2nd `hud_layout`)
+**IngameHUD — “Action game HUD”** — use the **IngameHUD mandatory `request_user_input` procedure** as-is (`hud_regions` + `hud_layout` **one call · shown together**)
 
-- **Unselected regions are kept** (to delete, user must explicitly state "exclude")
+**RPGIngameHUD — “RPG in-game HUD”** — use the **RPGIngameHUD mandatory `request_user_input` procedure** as-is (`hud_regions` + `hud_layout` **one call · shown together**). For RPG genre · HP · energy · XP · level · currency · skills · quickslots · dash requests, prefer this template over IngameHUD.
 
-### Popup/Modal layout (when adding/removing)
+- **Unselected regions are kept** (user must explicitly say “exclude” to delete)
 
-- After deleting buttons, **re-center alignment** (no empty gap or one-sided bias)
-- Added content must stay **inside parent frame**; if space is insufficient, expand frame `Size` only within limits that do not exceed screen/reserved regions
+**DailyAttendanceGui — “Attendance / daily reward”**
 
-## Required Procedure for UI Creation Requests
+- The template default is **days 1–31** slots, but if the request differs only in **day count** while the purpose is attendance · reward claim (Claimed/Claim/Locked), **prefer DailyAttendanceGui**. Do **not** exclude the template or build anew with `ui-generator` solely because day count differs.
+- If day count is **not** in the prompt, confirm with `request_user_input`.
 
-1. Check this skill and the **template table, exclusion criteria, and conflict priorities** below
-2. Confirm candidate template using **4 similarity questions** (asset addition only after step 4)
-3. **If structural add/remove is needed** -> **`request_user_input`** -> receive `user_confirmed_spec` (**until then, no Destroy or structural additions**)
-4. If exclusion criteria apply, reselect or switch to `ui-generator`
-5. Add assets -> GUI naming -> add/remove within **spec scope** -> L2 -> **`ui-generator`**
-6. Verify reserved regions, frame, and overflow -> **self-check** -> respond (including spec and judgment)
+| Question id | prompt (summary) | options | allow_multiple |
+|---|---|---|---|
+| `attendance_days` | Attendance day count | 7 days / 14 days / 31 days (default) | false |
 
-### 4 similarity questions
+- If day count is **already stated** in the prompt, the `request_user_input` above may be skipped. Record `N days` (e.g., `7 days`) in `user_confirmed_spec` `content_notes`.
 
-- Persistent HUD vs temporary modal?
-- Confirm/close vs exploration/repeated interaction?
-- Text-centric vs icon/visual-centric?
-- Can it fit within the same slots/regions?
+**DailyAttendanceGui — slot (day) count variation rules**
 
-## Official Templates, Selection, and Conflicts
+| Situation | Handling |
+|---|---|
+| Requested days **< 31** | **Destroy** excess slots (do not only set `Visible` off). Renumber remaining slot day labels · L2 to 1~N |
+| Requested days **= 31** | Keep slot count; change L2 · state only |
+| Requested days **> 31** | **Duplicate** existing slots to add more. Keep slot structure · Claimed/Claim/Locked · `SlotBorderImage` (today’s day) rules |
+| Common | Vary inside vertical scroll · parent frame. Keep existing slot Position/Size/Anchor **pattern** (no arbitrary coordinates without explicit spec). Do not hide overflow with `ClipsDescendants` |
 
-| Template | Summary | Fit (gist) | Not fit (gist) | Asset ID |
+### Popup · Modal Layout (when adding/removing)
+
+- After button removal, **re-center** (no empty gaps · one-sided clustering)
+- Added content stays **inside the parent frame**; if insufficient, expand frame `Size` only within screen · reserved-area limits
+
+## Required Procedure for UI Generation Requests
+
+1. Read this skill · **template table · exclusion criteria · conflict priority** below
+2. Lock candidate template with **4 similarity questions** (asset add only after step 4)
+3. If **structural add/remove needed** → **`request_user_input`** → receive `user_confirmed_spec` (**no Destroy · structural add until then**)
+4. If **exclusion criteria** apply, reselect or use `ui-generator`
+5. Asset add → GUI names → add/remove within **spec scope** → L2 → **`ui-generator`**
+6. Verify reserved areas · frames · overflow → **self-check** → respond (include spec · judgment)
+
+### 4 Similarity Questions
+
+- Persistent HUD vs. temporary modal?
+- Confirm · close vs. browse · repeat interaction?
+- Text vs. icon · visual focus?
+- Can it fit in the same slot · region?
+
+## Official Templates · Selection · Conflicts
+
+| Template | Summary | Fit (summary) | Poor fit (summary) | Asset ID |
 |---|---|---|---|---|
-| IngameHUD | Persistent HUD | HP, currency, action, menu | Modal, icon purchase confirmation | `ovdrassetid://32883100` |
-| PopupGui | Text modal | Notification, warning, confirmation, announcement | Icon/item visuals are core | `ovdrassetid://32884100` |
-| IconPopupGui | Icon confirmation | Purchase, reward, item, skill | Text only | `ovdrassetid://32883200` |
-| LoadingScreenGui | Pre-entry loading | Name, bar, loading text | Persistent HUD, end/result | `ovdrassetid://32911200` |
-| LeaderboardHUD | Top-right HUD | Persistent + Show all popup | One-time modal, rankings only after end | `ovdrassetid://32912100` |
-| BossHPHUD | Boss HP HUD | Name, level, HP bar, text | Player HP | `ovdrassetid://32913100` |
-| CharacterSelectGui | Character selection | Scroll + Back, Go | Inventory, simple confirmation | `ovdrassetid://32914100` |
-| GameOverGui | Game over | Time + description + 3 buttons | Win/loss, score, ranking only | `ovdrassetid://32915100` |
-| GameDefeatGui | Defeat | Description + 3 buttons | Victory, score, ranking, time are core | `ovdrassetid://32912200` |
-| GameVictoryGui | Victory | Description + 3 buttons | Defeat, score, ranking | `ovdrassetid://32916100` |
-| GameScoreResultGui | Personal score | My score + 3 buttons | Multi-rank list | `ovdrassetid://32916200` |
+| IngameHUD | Persistent HUD | HP · 2 currency · 5 attacks · menu/settings | Modal, RPG (energy · XP · quickslots) | `ovdrassetid://32883100` |
+| PopupGui | Text modal | Alert · warning · confirm · notice | Icon · item visual focus | `ovdrassetid://32884100` |
+| IconPopupGui | Icon confirm | Purchase · reward · item · skill | Text only | `ovdrassetid://32883200` |
+| LoadingScreenGui | Pre-entry loading | Name · bar · loading text | Persistent HUD, end · result | `ovdrassetid://32911200` |
+| LeaderboardHUD | Top-right HUD | Persistent + Show all popup | One-off modal, post-game rank only | `ovdrassetid://32912100` |
+| BossHPHUD | Boss HP HUD | Name · level · HP bar · text | Player HP | `ovdrassetid://32913100` |
+| CharacterSelectGui | Character select | Scroll + Back · Go | Inventory, simple confirm | `ovdrassetid://32914100` |
+| GameOverGui | Game over | Time + description + 3 buttons | Win/loss · score · rank only | `ovdrassetid://32915100` |
+| GameDefeatGui | Defeat | Description + 3 buttons | Victory · score · rank · time focus | `ovdrassetid://32912200` |
+| GameVictoryGui | Victory | Description + 3 buttons | Defeat · score · rank | `ovdrassetid://32916100` |
+| GameScoreResultGui | Personal score | My score + 3 buttons | Multi-player rank list | `ovdrassetid://32916200` |
 | GameRankResultGui | Rank list | Scroll slots + 3 buttons | Personal score only | `ovdrassetid://32917100` |
 
-**3 buttons** = Lobby / Okay / Retry (add/remove only after spec).
+**3 buttons** = Lobby · Okay · Retry (add/remove only after spec).
 
-**Conflict priority:** (1) Loading -> LoadingScreenGui (2) End/result: time->GameOverGui, win->Victory, lose->Defeat, personal score->Score, ranking->Rank (3) Persistent HUD: general->IngameHUD, leaderboard->LeaderboardHUD, boss->BossHPHUD (4) CharacterSelectGui (5) Icon-centric->IconPopupGui (6) Text modal->PopupGui
+### RPG Templates
 
-### Exclusion criteria (if any one applies -> stop using that template)
+| Template | Summary | Fit (summary) | Poor fit (summary) | Asset ID |
+|---|---|---|---|---|
+| RPGIngameHUD | Persistent in-game HUD | HP · energy · XP · level · 2 currency · 3 skills · 2 quickslots · dash | Modal, menu/settings, general action HUD | `ovdrassetid://35631100` |
+| RewardToastHUD | In-game reward toast | Attendance · quest · achievement rewards (vertical, max 6 slots) | Persistent HUD, modal confirm | `ovdrassetid://35632100` |
+| DailyAttendanceGui | Days 1–31 attendance (day count varies via slot add/remove) | Daily attendance · reward claim (Claimed/Claim/Locked). **Includes requests with only different day count (7 · 14 · 31, etc.)** | Inventory, shop, wholly different screen purpose | `ovdrassetid://35730100` |
+| EquipmentGui | Equipment · character info | Weapon · ability · head · body · accessory slots, center character display | Inventory list, shop | `ovdrassetid://35634100` |
+| InventoryGui | 4-tab inventory | Item storage · equipped display · detail (DetailFrame) | Shop, equipment-only equip screen | `ovdrassetid://35635100` |
+| EnhancementGui | Item/skill enhancement popup | Level · XP bar · materials · gold cost | Shop, inventory list | `ovdrassetid://35636100` |
+| ShopGui | 4-tab item shop | Tab products · detail · sell confirm (ConfirmPopupFrame) | Inventory, enhancement | `ovdrassetid://35634200` |
+| SkillTreeGui | Tree skill screen | Skill points · branch tree · detail (DetailPopupFrame) | Quickslots only, inventory | `ovdrassetid://35637100` |
+| QuestProgressionHUD | In-game quest progress HUD | Persistent quest name · description · progress | Quest detail · reward claim screen | `ovdrassetid://35639100` |
+| QuestGui | Quest detail screen | Tabs · claim · progress · footer rewards | Persistent quest HUD | `ovdrassetid://35635200` |
 
-1. Usage context mismatch (forcing persistent <-> modal mix) 2. Interaction model mismatch (exploration/equipment vs confirmation only) 3. Information density overload, readability, touch usability drop 4. Requires changing group/slot semantics to fit 5. Repeating elements cannot be handled even with scroll/splitting 6. Requires reserved-region/boundary overflow or dependency on ClipsDescendants 7. Requested main function is large enough to replace template purpose
+**Conflict priority:** 
+(1) Loading → LoadingScreenGui 
+(2) End · result: time→GameOverGui, win→Victory, loss→Defeat, personal score→Score, rank→Rank 
+(3) Persistent HUD: RPG→RPGIngameHUD, general→IngameHUD, leaderboard→LeaderboardHUD, boss→BossHPHUD, quest tracking→QuestProgressionHUD
+(4) RPG features: attendance→DailyAttendanceGui, reward toast→RewardToastHUD, equipment→EquipmentGui, inventory→InventoryGui, enhancement→EnhancementGui, shop→ShopGui, skill tree→SkillTreeGui, quest detail→QuestGui
+(5) CharacterSelectGui 
+(6) Icon focus→IconPopupGui 
+(7) Text modal→PopupGui
 
--> Reselect, switch to `ui-generator`, or ask split/priority via **`request_user_input`** (do not force-fit by inferential deletion).
+### Exclusion Criteria (if any apply → stop that template)
 
-## Template-specific fixed behavior (changes outside spec prohibited)
+1. Context mismatch (forcing persistent↔modal) 2. Interaction model mismatch (browse · equip vs. confirm only) 3. Information overload · readability · touch degradation 4. Must change group · slot meaning to accept 5. Repeated elements impossible even with scroll · split 6. Requires reserved-area · boundary overflow · ClipsDescendants dependency 7. Request’s main feature replaces template purpose at scale
 
-Common: structural add/remove is allowed **only after spec**. Before spec, keep default structure and the **designed Visible states** below.
+→ Reselect, switch to `ui-generator`, or split · prioritize via **`request_user_input`** (do not infer deletions).
+
+**DailyAttendanceGui exception:** When the request is attendance · daily reward claim and **only day (slot) count** differs from the template default (31), the exclusion criteria above **do not apply**. Vary via slot Destroy · Duplicate and keep the template.
+
+## Template Fixed Behavior (no changes outside spec)
+
+Common: structural add/remove **only after spec**. Before spec, keep default structure and **designed Visible** below.
 
 | Template | Fixed behavior the agent must follow |
 |---|---|
-| LoadingScreenGui | Keep name, loading bar, loading text; only progress and phrase in L2 |
-| LeaderboardHUD | Show all -> popup; popup default `Visible=false`; my player `PlayerName` bold + Highlight |
-| BossHPHUD | Boss HP only (do not mix with player HP bar) |
-| CharacterSelectGui | Scroll slots; selected item shows name/description on the right |
-| GameOverGui | Can display remaining/progress time (unique) |
+| LoadingScreenGui | Keep name · loading bar · loading text; L2 only for progress · copy |
+| LeaderboardHUD | Show all → popup; popup default `Visible=false`; my player `PlayerName` bold + Highlight |
+| BossHPHUD | Boss HP only (do not mix player HP bar) |
+| CharacterSelectGui | Scroll slots; on select, name · description on the right |
+| GameOverGui | May show remaining/elapsed time (only template that does) |
 | GameDefeatGui / GameVictoryGui / GameScoreResultGui / GameRankResultGui | Rank: scroll slots + my player Highlight |
+| IngameHUD | Keep HP bar · menu/settings · gold/crystal currency · 5 attack buttons |
+| RPGIngameHUD | Keep HP bar · energy bar · XP bar · level · gold/crystal currency · 3 skill buttons · 2 quickslot buttons · dash button; **no menu · settings** |
+| RewardToastHUD | Vertical layout; per slot icon · quantity gained · description; **max 6 slots on screen**, 7+ fades in previous slot · disables |
+| DailyAttendanceGui | Vertical scroll; default days 1–31 slots (**add/remove slots to match requested days**). **Today’s day** `SlotBorderImage` active; button states Claimed/Claim/Locked; time until next day. Day-count-only requests are **template variation** (shrink · grow slots), not new UI |
+| EquipmentGui | Weapon · ability · head · body · accessory equip slots; **keep center empty for character display — do not place UI there** |
+| InventoryGui | Top 4 tabs; current tab top-left; left vertical scroll item slots; equipped slots `EquippedBadgeLabel` active; on select `DetailFrame` active |
+| EnhancementGui | Top prev/next level; level-up XP progress bar; center enhancement material area; bottom enhancement gold cost |
+| ShopGui | Left 4 tabs; current tab top-left; left vertical scroll item slots; on select `DetailFrame`; Sell in `DetailFrame` → `ConfirmPopupFrame` active |
+| SkillTreeGui | Skill points top-left; center tree (multiple columns when branched); on skill slot select `DetailPopupFrame` active |
+| QuestProgressionHUD | Quest slots top-left; per slot name · description · progress; **persistent in-game quest status while playing** |
+| QuestGui | Top 2 tabs; tab with claimable quests `NotificationDotLabel`; vertical scroll; slot states In Progress/Claimed/Claim; footer overall progress rewards |
 
-`IngameHUD`: in the confirmation turn, **must call `request_user_input` exactly twice** (1st `hud_regions`, 2nd `hud_layout`) to open two dialogs, then finalize spec. `Position`/`Size`/`Anchor` only when **explicitly stated/in spec**.
+`IngameHUD` · `RPGIngameHUD`: on the confirmation turn, call the **template-specific** `request_user_input` **once** with `hud_regions` + `hud_layout` **2 questions shown together**, then finalize spec (**no 2 sequential calls**). Change `Position`/`Size`/`Anchor` **only when explicit in prompt · spec**.
 
-## Prohibited
+## Forbidden
 
-- **Handling fixed-choice confirmation only via chat text/free-text response** (skipping `request_user_input`, inducing "reply example")
-- Destroy, structural additions, button count changes, hiding unconfirmed elements without spec/explicit statement
-- Creating a blank canvas or equivalent new UI without template, without similarity/fit judgment/spec
-- GUI placement/modification without `ui-generator`
-- Not using official template when a suitable template exists
-- Arbitrary coordinate/anchor/appearance changes without explicit statement/spec, reserved-region invasion, ClipsDescendants concealment
+- **Handling fixed-choice confirmation only via chat text · free-text replies** (skipping `request_user_input`, prompting “reply examples”)
+- **Sequential `request_user_input` calls when 2+ questions are needed** (second call after first response). **Must be one call · all in `questions` array · shown together**
+- Destroy · structural add · button count change · hiding unconfirmed elements without spec · explicit statement
+- New blank-canvas or equivalent UI without template when similarity · fit judgment · spec are missing
+- GUI placement · edits without `ui-generator`
+- Not using official templates when a fitting one exists
+- Not using **DailyAttendanceGui** when it fits **only because day count differs** · building anew with `ui-generator`
+- Arbitrary coordinates · anchors · appearance without explicit spec, reserved-area encroachment, ClipsDescendants concealment
 
-## Self-check Before Responding · Response Format
+## Pre-Response Self-Check · Response Format
 
-**Do not give a final completion response before passing.**
+**No completion response until all pass.**
 
-- [ ] If add/remove is needed, perform Destroy/addition **only after receiving spec via `request_user_input`** (if confirmed only by chat list/"reply example", **fail**)
-- [ ] For IngameHUD, in confirmation turn, was `request_user_input` executed **exactly twice** (1st `hud_regions`, 2nd `hud_layout`)?
+- [ ] If add/remove was needed, Destroy · add only **after receiving spec via `request_user_input`** (failure if confirmed only via chat list · “reply examples”)
+- [ ] If 2+ questions, were they in **one `request_user_input` call** with all in `questions` **shown together**? (**failure if 2 sequential calls**)
+- [ ] For IngameHUD · RPGIngameHUD, were `hud_regions` + `hud_layout` **shown together at once**? **Do choices match the template-specific table**
 - [ ] Actual add/remove ⊆ `remove_elements` ∪ `add_elements` (everything else kept)
-- [ ] No coordinate/anchor/appearance changes without spec/explicit statement
-- [ ] Frame/reserved-region/ClipsDescendants compliance
-- [ ] Record template, exclusion, `ui-generator`, spec (or "already explicit in prompt")
+- [ ] No coordinate · anchor · appearance changes without spec · explicit statement
+- [ ] Frames · reserved areas · ClipsDescendants respected
+- [ ] Template · exclusion · `ui-generator` · spec (or “already stated in prompt”) recorded
+- [ ] For attendance requests with **only different day count** → used `DailyAttendanceGui` · varied slots (not new UI · not template exclusion)
 
-**A. Confirmation turn (before creation):** template candidate (1-2 chat sentences) + **fixed choices via `request_user_input`** -> reflect response in spec, then create (do not put options only in chat and collect input there)
+**A. Confirmation turn (before build):** Template candidate (1–2 sentences in chat) + **fixed choices via `request_user_input`** → apply responses to spec, then build (do not list choices only in chat and collect typed input)
 
-**B. Completion turn:** 1 line each for structure/purpose | confirmation and `user_confirmed_spec` | template and asset ID | add/remove (remove/add/none) | L2, naming, boundaries, reserved regions | no inferential add/remove
+**B. Completion turn:** Structure · purpose one line each | confirmation · `user_confirmed_spec` | template · asset ID | add/remove (remove/add/none) | L2 · names · boundaries · reserved | no inferred add/remove
