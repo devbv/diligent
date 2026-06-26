@@ -16,6 +16,10 @@ function reduce(state: typeof initialThreadState, notification: DiligentServerNo
   return reduceServerNotification(state, notification, events);
 }
 
+function hasErrorRenderItem(items: Array<{ kind: string }>): boolean {
+  return items.some((item) => item.kind === "error");
+}
+
 // Shared adapter instance for tests that need stateful item tracking
 let adapterInstance: ProtocolNotificationAdapter;
 
@@ -329,14 +333,15 @@ test("error during compaction clears compacting and busy state immediately", () 
   expect(next.activeTurnStartedAt).toBeNull();
   expect(next.activeReasoningStartedAt).toBeNull();
   expect(next.activeReasoningDurationMs).toBe(0);
-  expect(next.toast?.message).toBe("Estimated Token is below 50000");
+  expect(next.activeError?.message).toBe("Estimated Token is below 50000");
+  expect(next.toast).toBeNull();
 });
 
-test("error event appends a RenderItem and preserves providerErrorType", () => {
+test("error event sets activeError without appending a RenderItem", () => {
   resetAdapter();
 
   const next = reduce(
-    { ...initialThreadState, activeThreadId: "t1", threadStatus: "busy" },
+    { ...initialThreadState, activeThreadId: "t1", activeTurnId: "turn-1", threadStatus: "busy" },
     {
       method: DILIGENT_SERVER_NOTIFICATION_METHODS.ERROR,
       params: {
@@ -351,15 +356,12 @@ test("error event appends a RenderItem and preserves providerErrorType", () => {
     },
   );
 
-  const errorItem = next.items.find((item) => item.kind === "error");
-  expect(errorItem).toBeDefined();
-  if (errorItem?.kind === "error") {
-    expect(errorItem.providerErrorType).toBe("auth");
-    expect(errorItem.message).toBe("ChatGPT API error (401): unauthorized");
-    expect(errorItem.fatal).toBe(false);
-  }
-  // Toast still produced alongside the persistent RenderItem.
-  expect(next.toast?.message).toBe("ChatGPT API error (401): unauthorized");
+  expect(hasErrorRenderItem(next.items)).toBe(false);
+  expect(next.activeError?.providerErrorType).toBe("auth");
+  expect(next.activeError?.message).toBe("ChatGPT API error (401): unauthorized");
+  expect(next.activeError?.fatal).toBe(false);
+  expect(next.activeError?.turnId).toBe("turn-1");
+  expect(next.toast).toBeNull();
 });
 
 test("network error event shows a user-facing message instead of raw transport details", () => {
@@ -382,16 +384,13 @@ test("network error event shows a user-facing message instead of raw transport d
     },
   );
 
-  const errorItem = next.items.find((item) => item.kind === "error");
-  expect(errorItem).toBeDefined();
-  if (errorItem?.kind === "error") {
-    expect(errorItem.providerErrorType).toBe("network");
-    expect(errorItem.message).toBe(USER_FACING_NETWORK_ERROR_MESSAGE);
-  }
-  expect(next.toast?.message).toBe(USER_FACING_NETWORK_ERROR_MESSAGE);
+  expect(hasErrorRenderItem(next.items)).toBe(false);
+  expect(next.activeError?.providerErrorType).toBe("network");
+  expect(next.activeError?.message).toBe(USER_FACING_NETWORK_ERROR_MESSAGE);
+  expect(next.toast).toBeNull();
 });
 
-test("hydrateFromThreadRead preserves providerErrorType on history error entries", () => {
+test("hydrateFromThreadRead keeps history error entries out of visible items", () => {
   const hydrated = hydrateFromThreadRead(initialThreadState, {
     threadId: "t1",
     items: [],
@@ -410,15 +409,48 @@ test("hydrateFromThreadRead preserves providerErrorType on history error entries
     ],
   });
 
-  const errorItem = hydrated.items.find((item) => item.kind === "error");
-  expect(errorItem).toBeDefined();
-  if (errorItem?.kind === "error") {
-    expect(errorItem.providerErrorType).toBe("auth");
-    expect(errorItem.turnId).toBe("turn-1");
-  }
+  expect(hasErrorRenderItem(hydrated.items)).toBe(false);
+  expect(hydrated.activeError).toBeNull();
 });
 
-test("hydrateFromThreadRead shows a user-facing message for history network errors", () => {
+test("failed turn completion keeps activeError until a later successful turn completes", () => {
+  resetAdapter();
+
+  const startedFailed = reduce(
+    { ...initialThreadState, activeThreadId: "t1" },
+    {
+      method: DILIGENT_SERVER_NOTIFICATION_METHODS.TURN_STARTED,
+      params: { threadId: "t1", turnId: "turn-1" },
+    },
+  );
+  const failed = reduce(startedFailed, {
+    method: DILIGENT_SERVER_NOTIFICATION_METHODS.ERROR,
+    params: {
+      threadId: "t1",
+      error: { message: "invalid Anthropic key", name: "ProviderError", providerErrorType: "auth" },
+      fatal: false,
+    },
+  });
+  const afterFailedCompletion = reduce(failed, {
+    method: DILIGENT_SERVER_NOTIFICATION_METHODS.TURN_COMPLETED,
+    params: { threadId: "t1", turnId: "turn-1" },
+  });
+
+  expect(afterFailedCompletion.activeError?.message).toBe("invalid Anthropic key");
+
+  const startedSuccess = reduce(afterFailedCompletion, {
+    method: DILIGENT_SERVER_NOTIFICATION_METHODS.TURN_STARTED,
+    params: { threadId: "t1", turnId: "turn-2" },
+  });
+  const afterSuccessCompletion = reduce(startedSuccess, {
+    method: DILIGENT_SERVER_NOTIFICATION_METHODS.TURN_COMPLETED,
+    params: { threadId: "t1", turnId: "turn-2" },
+  });
+
+  expect(afterSuccessCompletion.activeError).toBeNull();
+});
+
+test("hydrateFromThreadRead ignores history network errors for visible state", () => {
   const hydrated = hydrateFromThreadRead(initialThreadState, {
     threadId: "t1",
     items: [],
@@ -438,12 +470,8 @@ test("hydrateFromThreadRead shows a user-facing message for history network erro
     ],
   });
 
-  const errorItem = hydrated.items.find((item) => item.kind === "error");
-  expect(errorItem).toBeDefined();
-  if (errorItem?.kind === "error") {
-    expect(errorItem.providerErrorType).toBe("network");
-    expect(errorItem.message).toBe(USER_FACING_NETWORK_ERROR_MESSAGE);
-  }
+  expect(hasErrorRenderItem(hydrated.items)).toBe(false);
+  expect(hydrated.activeError).toBeNull();
 });
 
 test("plan tool completion sets planState when unresolved steps remain", () => {

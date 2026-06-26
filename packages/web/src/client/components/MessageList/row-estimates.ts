@@ -71,8 +71,6 @@ export function estimateMessageHeight(item: RenderItem): number {
       return estimateTextHeight(item.text, 60) + item.images.length * 112 + (item.contextItems?.length ?? 0) * 28;
     case "context":
       return 112;
-    case "error":
-      return 80;
     case "tool":
       return item.status === "streaming" ? 52 : 68;
     case "collab":
