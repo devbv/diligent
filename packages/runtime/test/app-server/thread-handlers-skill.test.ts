@@ -1,7 +1,8 @@
 // @summary Tests slash skill invocation rewrite in thread/turn start handler
 import { describe, expect, it } from "bun:test";
 import type { DiligentServerNotification } from "@diligent/protocol";
-import { handleTurnStart, type ThreadRuntime } from "@diligent/runtime/app-server/thread-handlers";
+import type { ThreadRuntime } from "@diligent/runtime/app-server/thread-handlers";
+import { handleTurnStart } from "@diligent/runtime/app-server/turn-handlers";
 import type { DiligentPaths } from "@diligent/runtime/infrastructure";
 
 describe("handleTurnStart slash skill rewriting", () => {

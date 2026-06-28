@@ -55,9 +55,8 @@ import {
   requestApprovalFromConnections,
   requestUserInputFromConnections,
 } from "./server-requests";
+import { getLatestEffortFromSessions, getLatestModelFromSessions } from "./session-handlers";
 import {
-  getLatestEffortFromSessions,
-  getLatestModelFromSessions,
   resetTurnRuntimeState,
   type ThreadRuntime,
 } from "./thread-handlers";
