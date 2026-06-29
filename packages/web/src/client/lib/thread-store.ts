@@ -42,6 +42,18 @@ export interface ToastState {
   fatal?: boolean;
 }
 
+type ProviderErrorType = NonNullable<Extract<AgentEvent, { type: "error" }>["error"]["providerErrorType"]>;
+
+export interface ActiveErrorState {
+  id: string;
+  message: string;
+  name?: string;
+  fatal: boolean;
+  turnId?: string;
+  timestamp: number;
+  providerErrorType?: ProviderErrorType;
+}
+
 export interface UsageState {
   inputTokens: number;
   outputTokens: number;
@@ -75,16 +87,6 @@ export type RenderItem =
       timestamp: number;
       reasoningDurationMs?: number;
       turnDurationMs?: number;
-    }
-  | {
-      id: string;
-      kind: "error";
-      message: string;
-      name?: string;
-      fatal: boolean;
-      turnId?: string;
-      timestamp: number;
-      providerErrorType?: "rate_limit" | "overloaded" | "context_overflow" | "auth" | "network" | "unknown";
     }
   | {
       id: string;
@@ -154,10 +156,12 @@ export interface ThreadState {
   pendingApproval: { requestId: number; request: ApprovalRequest } | null;
   pendingUserInput: { requestId: number; request: UserInputRequest; answers: Record<string, string | string[]> } | null;
   toast: ToastState | null;
+  activeError: ActiveErrorState | null;
   usage: UsageState;
   currentContextTokens: number; // latest turn's total input tokens including cache (not cumulative)
   planState: PlanState | null;
   pendingSteers: string[];
+  activeTurnHadError: boolean;
   activeTurnId: string | null;
   activeTurnStartedAt: number | null;
   activeReasoningStartedAt: number | null;
@@ -188,10 +192,12 @@ export const initialThreadState: ThreadState = {
   pendingApproval: null,
   pendingUserInput: null,
   toast: null,
+  activeError: null,
   usage: zeroUsage,
   currentContextTokens: 0,
   planState: null,
   pendingSteers: [],
+  activeTurnHadError: false,
   activeTurnId: null,
   activeTurnStartedAt: null,
   activeReasoningStartedAt: null,
@@ -258,7 +264,7 @@ function extractAssistantTextFromMessage(message: AssistantMessage): { text: str
   return { text, thinking };
 }
 
-function reduceAgentEvent(state: ThreadState, event: AgentEvent): ThreadState {
+function reduceAgentEvent(state: ThreadState, event: AgentEvent, turnId?: string): ThreadState {
   // Delegate base ConversationLiveState live fields to the shared reducer first.
   // This keeps threadStatus, overlayStatus, liveText, liveThinking, and live tool
   // fields converged with protocol's applyAgentEvents() contract.
@@ -434,8 +440,8 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent): ThreadState {
 
     case "error": {
       const now = Date.now();
-      const errorKey = `event:error:${now}`;
       const message = getUserFacingErrorMessage(event.error);
+      const eventTurnId = turnId ?? merged.activeTurnId ?? undefined;
       const settled = settleInFlightItems({
         ...merged,
         threadStatus: "idle",
@@ -445,22 +451,18 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent): ThreadState {
         activeTurnStartedAt: null,
         activeReasoningStartedAt: null,
         activeReasoningDurationMs: 0,
-        toast: {
+        activeTurnHadError: true,
+        activeError: {
           id: `err-${now}`,
-          kind: "error",
           message,
+          name: event.error.name,
           fatal: event.fatal,
+          ...(eventTurnId ? { turnId: eventTurnId } : {}),
+          timestamp: now,
+          providerErrorType: event.error.providerErrorType,
         },
       });
-      return withItem(settled, errorKey, {
-        id: errorKey,
-        kind: "error",
-        message,
-        name: event.error.name,
-        fatal: event.fatal,
-        timestamp: now,
-        providerErrorType: event.error.providerErrorType,
-      });
+      return settled;
     }
 
     case "knowledge_saved":
@@ -527,6 +529,7 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent): ThreadState {
       }
       return {
         ...merged,
+        activeTurnHadError: false,
         activeTurnId: event.turnId,
         activeTurnStartedAt: Date.now(),
         activeReasoningStartedAt: null,
@@ -644,12 +647,14 @@ function handleTurnInterruptedNotification(state: ThreadState): ThreadState {
     activeTurnStartedAt: null,
     activeReasoningStartedAt: null,
     activeReasoningDurationMs: 0,
+    activeTurnHadError: false,
   });
   return applyLatestAssistantDurations(settled, turnDurationMs, reasoningDurationMs);
 }
 
 function handleTurnCompletedNotification(state: ThreadState, turnId: string): ThreadState {
   const { turnDurationMs, reasoningDurationMs } = getTurnTimingMetrics(state);
+  const shouldClearActiveError = !state.activeTurnHadError && state.activeError?.turnId !== turnId;
   const settled = settleInFlightItems({
     ...state,
     itemSlots: {},
@@ -657,6 +662,8 @@ function handleTurnCompletedNotification(state: ThreadState, turnId: string): Th
     activeTurnStartedAt: state.activeTurnId === turnId ? null : state.activeTurnStartedAt,
     activeReasoningStartedAt: null,
     activeReasoningDurationMs: 0,
+    activeTurnHadError: false,
+    activeError: shouldClearActiveError ? null : state.activeError,
   });
   return applyLatestAssistantDurations(settled, turnDurationMs, reasoningDurationMs);
 }
@@ -715,8 +722,9 @@ export function reduceServerNotification(
 
   // Delegate all item lifecycle, status, usage, error, knowledge, loop, steering to AgentEvent reducer
   let current = stateWithAuthoritativeStatus;
+  const turnId = typeof params?.turnId === "string" ? params.turnId : undefined;
   for (const event of events) {
-    current = reduceAgentEvent(current, event);
+    current = reduceAgentEvent(current, event, turnId);
   }
   return current;
 }

@@ -25,6 +25,8 @@ export function AppHeader({
         type="button"
         onClick={onToggleSidebar}
         aria-label={sidebarOpen ? "Close sidebar" : "Open sidebar"}
+        aria-controls="app-sidebar"
+        aria-expanded={sidebarOpen}
         title={sidebarOpen ? "Close sidebar" : "Open sidebar"}
         className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted transition hover:bg-surface-light hover:text-text"
       >

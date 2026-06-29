@@ -2,7 +2,7 @@
 import type { EventStream } from "../../event-stream";
 import type { AssistantMessage, ContentBlock, StopReason, Usage } from "../../types";
 import type { Model, ProviderEvent, ProviderResult } from "../types";
-import { ProviderError } from "../types";
+import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError } from "../types";
 import { isContextOverflow, mapStopReason, mapUsage } from "./openai-responses";
 
 type ResponseToolBuffer = { id: string; name: string; args: string };
@@ -260,7 +260,7 @@ function reduceResponsesAPIEvent(
 
     case "response_failed": {
       if (isContextOverflow(event.message)) {
-        return [{ type: "error", error: new ProviderError(event.message, "context_overflow", false) }];
+        return [{ type: "error", error: new ProviderError(CONTEXT_OVERFLOW_ERROR_MESSAGE, "context_overflow", false) }];
       }
       if (isTransientResponseFailure(event.message)) {
         return [{ type: "error", error: new ProviderError(event.message, "server_error", true) }];

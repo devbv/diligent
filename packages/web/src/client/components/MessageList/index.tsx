@@ -133,14 +133,9 @@ function MessageListImpl({
 
   const renderRow = useCallback(
     (_index: number, row: VirtualMessageRow) => (
-      <MessageListRowContent
-        row={row}
-        threadCwd={threadCwd}
-        onLoadChildThread={onLoadChildThread}
-        onOpenProviders={onOpenProviders}
-      />
+      <MessageListRowContent row={row} threadCwd={threadCwd} onLoadChildThread={onLoadChildThread} />
     ),
-    [onLoadChildThread, onOpenProviders, threadCwd],
+    [onLoadChildThread, threadCwd],
   );
 
   const measureItemSize = useCallback<SizeFunction>((element, field) => {
@@ -249,12 +244,7 @@ function MessageListImpl({
           <div className="space-y-3">
             {rows.map((row) => (
               <div key={row.key} data-message-list-row={row.key}>
-                <MessageListRowContent
-                  row={row}
-                  threadCwd={threadCwd}
-                  onLoadChildThread={onLoadChildThread}
-                  onOpenProviders={onOpenProviders}
-                />
+                <MessageListRowContent row={row} threadCwd={threadCwd} onLoadChildThread={onLoadChildThread} />
               </div>
             ))}
           </div>

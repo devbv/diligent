@@ -10,19 +10,16 @@ import { QuestionCard } from "../QuestionCard";
 import { StreamingIndicator } from "../StreamingIndicator";
 import { ToolBlock } from "../ToolBlock";
 import { UserMessage } from "../UserMessage";
-import { ErrorMessage } from "./ErrorMessage";
 import type { VirtualMessageRow } from "./types";
 
 export function MessageListRowContent({
   row,
   threadCwd,
   onLoadChildThread,
-  onOpenProviders,
 }: {
   row: VirtualMessageRow;
   threadCwd?: string;
   onLoadChildThread?: (childThreadId: string) => Promise<ThreadReadResponse>;
-  onOpenProviders?: () => void;
 }) {
   switch (row.kind) {
     case "collab":
@@ -31,8 +28,6 @@ export function MessageListRowContent({
       switch (row.item.kind) {
         case "context":
           return <ContextMessage summary={row.item.summary} />;
-        case "error":
-          return <ErrorMessage item={row.item} onOpenProviders={onOpenProviders} />;
         case "tool":
           return <ToolBlock item={row.item} threadCwd={threadCwd} />;
         case "user":

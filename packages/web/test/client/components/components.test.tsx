@@ -1,6 +1,7 @@
 // @summary Static render tests for core UI components and accessibility attributes
 import { expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
+import { AppHeader } from "../../../src/client/components/AppHeader";
 import { AssetThumbnail } from "../../../src/client/components/AssetThumbnail";
 import { AssistantMessage } from "../../../src/client/components/AssistantMessage";
 import { Button } from "../../../src/client/components/Button";
@@ -12,6 +13,7 @@ import {
 import { CollabGroup } from "../../../src/client/components/CollabGroup";
 import { ContextMessage } from "../../../src/client/components/ContextMessage";
 import { EmptyState } from "../../../src/client/components/EmptyState";
+import { ErrorBanner } from "../../../src/client/components/ErrorBanner";
 import { Input } from "../../../src/client/components/Input";
 import { extractPastedImageFiles, InputDock } from "../../../src/client/components/InputDock";
 import { KnowledgeManagerModal } from "../../../src/client/components/KnowledgeManagerModal";
@@ -20,6 +22,8 @@ import { MessageList } from "../../../src/client/components/MessageList";
 import { Modal } from "../../../src/client/components/Modal";
 import { ProviderSettingsModal } from "../../../src/client/components/ProviderSettingsModal";
 import { isUserInputComplete, QuestionCard } from "../../../src/client/components/QuestionCard";
+import { ResponsiveSidebar } from "../../../src/client/components/ResponsiveSidebar";
+import { Sidebar } from "../../../src/client/components/Sidebar";
 import { SlashMenu } from "../../../src/client/components/SlashMenu";
 import { Toast } from "../../../src/client/components/Toast";
 import { ToolBlock } from "../../../src/client/components/ToolBlock";
@@ -281,29 +285,26 @@ test("toast keeps long provider errors bounded and wrappable", () => {
   expect(html).toContain("00f97018-852a-44a9-8da4-ffa4773df9d5");
 });
 
-test("message list error cards wrap provider error text", () => {
+test("error banner wraps provider error text", () => {
   const html = renderToStaticMarkup(
-    <MessageList
-      items={[
-        {
-          id: "err-1",
-          kind: "error",
-          name: "ProviderError",
-          message:
-            "An error occurred while processing your request. Please include the request ID 00f97018-852a-44a9-8da4-ffa4773df9d5 in your message.",
-          fatal: false,
-          timestamp: 1,
-          providerErrorType: "unknown",
-        },
-      ]}
-      threadStatus="idle"
-      hasProvider={true}
+    <ErrorBanner
+      error={{
+        id: "err-1",
+        name: "ProviderError",
+        message:
+          "An error occurred while processing your request. Please include the request ID 00f97018-852a-44a9-8da4-ffa4773df9d5 in your message.",
+        fatal: false,
+        timestamp: 1,
+        providerErrorType: "unknown",
+      }}
       onOpenProviders={() => {}}
     />,
   );
 
   expect(html).toContain("ProviderError: An error occurred");
-  expect(html).toContain("max-w-full break-words");
+  expect(html).toContain('role="alert"');
+  expect(html).toContain("border-b border-danger/30");
+  expect(html).toContain("break-words");
   expect(html).toContain("whitespace-pre-wrap");
 });
 
@@ -600,6 +601,73 @@ test("context message renders checkpoint language and expandable summary area", 
   expect(html).toContain("Compacted");
   expect(html).toContain("Older conversation was compressed to keep the thread efficient.");
   expect(html).toContain('aria-expanded="false"');
+});
+
+test("app header exposes sidebar toggle state and target", () => {
+  const html = renderToStaticMarkup(
+    <AppHeader
+      sidebarOpen={true}
+      onToggleSidebar={() => {}}
+      threadStatus="idle"
+      isCompacting={false}
+      threadTitle="Thread"
+      onOpenKnowledge={() => {}}
+      onOpenConfig={() => {}}
+    />,
+  );
+
+  expect(html).toContain('aria-label="Close sidebar"');
+  expect(html).toContain('aria-controls="app-sidebar"');
+  expect(html).toContain('aria-expanded="true"');
+});
+
+test("responsive sidebar renders a mobile full-screen overlay when open", () => {
+  const html = renderToStaticMarkup(
+    <ResponsiveSidebar open={true}>
+      <div>Navigation</div>
+    </ResponsiveSidebar>,
+  );
+
+  expect(html).toContain('id="app-sidebar"');
+  expect(html).toContain('aria-label="Conversations"');
+  expect(html).toContain("fixed inset-0 z-50");
+  expect(html).toContain("w-screen");
+  expect(html).toContain("translate-x-0");
+  expect(html).toContain("sm:w-[280px]");
+  expect(html).toContain("transition-transform");
+  expect(html).not.toContain("bg-overlay/45");
+});
+
+test("responsive sidebar hides closed overlay from focus and assistive tech", () => {
+  const html = renderToStaticMarkup(
+    <ResponsiveSidebar open={false}>
+      <button type="button">Hidden navigation action</button>
+    </ResponsiveSidebar>,
+  );
+
+  expect(html).toContain('aria-hidden="true"');
+  expect(html).toContain("inert");
+  expect(html).toContain("-translate-x-full");
+  expect(html).toContain("sm:w-0");
+  expect(html).toContain("transition-none");
+});
+
+test("sidebar includes a mobile close action", () => {
+  const html = renderToStaticMarkup(
+    <Sidebar
+      cwd="/repo/project"
+      threadList={[]}
+      activeThreadId={null}
+      onNewThread={() => {}}
+      onOpenThread={() => {}}
+      onClose={() => {}}
+    />,
+  );
+
+  expect(html).toContain("Conversations");
+  expect(html).toContain('aria-label="Close sidebar"');
+  expect(html).toContain("data-sidebar-initial-focus");
+  expect(html).toContain("sm:hidden");
 });
 
 test("assistant message can suppress thinking block during compaction", () => {
@@ -1394,28 +1462,26 @@ test("slash menu returns null for empty commands", () => {
   expect(html).toBe("");
 });
 
-test("MessageList shows Reconnect button on auth error", () => {
+test("ErrorBanner shows concise auth copy with Reconnect button", () => {
   const html = renderToStaticMarkup(
-    <MessageList
-      items={[
-        {
-          id: "event:error:1",
-          kind: "error",
-          message: "ChatGPT API error (401): unauthorized",
-          name: "ProviderError",
-          providerErrorType: "auth",
-          fatal: false,
-          timestamp: 1715562000000,
-        },
-      ]}
-      threadStatus="idle"
-      hasProvider={true}
+    <ErrorBanner
+      error={{
+        id: "event:error:1",
+        message: "ChatGPT API error (401): unauthorized",
+        name: "ProviderError",
+        providerErrorType: "auth",
+        fatal: false,
+        timestamp: 1715562000000,
+      }}
       onOpenProviders={() => {}}
-      onQuickConnectChatGPT={() => {}}
     />,
   );
 
+  expect(html).toContain("Provider authentication failed");
+  expect(html).toContain("Reconnect this provider to continue.");
   expect(html).toContain("Reconnect");
+  expect(html).not.toContain("ChatGPT API error (401): unauthorized");
+  expect(html).not.toContain("ProviderError:");
 });
 
 test("MessageList renders shrink-safe question prompts in the feed", () => {
@@ -1457,24 +1523,18 @@ test("MessageList renders shrink-safe question prompts in the feed", () => {
   expect(html).not.toContain("Start a new conversation");
 });
 
-test("MessageList does not show Reconnect button on non-auth error", () => {
+test("ErrorBanner does not show Reconnect button on non-auth error", () => {
   const html = renderToStaticMarkup(
-    <MessageList
-      items={[
-        {
-          id: "event:error:2",
-          kind: "error",
-          message: "Rate limit exceeded",
-          name: "ProviderError",
-          providerErrorType: "rate_limit",
-          fatal: false,
-          timestamp: 1715562000000,
-        },
-      ]}
-      threadStatus="idle"
-      hasProvider={true}
+    <ErrorBanner
+      error={{
+        id: "event:error:2",
+        message: "Rate limit exceeded",
+        name: "ProviderError",
+        providerErrorType: "rate_limit",
+        fatal: false,
+        timestamp: 1715562000000,
+      }}
       onOpenProviders={() => {}}
-      onQuickConnectChatGPT={() => {}}
     />,
   );
 
@@ -1525,4 +1585,25 @@ test("QuestionCard renders an asset thumbnail grid for display:asset questions",
   expect(html).toContain("https://assets.example/k.png");
   expect(html).toContain("Katana, Rusty");
   expect(html).toContain("100");
+});
+
+test("ErrorBanner keeps provider error details for non-auth errors without turn metadata", () => {
+  const html = renderToStaticMarkup(
+    <ErrorBanner
+      error={{
+        id: "event:error:3",
+        message: "Anthropic thinking blocks require signature",
+        name: "ProviderError",
+        providerErrorType: "unknown",
+        fatal: false,
+        timestamp: 1715562000000,
+        turnId: "turn-c9b7d446",
+      }}
+      onOpenProviders={() => {}}
+    />,
+  );
+
+  expect(html).toContain("ProviderError: Anthropic thinking blocks require signature");
+  expect(html).not.toContain("Turn:");
+  expect(html).not.toContain("turn-c9b7d446");
 });

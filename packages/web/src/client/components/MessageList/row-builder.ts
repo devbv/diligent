@@ -52,7 +52,6 @@ export function buildGroupedRows(items: RenderItem[]): VirtualMessageRow[] {
         collabBuf.push(item);
         break;
       case "context":
-      case "error":
       case "tool":
       case "user":
         flushCollab();

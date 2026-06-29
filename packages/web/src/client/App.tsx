@@ -1,8 +1,10 @@
 // @summary Main application component: pure composition of hooks and sub-components
 
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AppHeader } from "./components/AppHeader";
 import { ConnectionModal } from "./components/ConnectionModal";
 import { DeleteThreadModal } from "./components/DeleteThreadModal";
+import { ErrorBanner } from "./components/ErrorBanner";
 import { FirstRunNoticeModal } from "./components/FirstRunNoticeModal";
 import { InputDock } from "./components/InputDock";
 import { KnowledgeManagerModal } from "./components/KnowledgeManagerModal";
@@ -10,6 +12,7 @@ import { MessageList } from "./components/MessageList";
 import { Panel } from "./components/Panel";
 import { PlanPanel } from "./components/PlanPanel";
 import { ProviderSettingsModal } from "./components/ProviderSettingsModal";
+import { ResponsiveSidebar } from "./components/ResponsiveSidebar";
 import { Sidebar } from "./components/Sidebar";
 import { SteeringQueuePanel } from "./components/SteeringQueuePanel";
 import { Toast } from "./components/Toast";
@@ -19,6 +22,23 @@ import { useAgentNativeBridge } from "./lib/use-agent-native-bridge";
 import { useAppState } from "./lib/use-app-state";
 import { useProviderManager } from "./lib/use-provider-manager";
 import { useRpcClient } from "./lib/use-rpc";
+
+const MOBILE_SIDEBAR_QUERY = "(max-width: 639px)";
+
+function useMediaQuery(query: string) {
+  const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia(query);
+    const handleChange = () => setMatches(mediaQuery.matches);
+
+    handleChange();
+    mediaQuery.addEventListener("change", handleChange);
+    return () => mediaQuery.removeEventListener("change", handleChange);
+  }, [query]);
+
+  return matches;
+}
 
 export function App() {
   const wsUrl = `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/rpc`;
@@ -95,26 +115,77 @@ export function App() {
 
   useAgentNativeBridge({ updateContextItems: updateActiveContextItems });
   const hasBlockingPrompt = Boolean(approvalPrompt || questionPrompt || hasPendingUserInputTool(state.items));
+  const sidebarIsOverlay = useMediaQuery(MOBILE_SIDEBAR_QUERY);
+  const mainContentIsInert = sidebarOpen && sidebarIsOverlay;
+  const sidebarTriggerRef = useRef<HTMLElement | null>(null);
+  const closeSidebar = useCallback(() => setSidebarOpen(false), [setSidebarOpen]);
+  const handleSidebarNewThread = useCallback(() => {
+    void startNewThread();
+    if (sidebarIsOverlay) {
+      closeSidebar();
+    }
+  }, [closeSidebar, sidebarIsOverlay, startNewThread]);
+  const handleSidebarOpenThread = useCallback(
+    (id: string) => {
+      void openThread(id);
+      if (sidebarIsOverlay) {
+        closeSidebar();
+      }
+    },
+    [closeSidebar, openThread, sidebarIsOverlay],
+  );
+
+  useEffect(() => {
+    if (!sidebarOpen) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeSidebar();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [closeSidebar, sidebarOpen]);
+
+  useEffect(() => {
+    if (mainContentIsInert) {
+      sidebarTriggerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      requestAnimationFrame(() => {
+        document.querySelector<HTMLElement>("#app-sidebar [data-sidebar-initial-focus]")?.focus();
+      });
+      return;
+    }
+
+    if (sidebarTriggerRef.current && document.contains(sidebarTriggerRef.current)) {
+      sidebarTriggerRef.current.focus();
+    }
+    sidebarTriggerRef.current = null;
+  }, [mainContentIsInert]);
 
   return (
-    <div className="h-screen bg-black text-text">
-      <div className="flex h-full bg-black">
-        <div
-          className="shrink-0 overflow-hidden border-r border-border/100 transition-[width] duration-200"
-          style={{ width: sidebarOpen ? 280 : 0 }}
-        >
+    <div className="h-screen overflow-hidden bg-black text-text">
+      <div className="relative flex h-full bg-black">
+        <ResponsiveSidebar open={sidebarOpen}>
           <Sidebar
             cwd={cwd}
             threadList={state.threadList}
             activeThreadId={state.activeThreadId}
             attentionThreadIds={attentionThreadIds}
-            onNewThread={() => void startNewThread()}
-            onOpenThread={(id) => void openThread(id)}
+            onNewThread={handleSidebarNewThread}
+            onOpenThread={handleSidebarOpenThread}
             onDeleteThread={(id) => threadMgr.setPendingDeleteThreadId(id)}
+            onClose={closeSidebar}
           />
-        </div>
+        </ResponsiveSidebar>
 
-        <Panel className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-surface-dark !rounded-none !border-0">
+        <Panel
+          aria-hidden={mainContentIsInert ? true : undefined}
+          inert={mainContentIsInert}
+          className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-surface-dark !rounded-none !border-0"
+        >
           <AppHeader
             sidebarOpen={sidebarOpen}
             onToggleSidebar={() => setSidebarOpen((v) => !v)}
@@ -130,6 +201,8 @@ export function App() {
               setShowToolModal(true);
             }}
           />
+
+          {state.activeError ? <ErrorBanner error={state.activeError} onOpenProviders={handleOpenProviders} /> : null}
 
           <MessageList
             items={state.items}
