@@ -665,6 +665,7 @@ test("sidebar includes a mobile close action", () => {
 
   expect(html).toContain("Conversations");
   expect(html).toContain('aria-label="Close sidebar"');
+  expect(html).toContain("data-sidebar-initial-focus");
   expect(html).toContain("sm:hidden");
 });
 

@@ -36,8 +36,9 @@ function SidebarImpl({
           <button
             type="button"
             aria-label="Close sidebar"
+            data-sidebar-initial-focus
             onClick={onClose}
-            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted transition hover:bg-surface-light hover:text-text"
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted transition hover:bg-surface-light hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
             <svg
               width="16"
@@ -69,7 +70,7 @@ function SidebarImpl({
         <button
           type="button"
           onClick={onNewThread}
-          className="flex w-full items-center gap-2 rounded border border-border/100 bg-surface-light px-3.5 py-3 text-left text-sm font-medium text-text transition hover:bg-[#424A54]"
+          className="flex w-full items-center gap-2 rounded border border-border/100 bg-surface-light px-3.5 py-3 text-left text-sm font-medium text-text transition hover:bg-[#424A54] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
           <span className="text-lg leading-none">+</span>
           <span>New conversation</span>
@@ -86,7 +87,7 @@ function SidebarImpl({
               <button
                 type="button"
                 onClick={() => onOpenThread(thread.id)}
-                className={`w-full rounded px-3.5 py-3 text-left transition ${
+                className={`w-full rounded px-3.5 py-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
                   isActive
                     ? "bg-surface-composer text-text"
                     : needsAttention
@@ -114,7 +115,7 @@ function SidebarImpl({
                     e.stopPropagation();
                     onDeleteThread(thread.id);
                   }}
-                  className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted opacity-0 transition hover:text-danger group-hover:opacity-100"
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted opacity-0 transition hover:text-danger focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent group-hover:opacity-100"
                 >
                   ×
                 </button>

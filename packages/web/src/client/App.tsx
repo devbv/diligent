@@ -1,6 +1,6 @@
 // @summary Main application component: pure composition of hooks and sub-components
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AppHeader } from "./components/AppHeader";
 import { ConnectionModal } from "./components/ConnectionModal";
 import { DeleteThreadModal } from "./components/DeleteThreadModal";
@@ -117,6 +117,7 @@ export function App() {
   const hasBlockingPrompt = Boolean(approvalPrompt || questionPrompt || hasPendingUserInputTool(state.items));
   const sidebarIsOverlay = useMediaQuery(MOBILE_SIDEBAR_QUERY);
   const mainContentIsInert = sidebarOpen && sidebarIsOverlay;
+  const sidebarTriggerRef = useRef<HTMLElement | null>(null);
   const closeSidebar = useCallback(() => setSidebarOpen(false), [setSidebarOpen]);
   const handleSidebarNewThread = useCallback(() => {
     void startNewThread();
@@ -148,6 +149,21 @@ export function App() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [closeSidebar, sidebarOpen]);
+
+  useEffect(() => {
+    if (mainContentIsInert) {
+      sidebarTriggerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      requestAnimationFrame(() => {
+        document.querySelector<HTMLElement>("#app-sidebar [data-sidebar-initial-focus]")?.focus();
+      });
+      return;
+    }
+
+    if (sidebarTriggerRef.current && document.contains(sidebarTriggerRef.current)) {
+      sidebarTriggerRef.current.focus();
+    }
+    sidebarTriggerRef.current = null;
+  }, [mainContentIsInert]);
 
   return (
     <div className="h-screen overflow-hidden bg-black text-text">
