@@ -35,6 +35,15 @@ export interface LoopRuntime {
   };
 }
 
+type LoopRequest = {
+  config: LoopConfig;
+  streamFunction: StreamFunction;
+  llmCompactionFn?: NativeCompactFn;
+  sessionId?: string;
+  signal?: AbortSignal;
+  compactionSummary?: Record<string, unknown>;
+};
+
 export async function runAgentLoop(
   messages: Message[],
   runtime: LoopRuntime,
@@ -92,9 +101,16 @@ export async function runAgentLoop(
           );
           break;
         } catch (err) {
-          if (!isContextOverflowError(err) || retriedAfterContextOverflow) throw err;
-          const compacted = await compactAfterContextOverflow(conversation, loopRequest, stream);
-          if (!compacted) throw err;
+          if (
+            !(err instanceof ProviderError) ||
+            err.errorType !== "context_overflow" ||
+            retriedAfterContextOverflow ||
+            !loopRequest.config.compaction
+          ) {
+            throw err;
+          }
+          console.log("[agent:compaction] forced after context_overflow");
+          await applyCompaction(conversation, loopRequest, stream);
           retriedAfterContextOverflow = true;
         }
       }
@@ -144,22 +160,7 @@ export async function runAgentLoop(
   return { messages: conversation, compactionSummary: loopRequest.compactionSummary };
 }
 
-function isContextOverflowError(err: unknown): err is ProviderError {
-  return err instanceof ProviderError && err.errorType === "context_overflow";
-}
-
-async function compactIfNeeded(
-  messages: Message[],
-  request: {
-    config: LoopConfig;
-    streamFunction: StreamFunction;
-    llmCompactionFn?: NativeCompactFn;
-    sessionId?: string;
-    signal?: AbortSignal;
-    compactionSummary?: Record<string, unknown>;
-  },
-  stream: AgentStream,
-): Promise<void> {
+async function compactIfNeeded(messages: Message[], request: LoopRequest, stream: AgentStream): Promise<void> {
   const config = request.config.compaction;
   if (!config) {
     return;
@@ -175,36 +176,7 @@ async function compactIfNeeded(
   await applyCompaction(messages, request, stream);
 }
 
-async function compactAfterContextOverflow(
-  messages: Message[],
-  request: {
-    config: LoopConfig;
-    streamFunction: StreamFunction;
-    llmCompactionFn?: NativeCompactFn;
-    sessionId?: string;
-    signal?: AbortSignal;
-    compactionSummary?: Record<string, unknown>;
-  },
-  stream: AgentStream,
-): Promise<boolean> {
-  if (!request.config.compaction) return false;
-  console.log("[agent:compaction] forced after context_overflow");
-  await applyCompaction(messages, request, stream);
-  return true;
-}
-
-async function applyCompaction(
-  messages: Message[],
-  request: {
-    config: LoopConfig;
-    streamFunction: StreamFunction;
-    llmCompactionFn?: NativeCompactFn;
-    sessionId?: string;
-    signal?: AbortSignal;
-    compactionSummary?: Record<string, unknown>;
-  },
-  stream: AgentStream,
-): Promise<void> {
+async function applyCompaction(messages: Message[], request: LoopRequest, stream: AgentStream): Promise<void> {
   const config = request.config.compaction;
   if (!config) return;
   const result = await runCompaction({

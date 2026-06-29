@@ -32,6 +32,21 @@ function chatGPTSuccessResponse(text = "ok"): Response {
   );
 }
 
+async function collectEvents(stream: EventStream<ProviderEvent, ProviderResult>): Promise<ProviderEvent[]> {
+  const events: ProviderEvent[] = [];
+  for await (const event of stream) {
+    events.push(event);
+  }
+  await stream.result().catch(() => {});
+  return events;
+}
+
+function createRetriedChatGPTStream(): EventStream<ProviderEvent, ProviderResult> {
+  const chatgptStream = createChatGPTStream(() => ({ access_token: "token", refresh_token: "refresh" }));
+  const retried = withRetry(chatgptStream, { maxAttempts: 2, baseDelayMs: 1, maxDelayMs: 1 });
+  return retried({ ...TEST_MODEL, id: "chatgpt-5", provider: "chatgpt" }, TEST_CONTEXT, {});
+}
+
 afterEach(() => {
   globalThis.fetch = originalFetch;
 });
@@ -98,14 +113,7 @@ describe("createChatGPTStream retry classification", () => {
       return chatGPTSuccessResponse();
     }) as typeof fetch;
 
-    const chatgptStream = createChatGPTStream(() => ({ access_token: "token", refresh_token: "refresh" }));
-    const retried = withRetry(chatgptStream, { maxAttempts: 2, baseDelayMs: 1, maxDelayMs: 1 });
-    const stream = retried({ ...TEST_MODEL, id: "chatgpt-5", provider: "chatgpt" }, TEST_CONTEXT, {});
-    const events: ProviderEvent[] = [];
-    for await (const event of stream) {
-      events.push(event);
-    }
-    await stream.result().catch(() => {});
+    const events = await collectEvents(createRetriedChatGPTStream());
 
     expect(fetchCount).toBe(1);
     const errorEvent = events.find((event) => event.type === "error");
@@ -123,14 +131,7 @@ describe("createChatGPTStream retry classification", () => {
       return chatGPTSuccessResponse();
     }) as typeof fetch;
 
-    const chatgptStream = createChatGPTStream(() => ({ access_token: "token", refresh_token: "refresh" }));
-    const retried = withRetry(chatgptStream, { maxAttempts: 2, baseDelayMs: 1, maxDelayMs: 1 });
-    const stream = retried({ ...TEST_MODEL, id: "chatgpt-5", provider: "chatgpt" }, TEST_CONTEXT, {});
-    const events: ProviderEvent[] = [];
-    for await (const event of stream) {
-      events.push(event);
-    }
-    await stream.result().catch(() => {});
+    const events = await collectEvents(createRetriedChatGPTStream());
 
     expect(fetchCount).toBe(2);
     expect(events.some((event) => event.type === "done")).toBe(true);
@@ -153,14 +154,7 @@ describe("createChatGPTStream retry classification", () => {
       return chatGPTSuccessResponse();
     }) as typeof fetch;
 
-    const chatgptStream = createChatGPTStream(() => ({ access_token: "token", refresh_token: "refresh" }));
-    const retried = withRetry(chatgptStream, { maxAttempts: 2, baseDelayMs: 1, maxDelayMs: 1 });
-    const stream = retried({ ...TEST_MODEL, id: "chatgpt-5", provider: "chatgpt" }, TEST_CONTEXT, {});
-    const events: ProviderEvent[] = [];
-    for await (const event of stream) {
-      events.push(event);
-    }
-    await stream.result().catch(() => {});
+    const events = await collectEvents(createRetriedChatGPTStream());
 
     expect(fetchCount).toBe(2);
     expect(events.some((event) => event.type === "done")).toBe(true);
@@ -177,14 +171,7 @@ describe("createChatGPTStream retry classification", () => {
       return chatGPTSuccessResponse();
     }) as typeof fetch;
 
-    const chatgptStream = createChatGPTStream(() => ({ access_token: "token", refresh_token: "refresh" }));
-    const retried = withRetry(chatgptStream, { maxAttempts: 2, baseDelayMs: 1, maxDelayMs: 1 });
-    const stream = retried({ ...TEST_MODEL, id: "chatgpt-5", provider: "chatgpt" }, TEST_CONTEXT, {});
-    const events: ProviderEvent[] = [];
-    for await (const event of stream) {
-      events.push(event);
-    }
-    await stream.result().catch(() => {});
+    const events = await collectEvents(createRetriedChatGPTStream());
 
     expect(fetchCount).toBe(2);
     expect(events.some((event) => event.type === "done")).toBe(true);
@@ -204,14 +191,7 @@ describe("createChatGPTStream retry classification", () => {
       return chatGPTSuccessResponse();
     }) as typeof fetch;
 
-    const chatgptStream = createChatGPTStream(() => ({ access_token: "token", refresh_token: "refresh" }));
-    const retried = withRetry(chatgptStream, { maxAttempts: 2, baseDelayMs: 1, maxDelayMs: 1 });
-    const stream = retried({ ...TEST_MODEL, id: "chatgpt-5", provider: "chatgpt" }, TEST_CONTEXT, {});
-    const events: ProviderEvent[] = [];
-    for await (const event of stream) {
-      events.push(event);
-    }
-    await stream.result().catch(() => {});
+    const events = await collectEvents(createRetriedChatGPTStream());
 
     expect(fetchCount).toBe(1);
     expect(events.some((event) => event.type === "text_delta")).toBe(true);
