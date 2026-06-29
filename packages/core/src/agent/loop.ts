@@ -101,12 +101,12 @@ export async function runAgentLoop(
           );
           break;
         } catch (err) {
-          if (
-            !(err instanceof ProviderError) ||
-            err.errorType !== "context_overflow" ||
-            retriedAfterContextOverflow ||
-            !loopRequest.config.compaction
-          ) {
+          const canRetryWithCompaction =
+            err instanceof ProviderError &&
+            err.errorType === "context_overflow" &&
+            !retriedAfterContextOverflow &&
+            loopRequest.config.compaction !== undefined;
+          if (!canRetryWithCompaction) {
             throw err;
           }
           console.log("[agent:compaction] forced after context_overflow");
