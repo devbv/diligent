@@ -1,6 +1,5 @@
 // @summary Unit tests for pure ThreadStore event reducer transitions
 import { describe, expect, test } from "bun:test";
-import { USER_FACING_CONTEXT_OVERFLOW_MESSAGE } from "@diligent/protocol";
 import { reduceThreadEvent, type ThreadEventReducerState } from "../../../src/tui/components/thread-event-reducer";
 import {
   buildToolEndItem,
@@ -100,24 +99,6 @@ describe("reduceThreadEvent", () => {
     expect(result.state.statusBeforeCompaction).toBeNull();
     expect(result.state.overlayStatus).toBeNull();
     expect(result.state.items).toEqual([{ id: "error" }]);
-  });
-
-  test("error normalizes context overflow message", () => {
-    const result = reduceThreadEvent(
-      createState(),
-      {
-        type: "error",
-        error: {
-          message: "raw provider context error",
-          name: "ProviderError",
-          providerErrorType: "context_overflow",
-        },
-        fatal: false,
-      },
-      { ...createDeps(), buildErrorItem: (message: string) => ({ id: message }) },
-    );
-
-    expect(result.state.items).toEqual([{ id: USER_FACING_CONTEXT_OVERFLOW_MESSAGE }]);
   });
 
   test("message_start resets assistant-stream state and opens markdown via effects", () => {

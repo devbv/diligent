@@ -1,7 +1,7 @@
 // @summary Pure event-to-state reducer for CLI ThreadStore transitions and lifecycle effects
 
 import type { AgentEvent, ConversationLiveState } from "@diligent/protocol";
-import { applyAgentEvents, getUserFacingErrorMessage } from "@diligent/protocol";
+import { applyAgentEvents } from "@diligent/protocol";
 import type { CollabToolState, ToolCallState } from "./thread-store-utils";
 
 export type ReducerOverlayStatusKind = "default" | "tool";
@@ -403,7 +403,7 @@ export function reduceThreadEvent<TItem>(
           toolCalls: {},
           collabByToolCallId: {},
           hasCommittedAssistantChunkInMessage: false,
-          items: [...state.items, deps.buildErrorItem(getUserFacingErrorMessage(event.error))],
+          items: [...state.items, deps.buildErrorItem(event.error.message)],
         },
       };
 

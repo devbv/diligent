@@ -7,11 +7,7 @@ import type {
   DiligentServerRequestResponse,
   RequestId,
 } from "@diligent/protocol";
-import {
-  DILIGENT_SERVER_NOTIFICATION_METHODS,
-  DILIGENT_SERVER_REQUEST_METHODS,
-  getUserFacingErrorMessage,
-} from "@diligent/protocol";
+import { DILIGENT_SERVER_NOTIFICATION_METHODS, DILIGENT_SERVER_REQUEST_METHODS } from "@diligent/protocol";
 import type { ApprovalRequest, ApprovalResponse, UserInputRequest, UserInputResponse } from "@diligent/runtime";
 import type { AppRuntimeState } from "./app-runtime-state";
 
@@ -45,7 +41,7 @@ export class AppEventController {
       this.deps.handleAgentEvent(notification.params.event);
 
       if (notification.params.event.type === "error" && this.deps.runtime.pendingTurn) {
-        this.deps.onTurnErrored(getUserFacingErrorMessage(notification.params.event.error));
+        this.deps.onTurnErrored(notification.params.event.error.message);
       }
     }
 
@@ -102,7 +98,7 @@ export class AppEventController {
         fatal: notification.params.fatal,
       });
       if (this.deps.runtime.pendingTurn) {
-        this.deps.onTurnErrored(getUserFacingErrorMessage(notification.params.error));
+        this.deps.onTurnErrored(notification.params.error.message);
       }
     }
 

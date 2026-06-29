@@ -6,7 +6,6 @@ import {
   DILIGENT_CLIENT_REQUEST_METHODS,
   DILIGENT_SERVER_NOTIFICATION_METHODS,
   DILIGENT_VERSION,
-  getUserFacingErrorMessage,
 } from "@diligent/protocol";
 import type { DiligentPaths } from "@diligent/runtime";
 import type { AppConfig } from "../config";
@@ -80,14 +79,14 @@ export class NonInteractiveRunner {
         notification.method === DILIGENT_SERVER_NOTIFICATION_METHODS.ERROR &&
         (!notification.params.threadId || notification.params.threadId === threadId)
       ) {
-        pendingTurn?.reject(new Error(getUserFacingErrorMessage(notification.params.error)));
+        pendingTurn?.reject(new Error(notification.params.error.message));
       }
 
       if (
         notification.method === DILIGENT_SERVER_NOTIFICATION_METHODS.AGENT_EVENT &&
         notification.params.event.type === "error"
       ) {
-        pendingTurn?.reject(new Error(getUserFacingErrorMessage(notification.params.event.error)));
+        pendingTurn?.reject(new Error(notification.params.event.error.message));
       }
     });
 
@@ -195,7 +194,7 @@ export class NonInteractiveRunner {
         return hasText;
 
       case "error":
-        this.writeStderr(`[error] ${getUserFacingErrorMessage(event.error)}`, isTTY);
+        this.writeStderr(`[error] ${event.error.message}`, isTTY);
         if (event.fatal) {
           this.exitCode = 1;
         }

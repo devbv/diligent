@@ -338,6 +338,9 @@ describe("Agent", () => {
     const errorEvent = events.find((event) => event.type === "error");
     expect(errorEvent?.type).toBe("error");
     if (errorEvent?.type === "error") {
+      expect(errorEvent.error.message).toBe(
+        "This conversation has exceeded the AI model's context limit. To continue, open the menu in the top-left corner and start a new chat.",
+      );
       expect(errorEvent.error.providerErrorType).toBe("context_overflow");
       expect(errorEvent.error.statusCode).toBe(400);
       expect(errorEvent.error.isRetryable).toBe(false);

@@ -1,10 +1,6 @@
 // @summary Tests for thread-state reducer behavior over item lifecycle notifications
 import { expect, test } from "bun:test";
-import {
-  DILIGENT_SERVER_NOTIFICATION_METHODS,
-  type DiligentServerNotification,
-  USER_FACING_CONTEXT_OVERFLOW_MESSAGE,
-} from "@diligent/protocol";
+import { DILIGENT_SERVER_NOTIFICATION_METHODS, type DiligentServerNotification } from "@diligent/protocol";
 import { ProtocolNotificationAdapter } from "@diligent/runtime/client";
 import {
   hydrateFromThreadRead,
@@ -394,8 +390,10 @@ test("network error event shows a user-facing message instead of raw transport d
   expect(next.toast).toBeNull();
 });
 
-test("context overflow error event shows restart guidance instead of raw provider details", () => {
+test("context overflow error event keeps the serialized guidance message", () => {
   resetAdapter();
+  const message =
+    "This conversation has exceeded the AI model's context limit. To continue, open the menu in the top-left corner and start a new chat.";
 
   const next = reduce(
     { ...initialThreadState, activeThreadId: "t1", threadStatus: "busy" },
@@ -404,7 +402,7 @@ test("context overflow error event shows restart guidance instead of raw provide
       params: {
         threadId: "t1",
         error: {
-          message: "This model's maximum context length is 128000 tokens.",
+          message,
           name: "ProviderError",
           providerErrorType: "context_overflow",
         },
@@ -414,7 +412,7 @@ test("context overflow error event shows restart guidance instead of raw provide
   );
 
   expect(next.activeError?.providerErrorType).toBe("context_overflow");
-  expect(next.activeError?.message).toBe(USER_FACING_CONTEXT_OVERFLOW_MESSAGE);
+  expect(next.activeError?.message).toBe(message);
 });
 
 test("hydrateFromThreadRead keeps history error entries out of visible items", () => {
