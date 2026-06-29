@@ -4,7 +4,7 @@ import type { CoreAgentEvent } from "@diligent/core/agent";
 import { Agent } from "@diligent/core/agent";
 import { EventStream } from "@diligent/core/event-stream";
 import type { Model, ProviderEvent, ProviderResult, ToolDefinition } from "@diligent/core/llm/types";
-import { ProviderError } from "@diligent/core/llm/types";
+import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError } from "@diligent/core/llm/types";
 import type { AssistantMessage } from "@diligent/core/types";
 import { z } from "zod";
 
@@ -305,8 +305,6 @@ describe("Agent", () => {
   });
 
   test("provider errors retain classification in fatal error events", async () => {
-    const contextOverflowMessage =
-      "This conversation has exceeded the AI model's context limit. To continue, open the menu in the top-left corner and start a new chat.";
     const agent = new Agent(TEST_MODEL, BASE_CONFIG.systemPrompt, BASE_CONFIG.tools, {
       effort: BASE_CONFIG.effort,
       compaction: BASE_CONFIG.compaction,
@@ -322,7 +320,7 @@ describe("Agent", () => {
         queueMicrotask(() =>
           stream.push({
             type: "error",
-            error: new ProviderError("Context overflow", "context_overflow", false, undefined, 400),
+            error: new ProviderError(CONTEXT_OVERFLOW_ERROR_MESSAGE, "context_overflow", false, undefined, 400),
           }),
         );
         return stream;
@@ -333,14 +331,14 @@ describe("Agent", () => {
     const unsub = agent.subscribe((event) => events.push(event));
 
     await expect(agent.prompt({ role: "user", content: "hi", timestamp: Date.now() })).rejects.toThrow(
-      "Context overflow",
+      CONTEXT_OVERFLOW_ERROR_MESSAGE,
     );
 
     unsub();
     const errorEvent = events.find((event) => event.type === "error");
     expect(errorEvent?.type).toBe("error");
     if (errorEvent?.type === "error") {
-      expect(errorEvent.error.message).toBe(contextOverflowMessage);
+      expect(errorEvent.error.message).toBe(CONTEXT_OVERFLOW_ERROR_MESSAGE);
       expect(errorEvent.error.providerErrorType).toBe("context_overflow");
       expect(errorEvent.error.statusCode).toBe(400);
       expect(errorEvent.error.isRetryable).toBe(false);
