@@ -1,6 +1,7 @@
 // @summary Static render tests for core UI components and accessibility attributes
 import { expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
+import { AppHeader } from "../../../src/client/components/AppHeader";
 import { AssistantMessage } from "../../../src/client/components/AssistantMessage";
 import { Button } from "../../../src/client/components/Button";
 import {
@@ -20,6 +21,8 @@ import { MessageList } from "../../../src/client/components/MessageList";
 import { Modal } from "../../../src/client/components/Modal";
 import { ProviderSettingsModal } from "../../../src/client/components/ProviderSettingsModal";
 import { isUserInputComplete, QuestionCard } from "../../../src/client/components/QuestionCard";
+import { ResponsiveSidebar } from "../../../src/client/components/ResponsiveSidebar";
+import { Sidebar } from "../../../src/client/components/Sidebar";
 import { SlashMenu } from "../../../src/client/components/SlashMenu";
 import { Toast } from "../../../src/client/components/Toast";
 import { ToolBlock } from "../../../src/client/components/ToolBlock";
@@ -597,6 +600,67 @@ test("context message renders checkpoint language and expandable summary area", 
   expect(html).toContain("Compacted");
   expect(html).toContain("Older conversation was compressed to keep the thread efficient.");
   expect(html).toContain('aria-expanded="false"');
+});
+
+test("app header exposes sidebar toggle state and target", () => {
+  const html = renderToStaticMarkup(
+    <AppHeader
+      sidebarOpen={true}
+      onToggleSidebar={() => {}}
+      threadStatus="idle"
+      isCompacting={false}
+      threadTitle="Thread"
+      onOpenKnowledge={() => {}}
+      onOpenConfig={() => {}}
+    />,
+  );
+
+  expect(html).toContain('aria-label="Close sidebar"');
+  expect(html).toContain('aria-controls="app-sidebar"');
+  expect(html).toContain('aria-expanded="true"');
+});
+
+test("responsive sidebar renders mobile drawer affordances when open", () => {
+  const html = renderToStaticMarkup(
+    <ResponsiveSidebar open={true} onRequestClose={() => {}}>
+      <div>Navigation</div>
+    </ResponsiveSidebar>,
+  );
+
+  expect(html).toContain('id="app-sidebar"');
+  expect(html).toContain('aria-label="Conversations"');
+  expect(html).toContain('aria-label="Close sidebar"');
+  expect(html).toContain("fixed inset-y-0 left-0 z-50");
+  expect(html).toContain("translate-x-0 md:w-[280px]");
+});
+
+test("responsive sidebar hides closed drawer from focus and assistive tech", () => {
+  const html = renderToStaticMarkup(
+    <ResponsiveSidebar open={false} onRequestClose={() => {}}>
+      <button type="button">Hidden navigation action</button>
+    </ResponsiveSidebar>,
+  );
+
+  expect(html).toContain('aria-hidden="true"');
+  expect(html).toContain("inert");
+  expect(html).toContain("-translate-x-full md:w-0");
+});
+
+test("sidebar includes a mobile close action", () => {
+  const html = renderToStaticMarkup(
+    <Sidebar
+      cwd="/repo/project"
+      threadList={[]}
+      activeThreadId={null}
+      onNewThread={() => {}}
+      onOpenThread={() => {}}
+      onClose={() => {}}
+    />,
+  );
+
+  expect(html).toContain("Conversations");
+  expect(html).toContain('aria-label="Close sidebar"');
+  expect(html).toContain("md:hidden");
 });
 
 test("assistant message can suppress thinking block during compaction", () => {

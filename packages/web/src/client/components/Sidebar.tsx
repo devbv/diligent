@@ -13,6 +13,7 @@ interface SidebarProps {
   onNewThread: () => void;
   onOpenThread: (threadId: string) => void;
   onDeleteThread?: (threadId: string) => void;
+  onClose?: () => void;
 }
 
 function SidebarImpl({
@@ -23,11 +24,34 @@ function SidebarImpl({
   onNewThread,
   onOpenThread,
   onDeleteThread,
+  onClose,
 }: SidebarProps) {
   const _cwdShort = cwd ? cwd.replace(/\\/g, "/").split("/").slice(-2).join("/") : "-";
 
   return (
-    <Panel className="flex h-full min-h-0 w-[280px] flex-col overflow-hidden border-border/100 bg-surface-default">
+    <Panel className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden border-border/100 bg-surface-default">
+      <div className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border/100 bg-surface-dark px-3 md:hidden">
+        <span className="min-w-0 truncate text-sm font-medium text-text">Conversations</span>
+        {onClose ? (
+          <button
+            type="button"
+            aria-label="Close sidebar"
+            onClick={onClose}
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted transition hover:bg-surface-light hover:text-text"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              aria-hidden="true"
+            >
+              <path d="M4 4L12 12M12 4L4 12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+            </svg>
+          </button>
+        ) : null}
+      </div>
       {/* Header */}
       {/* <div className="flex h-16 shrink-0 items-center gap-3 border-b border-border/100 bg-surface-dark px-5">
         <div className="min-w-0">
