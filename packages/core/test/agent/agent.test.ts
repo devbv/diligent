@@ -333,7 +333,7 @@ describe("Agent", () => {
     const unsub = agent.subscribe((event) => events.push(event));
 
     await expect(agent.prompt({ role: "user", content: "hi", timestamp: Date.now() })).rejects.toThrow(
-      contextOverflowMessage,
+      "Context overflow",
     );
 
     unsub();

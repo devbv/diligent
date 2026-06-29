@@ -3,6 +3,9 @@
 import { ProviderError } from "../../llm/types";
 import type { SerializableError } from "../types";
 
+const CONTEXT_OVERFLOW_ERROR_MESSAGE =
+  "This conversation has exceeded the AI model's context limit. To continue, open the menu in the top-left corner and start a new chat.";
+
 function extractErrorCode(err: unknown): string | undefined {
   if (!err || typeof err !== "object") return undefined;
   const candidate = err as Record<string, unknown>;
@@ -24,7 +27,7 @@ function extractErrorCode(err: unknown): string | undefined {
 export function toSerializableError(err: unknown): SerializableError {
   if (err instanceof ProviderError) {
     return {
-      message: err.message,
+      message: err.errorType === "context_overflow" ? CONTEXT_OVERFLOW_ERROR_MESSAGE : err.message,
       name: err.name,
       stack: err.stack,
       code: extractErrorCode(err.cause) ?? extractErrorCode(err),
