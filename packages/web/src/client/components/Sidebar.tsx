@@ -30,7 +30,7 @@ function SidebarImpl({
 
   return (
     <Panel className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden border-border/100 bg-surface-default">
-      <div className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border/100 bg-surface-dark px-3 md:hidden">
+      <div className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border/100 bg-surface-dark px-3 sm:hidden">
         <span className="min-w-0 truncate text-sm font-medium text-text">Conversations</span>
         {onClose ? (
           <button

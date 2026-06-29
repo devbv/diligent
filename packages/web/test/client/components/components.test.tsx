@@ -620,30 +620,35 @@ test("app header exposes sidebar toggle state and target", () => {
   expect(html).toContain('aria-expanded="true"');
 });
 
-test("responsive sidebar renders mobile drawer affordances when open", () => {
+test("responsive sidebar renders a mobile full-screen overlay when open", () => {
   const html = renderToStaticMarkup(
-    <ResponsiveSidebar open={true} onRequestClose={() => {}}>
+    <ResponsiveSidebar open={true}>
       <div>Navigation</div>
     </ResponsiveSidebar>,
   );
 
   expect(html).toContain('id="app-sidebar"');
   expect(html).toContain('aria-label="Conversations"');
-  expect(html).toContain('aria-label="Close sidebar"');
-  expect(html).toContain("fixed inset-y-0 left-0 z-50");
-  expect(html).toContain("translate-x-0 md:w-[280px]");
+  expect(html).toContain("fixed inset-0 z-50");
+  expect(html).toContain("w-screen");
+  expect(html).toContain("translate-x-0");
+  expect(html).toContain("sm:w-[280px]");
+  expect(html).toContain("transition-transform");
+  expect(html).not.toContain("bg-overlay/45");
 });
 
-test("responsive sidebar hides closed drawer from focus and assistive tech", () => {
+test("responsive sidebar hides closed overlay from focus and assistive tech", () => {
   const html = renderToStaticMarkup(
-    <ResponsiveSidebar open={false} onRequestClose={() => {}}>
+    <ResponsiveSidebar open={false}>
       <button type="button">Hidden navigation action</button>
     </ResponsiveSidebar>,
   );
 
   expect(html).toContain('aria-hidden="true"');
   expect(html).toContain("inert");
-  expect(html).toContain("-translate-x-full md:w-0");
+  expect(html).toContain("-translate-x-full");
+  expect(html).toContain("sm:w-0");
+  expect(html).toContain("transition-none");
 });
 
 test("sidebar includes a mobile close action", () => {
@@ -660,7 +665,7 @@ test("sidebar includes a mobile close action", () => {
 
   expect(html).toContain("Conversations");
   expect(html).toContain('aria-label="Close sidebar"');
-  expect(html).toContain("md:hidden");
+  expect(html).toContain("sm:hidden");
 });
 
 test("assistant message can suppress thinking block during compaction", () => {

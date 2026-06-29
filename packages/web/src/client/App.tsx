@@ -23,7 +23,7 @@ import { useAppState } from "./lib/use-app-state";
 import { useProviderManager } from "./lib/use-provider-manager";
 import { useRpcClient } from "./lib/use-rpc";
 
-const MOBILE_SIDEBAR_QUERY = "(max-width: 767px)";
+const MOBILE_SIDEBAR_QUERY = "(max-width: 639px)";
 
 function useMediaQuery(query: string) {
   const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
@@ -152,7 +152,7 @@ export function App() {
   return (
     <div className="h-screen overflow-hidden bg-black text-text">
       <div className="relative flex h-full bg-black">
-        <ResponsiveSidebar open={sidebarOpen} onRequestClose={closeSidebar}>
+        <ResponsiveSidebar open={sidebarOpen}>
           <Sidebar
             cwd={cwd}
             threadList={state.threadList}
