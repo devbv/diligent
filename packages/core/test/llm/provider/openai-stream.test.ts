@@ -59,6 +59,32 @@ describe("handleResponsesAPIEvents", () => {
 
     expect(events.map((event) => event.type)).toEqual(["text_delta"]);
   });
+
+  test("emits retryable error when stream closes before response.completed", async () => {
+    const events: ProviderEvent[] = [];
+    const stream = {
+      push(event: ProviderEvent) {
+        events.push(event);
+      },
+    } as unknown as EventStream<ProviderEvent, ProviderResult>;
+
+    async function* iter(): AsyncIterable<Record<string, unknown>> {
+      yield {
+        type: "response.output_item.done",
+        item: { type: "reasoning", summary: [{ type: "summary_text", text: "thinking only" }] },
+      };
+    }
+
+    await handleResponsesAPIEvents(iter(), stream, TEST_MODEL);
+
+    expect(events.map((event) => event.type)).toEqual(["thinking_end", "error"]);
+    const error = events.find((event): event is Extract<ProviderEvent, { type: "error" }> => event.type === "error");
+    expect(error?.error.message).toBe("stream closed before response.completed");
+    expect(error?.error.errorType).toBe("network");
+    expect(error?.error.isRetryable).toBe(true);
+    expect(events.some((event) => event.type === "usage")).toBe(false);
+    expect(events.some((event) => event.type === "done")).toBe(false);
+  });
 });
 
 describe("createChatGPTStream retry classification", () => {
@@ -139,5 +165,58 @@ describe("createChatGPTStream retry classification", () => {
     expect(fetchCount).toBe(2);
     expect(events.some((event) => event.type === "done")).toBe(true);
     expect(events.some((event) => event.type === "error")).toBe(false);
+  });
+
+  test("retries ChatGPT stream EOF before response.completed and recovers", async () => {
+    let fetchCount = 0;
+    globalThis.fetch = (async () => {
+      fetchCount++;
+      if (fetchCount === 1) {
+        return new Response("", { status: 200, headers: { "content-type": "text/event-stream" } });
+      }
+      return chatGPTSuccessResponse();
+    }) as typeof fetch;
+
+    const chatgptStream = createChatGPTStream(() => ({ access_token: "token", refresh_token: "refresh" }));
+    const retried = withRetry(chatgptStream, { maxAttempts: 2, baseDelayMs: 1, maxDelayMs: 1 });
+    const stream = retried({ ...TEST_MODEL, id: "chatgpt-5", provider: "chatgpt" }, TEST_CONTEXT, {});
+    const events: ProviderEvent[] = [];
+    for await (const event of stream) {
+      events.push(event);
+    }
+    await stream.result().catch(() => {});
+
+    expect(fetchCount).toBe(2);
+    expect(events.some((event) => event.type === "done")).toBe(true);
+    expect(events.some((event) => event.type === "error")).toBe(false);
+  });
+
+  test("does not retry ChatGPT stream EOF after visible delta", async () => {
+    let fetchCount = 0;
+    globalThis.fetch = (async () => {
+      fetchCount++;
+      if (fetchCount === 1) {
+        return new Response(['data: {"type":"response.output_text.delta","delta":"partial"}', ""].join("\n"), {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        });
+      }
+      return chatGPTSuccessResponse();
+    }) as typeof fetch;
+
+    const chatgptStream = createChatGPTStream(() => ({ access_token: "token", refresh_token: "refresh" }));
+    const retried = withRetry(chatgptStream, { maxAttempts: 2, baseDelayMs: 1, maxDelayMs: 1 });
+    const stream = retried({ ...TEST_MODEL, id: "chatgpt-5", provider: "chatgpt" }, TEST_CONTEXT, {});
+    const events: ProviderEvent[] = [];
+    for await (const event of stream) {
+      events.push(event);
+    }
+    await stream.result().catch(() => {});
+
+    expect(fetchCount).toBe(1);
+    expect(events.some((event) => event.type === "text_delta")).toBe(true);
+    const error = events.find((event): event is Extract<ProviderEvent, { type: "error" }> => event.type === "error");
+    expect(error?.error.errorType).toBe("network");
+    expect(events.some((event) => event.type === "done")).toBe(false);
   });
 });

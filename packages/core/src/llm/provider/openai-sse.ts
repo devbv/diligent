@@ -638,17 +638,27 @@ export async function handleResponsesAPIEvents(
   _sessionId?: string,
 ): Promise<void> {
   const state = createResponsesAPIState();
+  let sawCompleted = false;
 
   for await (const event of iter) {
     if (signal?.aborted) break;
     const decodedEvent = decodeResponsesAPIEvent(event);
     if (!decodedEvent) continue;
+    if (decodedEvent.kind === "response_completed") sawCompleted = true;
     const emittedEvents = reduceResponsesAPIEvent(state, decodedEvent, model);
     emitProviderEvents(stream, emittedEvents);
     if (emittedEvents.some((providerEvent) => providerEvent.type === "error")) return;
   }
 
   if (signal?.aborted) return;
+
+  if (!sawCompleted) {
+    stream.push({
+      type: "error",
+      error: new ProviderError("stream closed before response.completed", "network", true),
+    });
+    return;
+  }
 
   if (state.currentText) {
     const text = state.currentText;
