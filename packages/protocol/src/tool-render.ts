@@ -42,6 +42,26 @@ export const TableBlockSchema = z.object({
 });
 export type TableBlock = z.infer<typeof TableBlockSchema>;
 
+export const AssetGalleryItemSchema = z.object({
+  id: z.string().optional(),
+  title: z.string(),
+  subtitle: z.string().optional(),
+  price: z.string().optional(),
+  thumbnailUrl: z.string().optional(),
+  previewUrl: z.string().optional(),
+  sourceUrl: z.string().optional(),
+  metadata: z.array(z.object({ key: z.string(), value: z.string() })).optional(),
+});
+export type AssetGalleryItem = z.infer<typeof AssetGalleryItemSchema>;
+
+export const AssetGalleryBlockSchema = z.object({
+  type: z.literal("asset_gallery"),
+  title: z.string().optional(),
+  query: z.string().optional(),
+  items: z.array(AssetGalleryItemSchema),
+});
+export type AssetGalleryBlock = z.infer<typeof AssetGalleryBlockSchema>;
+
 // TreeNode uses lazy recursion to allow nested children
 const TreeNodeSchema: z.ZodType<{ label: string; children?: { label: string; children?: unknown[] }[] }> = z.lazy(() =>
   z.object({
@@ -111,6 +131,7 @@ export const ToolRenderBlockSchema = z.discriminatedUnion("type", [
   KeyValueBlockSchema,
   ListBlockSchema,
   TableBlockSchema,
+  AssetGalleryBlockSchema,
   TreeBlockSchema,
   StatusBadgesBlockSchema,
   FileBlockSchema,

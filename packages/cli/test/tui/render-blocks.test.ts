@@ -86,6 +86,33 @@ describe("renderToolPayload", () => {
     expect(lines.some((line) => line.includes("/tmp"))).toBe(true);
   });
 
+  test("renders asset gallery blocks as preview text rows", () => {
+    const payload: ToolRenderPayload = {
+      blocks: [
+        {
+          type: "asset_gallery",
+          title: "OVERDARE Assets",
+          query: "fountain classic stone",
+          items: [
+            {
+              id: "asset-fountain-1",
+              title: "Classic Stone Fountain",
+              subtitle: "MODEL",
+              price: "Free",
+              thumbnailUrl: "https://assets.example/fountain.png",
+            },
+          ],
+        },
+      ],
+    };
+
+    const lines = renderToolPayload(payload);
+    expect(lines.some((line) => line.includes("OVERDARE Assets"))).toBe(true);
+    expect(lines.some((line) => line.includes('1 result for "fountain classic stone"'))).toBe(true);
+    expect(lines.some((line) => line.includes("Classic Stone Fountain"))).toBe(true);
+    expect(lines.some((line) => line.includes("[Free]"))).toBe(true);
+  });
+
   test("keeps rendering when payload includes unknown block shape", () => {
     const payload = {
       blocks: [

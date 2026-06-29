@@ -12,7 +12,7 @@ Structured tool rendering is part of the shared protocol contract.
 - `outputSummary?`
 - `blocks`
 
-The protocol package also defines the supported block types, including `summary`, `text`, `key_value`, `list`, `table`, `tree`, `status_badges`, `file`, `command`, and `diff`.
+The protocol package also defines the supported block types, including `summary`, `text`, `key_value`, `list`, `table`, `asset_gallery`, `tree`, `status_badges`, `file`, `command`, and `diff`.
 
 Tool render payloads can appear on tool events and on `tool_result` messages.
 
@@ -59,3 +59,13 @@ That means shared meaning should normally be introduced through runtime and prot
 - `packages/web/src/client/components/ToolRenderBlocks.tsx`
 - `packages/cli/src/tui/components/thread-store-utils.ts`
 - `packages/cli/src/tui/render-blocks.ts`
+
+## Interactive asset selection
+
+The `overdaresearch` tool accepts a `selectable` flag (assets source only). When
+set and two or more assets match, the tool asks the user to pick one through the
+`request_user_input` channel and returns the chosen `assetId`; exactly one match
+auto-selects and zero matches returns "No results found." The picker is rendered
+from `UserInputQuestion.display: "asset"`, where each option carries `value`
+(the `assetId`) and `asset` (thumbnail/price) fields. Asset visuals are built
+server-side and never enter the model context.
