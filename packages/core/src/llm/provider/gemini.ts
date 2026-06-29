@@ -24,7 +24,7 @@ import type {
   StreamOptions,
   ToolDefinition,
 } from "../types";
-import { ProviderError } from "../types";
+import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError } from "../types";
 
 type ProviderToolUseBlock = Extract<ContentBlock, { type: "provider_tool_use" }>;
 type WebSearchResultBlock = Extract<ContentBlock, { type: "web_search_result" }>;
@@ -564,7 +564,7 @@ export function classifyGeminiError(err: unknown): ProviderError {
       return new ProviderError(msg, "auth", false, undefined, httpStatus, err);
     }
     if (isGeminiContextOverflow(msg)) {
-      return new ProviderError(msg, "context_overflow", false, undefined, httpStatus, err);
+      return new ProviderError(CONTEXT_OVERFLOW_ERROR_MESSAGE, "context_overflow", false, undefined, httpStatus, err);
     }
     if (isNetworkError(err)) {
       return new ProviderError(msg, "network", true, undefined, undefined, err);

@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import OpenAI from "openai";
 import { isNetworkError } from "../../../src/llm/errors";
 import { classifyOpenAIError } from "../../../src/llm/provider/openai";
+import { CONTEXT_OVERFLOW_ERROR_MESSAGE } from "../../../src/llm/types";
 
 function makeOpenAIAPIError(status: number, message: string, headers?: Record<string, string>): OpenAI.APIError {
   const sdkHeaders = new Headers(headers);
@@ -29,6 +30,7 @@ describe("classifyOpenAIError", () => {
     const result = classifyOpenAIError(makeOpenAIAPIError(400, "This model's maximum context length is 128000"));
 
     expect(result.errorType).toBe("context_overflow");
+    expect(result.message).toBe(CONTEXT_OVERFLOW_ERROR_MESSAGE);
     expect(result.isRetryable).toBe(false);
   });
 

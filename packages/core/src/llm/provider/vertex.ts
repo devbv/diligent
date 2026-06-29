@@ -3,7 +3,7 @@ import { EventStream } from "../../event-stream";
 import { isNetworkError } from "../errors";
 import { flattenSections } from "../system-sections";
 import type { Model, ProviderEvent, ProviderResult, StreamContext, StreamFunction, StreamOptions } from "../types";
-import { ProviderError } from "../types";
+import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError } from "../types";
 import {
   buildOpenAICompatibleMessages,
   buildOpenAICompatibleTools,
@@ -133,7 +133,7 @@ export function classifyVertexError(err: unknown): ProviderError {
     if (status !== undefined && status >= 500)
       return new ProviderError(message, "server_error", true, undefined, status);
     if (status === 400 && isContextOverflow(message)) {
-      return new ProviderError(message, "context_overflow", false, undefined, status);
+      return new ProviderError(CONTEXT_OVERFLOW_ERROR_MESSAGE, "context_overflow", false, undefined, status);
     }
     return new ProviderError(message, "unknown", false, undefined, status, err instanceof Error ? err : undefined);
   }

@@ -4,7 +4,7 @@ import type { CoreAgentEvent } from "@diligent/core/agent";
 import { Agent } from "@diligent/core/agent";
 import { EventStream } from "@diligent/core/event-stream";
 import type { Model, ProviderEvent, ProviderResult, ToolDefinition } from "@diligent/core/llm/types";
-import { ProviderError } from "@diligent/core/llm/types";
+import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError } from "@diligent/core/llm/types";
 import type { AssistantMessage } from "@diligent/core/types";
 import { z } from "zod";
 
@@ -320,7 +320,7 @@ describe("Agent", () => {
         queueMicrotask(() =>
           stream.push({
             type: "error",
-            error: new ProviderError("Context overflow", "context_overflow", false, undefined, 400),
+            error: new ProviderError(CONTEXT_OVERFLOW_ERROR_MESSAGE, "context_overflow", false, undefined, 400),
           }),
         );
         return stream;
@@ -331,13 +331,14 @@ describe("Agent", () => {
     const unsub = agent.subscribe((event) => events.push(event));
 
     await expect(agent.prompt({ role: "user", content: "hi", timestamp: Date.now() })).rejects.toThrow(
-      "Context overflow",
+      CONTEXT_OVERFLOW_ERROR_MESSAGE,
     );
 
     unsub();
     const errorEvent = events.find((event) => event.type === "error");
     expect(errorEvent?.type).toBe("error");
     if (errorEvent?.type === "error") {
+      expect(errorEvent.error.message).toBe(CONTEXT_OVERFLOW_ERROR_MESSAGE);
       expect(errorEvent.error.providerErrorType).toBe("context_overflow");
       expect(errorEvent.error.statusCode).toBe(400);
       expect(errorEvent.error.isRetryable).toBe(false);
