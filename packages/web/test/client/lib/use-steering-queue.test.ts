@@ -1,17 +1,28 @@
 // @summary Tests for steering queue helper functions covering steer RPC, abort-restart, and image attachments
 import { describe, expect, mock, test } from "bun:test";
-import { executeRestartFromAbort, executeSteer } from "../../../src/client/lib/use-steering-queue";
+import {
+  executeCancelSteer,
+  executeRestartFromAbort,
+  executeSteer,
+  executeUpdateSteer,
+} from "../../../src/client/lib/use-steering-queue";
 
 function makeRpc(handler: (method: string, params: unknown) => unknown) {
   return { request: mock(handler) } as never;
 }
 
 describe("executeSteer", () => {
-  test("dispatches local_steer and sends turn/steer RPC", async () => {
+  test("dispatches local_steer before RPC resolves and sends the same steer id", async () => {
     const dispatched: unknown[] = [];
-    const rpc = makeRpc(async () => ({}));
+    let resolveRequest!: (value: { steerId: string }) => void;
+    const rpc = makeRpc(
+      () =>
+        new Promise<{ steerId: string }>((resolve) => {
+          resolveRequest = resolve;
+        }),
+    );
 
-    await executeSteer({
+    const pending = executeSteer({
       rpc,
       threadId: "thread-1",
       content: "hello world",
@@ -21,22 +32,28 @@ describe("executeSteer", () => {
       clearPendingImages: mock(() => {}),
     });
 
-    expect(dispatched).toEqual([{ type: "local_steer", payload: "hello world" }]);
+    expect(dispatched).toHaveLength(1);
+    const action = dispatched[0] as { type: "local_steer"; payload: { id: string; content: string } };
+    expect(action.type).toBe("local_steer");
+    expect(action.payload.content).toBe("hello world");
     expect(rpc.request).toHaveBeenCalledTimes(1);
     const [method, params] = (rpc.request as ReturnType<typeof mock>).mock.calls[0] as [
       string,
-      { content: string; followUp: boolean },
+      { steerId: string; content: string; followUp: boolean },
     ];
     expect(method).toBe("turn/steer");
+    expect(params.steerId).toBe(action.payload.id);
     expect(params.content).toBe("hello world");
     expect(params.followUp).toBe(false);
+    resolveRequest({ steerId: action.payload.id });
+    await pending;
   });
 
   test("clears thread input and pending images before dispatching", async () => {
     const clearThreadInput = mock((_threadId: string) => {});
     const clearPendingImages = mock(() => {});
     const dispatched: unknown[] = [];
-    const rpc = makeRpc(async () => ({}));
+    const rpc = makeRpc(async () => ({ steerId: "s1" }));
 
     await executeSteer({
       rpc,
@@ -50,11 +67,11 @@ describe("executeSteer", () => {
 
     expect(clearThreadInput).toHaveBeenCalledWith("thread-abc");
     expect(clearPendingImages).toHaveBeenCalledTimes(1);
-    expect(dispatched[0]).toEqual({ type: "local_steer", payload: "test" });
+    expect(dispatched[0]).toMatchObject({ type: "local_steer", payload: { content: "test" } });
   });
 
   test("includes image attachments in turn/steer request", async () => {
-    const rpc = makeRpc(async () => ({}));
+    const rpc = makeRpc(async () => ({ steerId: "s1" }));
 
     await executeSteer({
       rpc,
@@ -92,6 +109,77 @@ describe("executeSteer", () => {
         clearPendingImages: mock(() => {}),
       }),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe("executeCancelSteer", () => {
+  test("sends cancel RPC and removes local pending steer when accepted", async () => {
+    const dispatched: unknown[] = [];
+    const rpc = makeRpc(async () => ({ cancelled: true }));
+
+    await executeCancelSteer({
+      rpc,
+      threadId: "thread-1",
+      steerId: "s1",
+      dispatch: (action) => dispatched.push(action),
+    });
+
+    expect(rpc.request).toHaveBeenCalledWith("turn/steer/cancel", {
+      threadId: "thread-1",
+      steerId: "s1",
+    });
+    expect(dispatched).toEqual([{ type: "cancel_pending_steer", payload: { steerId: "s1" } }]);
+  });
+
+  test("removes local pending steer optimistically even when server rejects cancel", async () => {
+    const dispatched: unknown[] = [];
+    const rpc = makeRpc(async () => ({ cancelled: false }));
+
+    await executeCancelSteer({
+      rpc,
+      threadId: "thread-1",
+      steerId: "s1",
+      dispatch: (action) => dispatched.push(action),
+    });
+
+    expect(dispatched).toEqual([{ type: "cancel_pending_steer", payload: { steerId: "s1" } }]);
+  });
+});
+
+describe("executeUpdateSteer", () => {
+  test("sends update RPC and updates local pending steer when accepted", async () => {
+    const dispatched: unknown[] = [];
+    const rpc = makeRpc(async () => ({ updated: true }));
+
+    await executeUpdateSteer({
+      rpc,
+      threadId: "thread-1",
+      steerId: "s1",
+      content: "new steer",
+      dispatch: (action) => dispatched.push(action),
+    });
+
+    expect(rpc.request).toHaveBeenCalledWith("turn/steer/update", {
+      threadId: "thread-1",
+      steerId: "s1",
+      content: "new steer",
+    });
+    expect(dispatched).toEqual([{ type: "update_pending_steer", payload: { steerId: "s1", content: "new steer" } }]);
+  });
+
+  test("updates local pending steer optimistically even when server rejects update", async () => {
+    const dispatched: unknown[] = [];
+    const rpc = makeRpc(async () => ({ updated: false }));
+
+    await executeUpdateSteer({
+      rpc,
+      threadId: "thread-1",
+      steerId: "s1",
+      content: "new steer",
+      dispatch: (action) => dispatched.push(action),
+    });
+
+    expect(dispatched).toEqual([{ type: "update_pending_steer", payload: { steerId: "s1", content: "new steer" } }]);
   });
 });
 

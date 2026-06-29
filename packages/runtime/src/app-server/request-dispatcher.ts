@@ -42,6 +42,8 @@ import {
   handleTurnInterrupt,
   handleTurnStart,
   handleTurnSteer,
+  handleTurnSteerCancel,
+  handleTurnSteerUpdate,
   type ThreadHandlersContext,
   type ThreadRuntime,
 } from "./thread-handlers";
@@ -153,6 +155,8 @@ export function applySessionDefaults(
     DILIGENT_CLIENT_REQUEST_METHODS.TURN_START,
     DILIGENT_CLIENT_REQUEST_METHODS.TURN_INTERRUPT,
     DILIGENT_CLIENT_REQUEST_METHODS.TURN_STEER,
+    DILIGENT_CLIENT_REQUEST_METHODS.TURN_STEER_CANCEL,
+    DILIGENT_CLIENT_REQUEST_METHODS.TURN_STEER_UPDATE,
     DILIGENT_CLIENT_REQUEST_METHODS.THREAD_COMPACT_START,
     DILIGENT_CLIENT_REQUEST_METHODS.MODE_SET,
     DILIGENT_CLIENT_REQUEST_METHODS.EFFORT_SET,
@@ -241,6 +245,18 @@ export async function dispatchClientRequest(
         request.params.threadId,
         request.params.content,
         request.params.attachments,
+        request.params.steerId,
+      );
+
+    case DILIGENT_CLIENT_REQUEST_METHODS.TURN_STEER_CANCEL:
+      return handleTurnSteerCancel(ctx.threadHandlersCtx, request.params.threadId, request.params.steerId);
+
+    case DILIGENT_CLIENT_REQUEST_METHODS.TURN_STEER_UPDATE:
+      return handleTurnSteerUpdate(
+        ctx.threadHandlersCtx,
+        request.params.threadId,
+        request.params.steerId,
+        request.params.content,
       );
 
     case DILIGENT_CLIENT_REQUEST_METHODS.MODE_SET:

@@ -5,6 +5,7 @@ import type {
   DiligentServerNotification,
   LocalImageBlock,
   Mode,
+  PendingSteer,
   SessionSummary,
   ThreadReadResponse,
 } from "@diligent/protocol";
@@ -26,7 +27,9 @@ export type AppAction =
   | { type: "set_threads"; payload: SessionSummary[] }
   | { type: "set_mode"; payload: Mode }
   | { type: "local_user"; payload: { text: string; images: PendingImage[]; contextItems?: AgentContextItem[] } }
-  | { type: "local_steer"; payload: string }
+  | { type: "local_steer"; payload: PendingSteer }
+  | { type: "cancel_pending_steer"; payload: { steerId: string } }
+  | { type: "update_pending_steer"; payload: { steerId: string; content: string } }
   | { type: "consume_first_pending_steer" }
   | { type: "optimistic_thread"; payload: { threadId: string; message: string } }
   | { type: "show_info_toast"; payload: string }
@@ -97,6 +100,20 @@ export function appReducer(state: ThreadState, action: AppAction): ThreadState {
   }
   if (action.type === "local_steer") {
     return { ...state, pendingSteers: [...state.pendingSteers, action.payload] };
+  }
+  if (action.type === "cancel_pending_steer") {
+    return {
+      ...state,
+      pendingSteers: state.pendingSteers.filter((steer) => steer.id !== action.payload.steerId),
+    };
+  }
+  if (action.type === "update_pending_steer") {
+    return {
+      ...state,
+      pendingSteers: state.pendingSteers.map((steer) =>
+        steer.id === action.payload.steerId ? { ...steer, content: action.payload.content } : steer,
+      ),
+    };
   }
   if (action.type === "consume_first_pending_steer") {
     return state.pendingSteers.length === 0 ? state : { ...state, pendingSteers: state.pendingSteers.slice(1) };

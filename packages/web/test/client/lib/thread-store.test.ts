@@ -842,7 +842,10 @@ test("steering_injected clears pending steers by count even when event text diff
   resetAdapter();
   const startState = {
     ...initialThreadState,
-    pendingSteers: ["change approach", "focus root cause"],
+    pendingSteers: [
+      { id: "s1", content: "change approach" },
+      { id: "s2", content: "focus root cause" },
+    ],
   };
 
   const notification: DiligentServerNotification = {
@@ -855,18 +858,20 @@ test("steering_injected clears pending steers by count even when event text diff
   };
 
   const next = reduce(startState, notification);
-  expect(next.pendingSteers).toEqual(["focus root cause"]);
+  expect(next.pendingSteers).toEqual([{ id: "s2", content: "focus root cause" }]);
 
   const injectedUsers = next.items.filter((item) => item.kind === "user");
   expect(injectedUsers).toHaveLength(1);
-  expect(injectedUsers[0] && injectedUsers[0].kind === "user" ? injectedUsers[0].text : "").toBe("change approach");
+  expect(injectedUsers[0] && injectedUsers[0].kind === "user" ? injectedUsers[0].text : "").toBe(
+    "change approach (normalized)",
+  );
 });
 
-test("steering_injected keeps local queued text but preserves event images", () => {
+test("steering_injected prefers event text and preserves event images", () => {
   resetAdapter();
   const startState = {
     ...initialThreadState,
-    pendingSteers: ["change approach"],
+    pendingSteers: [{ id: "s1", content: "change approach" }],
   };
 
   const notification: DiligentServerNotification = {
@@ -878,6 +883,7 @@ test("steering_injected keeps local queued text but preserves event images", () 
       event: {
         type: "steering_injected",
         messageCount: 1,
+        steerIds: ["s1"],
         messages: [
           {
             role: "user",
@@ -900,7 +906,9 @@ test("steering_injected keeps local queued text but preserves event images", () 
   const next = reduceServerNotification(startState, notification, [notification.params.event]);
   const injectedUsers = next.items.filter((item) => item.kind === "user");
   expect(injectedUsers).toHaveLength(1);
-  expect(injectedUsers[0] && injectedUsers[0].kind === "user" ? injectedUsers[0].text : "").toBe("change approach");
+  expect(injectedUsers[0] && injectedUsers[0].kind === "user" ? injectedUsers[0].text : "").toBe(
+    "change approach (normalized)",
+  );
   expect(injectedUsers[0] && injectedUsers[0].kind === "user" ? injectedUsers[0].images : []).toEqual([
     {
       url: `${WEB_IMAGE_ROUTE_PREFIX}thread-1/shot.png`,
@@ -929,6 +937,61 @@ test("steering_injected falls back to event text when local queue is empty", () 
   expect(injectedUsers[0] && injectedUsers[0].kind === "user" ? injectedUsers[0].text : "").toBe(
     "server-injected steer",
   );
+});
+
+test("steering_injected applies accepted local edit when event has previous text", () => {
+  resetAdapter();
+  const startState = {
+    ...initialThreadState,
+    pendingSteers: [{ id: "s1", content: "new steer" }],
+  };
+  const notification: DiligentServerNotification = {
+    method: "steering/injected",
+    params: {
+      threadId: "t1",
+      messageCount: 1,
+      steerIds: ["s1"],
+      messages: [{ role: "user", content: "new steer", timestamp: 2 }],
+    },
+  };
+
+  const next = reduce(startState, notification);
+
+  expect(next.pendingSteers).toEqual([]);
+  const injectedUsers = next.items.filter((item) => item.kind === "user");
+  expect(injectedUsers[0] && injectedUsers[0].kind === "user" ? injectedUsers[0].text : "").toBe("new steer");
+});
+
+test("steering_injected removes only acknowledged steer ids", () => {
+  resetAdapter();
+  const startState = {
+    ...initialThreadState,
+    pendingSteers: [
+      { id: "s1", content: "a" },
+      { id: "s2", content: "b" },
+      { id: "s3", content: "c" },
+    ],
+  };
+  const notification: DiligentServerNotification = {
+    method: "steering/injected",
+    params: {
+      threadId: "t1",
+      messageCount: 1,
+      steerIds: ["s2"],
+      messages: [{ role: "user", content: "b", timestamp: 3 }],
+    },
+  };
+
+  const next = reduce(startState, notification);
+
+  expect(next.pendingSteers).toEqual([
+    { id: "s1", content: "a" },
+    { id: "s3", content: "c" },
+  ]);
+  const injectedTexts = next.items
+    .filter((item) => item.kind === "user")
+    .map((item) => (item.kind === "user" ? item.text : ""));
+  expect(injectedTexts).toEqual(["b"]);
 });
 
 test("steering_injected falls back to event images when local queue is empty", () => {

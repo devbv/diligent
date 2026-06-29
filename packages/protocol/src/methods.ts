@@ -18,6 +18,8 @@ export const DILIGENT_CLIENT_REQUEST_METHODS = {
   TURN_START: "turn/start",
   TURN_INTERRUPT: "turn/interrupt",
   TURN_STEER: "turn/steer",
+  TURN_STEER_CANCEL: "turn/steer/cancel",
+  TURN_STEER_UPDATE: "turn/steer/update",
   MODE_SET: "mode/set",
   EFFORT_SET: "effort/set",
   KNOWLEDGE_LIST: "knowledge/list",

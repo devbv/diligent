@@ -74,7 +74,7 @@ function hydrateFromSnapshotItems(state: ThreadState, payload: ThreadReadRespons
     items: [],
     seenKeys: {},
     itemSlots: {},
-    pendingSteers: [],
+    pendingSteers: payload.pendingSteers ?? [],
     activeTurnId: null,
     activeTurnStartedAt: null,
     activeReasoningStartedAt: null,

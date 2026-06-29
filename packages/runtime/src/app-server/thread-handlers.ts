@@ -248,6 +248,7 @@ export async function handleThreadRead(
   items: ThreadItem[];
   errors: unknown[];
   hasFollowUp: boolean;
+  pendingSteers: Array<{ id: string; content: string }>;
   entryCount: number;
   isRunning: boolean;
   currentEffort: ThinkingEffort;
@@ -286,6 +287,7 @@ export async function handleThreadRead(
     items,
     errors: runtime.manager.getErrors(),
     hasFollowUp: runtime.manager.hasPendingMessages(),
+    pendingSteers: runtime.manager.getPendingSteers(),
     entryCount: runtime.manager.entryCount,
     isRunning: runtime.isRunning,
     currentEffort: runtime.manager.getCurrentEffort() ?? runtime.effort,
@@ -549,7 +551,8 @@ export async function handleTurnSteer(
   threadId: string | undefined,
   content: string,
   attachments?: Array<{ type: "local_image"; path: string; mediaType: SupportedImageMediaType; fileName?: string }>,
-): Promise<{ queued: true }> {
+  steerId?: string,
+): Promise<{ queued: true; steerId: string }> {
   const runtime = await ctx.resolveThreadRuntime(threadId);
   const normalizedAttachments = attachments?.map((attachment) =>
     normalizeLocalImageAttachment(attachment, runtime.cwd),
@@ -569,8 +572,29 @@ export async function handleTurnSteer(
           content,
           timestamp: Date.now(),
         };
-  runtime.manager.steer(message);
-  return { queued: true };
+  const queuedSteerId = runtime.manager.steer(message, steerId);
+  return { queued: true, steerId: queuedSteerId };
+}
+
+export async function handleTurnSteerCancel(
+  ctx: ThreadHandlersContext,
+  threadId: string | undefined,
+  steerId: string,
+): Promise<{ cancelled: boolean }> {
+  const runtime = await ctx.resolveThreadRuntime(threadId);
+  const cancelled = runtime.manager.cancelPendingMessage(steerId);
+  return { cancelled };
+}
+
+export async function handleTurnSteerUpdate(
+  ctx: ThreadHandlersContext,
+  threadId: string | undefined,
+  steerId: string,
+  content: string,
+): Promise<{ updated: boolean }> {
+  const runtime = await ctx.resolveThreadRuntime(threadId);
+  const updated = runtime.manager.updatePendingMessage(steerId, content);
+  return { updated };
 }
 
 function normalizeLocalImageAttachment(

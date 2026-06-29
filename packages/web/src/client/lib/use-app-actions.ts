@@ -560,13 +560,11 @@ export function useAppActions({
       const rpc = rpcRef.current;
       const threadId = state.activeThreadId;
       if (!rpc || !threadId) return;
-      steeringControl.pendingAbortRestartMessageRef.current = stateRef.current.pendingSteers[0] ?? null;
+      steeringControl.pendingAbortRestartMessageRef.current = stateRef.current.pendingSteers[0]?.content ?? null;
       steeringControl.suppressNextSteeringInjectedRef.current =
         steeringControl.pendingAbortRestartMessageRef.current !== null;
-      console.log("[App] Stop pressed — sending turn/interrupt for thread", threadId);
       try {
-        const result = await rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.TURN_INTERRUPT, { threadId });
-        console.log("[App] turn/interrupt response:", result);
+        await rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.TURN_INTERRUPT, { threadId });
       } catch (error) {
         steeringControl.pendingAbortRestartMessageRef.current = null;
         steeringControl.suppressNextSteeringInjectedRef.current = false;

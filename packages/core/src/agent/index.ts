@@ -6,6 +6,7 @@ export type {
   AgentOptions,
   CoreAgentEvent,
   MessageDelta,
+  QueuedSteeringMessage,
   SerializableError,
 } from "./types";
 export { formatSerializableErrorForLog, toSerializableError } from "./util/errors";

@@ -75,6 +75,7 @@ export class ProtocolNotificationAdapter {
             type: "steering_injected",
             messageCount: notification.params.messageCount,
             messages: notification.params.messages,
+            steerIds: notification.params.steerIds,
           },
         ];
       case DILIGENT_SERVER_NOTIFICATION_METHODS.THREAD_COMPACTION_STARTED:

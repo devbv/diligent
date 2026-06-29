@@ -94,7 +94,7 @@ export type CoreAgentEvent =
   // Error (1) — D086: SerializableError instead of Error
   | { type: "error"; error: SerializableError; fatal: boolean }
   // Steering (1) — P1
-  | { type: "steering_injected"; messageCount: number; messages: Message[] }
+  | { type: "steering_injected"; messageCount: number; messages: Message[]; steerIds: string[] }
   // Compaction (2)
   | { type: "compaction_start"; estimatedTokens: number }
   | {
@@ -106,6 +106,11 @@ export type CoreAgentEvent =
     };
 
 export type AgentListener = (event: CoreAgentEvent) => void;
+
+export interface QueuedSteeringMessage {
+  id: string;
+  message: Message;
+}
 
 export class AgentStream {
   private listeners = new Set<AgentListener>();

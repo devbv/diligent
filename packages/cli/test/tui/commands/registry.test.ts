@@ -221,9 +221,9 @@ describe("createCommandHandler", () => {
     expect(syncActiveThreadState).toHaveBeenCalledTimes(1);
   });
 
-  it("queues steering text instead of rendering local steering line", () => {
+  it("queues steering text instead of rendering local steering line", async () => {
     const queuePendingSteer = mock(() => {});
-    const steerRequest = mock(async () => ({ accepted: true }));
+    const steerRequest = mock(async () => ({ queued: true, steerId: "s1" }));
     const handler = createCommandHandler(
       makeHandlerDeps({
         getRpcClient: () => ({ request: steerRequest }) as unknown as AppServerRpcClient,
@@ -232,9 +232,15 @@ describe("createCommandHandler", () => {
     );
 
     handler.handleSteering("change approach");
+    await Promise.resolve();
 
     expect(queuePendingSteer).toHaveBeenCalledTimes(1);
-    expect(queuePendingSteer).toHaveBeenCalledWith("change approach");
+    const queued = queuePendingSteer.mock.calls[0]?.[0] as { id: string; content: string };
+    expect(queued.content).toBe("change approach");
     expect(steerRequest).toHaveBeenCalledTimes(1);
+    expect(steerRequest.mock.calls[0]?.[1]).toMatchObject({
+      steerId: queued.id,
+      content: "change approach",
+    });
   });
 });

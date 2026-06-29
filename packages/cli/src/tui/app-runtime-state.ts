@@ -1,6 +1,6 @@
 // @summary Renderer-agnostic runtime state for the CLI TUI orchestration layer
 
-import type { Mode as ProtocolMode, RequestId, ThinkingEffort } from "@diligent/protocol";
+import type { PendingSteer, Mode as ProtocolMode, RequestId, ThinkingEffort } from "@diligent/protocol";
 
 export interface PendingTurnState {
   resolve: () => void;
@@ -21,7 +21,7 @@ export class AppRuntimeState {
   reasoningStartedAtMs: number | null = null;
   reasoningAccumulatedMs = 0;
   pendingOAuthResolve: ((result: { success: boolean; error: string | null }) => void) | null = null;
-  pendingSteers: string[] = [];
+  pendingSteers: PendingSteer[] = [];
   cancelRequested = false;
 
   constructor(mode: ProtocolMode, effort: ThinkingEffort) {
@@ -29,27 +29,42 @@ export class AppRuntimeState {
     this.currentEffort = effort;
   }
 
-  queuePendingSteer(text: string): void {
-    this.pendingSteers.push(text);
+  queuePendingSteer(steer: PendingSteer): void {
+    this.pendingSteers.push(steer);
+  }
+
+  pendingSteerContents(): string[] {
+    return this.pendingSteers.map((steer) => steer.content);
+  }
+
+  consumePendingSteersByIds(ids: string[]): string[] {
+    const consumed: string[] = [];
+    for (const id of ids) {
+      const index = this.pendingSteers.findIndex((steer) => steer.id === id);
+      if (index === -1) continue;
+      const [steer] = this.pendingSteers.splice(index, 1);
+      if (steer) consumed.push(steer.content);
+    }
+    return consumed;
   }
 
   consumePendingSteersByText(texts: string[]): string[] {
     const consumed: string[] = [];
     for (const text of texts) {
-      const index = this.pendingSteers.indexOf(text);
+      const index = this.pendingSteers.findIndex((steer) => steer.content === text);
       if (index === -1) continue;
-      this.pendingSteers.splice(index, 1);
-      consumed.push(text);
+      const [steer] = this.pendingSteers.splice(index, 1);
+      if (steer) consumed.push(steer.content);
     }
     return consumed;
   }
 
   consumePendingSteersFallback(count: number): string[] {
-    return this.pendingSteers.splice(0, Math.max(0, count));
+    return this.pendingSteers.splice(0, Math.max(0, count)).map((steer) => steer.content);
   }
 
   drainPendingSteers(): string[] {
-    const drained = this.pendingSteers.slice();
+    const drained = this.pendingSteers.map((steer) => steer.content);
     this.pendingSteers.length = 0;
     return drained;
   }
