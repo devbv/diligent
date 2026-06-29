@@ -305,6 +305,8 @@ describe("Agent", () => {
   });
 
   test("provider errors retain classification in fatal error events", async () => {
+    const contextOverflowMessage =
+      "This conversation has exceeded the AI model's context limit. To continue, open the menu in the top-left corner and start a new chat.";
     const agent = new Agent(TEST_MODEL, BASE_CONFIG.systemPrompt, BASE_CONFIG.tools, {
       effort: BASE_CONFIG.effort,
       compaction: BASE_CONFIG.compaction,
@@ -331,16 +333,14 @@ describe("Agent", () => {
     const unsub = agent.subscribe((event) => events.push(event));
 
     await expect(agent.prompt({ role: "user", content: "hi", timestamp: Date.now() })).rejects.toThrow(
-      "Context overflow",
+      contextOverflowMessage,
     );
 
     unsub();
     const errorEvent = events.find((event) => event.type === "error");
     expect(errorEvent?.type).toBe("error");
     if (errorEvent?.type === "error") {
-      expect(errorEvent.error.message).toBe(
-        "This conversation has exceeded the AI model's context limit. To continue, open the menu in the top-left corner and start a new chat.",
-      );
+      expect(errorEvent.error.message).toBe(contextOverflowMessage);
       expect(errorEvent.error.providerErrorType).toBe("context_overflow");
       expect(errorEvent.error.statusCode).toBe(400);
       expect(errorEvent.error.isRetryable).toBe(false);

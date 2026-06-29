@@ -123,6 +123,9 @@ export type ProviderErrorType =
   | "network" // ECONNREFUSED, timeout — retryable
   | "unknown"; // everything else — NOT retryable
 
+const CONTEXT_OVERFLOW_ERROR_MESSAGE =
+  "This conversation has exceeded the AI model's context limit. To continue, open the menu in the top-left corner and start a new chat.";
+
 export class ProviderError extends Error {
   constructor(
     message: string,
@@ -132,7 +135,7 @@ export class ProviderError extends Error {
     public readonly statusCode?: number,
     public readonly cause?: Error,
   ) {
-    super(message);
+    super(errorType === "context_overflow" ? CONTEXT_OVERFLOW_ERROR_MESSAGE : message);
     this.name = "ProviderError";
   }
 }
