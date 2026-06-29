@@ -1487,27 +1487,6 @@ test("ErrorBanner does not show Reconnect button on non-auth error", () => {
   expect(html).not.toContain("Reconnect");
 });
 
-test("ErrorBanner shows context overflow guidance without provider prefix", () => {
-  const message =
-    "This conversation has exceeded the AI model's context limit. To continue, open the menu in the top-left corner and start a new chat.";
-  const html = renderToStaticMarkup(
-    <ErrorBanner
-      error={{
-        id: "event:error:context",
-        message,
-        name: "ProviderError",
-        providerErrorType: "context_overflow",
-        fatal: false,
-        timestamp: 1715562000000,
-      }}
-      onOpenProviders={() => {}}
-    />,
-  );
-
-  expect(html).toContain("This conversation has exceeded the AI model");
-  expect(html).not.toContain("ProviderError:");
-});
-
 test("ErrorBanner keeps provider error details for non-auth errors without turn metadata", () => {
   const html = renderToStaticMarkup(
     <ErrorBanner

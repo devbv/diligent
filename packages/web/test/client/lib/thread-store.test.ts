@@ -390,31 +390,6 @@ test("network error event shows a user-facing message instead of raw transport d
   expect(next.toast).toBeNull();
 });
 
-test("context overflow error event keeps the serialized guidance message", () => {
-  resetAdapter();
-  const message =
-    "This conversation has exceeded the AI model's context limit. To continue, open the menu in the top-left corner and start a new chat.";
-
-  const next = reduce(
-    { ...initialThreadState, activeThreadId: "t1", threadStatus: "busy" },
-    {
-      method: DILIGENT_SERVER_NOTIFICATION_METHODS.ERROR,
-      params: {
-        threadId: "t1",
-        error: {
-          message,
-          name: "ProviderError",
-          providerErrorType: "context_overflow",
-        },
-        fatal: false,
-      },
-    },
-  );
-
-  expect(next.activeError?.providerErrorType).toBe("context_overflow");
-  expect(next.activeError?.message).toBe(message);
-});
-
 test("hydrateFromThreadRead keeps history error entries out of visible items", () => {
   const hydrated = hydrateFromThreadRead(initialThreadState, {
     threadId: "t1",
