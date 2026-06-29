@@ -1,5 +1,6 @@
 // @summary Tests for app event controller notification and request orchestration
 import { describe, expect, mock, test } from "bun:test";
+import { USER_FACING_CONTEXT_OVERFLOW_MESSAGE } from "@diligent/protocol";
 import { AppEventController } from "../../src/tui/app-event-controller";
 import { AppRuntimeState } from "../../src/tui/app-runtime-state";
 
@@ -185,6 +186,41 @@ describe("AppEventController", () => {
       fatal: false,
     });
     expect(onTurnErrored).toHaveBeenCalledWith("Estimated Token is below 50000");
+  });
+
+  test("normalizes context overflow before rejecting pending turn", async () => {
+    const runtime = new AppRuntimeState("default", "medium");
+    runtime.currentThreadId = "thread-1";
+    runtime.pendingTurn = {
+      resolve: () => {},
+      reject: () => {},
+    };
+    const onTurnErrored = mock(() => {});
+    const controller = new AppEventController({
+      runtime,
+      handleAgentEvent: () => {},
+      onTurnFinished: () => {},
+      onTurnErrored,
+      onUserInputRequestResolved: () => {},
+      onAccountLoginCompleted: () => {},
+      requestApproval: async () => "once",
+      requestUserInput: async () => ({ answers: {} }),
+    });
+
+    await controller.handleServerNotification({
+      method: "error",
+      params: {
+        threadId: "thread-1",
+        error: {
+          message: "raw provider context error",
+          name: "ProviderError",
+          providerErrorType: "context_overflow",
+        },
+        fatal: false,
+      },
+    });
+
+    expect(onTurnErrored).toHaveBeenCalledWith(USER_FACING_CONTEXT_OVERFLOW_MESSAGE);
   });
 
   test("delegates approval server requests", async () => {

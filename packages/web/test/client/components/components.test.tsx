@@ -1,5 +1,6 @@
 // @summary Static render tests for core UI components and accessibility attributes
 import { expect, test } from "bun:test";
+import { USER_FACING_CONTEXT_OVERFLOW_MESSAGE } from "@diligent/protocol";
 import { renderToStaticMarkup } from "react-dom/server";
 import { AppHeader } from "../../../src/client/components/AppHeader";
 import { AssistantMessage } from "../../../src/client/components/AssistantMessage";
@@ -1485,6 +1486,25 @@ test("ErrorBanner does not show Reconnect button on non-auth error", () => {
   );
 
   expect(html).not.toContain("Reconnect");
+});
+
+test("ErrorBanner shows context overflow guidance without provider prefix", () => {
+  const html = renderToStaticMarkup(
+    <ErrorBanner
+      error={{
+        id: "event:error:context",
+        message: USER_FACING_CONTEXT_OVERFLOW_MESSAGE,
+        name: "ProviderError",
+        providerErrorType: "context_overflow",
+        fatal: false,
+        timestamp: 1715562000000,
+      }}
+      onOpenProviders={() => {}}
+    />,
+  );
+
+  expect(html).toContain("This conversation has exceeded the AI model");
+  expect(html).not.toContain("ProviderError:");
 });
 
 test("ErrorBanner keeps provider error details for non-auth errors without turn metadata", () => {

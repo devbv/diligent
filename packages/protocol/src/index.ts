@@ -3,6 +3,7 @@ export * from "./client-requests";
 export * from "./conversation-reducer";
 export * from "./conversation-state";
 export * from "./data-model";
+export * from "./errors";
 export * from "./jsonrpc";
 export * from "./methods";
 export * from "./notification-adapter";

@@ -1,6 +1,10 @@
 // @summary Tests for thread-state reducer behavior over item lifecycle notifications
 import { expect, test } from "bun:test";
-import { DILIGENT_SERVER_NOTIFICATION_METHODS, type DiligentServerNotification } from "@diligent/protocol";
+import {
+  DILIGENT_SERVER_NOTIFICATION_METHODS,
+  type DiligentServerNotification,
+  USER_FACING_CONTEXT_OVERFLOW_MESSAGE,
+} from "@diligent/protocol";
 import { ProtocolNotificationAdapter } from "@diligent/runtime/client";
 import {
   hydrateFromThreadRead,
@@ -388,6 +392,29 @@ test("network error event shows a user-facing message instead of raw transport d
   expect(next.activeError?.providerErrorType).toBe("network");
   expect(next.activeError?.message).toBe(USER_FACING_NETWORK_ERROR_MESSAGE);
   expect(next.toast).toBeNull();
+});
+
+test("context overflow error event shows restart guidance instead of raw provider details", () => {
+  resetAdapter();
+
+  const next = reduce(
+    { ...initialThreadState, activeThreadId: "t1", threadStatus: "busy" },
+    {
+      method: DILIGENT_SERVER_NOTIFICATION_METHODS.ERROR,
+      params: {
+        threadId: "t1",
+        error: {
+          message: "This model's maximum context length is 128000 tokens.",
+          name: "ProviderError",
+          providerErrorType: "context_overflow",
+        },
+        fatal: false,
+      },
+    },
+  );
+
+  expect(next.activeError?.providerErrorType).toBe("context_overflow");
+  expect(next.activeError?.message).toBe(USER_FACING_CONTEXT_OVERFLOW_MESSAGE);
 });
 
 test("hydrateFromThreadRead keeps history error entries out of visible items", () => {

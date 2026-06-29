@@ -9,11 +9,14 @@ interface ErrorBannerProps {
 
 export function ErrorBanner({ error, onOpenProviders }: ErrorBannerProps) {
   const isAuthError = error.providerErrorType === "auth";
+  const hasPlainProviderCopy = error.providerErrorType === "context_overflow" || error.providerErrorType === "network";
   const title = isAuthError
     ? "Provider authentication failed"
-    : error.name
-      ? `${error.name}: ${error.message}`
-      : error.message;
+    : hasPlainProviderCopy
+      ? error.message
+      : error.name
+        ? `${error.name}: ${error.message}`
+        : error.message;
 
   return (
     <div className="shrink-0 border-b border-danger/30 bg-danger/10 px-3 py-2" role="alert" aria-live="assertive">
