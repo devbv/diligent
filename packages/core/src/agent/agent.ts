@@ -7,10 +7,11 @@ import { withRetry } from "../llm/retry";
 import { resolveStream } from "../llm/stream-resolver";
 import type { Model, ProviderName, StreamFunction, SystemSection, ThinkingEffort } from "../llm/types";
 import type { Tool } from "../tool/types";
-import type { Message, UserMessage } from "../types";
+import type { Message } from "../types";
 import { runCompaction } from "./compaction";
 import type { LoopRuntime } from "./loop";
 import { runAgentLoop } from "./loop";
+import { updateUserMessageContent } from "./message-content";
 import type { AgentOptions, CompactionConfig, QueuedSteeringMessage } from "./types";
 import { AgentStream, type LLMRetryConfig } from "./types";
 
@@ -204,15 +205,4 @@ export class Agent {
     this.messages = result.messages;
     this.compactionSummary = result.compactionSummary;
   }
-}
-
-function updateUserMessageContent(current: UserMessage["content"], content: string): UserMessage["content"] {
-  if (typeof current === "string") return content;
-  const next = [...current];
-  const index = next.findIndex((block) => block.type === "text");
-  if (index === -1) return [{ type: "text", text: content }, ...next];
-  const block = next[index];
-  if (!block || block.type !== "text") return next;
-  next[index] = { ...block, text: content };
-  return next;
 }

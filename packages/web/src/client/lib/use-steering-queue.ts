@@ -228,5 +228,5 @@ export function useSteeringQueue({
 }
 
 function createClientSteerId(): string {
-  return `steer-${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
+  return `steer-${globalThis.crypto.randomUUID()}`;
 }

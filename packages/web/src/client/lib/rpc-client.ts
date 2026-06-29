@@ -50,7 +50,6 @@ interface PendingRequest {
 interface PendingServerRequest {
   method: DiligentServerRequest["method"];
   response?: DiligentServerRequestResponse;
-  retryId?: ReturnType<typeof setInterval>;
 }
 
 export class WebRpcClient {
@@ -63,6 +62,7 @@ export class WebRpcClient {
 
   private readonly activeSubscriptions = new Map<string, string>(); // subscriptionId → threadId
   private readonly pendingServerRequests = new Map<number, PendingServerRequest>();
+  private serverResponseRetryId: ReturnType<typeof setInterval> | null = null;
 
   private connectionListener: ((state: ConnectionState) => void) | null = null;
   private notificationListener: ((notification: DiligentServerNotification) => void) | null = null;
@@ -183,13 +183,8 @@ export class WebRpcClient {
   respondServerRequest(id: number, response: DiligentServerRequestResponse): void {
     const pending = this.pendingServerRequests.get(id) ?? { method: response.method };
     pending.response = response;
-    if (!pending.retryId) {
-      pending.retryId = setInterval(() => {
-        const current = this.pendingServerRequests.get(id);
-        if (current?.response) this.sendServerResponse(id, current.response);
-      }, SERVER_RESPONSE_RETRY_MS);
-    }
     this.pendingServerRequests.set(id, pending);
+    this.ensureServerResponseRetry();
     this.sendServerResponse(id, response);
   }
 
@@ -284,8 +279,19 @@ export class WebRpcClient {
     try {
       this.ws.send(JSON.stringify(payload));
     } catch {
-      // Retry loop will try again if the socket recovers.
+      // Retry loop will try again.
     }
+  }
+
+  private ensureServerResponseRetry(): void {
+    if (this.serverResponseRetryId) return;
+    this.serverResponseRetryId = setInterval(() => this.sendPendingServerResponses(), SERVER_RESPONSE_RETRY_MS);
+  }
+
+  private stopServerResponseRetry(): void {
+    if (!this.serverResponseRetryId) return;
+    clearInterval(this.serverResponseRetryId);
+    this.serverResponseRetryId = null;
   }
 
   private handleMessage(raw: unknown): void {
@@ -386,15 +392,15 @@ export class WebRpcClient {
   }
 
   private clearPendingServerRequest(id: number): void {
-    const pending = this.pendingServerRequests.get(id);
-    if (pending?.retryId) clearInterval(pending.retryId);
     this.pendingServerRequests.delete(id);
+    if (![...this.pendingServerRequests.values()].some((pending) => pending.response)) {
+      this.stopServerResponseRetry();
+    }
   }
 
   private clearPendingServerRequests(): void {
-    for (const id of this.pendingServerRequests.keys()) {
-      this.clearPendingServerRequest(id);
-    }
+    this.pendingServerRequests.clear();
+    this.stopServerResponseRetry();
   }
 
   private resubscribeAll(): void {

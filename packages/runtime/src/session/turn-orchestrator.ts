@@ -7,8 +7,9 @@ import {
   type QueuedSteeringMessage,
   selectForCompaction,
   toSerializableError,
+  updateUserMessageContent,
 } from "@diligent/core/agent";
-import type { Message, UserMessage } from "@diligent/core/types";
+import type { Message } from "@diligent/core/types";
 import type { PendingSteer } from "@diligent/protocol";
 import type { AgentEvent } from "../agent-event";
 import { calculateUsageCost } from "../cost";
@@ -386,17 +387,6 @@ export class TurnOrchestrator {
   private resolveAgent(): Agent | Promise<Agent> {
     return typeof this.ctx.config.agent === "function" ? this.ctx.config.agent() : this.ctx.config.agent;
   }
-}
-
-function updateUserMessageContent(current: UserMessage["content"], content: string): UserMessage["content"] {
-  if (typeof current === "string") return content;
-  const next = [...current];
-  const index = next.findIndex((block) => block.type === "text");
-  if (index === -1) return [{ type: "text", text: content }, ...next];
-  const block = next[index];
-  if (!block || block.type !== "text") return next;
-  next[index] = { ...block, text: content };
-  return next;
 }
 
 function getUserMessageText(message: Message): string | undefined {

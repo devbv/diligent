@@ -38,20 +38,17 @@ export class AppRuntimeState {
   }
 
   consumePendingSteersByIds(ids: string[]): string[] {
-    const consumed: string[] = [];
-    for (const id of ids) {
-      const index = this.pendingSteers.findIndex((steer) => steer.id === id);
-      if (index === -1) continue;
-      const [steer] = this.pendingSteers.splice(index, 1);
-      if (steer) consumed.push(steer.content);
-    }
-    return consumed;
+    return this.consumePendingSteersBy(ids, (steer) => steer.id);
   }
 
   consumePendingSteersByText(texts: string[]): string[] {
+    return this.consumePendingSteersBy(texts, (steer) => steer.content);
+  }
+
+  private consumePendingSteersBy(values: string[], getValue: (steer: PendingSteer) => string): string[] {
     const consumed: string[] = [];
-    for (const text of texts) {
-      const index = this.pendingSteers.findIndex((steer) => steer.content === text);
+    for (const value of values) {
+      const index = this.pendingSteers.findIndex((steer) => getValue(steer) === value);
       if (index === -1) continue;
       const [steer] = this.pendingSteers.splice(index, 1);
       if (steer) consumed.push(steer.content);
