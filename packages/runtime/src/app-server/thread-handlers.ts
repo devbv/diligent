@@ -238,4 +238,3 @@ export async function handleEffortSet(
   runtime.manager.appendEffortChange(effort, "command");
   return { effort };
 }
-

@@ -1,13 +1,9 @@
 // @summary Session management request handlers: thread list, resume, and delete
 
+import { DILIGENT_SERVER_NOTIFICATION_METHODS, type SessionSummary, type ThinkingEffort } from "../protocol/index";
 import { buildSessionContext } from "../session/context-builder";
 import { deleteSession, listSessions, readSessionFile } from "../session/persistence";
 import { generateSessionId } from "../session/types";
-import {
-  DILIGENT_SERVER_NOTIFICATION_METHODS,
-  type SessionSummary,
-  type ThinkingEffort,
-} from "../protocol/index";
 import type { ThreadHandlersContext, ThreadRuntime } from "./thread-handlers";
 
 export async function handleThreadResume(

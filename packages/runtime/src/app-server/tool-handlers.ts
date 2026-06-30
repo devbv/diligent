@@ -2,11 +2,7 @@
 
 import type { DiligentConfig } from "../config/schema";
 import { getGlobalConfigPath, writeGlobalToolsConfig } from "../config/writer";
-import {
-  type PluginDescriptor,
-  type ToolConflictPolicy,
-  type ToolDescriptor,
-} from "../protocol/index";
+import type { PluginDescriptor, ToolConflictPolicy, ToolDescriptor } from "../protocol/index";
 import { buildDefaultTools } from "../tools/defaults";
 import type { ThreadHandlersContext } from "./thread-handlers";
 

@@ -5,7 +5,6 @@ import { resolveModel } from "@diligent/core/llm/models";
 import { runCombinedHooks } from "../hooks/runner";
 import {
   DILIGENT_SERVER_NOTIFICATION_METHODS,
-  type DiligentServerNotification,
   type SupportedImageMediaType,
   type TurnStartParams,
   type UserMessage,
