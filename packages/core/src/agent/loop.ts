@@ -89,8 +89,8 @@ export async function runAgentLoop(
       }
 
       let retriedAfterContextOverflow = false;
-      let assistantMessage: AssistantMessage;
-      while (true) {
+      let assistantMessage: AssistantMessage | undefined;
+      for (let attempt = 0; attempt < 2; attempt++) {
         try {
           assistantMessage = await streamAssistantMessage(
             conversation,
@@ -101,18 +101,14 @@ export async function runAgentLoop(
           );
           break;
         } catch (err) {
-          const canRetryWithCompaction =
-            err instanceof ProviderError &&
-            err.errorType === "context_overflow" &&
-            !retriedAfterContextOverflow &&
-            loopRequest.config.compaction !== undefined;
-          if (!canRetryWithCompaction) {
-            throw err;
-          }
-          console.log("[agent:compaction] forced after context_overflow");
-          await applyCompaction(conversation, loopRequest, stream);
+          if (!isContextOverflowError(err) || retriedAfterContextOverflow) throw err;
+          const compacted = await compactAfterContextOverflow(conversation, loopRequest, stream);
+          if (!compacted) throw err;
           retriedAfterContextOverflow = true;
         }
+      }
+      if (!assistantMessage) {
+        throw new Error("Assistant message was not produced");
       }
       conversation.push(assistantMessage);
 
@@ -160,6 +156,10 @@ export async function runAgentLoop(
   return { messages: conversation, compactionSummary: loopRequest.compactionSummary };
 }
 
+function isContextOverflowError(err: unknown): err is ProviderError {
+  return err instanceof ProviderError && err.errorType === "context_overflow";
+}
+
 async function compactIfNeeded(messages: Message[], request: LoopRequest, stream: AgentStream): Promise<void> {
   const config = request.config.compaction;
   if (!config) {
@@ -174,6 +174,17 @@ async function compactIfNeeded(messages: Message[], request: LoopRequest, stream
   );
 
   await applyCompaction(messages, request, stream);
+}
+
+async function compactAfterContextOverflow(
+  messages: Message[],
+  request: LoopRequest,
+  stream: AgentStream,
+): Promise<boolean> {
+  if (!request.config.compaction) return false;
+  console.log("[agent:compaction] forced after context_overflow");
+  await applyCompaction(messages, request, stream);
+  return true;
 }
 
 async function applyCompaction(messages: Message[], request: LoopRequest, stream: AgentStream): Promise<void> {
