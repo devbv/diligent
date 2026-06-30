@@ -5,6 +5,7 @@ import { CONSENT_NOTICE_VERSION } from "@diligent/protocol";
 import {
   applyConsentPatch,
   PRIVACY_POLICY_BASE_URL,
+  PRIVACY_POLICY_CACHE_TTL_MS,
   refreshPrivacyPolicyUrl,
   resetPrivacyPolicyUrlCache,
   resolveConsentState,
@@ -101,5 +102,31 @@ describe("refreshPrivacyPolicyUrl", () => {
     }) as unknown as typeof fetch;
 
     expect(await refreshPrivacyPolicyUrl()).toBe(PRIVACY_POLICY_BASE_URL);
+  });
+
+  it("returns cached URL within TTL without re-fetching", async () => {
+    let fetchCount = 0;
+    globalThis.fetch = mock(async () => {
+      fetchCount++;
+      return new Response(JSON.stringify({ latestVersion: "2026-01-12" }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const t0 = Date.now();
+    await refreshPrivacyPolicyUrl(t0);
+    await refreshPrivacyPolicyUrl(t0 + PRIVACY_POLICY_CACHE_TTL_MS - 1);
+    expect(fetchCount).toBe(1);
+  });
+
+  it("re-fetches after the TTL expires", async () => {
+    let fetchCount = 0;
+    globalThis.fetch = mock(async () => {
+      fetchCount++;
+      return new Response(JSON.stringify({ latestVersion: "2026-01-12" }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const t0 = Date.now();
+    await refreshPrivacyPolicyUrl(t0);
+    await refreshPrivacyPolicyUrl(t0 + PRIVACY_POLICY_CACHE_TTL_MS);
+    expect(fetchCount).toBe(2);
   });
 });
