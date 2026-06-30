@@ -1,32 +1,23 @@
-// @summary Consolidated app state hook: thread reducer, UI state, sub-hooks, and derived callbacks
-import type {
-  ConsentSetParams,
-  ConsentState,
-  KnowledgeEntry,
-  KnowledgeUpdateParams,
-  SkillInfo,
-  ThinkingEffort,
-  ThreadReadResponse,
-  ToolsListResponse,
-  ToolsSetParams,
-  ToolsSetResponse,
-} from "@diligent/protocol";
-import { DILIGENT_CLIENT_REQUEST_METHODS, DILIGENT_SERVER_REQUEST_METHODS } from "@diligent/protocol";
+// @summary Composition hook: assembles consent, notification, modal, and thread state sub-hooks
+import type { SkillInfo, ThinkingEffort, ThreadReadResponse } from "@diligent/protocol";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { AgentContextItem } from "./agent-native-bridge";
 import { APP_PROJECT_NAME } from "./app-config";
 import { appReducer, type PendingImage } from "./app-state";
 import { getThreadIdFromUrl } from "./app-utils";
-import { createDesktopNotificationController, readDesktopNotificationsEnabled } from "./desktop-notification";
 import { supportsThinkingNone } from "./model-thinking-helpers";
 import { buildCommandList } from "./slash-commands";
 import { initialThreadState } from "./thread-store";
 import { useAppActions } from "./use-app-actions";
 import { useAppBootstrap, useAppRpcBindings } from "./use-app-lifecycle";
+import { useConsentState } from "./use-consent-state";
+import { useModalState } from "./use-modal-state";
+import { useNotificationState } from "./use-notification-state";
 import type { useProviderManager } from "./use-provider-manager";
 import type { useRpcClient } from "./use-rpc";
 import { useServerRequests } from "./use-server-requests";
 import { useSteeringQueue } from "./use-steering-queue";
+import { useThreadData } from "./use-thread-data";
 import { clearDraftThreadInput, DRAFT_INPUT_KEY, useThreadManager } from "./use-thread-manager";
 
 type RpcClientResult = ReturnType<typeof useRpcClient>;
@@ -63,53 +54,23 @@ export function useAppState({
   const [isUploadingImages, setIsUploadingImages] = useState(false);
   const [showImageUploadIndicator, setShowImageUploadIndicator] = useState(false);
   const [effort, setEffortState] = useState<ThinkingEffort>("medium");
-  const [showProviderModal, setShowProviderModal] = useState(false);
-  const [showToolModal, setShowToolModal] = useState(false);
-  const [showKnowledgeModal, setShowKnowledgeModal] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [focusedProvider, setFocusedProvider] = useState<string | null>(null);
-  const [oauthPending, setOauthPending] = useState(false);
-  const [oauthError, setOauthError] = useState<string | null>(null);
-  const [attentionThreadIds, setAttentionThreadIds] = useState<Set<string>>(new Set());
   const [skills, setSkills] = useState<SkillInfo[]>([]);
   const [runtimeVersion, setRuntimeVersion] = useState<string>("");
-  const [consent, setConsent] = useState<ConsentState | null>(null);
   const childThreadCacheRef = useRef<Map<string, ThreadReadResponse>>(new Map());
-  const desktopNotificationsRef = useRef(createDesktopNotificationController());
-  const [desktopNotificationsEnabled, setDesktopNotificationsEnabled] = useState(() =>
-    readDesktopNotificationsEnabled(),
-  );
+  const threadData = useThreadData({ rpcRef, state, childThreadCacheRef });
+
+  const consentState = useConsentState({ rpcRef });
+  const modalState = useModalState({ providerMgr });
+  const notificationState = useNotificationState();
 
   const slashCommands = useMemo(() => buildCommandList(skills), [skills]);
-
-  const markAttention = useCallback((threadId: string) => {
-    setAttentionThreadIds((prev) => {
-      if (prev.has(threadId)) return prev;
-      const next = new Set(prev);
-      next.add(threadId);
-      return next;
-    });
-  }, []);
-
-  const clearAttention = useCallback((threadId: string) => {
-    setAttentionThreadIds((prev) => {
-      if (!prev.has(threadId)) return prev;
-      const next = new Set(prev);
-      next.delete(threadId);
-      return next;
-    });
-  }, []);
-
-  const closeModals = useCallback(() => {
-    setShowKnowledgeModal(false);
-    setShowToolModal(false);
-  }, []);
 
   const serverRequests = useServerRequests(
     rpcRef,
     activeThreadIdRef,
-    markAttention,
-    (requestId, request) => void desktopNotificationsRef.current.notifyForServerRequest(requestId, request),
+    notificationState.markAttention,
+    (requestId, request) =>
+      void notificationState.desktopNotificationsRef.current.notifyForServerRequest(requestId, request),
   );
 
   activeThreadIdRef.current = state.activeThreadId;
@@ -123,32 +84,16 @@ export function useAppState({
     resetDraftModel: providerMgr.resetDraftModel,
     setEffortState,
     activateThreadPrompts: serverRequests.activateThread,
-    clearAttention,
-    closeModals,
+    clearAttention: notificationState.clearAttention,
+    closeModals: modalState.closeModals,
   });
 
-  const loadChildThread = useCallback(
-    async (childThreadId: string): Promise<ThreadReadResponse> => {
-      const cached = childThreadCacheRef.current.get(childThreadId);
-      if (cached) return cached;
-      const rpc = rpcRef.current;
-      if (!rpc) throw new Error("WebSocket is not connected");
-      const response = await rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.THREAD_READ, { threadId: childThreadId });
-      childThreadCacheRef.current.set(childThreadId, response);
-      return response;
-    },
-    [rpcRef],
-  );
-
   useEffect(() => {
-    desktopNotificationsRef.current.setEnabled(desktopNotificationsEnabled);
-  }, [desktopNotificationsEnabled]);
-
-  useEffect(() => {
+    const { desktopNotificationsRef } = notificationState;
     void desktopNotificationsRef.current.attachActionHandler((threadId) => {
       void threadMgr.openThread(threadId);
     });
-  }, [threadMgr.openThread]);
+  }, [threadMgr.openThread, notificationState]);
 
   useEffect(() => {
     const handlePopState = () => {
@@ -255,17 +200,17 @@ export function useAppState({
     refreshThreadList: threadMgr.refreshThreadList,
     onAccountLoginCompleted: providerMgr.onAccountLoginCompleted,
     onAccountUpdated: providerMgr.onAccountUpdated,
-    markAttention,
+    markAttention: notificationState.markAttention,
     onBackgroundNotification: (notification) =>
-      void desktopNotificationsRef.current.notifyForNotification(notification),
+      void notificationState.desktopNotificationsRef.current.notifyForNotification(notification),
     handleServerRequest: serverRequests.handleServerRequest,
     steering: {
       pendingAbortRestartMessageRef: steeringQueue.pendingAbortRestartMessageRef,
       suppressNextSteeringInjectedRef: steeringQueue.suppressNextSteeringInjectedRef,
       restartFromPendingAbortSteer: steeringQueue.restartFromPendingAbortSteer,
     },
-    setOauthPending,
-    setOauthError,
+    setOauthPending: modalState.setOauthPending,
+    setOauthError: modalState.setOauthError,
   });
 
   useAppBootstrap({
@@ -277,22 +222,12 @@ export function useAppState({
     setEffortState,
     setSkills,
     setRuntimeVersion,
-    setConsent,
+    setConsent: consentState.setConsent,
     setInitialModel: providerMgr.setInitialModel,
     applySessionModel: providerMgr.applySessionModel,
     refreshThreadList: threadMgr.refreshThreadList,
     refreshProviders: providerMgr.refreshProviders,
   });
-
-  const updateConsent = useCallback(
-    async (patch: ConsentSetParams) => {
-      const rpc = rpcRef.current;
-      if (!rpc) return;
-      const next = await rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.CONSENT_SET, patch);
-      setConsent(next);
-    },
-    [rpcRef],
-  );
 
   const currentModelInfo = providerMgr.availableModels.find((m) => m.id === providerMgr.currentModel);
   const supportsVision = currentModelInfo?.supportsVision === true;
@@ -342,47 +277,6 @@ export function useAppState({
     setEffortState("medium");
   }, [effort, currentModelInfo]);
 
-  const listTools = useCallback(async (): Promise<ToolsListResponse> => {
-    const rpc = rpcRef.current;
-    if (!rpc) throw new Error("WebSocket is not connected");
-    return rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.TOOLS_LIST, {
-      threadId: state.activeThreadId ?? undefined,
-    });
-  }, [rpcRef, state.activeThreadId]);
-
-  const saveTools = useCallback(
-    async (params: ToolsSetParams): Promise<ToolsSetResponse> => {
-      const rpc = rpcRef.current;
-      if (!rpc) throw new Error("WebSocket is not connected");
-      return rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.TOOLS_SET, params);
-    },
-    [rpcRef],
-  );
-
-  const listKnowledge = useCallback(
-    async (threadId?: string): Promise<{ data: KnowledgeEntry[] }> => {
-      const rpc = rpcRef.current;
-      if (!rpc) throw new Error("WebSocket is not connected");
-      return rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.KNOWLEDGE_LIST, { threadId, limit: 500 });
-    },
-    [rpcRef],
-  );
-
-  const updateKnowledge = useCallback(
-    async (params: KnowledgeUpdateParams): Promise<{ entry?: KnowledgeEntry; deleted?: boolean }> => {
-      const rpc = rpcRef.current;
-      if (!rpc) throw new Error("WebSocket is not connected");
-      return rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.KNOWLEDGE_UPDATE, params);
-    },
-    [rpcRef],
-  );
-
-  const threadTitle = useMemo(() => {
-    const active = state.threadList.find((t) => t.id === state.activeThreadId);
-    const raw = active?.firstUserMessage ?? state.items.find((i) => i.kind === "user")?.text ?? "";
-    return raw.length > 40 ? `${raw.slice(0, 40)}…` : raw;
-  }, [state.activeThreadId, state.threadList, state.items]);
-
   const pendingImagePreviews = useMemo(
     () =>
       pendingImages.map((image) => ({
@@ -391,82 +285,6 @@ export function useAppState({
         fileName: image.fileName,
       })),
     [pendingImages],
-  );
-
-  const handleQuestionAnswerChange = useCallback(
-    (id: string, val: string | string[]) => serverRequests.setAnswers((prev) => ({ ...prev, [id]: val })),
-    [serverRequests.setAnswers],
-  );
-  const handleQuestionSubmit = useCallback(
-    () => serverRequests.resolveQuestion(serverRequests.answers),
-    [serverRequests],
-  );
-  const handleQuestionCancel = useCallback(
-    () => serverRequests.resolveQuestion({}, { allowIncomplete: true }),
-    [serverRequests],
-  );
-  const handleOpenProviders = useCallback(() => {
-    setFocusedProvider(null);
-    setShowProviderModal(true);
-  }, []);
-  const handleQuickConnectChatGPT = useCallback(() => {
-    setOauthPending(true);
-    setOauthError(null);
-    void providerMgr.handleOAuthStart("chatgpt").catch((error) => {
-      setOauthPending(false);
-      setOauthError(error instanceof Error ? error.message : "Failed to start OAuth");
-      setFocusedProvider("chatgpt");
-      setShowProviderModal(true);
-    });
-  }, [providerMgr]);
-  const handleProviderModalClose = useCallback(() => {
-    setShowProviderModal(false);
-    setFocusedProvider(null);
-    setOauthError(null);
-  }, []);
-  const handleProviderOAuthStart = useCallback(
-    async (provider: string): Promise<{ authUrl: string }> => {
-      setOauthPending(true);
-      setOauthError(null);
-      const result = await providerMgr.handleOAuthStart(provider);
-      return result;
-    },
-    [providerMgr],
-  );
-  const handleProviderOAuthCancel = useCallback(
-    async (provider: string): Promise<void> => {
-      await providerMgr.handleOAuthCancel(provider);
-    },
-    [providerMgr],
-  );
-  const approvalPrompt = useMemo(
-    () =>
-      serverRequests.approvalPrompt?.request.method === DILIGENT_SERVER_REQUEST_METHODS.APPROVAL_REQUEST
-        ? {
-            request: serverRequests.approvalPrompt.request.params.request,
-            onDecide: serverRequests.resolveApproval,
-          }
-        : null,
-    [serverRequests.approvalPrompt, serverRequests.resolveApproval],
-  );
-  const questionPrompt = useMemo(
-    () =>
-      serverRequests.questionPrompt
-        ? {
-            request: serverRequests.questionPrompt.request,
-            answers: serverRequests.answers,
-            onAnswerChange: handleQuestionAnswerChange,
-            onSubmit: handleQuestionSubmit,
-            onCancel: handleQuestionCancel,
-          }
-        : null,
-    [
-      serverRequests.questionPrompt,
-      serverRequests.answers,
-      handleQuestionAnswerChange,
-      handleQuestionSubmit,
-      handleQuestionCancel,
-    ],
   );
 
   return {
@@ -486,30 +304,16 @@ export function useAppState({
     setShowImageUploadIndicator,
     effort,
     setEffortState,
-    showProviderModal,
-    setShowProviderModal,
-    showToolModal,
-    setShowToolModal,
-    showKnowledgeModal,
-    setShowKnowledgeModal,
-    sidebarOpen,
-    setSidebarOpen,
-    focusedProvider,
-    setFocusedProvider,
-    oauthPending,
-    setOauthPending,
-    oauthError,
-    setOauthError,
-    attentionThreadIds,
+    ...modalState,
+    attentionThreadIds: notificationState.attentionThreadIds,
     skills,
     setSkills,
     runtimeVersion,
     setRuntimeVersion,
-    consent,
-    updateConsent,
-    desktopNotificationsEnabled,
-    setDesktopNotificationsEnabled,
-    desktopNotificationsRef,
+    ...consentState,
+    desktopNotificationsEnabled: notificationState.desktopNotificationsEnabled,
+    setDesktopNotificationsEnabled: notificationState.setDesktopNotificationsEnabled,
+    desktopNotificationsRef: notificationState.desktopNotificationsRef,
     childThreadCacheRef,
     slashCommands,
     isBusy,
@@ -527,26 +331,18 @@ export function useAppState({
     supportsVision,
     supportsThinking,
     currentModelInfo,
-    threadTitle,
+    threadTitle: threadData.threadTitle,
     pendingImagePreviews,
     threadMgr,
     serverRequests,
     steeringQueue,
     actions,
-    listTools,
-    saveTools,
-    listKnowledge,
-    updateKnowledge,
-    handleQuestionAnswerChange,
-    handleQuestionSubmit,
-    handleQuestionCancel,
-    handleOpenProviders,
-    handleQuickConnectChatGPT,
-    handleProviderModalClose,
-    handleProviderOAuthStart,
-    handleProviderOAuthCancel,
-    approvalPrompt,
-    questionPrompt,
-    loadChildThread,
+    listTools: threadData.listTools,
+    saveTools: threadData.saveTools,
+    listKnowledge: threadData.listKnowledge,
+    updateKnowledge: threadData.updateKnowledge,
+    approvalPrompt: serverRequests.approvalPrompt,
+    questionPrompt: serverRequests.questionPrompt,
+    loadChildThread: threadData.loadChildThread,
   };
 }

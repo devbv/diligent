@@ -7,7 +7,7 @@ import type {
 } from "@diligent/protocol";
 import { DILIGENT_SERVER_NOTIFICATION_METHODS, DILIGENT_SERVER_REQUEST_METHODS } from "@diligent/protocol";
 import type { RefObject } from "react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { WebRpcClient } from "./rpc-client";
 import { isUserInputComplete, type UserInputAnswers } from "./user-input-completeness";
 
@@ -195,9 +195,31 @@ export function useServerRequests(
     [shelveActivePrompts],
   );
 
+  const presentationApprovalPrompt = useMemo(
+    () =>
+      approvalPrompt?.request.method === DILIGENT_SERVER_REQUEST_METHODS.APPROVAL_REQUEST
+        ? { request: approvalPrompt.request.params.request, onDecide: resolveApproval }
+        : null,
+    [approvalPrompt, resolveApproval],
+  );
+
+  const presentationQuestionPrompt = useMemo(
+    () =>
+      questionPrompt
+        ? {
+            request: questionPrompt.request,
+            answers,
+            onAnswerChange: (id: string, val: string | string[]) => setAnswers((prev) => ({ ...prev, [id]: val })),
+            onSubmit: () => resolveQuestion(answers),
+            onCancel: () => resolveQuestion({}, { allowIncomplete: true }),
+          }
+        : null,
+    [questionPrompt, answers, resolveQuestion],
+  );
+
   return {
-    approvalPrompt,
-    questionPrompt,
+    approvalPrompt: presentationApprovalPrompt,
+    questionPrompt: presentationQuestionPrompt,
     answers,
     setAnswers,
     handleServerRequest,
