@@ -152,6 +152,58 @@ test("set_threads hides empty pre-message conversations", () => {
   expect(next.threadList.map((thread) => thread.id)).toEqual(["active-thread"]);
 });
 
+test("set_threads dedupes duplicate server thread ids", () => {
+  const next = appReducer(initialThreadState, {
+    type: "set_threads",
+    payload: [
+      {
+        id: "same-thread",
+        path: "/repo/.diligent/sessions/same-thread.jsonl",
+        cwd: "/repo",
+        created: "2026-01-01T00:00:00.000Z",
+        modified: "2026-01-03T00:00:00.000Z",
+        messageCount: 3,
+        firstUserMessage: "newer copy",
+      },
+      {
+        id: "same-thread",
+        path: "/repo/.diligent/sessions/same-thread.jsonl",
+        cwd: "/repo",
+        created: "2026-01-01T00:00:00.000Z",
+        modified: "2026-01-02T00:00:00.000Z",
+        messageCount: 2,
+        firstUserMessage: "older copy",
+      },
+    ],
+  });
+
+  expect(next.threadList.map((thread) => thread.id)).toEqual(["same-thread"]);
+  expect(next.threadList[0]?.firstUserMessage).toBe("newer copy");
+});
+
+test("set_threads dedupes duplicate optimistic drafts", () => {
+  const optimisticDraft = {
+    id: "draft-thread",
+    path: "",
+    cwd: "",
+    created: "2026-01-01T00:00:00.000Z",
+    modified: "2026-01-01T00:00:00.000Z",
+    messageCount: 1,
+    firstUserMessage: "draft message",
+  };
+  const seeded = {
+    ...initialThreadState,
+    threadList: [optimisticDraft, { ...optimisticDraft }],
+  };
+
+  const next = appReducer(seeded, {
+    type: "set_threads",
+    payload: [],
+  });
+
+  expect(next.threadList.map((thread) => thread.id)).toEqual(["draft-thread"]);
+});
+
 test("optimistic_thread prepends a new thread when absent", () => {
   const next = appReducer(initialThreadState, {
     type: "optimistic_thread",

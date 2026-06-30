@@ -33,6 +33,17 @@ export type AppAction =
   | { type: "clear_toast" }
   | { type: "compaction_error" };
 
+function dedupeThreadsById(threads: SessionSummary[]): SessionSummary[] {
+  const seen = new Set<string>();
+  const deduped: SessionSummary[] = [];
+  for (const thread of threads) {
+    if (seen.has(thread.id)) continue;
+    seen.add(thread.id);
+    deduped.push(thread);
+  }
+  return deduped;
+}
+
 export function appReducer(state: ThreadState, action: AppAction): ThreadState {
   const isDraftOptimisticThread = (thread: SessionSummary): boolean =>
     thread.path.length === 0 && thread.cwd.length === 0 && thread.messageCount <= 1 && Boolean(thread.firstUserMessage);
@@ -76,8 +87,9 @@ export function appReducer(state: ThreadState, action: AppAction): ThreadState {
           : t,
       )
       .filter(isVisibleThread);
+    const dedupedMerged = dedupeThreadsById(merged);
     const missingOptimistic = state.threadList.filter((t) => isDraftOptimisticThread(t) && !serverThreadIds.has(t.id));
-    return { ...state, threadList: [...missingOptimistic, ...merged] };
+    return { ...state, threadList: dedupeThreadsById([...missingOptimistic, ...dedupedMerged]) };
   }
   if (action.type === "local_user") {
     const text = action.payload.text;

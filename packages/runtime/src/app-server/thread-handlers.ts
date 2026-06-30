@@ -88,6 +88,17 @@ const BUILTIN_COMMAND_NAMES = new Set([
   "skills",
 ]);
 
+function dedupeSessionSummariesById(summaries: SessionSummary[]): SessionSummary[] {
+  const seen = new Set<string>();
+  const deduped: SessionSummary[] = [];
+  for (const summary of summaries) {
+    if (seen.has(summary.id)) continue;
+    seen.add(summary.id);
+    deduped.push(summary);
+  }
+  return deduped;
+}
+
 function parseSlashSkillInvocation(
   message: string,
   skillNames: Set<string>,
@@ -237,7 +248,7 @@ export async function handleThreadList(
 
   const filtered = includeChildren ? result : result.filter((s) => !s.parentSession);
   filtered.sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime());
-  return { data: filtered.slice(0, limit ?? 100) };
+  return { data: dedupeSessionSummariesById(filtered).slice(0, limit ?? 100) };
 }
 
 export async function handleThreadRead(
