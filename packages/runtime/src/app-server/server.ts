@@ -56,12 +56,8 @@ import {
   requestApprovalFromConnections,
   requestUserInputFromConnections,
 } from "./server-requests";
-import {
-  getLatestEffortFromSessions,
-  getLatestModelFromSessions,
-  resetTurnRuntimeState,
-  type ThreadRuntime,
-} from "./thread-handlers";
+import { getLatestEffortFromSessions, getLatestModelFromSessions } from "./session-handlers";
+import { resetTurnRuntimeState, type ThreadRuntime } from "./thread-handlers";
 
 export type { ConsentConfigManager } from "./config-handlers";
 export type { ConnectedPeer, ModelConfig, ToolConfigManager } from "./request-dispatcher";
