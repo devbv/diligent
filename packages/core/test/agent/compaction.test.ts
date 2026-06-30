@@ -8,6 +8,7 @@ import type { Message, UserMessage } from "@diligent/core/types";
 import {
   buildMessagesFromCompaction,
   estimateTokens,
+  getCompactionDecision,
   runCompaction,
   selectForCompaction,
   shouldCompact,
@@ -158,6 +159,25 @@ describe("shouldCompact", () => {
     // threshold = 200000 - floor(200000 * 0.16) = 200000 - 32000 = 168000
     expect(shouldCompact(msgsWithTokens(168_000), 200_000, RESERVE_PERCENT)).toBe(false);
     expect(shouldCompact(msgsWithTokens(168_001), 200_000, RESERVE_PERCENT)).toBe(true);
+  });
+
+  it("uses the latest non-zero assistant usage", () => {
+    const highUsage = assistantMsg("previous provider usage") as Extract<Message, { role: "assistant" }>;
+    highUsage.usage = { inputTokens: 90_000, outputTokens: 1_000, cacheReadTokens: 0, cacheWriteTokens: 0 };
+    const zeroUsageThinking: Message = {
+      role: "assistant",
+      content: [{ type: "thinking", thinking: "no visible output" }],
+      model: "test",
+      usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+      stopReason: "end_turn",
+      timestamp: Date.now(),
+    };
+
+    const decision = getCompactionDecision([userMsg("small"), highUsage, zeroUsageThinking], 100_000, 20);
+
+    expect(decision.source).toBe("assistant_usage");
+    expect(decision.estimatedTokens).toBe(91_000);
+    expect(decision.shouldCompact).toBe(true);
   });
 });
 

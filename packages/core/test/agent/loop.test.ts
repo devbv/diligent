@@ -4,6 +4,7 @@ import { z } from "zod";
 import { Agent } from "../../src/agent/agent";
 import type { CoreAgentEvent } from "../../src/agent/types";
 import { EventStream } from "../../src/event-stream";
+import { NATIVE_COMPACTION_MIN_INPUT_TOKENS } from "../../src/llm/compaction";
 import type { NativeCompactFn, NativeCompactionInput } from "../../src/llm/provider/native-compaction";
 import type {
   Model,
@@ -13,6 +14,7 @@ import type {
   StreamFunction,
   StreamOptions,
 } from "../../src/llm/types";
+import { ProviderError } from "../../src/llm/types";
 import type { Tool } from "../../src/tool/types";
 import type { AssistantMessage, Message } from "../../src/types";
 
@@ -446,5 +448,98 @@ describe("Agent compactionSummary persistence", () => {
     const summaryAfterSecond = (agent as unknown as { compactionSummary?: Record<string, unknown> }).compactionSummary;
 
     expect(summaryAfterSecond).toEqual(compactionSummary);
+  });
+});
+
+describe("Agent context overflow compaction", () => {
+  function createContextOverflowStream(
+    failuresBeforeSuccess: number,
+  ): StreamFunction & { callCount: () => number; contexts: StreamContext[] } {
+    let calls = 0;
+    const contexts: StreamContext[] = [];
+    const streamFn: StreamFunction = (_model, context, _options) => {
+      calls++;
+      contexts.push(context);
+      const stream = new EventStream<ProviderEvent, ProviderResult>(
+        (event) => event.type === "done" || event.type === "error",
+        (event) => {
+          if (event.type === "done") return { message: event.message };
+          throw (event as { type: "error"; error: Error }).error;
+        },
+      );
+      stream.result().catch(() => {});
+
+      setTimeout(() => {
+        stream.push({ type: "start" });
+        if (calls <= failuresBeforeSuccess) {
+          stream.push({
+            type: "error",
+            error: new ProviderError("Context overflow", "context_overflow", false),
+          });
+          return;
+        }
+        const message = makeAssistant([{ type: "text", text: "recovered" }]);
+        stream.push({ type: "done", stopReason: "end_turn", message });
+      }, 0);
+
+      return stream;
+    };
+
+    return Object.assign(streamFn, { callCount: () => calls, contexts });
+  }
+
+  test("forces compaction and retries once on provider context_overflow", async () => {
+    let compactCalls = 0;
+    const nativeCompactFn: NativeCompactFn = async (_input: NativeCompactionInput) => {
+      compactCalls++;
+      return { status: "ok", summary: "forced summary" };
+    };
+    const streamFn = createContextOverflowStream(1);
+    const agent = new Agent(TEST_MODEL, [{ label: "sys", content: "sys" }], [], {
+      effort: "medium",
+      llmMsgStreamFn: streamFn,
+      llmCompactionFn: nativeCompactFn,
+    });
+
+    const result = await agent.prompt({
+      role: "user",
+      content: "x".repeat(NATIVE_COMPACTION_MIN_INPUT_TOKENS * 4),
+      timestamp: Date.now(),
+    });
+
+    expect(streamFn.callCount()).toBe(2);
+    expect(compactCalls).toBe(1);
+    expect(result.at(-1)?.role).toBe("assistant");
+    expect(
+      streamFn.contexts[1].messages.some(
+        (message) =>
+          message.role === "user" && typeof message.content === "string" && message.content.includes("forced summary"),
+      ),
+    ).toBe(true);
+  });
+
+  test("does not force compaction more than once for one sampling turn", async () => {
+    let compactCalls = 0;
+    const nativeCompactFn: NativeCompactFn = async (_input: NativeCompactionInput) => {
+      compactCalls++;
+      return { status: "ok", summary: "forced summary" };
+    };
+    const streamFn = createContextOverflowStream(2);
+    const agent = new Agent(TEST_MODEL, [{ label: "sys", content: "sys" }], [], {
+      effort: "medium",
+      llmMsgStreamFn: streamFn,
+      llmCompactionFn: nativeCompactFn,
+    });
+
+    await expect(
+      agent.prompt({
+        role: "user",
+        content: "x".repeat(NATIVE_COMPACTION_MIN_INPUT_TOKENS * 4),
+        timestamp: Date.now(),
+      }),
+    ).rejects.toThrow("Context overflow");
+
+    expect(streamFn.callCount()).toBe(2);
+    expect(compactCalls).toBe(1);
   });
 });

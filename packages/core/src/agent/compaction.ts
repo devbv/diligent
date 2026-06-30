@@ -40,21 +40,21 @@ export interface CompactionDecision {
   source: "assistant_usage" | "estimated_messages";
 }
 
-function getLastAssistantMessage(messages: Message[]): AssistantMessage | undefined {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const message = messages[i];
-    if (message?.role === "assistant") {
-      return message;
-    }
-  }
-  return undefined;
-}
-
 function getAssistantContextWindowUsage(message: AssistantMessage | undefined): number | undefined {
   if (!message) return undefined;
   const usage = message.usage;
   const total = usage.inputTokens + usage.outputTokens + usage.cacheReadTokens + usage.cacheWriteTokens;
-  return Number.isFinite(total) ? total : undefined;
+  return Number.isFinite(total) && total > 0 ? total : undefined;
+}
+
+function getLastAssistantContextWindowUsage(messages: Message[]): number | undefined {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i];
+    if (message?.role !== "assistant") continue;
+    const usage = getAssistantContextWindowUsage(message);
+    if (usage !== undefined) return usage;
+  }
+  return undefined;
 }
 
 export function getCompactionDecision(
@@ -62,7 +62,7 @@ export function getCompactionDecision(
   contextWindow: number,
   reservePercent: number,
 ): CompactionDecision {
-  const assistantUsageTokens = getAssistantContextWindowUsage(getLastAssistantMessage(allMessages));
+  const assistantUsageTokens = getLastAssistantContextWindowUsage(allMessages);
   const messageEstimatedTokens = estimateTokens(allMessages);
   const estimatedTokens =
     assistantUsageTokens !== undefined
