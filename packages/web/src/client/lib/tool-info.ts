@@ -19,6 +19,7 @@ export type ToolIconName =
   | "book"
   | "checklist"
   | "clock"
+  | "database"
   | "edit"
   | "file"
   | "globe"
@@ -177,12 +178,12 @@ const TOOL_MAP: Record<string, ToolInfo> = {
     running: "Sending input",
     failed: "Send failed",
   }),
-  update_knowledge: tool("Knowledge", "sparkles", "action", {
+  update_knowledge: tool("Knowledge", "database", "action", {
     done: "Updated knowledge",
     running: "Updating knowledge",
     failed: "Knowledge update failed",
   }),
-  search_knowledge: tool("Knowledge", "search", "context", {
+  search_knowledge: tool("Knowledge", "database", "context", {
     done: "Searched knowledge",
     running: "Searching knowledge",
     failed: "Knowledge search failed",
@@ -214,9 +215,52 @@ const TOOL_MAP: Record<string, ToolInfo> = {
   }),
 };
 
+function getStudioRpcToolInfo(normalized: string): ToolInfo | null {
+  if (!normalized.startsWith("studiorpc_")) return null;
+
+  if (normalized.includes("script_edit")) {
+    return tool("Studio RPC", "edit", "action", {
+      done: "Edited Studio script",
+      running: "Editing Studio script",
+      failed: "Studio script edit failed",
+    });
+  }
+
+  if (normalized.includes("script_read") || normalized.includes("instance_read")) {
+    return tool("Studio RPC", "file", "context", {
+      done: "Read Studio data",
+      running: "Reading Studio data",
+      failed: "Studio read failed",
+    });
+  }
+
+  if (normalized.includes("grep") || normalized.includes("browse")) {
+    return tool("Studio RPC", "search", "context", {
+      done: "Searched Studio",
+      running: "Searching Studio",
+      failed: "Studio search failed",
+    });
+  }
+
+  if (normalized.includes("edit") || normalized.includes("upsert") || normalized.includes("save")) {
+    return tool("Studio RPC", "edit", "action", {
+      done: "Updated Studio",
+      running: "Updating Studio",
+      failed: "Studio update failed",
+    });
+  }
+
+  return tool("Studio RPC", "terminal", "action", {
+    done: "Ran Studio RPC",
+    running: "Running Studio RPC",
+    failed: "Studio RPC failed",
+  });
+}
+
 export function getToolInfo(toolName: string): ToolInfo {
   const normalized = normalizeToolName(toolName);
   return (
+    getStudioRpcToolInfo(normalized) ??
     TOOL_MAP[normalized] ??
     tool(toolName, "settings", "action", {
       done: toolName,
@@ -230,11 +274,6 @@ export function getToolActivityLabel(toolName: string, status: "streaming" | "do
   const info = getToolInfo(toolName);
   if (isError) return info.activity.failed;
   return status === "streaming" ? info.activity.running : info.activity.done;
-}
-
-export function formatToolDurationMs(durationMs?: number): string | null {
-  if (durationMs === undefined || Number.isNaN(durationMs) || durationMs < 0) return null;
-  return `${Math.round(durationMs)}ms`;
 }
 
 export function parseRequestUserInputTitle(parsed: Record<string, unknown>): string | undefined {

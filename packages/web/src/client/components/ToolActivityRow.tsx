@@ -10,7 +10,6 @@ interface ToolActivityRowProps {
   outputSummary?: string;
   icon: ToolIconName;
   category: ToolInfo["category"];
-  status: "streaming" | "done";
   isError: boolean;
   isBusy: boolean;
   durationLabel?: string | null;
@@ -73,6 +72,14 @@ function ToolIcon({ name, className }: { name: ToolIconName; className?: string 
         <IconSvg className={className}>
           <circle cx="12" cy="12" r="8" />
           <path d="M12 8v4l2.5 2" />
+        </IconSvg>
+      );
+    case "database":
+      return (
+        <IconSvg className={className}>
+          <ellipse cx="12" cy="5.5" rx="7" ry="2.5" />
+          <path d="M5 5.5v6c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5v-6" />
+          <path d="M5 11.5v6c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5v-6" />
         </IconSvg>
       );
     case "edit":
@@ -194,7 +201,6 @@ export function ToolActivityRow({
   outputSummary,
   icon,
   category,
-  status,
   isError,
   isBusy,
   durationLabel,
@@ -207,7 +213,7 @@ export function ToolActivityRow({
   onToggle,
 }: ToolActivityRowProps) {
   const statusLabel = isError ? "Failed" : isBusy ? "running" : null;
-  const showDuration = !statusLabel && status === "done" && durationLabel;
+  const showDuration = !statusLabel && durationLabel;
   const detailText = detail?.trim();
   const outputText = outputSummary?.trim();
   const hasMeta = (expanded || showMeta) && Boolean(detailText || outputText);
@@ -255,7 +261,7 @@ export function ToolActivityRow({
         ) : null}
 
         {showDuration ? (
-          <span className="shrink-0 font-mono text-2xs leading-5 text-muted/60 tabular-nums">{durationLabel}</span>
+          <span className="shrink-0 font-mono text-2xs leading-5 text-muted/55 tabular-nums">{durationLabel}</span>
         ) : null}
 
         {statusLabel ? (

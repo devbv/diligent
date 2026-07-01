@@ -2,24 +2,11 @@
 
 import { useState } from "react";
 import type { RenderItem } from "../lib/thread-store";
-import {
-  AssistantContentBlocks,
-  isRenderableAssistantContentBlock,
-  isToolLikeAssistantContentBlock,
-} from "./AssistantContentBlocks";
+import { formatDurationLabel } from "../lib/time-format";
+import { AssistantContentBlocks, isRenderableAssistantContentBlock } from "./AssistantContentBlocks";
 import { MarkdownContent } from "./MarkdownContent";
 import { ThinkingBlock } from "./ThinkingBlock";
 import { ToolActivityRow } from "./ToolActivityRow";
-
-function formatMs(ms?: number): string | null {
-  if (ms === undefined || ms < 0) return null;
-  if (ms < 1000) return `${ms}ms`;
-  if (ms < 60_000) return `${(ms / 1000).toFixed(1).replace(/\.0$/, "")}s`;
-  const totalSec = Math.floor(ms / 1000);
-  const m = Math.floor(totalSec / 60);
-  const s = totalSec % 60;
-  return `${m}m ${s.toString().padStart(2, "0")}s`;
-}
 
 interface AssistantMessageProps {
   item: Extract<RenderItem, { kind: "assistant" }>;
@@ -131,10 +118,8 @@ function SkillUsageRow({ notice, hasFollowingContent }: { notice: SkillUsageNoti
         title={`Skill used: ${notice.skillName}`}
         icon="book"
         category="context"
-        status="done"
         isError={false}
         isBusy={false}
-        durationLabel={null}
         metaLabel={notice.workArea}
         metaTone="muted"
         expanded={open}
@@ -167,10 +152,7 @@ export function AssistantMessage({ item, suppressThinking = false }: AssistantMe
   const contentBlocks = stripSkillUsageFromContentBlocks(item.contentBlocks, Boolean(skillNotice));
   const renderableContentBlocks = contentBlocks.filter(isRenderableAssistantContentBlock);
   const hasStructuredBlocks = renderableContentBlocks.length > 0;
-  const hasToolLikeBlocks = renderableContentBlocks.some(isToolLikeAssistantContentBlock);
-  const turnDuration = formatMs(item.turnDurationMs);
-  const reasoningDuration = formatMs(item.reasoningDurationMs);
-  const showTurnFooter = item.thinkingDone && !hasToolLikeBlocks && Boolean(turnDuration);
+  const thinkingDurationLabel = formatDurationLabel(item.reasoningDurationMs);
 
   if (!hasThinking && !hasText && !hasStructuredBlocks) return null;
 
@@ -178,11 +160,7 @@ export function AssistantMessage({ item, suppressThinking = false }: AssistantMe
     <div className="pb-1">
       {hasThinking && !suppressThinking && (
         <div className="pb-3">
-          <ThinkingBlock
-            text={item.thinking}
-            streaming={!item.thinkingDone}
-            duration={item.thinkingDone ? reasoningDuration : null}
-          />
+          <ThinkingBlock text={item.thinking} streaming={!item.thinkingDone} durationLabel={thinkingDurationLabel} />
         </div>
       )}
       {skillNotice ? (
@@ -192,11 +170,6 @@ export function AssistantMessage({ item, suppressThinking = false }: AssistantMe
         <AssistantContentBlocks blocks={contentBlocks} />
       ) : hasVisibleText ? (
         <MarkdownContent text={visibleText} />
-      ) : null}
-      {showTurnFooter ? (
-        <div className="pt-1 text-xs uppercase tracking-wide text-muted/65">
-          <span>{`Completed in ${turnDuration}`}</span>
-        </div>
       ) : null}
     </div>
   );

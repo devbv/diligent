@@ -506,7 +506,7 @@ export function ToolSettingsModal({
                 <div className="flex items-center gap-2">
                   <Input
                     aria-label="Plugin package name"
-                    className="min-w-0 flex-1"
+                    className="min-w-0 flex-1 focus-visible:ring-inset focus-visible:ring-offset-0"
                     placeholder="@acme/diligent-tools"
                     value={newPackageName}
                     onChange={(event) => setNewPackageName(event.target.value)}

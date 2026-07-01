@@ -4,13 +4,8 @@ import type { ToolRenderPayload } from "@diligent/protocol";
 import { useEffect, useState } from "react";
 import type { RenderItem } from "../lib/thread-store";
 import { normalizeToolName } from "../lib/thread-utils";
-import {
-  formatToolDurationMs,
-  getToolActivityLabel,
-  getToolInfo,
-  summarizeInput,
-  summarizeOutput,
-} from "../lib/tool-info";
+import { formatDurationLabel } from "../lib/time-format";
+import { getToolActivityLabel, getToolInfo, summarizeInput, summarizeOutput } from "../lib/tool-info";
 import { ContentText } from "./ContentText";
 import { ToolActivityRow } from "./ToolActivityRow";
 import { ToolRenderBlocks } from "./ToolRenderBlocks";
@@ -99,11 +94,10 @@ export function ToolBlock({
   const outputSummary = renderPayload && !isUserInput && item.status === "done" ? summarizeOutput(renderPayload) : "";
   const showOutputSummary =
     normalizedToolName !== "web_action" && Boolean(outputSummary) && outputSummary !== inputSummary;
-  const durationLabel = item.status === "done" ? formatToolDurationMs(item.durationMs) : null;
-
   const isStreaming = item.status === "streaming";
   const isWebTool = normalizedToolName === "web_action";
   const isBusy = isStreaming && !isWebTool;
+  const durationLabel = !isBusy && !item.isError ? formatDurationLabel(item.durationMs) : null;
   const compactRow = nested && inlinePreviewWhenCollapsed;
   const inlinePreview = inlinePreviewWhenCollapsed
     ? [inputSummary, showOutputSummary ? outputSummary : ""].filter((part) => part.trim().length > 0).join(" · ")
@@ -131,7 +125,6 @@ export function ToolBlock({
           }
           icon={toolInfo.icon}
           category={toolInfo.category}
-          status={item.status}
           isError={item.isError}
           isBusy={isBusy}
           durationLabel={durationLabel}

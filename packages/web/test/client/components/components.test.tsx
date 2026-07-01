@@ -413,6 +413,7 @@ test("tool settings modal renders tool and plugin rows", () => {
   expect(html).toContain("@acme/diligent-tools");
   expect(html).toContain("Add Package");
   expect(html).toContain("min-w-28 shrink-0 whitespace-nowrap");
+  expect(html).toContain("focus-visible:ring-inset focus-visible:ring-offset-0");
   expect(html).toContain("jira_comment");
   expect(html).toContain("AI Agent Data Use");
   expect(html).toContain("Improve service with your chats");
@@ -732,7 +733,7 @@ test("empty state is hidden when provider is configured", () => {
   expect(html).toBe("");
 });
 
-test("assistant message renders completed footer when turn duration is available", () => {
+test("assistant message only shows meaningful thinking duration in the default transcript", () => {
   const html = renderToStaticMarkup(
     <AssistantMessage
       item={{
@@ -749,10 +750,32 @@ test("assistant message renders completed footer when turn duration is available
     />,
   );
 
-  expect(html).toContain("Completed in 4.2s");
+  expect(html).not.toContain("Completed in 4.2s");
+  expect(html).not.toContain("1.2s");
+  expect(html).toContain(">1s<");
   expect(html).not.toContain("Reasoned for");
-  expect(html).toContain("text-xs uppercase tracking-wide text-muted/65");
+  expect(html).not.toContain("text-xs uppercase tracking-wide text-muted/65");
   expect(html).not.toContain('class="pb-2 pt-3"');
+});
+
+test("assistant message hides zero reasoning duration", () => {
+  const html = renderToStaticMarkup(
+    <AssistantMessage
+      item={{
+        id: "assistant-zero-reasoning",
+        kind: "assistant",
+        text: "Done.",
+        thinking: "Checked relevant files",
+        contentBlocks: [{ type: "text", text: "Done." }],
+        thinkingDone: true,
+        timestamp: 1,
+        reasoningDurationMs: 0,
+      }}
+    />,
+  );
+
+  expect(html).toContain("Thought");
+  expect(html).not.toContain("0ms");
 });
 
 test("thinking block renders markdown emphasis instead of literal markers", () => {
@@ -1189,6 +1212,7 @@ test("tool activity group reveals flat child rows with inline previews as the se
   expect(html).toContain("Ran command: find /Volumes -maxdepth 4 · Command completed");
   expect(html).toContain("find /Volumes -maxdepth 4");
   expect(html).toContain("Command completed");
+  expect(html).toContain(">5m<");
   expect(html).toContain("gap-2 py-0.5");
   expect(html).not.toContain("gap-1.5");
   expect(html).not.toContain("ml-7 mt-1 space-y-1 border-l");
@@ -1227,7 +1251,8 @@ test("nested tool block reveals scrollable third-level details when expanded", (
   expect(html).toContain("Ran command: find /Volumes -maxdepth 4 · Command completed");
   expect(html).toContain("find /Volumes -maxdepth 4");
   expect(html).toContain("Command completed");
-  expect(html).toContain("300058ms");
+  expect(html).not.toContain("300058ms");
+  expect(html).toContain(">5m<");
   expect(html).toContain("gap-2 py-0.5");
   expect(html).toContain("flex h-5 w-5");
   expect(html).not.toContain("gap-1.5");
@@ -1236,7 +1261,7 @@ test("nested tool block reveals scrollable third-level details when expanded", (
   expect(html).not.toContain("pl-3");
 });
 
-test("tool block renders completed duration in header", () => {
+test("tool block hides completed duration in the default row", () => {
   const html = renderToStaticMarkup(
     <ToolBlock
       item={{
@@ -1255,8 +1280,31 @@ test("tool block renders completed duration in header", () => {
     />,
   );
 
-  expect(html).toContain("123ms");
+  expect(html).not.toContain("123ms");
   expect(html).toContain("Ran command");
+});
+
+test("tool block shows completed duration only after one second", () => {
+  const html = renderToStaticMarkup(
+    <ToolBlock
+      item={{
+        id: "tool-long",
+        kind: "tool",
+        toolName: "bash",
+        inputText: '{"command":"sleep 1"}',
+        outputText: "done",
+        isError: false,
+        status: "done",
+        timestamp: 1_500,
+        toolCallId: "call-long",
+        startedAt: 100,
+        durationMs: 1_350,
+      }}
+    />,
+  );
+
+  expect(html).toContain(">1s<");
+  expect(html).not.toContain("1350ms");
 });
 
 test("tool block hides duration while tool is still running", () => {
@@ -1309,7 +1357,7 @@ test("tool block keeps request and response summaries hidden while collapsed", (
   );
 
   expect(html).toContain("Read files");
-  expect(html).toContain("0ms");
+  expect(html).not.toContain("0ms");
   expect(html).not.toContain("src/ARCHITECTURE.md");
   expect(html).not.toContain("1 # Architecture");
 });

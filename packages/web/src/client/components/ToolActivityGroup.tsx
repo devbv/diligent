@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import type { RenderItem } from "../lib/thread-store";
 import { normalizeToolName } from "../lib/thread-utils";
+import { formatDurationLabel } from "../lib/time-format";
 import { getToolActivityLabel, getToolInfo } from "../lib/tool-info";
 import { ToolActivityRow } from "./ToolActivityRow";
 import { ToolBlock } from "./ToolBlock";
@@ -157,7 +158,8 @@ export function ToolActivityGroup({ items, initialOpen = false }: { items: ToolI
   const icon = chooseGroupIcon(items);
   const isBusy = items.some((item) => item.status === "streaming");
   const isError = items.some((item) => item.isError);
-  const status = isBusy ? "streaming" : "done";
+  const durationLabel =
+    !isBusy && !isError ? formatDurationLabel(Math.max(0, ...items.map((item) => item.durationMs ?? 0))) : null;
 
   return (
     <div className="flex justify-start">
@@ -166,10 +168,9 @@ export function ToolActivityGroup({ items, initialOpen = false }: { items: ToolI
           title={title}
           icon={icon}
           category={firstInfo.category}
-          status={status}
           isError={isError}
           isBusy={isBusy}
-          durationLabel={null}
+          durationLabel={durationLabel}
           expanded={open}
           expandable={items.length > 0}
           onToggle={() => setOpen((value) => !value)}

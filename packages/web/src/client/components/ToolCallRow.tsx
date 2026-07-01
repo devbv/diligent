@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { RenderItem } from "../lib/thread-store";
 import { normalizeToolName } from "../lib/thread-utils";
+import { formatDurationLabel } from "../lib/time-format";
 import { getToolActivityLabel, getToolInfo, summarizeInput, summarizeOutput } from "../lib/tool-info";
 import { ContentText } from "./ContentText";
 import { ToolActivityRow } from "./ToolActivityRow";
@@ -22,6 +23,7 @@ export function ToolCallRow({ item }: ToolCallRowProps) {
   const outputSummary = renderPayload && !isUserInput && item.status === "done" ? summarizeOutput(renderPayload) : "";
   const showOutputSummary = Boolean(outputSummary) && outputSummary !== inputSummary;
   const isStreaming = item.status === "streaming";
+  const durationLabel = !isStreaming && !item.isError ? formatDurationLabel(item.durationMs) : null;
 
   return (
     <div className="flex justify-start">
@@ -32,10 +34,9 @@ export function ToolCallRow({ item }: ToolCallRowProps) {
           outputSummary={showOutputSummary ? outputSummary : undefined}
           icon={toolInfo.icon}
           category={toolInfo.category}
-          status={item.status}
           isError={item.isError}
           isBusy={isStreaming}
-          durationLabel={null}
+          durationLabel={durationLabel}
           expanded={open}
           expandable={!isStreaming && !item.isError}
           onToggle={() => setOpen((v) => !v)}

@@ -259,10 +259,8 @@ function CollabAssistantTimelineRow({ message }: { message: string }) {
       detail={hasDetail ? summary : undefined}
       icon="sparkles"
       category="context"
-      status="done"
       isError={false}
       isBusy={false}
-      durationLabel={null}
       expanded={open}
       expandable={hasDetail}
       compact={true}
@@ -292,7 +290,6 @@ export function CollabEventBlock({ item, loadChildThread, initialOpen = false }:
   const isBusy = item.status === "running" || hasRunningTool || isWaitRunning;
   const isError = item.status === "errored";
   const meta = isBusy || isError ? null : statusMeta(item.status);
-  const turnInfo = item.eventType === "spawn" && item.turnNumber ? `turn ${item.turnNumber}` : null;
   const effectiveTimeline = resolveEffectiveTimeline(item.childTimeline, loadedChildPreview);
 
   let title = "";
@@ -379,10 +376,8 @@ export function CollabEventBlock({ item, loadChildThread, initialOpen = false }:
         title={title}
         icon={collabIcon(item.eventType)}
         category="action"
-        status={isBusy ? "streaming" : "done"}
         isError={isError}
         isBusy={isBusy}
-        durationLabel={turnInfo}
         metaLabel={meta?.text}
         metaTone={meta?.tone}
         expanded={open}
