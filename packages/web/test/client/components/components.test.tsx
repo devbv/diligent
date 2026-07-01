@@ -1109,6 +1109,8 @@ test("tool activity group reveals flat child rows with inline previews as the se
   expect(html).toContain("Ran command: find /Volumes -maxdepth 4 · Command completed");
   expect(html).toContain("find /Volumes -maxdepth 4");
   expect(html).toContain("Command completed");
+  expect(html).toContain("gap-2 py-0.5");
+  expect(html).not.toContain("gap-1.5");
   expect(html).not.toContain("ml-7 mt-1 space-y-1 border-l");
   expect(html).not.toContain("max-h-72");
 });
@@ -1118,6 +1120,7 @@ test("nested tool block reveals scrollable third-level details when expanded", (
     <ToolBlock
       nested={true}
       initialOpen={true}
+      inlinePreviewWhenCollapsed={true}
       item={{
         id: "tool-1",
         kind: "tool",
@@ -1141,9 +1144,16 @@ test("nested tool block reveals scrollable third-level details when expanded", (
 
   expect(html).toContain("max-h-72");
   expect(html).toContain("overflow-y-auto");
+  expect(html).toContain("Ran command: find /Volumes -maxdepth 4 · Command completed");
   expect(html).toContain("find /Volumes -maxdepth 4");
   expect(html).toContain("Command completed");
   expect(html).toContain("300058ms");
+  expect(html).toContain("gap-2 py-0.5");
+  expect(html).toContain("flex h-5 w-5");
+  expect(html).not.toContain("gap-1.5");
+  expect(html).not.toContain("ml-7");
+  expect(html).not.toContain("border-l border-border");
+  expect(html).not.toContain("pl-3");
 });
 
 test("tool block renders completed duration in header", () => {

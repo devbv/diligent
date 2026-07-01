@@ -104,11 +104,10 @@ export function ToolBlock({
   const isStreaming = item.status === "streaming";
   const isWebTool = normalizedToolName === "web_action";
   const isBusy = isStreaming && !isWebTool;
-  const compactRow = nested && inlinePreviewWhenCollapsed && !open;
-  const inlinePreview =
-    inlinePreviewWhenCollapsed && !open
-      ? [inputSummary, showOutputSummary ? outputSummary : ""].filter((part) => part.trim().length > 0).join(" · ")
-      : "";
+  const compactRow = nested && inlinePreviewWhenCollapsed;
+  const inlinePreview = inlinePreviewWhenCollapsed
+    ? [inputSummary, showOutputSummary ? outputSummary : ""].filter((part) => part.trim().length > 0).join(" · ")
+    : "";
   const rowTitle = inlinePreview ? `${activityTitle}: ${inlinePreview}` : activityTitle;
 
   useEffect(() => {
@@ -144,13 +143,7 @@ export function ToolBlock({
         />
 
         {open && (
-          <div
-            className={
-              nested
-                ? "ml-7 mt-1 max-h-72 overflow-y-auto overscroll-contain border-l border-border/30 py-1 pl-3 pr-2"
-                : "mt-2"
-            }
-          >
+          <div className={nested ? "mt-0.5 max-h-72 overflow-y-auto overscroll-contain pr-2" : "mt-2"}>
             <ToolContent item={item} render={renderPayload} />
           </div>
         )}

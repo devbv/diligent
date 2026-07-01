@@ -217,7 +217,7 @@ export function ToolActivityRow({
         onClick={onToggle}
         className={cn(
           "group inline-flex max-w-full min-w-0 items-center rounded-md pr-1 text-left text-muted transition-colors",
-          compact ? "gap-1.5 py-0.5" : "gap-2 py-1",
+          compact ? "gap-2 py-0.5" : "gap-2 py-1",
           expandable ? `hover:text-text ${focusRingClasses}` : "cursor-default",
           isBusy && "tool-activity-running px-1 pr-2 text-info/85",
           isError && "text-danger/90",
@@ -225,8 +225,7 @@ export function ToolActivityRow({
       >
         <span
           className={cn(
-            "flex shrink-0 items-center justify-center text-muted/75",
-            compact ? "h-4 w-4" : "h-5 w-5",
+            "flex h-5 w-5 shrink-0 items-center justify-center text-muted/75",
             category === "context" && "text-muted/85",
             isBusy && "tool-activity-icon-running text-info",
             isError && "text-danger",
@@ -235,17 +234,10 @@ export function ToolActivityRow({
           <ToolIcon name={icon} className={compact ? "h-3.5 w-3.5" : undefined} />
         </span>
 
-        <span className={cn("min-w-0 truncate text-sm font-medium", compact ? "leading-4" : "leading-5")}>{title}</span>
+        <span className="min-w-0 truncate text-sm font-medium leading-5">{title}</span>
 
         {showDuration ? (
-          <span
-            className={cn(
-              "shrink-0 font-mono text-2xs text-muted/60 tabular-nums",
-              compact ? "leading-4" : "leading-5",
-            )}
-          >
-            {durationLabel}
-          </span>
+          <span className="shrink-0 font-mono text-2xs leading-5 text-muted/60 tabular-nums">{durationLabel}</span>
         ) : null}
 
         {statusLabel ? (
@@ -260,12 +252,7 @@ export function ToolActivityRow({
         ) : null}
 
         {expandable ? (
-          <span
-            className={cn(
-              "flex shrink-0 items-center justify-center text-muted/70 transition-colors group-hover:text-text",
-              compact ? "h-4 w-4" : "h-5 w-5",
-            )}
-          >
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center text-muted/70 transition-colors group-hover:text-text">
             <ChevronIcon expanded={expanded} />
           </span>
         ) : null}
