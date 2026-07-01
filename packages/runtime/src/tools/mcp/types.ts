@@ -24,8 +24,28 @@ export interface McpToolDef {
 export interface McpServerRuntime {
   /** Config key (server name). */
   name: string;
-  status: "connected" | "error" | "disabled";
+  /**
+   * `needs_auth`: an OAuth server whose stored tokens are missing/expired and could not be
+   * silently refreshed. `connect` never opens a browser (that is the M2 `/mcp login` command);
+   * it surfaces this state so the UX can prompt for login.
+   */
+  status: "connected" | "error" | "disabled" | "needs_auth";
   tools: McpToolDef[];
+  error?: string;
+}
+
+/** Transport family of a configured MCP server, surfaced in management UIs. */
+export type McpTransportKind = "stdio" | "http" | "sse";
+
+/**
+ * User-facing status of a configured MCP server for the `/mcp list` surface (P070).
+ * Derived from the last `sync()`/`login()` result — see `McpConnectionManager.listStatus`.
+ */
+export interface McpServerStatus {
+  name: string;
+  transport: McpTransportKind;
+  status: "connected" | "needs_auth" | "error" | "disabled";
+  toolCount: number;
   error?: string;
 }
 

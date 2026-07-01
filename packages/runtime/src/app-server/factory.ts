@@ -11,7 +11,7 @@ import { getGlobalConfigPath, saveGlobalConsent, saveGlobalModel } from "../conf
 import { type DiligentPaths, ensureDiligentDir } from "../infrastructure";
 import type { BundledToolProvider } from "../tools/bundled-provider";
 import { buildDefaultTools } from "../tools/defaults";
-import { getMcpManager } from "../tools/mcp";
+import { buildMcpNeedsAuthNote, getMcpManager } from "../tools/mcp";
 import type { ConsentConfigManager } from "./config-handlers";
 import type { CreateAgentArgs, DiligentAppServerConfig } from "./server";
 
@@ -43,6 +43,22 @@ function applyModeToPrompt(mode: Mode, systemPrompt: RuntimeConfig["systemPrompt
 
 function filterToolsByMode(mode: Mode, tools: Awaited<ReturnType<typeof buildDefaultTools>>["tools"]) {
   return mode === "plan" ? tools.filter((tool) => PLAN_MODE_ALLOWED_TOOLS.has(tool.name)) : tools;
+}
+
+/**
+ * Append a system-prompt section listing MCP servers that need interactive login, so the agent can
+ * tell the user to run `/mcp login <name>` rather than trying (and failing) to use absent tools.
+ * Returns the prompt unchanged when no MCP servers are configured or none need auth.
+ */
+async function appendMcpNeedsAuthNote(
+  systemPrompt: RuntimeConfig["systemPrompt"],
+  mcpServers: RuntimeConfig["diligent"]["mcpServers"],
+): Promise<RuntimeConfig["systemPrompt"]> {
+  if (!mcpServers || Object.keys(mcpServers).length === 0) return systemPrompt;
+  const statuses = await getMcpManager().listStatus(mcpServers);
+  const note = buildMcpNeedsAuthNote(statuses);
+  if (!note) return systemPrompt;
+  return [...systemPrompt, { tag: "mcp_status", label: "mcp_needs_auth", content: note, cacheControl: "ephemeral" }];
 }
 
 async function createRuntimeAgent(args: {
@@ -80,13 +96,18 @@ async function createRuntimeAgent(args: {
     mcpServers: runtimeConfig.diligent.mcpServers,
   });
 
+  // Surface unauthenticated MCP servers to the agent. `buildDefaultTools` above already ran the MCP
+  // sync (with OAuth deps set), so `listStatus` reads the same authoritative needs_auth result from
+  // cache without reconnecting — keeping the note consistent with the tools actually exposed.
+  const promptSections = await appendMcpNeedsAuthNote(guardedSystemPrompt, runtimeConfig.diligent.mcpServers);
+
   const activeMode = (mode ?? "default") as Mode;
   const llmCompactionFn = runtimeConfig.providerManager.createNativeCompactionForProvider(
     model.provider as ProviderName,
   );
   return new RuntimeAgent(
     model,
-    applyModeToPrompt(activeMode, guardedSystemPrompt),
+    applyModeToPrompt(activeMode, promptSections),
     filterToolsByMode(activeMode, toolsResult.tools),
     {
       cwd,

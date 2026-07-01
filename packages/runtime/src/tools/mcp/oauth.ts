@@ -1,6 +1,6 @@
 // @summary HTTP OAuth for remote MCP servers — token store, provider, loopback login, refresh
 
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { dirname, join } from "node:path";
 import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
@@ -31,6 +31,18 @@ export interface McpOAuthHandle {
 
 const DEFAULT_REDIRECT_PORT = 8976;
 
+/**
+ * Thrown by the connect-path OAuth provider when the SDK would otherwise open a browser
+ * for interactive authorization. `McpConnectionManager.sync` catches this and surfaces
+ * `status:"needs_auth"` instead of launching a login mid-connection (codex-rs model).
+ */
+export class NeedsAuthError extends Error {
+  constructor(serverName: string) {
+    super(`MCP server "${serverName}" requires authorization (run \`/mcp login\`)`);
+    this.name = "NeedsAuthError";
+  }
+}
+
 /** Static headers / `{env:VAR}` bearer tokens take precedence over OAuth. */
 export function resolveAuthHeaders(config: McpHttpServerConfig): Record<string, string> {
   const headers: Record<string, string> = { ...(config.headers ?? {}) };
@@ -51,6 +63,16 @@ export function shouldUseOAuth(config: McpHttpServerConfig): boolean {
 
 function sanitizeKey(name: string): string {
   return name.replace(/[^a-zA-Z0-9_-]/g, "_");
+}
+
+/** Path of the file backing a single MCP server's OAuth state. */
+export function oauthStorePath(storeDir: string, serverName: string): string {
+  return join(storeDir, `${sanitizeKey(serverName)}.json`);
+}
+
+/** Delete a server's stored OAuth state (tokens + client info). Used by `/mcp logout`. */
+export async function clearStoredOAuth(storeDir: string, serverName: string): Promise<void> {
+  await rm(oauthStorePath(storeDir, serverName), { force: true });
 }
 
 interface PersistedOAuthState {
@@ -166,6 +188,26 @@ function defer<T>(): Deferred<T> {
   return { promise, resolve, reject };
 }
 
+/**
+ * Build an `OAuthClientProvider` for the **connect** path. It loads stored tokens and lets the
+ * SDK silently refresh them, but never opens a browser: if the SDK needs interactive
+ * authorization it calls `redirectToAuthorization`, which throws `NeedsAuthError` so connect can
+ * surface `needs_auth`. Interactive login (loopback server + browser) lives in the M2
+ * `/mcp login` command via `createMcpOAuthHandle`.
+ */
+export function createConnectOAuthProvider(
+  serverName: string,
+  deps: McpOAuthDeps,
+  oauthConfig: McpOAuthConfig | undefined,
+): OAuthClientProvider {
+  const port = deps.redirectPort ?? DEFAULT_REDIRECT_PORT;
+  const redirectUri = `http://127.0.0.1:${port}/callback`;
+  const store = new FileOAuthStore(oauthStorePath(deps.storeDir, serverName));
+  return new McpOAuthClientProvider(store, redirectUri, oauthConfig, () => {
+    throw new NeedsAuthError(serverName);
+  });
+}
+
 export function createMcpOAuthHandle(
   serverName: string,
   deps: McpOAuthDeps,
@@ -173,7 +215,7 @@ export function createMcpOAuthHandle(
 ): McpOAuthHandle {
   const port = deps.redirectPort ?? DEFAULT_REDIRECT_PORT;
   const redirectUri = `http://127.0.0.1:${port}/callback`;
-  const store = new FileOAuthStore(join(deps.storeDir, `${sanitizeKey(serverName)}.json`));
+  const store = new FileOAuthStore(oauthStorePath(deps.storeDir, serverName));
   const codeWaiter = defer<string>();
   let server: Server | undefined;
 

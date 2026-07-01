@@ -1,8 +1,16 @@
 ---
 id: P070
-status: backlog
+status: active
 created: 2026-07-01
 ---
+
+> **Implementation status (2026-07-01):** Tasks 1–5 implemented and unit-tested. Manager
+> `listStatus`/`login`/`logout` + `McpServerStatus` (client.ts/oauth.ts); protocol `mcp/list`,
+> `mcp/login/start`, `mcp/logout` + `mcp/login/completed` notification; runtime `mcp-handlers.ts`
+> wired into the dispatcher; TUI `/mcp` command + `/status` MCP line + login-completion plumbing
+> (`waitForMcpLogin`); Web `McpServersModal` + `use-thread-data` RPC wrappers + notification-driven
+> refresh, reachable from the Config modal. **Manual OAuth login end-to-end (real remote server)
+> is still unverified** — only deterministic list/handler/command logic is unit-tested.
 
 # MCP Server Management (status + commands)
 

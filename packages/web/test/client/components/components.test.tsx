@@ -21,6 +21,7 @@ import { Input } from "../../../src/client/components/Input";
 import { extractPastedImageFiles, InputDock } from "../../../src/client/components/InputDock";
 import { KnowledgeManagerModal } from "../../../src/client/components/KnowledgeManagerModal";
 import { MarkdownContent } from "../../../src/client/components/MarkdownContent";
+import { McpServersModal } from "../../../src/client/components/McpServersModal";
 import { MessageList } from "../../../src/client/components/MessageList";
 import { Modal } from "../../../src/client/components/Modal";
 import { ProviderSettingsModal } from "../../../src/client/components/ProviderSettingsModal";
@@ -39,6 +40,52 @@ import { normalizeImageFileName } from "../../../src/client/lib/app-utils";
 function createClipboardFile(name: string, type: string): File {
   return new File([`${name}:${type}`], name, { type });
 }
+
+test("mcp servers modal renders server rows with login/logout affordances", () => {
+  const html = renderToStaticMarkup(
+    <McpServersModal
+      initialState={{
+        servers: [
+          { name: "linear", transport: "http", status: "needs_auth", toolCount: 0 },
+          { name: "notion-http", transport: "http", status: "connected", toolCount: 5 },
+          { name: "github", transport: "stdio", status: "connected", toolCount: 8 },
+          { name: "notion", transport: "http", status: "error", toolCount: 0, error: "connect timeout" },
+        ],
+      }}
+      onList={async () => ({ servers: [] })}
+      onLoginStart={async () => ({ authUrl: "https://example.com/auth" })}
+      onLogout={async () => ({ ok: true })}
+      onClose={() => {}}
+    />,
+  );
+
+  expect(html).toContain("MCP Servers");
+  expect(html).toContain("linear");
+  // HTTP servers get auth affordances: needs_auth -> Login, connected -> Logout.
+  expect(html).toContain("Login");
+  expect(html).toContain("Logout");
+  // stdio servers are not OAuth-backed, so they expose neither Login nor Logout.
+  expect(html).toContain("github");
+  expect(html).toContain("connect timeout");
+});
+
+test("mcp servers modal omits login/logout for stdio transports", () => {
+  const html = renderToStaticMarkup(
+    <McpServersModal
+      initialState={{
+        servers: [{ name: "github", transport: "stdio", status: "connected", toolCount: 8 }],
+      }}
+      onList={async () => ({ servers: [] })}
+      onLoginStart={async () => ({ authUrl: "https://example.com/auth" })}
+      onLogout={async () => ({ ok: true })}
+      onClose={() => {}}
+    />,
+  );
+
+  expect(html).toContain("github");
+  expect(html).not.toContain("Login");
+  expect(html).not.toContain("Logout");
+});
 
 test("tool settings modal renders vertex provider badge label", () => {
   const html = renderToStaticMarkup(

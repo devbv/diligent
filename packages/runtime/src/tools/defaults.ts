@@ -1,9 +1,12 @@
 // @summary Shared default tool assembly used by both CLI and Web server
 
+import { dirname, join } from "node:path";
 import type { ProviderName } from "@diligent/core/llm/types";
 import type { Tool } from "@diligent/core/tool/types";
+import { openBrowser } from "../auth";
 import type { AgentRegistry, CollabToolDeps } from "../collab";
 import { createCollabTools } from "../collab";
+import { getGlobalConfigPath } from "../config";
 import type { DiligentConfig } from "../config/schema";
 import type { DiligentPaths } from "../infrastructure";
 import type { SkillMetadata } from "../skills";
@@ -17,7 +20,7 @@ import { createEditTool, createMultiEditTool } from "./edit";
 import { createGlobTool } from "./glob";
 import { createGrepTool } from "./grep";
 import { createLsTool } from "./ls";
-import { createMcpToolProvider } from "./mcp";
+import { createMcpToolProvider, getMcpManager } from "./mcp";
 import { createPlanTool } from "./plan";
 import { createReadTool } from "./read";
 import { createReadImageTool } from "./read-image";
@@ -87,6 +90,14 @@ export async function buildDefaultTools(options: BuildDefaultToolsOptions): Prom
   } = options;
   const providers = [...(bundledToolProviders ?? [])];
   if (mcpServers && Object.keys(mcpServers).length > 0) {
+    // Guarantee OAuth deps are wired on the very manager the provider will sync, before any
+    // connect. The app-server may set these later (with a custom browser opener), but tool builds
+    // can run before that wiring — without deps, HTTP OAuth servers connect tokenless and fail
+    // with `invalid_token`. Only set when unset so a richer app-server opener is never clobbered.
+    const manager = getMcpManager();
+    if (!manager.hasOAuthDeps()) {
+      manager.setOAuthDeps({ storeDir: join(dirname(getGlobalConfigPath()), "mcp-oauth"), openBrowser });
+    }
     providers.push(createMcpToolProvider(mcpServers));
   }
   const catalog = parentToolOverride

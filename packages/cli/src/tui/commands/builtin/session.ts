@@ -1,4 +1,5 @@
 // @summary Session management commands - create new session and list sessions
+import { DILIGENT_CLIENT_REQUEST_METHODS } from "@diligent/protocol";
 import { t } from "../../theme";
 import type { Command } from "../types";
 
@@ -120,6 +121,24 @@ export const statusCommand: Command = {
 
     if (ctx.skills.length > 0) {
       lines.push(`  ${t.bold}Skills:${t.reset}   ${ctx.skills.length} loaded`);
+    }
+
+    // Best-effort MCP summary; swallow errors so /status never fails on MCP issues.
+    try {
+      const rpc = ctx.app.getRpcClient?.();
+      if (rpc) {
+        const { servers } = await rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.MCP_LIST, {
+          threadId: ctx.threadId ?? undefined,
+        });
+        if (servers.length > 0) {
+          const connected = servers.filter((s) => s.status === "connected").length;
+          const needsAuth = servers.filter((s) => s.status === "needs_auth").length;
+          const suffix = needsAuth > 0 ? ` ${t.warn}(${needsAuth} need login)${t.reset}` : "";
+          lines.push(`  ${t.bold}MCP:${t.reset}      ${connected}/${servers.length} connected${suffix}`);
+        }
+      }
+    } catch {
+      // ignore — MCP status is non-essential to /status
     }
 
     lines.push("");

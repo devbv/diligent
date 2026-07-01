@@ -1,11 +1,20 @@
 // @summary Tests default tool assembly gating for provider-native web tools
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { z } from "zod";
 import type { BundledToolProvider } from "../../src/tools/bundled-provider";
 import { buildDefaultTools } from "../../src/tools/defaults";
+import {
+  __resetMcpManagerForTest,
+  __setMcpManagerForTest,
+  McpConnectionManager,
+  type McpTransportFactory,
+} from "../../src/tools/mcp/client";
 
 function toolNamesFor(result: Awaited<ReturnType<typeof buildDefaultTools>>): string[] {
   return result.tools.map((tool) => tool.name);
@@ -14,6 +23,30 @@ function toolNamesFor(result: Awaited<ReturnType<typeof buildDefaultTools>>): st
 function stateNamesFor(result: Awaited<ReturnType<typeof buildDefaultTools>>): string[] {
   return result.toolState.map((tool) => tool.name);
 }
+
+describe("buildDefaultTools MCP OAuth wiring", () => {
+  afterEach(() => {
+    __resetMcpManagerForTest();
+  });
+
+  // Regression: HTTP OAuth MCP servers connected tokenless (invalid_token) at startup because the
+  // tool build could run before the app-server wired OAuth deps. buildDefaultTools must guarantee
+  // the deps are set on the very manager it syncs.
+  test("wires OAuth deps on the manager before syncing MCP servers", async () => {
+    const factory: McpTransportFactory = async (name): Promise<Transport> => {
+      const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+      await new McpServer({ name, version: "1.0.0" }).connect(serverTransport);
+      return clientTransport;
+    };
+    const manager = new McpConnectionManager(factory);
+    __setMcpManagerForTest(manager);
+    expect(manager.hasOAuthDeps()).toBe(false);
+
+    await buildDefaultTools({ cwd: "/tmp", mcpServers: { atlassian: { url: "https://example.test/mcp" } } });
+
+    expect(manager.hasOAuthDeps()).toBe(true);
+  });
+});
 
 describe("buildDefaultTools web gating", () => {
   test("includes provider-native web placeholder tool by default", async () => {

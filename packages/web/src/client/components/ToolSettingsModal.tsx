@@ -58,6 +58,7 @@ interface ToolSettingsModalProps {
   onSave: (params: ToolsSetParams) => Promise<ToolsSetResponse>;
   onDesktopNotificationsEnabledChange?: (enabled: boolean) => void;
   onOpenProviders?: () => void;
+  onOpenMcpServers?: () => void;
   onClose: () => void;
   className?: string;
 }
@@ -165,6 +166,7 @@ export function ToolSettingsModal({
   onSave,
   onDesktopNotificationsEnabledChange,
   onOpenProviders,
+  onOpenMcpServers,
   onClose,
   className,
 }: ToolSettingsModalProps) {
@@ -380,6 +382,20 @@ export function ToolSettingsModal({
                     </div>
                     <Button intent="ghost" size="sm" onClick={onOpenProviders}>
                       Open AI connection settings
+                    </Button>
+                  </div>
+                </section>
+              ) : null}
+
+              {onOpenMcpServers ? (
+                <section className={sectionStackClasses}>
+                  <div>
+                    <h3 className="text-sm font-semibold text-text">MCP servers</h3>
+                    <p className="text-xs text-muted">View connected MCP servers and manage their authentication.</p>
+                  </div>
+                  <div className={`${surfaceCardClasses} ${cardPaddingClasses}`}>
+                    <Button intent="ghost" size="sm" onClick={onOpenMcpServers}>
+                      Open MCP servers
                     </Button>
                   </div>
                 </section>

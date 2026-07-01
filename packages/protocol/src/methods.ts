@@ -35,6 +35,9 @@ export const DILIGENT_CLIENT_REQUEST_METHODS = {
   THREAD_SUBSCRIBE: "thread/subscribe",
   THREAD_UNSUBSCRIBE: "thread/unsubscribe",
   IMAGE_UPLOAD: "image/upload",
+  MCP_LIST: "mcp/list",
+  MCP_LOGIN_START: "mcp/login/start",
+  MCP_LOGOUT: "mcp/logout",
 } as const;
 
 export type DiligentClientRequestMethod =
@@ -75,6 +78,7 @@ export const DILIGENT_SERVER_NOTIFICATION_METHODS = {
   COLLAB_INTERACTION_BEGIN: "collab/interaction/begin",
   COLLAB_INTERACTION_END: "collab/interaction/end",
   STEERING_INJECTED: "steering/injected",
+  MCP_LOGIN_COMPLETED: "mcp/login/completed",
 } as const;
 
 export type DiligentServerNotificationMethod =

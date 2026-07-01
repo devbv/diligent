@@ -34,6 +34,8 @@ export function createMcpToolProvider(servers: Record<string, McpServerConfig>):
         if (runtime.status !== "connected") {
           if (runtime.status === "error") {
             console.warn(`[mcp] server "${runtime.name}" unavailable: ${runtime.error}`);
+          } else if (runtime.status === "needs_auth") {
+            console.warn(`[mcp] server "${runtime.name}" needs authorization — run \`/mcp login ${runtime.name}\``);
           }
           continue;
         }

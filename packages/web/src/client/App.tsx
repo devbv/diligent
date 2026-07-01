@@ -8,6 +8,7 @@ import { ErrorBanner } from "./components/ErrorBanner";
 import { FirstRunNoticeModal } from "./components/FirstRunNoticeModal";
 import { InputDock } from "./components/InputDock";
 import { KnowledgeManagerModal } from "./components/KnowledgeManagerModal";
+import { McpServersModal } from "./components/McpServersModal";
 import { MessageList } from "./components/MessageList";
 import { Panel } from "./components/Panel";
 import { PlanPanel } from "./components/PlanPanel";
@@ -58,6 +59,9 @@ export function App() {
     setShowToolModal,
     showKnowledgeModal,
     setShowKnowledgeModal,
+    showMcpModal,
+    setShowMcpModal,
+    mcpRefreshNonce,
     focusedProvider,
     oauthPending,
     oauthError,
@@ -89,6 +93,9 @@ export function App() {
     saveTools,
     listKnowledge,
     updateKnowledge,
+    listMcpServers,
+    mcpLoginStart,
+    mcpLogout,
     loadChildThread,
     handleOpenProviders,
     handleQuickConnectChatGPT,
@@ -286,7 +293,22 @@ export function App() {
               onOpenProviders={() => {
                 setShowProviderModal(true);
               }}
+              onOpenMcpServers={() => {
+                setShowToolModal(false);
+                setShowMcpModal(true);
+              }}
               onClose={() => setShowToolModal(false)}
+              className="absolute inset-0 z-40 bg-overlay/35"
+            />
+          ) : null}
+
+          {showMcpModal ? (
+            <McpServersModal
+              refreshSignal={mcpRefreshNonce}
+              onList={listMcpServers}
+              onLoginStart={mcpLoginStart}
+              onLogout={mcpLogout}
+              onClose={() => setShowMcpModal(false)}
               className="absolute inset-0 z-40 bg-overlay/35"
             />
           ) : null}

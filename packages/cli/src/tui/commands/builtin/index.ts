@@ -3,6 +3,7 @@ import type { CommandRegistry } from "../registry";
 import { compactCommand } from "./compact";
 import { effortCommand } from "./effort";
 import { helpCommand } from "./help";
+import { mcpCommand } from "./mcp";
 import { bugCommand, clearCommand, configCommand, costCommand, exitCommand, versionCommand } from "./misc";
 import { modelCommand } from "./model";
 import { providerCommand } from "./provider";
@@ -17,6 +18,7 @@ export function registerBuiltinCommands(registry: CommandRegistry, skills: Skill
   registry.register(modelCommand);
   registry.register(providerCommand);
   registry.register(toolsCommand);
+  registry.register(mcpCommand);
   registry.register(newCommand);
   registry.register(resumeCommand);
   registry.register(deleteCommand);

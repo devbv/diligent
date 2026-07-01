@@ -61,6 +61,7 @@ function makeHandlerDeps(overrides: Partial<CommandHandlerDeps> = {}): CommandHa
     onModelChanged: () => {},
     onEffortChanged: () => {},
     waitForOAuthComplete: async () => ({ success: true, error: null }),
+    waitForMcpLogin: async () => ({ success: true, toolCount: 0, error: null }),
     syncActiveThreadState: async () => {},
     queuePendingSteer: () => {},
     threadManager,

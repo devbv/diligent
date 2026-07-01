@@ -636,20 +636,27 @@ browser mid-connection. That was the **root cause of the double-browser bug** (c
   login exists.
 - **M3 — remaining UX:** `/mcp list`, `/status` line, Web modal (P070).
 
-### Next-session checklist (M1 refactor — do this first)
+### M1 refactor — DONE (next session starts at step 6 / M2)
 
-1. In `packages/runtime/src/tools/mcp/client.ts` `connect()`: **remove** the interactive login
-   path (the `oauth.waitForCallback(...)` + `finishAuth` + reconnect block). Keep the
-   `authProvider` so the SDK still loads stored tokens and silent-refreshes.
-2. Add `"needs_auth"` to `McpServerRuntime.status` (`types.ts`); on `UnauthorizedError`/expired,
-   return `status:"needs_auth"` instead of throwing/opening a browser. `provider.ts` should skip
-   `needs_auth` servers (log a hint) just like `error`.
-3. Keep `connectDeduped` (defensive) and `oauth.clientId` / `server.on('error')` handling.
-4. **Move** the loopback callback server + `waitForCallback` out of the connect path; they
-   become the guts of the M2 `/mcp login` command. `oauth.ts` `FileOAuthStore`,
-   `resolveAuthHeaders`, `shouldUseOAuth`, `McpOAuthClientProvider` stay as-is for M2 reuse.
-5. Update tests: drop any assumption that connect performs login; assert `needs_auth` on 401.
-6. Then implement M2 per `docs/plan/feature/P070-mcp-server-management.md`.
+1. ✅ `packages/runtime/src/tools/mcp/client.ts` `connect()`: the interactive login path
+   (`oauth.waitForCallback` + `finishAuth` + reconnect block) is **removed**. Connect now builds a
+   connect-path OAuth provider (`createConnectOAuthProvider`) that loads stored tokens and lets the
+   SDK silent-refresh, but never opens a browser.
+2. ✅ `"needs_auth"` added to `McpServerRuntime.status` (`types.ts`). On `NeedsAuthError` (the
+   connect provider's `redirectToAuthorization` throws instead of opening a browser) or a raw
+   `UnauthorizedError`/401, `sync` returns `status:"needs_auth"` (see `isNeedsAuth`). `provider.ts`
+   skips `needs_auth` servers with a `/mcp login <name>` hint, like `error`.
+3. ✅ `connectDeduped` retained; `oauth.clientId` (skip-DCR) and callback `server.on('error')`
+   handling stay in `oauth.ts`.
+4. ✅ Loopback callback server + `waitForCallback` are **no longer on the connect path**. They
+   remain in `oauth.ts` (`createMcpOAuthHandle`, `FileOAuthStore`, `resolveAuthHeaders`,
+   `shouldUseOAuth`, `McpOAuthClientProvider`) unchanged, ready to be the guts of the M2
+   `/mcp login` command.
+5. ✅ Tests updated: `client.test.ts` asserts `needs_auth` for both a `NeedsAuthError`-throwing
+   provider and a raw 401; no test assumes connect performs login. 31 MCP tests pass; `tsc` +
+   biome clean.
+6. ⏭️ **Next:** implement M2 per `docs/plan/feature/P070-mcp-server-management.md` — reuse the
+   preserved OAuth handle for `/mcp login|logout` and surface `needs_auth` in the UX.
 
 ### Test config & caveats (NOT committed)
 

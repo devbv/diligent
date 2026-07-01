@@ -40,6 +40,11 @@ export const BUILTIN_COMMANDS: SlashCommand[] = [
     usage: `/effort <${DEFAULT_EFFORT_USAGE}>`,
     requiresArgs: true,
   },
+  {
+    name: "mcp",
+    description: "List and manage MCP servers",
+    usage: "/mcp list | login <server> | logout <server>",
+  },
 ];
 
 /** Build the full command list by merging builtins with dynamic skill commands. */

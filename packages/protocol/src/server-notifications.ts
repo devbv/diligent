@@ -219,6 +219,19 @@ export const SteeringInjectedNotificationSchema = z.object({
 });
 export type SteeringInjectedNotification = z.infer<typeof SteeringInjectedNotificationSchema>;
 
+// Broadcast when a background `/mcp login` flow finishes (success or failure), so clients can
+// refresh their MCP server list. Not thread-scoped — delivered to all connections.
+export const McpLoginCompletedNotificationSchema = z.object({
+  method: z.literal(DILIGENT_SERVER_NOTIFICATION_METHODS.MCP_LOGIN_COMPLETED),
+  params: z.object({
+    server: z.string(),
+    success: z.boolean(),
+    toolCount: z.number().int().nonnegative().optional(),
+    error: z.string().nullable(),
+  }),
+});
+export type McpLoginCompletedNotification = z.infer<typeof McpLoginCompletedNotificationSchema>;
+
 // Collab — sub-agent orchestration boundary notifications (3 begin/end pairs)
 
 export const CollabSpawnBeginNotificationSchema = z.object({
@@ -346,6 +359,7 @@ export const DiligentServerNotificationSchema = z.union([
   AccountLoginCompletedNotificationSchema,
   AccountUpdatedNotificationSchema,
   SteeringInjectedNotificationSchema,
+  McpLoginCompletedNotificationSchema,
   CollabSpawnBeginNotificationSchema,
   CollabSpawnEndNotificationSchema,
   CollabWaitBeginNotificationSchema,

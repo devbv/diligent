@@ -88,4 +88,5 @@ export interface AppAccessor {
   stop: () => void;
   getRpcClient?: () => AppServerRpcClient | null;
   waitForOAuthComplete?: () => Promise<{ success: boolean; error: string | null }>;
+  waitForMcpLogin?: (server: string) => Promise<{ success: boolean; toolCount?: number; error: string | null }>;
 }

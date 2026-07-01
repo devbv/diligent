@@ -28,6 +28,7 @@ import {
   handleImageUpload,
 } from "./config-handlers";
 import { handleKnowledgeList, handleKnowledgeUpdate } from "./knowledge-handlers";
+import { handleMcpList, handleMcpLoginStart, handleMcpLogout } from "./mcp-handlers";
 import { handleThreadDelete, handleThreadList, handleThreadResume } from "./session-handlers";
 import {
   handleEffortSet,
@@ -351,6 +352,22 @@ export async function dispatchClientRequest(
       return handleAuthOAuthCancel({
         params: request.params,
         oauthAbortController: ctx.oauthAbortController,
+      });
+
+    case DILIGENT_CLIENT_REQUEST_METHODS.MCP_LIST:
+      return handleMcpList(ctx.threadHandlersCtx.getMcpServers);
+
+    case DILIGENT_CLIENT_REQUEST_METHODS.MCP_LOGIN_START:
+      return handleMcpLoginStart({
+        server: request.params.server,
+        getMcpServers: ctx.threadHandlersCtx.getMcpServers,
+        emit: (notification) => ctx.emit(notification),
+      });
+
+    case DILIGENT_CLIENT_REQUEST_METHODS.MCP_LOGOUT:
+      return handleMcpLogout({
+        server: request.params.server,
+        getMcpServers: ctx.threadHandlersCtx.getMcpServers,
       });
 
     case DILIGENT_CLIENT_REQUEST_METHODS.IMAGE_UPLOAD: {
