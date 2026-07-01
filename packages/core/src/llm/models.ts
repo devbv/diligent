@@ -19,6 +19,8 @@ const GEMINI_THINKING_BUDGETS = { low: 2_048, medium: 8_192, high: 16_384, max: 
 const THINKING_EFFORTS_WITH_NONE: ThinkingEffort[] = ["none", "low", "medium", "high", "max"];
 const THINKING_EFFORTS_WITHOUT_NONE: ThinkingEffort[] = ["low", "medium", "high", "max"];
 
+export const DEFAULT_ANTHROPIC_MODEL_ID = "claude-sonnet-4-6";
+
 export const KNOWN_MODELS: ModelDefinition[] = [
   // Anthropic — opus/sonnet/fable use adaptive thinking (model decides budget within cap)
   {
@@ -56,7 +58,24 @@ export const KNOWN_MODELS: ModelDefinition[] = [
     modelClass: "pro",
   },
   {
-    id: "claude-sonnet-4-6",
+    id: "claude-sonnet-5",
+    provider: "anthropic",
+    contextWindow: 1_000_000,
+    maxOutputTokens: 128_000,
+    inputCostPer1M: 3.0,
+    outputCostPer1M: 15.0,
+    cacheReadCostPer1M: 0.3,
+    cacheWriteCostPer1M: 3.75,
+    supportsThinking: true,
+    supportedEfforts: THINKING_EFFORTS_WITHOUT_NONE,
+    supportsVision: true,
+    supportsAdaptiveThinking: true,
+    thinkingBudgets: { low: 1_500, medium: 6_000, high: 12_000, max: 24_000 },
+    aliases: ["sonnet-5"],
+    modelClass: "general",
+  },
+  {
+    id: DEFAULT_ANTHROPIC_MODEL_ID,
     provider: "anthropic",
     contextWindow: 1_000_000,
     maxOutputTokens: 64_000,
@@ -69,7 +88,7 @@ export const KNOWN_MODELS: ModelDefinition[] = [
     supportsVision: true,
     supportsAdaptiveThinking: true,
     thinkingBudgets: { low: 1_500, medium: 6_000, high: 12_000, max: 24_000 },
-    aliases: ["claude-sonnet", "sonnet"],
+    aliases: ["claude-sonnet", "sonnet", "sonnet-4-6"],
     modelClass: "general",
   },
   {
@@ -162,11 +181,10 @@ export const KNOWN_MODELS: ModelDefinition[] = [
     modelClass: "general",
   },
   // OpenAI — reasoning models: effort mapped to OpenAI's low/medium/high
-  // Note: gpt-5.4 supports up to 1M context; capped at 600k to limit cost
   {
     id: "gpt-5.4",
     provider: "openai",
-    contextWindow: 400_000,
+    contextWindow: 1_000_000,
     maxOutputTokens: 128_000,
     inputCostPer1M: 2.5,
     outputCostPer1M: 15.0,
@@ -182,7 +200,7 @@ export const KNOWN_MODELS: ModelDefinition[] = [
   {
     id: "gpt-5.5",
     provider: "openai",
-    contextWindow: 400_000,
+    contextWindow: 1_000_000,
     maxOutputTokens: 128_000,
     inputCostPer1M: 5.0,
     outputCostPer1M: 20.0,
@@ -197,7 +215,7 @@ export const KNOWN_MODELS: ModelDefinition[] = [
   {
     id: "gpt-5.3-codex",
     provider: "openai",
-    contextWindow: 400_000,
+    contextWindow: 1_000_000,
     maxOutputTokens: 128_000,
     inputCostPer1M: 1.75,
     outputCostPer1M: 14.0,
@@ -205,19 +223,6 @@ export const KNOWN_MODELS: ModelDefinition[] = [
     cacheWriteCostPer1M: 0,
     supportsThinking: true,
     supportedEfforts: THINKING_EFFORTS_WITH_NONE,
-    supportsVision: true,
-    modelClass: "general",
-  },
-  {
-    id: "gpt-5.3-chat-latest",
-    provider: "openai",
-    contextWindow: 400_000,
-    maxOutputTokens: 16_384,
-    inputCostPer1M: 1.75,
-    outputCostPer1M: 14.0,
-    cacheReadCostPer1M: 0.175,
-    cacheWriteCostPer1M: 0,
-    supportsThinking: false,
     supportsVision: true,
     modelClass: "general",
   },

@@ -1,8 +1,10 @@
 // @summary Tests for config file writing and API key management
+
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DEFAULT_ANTHROPIC_MODEL_ID } from "@diligent/runtime";
 import { saveApiKey } from "../src/config-writer";
 
 const TEST_ROOT = join(tmpdir(), `diligent-config-writer-test-${Date.now()}`);
@@ -33,8 +35,8 @@ describe("saveApiKey", () => {
     await Bun.write(
       configPath,
       `{
-  // My config
-  "model": "claude-sonnet-4-6"
+	// My config
+	"model": "${DEFAULT_ANTHROPIC_MODEL_ID}"
 }`,
     );
 
@@ -44,7 +46,7 @@ describe("saveApiKey", () => {
     expect(content).toContain("sk-openai-key");
     expect(content).toContain("openai");
     // Original content preserved
-    expect(content).toContain("claude-sonnet-4-6");
+    expect(content).toContain(DEFAULT_ANTHROPIC_MODEL_ID);
     expect(content).toContain("My config");
   });
 

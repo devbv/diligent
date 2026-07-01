@@ -18,6 +18,8 @@ import {
   ToolsListResponseSchema,
 } from "../src";
 
+const TEST_MODEL_ID = "claude-sonnet-4-6";
+
 describe("protocol/flow", () => {
   it("accepts thread and turn client requests", () => {
     expect(
@@ -87,7 +89,7 @@ describe("protocol/flow", () => {
         cwd: "/repo",
         mode: "default",
         effort: "medium",
-        currentModel: "claude-sonnet-4-6",
+        currentModel: TEST_MODEL_ID,
         availableModels: [],
       }).success,
     ).toBe(true);
@@ -380,7 +382,7 @@ describe("protocol/flow", () => {
           message: {
             role: "assistant",
             content: [{ type: "text", text: "hi" }],
-            model: "claude-sonnet-4-6",
+            model: TEST_MODEL_ID,
             usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
             stopReason: "end_turn",
             timestamp: Date.now(),

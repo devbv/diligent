@@ -8,7 +8,7 @@ import type {
   StreamFunction,
   SystemSection,
 } from "@diligent/runtime";
-import { ensureDiligentDir, loadRuntimeConfig, resolveModel } from "@diligent/runtime";
+import { DEFAULT_ANTHROPIC_MODEL_ID, ensureDiligentDir, loadRuntimeConfig, resolveModel } from "@diligent/runtime";
 import { DEFAULT_PROVIDER, type ProviderManager, type ProviderName } from "./provider-manager";
 
 export interface AppConfig {
@@ -32,8 +32,8 @@ export interface AppConfig {
 export async function loadConfig(cwd: string = process.cwd(), paths?: DiligentPaths): Promise<AppConfig> {
   const resolvedPaths = paths ?? (await ensureDiligentDir(cwd));
   const runtime = await loadRuntimeConfig(cwd, resolvedPaths);
-  // CLI default: claude-sonnet-4-6 when no provider is configured
-  const model = runtime.model ?? resolveModel("claude-sonnet-4-6");
+  // CLI default: Anthropic Sonnet when no provider is configured
+  const model = runtime.model ?? resolveModel(DEFAULT_ANTHROPIC_MODEL_ID);
   const provider = (model.provider ?? DEFAULT_PROVIDER) as ProviderName;
   const apiKey = runtime.providerManager.getApiKey(provider) ?? "";
 

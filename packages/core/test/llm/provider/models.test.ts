@@ -2,6 +2,7 @@
 import { describe, expect, it } from "bun:test";
 import {
   agentTypeToModelClass,
+  DEFAULT_ANTHROPIC_MODEL_ID,
   getModelClass,
   KNOWN_MODELS,
   resolveModel,
@@ -35,8 +36,14 @@ describe("resolveModel", () => {
   });
 
   it("uses 1M context for known Sonnet and Opus models", () => {
-    expect(resolveModel("claude-sonnet-4-6").contextWindow).toBe(1_000_000);
+    expect(resolveModel(DEFAULT_ANTHROPIC_MODEL_ID).contextWindow).toBe(1_000_000);
     expect(resolveModel("claude-opus-4-8").contextWindow).toBe(1_000_000);
+  });
+
+  it("keeps Sonnet 5 available as an experimental model", () => {
+    const model = resolveModel("claude-sonnet-5");
+    expect(model.provider).toBe("anthropic");
+    expect(model.maxOutputTokens).toBe(128_000);
   });
 
   it("resolves claude-opus alias to the only retained Opus version", () => {
@@ -117,7 +124,8 @@ describe("model class annotations", () => {
   it("anthropic classes map correctly", () => {
     expect(KNOWN_MODELS.find((m) => m.id === "claude-opus-4-8")?.modelClass).toBe("pro");
     expect(KNOWN_MODELS.find((m) => m.id === "claude-fable-5")?.modelClass).toBe("pro");
-    expect(KNOWN_MODELS.find((m) => m.id === "claude-sonnet-4-6")?.modelClass).toBe("general");
+    expect(KNOWN_MODELS.find((m) => m.id === "claude-sonnet-5")?.modelClass).toBe("general");
+    expect(KNOWN_MODELS.find((m) => m.id === DEFAULT_ANTHROPIC_MODEL_ID)?.modelClass).toBe("general");
     expect(KNOWN_MODELS.find((m) => m.id === "claude-haiku-4-5-20251001")?.modelClass).toBe("lite");
   });
 
@@ -163,7 +171,7 @@ describe("model class annotations", () => {
 
 describe("getModelClass", () => {
   it("returns modelClass for known models", () => {
-    const sonnet = resolveModel("claude-sonnet-4-6");
+    const sonnet = resolveModel(DEFAULT_ANTHROPIC_MODEL_ID);
     expect(getModelClass(sonnet)).toBe("general");
 
     const opus = resolveModel("claude-opus-4-8");
@@ -186,13 +194,13 @@ describe("getModelClass", () => {
 
 describe("resolveModelForClass", () => {
   it("returns same model if already matching class", () => {
-    const sonnet = resolveModel("claude-sonnet-4-6");
+    const sonnet = resolveModel(DEFAULT_ANTHROPIC_MODEL_ID);
     const result = resolveModelForClass(sonnet, "general");
-    expect(result.id).toBe("claude-sonnet-4-6");
+    expect(result.id).toBe(DEFAULT_ANTHROPIC_MODEL_ID);
   });
 
   it("resolves anthropic pro → opus", () => {
-    const sonnet = resolveModel("claude-sonnet-4-6");
+    const sonnet = resolveModel(DEFAULT_ANTHROPIC_MODEL_ID);
     const pro = resolveModelForClass(sonnet, "pro");
     expect(pro.id).toBe("claude-opus-4-8");
     expect(pro.provider).toBe("anthropic");
@@ -203,12 +211,12 @@ describe("resolveModelForClass", () => {
     const pro = resolveModelForClass(fable, "pro");
     expect(pro.id).toBe("claude-fable-5");
 
-    const sonnet = resolveModel("claude-sonnet-4-6");
+    const sonnet = resolveModel(DEFAULT_ANTHROPIC_MODEL_ID);
     expect(resolveModelForClass(sonnet, "pro").id).toBe("claude-opus-4-8");
   });
 
   it("resolves anthropic lite → haiku", () => {
-    const sonnet = resolveModel("claude-sonnet-4-6");
+    const sonnet = resolveModel(DEFAULT_ANTHROPIC_MODEL_ID);
     const lite = resolveModelForClass(sonnet, "lite");
     expect(lite.id).toBe("claude-haiku-4-5-20251001");
     expect(lite.provider).toBe("anthropic");
@@ -262,7 +270,7 @@ describe("resolveModelForClass", () => {
   });
 
   it("stays within the same provider", () => {
-    const sonnet = resolveModel("claude-sonnet-4-6");
+    const sonnet = resolveModel(DEFAULT_ANTHROPIC_MODEL_ID);
     const pro = resolveModelForClass(sonnet, "pro");
     expect(pro.provider).toBe("anthropic");
     // Should never cross providers
@@ -273,12 +281,12 @@ describe("resolveModelForClass", () => {
 
 describe("agentTypeToModelClass", () => {
   it("maps explore → lite", () => {
-    const sonnet = resolveModel("claude-sonnet-4-6");
+    const sonnet = resolveModel(DEFAULT_ANTHROPIC_MODEL_ID);
     expect(agentTypeToModelClass("explore", sonnet)).toBe("lite");
   });
 
   it("maps general → same class as parent (general)", () => {
-    const sonnet = resolveModel("claude-sonnet-4-6");
+    const sonnet = resolveModel(DEFAULT_ANTHROPIC_MODEL_ID);
     expect(agentTypeToModelClass("general", sonnet)).toBe("general");
   });
 
@@ -293,7 +301,7 @@ describe("agentTypeToModelClass", () => {
   });
 
   it("maps unknown agent type → general (same as parent default)", () => {
-    const sonnet = resolveModel("claude-sonnet-4-6");
+    const sonnet = resolveModel(DEFAULT_ANTHROPIC_MODEL_ID);
     expect(agentTypeToModelClass("unknown_type", sonnet)).toBe("general");
   });
 });

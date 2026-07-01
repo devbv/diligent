@@ -1,6 +1,7 @@
 // @summary Unit tests for slash command parser, filter, prefix detection, and skill merging
 
 import { describe, expect, test } from "bun:test";
+import { DEFAULT_ANTHROPIC_MODEL_ID } from "@diligent/core/llm/models";
 import {
   BUILTIN_COMMANDS,
   buildCommandList,
@@ -23,9 +24,9 @@ describe("parseSlashCommand", () => {
   });
 
   test("trims arg whitespace", () => {
-    expect(parseSlashCommand("/model   claude-sonnet-4-6  ")).toEqual({
+    expect(parseSlashCommand(` /model   ${DEFAULT_ANTHROPIC_MODEL_ID}  `.trimStart())).toEqual({
       name: "model",
-      args: "claude-sonnet-4-6",
+      args: DEFAULT_ANTHROPIC_MODEL_ID,
     });
   });
 
