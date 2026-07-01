@@ -1,6 +1,7 @@
 // @summary Tests for Anthropic provider event stream mapping
 import { describe, expect, test } from "bun:test";
 import { EventStream } from "../../../src/event-stream";
+import { convertMessages } from "../../../src/llm/provider/anthropic";
 import type { Model, ProviderEvent, ProviderResult } from "../../../src/llm/types";
 import type { AssistantMessage } from "../../../src/types";
 
@@ -112,5 +113,129 @@ describe("Anthropic Provider Event Mapping", () => {
 
     expect(events.map((e) => e.type)).toEqual(["start", "error"]);
     await expect(stream.result()).rejects.toThrow("API rate limit");
+  });
+});
+
+describe("Anthropic message conversion", () => {
+  test("replays Anthropic provider-native web blocks as native server tool blocks", async () => {
+    const converted = await convertMessages([
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "provider_tool_use",
+            id: "ws_1",
+            provider: "anthropic",
+            name: "web_search",
+            input: { query: "diligent" },
+          },
+          {
+            type: "web_search_result",
+            toolUseId: "ws_1",
+            provider: "anthropic",
+            results: [
+              {
+                url: "https://example.com",
+                title: "Example",
+                pageAge: "1 day",
+                encryptedContent: "enc1",
+              },
+            ],
+          },
+          {
+            type: "provider_tool_use",
+            id: "wf_1",
+            provider: "anthropic",
+            name: "web_fetch",
+            input: { url: "https://example.com/page" },
+          },
+          {
+            type: "web_fetch_result",
+            toolUseId: "wf_1",
+            provider: "anthropic",
+            url: "https://example.com/page",
+            document: {
+              mimeType: "text/plain",
+              text: "Page body",
+              title: "Fetched Page",
+              citationsEnabled: true,
+            },
+            retrievedAt: "2026-04-06T00:00:00Z",
+          },
+        ],
+        model: TEST_MODEL.id,
+        usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
+        stopReason: "end_turn",
+        timestamp: 1,
+      },
+      { role: "tool_result", toolCallId: "tc_1", output: "ok", timestamp: 2 },
+    ]);
+
+    expect(converted[0]).toEqual({
+      role: "assistant",
+      content: [
+        {
+          type: "server_tool_use",
+          id: "ws_1",
+          name: "web_search",
+          input: { query: "diligent" },
+        },
+        {
+          type: "web_search_tool_result",
+          tool_use_id: "ws_1",
+          caller: { type: "direct" },
+          content: [
+            {
+              type: "web_search_result",
+              url: "https://example.com",
+              title: "Example",
+              encrypted_content: "enc1",
+              page_age: "1 day",
+            },
+          ],
+        },
+        {
+          type: "server_tool_use",
+          id: "wf_1",
+          name: "web_fetch",
+          input: { url: "https://example.com/page" },
+        },
+        {
+          type: "web_fetch_tool_result",
+          tool_use_id: "wf_1",
+          caller: { type: "direct" },
+          content: {
+            type: "web_fetch_result",
+            url: "https://example.com/page",
+            retrieved_at: "2026-04-06T00:00:00Z",
+            content: {
+              type: "document",
+              source: { type: "text", media_type: "text/plain", data: "Page body" },
+              title: "Fetched Page",
+              citations: { enabled: true },
+            },
+          },
+        },
+      ],
+    });
+    expect(converted[1]?.role).toBe("user");
+  });
+
+  test("omits non-Anthropic provider-native blocks during Anthropic replay", async () => {
+    const converted = await convertMessages([
+      {
+        role: "assistant",
+        content: [
+          { type: "provider_tool_use", id: "ws_1", provider: "openai", name: "web_search", input: { query: "x" } },
+          { type: "text", text: "done" },
+        ],
+        model: TEST_MODEL.id,
+        usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
+        stopReason: "end_turn",
+        timestamp: 1,
+      },
+    ]);
+
+    expect(converted).toEqual([{ role: "assistant", content: [{ type: "text", text: "done" }] }]);
   });
 });
