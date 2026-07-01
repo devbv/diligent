@@ -60,14 +60,19 @@ GLOBAL_DIR="${HOME}/.overdare"
 BOOTSTRAP="${REPO_ROOT}/apps/overdare-ai-agent/bootstrap"
 SIDECAR="${REPO_ROOT}/apps/overdare-ai-agent/sidecar/src/server.ts"
 
-if [ -z "$STUDIO_HOST" ]; then
+STUDIO_DISABLED="${STUDIO_DISABLED:-}"
+
+if [ -n "$STUDIO_DISABLED" ]; then
+  echo "> Studio: DISABLED (no RPC connection to 13377; edit/rollback tools unavailable)"
+elif [ -z "$STUDIO_HOST" ]; then
   echo "x Could not find STUDIO_HOST (Windows IP)." >&2
   echo "  Set STUDIO_HOST=<windows-ip> in .env.local, or" >&2
   echo "  pass it as an argument: scripts/dev-cross-studio.sh <windows-ip> [studio-port]" >&2
+  echo "  (Or run 'make dev-agent-nostudio' to launch without Studio.)" >&2
   exit 1
+else
+  echo "> Studio target: ${STUDIO_HOST}:${STUDIO_PORT}"
 fi
-
-echo "> Studio target: ${STUDIO_HOST}:${STUDIO_PORT}"
 
 # --- 0. Decide sidecar cwd (world-file location = editing possible) ---------
 # WORLD_DIR set:  cwd=mount path -> edit tools modify the live .ovdrjm directly.
@@ -153,7 +158,7 @@ free_port "$BACKEND_PORT"
 free_port "$FRONTEND_PORT"
 
 # --- 4. Reachability check (continues on failure, warning only) -------------
-if command -v nc >/dev/null 2>&1; then
+if [ -z "$STUDIO_DISABLED" ] && command -v nc >/dev/null 2>&1; then
   if nc -z -w 2 "$STUDIO_HOST" "$STUDIO_PORT" 2>/dev/null; then
     echo "> Studio reachability: OK (${STUDIO_HOST}:${STUDIO_PORT})"
   else
@@ -175,8 +180,13 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 echo "> Starting sidecar backend (:${BACKEND_PORT}, cwd=${CWD})"
-STUDIO_HOST="$STUDIO_HOST" STUDIO_PORT="$STUDIO_PORT" \
-  bun run "$SIDECAR" --dev --port="$BACKEND_PORT" --cwd="$CWD" &
+if [ -n "$STUDIO_DISABLED" ]; then
+  STUDIO_DISABLED=1 \
+    bun run "$SIDECAR" --dev --port="$BACKEND_PORT" --cwd="$CWD" &
+else
+  STUDIO_HOST="$STUDIO_HOST" STUDIO_PORT="$STUDIO_PORT" \
+    bun run "$SIDECAR" --dev --port="$BACKEND_PORT" --cwd="$CWD" &
+fi
 BACKEND_PID=$!
 
 echo "> Starting Vite frontend (:${FRONTEND_PORT})"

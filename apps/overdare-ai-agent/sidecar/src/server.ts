@@ -57,6 +57,8 @@ export async function startStudioServer(argv: string[] = process.argv.slice(2)):
         studioRpcPort: parseEnvPort(process.env.STUDIO_PORT),
         hubDomain: process.env.HUB_DOMAIN,
         projectId: process.env.OVERDARE_PROJECT_ID,
+        // STUDIO_DISABLED=1 → skip the Studio RPC provider entirely (no 13377 connects).
+        studioDisabled: process.env.STUDIO_DISABLED === "1" || process.env.STUDIO_DISABLED?.toLowerCase() === "true",
       }),
     });
 
