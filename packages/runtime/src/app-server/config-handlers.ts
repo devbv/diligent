@@ -109,6 +109,19 @@ export async function handleAuthSet(
     throw Object.assign(new Error("ChatGPT uses OAuth login, not API keys"), { code: -32602 });
   }
 
+  // Verify the key against the provider before persisting, so an invalid key is reported at save
+  // time instead of turning the status green and only failing on the first chat. This call is made
+  // by the server (not the browser), so it won't appear in the browser DevTools network tab.
+  console.log(`[auth] verifying ${params.provider} API key with provider...`);
+  try {
+    await providerManager.validateApiKey(params.provider, params.apiKey);
+    console.log(`[auth] ${params.provider} API key verified`);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Invalid API key";
+    console.warn(`[auth] ${params.provider} API key verification failed: ${message}`);
+    throw Object.assign(new Error(message), { code: -32602 });
+  }
+
   await saveAuthKey(params.provider, params.apiKey, authStore);
   providerManager.setApiKey(params.provider, params.apiKey);
   const providers = await buildProviderList(providerManager, authStore);

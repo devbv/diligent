@@ -36,7 +36,11 @@ export const JSONRPCErrorResponseSchema = z.object({
 });
 export type JSONRPCErrorResponse = z.infer<typeof JSONRPCErrorResponseSchema>;
 
-export const JSONRPCResponseSchema = z.union([JSONRPCSuccessResponseSchema, JSONRPCErrorResponseSchema]);
+// Error must come first: `result: z.unknown()` is optional in zod, so an error response
+// `{ id, error }` would otherwise match the success schema first and have its `error` field
+// stripped — leaving `{ id }`, which the client drops (no result, no error) and the caller
+// hangs forever. An error response has a required `error` object, so it only matches here.
+export const JSONRPCResponseSchema = z.union([JSONRPCErrorResponseSchema, JSONRPCSuccessResponseSchema]);
 export type JSONRPCResponse = z.infer<typeof JSONRPCResponseSchema>;
 
 export const JSONRPCMessageSchema = z.union([JSONRPCRequestSchema, JSONRPCNotificationSchema, JSONRPCResponseSchema]);

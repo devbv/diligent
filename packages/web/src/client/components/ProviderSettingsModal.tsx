@@ -202,7 +202,7 @@ export function ProviderSettingsModal({
                       disabled={isSaving || !keyInput.trim()}
                       onClick={() => void handleSave(p.provider)}
                     >
-                      Save
+                      {isSaving ? "Verifying…" : "Save"}
                     </Button>
                     <Button intent="ghost" size="sm" disabled={isSaving} onClick={handleCancel}>
                       Cancel
