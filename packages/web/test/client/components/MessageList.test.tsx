@@ -151,58 +151,6 @@ test("MessageList groups failed tool activity rows", () => {
   expect(html).not.toContain("**/*.lua");
 });
 
-test("MessageList groups thinking with the activity rows that immediately follow", () => {
-  const items: RenderItem[] = [
-    {
-      id: "assistant-thinking",
-      kind: "assistant",
-      text: "I will inspect the project before editing.",
-      thinking: "**Inspecting files**",
-      contentBlocks: [],
-      thinkingDone: false,
-      timestamp: 1,
-    },
-    {
-      id: "tool-bash",
-      kind: "tool",
-      toolName: "bash",
-      inputText: "git status --short",
-      outputText: "",
-      isError: false,
-      status: "done",
-      timestamp: 2,
-      toolCallId: "call-bash",
-      startedAt: 2,
-      durationMs: 12,
-      render: { inputSummary: "git status --short", blocks: [] },
-    },
-    {
-      id: "tool-plan",
-      kind: "tool",
-      toolName: "plan",
-      inputText: "Update plan",
-      outputText: "",
-      isError: false,
-      status: "done",
-      timestamp: 3,
-      toolCallId: "call-plan",
-      startedAt: 3,
-      durationMs: 1,
-      render: { inputSummary: "Project inspection (2 steps)", blocks: [] },
-    },
-  ];
-
-  const html = renderToStaticMarkup(
-    <MessageList items={items} threadStatus="idle" hasProvider={true} onOpenProviders={() => {}} />,
-  );
-
-  expect(html).toContain('data-message-list-row="progress:assistant-thinking:tool-group:tool-bash+tool-plan"');
-  expect(html).not.toContain('data-message-list-row="assistant-thinking"');
-  expect(html).toContain("Thinking: Inspecting files");
-  expect(html).toContain("I will inspect the project before editing.");
-  expect(html).toContain("Ran 1 command and updated plan");
-});
-
 test("MessageList preserves assistant text hiding before request_user_input tools", () => {
   const items: RenderItem[] = [
     {

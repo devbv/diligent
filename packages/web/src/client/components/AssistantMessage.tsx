@@ -121,12 +121,12 @@ function stripSkillUsageFromContentBlocks(
   });
 }
 
-function SkillUsageRow({ notice }: { notice: SkillUsageNotice }) {
+function SkillUsageRow({ notice, hasFollowingContent }: { notice: SkillUsageNotice; hasFollowingContent: boolean }) {
   const [open, setOpen] = useState(false);
   const expandable = notice.details.length > 0;
 
   return (
-    <div className="mb-1">
+    <div className={hasFollowingContent ? "mb-0.5" : "mb-0"}>
       <ToolActivityRow
         title={`Skill used: ${notice.skillName}`}
         icon="book"
@@ -185,7 +185,9 @@ export function AssistantMessage({ item, suppressThinking = false }: AssistantMe
           />
         </div>
       )}
-      {skillNotice ? <SkillUsageRow notice={skillNotice} /> : null}
+      {skillNotice ? (
+        <SkillUsageRow notice={skillNotice} hasFollowingContent={hasStructuredBlocks || hasVisibleText} />
+      ) : null}
       {hasStructuredBlocks ? (
         <AssistantContentBlocks blocks={contentBlocks} />
       ) : hasVisibleText ? (

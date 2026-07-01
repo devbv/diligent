@@ -822,6 +822,26 @@ test("assistant message collapses skill usage preface into a compact activity ro
   expect(html).not.toContain("Reproduction path: DUO");
 });
 
+test("assistant message keeps standalone skill usage row spacing compact", () => {
+  const html = renderToStaticMarkup(
+    <AssistantMessage
+      item={{
+        id: "assistant-skill-standalone",
+        kind: "assistant",
+        text: "Skill used: overdare-debug-expert\nWork area: script",
+        thinking: "",
+        contentBlocks: [],
+        thinkingDone: true,
+        timestamp: 1,
+      }}
+    />,
+  );
+
+  expect(html).toContain("Skill used: overdare-debug-expert");
+  expect(html).toContain('class="mb-0"');
+  expect(html).not.toContain("mb-1");
+});
+
 test("assistant message does not add an empty divider when duration is unavailable", () => {
   const html = renderToStaticMarkup(
     <AssistantMessage
