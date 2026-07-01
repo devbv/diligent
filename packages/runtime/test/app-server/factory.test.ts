@@ -75,6 +75,21 @@ describe("createAppServerConfig", () => {
     expect(config.skillNames).toEqual([]);
   });
 
+  it("only exposes models for connected providers", () => {
+    const runtimeConfig = makeRuntimeConfig();
+    const config = createAppServerConfig({ cwd: "/tmp/test", runtimeConfig });
+
+    // No providers connected → picker shows nothing.
+    expect(config.modelConfig?.getAvailableModels()).toEqual([]);
+
+    // Connect Anthropic → only Anthropic models appear, not OpenAI's.
+    runtimeConfig.providerManager.setApiKey("anthropic", "sk-ant-test");
+    const models = config.modelConfig?.getAvailableModels() ?? [];
+    expect(models.length).toBeGreaterThan(0);
+    expect(models.every((m) => m.provider === "anthropic")).toBe(true);
+    expect(models.some((m) => m.provider === "openai")).toBe(false);
+  });
+
   it("uses runtimeConfig.effort as defaultEffort", () => {
     const runtimeConfig = makeRuntimeConfig({ effort: "high" });
     const config = createAppServerConfig({ cwd: "/tmp/test", runtimeConfig });

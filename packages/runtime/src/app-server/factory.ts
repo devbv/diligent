@@ -162,6 +162,13 @@ export function createAppServerConfig(opts: CreateAppServerConfigOptions): Dilig
     });
   }
 
+  // Only surface models for providers the user has actually connected, so the picker reflects
+  // configured providers (and grows as more are connected) rather than the full hardcoded list.
+  const modelsForConfiguredProviders = (): typeof modelInfoList => {
+    const configured = runtimeConfig.providerManager.getConfiguredProviders() as string[];
+    return modelInfoList.filter((m) => configured.includes(m.provider));
+  };
+
   // Consent is owned by `consentBackend` (remote source of truth) when injected; otherwise it
   // falls back to the local `config.jsonc`-backed manager below.
   const consentConfig: ConsentConfigManager = consentBackend ?? {
@@ -194,7 +201,7 @@ export function createAppServerConfig(opts: CreateAppServerConfigOptions): Dilig
         mode: runtimeConfig.mode,
         effort: initialEffort,
         currentModel: runtimeConfig.model?.id,
-        availableModels: modelInfoList,
+        availableModels: modelsForConfiguredProviders(),
         consent: consentConfig.get(),
       };
     },
@@ -219,10 +226,7 @@ export function createAppServerConfig(opts: CreateAppServerConfigOptions): Dilig
     },
     modelConfig: {
       currentModelId: runtimeConfig.model?.id,
-      getAvailableModels: () => {
-        const configured = runtimeConfig.providerManager.getConfiguredProviders() as string[];
-        return modelInfoList.filter((m) => configured.includes(m.provider));
-      },
+      getAvailableModels: () => modelsForConfiguredProviders(),
       onModelChange: (modelId, threadId) => {
         if (!threadId) {
           runtimeConfig.model = resolveModel(modelId);
