@@ -186,6 +186,10 @@ export class AgentRegistry {
         ? [{ label: "agent_role", content: agentDefinition.systemPromptPrefix }]
         : []),
       {
+        label: "runtime_context",
+        content: `Current working directory: ${this.deps.cwd}`,
+      },
+      {
         label: "nested_subagent_policy",
         content: nestedAgentPolicy,
       },

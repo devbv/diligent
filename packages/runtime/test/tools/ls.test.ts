@@ -32,6 +32,7 @@ describe("ls tool", () => {
 
     const result = await tool.execute({ path: tmpDir }, makeCtx());
     expect(result.render).toBeDefined();
+    expect(result.render?.inputSummary).toBe(tmpDir);
     expect(result.render?.outputSummary).toBe("2 entries listed");
     expect(result.render?.blocks[0]).toMatchObject({ type: "list" });
     expect(result.output).toContain("file.txt");
@@ -67,6 +68,14 @@ describe("ls tool", () => {
     expect(result.render?.blocks[0]).toMatchObject({ type: "text", title: "Output" });
     expect(result.output).toContain("path must be absolute");
     expect(result.metadata?.error).toBe(true);
+  });
+
+  test("renders empty directories with summaries", async () => {
+    const result = await tool.execute({ path: tmpDir }, makeCtx());
+    expect(result.output).toBe("");
+    expect(result.render?.inputSummary).toBe(tmpDir);
+    expect(result.render?.outputSummary).toBe("0 entries listed");
+    expect(result.render?.blocks[0]).toMatchObject({ type: "list", items: [] });
   });
 
   test("caps at 500 entries", async () => {

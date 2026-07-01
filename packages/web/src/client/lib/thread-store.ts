@@ -129,6 +129,7 @@ export type RenderItem =
       childTimeline?: Array<
         | {
             kind: "assistant";
+            itemId?: string;
             message: string;
           }
         | {
@@ -284,7 +285,7 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent, turnId?: string
   switch (event.type) {
     case "message_start": {
       if ("childThreadId" in event && typeof event.childThreadId === "string") {
-        return appendChildAssistantTimelineStart(merged, event.childThreadId);
+        return appendChildAssistantTimelineStart(merged, event.childThreadId, event.itemId);
       }
       const renderId = `item:${event.itemId}:${++renderSeq}`;
       if (merged.itemSlots[event.itemId]) return merged;

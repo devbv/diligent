@@ -97,6 +97,26 @@ describe("AgentRegistry", () => {
     expect(status.kind === "pending" || status.kind === "running").toBe(true);
   });
 
+  it("includes cwd in child agent system prompt", async () => {
+    let inspectedAgent: RuntimeAgent | undefined;
+    const registry = new AgentRegistry(
+      makeCollabDeps({
+        cwd: "/Users/devbv/git/diligent",
+        sessionManagerFactory: makeInspectingSessionManagerFactory((agent) => {
+          inspectedAgent = agent;
+        }),
+      }),
+    );
+
+    const { threadId } = registry.spawn({ prompt: "inspect", description: "inspect", agentType: "explore" });
+    await registry.wait([threadId], 5000);
+
+    expect(inspectedAgent?.systemPrompt).toContainEqual({
+      label: "runtime_context",
+      content: "Current working directory: /Users/devbv/git/diligent",
+    });
+  });
+
   it("wait resolves when agent completes", async () => {
     const registry = new AgentRegistry(
       makeCollabDeps({

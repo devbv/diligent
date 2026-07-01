@@ -14,7 +14,7 @@ export interface DoomLoopTracker {
 export class DoomLoopDetector {
   private tracker: DoomLoopTracker;
 
-  constructor(window = 10) {
+  constructor(window = 24) {
     this.tracker = createDoomLoopTracker(window);
   }
 
@@ -27,7 +27,7 @@ export class DoomLoopDetector {
   }
 }
 
-function createDoomLoopTracker(window = 10): DoomLoopTracker {
+function createDoomLoopTracker(window = 24): DoomLoopTracker {
   return { signatures: [], window };
 }
 
@@ -37,7 +37,7 @@ function recordDoomLoopToolCall(tracker: DoomLoopTracker, toolName: string, inpu
 }
 
 function detectDoomLoop(tracker: DoomLoopTracker): DoomLoopDetection {
-  for (const patternLength of [1, 2, 3]) {
+  for (let patternLength = 1; patternLength <= maxPatternLength(tracker.window); patternLength++) {
     const repeats = 3;
     const needed = patternLength * repeats;
     if (tracker.signatures.length < needed) continue;
@@ -50,4 +50,8 @@ function detectDoomLoop(tracker: DoomLoopTracker): DoomLoopDetection {
     }
   }
   return { detected: false };
+}
+
+function maxPatternLength(window: number): number {
+  return Math.floor(window / 3);
 }

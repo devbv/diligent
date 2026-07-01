@@ -31,10 +31,11 @@ type CachedCollabViewState = {
 
 const collabViewStateCache = new Map<string, CachedCollabViewState>();
 
-function deriveChildPreview(payload: ThreadReadResponse): ChildPreview {
-  const childTools: ChildPreview["childTools"] = [];
+export function deriveChildPreview(payload: ThreadReadResponse): ChildPreview {
   const childMessages: string[] = [];
   const childTimeline: ChildPreview["childTimeline"] = [];
+  const childToolsByCallId = new Map<string, ChildPreview["childTools"][number]>();
+  const childToolOrder: string[] = [];
 
   for (const item of payload.items) {
     if (item.type === "agentMessage") {
@@ -56,13 +57,24 @@ function deriveChildPreview(payload: ThreadReadResponse): ChildPreview {
         inputText,
         outputText,
       } as const;
-      childTools.push(tool);
-      childTimeline.push({ ...tool, kind: "tool" });
+      if (!childToolsByCallId.has(item.toolCallId)) {
+        childToolOrder.push(item.toolCallId);
+      }
+      childToolsByCallId.set(item.toolCallId, tool);
     }
   }
 
+  for (const toolCallId of childToolOrder) {
+    const tool = childToolsByCallId.get(toolCallId);
+    if (!tool) continue;
+    childTimeline.push({ ...tool, kind: "tool" });
+  }
+
   return {
-    childTools,
+    childTools: childToolOrder.flatMap((toolCallId) => {
+      const tool = childToolsByCallId.get(toolCallId);
+      return tool ? [tool] : [];
+    }),
     childMessages,
     childTimeline,
   };

@@ -40,6 +40,14 @@ export function createGlobTool(cwd: string): Tool<typeof GlobParams> {
         return { output, render: createTextRenderPayload(undefined, output, true), metadata: { error: true } };
       }
 
+      if (isAbsoluteFilesystemPattern(args.pattern)) {
+        const relativeSuggestion = buildRelativePatternSuggestion(args.pattern, searchPath);
+        const output =
+          `Error: glob pattern must be relative to the search path, not an absolute filesystem path: ${args.pattern}\n` +
+          `Use a relative pattern like "${relativeSuggestion}" or pass the absolute directory via the path parameter.`;
+        return { output, render: createTextRenderPayload(undefined, output, true), metadata: { error: true } };
+      }
+
       try {
         const rgBin = process.env.DILIGENT_RG_PATH ?? "rg";
         const command = [rgBin, "--files", "--no-ignore", "--hidden", "--glob", args.pattern, searchPath];
@@ -97,4 +105,26 @@ export function createGlobTool(cwd: string): Tool<typeof GlobParams> {
 function isFilesystemRoot(path: string): boolean {
   const normalized = path.replace(/\\/g, "/").replace(/\/{2,}/g, "/");
   return normalized === "/" || /^[a-zA-Z]:\/$/.test(normalized);
+}
+
+function isAbsoluteFilesystemPattern(pattern: string): boolean {
+  const normalized = stripExtendedLengthPrefix(pattern).replace(/\\/g, "/");
+  const literalPrefix = normalized.slice(0, findFirstGlobMetaIndex(normalized));
+  if (!isAbsolute(literalPrefix)) return false;
+  if (/^[a-zA-Z]:\/$/.test(literalPrefix)) return true;
+  return !isFilesystemRoot(literalPrefix);
+}
+
+function findFirstGlobMetaIndex(pattern: string): number {
+  const match = /[*?[{]/.exec(pattern);
+  return match?.index ?? pattern.length;
+}
+
+function buildRelativePatternSuggestion(pattern: string, searchPath: string): string {
+  const normalizedPattern = stripExtendedLengthPrefix(pattern).replace(/\\/g, "/");
+  const normalizedSearchPath = stripExtendedLengthPrefix(searchPath).replace(/\\/g, "/").replace(/\/+$/, "");
+  if (normalizedPattern === normalizedSearchPath) return "**/*";
+  const prefix = `${normalizedSearchPath}/`;
+  if (normalizedPattern.startsWith(prefix)) return normalizedPattern.slice(prefix.length) || "**/*";
+  return "**/*";
 }

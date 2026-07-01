@@ -40,7 +40,7 @@ export function createLsTool(): Tool<typeof LsParams> {
           output += `\n\n... (${overflow} more entries not shown)`;
         }
 
-        return { output, render: createListRenderPayload(output) };
+        return { output, render: createListRenderPayload(output, { path }) };
       } catch (err) {
         const output = `Error listing directory: ${err instanceof Error ? err.message : String(err)}`;
         return {

@@ -269,10 +269,10 @@ export function createGrepRenderPayload(
   };
 }
 
-export function createListRenderPayload(outputText: string): ToolRenderPayload | undefined {
+export function createListRenderPayload(outputText: string, input?: { path?: string }): ToolRenderPayload {
   const items = toOutputLines(outputText).filter((line) => !line.startsWith("..."));
-  if (items.length === 0) return undefined;
   return {
+    inputSummary: summarizeRenderText(input?.path),
     outputSummary: buildResultSummary(items.length, "entry", outputText, "listed"),
     blocks: [{ type: "list", items }],
   };

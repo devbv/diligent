@@ -342,10 +342,20 @@ test("collab_interaction_end adds an interaction item", () => {
 
 test("appendChildAssistantTimelineStart adds an empty assistant entry", () => {
   const state = stateWithSpawn("tl-1");
-  const next = appendChildAssistantTimelineStart(state, "tl-1");
+  const next = appendChildAssistantTimelineStart(state, "tl-1", "msg-1");
   const spawn = findCollabSpawnItem(next, "tl-1");
   expect(spawn?.childTimeline).toHaveLength(1);
-  expect(spawn?.childTimeline?.[0]).toEqual({ kind: "assistant", message: "" });
+  expect(spawn?.childTimeline?.[0]).toEqual({ kind: "assistant", itemId: "msg-1", message: "" });
+});
+
+test("appendChildAssistantTimelineStart is idempotent for duplicate itemId", () => {
+  let state = stateWithSpawn("tl-dup");
+  state = appendChildAssistantTimelineStart(state, "tl-dup", "msg-dup");
+  state = appendChildAssistantTimelineStart(state, "tl-dup", "msg-dup");
+  state = appendChildAssistantTimelineStart(state, "tl-dup", "msg-dup");
+  const spawn = findCollabSpawnItem(state, "tl-dup");
+  expect(spawn?.childTimeline).toHaveLength(1);
+  expect(spawn?.childTimeline?.[0]).toEqual({ kind: "assistant", itemId: "msg-dup", message: "" });
 });
 
 test("appendChildAssistantTimelineStart returns unchanged state when spawn not found", () => {
@@ -355,11 +365,11 @@ test("appendChildAssistantTimelineStart returns unchanged state when spawn not f
 
 test("appendChildAssistantTimelineDelta appends delta to last assistant entry", () => {
   let state = stateWithSpawn("tl-2");
-  state = appendChildAssistantTimelineStart(state, "tl-2");
+  state = appendChildAssistantTimelineStart(state, "tl-2", "msg-2");
   state = appendChildAssistantTimelineDelta(state, "tl-2", "Hello");
   state = appendChildAssistantTimelineDelta(state, "tl-2", " world");
   const spawn = findCollabSpawnItem(state, "tl-2");
-  expect(spawn?.childTimeline?.[0]).toEqual({ kind: "assistant", message: "Hello world" });
+  expect(spawn?.childTimeline?.[0]).toEqual({ kind: "assistant", itemId: "msg-2", message: "Hello world" });
 });
 
 test("appendChildAssistantTimelineDelta creates assistant entry if none exists", () => {
@@ -372,7 +382,7 @@ test("appendChildAssistantTimelineDelta creates assistant entry if none exists",
 
 test("finalizeChildAssistantTimeline replaces last assistant entry with final message", () => {
   let state = stateWithSpawn("tl-4");
-  state = appendChildAssistantTimelineStart(state, "tl-4");
+  state = appendChildAssistantTimelineStart(state, "tl-4", "msg-4");
   state = appendChildAssistantTimelineDelta(state, "tl-4", "partial");
 
   const finalMsg = {

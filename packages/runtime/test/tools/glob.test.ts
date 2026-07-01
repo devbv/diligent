@@ -102,6 +102,36 @@ describe("glob tool", () => {
     expect(result.metadata?.error).toBe(true);
   });
 
+  test("returns error for absolute filesystem patterns", async () => {
+    const tool = createGlobTool(tmpDir);
+    const result = await tool.execute({ pattern: `${tmpDir}/src/**/*.ts` }, makeCtx());
+
+    expect(result.output).toContain("pattern must be relative to the search path");
+    expect(result.output).toContain("Use a relative pattern like");
+    expect(result.metadata?.error).toBe(true);
+  });
+
+  test("returns error for Windows absolute filesystem patterns", async () => {
+    const tool = createGlobTool(tmpDir);
+    const result = await tool.execute({ pattern: "C:/Users/alice/project/src/**/*.ts" }, makeCtx());
+
+    expect(result.output).toContain("pattern must be relative to the search path");
+    expect(result.metadata?.error).toBe(true);
+  });
+
+  test("allows root-anchored glob patterns", async () => {
+    if (!rgAvailable) return;
+
+    await mkdir(join(tmpDir, "src"), { recursive: true });
+    await writeFile(join(tmpDir, "src", "index.ts"), "");
+
+    const tool = createGlobTool(tmpDir);
+    const result = await tool.execute({ pattern: "/**/src/**/*.ts" }, makeCtx());
+
+    expect(result.output).toContain("index.ts");
+    expect(result.metadata?.error).toBeUndefined();
+  });
+
   test("returns error for filesystem root path", async () => {
     if (!rgAvailable) return;
 

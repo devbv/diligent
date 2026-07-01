@@ -9,6 +9,7 @@ import { AssistantMessage } from "../../../src/client/components/AssistantMessag
 import { Button } from "../../../src/client/components/Button";
 import {
   CollabEventBlock,
+  deriveChildPreview,
   getCollabEventPersistenceKey,
   resolveEffectiveTimeline,
 } from "../../../src/client/components/CollabEventBlock";
@@ -1654,6 +1655,45 @@ test("collab event prefers live child timeline over loaded snapshot preview", ()
 
   expect(resolveEffectiveTimeline(liveTimeline, loadedPreview)).toEqual(liveTimeline);
   expect(resolveEffectiveTimeline(undefined, loadedPreview)).toEqual(loadedPreview.childTimeline);
+});
+
+test("collab child snapshot preview merges tool start and completed rows by toolCallId", () => {
+  const preview = deriveChildPreview({
+    threadId: "child-1",
+    cwd: "/repo",
+    items: [
+      {
+        type: "toolCall",
+        itemId: "tool:tc-ls",
+        toolCallId: "tc-ls",
+        toolName: "ls",
+        input: { path: "/Users/devbv/git" },
+        timestamp: 1,
+        startedAt: 1,
+      },
+      {
+        type: "toolCall",
+        itemId: "tool:tc-ls",
+        toolCallId: "tc-ls",
+        toolName: "ls",
+        input: { path: "/Users/devbv/git" },
+        output: "diligent/",
+        isError: false,
+        timestamp: 2,
+        startedAt: 1,
+      },
+    ],
+    errors: [],
+    hasFollowUp: false,
+    entryCount: 2,
+    isRunning: false,
+    totalCost: 0,
+  });
+
+  expect(preview.childTools).toHaveLength(1);
+  expect(preview.childTimeline).toHaveLength(1);
+  expect(preview.childTools[0]).toMatchObject({ toolCallId: "tc-ls", status: "done", outputText: "diligent/" });
+  expect(preview.childTimeline[0]).toMatchObject({ kind: "tool", toolCallId: "tc-ls", status: "done" });
 });
 
 test("collab group renders consecutive events directly without earlier-events toggle", () => {
