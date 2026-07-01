@@ -196,7 +196,8 @@ export class AgentRegistry {
     const targetClass: ModelClass =
       params.modelClass ?? agentDefinition.defaultModelClass ?? agentTypeToModelClass(params.agentType, parentModel);
     const childModel = resolveModelForClass(parentModel, targetClass);
-    const childEffort = resolveChildEffort(this.deps.effort, targetClass, childModel);
+    const useClassDefaultEffort = params.modelClass !== undefined || agentDefinition.defaultModelClass !== undefined;
+    const childEffort = resolveChildEffort(this.deps.effort, targetClass, childModel, useClassDefaultEffort);
 
     const factory = this.deps.sessionManagerFactory ?? ((cfg) => new SessionManager(cfg));
 
@@ -636,10 +637,13 @@ function resolveChildEffort(
   parentEffort: ThinkingEffort,
   modelClass: ModelClass,
   childModel: ReturnType<typeof resolveModelForClass>,
+  useClassDefaultEffort: boolean,
 ): ThinkingEffort {
-  const defaultEffort = defaultEffortForModelClass(modelClass);
-  if (childModel.supportsThinking && childModel.supportedEfforts?.includes(defaultEffort)) {
-    return defaultEffort;
+  if (useClassDefaultEffort) {
+    const defaultEffort = defaultEffortForModelClass(modelClass);
+    if (childModel.supportsThinking && childModel.supportedEfforts?.includes(defaultEffort)) {
+      return defaultEffort;
+    }
   }
   if (!childModel.supportsThinking) {
     return parentEffort;
