@@ -58,7 +58,7 @@ describe("resolveModel", () => {
   });
 
   it("infers chatgpt from chatgpt- prefix", () => {
-    const model = resolveModel("chatgpt-5.3-codex");
+    const model = resolveModel("chatgpt-5.5");
     expect(model.provider).toBe("chatgpt");
   });
 
@@ -98,10 +98,11 @@ describe("model class annotations", () => {
     }
   });
 
-  it("every known model has a modelClass", () => {
+  it("modelClass annotations are valid when present", () => {
     for (const model of KNOWN_MODELS) {
-      expect(model.modelClass).toBeDefined();
-      expect(["pro", "general", "lite"]).toContain(model.modelClass);
+      if (model.modelClass !== undefined) {
+        expect(["pro", "general", "lite"]).toContain(model.modelClass);
+      }
     }
   });
 
@@ -123,7 +124,7 @@ describe("model class annotations", () => {
 
   it("anthropic classes map correctly", () => {
     expect(KNOWN_MODELS.find((m) => m.id === "claude-opus-4-8")?.modelClass).toBe("pro");
-    expect(KNOWN_MODELS.find((m) => m.id === "claude-fable-5")?.modelClass).toBe("pro");
+    expect(KNOWN_MODELS.find((m) => m.id === "claude-fable-5")?.modelClass).toBeUndefined();
     expect(KNOWN_MODELS.find((m) => m.id === "claude-sonnet-5")?.modelClass).toBe("general");
     expect(KNOWN_MODELS.find((m) => m.id === DEFAULT_ANTHROPIC_MODEL_ID)?.modelClass).toBe("general");
     expect(KNOWN_MODELS.find((m) => m.id === "claude-haiku-4-5-20251001")?.modelClass).toBe("lite");
@@ -132,7 +133,6 @@ describe("model class annotations", () => {
   it("openai classes map correctly", () => {
     expect(KNOWN_MODELS.find((m) => m.id === "gpt-5.5")?.modelClass).toBe("pro");
     expect(KNOWN_MODELS.find((m) => m.id === "gpt-5.4")?.modelClass).toBe("general");
-    expect(KNOWN_MODELS.find((m) => m.id === "gpt-5.3-codex")?.modelClass).toBe("general");
     expect(KNOWN_MODELS.find((m) => m.id === "gpt-5.4-mini")?.modelClass).toBe("lite");
   });
 
@@ -145,7 +145,6 @@ describe("model class annotations", () => {
   it("chatgpt classes map correctly", () => {
     expect(KNOWN_MODELS.find((m) => m.id === "chatgpt-5.5")?.modelClass).toBe("pro");
     expect(KNOWN_MODELS.find((m) => m.id === "chatgpt-5.4")?.modelClass).toBe("general");
-    expect(KNOWN_MODELS.find((m) => m.id === "chatgpt-5.3-codex")?.modelClass).toBe("general");
     expect(KNOWN_MODELS.find((m) => m.id === "chatgpt-5.4-mini")?.modelClass).toBe("lite");
   });
 
@@ -153,7 +152,6 @@ describe("model class annotations", () => {
     expect(KNOWN_MODELS.filter((m) => m.provider === "chatgpt").map((m) => m.id)).toEqual([
       "chatgpt-5.5",
       "chatgpt-5.4",
-      "chatgpt-5.3-codex",
       "chatgpt-5.4-mini",
     ]);
   });
@@ -206,10 +204,10 @@ describe("resolveModelForClass", () => {
     expect(pro.provider).toBe("anthropic");
   });
 
-  it("keeps anthropic pro models on their selected pro model", () => {
+  it("routes unclassified anthropic pro-capable models to the provider pro default", () => {
     const fable = resolveModel("claude-fable-5");
     const pro = resolveModelForClass(fable, "pro");
-    expect(pro.id).toBe("claude-fable-5");
+    expect(pro.id).toBe("claude-opus-4-8");
 
     const sonnet = resolveModel(DEFAULT_ANTHROPIC_MODEL_ID);
     expect(resolveModelForClass(sonnet, "pro").id).toBe("claude-opus-4-8");
@@ -244,15 +242,15 @@ describe("resolveModelForClass", () => {
   });
 
   it("resolves chatgpt general → lite", () => {
-    const codex = resolveModel("chatgpt-5.3-codex");
-    const lite = resolveModelForClass(codex, "lite");
+    const chatgpt = resolveModel("chatgpt-5.4");
+    const lite = resolveModelForClass(chatgpt, "lite");
     expect(lite.id).toBe("chatgpt-5.4-mini");
     expect(lite.provider).toBe("chatgpt");
   });
 
   it("resolves chatgpt general → pro", () => {
-    const codex = resolveModel("chatgpt-5.3-codex");
-    const pro = resolveModelForClass(codex, "pro");
+    const chatgpt = resolveModel("chatgpt-5.4");
+    const pro = resolveModelForClass(chatgpt, "pro");
     expect(pro.id).toBe("chatgpt-5.5");
     expect(pro.provider).toBe("chatgpt");
   });
