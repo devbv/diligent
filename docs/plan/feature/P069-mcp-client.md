@@ -558,6 +558,8 @@ codex fetches tools once at startup and does **not** refresh on `list_changed` (
 
 codex `required=true` makes non-interactive runs fail fast if a server can't initialize. Useful for CI/`exec`-style flows. Add `required?: boolean` later; v1 always degrades gracefully.
 
+> Server management UX (status surfacing + `/mcp list|login|logout` commands, TUI + Web) is planned separately in `docs/plan/feature/P070-mcp-server-management.md`, which depends on this plan's manager + OAuth layer.
+
 ### C11. OAuth for HTTP servers **[v1]**
 
 codex has full OAuth: keyring/file token storage, silent refresh, and an out-of-band `codex mcp login <server>` command, plus a ChatGPT ambient-auth special case. Include OAuth in v1 for remote MCP: static `headers` + `{env:VAR}` bearer tokens still take precedence, but OAuth discovery/login/token storage/refresh is part of the first implementation scope.
@@ -597,3 +599,64 @@ The official MCP authorization spec treats HTTP authorization as a first-class c
 | P3 | Full env allow-list model | Better control than env overlay, but safe defaults + explicit env map are enough initially. | later |
 | P3 | Sampling / roots / prompts / resources | Outside agreed Tools-only scope. Add only when product use cases are clear. | later |
 
+---
+
+## Session Handoff (2026-07-01) — implementation status & next steps
+
+### What is DONE and committed (`efdc440e` + follow-up fix commit)
+
+- **Task 1** (core `Tool.inputSchema` passthrough) and **Task 2** (`mcpServers` schema) — done.
+- **Task 3–6** — done and verified end-to-end against real **stdio** servers:
+  - `packages/runtime/src/tools/mcp/{types,client,to-tool,provider,oauth,index}.ts`
+  - `McpConnectionManager` (signature-keyed reuse, parallel isolated startup, startup/tool
+    timeouts, `ctx.signal` cancellation, in-flight connect **dedupe**), tool bridge (namespaced
+    + 64-byte cap, result mapping, approval), bundled provider, app-server + runtime wiring.
+  - 29 unit tests pass; verified live with `@modelcontextprotocol/server-everything` (spawn,
+    list 13 tools, call, reuse=0ms, dispose) and `@modelcontextprotocol/server-filesystem`.
+- **Task 8** dep/docs — `@modelcontextprotocol/sdk ^1.29.0`, `docs/guide/mcp-servers.md`.
+- Live-test bug fixes: OAuth reconnect uses a fresh transport (was "already started"),
+  concurrent-connect dedupe, callback-server bind-error handling, `oauth.clientId` skips DCR.
+
+### DECISION: decouple OAuth login from connect (codex-rs model)
+
+The current **Task 7** implementation is architecturally wrong: `client.ts connect()` opens a
+browser mid-connection. That was the **root cause of the double-browser bug** (concurrent
+`tools/list` + agent-turn syncs each launched a login). codex-rs (verified) instead:
+
+- **connect** = load stored tokens + silent refresh only; on `AuthorizationRequired`/
+  `TokenExpired`/401 → surface **`needs_auth`** (never opens a browser).
+- **login/logout** = a *separate explicit command*; browser + loopback OAuth stores/deletes
+  tokens. OAuth only for streamable HTTP; discovers scope then retries once without scope.
+
+### Milestones (agreed re-alignment)
+
+- **M1 — core + stdio (no auth):** Task 1–6. **Next-session work = the M1 refactor below.**
+- **M2 — HTTP + OAuth SET (one bundle):** token store/refresh (Task 7) + `/mcp login|logout`
+  (P070) + `needs_auth` surfacing. Remote OAuth servers (e.g. Atlassian Rovo) only work once
+  login exists.
+- **M3 — remaining UX:** `/mcp list`, `/status` line, Web modal (P070).
+
+### Next-session checklist (M1 refactor — do this first)
+
+1. In `packages/runtime/src/tools/mcp/client.ts` `connect()`: **remove** the interactive login
+   path (the `oauth.waitForCallback(...)` + `finishAuth` + reconnect block). Keep the
+   `authProvider` so the SDK still loads stored tokens and silent-refreshes.
+2. Add `"needs_auth"` to `McpServerRuntime.status` (`types.ts`); on `UnauthorizedError`/expired,
+   return `status:"needs_auth"` instead of throwing/opening a browser. `provider.ts` should skip
+   `needs_auth` servers (log a hint) just like `error`.
+3. Keep `connectDeduped` (defensive) and `oauth.clientId` / `server.on('error')` handling.
+4. **Move** the loopback callback server + `waitForCallback` out of the connect path; they
+   become the guts of the M2 `/mcp login` command. `oauth.ts` `FileOAuthStore`,
+   `resolveAuthHeaders`, `shouldUseOAuth`, `McpOAuthClientProvider` stay as-is for M2 reuse.
+5. Update tests: drop any assumption that connect performs login; assert `needs_auth` on 401.
+6. Then implement M2 per `docs/plan/feature/P070-mcp-server-management.md`.
+
+### Test config & caveats (NOT committed)
+
+- Project `.diligent/config.jsonc` (untracked, test-only) has `atlassian` (OAuth) + `github`
+  (disabled; needs PAT/registered client). Global `~/.diligent/config.jsonc` has `everything`
+  (backup at `~/.diligent/config.jsonc.bak`).
+- Loopback OAuth callback port is `8976`. Do **not** kill processes on it during a live session
+  — it can be the running app/browser connection.
+- Uncommitted `packages/web/*` changes in the tree are a *separate* prior-session fix, not part
+  of this MCP work.

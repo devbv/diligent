@@ -76,6 +76,23 @@ describe("McpConnectionManager.sync", () => {
     await manager.disposeAll();
   });
 
+  test("coalesces concurrent syncs into a single connect (no double OAuth/login)", async () => {
+    let connects = 0;
+    const slowFactory: McpTransportFactory = async (name): Promise<Transport> => {
+      connects += 1;
+      await new Promise((r) => setTimeout(r, 30));
+      const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+      await buildServer(name).connect(serverTransport);
+      return clientTransport;
+    };
+    const manager = new McpConnectionManager(slowFactory);
+    const [a, b] = await Promise.all([manager.sync({ github: stdioConfig }), manager.sync({ github: stdioConfig })]);
+    expect(connects).toBe(1);
+    expect(a[0].status).toBe("connected");
+    expect(b[0].status).toBe("connected");
+    await manager.disposeAll();
+  });
+
   test("disposes a removed server", async () => {
     const f = countingFactory();
     const manager = new McpConnectionManager(f.factory);

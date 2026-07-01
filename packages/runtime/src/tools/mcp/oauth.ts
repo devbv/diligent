@@ -114,8 +114,13 @@ class McpOAuthClientProvider implements OAuthClientProvider {
     };
   }
 
-  clientInformation(): Promise<OAuthClientInformation | undefined> {
-    return this.store.getClientInformation();
+  async clientInformation(): Promise<OAuthClientInformation | undefined> {
+    const stored = await this.store.getClientInformation();
+    if (stored) return stored;
+    // A pre-registered client id lets us skip dynamic client registration for servers
+    // that do not support it (e.g. GitHub's remote MCP).
+    if (this.oauthConfig?.clientId) return { client_id: this.oauthConfig.clientId };
+    return undefined;
   }
 
   async saveClientInformation(info: OAuthClientInformationFull): Promise<void> {
@@ -190,6 +195,15 @@ export function createMcpOAuthHandle(
       );
       if (code) codeWaiter.resolve(code);
       else codeWaiter.reject(new Error(`MCP OAuth login failed: ${error ?? "no authorization code"}`));
+    });
+    // Bind failures (e.g. port already in use) must surface as a clear login error instead
+    // of an uncaught async exception that crashes the process.
+    server.on("error", (err: NodeJS.ErrnoException) => {
+      const detail =
+        err.code === "EADDRINUSE"
+          ? `loopback callback port ${port} is already in use (set a free one if needed)`
+          : err.message;
+      codeWaiter.reject(new Error(`MCP OAuth callback server failed: ${detail}`));
     });
     server.listen(port, "127.0.0.1");
   };

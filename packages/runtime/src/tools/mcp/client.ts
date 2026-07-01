@@ -98,6 +98,9 @@ async function withTimeout<T>(promise: Promise<T>, ms: number, label: string, on
 
 export class McpConnectionManager {
   private connections = new Map<string, ActiveConnection>();
+  /** In-flight connects keyed by `${name}\0${signature}`, so concurrent syncs (e.g. tools/list
+   *  + the agent turn) share a single connection attempt and never trigger a second OAuth login. */
+  private pending = new Map<string, Promise<ActiveConnection>>();
   private oauthDeps: McpOAuthDeps | undefined;
 
   constructor(private readonly transportFactory?: McpTransportFactory) {}
@@ -130,7 +133,7 @@ export class McpConnectionManager {
           return { name, status: "connected", tools: existing.tools };
         }
         try {
-          const conn = await this.connect(name, config);
+          const conn = await this.connectDeduped(name, config);
           this.connections.set(name, conn);
           return { name, status: "connected", tools: conn.tools };
         } catch (error) {
@@ -172,6 +175,17 @@ export class McpConnectionManager {
     }
   }
 
+  /** Coalesce concurrent connects to the same server+signature into one shared attempt. */
+  private connectDeduped(name: string, config: McpServerConfig): Promise<ActiveConnection> {
+    const key = `${name}\u0000${stableSignature(name, config)}`;
+    let inflight = this.pending.get(key);
+    if (!inflight) {
+      inflight = this.connect(name, config).finally(() => this.pending.delete(key));
+      this.pending.set(key, inflight);
+    }
+    return inflight;
+  }
+
   private async connect(name: string, config: McpServerConfig): Promise<ActiveConnection> {
     const signature = stableSignature(name, config);
     const startupTimeoutMs = timeoutOf(config, "startupTimeoutMs", DEFAULT_MCP_STARTUP_TIMEOUT_MS);
@@ -183,14 +197,22 @@ export class McpConnectionManager {
       oauth = createMcpOAuthHandle(name, this.oauthDeps, config.oauth);
     }
 
-    const transport = await this.createTransport(name, config, oauth);
+    let transport = await this.createTransport(name, config, oauth);
     try {
       await withTimeout(client.connect(transport), startupTimeoutMs, `MCP "${name}" connect`, () => {
         void transport.close?.();
       });
     } catch (error) {
       if (oauth && isUnauthorized(error)) {
-        await this.completeOAuth(client, transport as StreamableHTTPClientTransport, oauth);
+        // Complete the interactive login on the pending transport, then reconnect with a
+        // fresh transport: an SDK transport cannot be started twice, and the new one picks
+        // up the tokens the provider just persisted.
+        const code = await oauth.waitForCallback(OAUTH_LOGIN_TIMEOUT_MS);
+        await (transport as StreamableHTTPClientTransport).finishAuth(code);
+        transport = await this.createTransport(name, config, oauth);
+        await withTimeout(client.connect(transport), startupTimeoutMs, `MCP "${name}" reconnect`, () => {
+          void transport.close?.();
+        });
       } else {
         oauth?.close();
         throw error;
@@ -229,16 +251,6 @@ export class McpConnectionManager {
       return new StreamableHTTPClientTransport(new URL(config.url), { requestInit, authProvider: oauth?.provider });
     }
     throw new Error("MCP server config must specify either `command` (stdio) or `url` (http)");
-  }
-
-  private async completeOAuth(
-    client: Client,
-    transport: StreamableHTTPClientTransport,
-    oauth: McpOAuthHandle,
-  ): Promise<void> {
-    const code = await oauth.waitForCallback(OAUTH_LOGIN_TIMEOUT_MS);
-    await transport.finishAuth(code);
-    await client.connect(transport);
   }
 }
 
