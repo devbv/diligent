@@ -14,6 +14,8 @@ interface ToolActivityRowProps {
   isError: boolean;
   isBusy: boolean;
   durationLabel?: string | null;
+  metaLabel?: string | null;
+  metaTone?: "muted" | "success" | "danger" | "info";
   expanded: boolean;
   expandable: boolean;
   showMeta?: boolean;
@@ -196,13 +198,15 @@ export function ToolActivityRow({
   isError,
   isBusy,
   durationLabel,
+  metaLabel,
+  metaTone = "muted",
   expanded,
   expandable,
   showMeta = false,
   compact = false,
   onToggle,
 }: ToolActivityRowProps) {
-  const statusLabel = isError ? "Failed" : isBusy ? "Running…" : null;
+  const statusLabel = isError ? "Failed" : isBusy ? "running" : null;
   const showDuration = !statusLabel && status === "done" && durationLabel;
   const detailText = detail?.trim();
   const outputText = outputSummary?.trim();
@@ -219,7 +223,7 @@ export function ToolActivityRow({
           "group inline-flex max-w-full min-w-0 items-center rounded-md pr-1 text-left text-muted transition-colors",
           compact ? "gap-2 py-0.5" : "gap-2 py-1",
           expandable ? `hover:text-text ${focusRingClasses}` : "cursor-default",
-          isBusy && "tool-activity-running px-1 pr-2 text-info/85",
+          isBusy && "tool-activity-running text-info/85",
           isError && "text-danger/90",
         )}
       >
@@ -236,17 +240,26 @@ export function ToolActivityRow({
 
         <span className="min-w-0 truncate text-sm font-medium leading-5">{title}</span>
 
+        {metaLabel ? (
+          <span
+            className={cn(
+              "shrink-0 text-xs leading-5",
+              metaTone === "success" && "text-success/85",
+              metaTone === "danger" && "text-danger",
+              metaTone === "info" && "text-info",
+              metaTone === "muted" && "text-muted/65",
+            )}
+          >
+            {metaLabel}
+          </span>
+        ) : null}
+
         {showDuration ? (
           <span className="shrink-0 font-mono text-2xs leading-5 text-muted/60 tabular-nums">{durationLabel}</span>
         ) : null}
 
         {statusLabel ? (
-          <span
-            className={cn(
-              "shrink-0 text-2xs font-medium uppercase tracking-wide",
-              isError ? "text-danger" : "text-info",
-            )}
-          >
+          <span className={cn("shrink-0 text-xs font-medium leading-5", isError ? "text-danger" : "text-info")}>
             {statusLabel}
           </span>
         ) : null}

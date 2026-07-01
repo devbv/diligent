@@ -824,7 +824,7 @@ test("assistant message renders provider-native web blocks and citations", () =>
   expect(html).toContain("Example");
   expect(html).not.toContain("animate-pulse");
   expect(html).not.toContain("tool-activity-running");
-  expect(html).not.toContain("Running…");
+  expect(html).not.toContain(">running<");
   expect(html).toContain("Source 1:");
   expect(html).not.toContain("chatgpt");
   expect(html).not.toContain("openai");
@@ -1199,8 +1199,9 @@ test("tool block hides duration while tool is still running", () => {
 
   expect(html).not.toContain("123ms");
   expect(html).toContain("Running command");
-  expect(html).toContain("Running…");
+  expect(html).toContain(">running<");
   expect(html).toContain("tool-activity-running");
+  expect(html).not.toContain("px-1 pr-2");
 });
 
 test("tool block keeps request and response summaries hidden while collapsed", () => {
@@ -1315,7 +1316,7 @@ test("tool block renders asset gallery previews expanded", () => {
   expect(html).not.toContain("aria-pressed");
 });
 
-test("collab event block uses clickable card semantics without explicit expand labels", () => {
+test("collab event block renders as a compact agent activity row", () => {
   const html = renderToStaticMarkup(
     <CollabEventBlock
       item={{
@@ -1333,12 +1334,80 @@ test("collab event block uses clickable card semantics without explicit expand l
     />,
   );
 
-  expect(html).toContain('role="button"');
+  expect(html).toContain('type="button"');
+  expect(html).toContain('aria-expanded="false"');
   expect(html).toContain("Spawned Juniper [explore]");
-  expect(html).toContain("cursor-pointer");
-  expect(html).not.toContain("focus:ring-");
+  expect(html).toContain("completed");
+  expect(html).toContain("text-success/85");
+  expect(html).toContain("gap-2 py-0.5");
+  expect(html).not.toContain("bg-surface-dark py-2.5");
   expect(html).not.toContain(">expand<");
   expect(html).not.toContain(">collapse<");
+});
+
+test("collab event expanded timeline renders compact child activity rows", () => {
+  const html = renderToStaticMarkup(
+    <CollabEventBlock
+      initialOpen={true}
+      item={{
+        id: "collab-expanded-1",
+        kind: "collab",
+        eventType: "spawn",
+        childThreadId: "child-expanded-1",
+        nickname: "Camellia",
+        agentType: "explore",
+        description: "Analyze Lua and level hierarchy",
+        status: "running",
+        childTools: [
+          {
+            toolCallId: "tool-read-1",
+            toolName: "read",
+            status: "running",
+            isError: false,
+            inputText: '{"file_path":"/Volumes/overdare-newgame/Lua/FRU_RoundManager.lua","offset":1,"limit":400}',
+            outputText: "undefined",
+          },
+        ],
+        childTimeline: [
+          {
+            kind: "assistant",
+            message: "**Inspecting files** I am planning to inspect files before using grep.",
+          },
+          {
+            kind: "tool",
+            toolCallId: "tool-grep-1",
+            toolName: "grep",
+            status: "done",
+            isError: true,
+            inputText: '{"pattern":"RoundState","path":"/Volumes/overdare-newgame"}',
+            outputText: 'Error running grep: Executable not found in $PATH: "rg"',
+          },
+          {
+            kind: "tool",
+            toolCallId: "tool-read-1",
+            toolName: "read",
+            status: "running",
+            isError: false,
+            inputText: '{"file_path":"/Volumes/overdare-newgame/Lua/FRU_RoundManager.lua","offset":1,"limit":400}',
+            outputText: "undefined",
+          },
+        ],
+        timestamp: 1,
+      }}
+    />,
+  );
+
+  expect(html).toContain("Spawned Camellia [explore]");
+  expect(html).toContain('aria-expanded="true"');
+  expect(html).toContain("Analyze Lua and level hierarchy");
+  expect(html).toContain("Thought: Inspecting files I am planning to inspect files before using grep.");
+  expect(html).toContain("Search failed: pattern=RoundState, path=/Volumes/overdare-newgame");
+  expect(html).toContain("Error running grep: Executable not found in $PATH");
+  expect(html).toContain("Reading files: file_path=/Volumes/overdare-newgame/Lua/FRU_RoundManager.lua");
+  expect(html).toContain("ml-7 space-y-0.5");
+  expect(html).not.toContain("**Inspecting files**");
+  expect(html).not.toContain("ㄴ");
+  expect(html).not.toContain("&gt;undefined&lt;");
 });
 
 test("collab wait event shows animated spinner while agents are still running", () => {
@@ -1365,7 +1434,8 @@ test("collab wait event shows animated spinner while agents are still running", 
 
   expect(html).toContain("Waiting for Juniper");
   expect(html).toContain(">running<");
-  expect(html).toContain("animate-spin");
+  expect(html).toContain("tool-activity-running");
+  expect(html).not.toContain("px-1 pr-2");
 });
 
 test("collab wait timeout keeps ongoing spinner UI without explicit timeout label", () => {
@@ -1393,7 +1463,7 @@ test("collab wait timeout keeps ongoing spinner UI without explicit timeout labe
 
   expect(html).toContain("Waiting for Juniper");
   expect(html).toContain(">running<");
-  expect(html).toContain("animate-spin");
+  expect(html).toContain("tool-activity-running");
   expect(html).not.toContain("timed out");
 });
 

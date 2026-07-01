@@ -1,16 +1,18 @@
 // @summary Collab event block showing sub-agent orchestration in concise conversation order
 
-import type { ThreadReadResponse } from "@diligent/protocol";
+import type { ThreadReadResponse, ToolRenderPayload } from "@diligent/protocol";
 import { useCallback, useEffect, useState } from "react";
 import { cn } from "../lib/cn";
 import type { RenderItem } from "../lib/thread-store";
 import { stringifyUnknown } from "../lib/thread-utils";
-import { getToolInfo } from "../lib/tool-info";
-import { StatusDot } from "./StatusDot";
+import type { ToolIconName } from "../lib/tool-info";
+import { ToolActivityRow } from "./ToolActivityRow";
+import { ToolBlock } from "./ToolBlock";
 
 interface CollabEventBlockProps {
   item: Extract<RenderItem, { kind: "collab" }>;
   loadChildThread?: (childThreadId: string) => Promise<ThreadReadResponse>;
+  initialOpen?: boolean;
 }
 
 type ChildPreview = {
@@ -18,6 +20,9 @@ type ChildPreview = {
   childMessages: string[];
   childTimeline: NonNullable<Extract<RenderItem, { kind: "collab" }>["childTimeline"]>;
 };
+
+type CollabTimelineEntry = ChildPreview["childTimeline"][number];
+type CollabTimelineToolEntry = Extract<CollabTimelineEntry, { kind: "tool" }>;
 
 type CachedCollabViewState = {
   open: boolean;
@@ -100,10 +105,43 @@ function statusBadge(status?: string): { text: string; className: string } | nul
   }
 }
 
+function statusMeta(status?: string): { text: string; tone: "muted" | "success" | "danger" | "info" } | null {
+  switch (status) {
+    case "completed":
+      return { text: "completed", tone: "success" };
+    case "shutdown":
+      return { text: "shutdown", tone: "muted" };
+    default:
+      return null;
+  }
+}
+
+function collabIcon(eventType: Extract<RenderItem, { kind: "collab" }>["eventType"]): ToolIconName {
+  switch (eventType) {
+    case "wait":
+      return "clock";
+    case "close":
+      return "agent";
+    case "interaction":
+      return "send";
+    default:
+      return "agent";
+  }
+}
+
 function truncateUnicode(value: string, maxChars: number): string {
   const chars = Array.from(value);
   if (chars.length <= maxChars) return value;
   return `${chars.slice(0, maxChars).join("")}…`;
+}
+
+function cleanTimelineText(value: string, maxChars: number): string {
+  const cleaned = value
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+  return truncateUnicode(cleaned, maxChars);
 }
 
 function summarizeRequest(inputText: string): string {
@@ -131,8 +169,8 @@ function summarizeRequest(inputText: string): string {
 
 function summarizeResponse(outputText: string): string {
   const trimmed = outputText.trim();
-  if (!trimmed) return "(empty response)";
-  return truncateUnicode(trimmed.split("\n")[0] ?? trimmed, 180);
+  if (!trimmed || trimmed === "undefined" || trimmed === "null") return "";
+  return cleanTimelineText(trimmed.split("\n")[0] ?? trimmed, 180);
 }
 
 function summarizeAssistantMessage(rawMessage: string): string | null {
@@ -144,26 +182,93 @@ function summarizeAssistantMessage(rawMessage: string): string | null {
       content?: Array<{ type?: string; text?: string; thinking?: string }>;
     };
     const blocks = parsed.content;
-    if (!Array.isArray(blocks)) return truncateUnicode(trimmed, 260);
+    if (!Array.isArray(blocks)) return cleanTimelineText(trimmed, 260);
 
     const text = blocks
       .filter((block) => block.type === "text" && typeof block.text === "string")
       .map((block) => block.text!.trim())
       .filter((part) => part.length > 0)
       .join(" ");
-    if (text) return truncateUnicode(text, 260);
+    if (text) return cleanTimelineText(text, 260);
 
     const thinking = blocks
       .filter((block) => block.type === "thinking" && typeof block.thinking === "string")
       .map((block) => block.thinking!.trim())
       .filter((part) => part.length > 0)
       .join(" ");
-    if (thinking) return truncateUnicode(thinking, 200);
+    if (thinking) return cleanTimelineText(thinking, 200);
 
     return null;
   } catch {
-    return truncateUnicode(trimmed, 260);
+    return cleanTimelineText(trimmed, 260);
   }
+}
+
+function buildChildToolRender(entry: CollabTimelineToolEntry): ToolRenderPayload {
+  const inputSummary = summarizeRequest(entry.inputText);
+  const outputSummary = summarizeResponse(entry.outputText);
+  const blocks: ToolRenderPayload["blocks"] = [];
+
+  if (outputSummary) {
+    blocks.push({
+      type: "text",
+      title: "Output",
+      text: entry.outputText.trim(),
+      isError: entry.isError,
+    });
+  }
+
+  return {
+    inputSummary,
+    ...(outputSummary ? { outputSummary } : {}),
+    blocks,
+  };
+}
+
+function buildChildToolItem(
+  ownerId: string,
+  entry: CollabTimelineToolEntry,
+  index: number,
+): Extract<RenderItem, { kind: "tool" }> {
+  return {
+    id: `${ownerId}:timeline:tool:${entry.toolCallId || index}`,
+    kind: "tool",
+    toolName: entry.toolName,
+    inputText: entry.inputText,
+    outputText: entry.outputText,
+    isError: entry.isError,
+    status: entry.status === "running" ? "streaming" : "done",
+    timestamp: 0,
+    toolCallId: entry.toolCallId || `${ownerId}:timeline:tool:${index}`,
+    startedAt: 0,
+    render: buildChildToolRender(entry),
+  };
+}
+
+function CollabAssistantTimelineRow({ message }: { message: string }) {
+  const [open, setOpen] = useState(false);
+  const summary = summarizeAssistantMessage(message);
+  if (!summary) return null;
+
+  const title = `Thought: ${truncateUnicode(summary, 140)}`;
+  const hasDetail = Array.from(summary).length > 140;
+
+  return (
+    <ToolActivityRow
+      title={title}
+      detail={hasDetail ? summary : undefined}
+      icon="sparkles"
+      category="context"
+      status="done"
+      isError={false}
+      isBusy={false}
+      durationLabel={null}
+      expanded={open}
+      expandable={hasDetail}
+      compact={true}
+      onToggle={() => setOpen((value) => !value)}
+    />
+  );
 }
 
 export function getCollabEventPersistenceKey(item: Extract<RenderItem, { kind: "collab" }>): string {
@@ -173,10 +278,10 @@ export function getCollabEventPersistenceKey(item: Extract<RenderItem, { kind: "
   return item.id;
 }
 
-export function CollabEventBlock({ item, loadChildThread }: CollabEventBlockProps) {
+export function CollabEventBlock({ item, loadChildThread, initialOpen = false }: CollabEventBlockProps) {
   const persistenceKey = getCollabEventPersistenceKey(item);
   const cachedState = collabViewStateCache.get(persistenceKey);
-  const [open, setOpen] = useState(cachedState?.open ?? false);
+  const [open, setOpen] = useState(cachedState?.open ?? initialOpen);
   const [isLoadingChild, setIsLoadingChild] = useState(false);
   const [childLoadError, setChildLoadError] = useState<string | null>(null);
   const [loadedChildPreview, setLoadedChildPreview] = useState<ChildPreview | null>(
@@ -184,7 +289,9 @@ export function CollabEventBlock({ item, loadChildThread }: CollabEventBlockProp
   );
   const hasRunningTool = item.childTools.some((tool) => tool.status === "running");
   const isWaitRunning = item.eventType === "wait" && item.status === "running";
-  const badge = statusBadge(item.status);
+  const isBusy = item.status === "running" || hasRunningTool || isWaitRunning;
+  const isError = item.status === "errored";
+  const meta = isBusy || isError ? null : statusMeta(item.status);
   const turnInfo = item.eventType === "spawn" && item.turnNumber ? `turn ${item.turnNumber}` : null;
   const effectiveTimeline = resolveEffectiveTimeline(item.childTimeline, loadedChildPreview);
 
@@ -267,136 +374,104 @@ export function CollabEventBlock({ item, loadChildThread }: CollabEventBlockProp
   }, [open, item.eventType, item.childThreadId, loadChildDetail]);
 
   return (
-    <div className="pb-4">
-      <div
-        role={isInteractive ? "button" : undefined}
-        tabIndex={isInteractive ? 0 : undefined}
-        onClick={
-          isInteractive
-            ? (event) => {
-                const target = event.target;
-                if (target instanceof Element && target.closest("button, a, input, textarea, select")) {
-                  return;
-                }
-                toggleOpen();
-              }
-            : undefined
-        }
-        onKeyDown={
-          isInteractive
-            ? (event) => {
-                if (event.key !== "Enter" && event.key !== " ") return;
-                event.preventDefault();
-                toggleOpen();
-              }
-            : undefined
-        }
-        className={cn(
-          "min-w-0 rounded-lg bg-surface-dark py-2.5",
-          isInteractive ? "cursor-pointer transition hover:bg-surface-dark/80 focus:outline-none" : null,
-        )}
-      >
-        <div className="min-w-0 space-y-2">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            {isWaitRunning ? (
+    <div className="pb-1">
+      <ToolActivityRow
+        title={title}
+        icon={collabIcon(item.eventType)}
+        category="action"
+        status={isBusy ? "streaming" : "done"}
+        isError={isError}
+        isBusy={isBusy}
+        durationLabel={turnInfo}
+        metaLabel={meta?.text}
+        metaTone={meta?.tone}
+        expanded={open}
+        expandable={isInteractive}
+        compact={true}
+        onToggle={toggleOpen}
+      />
+
+      {open ? (
+        <div className="mt-1 max-w-tool-row space-y-1 text-xs">
+          {details ? <p className="ml-7 text-sm leading-5 text-text-secondary">{details}</p> : null}
+
+          {item.message ? (
+            <p className="ml-7 text-xs leading-5 text-muted/80">{cleanTimelineText(item.message, 240)}</p>
+          ) : null}
+
+          {isWaitRunning ? (
+            <div className="ml-7 flex h-6 items-center gap-2 text-xs text-accent/90">
               <span
                 aria-hidden="true"
-                className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-accent/30 border-t-accent"
+                className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-accent/25 border-t-accent"
               />
-            ) : null}
-            <span className="text-sm font-medium text-text-soft">{title}</span>
-            {badge && <span className={cn("text-xs", badge.className)}>{badge.text}</span>}
-            {hasRunningTool && <StatusDot color="accent" pulse />}
-            {turnInfo && <span className="text-xs text-text/40">{turnInfo}</span>}
-          </div>
+              <span>Subagents are still working…</span>
+            </div>
+          ) : null}
 
-          {open ? (
-            <>
-              {details ? <p className="text-xs leading-5 text-text/60">{details}</p> : null}
+          {item.eventType === "wait" && item.agents?.length ? (
+            <div className="ml-7 space-y-0.5">
+              {item.agents.map((agent) => {
+                const agentStatus = statusBadge(agent.status);
+                return (
+                  <div key={agent.threadId} className="min-w-0 truncate text-xs leading-5 text-text/60">
+                    {agentLabel(agent.nickname, agent.threadId)}
+                    {agentStatus ? <span className={cn("ml-2", agentStatus.className)}>{agentStatus.text}</span> : null}
+                    {agent.message ? (
+                      <span className="ml-2 text-text/45">- {cleanTimelineText(agent.message, 140)}</span>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
 
-              {item.message ? <p className="text-xs text-text/65">{truncateUnicode(item.message, 240)}</p> : null}
+          {timeline.length > 0 ? (
+            <div className="ml-7 space-y-0.5">
+              {timeline.map((entry, index) => {
+                if (entry.kind === "assistant") {
+                  return (
+                    <CollabAssistantTimelineRow
+                      key={`${item.id}:timeline:assistant:${index}`}
+                      message={entry.message}
+                    />
+                  );
+                }
 
-              {isWaitRunning ? (
-                <div className="flex items-center gap-2 text-xs text-accent/90">
-                  <span
-                    aria-hidden="true"
-                    className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-accent/25 border-t-accent"
+                return (
+                  <ToolBlock
+                    key={`${item.id}:timeline:tool:${entry.toolCallId || index}`}
+                    item={buildChildToolItem(item.id, entry, index)}
+                    nested
+                    inlinePreviewWhenCollapsed
                   />
-                  <span>Subagents are still working…</span>
-                </div>
-              ) : null}
+                );
+              })}
+            </div>
+          ) : null}
 
-              {item.eventType === "wait" && item.agents?.length ? (
+          {item.eventType === "spawn" && item.childThreadId ? (
+            <div className="ml-7 pt-0.5 text-xs leading-5 text-text/55">
+              {isLoadingChild ? <div>Loading child thread details…</div> : null}
+              {!isLoadingChild && childLoadError ? (
                 <div className="space-y-1">
-                  {item.agents.map((agent) => {
-                    const agentStatus = statusBadge(agent.status);
-                    return (
-                      <div key={agent.threadId} className="text-xs text-text/60">
-                        {agentLabel(agent.nickname, agent.threadId)}
-                        {agentStatus ? (
-                          <span className={cn("ml-2", agentStatus.className)}>{agentStatus.text}</span>
-                        ) : null}
-                        {agent.message ? (
-                          <span className="ml-2 text-text/45">- {truncateUnicode(agent.message, 140)}</span>
-                        ) : null}
-                      </div>
-                    );
-                  })}
+                  <div className="text-danger/80">Failed to load child thread detail: {childLoadError}</div>
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void retryLoadChildDetail();
+                    }}
+                    className="text-2xs text-accent hover:underline"
+                  >
+                    Retry
+                  </button>
                 </div>
               ) : null}
-
-              {timeline.length > 0 ? (
-                <div className="space-y-1 text-xs">
-                  {timeline.map((entry, index) => {
-                    if (entry.kind === "assistant") {
-                      const summary = summarizeAssistantMessage(entry.message);
-                      if (!summary) return null;
-                      return (
-                        <div key={`${item.id}:timeline:assistant:${index}`} className="text-text/70">
-                          {summary}
-                        </div>
-                      );
-                    }
-
-                    const info = getToolInfo(entry.toolName);
-                    const req = summarizeRequest(entry.inputText);
-                    const res = summarizeResponse(entry.outputText);
-                    return (
-                      <div key={`${item.id}:timeline:tool:${entry.toolCallId}`} className="font-mono">
-                        <div className="text-text/60">
-                          {info.displayName} - {req}
-                        </div>
-                        <div className="text-text/45">ㄴ {res}</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : null}
-
-              {item.eventType === "spawn" && item.childThreadId ? (
-                <div className="pt-1 text-xs text-text/55">
-                  {isLoadingChild ? <div>Loading child thread details…</div> : null}
-                  {!isLoadingChild && childLoadError ? (
-                    <div className="space-y-1">
-                      <div className="text-danger/80">Failed to load child thread detail: {childLoadError}</div>
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void retryLoadChildDetail();
-                        }}
-                        className="text-2xs text-accent hover:underline"
-                      >
-                        Retry
-                      </button>
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-            </>
+            </div>
           ) : null}
         </div>
-      </div>
+      ) : null}
     </div>
   );
 }

@@ -241,7 +241,7 @@ function MessageListImpl({
         />
       ) : (
         <div className="h-full overflow-y-auto bg-bg-sunken px-7 py-6">
-          <div className="space-y-3">
+          <div className="space-y-2">
             {rows.map((row) => (
               <div key={row.key} data-message-list-row={row.key}>
                 <MessageListRowContent row={row} threadCwd={threadCwd} onLoadChildThread={onLoadChildThread} />
