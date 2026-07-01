@@ -73,9 +73,7 @@ export const pillBadgeClasses = "rounded-full border px-2 py-0.5 text-2xs upperc
 
 export const detailPanelClasses = "rounded-md border border-border/40 bg-surface-default px-4 py-3";
 
-export const composerFrameClasses = "relative rounded-md border bg-surface-composer px-4 py-3";
-
-export const composerToolbarClasses = "mt-3 flex items-center justify-between gap-3";
+export const composerToolbarClasses = "mt-2.5 flex items-center justify-between gap-2.5";
 
 export const composerControlGroupClasses = "flex min-w-0 flex-wrap items-center gap-1.5";
 

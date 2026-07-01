@@ -591,6 +591,116 @@ test("input dock only blocks submission while a prompt is pending", () => {
   expect(html).toContain('<button type="button" aria-label="Steer agent" disabled=""');
 });
 
+test("input dock composer textarea does not inherit field border styles", () => {
+  const html = renderToStaticMarkup(
+    <InputDock
+      input=""
+      onInputChange={() => {}}
+      onSend={() => {}}
+      onSteer={() => {}}
+      onInterrupt={() => {}}
+      onCompactionClick={() => {}}
+      isCompacting={false}
+      canSend={false}
+      canSteer={true}
+      threadStatus="busy"
+      mode="default"
+      onModeChange={() => {}}
+      effort="medium"
+      onEffortChange={() => {}}
+      currentModel="gpt-5"
+      availableModels={[]}
+      onModelChange={() => {}}
+      usage={{ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalCost: 0 }}
+      currentContextTokens={0}
+      contextWindow={0}
+      hasProvider={true}
+      supportsVision={false}
+      supportsThinking={false}
+      pendingImages={[]}
+      contextItems={[]}
+      isUploadingImages={false}
+      onAddImages={() => {}}
+      onRemoveImage={() => {}}
+      onRemoveContextItem={() => {}}
+      onClearContextItems={() => {}}
+      slashCommands={[]}
+    />,
+  );
+
+  const textarea = html.match(/<textarea[^>]*aria-label="Steering input"[^>]*>/)?.[0] ?? "";
+  expect(html).toContain("relative rounded-sm border px-4 py-3");
+  expect(textarea).toContain("min-h-[52px]");
+  expect(textarea).toContain("rounded-md");
+  expect(textarea).toContain("px-3");
+  expect(textarea).toContain("py-2");
+  expect(textarea).toContain("border-0");
+  expect(textarea).toContain("bg-transparent");
+  expect(textarea).not.toContain("border-border");
+  expect(textarea).not.toContain("bg-surface-dark");
+  expect(html).toContain("border-white/10");
+});
+
+test("input dock composer selectors do not inherit bordered select trigger styles", () => {
+  const html = renderToStaticMarkup(
+    <InputDock
+      input=""
+      onInputChange={() => {}}
+      onSend={() => {}}
+      onSteer={() => {}}
+      onInterrupt={() => {}}
+      onCompactionClick={() => {}}
+      isCompacting={false}
+      canSend={true}
+      canSteer={false}
+      threadStatus="idle"
+      mode="default"
+      onModeChange={() => {}}
+      effort="medium"
+      onEffortChange={() => {}}
+      currentModel="gpt-5"
+      availableModels={[
+        {
+          id: "gpt-5",
+          provider: "openai",
+          contextWindow: 300000,
+          maxOutputTokens: 64000,
+          supportsVision: true,
+          supportsThinking: true,
+          supportedEfforts: ["low", "medium", "high"],
+        },
+      ]}
+      onModelChange={() => {}}
+      usage={{ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalCost: 0 }}
+      currentContextTokens={0}
+      contextWindow={0}
+      hasProvider={true}
+      supportsVision={true}
+      supportsThinking={true}
+      pendingImages={[]}
+      contextItems={[]}
+      isUploadingImages={false}
+      onAddImages={() => {}}
+      onRemoveImage={() => {}}
+      onRemoveContextItem={() => {}}
+      onClearContextItems={() => {}}
+      slashCommands={[]}
+    />,
+  );
+
+  const modelTrigger = html.match(/<button[^>]*aria-label="Model selector"[^>]*>/)?.[0] ?? "";
+  const effortTrigger = html.match(/<button[^>]*aria-label="Effort selector"[^>]*>/)?.[0] ?? "";
+
+  expect(modelTrigger).toContain("bg-black");
+  expect(effortTrigger).toContain("bg-black");
+  expect(html).toContain("w-[180px]");
+  expect(html).toContain("w-[90px]");
+  expect(modelTrigger).not.toContain("border-border");
+  expect(effortTrigger).not.toContain("border-border");
+  expect(modelTrigger).not.toContain("bg-surface-dark");
+  expect(effortTrigger).not.toContain("bg-surface-dark");
+});
+
 test("user message renders context chips above text", () => {
   const html = renderToStaticMarkup(
     <UserMessage

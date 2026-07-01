@@ -18,6 +18,7 @@ interface SelectProps {
   onChange: (value: string) => void;
   className?: string;
   triggerClassName?: string;
+  unstyledTrigger?: boolean;
   menuClassName?: string;
   openDirection?: "up" | "down";
   disabled?: boolean;
@@ -36,6 +37,7 @@ export function Select({
   onChange,
   className,
   triggerClassName,
+  unstyledTrigger = false,
   menuClassName,
   openDirection = "down",
   disabled = false,
@@ -93,7 +95,8 @@ export function Select({
         disabled={disabled}
         onClick={() => !disabled && setIsOpen((open) => !open)}
         className={cn(
-          "inline-flex h-7 w-full items-center justify-between gap-1 rounded-md border border-border/100 bg-surface-dark px-2 text-xs text-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+          "inline-flex h-7 w-full items-center justify-between gap-1 px-2 text-xs text-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+          unstyledTrigger ? null : "rounded-md border border-border/100 bg-surface-dark",
           disabled && "cursor-not-allowed opacity-40",
           triggerClassName,
         )}

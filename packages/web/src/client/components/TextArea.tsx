@@ -6,9 +6,10 @@ import { fieldClasses } from "./ui-styles";
 
 interface TextAreaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
   maxRows?: number;
+  unstyled?: boolean;
 }
 
-export function TextArea({ maxRows = 6, className, onChange, value, ...props }: TextAreaProps) {
+export function TextArea({ maxRows = 6, unstyled = false, className, onChange, value, ...props }: TextAreaProps) {
   const ref = useRef<HTMLTextAreaElement>(null);
 
   useLayoutEffect(() => {
@@ -24,7 +25,11 @@ export function TextArea({ maxRows = 6, className, onChange, value, ...props }: 
       ref={ref}
       rows={1}
       value={value}
-      className={cn("resize-none overflow-y-auto py-2", fieldClasses, className)}
+      className={cn(
+        "resize-none overflow-y-auto",
+        unstyled ? "w-full rounded-md px-3 py-2 text-sm text-text placeholder:text-text-subtle" : fieldClasses,
+        className,
+      )}
       onChange={onChange}
       {...props}
     />
