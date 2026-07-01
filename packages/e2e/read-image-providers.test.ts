@@ -125,9 +125,9 @@ const PROVIDERS: ProviderCase[] = [
     makeStream: (apiKey) => createOpenAIStream(apiKey) as never,
   },
   {
-    name: "Gemini (2.5-flash)",
+    name: "Gemini (3.5-flash)",
     envKey: "GEMINI_API_KEY",
-    modelId: "gemini-2.5-flash",
+    modelId: "gemini-3.5-flash",
     makeStream: (apiKey) => createGeminiStream(apiKey) as never,
   },
 ];

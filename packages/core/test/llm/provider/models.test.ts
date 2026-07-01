@@ -138,8 +138,8 @@ describe("model class annotations", () => {
 
   it("gemini classes map correctly", () => {
     expect(KNOWN_MODELS.find((m) => m.id === "gemini-3.1-pro-preview")?.modelClass).toBe("pro");
-    expect(KNOWN_MODELS.find((m) => m.id === "gemini-3-flash-preview")?.modelClass).toBe("general");
-    expect(KNOWN_MODELS.find((m) => m.id === "gemini-3.1-flash-lite-preview")?.modelClass).toBe("lite");
+    expect(KNOWN_MODELS.find((m) => m.id === "gemini-3.5-flash")?.modelClass).toBe("general");
+    expect(KNOWN_MODELS.find((m) => m.id === "gemini-3.1-flash-lite")?.modelClass).toBe("lite");
   });
 
   it("chatgpt classes map correctly", () => {
@@ -228,16 +228,16 @@ describe("resolveModelForClass", () => {
   });
 
   it("resolves gemini general → pro", () => {
-    const flash = resolveModel("gemini-3-flash-preview");
+    const flash = resolveModel("gemini-3.5-flash");
     const pro = resolveModelForClass(flash, "pro");
     expect(pro.id).toBe("gemini-3.1-pro-preview");
     expect(pro.provider).toBe("gemini");
   });
 
   it("resolves gemini general → lite", () => {
-    const flash = resolveModel("gemini-3-flash-preview");
+    const flash = resolveModel("gemini-3.5-flash");
     const lite = resolveModelForClass(flash, "lite");
-    expect(lite.id).toBe("gemini-3.1-flash-lite-preview");
+    expect(lite.id).toBe("gemini-3.1-flash-lite");
     expect(lite.provider).toBe("gemini");
   });
 

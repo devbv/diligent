@@ -42,7 +42,7 @@ describe("Gemini content conversion", () => {
       {
         role: "assistant",
         timestamp: 1,
-        model: "gemini-3-flash-preview",
+        model: "gemini-3.5-flash",
         stopReason: "tool_use",
         usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
         content: [

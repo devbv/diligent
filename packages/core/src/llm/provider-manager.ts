@@ -49,7 +49,7 @@ export const DEFAULT_MODELS: Record<ProviderName, string> = {
   anthropic: DEFAULT_ANTHROPIC_MODEL_ID,
   openai: "gpt-5.5",
   chatgpt: "chatgpt-5.5",
-  gemini: "gemini-2.5-flash",
+  gemini: "gemini-3.5-flash",
   vertex: "vertex-gemma-4-26b-it",
   "zai-coding-plan": "glm-5.2",
 };

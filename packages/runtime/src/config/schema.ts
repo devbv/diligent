@@ -2,7 +2,7 @@
 import { ThinkingEffortSchema } from "@diligent/protocol";
 import { z } from "zod";
 
-export const ModelId = z.string().describe("Model identifier, e.g. 'claude-sonnet-4-6', 'gpt-4o', 'gemini-2.5-flash'");
+export const ModelId = z.string().describe("Model identifier, e.g. 'claude-sonnet-4-6', 'gpt-5.5', 'gemini-3.5-flash'");
 
 const HookCommandSchema = z.object({
   type: z.literal("command"),
