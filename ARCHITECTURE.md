@@ -465,6 +465,26 @@ Server-driven protocol messages include:
 
 The protocol layer is shared by TUI and Web, even if each client renders the data differently.
 
+## Adding a New Protocol Method
+
+The pattern for extending the protocol with a new request/response pair has four steps, each in a dedicated layer:
+
+1. **Define the method name** — add a constant to `DILIGENT_CLIENT_REQUEST_METHODS` in `packages/protocol/src/methods.ts`.
+
+2. **Define schemas** — add `Params`, `Response`, and `z.object({ method, params/result })` entries to `packages/protocol/src/client-requests.ts`. Both the request union (`DiligentClientRequest`) and the response union must include the new variant.
+
+3. **Implement the handler** — add a `handleXxx(ctx, params)` function to the appropriate handler file in `packages/runtime/src/app-server/`:
+   - `thread-handlers.ts` — thread lifecycle (start, resume, list, delete, read, compact)
+   - `config-handlers.ts` — config, auth, consent, and image upload
+   - `knowledge-handlers.ts` — knowledge list and update
+   - Create a new `*-handlers.ts` file when the new area is distinct enough to warrant its own module.
+
+4. **Register the handler** — add a `case` branch in `packages/runtime/src/app-server/request-dispatcher.ts` that calls the handler and returns its result.
+
+5. **Add client-side calls** — if the method is user-facing, implement the client call in `packages/web` (React) and `packages/cli` (TUI). Frontends should call the method through the shared protocol; they must not implement the behavior locally.
+
+The consent feature (`consent/set`) is a concrete reference example that follows every step of this pattern.
+
 ## Data Locality and `.diligent/`
 
 Project-local data is a first-class architectural decision.

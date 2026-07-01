@@ -4,7 +4,7 @@ import type { CoreAgentEvent } from "@diligent/core/agent";
 import { Agent } from "@diligent/core/agent";
 import { EventStream } from "@diligent/core/event-stream";
 import type { Model, ProviderEvent, ProviderResult, ToolDefinition } from "@diligent/core/llm/types";
-import { ProviderError } from "@diligent/core/llm/types";
+import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError } from "@diligent/core/llm/types";
 import type { AssistantMessage } from "@diligent/core/types";
 import { z } from "zod";
 
@@ -271,11 +271,14 @@ describe("Agent", () => {
     expect(events.some((event) => event.type === "error")).toBe(false);
   });
 
-  test("provider stream missing terminal event raises fatal error", async () => {
+  test("provider stream missing terminal event retries then raises fatal error", async () => {
+    let calls = 0;
     const agent = new Agent(TEST_MODEL, BASE_CONFIG.systemPrompt, BASE_CONFIG.tools, {
       effort: BASE_CONFIG.effort,
       compaction: BASE_CONFIG.compaction,
+      retry: { maxRetries: 2, baseDelayMs: 1, maxDelayMs: 1 },
       llmMsgStreamFn: () => {
+        calls++;
         const stream = new EventStream<ProviderEvent, ProviderResult>(
           (event) => event.type === "done" || event.type === "error",
           (event) => {
@@ -301,7 +304,10 @@ describe("Agent", () => {
     expect(errorEvent?.type).toBe("error");
     if (errorEvent?.type === "error") {
       expect(errorEvent.error.message).toBe("Provider stream ended without producing a terminal event");
+      expect(errorEvent.error.providerErrorType).toBe("network");
+      expect(errorEvent.error.isRetryable).toBe(true);
     }
+    expect(calls).toBe(2);
   });
 
   test("provider errors retain classification in fatal error events", async () => {
@@ -320,7 +326,7 @@ describe("Agent", () => {
         queueMicrotask(() =>
           stream.push({
             type: "error",
-            error: new ProviderError("Context overflow", "context_overflow", false, undefined, 400),
+            error: new ProviderError(CONTEXT_OVERFLOW_ERROR_MESSAGE, "context_overflow", false, undefined, 400),
           }),
         );
         return stream;
@@ -331,13 +337,14 @@ describe("Agent", () => {
     const unsub = agent.subscribe((event) => events.push(event));
 
     await expect(agent.prompt({ role: "user", content: "hi", timestamp: Date.now() })).rejects.toThrow(
-      "Context overflow",
+      CONTEXT_OVERFLOW_ERROR_MESSAGE,
     );
 
     unsub();
     const errorEvent = events.find((event) => event.type === "error");
     expect(errorEvent?.type).toBe("error");
     if (errorEvent?.type === "error") {
+      expect(errorEvent.error.message).toBe(CONTEXT_OVERFLOW_ERROR_MESSAGE);
       expect(errorEvent.error.providerErrorType).toBe("context_overflow");
       expect(errorEvent.error.statusCode).toBe(400);
       expect(errorEvent.error.isRetryable).toBe(false);

@@ -2,8 +2,9 @@
 
 import type { NativeCompactFn } from "../llm/provider/native-compaction";
 import type { Model, StreamFunction, SystemSection, ThinkingEffort } from "../llm/types";
+import { ProviderError } from "../llm/types";
 import type { Tool } from "../tool/types";
-import type { Message, ToolCallBlock } from "../types";
+import type { AssistantMessage, Message, ToolCallBlock } from "../types";
 import { streamAssistantMessage } from "./assistant";
 import { getCompactionDecision, runCompaction } from "./compaction";
 import { runToolCalls } from "./tool";
@@ -33,6 +34,15 @@ export interface LoopRuntime {
     pendingSteeringCount: () => number;
   };
 }
+
+type LoopRequest = {
+  config: LoopConfig;
+  streamFunction: StreamFunction;
+  llmCompactionFn?: NativeCompactFn;
+  sessionId?: string;
+  signal?: AbortSignal;
+  compactionSummary?: Record<string, unknown>;
+};
 
 export async function runAgentLoop(
   messages: Message[],
@@ -84,13 +94,28 @@ export async function runAgentLoop(
         });
       }
 
-      const assistantMessage = await streamAssistantMessage(
-        conversation,
-        loopRequest,
-        { tools: config.tools, systemPrompt: config.systemPrompt, providerStream },
-        stream,
-        nextItemId,
-      );
+      let retriedAfterContextOverflow = false;
+      let assistantMessage: AssistantMessage | undefined;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          assistantMessage = await streamAssistantMessage(
+            conversation,
+            loopRequest,
+            { tools: config.tools, systemPrompt: config.systemPrompt, providerStream },
+            stream,
+            nextItemId,
+          );
+          break;
+        } catch (err) {
+          if (!isContextOverflowError(err) || retriedAfterContextOverflow) throw err;
+          const compacted = await compactAfterContextOverflow(conversation, loopRequest, stream);
+          if (!compacted) throw err;
+          retriedAfterContextOverflow = true;
+        }
+      }
+      if (!assistantMessage) {
+        throw new Error("Assistant message was not produced");
+      }
       conversation.push(assistantMessage);
 
       stream.emit({ type: "usage", usage: assistantMessage.usage });
@@ -137,18 +162,11 @@ export async function runAgentLoop(
   return { messages: conversation, compactionSummary: loopRequest.compactionSummary };
 }
 
-async function compactIfNeeded(
-  messages: Message[],
-  request: {
-    config: LoopConfig;
-    streamFunction: StreamFunction;
-    llmCompactionFn?: NativeCompactFn;
-    sessionId?: string;
-    signal?: AbortSignal;
-    compactionSummary?: Record<string, unknown>;
-  },
-  stream: AgentStream,
-): Promise<void> {
+function isContextOverflowError(err: unknown): err is ProviderError {
+  return err instanceof ProviderError && err.errorType === "context_overflow";
+}
+
+async function compactIfNeeded(messages: Message[], request: LoopRequest, stream: AgentStream): Promise<void> {
   const config = request.config.compaction;
   if (!config) {
     return;
@@ -161,6 +179,23 @@ async function compactIfNeeded(
     `[agent:compaction] triggered source=${decision.source} estimatedTokens=${decision.estimatedTokens} thresholdTokens=${decision.thresholdTokens} reserveTokens=${decision.reserveTokens}`,
   );
 
+  await applyCompaction(messages, request, stream);
+}
+
+async function compactAfterContextOverflow(
+  messages: Message[],
+  request: LoopRequest,
+  stream: AgentStream,
+): Promise<boolean> {
+  if (!request.config.compaction) return false;
+  console.log("[agent:compaction] forced after context_overflow");
+  await applyCompaction(messages, request, stream);
+  return true;
+}
+
+async function applyCompaction(messages: Message[], request: LoopRequest, stream: AgentStream): Promise<void> {
+  const config = request.config.compaction;
+  if (!config) return;
   const result = await runCompaction({
     messages,
     model: request.config.model,

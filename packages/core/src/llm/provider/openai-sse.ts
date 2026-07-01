@@ -2,7 +2,7 @@
 import type { EventStream } from "../../event-stream";
 import type { AssistantMessage, ContentBlock, StopReason, Usage } from "../../types";
 import type { Model, ProviderEvent, ProviderResult } from "../types";
-import { ProviderError } from "../types";
+import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError } from "../types";
 import { isContextOverflow, mapStopReason, mapUsage } from "./openai-responses";
 
 type ResponseToolBuffer = { id: string; name: string; args: string };
@@ -260,7 +260,7 @@ function reduceResponsesAPIEvent(
 
     case "response_failed": {
       if (isContextOverflow(event.message)) {
-        return [{ type: "error", error: new ProviderError(event.message, "context_overflow", false) }];
+        return [{ type: "error", error: new ProviderError(CONTEXT_OVERFLOW_ERROR_MESSAGE, "context_overflow", false) }];
       }
       if (isTransientResponseFailure(event.message)) {
         return [{ type: "error", error: new ProviderError(event.message, "server_error", true) }];
@@ -638,17 +638,27 @@ export async function handleResponsesAPIEvents(
   _sessionId?: string,
 ): Promise<void> {
   const state = createResponsesAPIState();
+  let sawCompleted = false;
 
   for await (const event of iter) {
     if (signal?.aborted) break;
     const decodedEvent = decodeResponsesAPIEvent(event);
     if (!decodedEvent) continue;
+    if (decodedEvent.kind === "response_completed") sawCompleted = true;
     const emittedEvents = reduceResponsesAPIEvent(state, decodedEvent, model);
     emitProviderEvents(stream, emittedEvents);
     if (emittedEvents.some((providerEvent) => providerEvent.type === "error")) return;
   }
 
   if (signal?.aborted) return;
+
+  if (!sawCompleted) {
+    stream.push({
+      type: "error",
+      error: new ProviderError("stream closed before response.completed", "network", true),
+    });
+    return;
+  }
 
   if (state.currentText) {
     const text = state.currentText;

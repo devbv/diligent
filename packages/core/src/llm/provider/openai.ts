@@ -4,7 +4,7 @@ import { EventStream } from "../../event-stream";
 import { isNetworkError } from "../errors";
 import { flattenSections } from "../system-sections";
 import type { Model, ProviderEvent, ProviderResult, StreamContext, StreamFunction, StreamOptions } from "../types";
-import { ProviderError } from "../types";
+import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError } from "../types";
 import type { NativeCompactFn } from "./native-compaction";
 import {
   buildResponsesRequestBody,
@@ -83,7 +83,7 @@ export function classifyOpenAIError(err: unknown): ProviderError {
       return new ProviderError(err.message, "server_error", true, undefined, status, err);
     }
     if (status === 400 && isContextOverflow(err.message)) {
-      return new ProviderError(err.message, "context_overflow", false, undefined, status, err);
+      return new ProviderError(CONTEXT_OVERFLOW_ERROR_MESSAGE, "context_overflow", false, undefined, status, err);
     }
     if (status === 401 || status === 403) {
       return new ProviderError(err.message, "auth", false, undefined, status, err);

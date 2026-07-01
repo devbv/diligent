@@ -1,6 +1,8 @@
 // @summary Renders structured P040 ToolRenderPayload blocks matching the existing Content* component style
 
 import type {
+  AssetGalleryBlock,
+  AssetGalleryItem,
   CommandBlock,
   DiffBlock,
   DiffFile,
@@ -18,6 +20,7 @@ import type {
 } from "@diligent/protocol";
 import { useState } from "react";
 import { cn } from "../lib/cn";
+import { AssetThumbnail } from "./AssetThumbnail";
 import { CopyButton } from "./CopyButton";
 import { ExpandButton } from "./ExpandButton";
 
@@ -153,6 +156,88 @@ function RenderTable({ block }: { block: TableBlock }) {
         </table>
       </div>
     </BlockShell>
+  );
+}
+
+/* ── AssetGalleryBlock ───────────────────────────────────────────── */
+
+function assetGalleryKey(item: AssetGalleryItem, index: number): string {
+  return item.id ?? item.previewUrl ?? item.thumbnailUrl ?? `${item.title}-${index}`;
+}
+
+function assetMetadataValue(item: AssetGalleryItem, keys: string[]): string | undefined {
+  const keySet = new Set(keys.map((key) => key.toLowerCase()));
+  const value = item.metadata?.find((meta) => keySet.has(meta.key.toLowerCase()))?.value.trim();
+  return value && value !== "(unknown)" ? value : undefined;
+}
+
+function assetMetaLine(item: AssetGalleryItem): string {
+  const category = assetMetadataValue(item, ["category", "categoryId"]);
+  const assetType = assetMetadataValue(item, ["assetType", "type"]) ?? item.subtitle;
+  const parts = [category, assetType].filter((part): part is string => Boolean(part && part !== "(unknown)"));
+  return Array.from(new Set(parts)).join(" · ");
+}
+
+function RenderAssetGallery({ block }: { block: AssetGalleryBlock }) {
+  const countLabel = `${block.items.length} result${block.items.length === 1 ? "" : "s"}`;
+  const title = block.title ?? "Assets";
+
+  if (block.items.length === 0) {
+    return <RenderSummary block={{ type: "summary", text: "No assets found.", tone: "warning" }} />;
+  }
+
+  return (
+    <div className="space-y-3 rounded-md border border-border/70 bg-surface-dark px-3 py-3">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+        <span className="font-mono text-2xs uppercase text-muted">{title}</span>
+        <span className="min-w-0 truncate text-sm text-text-soft">
+          {block.query ? `${countLabel} for "${block.query}"` : countLabel}
+        </span>
+      </div>
+
+      <div className="-mx-1 overflow-x-auto pb-1">
+        <div className="grid auto-cols-[8.75rem] grid-flow-col gap-3 px-1">
+          {block.items.map((item, index) => {
+            const key = assetGalleryKey(item, index);
+            const metaLine = assetMetaLine(item);
+            const metadataTitle = [
+              item.title,
+              metaLine || item.subtitle,
+              item.id ? `ID: ${item.id}` : undefined,
+              ...(item.metadata ?? []).map((meta) => `${meta.key}: ${meta.value}`),
+            ]
+              .filter(Boolean)
+              .join("\n");
+
+            return (
+              <div
+                key={key}
+                title={metadataTitle}
+                data-asset-id={item.id}
+                className="flex w-[8.75rem] flex-col gap-1.5 rounded-md"
+              >
+                <span className="block h-[7.75rem] w-full overflow-hidden rounded-md border border-border/30 bg-fill-secondary shadow-sm">
+                  <AssetThumbnail asset={item} />
+                </span>
+                <span className="min-w-0">
+                  <span
+                    className="block overflow-hidden text-sm leading-snug text-text-soft"
+                    style={{
+                      display: "-webkit-box",
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: "vertical",
+                    }}
+                  >
+                    {item.title}
+                  </span>
+                  {metaLine ? <span className="mt-0.5 block truncate text-xs text-muted">{metaLine}</span> : null}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -449,6 +534,8 @@ function RenderBlock({ block }: { block: ToolRenderBlock }) {
       return <RenderList block={block} />;
     case "table":
       return <RenderTable block={block} />;
+    case "asset_gallery":
+      return <RenderAssetGallery block={block} />;
     case "tree":
       return <RenderTree block={block} />;
     case "status_badges":

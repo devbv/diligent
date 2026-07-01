@@ -371,9 +371,22 @@ export type ApprovalRequest = z.infer<typeof ApprovalRequestSchema>;
 export const ApprovalResponseSchema = z.enum(["once", "always", "reject"]);
 export type ApprovalResponse = z.infer<typeof ApprovalResponseSchema>;
 
+export const UserInputOptionAssetSchema = z.object({
+  thumbnailUrl: z.string().optional(),
+  previewUrl: z.string().optional(),
+  price: z.string().optional(),
+  subtitle: z.string().optional(),
+  metadata: z.array(z.object({ key: z.string(), value: z.string() })).optional(),
+});
+export type UserInputOptionAsset = z.infer<typeof UserInputOptionAssetSchema>;
+
 export const UserInputOptionSchema = z.object({
   label: z.string(),
   description: z.string(),
+  /** Value returned as the answer when chosen. Falls back to `label` when absent. */
+  value: z.string().optional(),
+  /** Visual fields for an asset-picker option (rendered as a thumbnail tile). */
+  asset: UserInputOptionAssetSchema.optional(),
 });
 export type UserInputOption = z.infer<typeof UserInputOptionSchema>;
 
@@ -384,6 +397,8 @@ export const UserInputQuestionSchema = z.object({
   options: z.array(UserInputOptionSchema).min(1),
   allow_multiple: z.boolean().optional(),
   is_secret: z.boolean().optional(),
+  /** Client rendering hint. "asset" renders options as a selectable thumbnail grid. */
+  display: z.enum(["asset"]).optional(),
 });
 export type UserInputQuestion = z.infer<typeof UserInputQuestionSchema>;
 

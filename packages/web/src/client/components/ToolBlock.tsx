@@ -1,6 +1,7 @@
 // @summary Tool call block with icon, summary header, and tool-type-specific expandable content
 
-import { useState } from "react";
+import type { ToolRenderPayload } from "@diligent/protocol";
+import { useEffect, useState } from "react";
 import { cn } from "../lib/cn";
 import type { RenderItem } from "../lib/thread-store";
 import { normalizeToolName } from "../lib/thread-utils";
@@ -16,13 +17,7 @@ interface ToolBlockProps {
 
 /* ── Tool-specific expanded content ───────────────────────────────── */
 
-function ToolContent({
-  item,
-  render,
-}: {
-  item: Extract<RenderItem, { kind: "tool" }>;
-  render?: import("@diligent/protocol").ToolRenderPayload;
-}) {
+function ToolContent({ item, render }: { item: Extract<RenderItem, { kind: "tool" }>; render?: ToolRenderPayload }) {
   if (render) {
     return <ToolRenderBlocks payload={render} />;
   }
@@ -38,9 +33,15 @@ function ToolContent({
 
 /* ── Main ToolBlock ─────────────────────────────────────────────── */
 
+function hasAssetGalleryBlock(render?: ToolRenderPayload): boolean {
+  return Boolean(render?.blocks.some((block) => block.type === "asset_gallery"));
+}
+
 export function ToolBlock({ item }: ToolBlockProps) {
-  const [open, setOpen] = useState(false);
   const renderPayload = item.render;
+  const shouldAutoOpen = hasAssetGalleryBlock(renderPayload);
+  const [open, setOpen] = useState(shouldAutoOpen);
+  const [assetGalleryAutoOpened, setAssetGalleryAutoOpened] = useState(shouldAutoOpen);
   const headerTitle = getToolHeaderTitle(item.toolName, renderPayload);
   const normalizedToolName = normalizeToolName(item.toolName);
   const isUserInput = normalizedToolName === "request_user_input";
@@ -51,6 +52,12 @@ export function ToolBlock({ item }: ToolBlockProps) {
 
   const isStreaming = item.status === "streaming";
   const isWebTool = normalizedToolName === "web_action";
+
+  useEffect(() => {
+    if (!shouldAutoOpen || assetGalleryAutoOpened) return;
+    setOpen(true);
+    setAssetGalleryAutoOpened(true);
+  }, [assetGalleryAutoOpened, shouldAutoOpen]);
 
   const statusEl =
     isStreaming && !isWebTool ? (

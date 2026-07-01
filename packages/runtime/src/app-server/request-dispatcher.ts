@@ -28,25 +28,24 @@ import {
   handleImageUpload,
 } from "./config-handlers";
 import { handleKnowledgeList, handleKnowledgeUpdate } from "./knowledge-handlers";
+import { handleThreadDelete, handleThreadList, handleThreadResume } from "./session-handlers";
 import {
   handleEffortSet,
   handleModeSet,
   handleThreadCompactStart,
-  handleThreadDelete,
-  handleThreadList,
   handleThreadRead,
-  handleThreadResume,
   handleThreadStart,
-  handleToolsList,
-  handleToolsSet,
+  type ThreadHandlersContext,
+  type ThreadRuntime,
+} from "./thread-handlers";
+import { handleToolsList, handleToolsSet } from "./tool-handlers";
+import {
   handleTurnInterrupt,
   handleTurnStart,
   handleTurnSteer,
   handleTurnSteerCancel,
   handleTurnSteerUpdate,
-  type ThreadHandlersContext,
-  type ThreadRuntime,
-} from "./thread-handlers";
+} from "./turn-handlers";
 
 // ─── Connected peer ──────────────────────────────────────────────────────────
 

@@ -23,6 +23,10 @@ interface AssetResult {
   assetType: string;
   categoryId: string;
   subCategoryId: string;
+  price?: string;
+  thumbnailUrl?: string;
+  previewUrl?: string;
+  sourceUrl?: string;
 }
 
 const AssetResultSchema = z.object({
@@ -34,6 +38,10 @@ const AssetResultSchema = z.object({
   assetType: z.string(),
   categoryId: z.string(),
   subCategoryId: z.string(),
+  price: z.string().optional(),
+  thumbnailUrl: z.string().optional(),
+  previewUrl: z.string().optional(),
+  sourceUrl: z.string().optional(),
 });
 
 interface DebugResult {
@@ -65,6 +73,21 @@ type ToolRenderBlock =
   | { type: "text"; title?: string; text: string; isError?: boolean }
   | { type: "key_value"; title?: string; items: Array<{ key: string; value: string }> }
   | { type: "table"; title?: string; columns: string[]; rows: string[][] }
+  | {
+      type: "asset_gallery";
+      title?: string;
+      query?: string;
+      items: Array<{
+        id?: string;
+        title: string;
+        subtitle?: string;
+        price?: string;
+        thumbnailUrl?: string;
+        previewUrl?: string;
+        sourceUrl?: string;
+        metadata?: Array<{ key: string; value: string }>;
+      }>;
+    }
   | { type: "file"; filePath: string; content?: string; offset?: number; limit?: number; isError?: boolean };
 
 function clip(value: string, max: number): string {
@@ -101,6 +124,14 @@ function nonEmpty(value: string | undefined | null): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+function readStringField(raw: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = raw[key];
+    if (typeof value === "string" && value.trim().length > 0) return value;
+  }
+  return undefined;
+}
+
 function buildCodePreviewBlock(result: RagResult): ToolRenderBlock | undefined {
   const content = result.script?.trim() || result.text?.trim();
   if (!content) return undefined;
@@ -120,7 +151,8 @@ function buildDocsPreviewBlock(result: RagResult): ToolRenderBlock | undefined {
   };
 }
 
-function normalizeAssetForRender(raw: Partial<AssetResult>): AssetResult {
+export function normalizeAssetForRender(raw: Partial<AssetResult>): AssetResult {
+  const rawRecord = raw as Record<string, unknown>;
   return {
     text: raw.text ?? "",
     score: raw.score ?? 0,
@@ -130,42 +162,47 @@ function normalizeAssetForRender(raw: Partial<AssetResult>): AssetResult {
     assetType: raw.assetType ?? "(unknown)",
     categoryId: raw.categoryId ?? "(unknown)",
     subCategoryId: raw.subCategoryId ?? "(unknown)",
+    price: readStringField(rawRecord, ["price", "priceText"]),
+    thumbnailUrl: readStringField(rawRecord, [
+      "thumbnailUrl",
+      "thumbnail_url",
+      "thumbnail",
+      "imageUrl",
+      "image_url",
+      "image",
+      "previewImageUrl",
+    ]),
+    previewUrl: readStringField(rawRecord, ["previewUrl", "preview_url", "assetUrl", "asset_url"]),
+    sourceUrl: readStringField(rawRecord, ["sourceUrl", "source_url", "url", "marketplaceUrl"]),
   };
 }
 
-function buildAssetPreviewBlock(result: AssetResult): ToolRenderBlock[] {
-  const blocks: ToolRenderBlock[] = [
-    {
-      type: "key_value",
-      title: "Top asset",
-      items: [
-        { key: "title", value: result.title },
-        { key: "assetId", value: result.assetId },
-        { key: "assetType", value: result.assetType },
-        { key: "category", value: result.categoryId },
-        { key: "subcategory", value: result.subCategoryId },
-        { key: "score", value: String(result.score) },
-      ],
-    },
-  ];
+function buildAssetGalleryBlock(query: string, results: AssetResult[]): ToolRenderBlock | undefined {
+  const items = results.slice(0, 8).map((result) => ({
+    id: result.assetId || undefined,
+    title: result.title,
+    subtitle: result.assetType,
+    price: result.price,
+    thumbnailUrl: result.thumbnailUrl,
+    previewUrl: result.previewUrl,
+    sourceUrl: result.sourceUrl,
+    metadata: [
+      { key: "assetId", value: result.assetId },
+      { key: "assetType", value: result.assetType },
+      { key: "category", value: result.categoryId },
+      { key: "subcategory", value: result.subCategoryId },
+      { key: "score", value: String(result.score) },
+    ].filter((item) => item.value.length > 0),
+  }));
 
-  if (nonEmpty(result.text)) {
-    blocks.push({
-      type: "text",
-      title: "Top asset details",
-      text: result.text,
-    });
-  }
+  if (items.length === 0) return undefined;
 
-  if (result.keywords.length > 0) {
-    blocks.push({
-      type: "text",
-      title: "Top asset keywords",
-      text: result.keywords.join(", "),
-    });
-  }
-
-  return blocks;
+  return {
+    type: "asset_gallery",
+    title: "OVERDARE Assets",
+    query,
+    items,
+  };
 }
 
 function normalizeDebugForRender(raw: Partial<DebugResult>): DebugResult {
@@ -274,15 +311,7 @@ export function buildSearchRender(args: { source: string; query: string }, resul
       }
       return normalizeAssetForRender(raw);
     });
-    const rows = assetResults
-      .slice(0, 10)
-      .map((entry) => [
-        clip(entry.title, 28),
-        clip(entry.assetType, 12),
-        clip(entry.categoryId, 18),
-        clip(entry.subCategoryId, 24),
-        clip(String(entry.score), 8),
-      ]);
+    const galleryBlock = buildAssetGalleryBlock(args.query, assetResults);
     return {
       inputSummary: clip(`${args.source}: ${args.query}`, 100),
       outputSummary: summarizeSearchOutput(args.source, assetResults.length),
@@ -299,17 +328,7 @@ export function buildSearchRender(args: { source: string; query: string }, resul
         ...(assetResults.length === 0
           ? [{ type: "summary" as const, text: "No results found.", tone: "warning" as const }]
           : []),
-        ...(rows.length > 0
-          ? [
-              {
-                type: "table" as const,
-                title: "Assets",
-                columns: ["Title", "Type", "Category", "Subcategory", "Score"],
-                rows,
-              },
-            ]
-          : []),
-        ...(assetResults[0] ? buildAssetPreviewBlock(assetResults[0]) : []),
+        ...(galleryBlock ? [galleryBlock] : []),
       ],
     };
   }

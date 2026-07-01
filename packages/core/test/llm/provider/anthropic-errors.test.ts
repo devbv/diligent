@@ -2,7 +2,7 @@
 import { describe, expect, test } from "bun:test";
 import Anthropic from "@anthropic-ai/sdk";
 import { classifyAnthropicError } from "../../../src/llm/provider/anthropic";
-import { ProviderError } from "../../../src/llm/types";
+import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError } from "../../../src/llm/types";
 
 function makeAPIError(
   status: number,
@@ -69,6 +69,7 @@ describe("classifyAnthropicError", () => {
     const result = classifyAnthropicError(err);
 
     expect(result.errorType).toBe("context_overflow");
+    expect(result.message).toBe(CONTEXT_OVERFLOW_ERROR_MESSAGE);
     expect(result.isRetryable).toBe(false);
     expect(result.statusCode).toBe(400);
   });

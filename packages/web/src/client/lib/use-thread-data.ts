@@ -1,0 +1,89 @@
+// @summary RPC data operation hooks: tools, knowledge, child-thread fetch, and derived display values
+import type {
+  KnowledgeEntry,
+  KnowledgeUpdateParams,
+  ThreadReadResponse,
+  ToolsListResponse,
+  ToolsSetParams,
+  ToolsSetResponse,
+} from "@diligent/protocol";
+import { DILIGENT_CLIENT_REQUEST_METHODS } from "@diligent/protocol";
+import type { RefObject } from "react";
+import { useCallback, useMemo } from "react";
+import type { ThreadState } from "./thread-store";
+import type { useRpcClient } from "./use-rpc";
+
+type RpcClientResult = ReturnType<typeof useRpcClient>;
+
+export function useThreadData({
+  rpcRef,
+  state,
+  childThreadCacheRef,
+}: {
+  rpcRef: RpcClientResult["rpcRef"];
+  state: ThreadState;
+  childThreadCacheRef: RefObject<Map<string, ThreadReadResponse>>;
+}) {
+  const listTools = useCallback(async (): Promise<ToolsListResponse> => {
+    const rpc = rpcRef.current;
+    if (!rpc) throw new Error("WebSocket is not connected");
+    return rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.TOOLS_LIST, {
+      threadId: state.activeThreadId ?? undefined,
+    });
+  }, [rpcRef, state.activeThreadId]);
+
+  const saveTools = useCallback(
+    async (params: ToolsSetParams): Promise<ToolsSetResponse> => {
+      const rpc = rpcRef.current;
+      if (!rpc) throw new Error("WebSocket is not connected");
+      return rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.TOOLS_SET, params);
+    },
+    [rpcRef],
+  );
+
+  const listKnowledge = useCallback(
+    async (threadId?: string): Promise<{ data: KnowledgeEntry[] }> => {
+      const rpc = rpcRef.current;
+      if (!rpc) throw new Error("WebSocket is not connected");
+      return rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.KNOWLEDGE_LIST, { threadId, limit: 500 });
+    },
+    [rpcRef],
+  );
+
+  const updateKnowledge = useCallback(
+    async (params: KnowledgeUpdateParams): Promise<{ entry?: KnowledgeEntry; deleted?: boolean }> => {
+      const rpc = rpcRef.current;
+      if (!rpc) throw new Error("WebSocket is not connected");
+      return rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.KNOWLEDGE_UPDATE, params);
+    },
+    [rpcRef],
+  );
+
+  const loadChildThread = useCallback(
+    async (childThreadId: string): Promise<ThreadReadResponse> => {
+      const cached = childThreadCacheRef.current.get(childThreadId);
+      if (cached) return cached;
+      const rpc = rpcRef.current;
+      if (!rpc) throw new Error("WebSocket is not connected");
+      const response = await rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.THREAD_READ, { threadId: childThreadId });
+      childThreadCacheRef.current.set(childThreadId, response);
+      return response;
+    },
+    [rpcRef, childThreadCacheRef],
+  );
+
+  const threadTitle = useMemo(() => {
+    const active = state.threadList.find((t) => t.id === state.activeThreadId);
+    const raw = active?.firstUserMessage ?? state.items.find((i) => i.kind === "user")?.text ?? "";
+    return raw.length > 40 ? `${raw.slice(0, 40)}…` : raw;
+  }, [state.activeThreadId, state.threadList, state.items]);
+
+  return {
+    listTools,
+    saveTools,
+    listKnowledge,
+    updateKnowledge,
+    loadChildThread,
+    threadTitle,
+  };
+}

@@ -12,7 +12,7 @@ export interface RetryConfig {
 }
 
 function isVisibleProviderEvent(event: ProviderEvent): boolean {
-  return event.type !== "start" && event.type !== "usage";
+  return event.type !== "start" && event.type !== "usage" && event.type !== "text_end" && event.type !== "thinking_end";
 }
 
 function toProviderError(err: unknown): ProviderError {
@@ -99,11 +99,7 @@ export function withRetry(
         // If no error captured from events, check if stream completed normally
         if (!errorEvent) {
           console.log(`[llm:retry] stream ended without terminal event attempt=${attempt}/${config.maxAttempts}`);
-          stream.push({
-            type: "error",
-            error: new ProviderError("Provider stream ended without producing a terminal event", "unknown", false),
-          });
-          return;
+          errorEvent = new ProviderError("Provider stream ended without producing a terminal event", "network", true);
         }
 
         // We have an error — decide whether to retry.

@@ -476,6 +476,22 @@ describe("protocol/flow", () => {
         { type: "key_value", title: "Info", items: [{ key: "Count", value: "42" }] },
         { type: "list", title: "Files", ordered: false, items: ["a.ts", "b.ts"] },
         { type: "table", title: "Results", columns: ["Name", "Status"], rows: [["foo", "ok"]] },
+        {
+          type: "asset_gallery",
+          title: "OVERDARE Assets",
+          query: "fountain classic stone",
+          items: [
+            {
+              id: "asset-1",
+              title: "Classic Stone Fountain",
+              subtitle: "MODEL",
+              price: "Free",
+              thumbnailUrl: "https://assets.example/fountain.png",
+              previewUrl: "https://assets.example/fountain",
+              metadata: [{ key: "assetType", value: "MODEL" }],
+            },
+          ],
+        },
         { type: "tree", nodes: [{ label: "root", children: [{ label: "child" }] }] },
         { type: "status_badges", items: [{ label: "passing", tone: "success" }, { label: "skipped" }] },
       ],
