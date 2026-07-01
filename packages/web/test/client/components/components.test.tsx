@@ -1307,6 +1307,29 @@ test("tool block shows completed duration only after one second", () => {
   expect(html).not.toContain("1350ms");
 });
 
+test("tool block uses a neutral fallback icon instead of the target glyph", () => {
+  const html = renderToStaticMarkup(
+    <ToolBlock
+      item={{
+        id: "tool-fallback",
+        kind: "tool",
+        toolName: "unknown_custom_tool",
+        inputText: "{}",
+        outputText: "done",
+        isError: false,
+        status: "done",
+        timestamp: 1,
+        toolCallId: "call-fallback",
+        startedAt: 1,
+      }}
+    />,
+  );
+
+  expect(html).toContain('cx="11"');
+  expect(html).not.toContain("M12 8.5a3.5");
+  expect(html).not.toContain("M3.5 12h2");
+});
+
 test("tool block hides duration while tool is still running", () => {
   const html = renderToStaticMarkup(
     <ToolBlock

@@ -68,6 +68,11 @@ const TOOL_MAP: Record<string, ToolInfo> = {
     running: "Listing files",
     failed: "List failed",
   }),
+  validatelua: tool("Validate Lua", "checklist", "action", {
+    done: "Validated Lua",
+    running: "Validating Lua",
+    failed: "Lua validation failed",
+  }),
   bash: tool("Shell", "terminal", "action", {
     done: "Ran command",
     running: "Running command",

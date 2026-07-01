@@ -165,14 +165,26 @@ function ToolIcon({ name, className }: { name: ToolIconName; className?: string 
           <path d="M12 15h5" />
         </IconSvg>
       );
+    case "settings":
+      return (
+        <IconSvg className={className}>
+          <path d="M4 7h5" />
+          <path d="M13 7h7" />
+          <path d="M4 17h7" />
+          <path d="M15 17h5" />
+          <circle cx="11" cy="7" r="2" />
+          <circle cx="13" cy="17" r="2" />
+        </IconSvg>
+      );
     default:
       return (
         <IconSvg className={className}>
-          <path d="M12 8.5a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7Z" />
-          <path d="M12 3.5v2" />
-          <path d="M12 18.5v2" />
-          <path d="M3.5 12h2" />
-          <path d="M18.5 12h2" />
+          <path d="M4 7h5" />
+          <path d="M13 7h7" />
+          <path d="M4 17h7" />
+          <path d="M15 17h5" />
+          <circle cx="11" cy="7" r="2" />
+          <circle cx="13" cy="17" r="2" />
         </IconSvg>
       );
   }
