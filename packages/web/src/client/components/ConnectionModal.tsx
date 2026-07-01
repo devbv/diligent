@@ -1,6 +1,7 @@
 // @summary Modal shown when the WebSocket connection is lost or retry has failed
 import { Button } from "./Button";
 import { Modal } from "./Modal";
+import { actionRowClasses } from "./ui-styles";
 
 interface ConnectionModalProps {
   isReconnecting: boolean;
@@ -23,7 +24,7 @@ export function ConnectionModal({ isReconnecting, reconnectAttempts, retryLimit,
       {isReconnecting ? (
         <div className="text-sm text-muted">Please wait while we restore the session.</div>
       ) : (
-        <div className="flex items-center justify-end gap-2">
+        <div className={actionRowClasses}>
           <Button intent="ghost" size="sm" onClick={onRetry}>
             Retry now
           </Button>

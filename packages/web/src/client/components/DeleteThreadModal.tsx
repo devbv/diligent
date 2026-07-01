@@ -1,6 +1,7 @@
 // @summary Confirmation modal for permanently deleting a conversation thread
 import { Button } from "./Button";
 import { Modal } from "./Modal";
+import { actionRowClasses } from "./ui-styles";
 
 interface DeleteThreadModalProps {
   onCancel: () => void;
@@ -15,7 +16,7 @@ export function DeleteThreadModal({ onCancel, onConfirm }: DeleteThreadModalProp
       onCancel={onCancel}
       onConfirm={onConfirm}
     >
-      <div className="flex items-center justify-end gap-2">
+      <div className={actionRowClasses}>
         <Button intent="ghost" size="sm" onClick={onCancel}>
           Cancel
         </Button>

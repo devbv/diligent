@@ -11,6 +11,20 @@ import type {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "./Button";
 import { Input } from "./Input";
+import {
+  badgeClasses,
+  cardPaddingClasses,
+  cardPaddingLooseClasses,
+  controlRowClasses,
+  itemStackClasses,
+  panelBodyClasses,
+  panelCloseButtonClasses,
+  panelFooterClasses,
+  panelFrameClasses,
+  panelHeaderClasses,
+  sectionStackClasses,
+  surfaceCardClasses,
+} from "./ui-styles";
 
 const PROVIDER_BADGE_STYLE: Record<string, string> = {
   anthropic: "border-provider-anthropic/30 bg-provider-anthropic/10 text-provider-anthropic",
@@ -319,26 +333,21 @@ export function ToolSettingsModal({
         aria-modal="true"
         aria-label="Config"
         tabIndex={-1}
-        className="absolute inset-0 z-10 flex flex-col border border-border/100 bg-surface-default p-5 shadow-panel"
+        className={panelFrameClasses}
         onClick={(event) => event.stopPropagation()}
         onKeyDown={handleKeyDown}
       >
-        <div className="mb-4 flex items-start justify-between gap-2">
+        <div className={panelHeaderClasses}>
           <div>
             <h2 className="text-lg font-semibold text-text">Config</h2>
             <p className="mt-1 text-sm text-muted">Manage built-in tools and trusted JavaScript plugin packages.</p>
           </div>
-          <button
-            type="button"
-            aria-label="Close tools panel"
-            onClick={onClose}
-            className="rounded-md border border-border/100 bg-fill-secondary px-2 py-1 text-xs text-muted transition hover:bg-fill-ghost-hover hover:text-text"
-          >
+          <button type="button" aria-label="Close tools panel" onClick={onClose} className={panelCloseButtonClasses}>
             ✕
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto pr-1">
+        <div className={panelBodyClasses}>
           {loading ? <p className="text-sm text-muted">Loading tool settings…</p> : null}
           {error ? <p className="text-sm text-danger">{error}</p> : null}
           {savedMessage ? <p className="text-sm text-accent">{savedMessage}</p> : null}
@@ -346,18 +355,20 @@ export function ToolSettingsModal({
           {state && draft ? (
             <div className="space-y-4">
               {onOpenProviders ? (
-                <section className="space-y-2">
+                <section className={sectionStackClasses}>
                   <div>
                     <h3 className="text-sm font-semibold text-text">AI connection</h3>
                     <p className="text-xs text-muted">Manage your connected AI accounts and login methods.</p>
                   </div>
-                  <div className="rounded-lg border border-border/100 bg-surface-dark px-3 py-2.5">
+                  <div className={`${surfaceCardClasses} ${cardPaddingClasses}`}>
                     <div className="mb-2 flex flex-wrap items-center gap-1.5">
                       {connectedProviders.length > 0 ? (
                         connectedProviders.map((provider) => (
                           <span
                             key={provider.provider}
-                            className={`rounded border px-2 py-0.5 text-xs ${PROVIDER_BADGE_STYLE[provider.provider] ?? "border-border/100 bg-surface-light text-text"}`}
+                            className={`${badgeClasses} ${
+                              PROVIDER_BADGE_STYLE[provider.provider] ?? "border-border/100 bg-surface-light text-text"
+                            }`}
                           >
                             {PROVIDER_LABELS[provider.provider] ?? provider.provider}
                             {provider.oauthConnected ? " (OAuth)" : ""}
@@ -375,14 +386,14 @@ export function ToolSettingsModal({
               ) : null}
 
               {typeof desktopNotificationsEnabled === "boolean" && onDesktopNotificationsEnabledChange ? (
-                <section className="space-y-2">
+                <section className={sectionStackClasses}>
                   <div>
                     <h3 className="text-sm font-semibold text-text">Desktop notifications</h3>
                     <p className="text-xs text-muted">
                       Show native OS notifications for background turn completion and pending approval/input requests.
                     </p>
                   </div>
-                  <label className="flex items-start gap-3 rounded-lg border border-border/100 bg-surface-dark px-3 py-2.5">
+                  <label className={controlRowClasses}>
                     <input
                       type="checkbox"
                       checked={desktopNotificationsEnabled}
@@ -400,7 +411,7 @@ export function ToolSettingsModal({
               ) : null}
 
               {consent && onConsentChange ? (
-                <section className="space-y-2">
+                <section className={sectionStackClasses}>
                   <div>
                     <h3 className="text-sm font-semibold text-text">AI Agent Data Use</h3>
                     <p className="text-xs text-muted">Control how your conversations with the AI agent are used.</p>
@@ -413,7 +424,7 @@ export function ToolSettingsModal({
                       View Privacy Policy ›
                     </a>
                   </div>
-                  <label className="flex items-start gap-3 rounded-lg border border-border/100 bg-surface-dark px-3 py-2.5">
+                  <label className={controlRowClasses}>
                     <input
                       type="checkbox"
                       checked={consent.serviceImprovement}
@@ -432,36 +443,33 @@ export function ToolSettingsModal({
                 </section>
               ) : null}
 
-              <section className="space-y-2">
+              <section className={sectionStackClasses}>
                 <div>
                   <h3 className="text-sm font-semibold text-text">Runtime version</h3>
                   <p className="text-xs text-muted">Version of the runtime currently connected to this web client.</p>
                 </div>
-                <div className="rounded-lg border border-border/100 bg-surface-dark px-3 py-2.5">
+                <div className={`${surfaceCardClasses} ${cardPaddingClasses}`}>
                   <div className="text-sm font-medium text-text">
                     {runtimeVersion?.trim() ? runtimeVersion : "Unavailable"}
                   </div>
                 </div>
               </section>
 
-              <section className="space-y-2">
+              <section className={sectionStackClasses}>
                 <div>
                   <h3 className="text-sm font-semibold text-text">Built-in tools</h3>
                   <p className="text-xs text-muted">
                     Immutable tools stay enabled even if config tries to turn them off.
                   </p>
                 </div>
-                <div className="space-y-2">
+                <div className={itemStackClasses}>
                   {state.tools
                     .filter((tool) => tool.source === "builtin")
                     .map((tool) => {
                       const checked = tool.configurable ? (draft.builtin[tool.name] ?? tool.enabled) : true;
                       const disabled = !tool.configurable || tool.immutable;
                       return (
-                        <label
-                          key={tool.name}
-                          className="flex items-start gap-3 rounded-lg border border-border/100 bg-surface-dark px-3 py-2.5"
-                        >
+                        <label key={tool.name} className={controlRowClasses}>
                           <input
                             type="checkbox"
                             checked={checked}
@@ -473,7 +481,7 @@ export function ToolSettingsModal({
                             <div className="flex items-center gap-2">
                               <span className="text-sm font-medium text-text">{tool.name}</span>
                               {tool.immutable ? (
-                                <span className="rounded border border-border/100 bg-surface-light px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted">
+                                <span className={`${badgeClasses} border-border/100 bg-surface-light text-muted`}>
                                   Locked
                                 </span>
                               ) : null}
@@ -514,7 +522,7 @@ export function ToolSettingsModal({
                 </div>
 
                 {currentPluginDrafts.length === 0 ? (
-                  <div className="rounded-lg border border-dashed border-border/100 bg-surface-dark px-3 py-3 text-sm text-muted">
+                  <div className={`${surfaceCardClasses} border-dashed ${cardPaddingLooseClasses} text-sm text-muted`}>
                     No plugin packages configured.
                   </div>
                 ) : (
@@ -524,10 +532,7 @@ export function ToolSettingsModal({
                       const pluginTools = pluginToolsByPackage.get(pluginDraft.package) ?? [];
                       const canShowRuntimeState = Boolean(pluginState);
                       return (
-                        <div
-                          key={pluginDraft.package}
-                          className="rounded-lg border border-border/100 bg-surface-dark px-3 py-3"
-                        >
+                        <div key={pluginDraft.package} className={`${surfaceCardClasses} ${cardPaddingLooseClasses}`}>
                           <div className="flex items-start gap-3">
                             <input
                               type="checkbox"
@@ -539,7 +544,7 @@ export function ToolSettingsModal({
                               <div className="flex items-center gap-2">
                                 <span className="truncate text-sm font-medium text-text">{pluginDraft.package}</span>
                                 {!pluginState ? (
-                                  <span className="rounded border border-accent/30 bg-fill-ghost-hover px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-accent">
+                                  <span className={`${badgeClasses} border-accent/30 bg-fill-ghost-hover text-accent`}>
                                     Pending save
                                   </span>
                                 ) : null}
@@ -569,10 +574,7 @@ export function ToolSettingsModal({
                                 const checked = pluginDraft.tools[tool.name] ?? tool.enabled;
                                 const disabled = !tool.configurable || !tool.available;
                                 return (
-                                  <label
-                                    key={tool.name}
-                                    className="flex items-start gap-3 rounded-lg border border-border/100 bg-surface-default px-3 py-2.5"
-                                  >
+                                  <label key={tool.name} className={`${controlRowClasses} bg-surface-default`}>
                                     <input
                                       type="checkbox"
                                       checked={checked}
@@ -602,7 +604,7 @@ export function ToolSettingsModal({
           ) : null}
         </div>
 
-        <div className="mt-4 flex shrink-0 items-center justify-end gap-2">
+        <div className={panelFooterClasses}>
           <Button intent="ghost" size="sm" disabled={saving} onClick={onClose}>
             Close
           </Button>

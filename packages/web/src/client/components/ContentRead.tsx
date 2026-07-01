@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { CopyButton } from "./CopyButton";
 import { ExpandButton } from "./ExpandButton";
+import { toolBlockHeaderClasses, toolBlockPreClasses, toolBlockShellClasses } from "./ui-styles";
 
 interface ContentReadProps {
   filePath?: string;
@@ -24,9 +25,9 @@ export function ContentRead({ filePath, offset, limit, output, isError = false }
     offset && limit ? `L${offset}–${offset + limit - 1}` : offset ? `from L${offset}` : limit ? `${limit} lines` : "";
 
   return (
-    <div className="overflow-hidden rounded-lg border border-border/10 bg-bg/60 font-mono text-xs">
+    <div className={toolBlockShellClasses}>
       {/* File header */}
-      <div className="flex items-center gap-2 border-b border-border/10 bg-surface/60 px-3 py-2">
+      <div className={toolBlockHeaderClasses}>
         <span className="shrink-0 text-text-secondary">↗</span>
         <span className="min-w-0 flex-1 truncate text-text/80">{filePath ?? "file"}</span>
         {rangeLabel ? <span className="shrink-0 text-muted/70">{rangeLabel}</span> : null}
@@ -36,13 +37,7 @@ export function ContentRead({ filePath, offset, limit, output, isError = false }
       {/* Content preview */}
       {output ? (
         <div>
-          <pre
-            className={`overflow-x-auto whitespace-pre-wrap px-3 py-2 leading-relaxed ${
-              isError ? "text-muted" : "text-text/70"
-            }`}
-          >
-            {visibleOutput}
-          </pre>
+          <pre className={`${toolBlockPreClasses} ${isError ? "text-muted" : "text-text/70"}`}>{visibleOutput}</pre>
           {isLong ? (
             <ExpandButton
               expanded={expanded}

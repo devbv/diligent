@@ -4,6 +4,7 @@ import type { ApprovalRequest } from "@diligent/protocol";
 import { Button } from "./Button";
 import { SectionLabel } from "./SectionLabel";
 import { SystemCard } from "./SystemCard";
+import { actionRowClasses, cardPaddingClasses, surfaceCardClasses } from "./ui-styles";
 
 interface ApprovalCardProps {
   request: ApprovalRequest;
@@ -40,11 +41,13 @@ export function ApprovalCard({ request, onDecide }: ApprovalCardProps) {
         <span className="font-medium">{request.permission}</span>
       </p>
       {request.description ? (
-        <pre className="mb-4 whitespace-pre-wrap rounded-xl border border-border/10 bg-bg/34 px-3 py-2 font-mono text-xs leading-relaxed text-muted">
+        <pre
+          className={`mb-4 whitespace-pre-wrap ${cardPaddingClasses} font-mono text-xs leading-relaxed text-muted ${surfaceCardClasses}`}
+        >
           {request.description}
         </pre>
       ) : null}
-      <div className="flex flex-wrap gap-2">
+      <div className={`${actionRowClasses} flex-wrap justify-start`}>
         <Button size="sm" intent="ghost" onClick={() => onDecide("once")}>
           Once
         </Button>

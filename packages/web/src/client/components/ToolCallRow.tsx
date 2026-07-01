@@ -5,7 +5,7 @@ import { cn } from "../lib/cn";
 import type { RenderItem } from "../lib/thread-store";
 import { normalizeToolName } from "../lib/thread-utils";
 import { getToolHeaderTitle, summarizeInput, summarizeOutput } from "../lib/tool-info";
-import { SectionLabel } from "./SectionLabel";
+import { ContentText } from "./ContentText";
 import { StatusDot } from "./StatusDot";
 
 interface ToolCallRowProps {
@@ -59,29 +59,17 @@ export function ToolCallRow({ item }: ToolCallRowProps) {
           {/* Summary rows */}
           {showOutputSummary ? (
             <div className="flex flex-col gap-0.5">
-              <span className="max-w-[64ch] truncate font-mono text-xs text-text-tertiary">↳ {outputSummary}</span>
+              <span className="max-w-tool-summary truncate font-mono text-xs text-text-tertiary">
+                ↳ {outputSummary}
+              </span>
             </div>
           ) : null}
         </button>
 
         {open ? (
-          <div>
-            {item.inputText ? (
-              <div className="mb-2">
-                <SectionLabel>Input</SectionLabel>
-                <pre className="overflow-x-auto whitespace-pre-wrap rounded border border-border/10 bg-surface/50 p-2 font-mono text-xs text-muted">
-                  {item.inputText}
-                </pre>
-              </div>
-            ) : null}
-            {item.outputText ? (
-              <div>
-                <SectionLabel>Output</SectionLabel>
-                <pre className="overflow-x-auto whitespace-pre-wrap rounded border border-border/10 bg-surface/50 p-2 font-mono text-xs text-text">
-                  {item.outputText}
-                </pre>
-              </div>
-            ) : null}
+          <div className="space-y-2">
+            {item.inputText ? <ContentText text={item.inputText} label="Input" /> : null}
+            {item.outputText ? <ContentText text={item.outputText} label="Output" isError={item.isError} /> : null}
           </div>
         ) : null}
       </div>

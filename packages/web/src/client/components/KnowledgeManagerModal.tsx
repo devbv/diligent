@@ -6,6 +6,19 @@ import { Button } from "./Button";
 import { Input } from "./Input";
 import { Modal } from "./Modal";
 import { TextArea } from "./TextArea";
+import {
+  actionRowClasses,
+  cardPaddingLooseClasses,
+  fieldClasses,
+  iconButtonClasses,
+  itemStackClasses,
+  panelBodyClasses,
+  panelCloseButtonClasses,
+  panelFrameClasses,
+  panelHeaderClasses,
+  sectionStackClasses,
+  surfaceCardClasses,
+} from "./ui-styles";
 
 interface KnowledgeManagerModalProps {
   threadId?: string | null;
@@ -211,10 +224,10 @@ export function KnowledgeManagerModal({ threadId, onList, onUpdate, onClose, cla
         aria-modal="true"
         aria-label="Knowledge"
         tabIndex={-1}
-        className="absolute inset-0 z-10 flex flex-col border border-border/100 bg-surface-default p-5 shadow-panel"
+        className={panelFrameClasses}
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="mb-1 flex items-start justify-between gap-2">
+        <div className={panelHeaderClasses}>
           <div>
             <h2 className="text-lg font-semibold text-text">Knowledge</h2>
             <p className="mt-1 text-sm text-muted">Review, edit, and delete reusable knowledge directly.</p>
@@ -223,16 +236,16 @@ export function KnowledgeManagerModal({ threadId, onList, onUpdate, onClose, cla
             type="button"
             aria-label="Close knowledge panel"
             onClick={onClose}
-            className="rounded-md border border-border/100 bg-fill-secondary px-2 py-1 text-xs text-muted transition hover:bg-fill-ghost-hover hover:text-text"
+            className={panelCloseButtonClasses}
           >
             ✕
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+        <div className={panelBodyClasses}>
           {error ? <p className="text-sm text-danger">{error}</p> : null}
 
-          <section className="space-y-2">
+          <section className={sectionStackClasses}>
             <div className="flex items-center justify-between gap-2">
               <h3 className="text-sm font-semibold text-text">
                 Entries ({filteredEntries.length}/{entries.length})
@@ -242,7 +255,7 @@ export function KnowledgeManagerModal({ threadId, onList, onUpdate, onClose, cla
               </Button>
             </div>
 
-            <div className="grid grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_160px_180px]">
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-knowledge-filters">
               <label htmlFor={searchInputId} className="text-xs text-muted">
                 Search
                 <Input
@@ -258,7 +271,7 @@ export function KnowledgeManagerModal({ threadId, onList, onUpdate, onClose, cla
                 <select
                   id={typeFilterId}
                   aria-label="Filter knowledge type"
-                  className="mt-1 h-10 w-full rounded-md border border-border/100 bg-surface-dark px-2 text-sm text-text"
+                  className={`mt-1 h-10 ${fieldClasses}`}
                   value={typeFilter}
                   onChange={(event) => setTypeFilter(event.target.value as KnowledgeType | "all")}
                 >
@@ -275,7 +288,7 @@ export function KnowledgeManagerModal({ threadId, onList, onUpdate, onClose, cla
                 <select
                   id={sortModeId}
                   aria-label="Sort knowledge entries"
-                  className="mt-1 h-10 w-full rounded-md border border-border/100 bg-surface-dark px-2 text-sm text-text"
+                  className={`mt-1 h-10 ${fieldClasses}`}
                   value={sortMode}
                   onChange={(event) => setSortMode(event.target.value as SortMode)}
                 >
@@ -290,14 +303,14 @@ export function KnowledgeManagerModal({ threadId, onList, onUpdate, onClose, cla
             {loading ? <p className="text-sm text-muted">Loading knowledge entries…</p> : null}
 
             {!loading && filteredEntries.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-border/100 bg-surface-dark px-3 py-3 text-sm text-muted">
+              <div className={`${surfaceCardClasses} border-dashed ${cardPaddingLooseClasses} text-sm text-muted`}>
                 {entries.length === 0 ? "No knowledge entries yet." : "No entries match the current filters."}
               </div>
             ) : null}
 
-            <div className="space-y-2">
+            <div className={itemStackClasses}>
               {filteredEntries.map((entry) => (
-                <div key={entry.id} className="rounded-lg border border-border/100 bg-surface-dark px-3 py-3">
+                <div key={entry.id} className={`${surfaceCardClasses} ${cardPaddingLooseClasses}`}>
                   {editing?.id === entry.id ? (
                     <div className="space-y-2">
                       <div className="flex items-center justify-between gap-2">
@@ -315,7 +328,7 @@ export function KnowledgeManagerModal({ threadId, onList, onUpdate, onClose, cla
                         <label className="text-xs text-muted">
                           Type
                           <select
-                            className="mt-1 h-10 w-full rounded-md border border-border/100 bg-surface-default px-2 text-sm text-text"
+                            className={`mt-1 h-10 ${fieldClasses}`}
                             value={editing.draft.type}
                             onChange={(event) =>
                               updateEntryDraft((current) => ({ ...current, type: event.target.value as KnowledgeType }))
@@ -366,7 +379,7 @@ export function KnowledgeManagerModal({ threadId, onList, onUpdate, onClose, cla
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex min-w-0 items-center gap-2">
                           <span
-                            className={`rounded border px-1.5 py-0.5 text-[10px] uppercase tracking-wide ${KNOWLEDGE_TYPE_STYLES[entry.type]}`}
+                            className={`rounded-md border px-1.5 py-0.5 text-2xs uppercase tracking-wide ${KNOWLEDGE_TYPE_STYLES[entry.type]}`}
                           >
                             {entry.type}
                           </span>
@@ -379,7 +392,7 @@ export function KnowledgeManagerModal({ threadId, onList, onUpdate, onClose, cla
                             title="Edit"
                             onClick={() => beginEdit(entry)}
                             disabled={saving}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border/100 bg-fill-secondary text-sm text-muted transition hover:bg-fill-ghost-hover hover:text-text disabled:cursor-not-allowed disabled:opacity-50"
+                            className={`${iconButtonClasses} border border-border/100 bg-fill-secondary disabled:cursor-not-allowed disabled:opacity-50`}
                           >
                             ✎
                           </button>
@@ -389,7 +402,7 @@ export function KnowledgeManagerModal({ threadId, onList, onUpdate, onClose, cla
                             title="Delete"
                             onClick={() => setPendingDeleteId(entry.id)}
                             disabled={saving}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border/100 bg-fill-secondary text-sm text-muted transition hover:border-danger/40 hover:text-danger disabled:cursor-not-allowed disabled:opacity-50"
+                            className={`${iconButtonClasses} border border-border/100 bg-fill-secondary hover:border-danger/40 hover:text-danger disabled:cursor-not-allowed disabled:opacity-50`}
                           >
                             🗑
                           </button>
@@ -417,7 +430,7 @@ export function KnowledgeManagerModal({ threadId, onList, onUpdate, onClose, cla
           onCancel={() => setPendingDeleteId(null)}
           onConfirm={() => void confirmDelete()}
         >
-          <div className="flex items-center justify-end gap-2">
+          <div className={actionRowClasses}>
             <Button intent="ghost" size="sm" onClick={() => setPendingDeleteId(null)}>
               Cancel
             </Button>

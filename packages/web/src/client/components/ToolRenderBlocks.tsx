@@ -23,15 +23,25 @@ import { cn } from "../lib/cn";
 import { AssetThumbnail } from "./AssetThumbnail";
 import { CopyButton } from "./CopyButton";
 import { ExpandButton } from "./ExpandButton";
+import {
+  diffStackClasses,
+  microLabelClasses,
+  subtleDividerClasses,
+  toolBlockBodyClasses,
+  toolBlockHeaderClasses,
+  toolBlockHeaderSpreadClasses,
+  toolBlockPreClasses,
+  toolBlockShellClasses,
+} from "./ui-styles";
 
 /* ── Shared wrapper ───────────────────────────────────────────────── */
 
 function BlockShell({ title, copyText, children }: { title?: string; copyText?: string; children: React.ReactNode }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-border/100 bg-surface-dark">
+    <div className={toolBlockShellClasses}>
       {title && (
-        <div className="flex items-center justify-between border-b border-border/100 bg-surface-default px-3 py-2">
-          <span className="font-mono text-2xs uppercase tracking-wider text-muted">{title}</span>
+        <div className={toolBlockHeaderSpreadClasses}>
+          <span className={microLabelClasses}>{title}</span>
           {copyText && <CopyButton text={copyText} />}
         </div>
       )}
@@ -58,7 +68,7 @@ function toneText(tone?: string) {
 /* ── SummaryBlock ─────────────────────────────────────────────────── */
 
 function RenderSummary({ block }: { block: SummaryBlock }) {
-  return <div className={cn("px-3 py-2 font-mono text-xs", toneText(block.tone))}>{block.text}</div>;
+  return <div className={cn(toolBlockBodyClasses, "font-mono text-xs", toneText(block.tone))}>{block.text}</div>;
 }
 
 /* ── TextBlock ─────────────────────────────────────────────────────── */
@@ -66,12 +76,7 @@ function RenderSummary({ block }: { block: SummaryBlock }) {
 function RenderText({ block }: { block: ToolRenderTextBlock }) {
   return (
     <BlockShell title={block.title} copyText={block.text}>
-      <pre
-        className={cn(
-          "overflow-x-auto whitespace-pre-wrap px-3 py-2 font-mono text-xs leading-relaxed",
-          block.isError ? "text-muted" : "text-text/80",
-        )}
-      >
+      <pre className={cn(toolBlockPreClasses, "font-mono text-xs", block.isError ? "text-muted" : "text-text/80")}>
         {block.text}
       </pre>
     </BlockShell>
@@ -86,7 +91,7 @@ function RenderKeyValue({ block }: { block: KeyValueBlock }) {
 
   return (
     <BlockShell title={block.title ?? "key / value"} copyText={copyText}>
-      <dl className="px-3 py-2 font-mono text-xs">
+      <dl className={`${toolBlockBodyClasses} font-mono text-xs`}>
         {block.items.map((item, i) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: static list
           <div key={i} className="flex gap-3 leading-relaxed">
@@ -108,7 +113,7 @@ function RenderList({ block }: { block: ListBlock }) {
 
   return (
     <BlockShell title={block.title} copyText={copyText}>
-      <ul className="px-3 py-2 font-mono text-xs leading-relaxed text-text/80">
+      <ul className={`${toolBlockBodyClasses} font-mono text-xs leading-relaxed text-text/80`}>
         {block.items.map((item, i) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: static list
           <li key={i} className="flex items-baseline gap-2">
@@ -128,7 +133,7 @@ function RenderTable({ block }: { block: TableBlock }) {
 
   return (
     <BlockShell title={block.title} copyText={copyText}>
-      <div className="overflow-x-auto px-3 py-2">
+      <div className={`overflow-x-auto ${toolBlockBodyClasses}`}>
         <table className="w-full font-mono text-xs">
           <thead>
             <tr>
@@ -270,7 +275,7 @@ function RenderTree({ block }: { block: TreeBlock }) {
 
   return (
     <BlockShell title={block.title}>
-      <ul className="px-3 py-2 font-mono text-xs">
+      <ul className={`${toolBlockBodyClasses} font-mono text-xs`}>
         {nodes.map((node, i) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: static nodes
           <TreeNodeRow key={i} node={node} prefix="" isLast={i === nodes.length - 1} />
@@ -298,10 +303,10 @@ function toneBadge(tone?: string) {
 function RenderStatusBadges({ block }: { block: StatusBadgesBlock }) {
   return (
     <BlockShell title={block.title}>
-      <div className="flex flex-wrap gap-1.5 px-3 py-2">
+      <div className={`flex flex-wrap gap-1.5 ${toolBlockBodyClasses}`}>
         {block.items.map((item, i) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: static badges
-          <span key={i} className={cn("rounded px-2 py-0.5 font-mono text-xs font-medium", toneBadge(item.tone))}>
+          <span key={i} className={cn("rounded-md px-2 py-0.5 font-mono text-xs font-medium", toneBadge(item.tone))}>
             {item.label}
           </span>
         ))}
@@ -330,8 +335,8 @@ function RenderFile({ block }: { block: FileBlock }) {
           : "";
 
   return (
-    <div className="overflow-hidden rounded-lg border border-border/100 bg-surface-dark font-mono text-xs">
-      <div className="flex items-center gap-2 border-b border-border/100 bg-surface-default px-3 py-2">
+    <div className={toolBlockShellClasses}>
+      <div className={toolBlockHeaderClasses}>
         <span className="shrink-0 text-text-secondary">↗</span>
         <span className="min-w-0 flex-1 truncate text-text/80">{block.filePath}</span>
         {rangeLabel ? <span className="shrink-0 text-muted/70">{rangeLabel}</span> : null}
@@ -339,14 +344,7 @@ function RenderFile({ block }: { block: FileBlock }) {
       </div>
       {block.content ? (
         <div>
-          <pre
-            className={cn(
-              "overflow-x-auto whitespace-pre-wrap px-3 py-2 leading-relaxed",
-              block.isError ? "text-muted" : "text-text/70",
-            )}
-          >
-            {visibleContent}
-          </pre>
+          <pre className={cn(toolBlockPreClasses, block.isError ? "text-muted" : "text-text/70")}>{visibleContent}</pre>
           {isLong ? (
             <ExpandButton
               expanded={expanded}
@@ -371,22 +369,15 @@ function RenderCommand({ block }: { block: CommandBlock }) {
   const visibleOutput = !expanded && isLong ? outputLines.slice(0, CMD_PREVIEW_LINES).join("\n") : block.output;
 
   return (
-    <div className="overflow-hidden rounded-lg border border-border/100 bg-surface-dark font-mono text-xs">
-      <div className="flex items-start gap-2 border-b border-border/100 bg-surface-default px-3 py-2">
+    <div className={toolBlockShellClasses}>
+      <div className={toolBlockHeaderClasses}>
         <span className="shrink-0 text-muted">$</span>
         <pre className="min-w-0 flex-1 whitespace-pre-wrap text-text">{block.command}</pre>
         <CopyButton text={block.command} />
       </div>
       {block.output !== undefined && block.output !== "" && (
         <div>
-          <pre
-            className={cn(
-              "overflow-x-auto whitespace-pre-wrap px-3 py-2 leading-relaxed",
-              block.isError ? "text-muted" : "text-text/80",
-            )}
-          >
-            {visibleOutput}
-          </pre>
+          <pre className={cn(toolBlockPreClasses, block.isError ? "text-muted" : "text-text/80")}>{visibleOutput}</pre>
           {isLong && (
             <ExpandButton
               expanded={expanded}
@@ -430,14 +421,14 @@ function DiffHunkView({ oldString, newString }: { oldString?: string; newString?
     const textCls = color === "danger" ? "text-danger/80" : "text-success";
     const labelCls = color === "danger" ? "text-danger/70" : "text-success";
     return (
-      <div className={cn("overflow-hidden rounded border", borderCls, bgCls)}>
-        <div className="flex items-center justify-between border-b border-border/10 px-2 py-1">
-          <span className={cn("font-mono text-2xs uppercase tracking-wider", labelCls)}>
+      <div className={cn("overflow-hidden rounded-md border", borderCls, bgCls)}>
+        <div className={`flex items-center justify-between border-b px-2 py-1 ${subtleDividerClasses}`}>
+          <span className={cn(microLabelClasses, labelCls)}>
             {prefix} {label}
           </span>
           <CopyButton text={text} />
         </div>
-        <pre className={cn("overflow-x-auto whitespace-pre-wrap px-3 py-2 leading-relaxed", textCls)}>{visible}</pre>
+        <pre className={cn(toolBlockPreClasses, textCls)}>{visible}</pre>
         {isLong && <ExpandButton expanded={expanded} onToggle={onToggle} detail={`${lines.length} lines`} />}
       </div>
     );
@@ -481,8 +472,8 @@ function DiffFileView({ file }: { file: DiffFile }) {
   const displayPath = file.action === "Move" && file.movedTo ? `${file.filePath} → ${file.movedTo}` : file.filePath;
 
   return (
-    <div className="overflow-hidden rounded-lg border border-border/100 bg-surface-dark font-mono text-xs">
-      <div className="flex items-center gap-2 border-b border-border/100 bg-surface-default px-3 py-2">
+    <div className={toolBlockShellClasses}>
+      <div className={toolBlockHeaderClasses}>
         <span className="shrink-0 text-text-secondary">✎</span>
         <span className="min-w-0 flex-1 truncate text-text/80">{displayPath}</span>
         {file.action ? (
@@ -493,7 +484,7 @@ function DiffFileView({ file }: { file: DiffFile }) {
         ) : null}
       </div>
       {file.hunks.length > 0 && (
-        <div className="space-y-1 p-2">
+        <div className={diffStackClasses}>
           {file.hunks.map((hunk, i) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: ordered hunks
             <DiffHunkView key={i} oldString={hunk.oldString} newString={hunk.newString} />

@@ -292,7 +292,7 @@ export function CollabEventBlock({ item, loadChildThread }: CollabEventBlockProp
             : undefined
         }
         className={cn(
-          "min-w-0 rounded-xl bg-surface-dark py-2.5",
+          "min-w-0 rounded-lg bg-surface-dark py-2.5",
           isInteractive ? "cursor-pointer transition hover:bg-surface-dark/80 focus:outline-none" : null,
         )}
       >

@@ -166,8 +166,8 @@ export function App() {
   }, [mainContentIsInert]);
 
   return (
-    <div className="h-screen overflow-hidden bg-black text-text">
-      <div className="relative flex h-full bg-black">
+    <div className="h-screen overflow-hidden bg-bg-sunken text-text">
+      <div className="relative flex h-full bg-bg-sunken">
         <ResponsiveSidebar open={sidebarOpen}>
           <Sidebar
             cwd={cwd}

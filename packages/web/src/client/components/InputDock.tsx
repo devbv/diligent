@@ -13,6 +13,16 @@ import { ComposerContextChips } from "./ComposerContextChips";
 import { Select, type SelectOption } from "./Select";
 import { SlashMenu } from "./SlashMenu";
 import { TextArea } from "./TextArea";
+import {
+  composerActionButtonClasses,
+  composerControlGroupClasses,
+  composerFrameClasses,
+  composerToolbarClasses,
+  focusRingClasses,
+  menuItemClasses,
+  menuPanelClasses,
+  selectedMenuItemClasses,
+} from "./ui-styles";
 import { useAnchoredPortal } from "./useAnchoredPortal";
 
 interface InputDockProps {
@@ -96,7 +106,7 @@ function PendingImagePreview({
   return (
     <div className="group relative overflow-hidden rounded-lg border border-border/100 bg-surface-light">
       {failed ? (
-        <div className="flex h-20 w-20 flex-col items-center justify-center gap-1 px-2 text-center text-[10px] text-muted">
+        <div className="flex h-20 w-20 flex-col items-center justify-center gap-1 px-2 text-center text-2xs text-muted">
           <span className="font-semibold text-text">IMG</span>
           <span className="line-clamp-2 max-w-full break-all">{label}</span>
         </div>
@@ -108,7 +118,7 @@ function PendingImagePreview({
         aria-label={`Remove ${image.fileName ?? "image"}`}
         onClick={() => onRemoveImage(image.path)}
         disabled={isUploadingImages || composerDisabled}
-        className="absolute right-1 top-1 rounded-full bg-bg/80 px-1.5 py-0.5 text-[10px] text-text opacity-90 transition hover:bg-bg-elevated disabled:cursor-not-allowed disabled:opacity-50"
+        className="absolute right-1 top-1 rounded-full bg-bg/80 px-1.5 py-0.5 text-2xs text-text opacity-90 transition hover:bg-bg-elevated disabled:cursor-not-allowed disabled:opacity-50"
       >
         ×
       </button>
@@ -301,9 +311,9 @@ export function InputDock({
   };
 
   const topLevelMenuItemClass = (menuKey: ComposerMenuKey): string =>
-    `flex w-full items-center justify-between rounded-xl px-2.5 py-2 text-left text-xs transition ${
+    `flex w-full items-center justify-between rounded-md px-2.5 py-2 text-left text-xs transition ${
       activeSubmenu === menuKey
-        ? "border border-border/100 bg-fill-secondary text-text"
+        ? `border border-border/100 ${selectedMenuItemClasses}`
         : "border border-transparent text-muted hover:border-border/100 hover:bg-fill-ghost-hover hover:text-text"
     }`;
 
@@ -377,7 +387,7 @@ export function InputDock({
   return (
     <div className="relative z-20 bg-surface-dark px-2 pb-4 pt-2">
       <div
-        className={`relative rounded-sm border px-4 py-3 ${hasProvider ? "border-white/10 !bg-[#21262C]" : "border-danger/30 !bg-[#21262C]"}${isBusy ? " input-dock-glow" : ""}`}
+        className={`${composerFrameClasses} ${hasProvider ? "border-border/100" : "border-danger/30"}${isBusy ? " input-dock-glow" : ""}`}
       >
         {pendingImages.length > 0 || showImageUploadIndicator ? (
           <div className="mb-3 flex flex-wrap gap-2">
@@ -403,7 +413,7 @@ export function InputDock({
         <div ref={slashMenuRef} className="relative flex items-start gap-2">
           <div className="min-w-0 flex-1">
             <TextArea
-              className="min-h-[52px] border-0 bg-transparent !px-1 py-0 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-transparent"
+              className="min-h-14 border-0 bg-transparent !px-1 py-0 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-transparent"
               aria-label={isBusy ? "Steering input" : "Message input"}
               placeholder={
                 isBusy ? "Steer the agent…" : supportsVision ? "Ask anything or attach images…" : "Ask anything…"
@@ -423,8 +433,8 @@ export function InputDock({
           </div>
         </div>
 
-        <div className="mt-2.5 flex items-center justify-between gap-2.5">
-          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+        <div className={composerToolbarClasses}>
+          <div className={composerControlGroupClasses}>
             <div ref={plusMenuRef} className="relative shrink-0">
               <input
                 ref={fileInputRef}
@@ -448,7 +458,7 @@ export function InputDock({
                 aria-expanded={isPlusMenuOpen}
                 onClick={togglePlusMenu}
                 disabled={composerDisabled}
-                className={`inline-flex h-7 w-7 items-center justify-center rounded border text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-text/10 ${
+                className={`inline-flex h-7 w-7 items-center justify-center rounded-md border text-sm font-medium transition ${focusRingClasses} ${
                   isPlusMenuOpen
                     ? "border-border/100 bg-fill-secondary text-text"
                     : "border-transparent bg-surface-light text-muted/80 hover:border-border/100 hover:bg-fill-ghost-hover hover:text-text"
@@ -465,8 +475,8 @@ export function InputDock({
                 options={modelOptions(availableModels)}
                 onChange={onModelChange}
                 openDirection="up"
-                className="w-[180px]"
-                triggerClassName="border-0 !bg-black rounded"
+                className="w-44"
+                triggerClassName="border-border/100 bg-surface-dark"
                 disabled={isBusy || composerDisabled}
               />
             ) : null}
@@ -478,14 +488,14 @@ export function InputDock({
                 options={effortMenuOptions}
                 onChange={(value) => onEffortChange(value as ThinkingEffort)}
                 openDirection="up"
-                className="w-[90px]"
-                triggerClassName="border-0 !bg-black rounded"
+                className="w-24"
+                triggerClassName="border-border/100 bg-surface-dark"
                 disabled={isBusy || composerDisabled}
               />
             ) : null}
           </div>
 
-          <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
+          <div className={`${composerControlGroupClasses} justify-end`}>
             {usageLabel ? (
               <span className="mr-1 shrink-0 cursor-default text-xs text-muted/70" title={formatUsageTooltip(usage)}>
                 {usageLabel}
@@ -503,7 +513,7 @@ export function InputDock({
                     if (!composingRef.current) onSteer();
                   }}
                   disabled={!canSteer || hasBlockingPrompt}
-                  className="rounded-full bg-fill-secondary px-3 py-1.5 text-xs font-semibold text-text transition hover:bg-fill-ghost-hover disabled:cursor-not-allowed disabled:opacity-30"
+                  className={`${composerActionButtonClasses} bg-fill-secondary text-text hover:bg-fill-ghost-hover`}
                 >
                   Steer
                 </button>
@@ -525,7 +535,7 @@ export function InputDock({
                   if (!composingRef.current) onSend();
                 }}
                 disabled={sendDisabled}
-                className="rounded-full bg-fill-primary px-3 py-1.5 text-xs font-semibold text-text transition hover:!bg-[#BB002F] disabled:cursor-not-allowed disabled:opacity-30"
+                className={`${composerActionButtonClasses} bg-fill-primary text-text hover:bg-fill-primary-hover`}
               >
                 Send
               </button>
@@ -538,7 +548,7 @@ export function InputDock({
             <div
               ref={plusMenuPopupRef}
               role="menu"
-              className="fixed z-[100] min-w-[150px] rounded-xl border border-border/100 bg-surface-dark p-1 shadow-panel"
+              className={`fixed z-composer-menu min-w-40 ${menuPanelClasses}`}
               style={{
                 left: plusMenuPosition.left,
                 bottom: plusMenuPosition.bottom,
@@ -555,10 +565,8 @@ export function InputDock({
                       setActiveSubmenu(null);
                     }}
                     disabled={!supportsVision || isUploadingImages}
-                    className={`block w-full rounded-lg px-2.5 py-2 text-left text-xs transition ${
-                      supportsVision && !isUploadingImages
-                        ? "text-muted hover:bg-fill-ghost-hover hover:text-text"
-                        : "cursor-not-allowed text-muted/40"
+                    className={`${menuItemClasses} ${
+                      supportsVision && !isUploadingImages ? "" : "cursor-not-allowed text-muted/40"
                     }`}
                   >
                     {isUploadingImages ? "Uploading images…" : "Add images"}
@@ -575,11 +583,11 @@ export function InputDock({
                     className={topLevelMenuItemClass("mode")}
                   >
                     <span>Mode</span>
-                    <span className="text-[10px] opacity-60">›</span>
+                    <span className="text-2xs opacity-60">›</span>
                   </button>
 
                   {activeSubmenu === "mode" ? (
-                    <div className="absolute left-full top-0 z-[110] ml-1 min-w-[132px] rounded-xl border border-border/100 bg-surface-dark p-1 shadow-panel">
+                    <div className={`absolute left-full top-0 z-composer-submenu ml-1 min-w-32 ${menuPanelClasses}`}>
                       {modeMenuOptions.map((option) => (
                         <button
                           key={option.value}
@@ -591,11 +599,7 @@ export function InputDock({
                             setIsPlusMenuOpen(false);
                             setActiveSubmenu(null);
                           }}
-                          className={`block w-full rounded-lg px-2.5 py-2 text-left text-xs transition ${
-                            option.value === mode
-                              ? "bg-fill-active text-text"
-                              : "text-muted hover:bg-fill-ghost-hover hover:text-text"
-                          }`}
+                          className={`${menuItemClasses} ${option.value === mode ? selectedMenuItemClasses : ""}`}
                         >
                           {option.label}
                         </button>
@@ -616,11 +620,11 @@ export function InputDock({
                     className={topLevelMenuItemClass("compaction")}
                   >
                     <span>Compaction</span>
-                    <span className="text-[10px] opacity-60">›</span>
+                    <span className="text-2xs opacity-60">›</span>
                   </button>
 
                   {activeSubmenu === "compaction" ? (
-                    <div className="absolute left-full top-0 z-[110] ml-1 min-w-[156px] rounded-xl border border-border/100 bg-surface-dark p-1 shadow-panel">
+                    <div className={`absolute left-full top-0 z-composer-submenu ml-1 min-w-40 ${menuPanelClasses}`}>
                       <button
                         type="button"
                         role="menuitem"
@@ -630,11 +634,7 @@ export function InputDock({
                           setActiveSubmenu(null);
                         }}
                         disabled={isCompacting}
-                        className={`block w-full rounded-lg px-2.5 py-2 text-left text-xs transition ${
-                          isCompacting
-                            ? "cursor-not-allowed text-muted/40"
-                            : "text-muted hover:bg-fill-ghost-hover hover:text-text"
-                        }`}
+                        className={`${menuItemClasses} ${isCompacting ? "cursor-not-allowed text-muted/40" : ""}`}
                       >
                         Compact now
                       </button>
@@ -653,7 +653,7 @@ export function InputDock({
                 commands={slashFiltered}
                 selectedIndex={slashSelectedIndex}
                 onSelect={handleSlashSelect}
-                className="fixed z-[100] w-[280px] overflow-hidden rounded-xl border border-border/100 bg-surface-dark shadow-panel"
+                className={`fixed z-composer-menu w-72 overflow-hidden ${menuPanelClasses}`}
                 style={{
                   left: slashMenuPosition.left,
                   bottom: slashMenuPosition.bottom,

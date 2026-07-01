@@ -6,6 +6,7 @@ import { Button } from "./Button";
 import { Input } from "./Input";
 import { Modal } from "./Modal";
 import { StatusDot } from "./StatusDot";
+import { actionRowClasses, cardPaddingClasses, itemStackClasses, surfaceCardClasses } from "./ui-styles";
 
 interface ProviderSettingsModalProps {
   providers: ProviderAuthStatus[];
@@ -124,16 +125,18 @@ export function ProviderSettingsModal({
       description="For most users, start with ChatGPT (browser login). You can also connect other providers with API keys."
       onCancel={onClose}
     >
-      <div className="space-y-3">
+      <div className={itemStackClasses}>
         {orderedProviders.map((p) => {
           const isSaving = savingProvider === p.provider;
           const isFocused = focusProvider === p.provider;
           return (
             <div
               key={p.provider}
-              className={`rounded-md border px-3 py-2.5 ${isFocused ? "border-accent/40 bg-fill-ghost-hover" : "border-border/100 bg-surface-dark"}`}
+              className={`${surfaceCardClasses} ${cardPaddingClasses} ${
+                isFocused ? "border-accent/40 bg-fill-ghost-hover" : ""
+              }`}
             >
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-2">
                 <StatusDot color={isConnected(p) ? "success" : "danger"} size="md" />
                 <span className="flex-1 text-sm font-medium text-text">
                   {PROVIDER_LABELS[p.provider] ?? p.provider}
@@ -171,10 +174,10 @@ export function ProviderSettingsModal({
               </div>
 
               {p.provider === "chatgpt" && !isConnected(p) ? (
-                <div className="mt-1.5 text-xs text-muted">Recommended first setup — no API key needed.</div>
+                <div className="mt-2 text-xs text-muted">Recommended first setup — no API key needed.</div>
               ) : null}
               {p.provider === "vertex" ? (
-                <div className="mt-1.5 text-xs text-muted">
+                <div className="mt-2 text-xs text-muted">
                   Use a Google Cloud access token here, or configure ADC in runtime config.
                 </div>
               ) : null}
@@ -242,7 +245,7 @@ export function ProviderSettingsModal({
         {displayError ? <p className="text-sm text-danger">{displayError}</p> : null}
       </div>
 
-      <div className="mt-4 flex justify-end">
+      <div className={`mt-4 ${actionRowClasses}`}>
         <Button intent="ghost" size="sm" onClick={onClose}>
           Close
         </Button>

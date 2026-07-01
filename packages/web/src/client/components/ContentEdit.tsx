@@ -3,6 +3,15 @@
 import { useState } from "react";
 import { CopyButton } from "./CopyButton";
 import { ExpandButton } from "./ExpandButton";
+import {
+  badgeClasses,
+  diffStackClasses,
+  microLabelClasses,
+  subtleDividerClasses,
+  toolBlockHeaderClasses,
+  toolBlockPreClasses,
+  toolBlockShellClasses,
+} from "./ui-styles";
 
 interface ContentEditProps {
   filePath?: string;
@@ -30,14 +39,14 @@ function DiffBlock({ label, text, color }: { label: string; text: string; color:
   const labelClass = color === "danger" ? "text-danger/70" : "text-success";
 
   return (
-    <div className={`overflow-hidden rounded border ${borderClass} ${bgClass}`}>
-      <div className="flex items-center justify-between border-b border-border/10 px-2 py-1">
-        <span className={`font-mono text-2xs uppercase tracking-wider ${labelClass}`}>
+    <div className={`overflow-hidden rounded-md border ${borderClass} ${bgClass}`}>
+      <div className={`flex items-center justify-between border-b px-2 py-1 ${subtleDividerClasses}`}>
+        <span className={`${microLabelClasses} ${labelClass}`}>
           {prefix} {label}
         </span>
         <CopyButton text={text} />
       </div>
-      <pre className={`overflow-x-auto whitespace-pre-wrap px-3 py-2 leading-relaxed ${textClass}`}>{visible}</pre>
+      <pre className={`${toolBlockPreClasses} ${textClass}`}>{visible}</pre>
       {isLong ? (
         <ExpandButton expanded={expanded} onToggle={() => setExpanded((v) => !v)} detail={`${lines.length} lines`} />
       ) : null}
@@ -55,19 +64,19 @@ export function ContentEdit({
   isError = false,
 }: ContentEditProps) {
   return (
-    <div className="overflow-hidden rounded-lg border border-border/100 bg-surface-dark font-mono text-xs">
+    <div className={toolBlockShellClasses}>
       {/* File header */}
-      <div className="flex items-center gap-2 border-b border-border/100 bg-surface-default px-3 py-2">
+      <div className={toolBlockHeaderClasses}>
         <span className="shrink-0 text-text-secondary">✎</span>
         <span className="min-w-0 flex-1 truncate text-text/80">{filePath ?? "file"}</span>
-        <span className="shrink-0 rounded bg-fill-active px-1.5 py-0.5 text-2xs text-text">
+        <span className={`shrink-0 border-border/100 bg-fill-active text-text ${badgeClasses}`}>
           {mode === "edit" ? "edit" : "write"}
         </span>
       </div>
 
       {/* Diff view for edit */}
       {mode === "edit" && (oldString || newString) ? (
-        <div className="space-y-1 p-2">
+        <div className={diffStackClasses}>
           {oldString ? <DiffBlock label="old" text={oldString} color="danger" /> : null}
           {newString ? <DiffBlock label="new" text={newString} color="success" /> : null}
         </div>
@@ -75,14 +84,14 @@ export function ContentEdit({
 
       {/* Full content for write */}
       {mode === "write" && content ? (
-        <div className="p-2">
+        <div className={diffStackClasses}>
           <ContentPreview text={content} isError={isError} />
         </div>
       ) : null}
 
       {/* Result message */}
       {output ? (
-        <div className={`border-t border-border/10 px-3 py-1.5 ${isError ? "text-muted" : "text-muted/80"}`}>
+        <div className={`border-t border-border/20 px-3 py-2 ${isError ? "text-muted" : "text-muted/80"}`}>
           {output.split("\n")[0]}
         </div>
       ) : null}
@@ -97,17 +106,11 @@ function ContentPreview({ text, isError }: { text: string; isError: boolean }) {
   const visible = !expanded && isLong ? lines.slice(0, PREVIEW_LINES).join("\n") : text;
 
   return (
-    <div className="overflow-hidden rounded border border-border/100 bg-surface-default">
-      <div className="flex items-center justify-end border-b border-border/10 px-2 py-1">
+    <div className="overflow-hidden rounded-md border border-border/100 bg-surface-default">
+      <div className={`flex items-center justify-end border-b px-2 py-1 ${subtleDividerClasses}`}>
         <CopyButton text={text} />
       </div>
-      <pre
-        className={`overflow-x-auto whitespace-pre-wrap px-3 py-2 leading-relaxed ${
-          isError ? "text-muted" : "text-text/70"
-        }`}
-      >
-        {visible}
-      </pre>
+      <pre className={`${toolBlockPreClasses} ${isError ? "text-muted" : "text-text/70"}`}>{visible}</pre>
       {isLong ? (
         <ExpandButton expanded={expanded} onToggle={() => setExpanded((v) => !v)} detail={`${lines.length} lines`} />
       ) : null}

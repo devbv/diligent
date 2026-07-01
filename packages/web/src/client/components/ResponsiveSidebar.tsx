@@ -18,7 +18,7 @@ export function ResponsiveSidebar({ open, children, id = "app-sidebar" }: Respon
       className={cn(
         "fixed inset-0 z-50 h-full w-screen shrink-0 overflow-hidden bg-surface-default sm:relative sm:inset-auto sm:z-auto sm:h-full sm:border-r sm:border-border/100",
         open
-          ? "translate-x-0 transition-transform duration-200 ease-out sm:w-[280px] sm:transition-[width]"
+          ? "translate-x-0 transition-transform duration-200 ease-out sm:w-sidebar sm:transition-[width]"
           : "-translate-x-full transition-none sm:w-0 sm:translate-x-0 sm:border-r-0",
       )}
     >

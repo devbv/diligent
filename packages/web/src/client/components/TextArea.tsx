@@ -2,6 +2,7 @@
 
 import { type TextareaHTMLAttributes, useLayoutEffect, useRef } from "react";
 import { cn } from "../lib/cn";
+import { fieldClasses } from "./ui-styles";
 
 interface TextAreaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
   maxRows?: number;
@@ -23,10 +24,7 @@ export function TextArea({ maxRows = 6, className, onChange, value, ...props }: 
       ref={ref}
       rows={1}
       value={value}
-      className={cn(
-        "w-full resize-none overflow-y-auto rounded-md border border-border/20 bg-bg px-3 py-2 text-sm text-text placeholder:text-text-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
-        className,
-      )}
+      className={cn("resize-none overflow-y-auto py-2", fieldClasses, className)}
       onChange={onChange}
       {...props}
     />

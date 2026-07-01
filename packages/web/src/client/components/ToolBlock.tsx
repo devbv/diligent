@@ -25,8 +25,8 @@ function ToolContent({ item, render }: { item: Extract<RenderItem, { kind: "tool
   // Final fallback: plugins or unknown tools
   return (
     <div className="space-y-2">
-      {item.inputText && <ContentText text={item.inputText} label="Input" compact />}
-      {item.outputText && <ContentText text={item.outputText} label="Output" compact isError={item.isError} />}
+      {item.inputText && <ContentText text={item.inputText} label="Input" />}
+      {item.outputText && <ContentText text={item.outputText} label="Output" isError={item.isError} />}
     </div>
   );
 }
@@ -84,7 +84,7 @@ export function ToolBlock({ item }: ToolBlockProps) {
 
   return (
     <div className="pb-4">
-      <div className="min-w-0 rounded-xl bg-surface-dark">
+      <div className="min-w-0 rounded-lg bg-surface-dark">
         <button
           type="button"
           onClick={() => !isStreaming && setOpen((v) => !v)}
@@ -101,7 +101,9 @@ export function ToolBlock({ item }: ToolBlockProps) {
           {/* Summary rows */}
           {showOutputSummary ? (
             <div className="flex flex-col gap-0.5">
-              <span className="max-w-[64ch] truncate font-mono text-xs text-text-tertiary">↳ {outputSummary}</span>
+              <span className="max-w-tool-summary truncate font-mono text-xs text-text-tertiary">
+                ↳ {outputSummary}
+              </span>
             </div>
           ) : null}
         </button>

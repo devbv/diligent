@@ -1,6 +1,7 @@
 // @summary Accessible modal wrapper for approval and request-user-input prompts
 import type { KeyboardEvent, ReactNode } from "react";
 import { useEffect, useRef } from "react";
+import { elevatedCardClasses } from "./ui-styles";
 
 interface ModalProps {
   title: string;
@@ -59,7 +60,7 @@ export function Modal({ title, description, children, onConfirm, onCancel }: Mod
         aria-label={title}
         tabIndex={-1}
         onKeyDown={handleKeyDown}
-        className="w-full max-w-lg rounded-xl border border-border/100 bg-surface-default p-5 shadow-panel"
+        className={`w-full max-w-lg p-5 ${elevatedCardClasses}`}
       >
         <h2 className="text-lg font-semibold text-text">{title}</h2>
         {description ? <p className="mt-1 text-sm text-muted">{description}</p> : null}

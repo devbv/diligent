@@ -56,7 +56,7 @@ export function AssistantMessage({ item, suppressThinking = false }: AssistantMe
         <div className="pb-2 pt-3">
           <div className="h-px w-full bg-border/10" />
           {turnDuration ? (
-            <div className="pt-2 text-xs uppercase tracking-[0.08em] text-muted/80">
+            <div className="pt-2 text-xs uppercase tracking-wide text-muted/80">
               <span>{`Completed in ${turnDuration}`}</span>
             </div>
           ) : null}

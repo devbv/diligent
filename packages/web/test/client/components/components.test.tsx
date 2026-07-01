@@ -25,6 +25,7 @@ import { isUserInputComplete, QuestionCard } from "../../../src/client/component
 import { ResponsiveSidebar } from "../../../src/client/components/ResponsiveSidebar";
 import { Sidebar } from "../../../src/client/components/Sidebar";
 import { SlashMenu } from "../../../src/client/components/SlashMenu";
+import { ThinkingBlock } from "../../../src/client/components/ThinkingBlock";
 import { Toast } from "../../../src/client/components/Toast";
 import { ToolBlock } from "../../../src/client/components/ToolBlock";
 import { ToolSettingsModal } from "../../../src/client/components/ToolSettingsModal";
@@ -219,8 +220,8 @@ test("question card renders multi-select options as clear checkboxes", () => {
 
   expect(html).toContain('type="checkbox"');
   expect(html).toContain('checked=""');
-  expect(html).toContain("rounded-[2px]");
-  expect(html).toContain("bg-[#2b8cff]");
+  expect(html).toContain("rounded-sm");
+  expect(html).toContain("bg-control-choice");
   expect(html).toContain('stroke="currentColor"');
   expect(html).not.toContain("[x]");
   expect(html).not.toContain("[ ]");
@@ -255,8 +256,8 @@ test("question card renders single-select options as design system radios", () =
   expect(html).toContain('type="radio"');
   expect(html).toContain('checked=""');
   expect(html).toContain("rounded-full");
-  expect(html).toContain("bg-[#2b8cff]");
-  expect(html).toContain("bg-white");
+  expect(html).toContain("bg-control-choice");
+  expect(html).toContain("bg-text");
 });
 
 test("modal renders dialog role", () => {
@@ -279,8 +280,9 @@ test("toast keeps long provider errors bounded and wrappable", () => {
 
   expect(html).toContain('role="alert"');
   expect(html).toContain("fixed right-4 top-20 z-50");
-  expect(html).toContain("w-[calc(100vw-2rem)]");
-  expect(html).toContain("sm:w-[28rem]");
+  expect(html).toContain("w-toast-mobile");
+  expect(html).toContain("sm:w-toast");
+  expect(html).toContain("max-h-toast");
   expect(html).toContain("whitespace-pre-wrap break-words");
   expect(html).toContain("00f97018-852a-44a9-8da4-ffa4773df9d5");
 });
@@ -601,6 +603,9 @@ test("context message renders checkpoint language and expandable summary area", 
   expect(html).toContain("Compacted");
   expect(html).toContain("Older conversation was compressed to keep the thread efficient.");
   expect(html).toContain('aria-expanded="false"');
+  expect(html).toContain("grid-cols-context-checkpoint");
+  expect(html).toContain("h-8 w-8");
+  expect(html).toContain("min-h-8");
 });
 
 test("app header exposes sidebar toggle state and target", () => {
@@ -633,7 +638,7 @@ test("responsive sidebar renders a mobile full-screen overlay when open", () => 
   expect(html).toContain("fixed inset-0 z-50");
   expect(html).toContain("w-screen");
   expect(html).toContain("translate-x-0");
-  expect(html).toContain("sm:w-[280px]");
+  expect(html).toContain("sm:w-sidebar");
   expect(html).toContain("transition-transform");
   expect(html).not.toContain("bg-overlay/45");
 });
@@ -745,6 +750,13 @@ test("assistant message renders completed footer when turn duration is available
   expect(html).toContain("Completed in 4.2s");
   expect(html).not.toContain("Reasoned for");
   expect(html).toContain('class="pb-2 pt-3"');
+});
+
+test("thinking block renders markdown emphasis instead of literal markers", () => {
+  const html = renderToStaticMarkup(<ThinkingBlock text={"**Considering button sizes**\n\nReasoning body."} />);
+
+  expect(html).toContain("<strong>Considering button sizes</strong>");
+  expect(html).not.toContain("**Considering button sizes**");
 });
 
 test("assistant message keeps divider even when persisted duration is unavailable", () => {
