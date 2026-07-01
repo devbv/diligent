@@ -18,6 +18,7 @@ export {
   createAnthropicStream,
   createGeminiStream,
   createOpenAIStream,
+  DEFAULT_ANTHROPIC_MODEL_ID,
   DEFAULT_MODELS,
   DEFAULT_PROVIDER,
   EventStream,

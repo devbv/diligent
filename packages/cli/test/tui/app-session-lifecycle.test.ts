@@ -1,7 +1,7 @@
 // @summary Tests resume history hydration behavior in AppSessionLifecycle
 
 import { describe, expect, mock, test } from "bun:test";
-import { resolveModel } from "@diligent/runtime";
+import { DEFAULT_ANTHROPIC_MODEL_ID, resolveModel } from "@diligent/runtime";
 import { AppSessionLifecycle } from "../../src/tui/app-session-lifecycle";
 
 function createLifecycleWithThreadRead(threadRead: unknown) {
@@ -63,7 +63,7 @@ describe("AppSessionLifecycle", () => {
 
     const lifecycle = new AppSessionLifecycle({
       config: {
-        model: resolveModel("claude-sonnet-4-6"),
+        model: resolveModel(DEFAULT_ANTHROPIC_MODEL_ID),
         diligent: {},
         providerManager: {
           hasKeyFor: (provider: string) => provider === "openai",
@@ -109,7 +109,7 @@ describe("AppSessionLifecycle", () => {
 
     const lifecycle = new AppSessionLifecycle({
       config: {
-        model: resolveModel("claude-sonnet-4-6"),
+        model: resolveModel(DEFAULT_ANTHROPIC_MODEL_ID),
         diligent: {},
         providerManager: {
           hasKeyFor: () => false,

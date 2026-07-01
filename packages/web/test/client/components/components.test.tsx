@@ -1,5 +1,7 @@
 // @summary Static render tests for core UI components and accessibility attributes
+
 import { expect, test } from "bun:test";
+import { DEFAULT_ANTHROPIC_MODEL_ID } from "@diligent/core/llm/models";
 import { renderToStaticMarkup } from "react-dom/server";
 import { AppHeader } from "../../../src/client/components/AppHeader";
 import { AssetThumbnail } from "../../../src/client/components/AssetThumbnail";
@@ -874,7 +876,7 @@ test("input dock renders pending image preview and add-images action", () => {
           id: "gpt-5.4",
           provider: "openai",
           contextWindow: 400000,
-          maxOutputTokens: 128000,
+          maxOutputTokens: 64000,
           supportsVision: true,
           supportsThinking: true,
           supportedEfforts: ["none", "low", "medium", "high", "max"],
@@ -883,7 +885,7 @@ test("input dock renders pending image preview and add-images action", () => {
       onModelChange={() => {}}
       usage={{ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalCost: 0 }}
       currentContextTokens={0}
-      contextWindow={200000}
+      contextWindow={1000000}
       hasProvider={true}
       onOpenProviders={() => {}}
       supportsVision={true}
@@ -961,20 +963,20 @@ test("input dock shows uploading state and disables send affordance", () => {
       onModeChange={() => {}}
       effort="high"
       onEffortChange={() => {}}
-      currentModel="claude-sonnet-4-6"
+      currentModel={DEFAULT_ANTHROPIC_MODEL_ID}
       availableModels={[
         {
-          id: "claude-sonnet-4-6",
+          id: DEFAULT_ANTHROPIC_MODEL_ID,
           provider: "anthropic",
-          contextWindow: 200000,
-          maxOutputTokens: 16384,
+          contextWindow: 1000000,
+          maxOutputTokens: 64000,
           supportsVision: true,
         },
       ]}
       onModelChange={() => {}}
       usage={{ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalCost: 0 }}
       currentContextTokens={0}
-      contextWindow={200000}
+      contextWindow={1000000}
       hasProvider={true}
       onOpenProviders={() => {}}
       supportsVision={true}

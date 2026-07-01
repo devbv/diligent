@@ -1,7 +1,9 @@
 // @summary Tests for project tool config writer — JSONC-preserving tools subtree patching and normalization
+
 import { afterEach, describe, expect, it } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { DEFAULT_ANTHROPIC_MODEL_ID } from "@diligent/core/llm/models";
 
 import {
   applyToolConfigPatch,
@@ -296,7 +298,7 @@ describe("saveGlobalConsent", () => {
 
     try {
       const configPath = getGlobalConfigPath();
-      await Bun.write(configPath, '{\n  // keep me\n  "model": "claude-sonnet-4-6"\n}\n');
+      await Bun.write(configPath, `{\n  // keep me\n  "model": "${DEFAULT_ANTHROPIC_MODEL_ID}"\n}\n`);
 
       await saveGlobalConsent({
         noticeAcknowledgedVersion: "2026-06",
@@ -306,7 +308,7 @@ describe("saveGlobalConsent", () => {
 
       const text = await Bun.file(configPath).text();
       expect(text).toContain("// keep me");
-      expect(text).toContain('"model": "claude-sonnet-4-6"');
+      expect(text).toContain(`"model": "${DEFAULT_ANTHROPIC_MODEL_ID}"`);
       expect(text).toContain('"consent"');
       expect(text).toContain('"serviceImprovement": false');
     } finally {

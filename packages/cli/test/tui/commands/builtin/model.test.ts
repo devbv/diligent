@@ -1,6 +1,7 @@
 // @summary Tests for model command picker filtering behavior based on provider authentication
+
 import { describe, expect, it, mock } from "bun:test";
-import { resolveModel } from "@diligent/runtime";
+import { DEFAULT_ANTHROPIC_MODEL_ID, resolveModel } from "@diligent/runtime";
 import type { AppConfig } from "../../../../src/config";
 import { modelCommand } from "../../../../src/tui/commands/builtin/model";
 import type { CommandContext } from "../../../../src/tui/commands/types";
@@ -102,7 +103,7 @@ describe("modelCommand picker", () => {
       hasKeyFor: mock((_provider: string) => false),
     };
 
-    const config = makeConfig("claude-sonnet-4-6", providerManager as unknown as AppConfig["providerManager"]);
+    const config = makeConfig(DEFAULT_ANTHROPIC_MODEL_ID, providerManager as unknown as AppConfig["providerManager"]);
 
     const ctx = makeContext(config, {
       app: {
@@ -134,7 +135,7 @@ describe("modelCommand picker", () => {
     const setModel = mock(async (_modelId: string) => {});
     const onModelChanged = mock((_modelId: string) => {});
 
-    const config = makeConfig("claude-sonnet-4-6", providerManager as unknown as AppConfig["providerManager"]);
+    const config = makeConfig(DEFAULT_ANTHROPIC_MODEL_ID, providerManager as unknown as AppConfig["providerManager"]);
     const ctx = makeContext(config, {
       threadId: "thread-child",
       setModel,

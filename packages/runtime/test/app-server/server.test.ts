@@ -5,6 +5,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EventStream } from "@diligent/core/event-stream";
+import { DEFAULT_ANTHROPIC_MODEL_ID } from "@diligent/core/llm/models";
 import { ProviderManager } from "@diligent/core/llm/provider-manager";
 import type { Model, StreamFunction } from "@diligent/core/llm/types";
 import type {
@@ -155,7 +156,7 @@ function makeFactoryRuntimeConfig(overrides?: {
           supportsThinking: true,
         }
       : {
-          id: "claude-sonnet-4-6",
+          id: DEFAULT_ANTHROPIC_MODEL_ID,
           provider: "anthropic",
           contextWindow: 200_000,
           maxOutputTokens: 128_000,
@@ -667,7 +668,7 @@ describe("DiligentAppServer", () => {
       method: "thread/read",
       params: { threadId: threadB },
     });
-    expect((readResult(readB) as { currentModel?: string }).currentModel).toBe("claude-sonnet-4-6");
+    expect((readResult(readB) as { currentModel?: string }).currentModel).toBe(DEFAULT_ANTHROPIC_MODEL_ID);
 
     const resumedServer = new DiligentAppServer(
       createAppServerConfig({
@@ -780,7 +781,7 @@ describe("DiligentAppServer", () => {
     const started = await server.handleRequest(TEST_CONNECTION_ID, {
       id: 610,
       method: "thread/start",
-      params: { cwd: projectRoot, model: "claude-sonnet-4-6" },
+      params: { cwd: projectRoot, model: DEFAULT_ANTHROPIC_MODEL_ID },
     });
     const threadId = (readResult(started) as { threadId: string }).threadId;
 
@@ -957,7 +958,7 @@ describe("DiligentAppServer", () => {
     await server.handleRequest(TEST_CONNECTION_ID, {
       id: 1514,
       method: "config/set",
-      params: { threadId, model: "claude-sonnet-4-6" },
+      params: { threadId, model: DEFAULT_ANTHROPIC_MODEL_ID },
     });
 
     const read = await server.handleRequest(TEST_CONNECTION_ID, {

@@ -1,6 +1,8 @@
 // @summary Tests for provider command parsing and execution
+
 import { describe, expect, test } from "bun:test";
 import type { Mode } from "@diligent/protocol";
+import { DEFAULT_ANTHROPIC_MODEL_ID } from "@diligent/runtime";
 import type { AppConfig } from "../../../../src/config";
 import { ProviderManager } from "../../../../src/provider-manager";
 import { providerCommand } from "../../../../src/tui/commands/builtin/provider";
@@ -35,7 +37,12 @@ function createMockContext(pm: ProviderManager): {
     },
     config: {
       apiKey: "",
-      model: { id: "claude-sonnet-4-6", provider: "anthropic", contextWindow: 200_000, maxOutputTokens: 16384 },
+      model: {
+        id: DEFAULT_ANTHROPIC_MODEL_ID,
+        provider: "anthropic",
+        contextWindow: 1_000_000,
+        maxOutputTokens: 64_000,
+      },
       systemPrompt: [],
       streamFunction: (() => {}) as unknown as AppConfig["streamFunction"],
       diligent: {},

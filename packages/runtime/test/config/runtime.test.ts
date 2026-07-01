@@ -1,8 +1,10 @@
 // @summary Tests for runtime config agent loading and prompt rendering
+
 import { afterEach, describe, expect, it, mock } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DEFAULT_ANTHROPIC_MODEL_ID } from "@diligent/core/llm/models";
 import type { RuntimeConfig } from "../../src/config/runtime";
 import { loadRuntimeConfig } from "../../src/config/runtime";
 import type { DiligentPaths } from "../../src/infrastructure";
@@ -57,7 +59,7 @@ describe("loadRuntimeConfig", () => {
         "You are a code reviewer.",
       ].join("\n"),
     );
-    await writeFile(join(tmpRoot, ".diligent", "config.jsonc"), JSON.stringify({ model: "claude-sonnet-4-6" }));
+    await writeFile(join(tmpRoot, ".diligent", "config.jsonc"), JSON.stringify({ model: DEFAULT_ANTHROPIC_MODEL_ID }));
 
     const originalHome = process.env.HOME;
     const originalUserProfile = process.env.USERPROFILE;
