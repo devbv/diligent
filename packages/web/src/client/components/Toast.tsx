@@ -17,12 +17,12 @@ export function Toast({ toast, onDismiss }: ToastProps) {
     <div
       role={isError ? "alert" : "status"}
       aria-live={isError ? "assertive" : "polite"}
-      className={`toast-animate fixed right-4 top-20 z-50 w-[calc(100vw-2rem)] rounded-md border px-3 py-2 text-sm leading-relaxed shadow-panel sm:w-[28rem] ${toneClass} ${
+      className={`toast-animate fixed right-4 top-20 z-50 w-toast-mobile rounded-md border px-3 py-2 text-sm leading-relaxed shadow-panel sm:w-toast ${toneClass} ${
         toast.fatal ? "cursor-pointer" : ""
       }`}
       onClick={toast.fatal ? onDismiss : undefined}
     >
-      <div className="max-h-[40vh] overflow-y-auto whitespace-pre-wrap break-words">
+      <div className="max-h-toast overflow-y-auto whitespace-pre-wrap break-words">
         {toast.message}
         {toast.fatal && <span className="ml-2 opacity-50">×</span>}
       </div>

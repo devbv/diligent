@@ -1,9 +1,12 @@
 // @summary Collapsible thinking/reasoning block — streams live while thinking, collapses when done
 
+import { renderInlineMarkdown } from "../lib/markdown";
+import { MarkdownContent } from "./MarkdownContent";
+
 interface ThinkingBlockProps {
   text: string;
   streaming?: boolean;
-  duration?: string | null;
+  durationLabel?: string | null;
 }
 
 function summarize(text: string): string {
@@ -12,27 +15,28 @@ function summarize(text: string): string {
   return first.length > 60 ? `${first.slice(0, 60)}…` : first;
 }
 
-export function ThinkingBlock({ text, streaming = false, duration = null }: ThinkingBlockProps) {
+export function ThinkingBlock({ text, streaming = false, durationLabel = null }: ThinkingBlockProps) {
   if (streaming) {
-    return (
-      <div className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] rounded-lg bg-transparent py-1 font-mono text-xs leading-relaxed text-muted/65">
-        {text}
-      </div>
-    );
+    return <MarkdownContent text={text} className="thinking-content py-1" />;
   }
 
   const summary = summarize(text);
+  const summaryHtml = summary ? renderInlineMarkdown(summary) : "";
 
   return (
     <details className="rounded-lg bg-transparent py-1 opacity-70 transition hover:opacity-100">
-      <summary className="inline-flex list-none cursor-pointer select-none items-center gap-2 font-mono text-xs uppercase tracking-[0.12em]">
+      <summary className="inline-flex list-none cursor-pointer select-none items-center gap-2 font-mono text-xs uppercase tracking-wider">
         <span className="text-text-secondary">Thought</span>
-        {duration ? <span className="text-muted/70">{duration}</span> : null}
-        {summary && <span className="max-w-[40ch] truncate normal-case tracking-normal text-muted/80">{summary}</span>}
+        {durationLabel ? <span className="text-muted/70">{durationLabel}</span> : null}
+        {summary ? (
+          <span
+            className="max-w-thinking-summary truncate normal-case tracking-normal text-muted/80"
+            // biome-ignore lint/security/noDangerouslySetInnerHtml: agent output only — matches MarkdownContent trust boundary
+            dangerouslySetInnerHTML={{ __html: summaryHtml }}
+          />
+        ) : null}
       </summary>
-      <pre className="mt-2 whitespace-pre-wrap break-words [overflow-wrap:anywhere] font-mono text-xs leading-relaxed text-text/78">
-        {text}
-      </pre>
+      <MarkdownContent text={text} className="thinking-content mt-2" />
     </details>
   );
 }

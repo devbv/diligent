@@ -3,8 +3,8 @@
 import type { RenderItem } from "../../lib/thread-store";
 import { normalizeToolName } from "../../lib/thread-utils";
 import { isRenderableAssistantContentBlock } from "../AssistantContentBlocks";
-import { estimateCollabGroupHeight, estimateMessageHeight } from "./row-estimates";
-import type { CollabItem, MessageContentItem, MessageListProps, VirtualMessageRow } from "./types";
+import { estimateCollabGroupHeight, estimateMessageHeight, estimateToolGroupHeight } from "./row-estimates";
+import type { CollabItem, MessageContentItem, MessageListProps, ToolItem, VirtualMessageRow } from "./types";
 
 function createMessageRow(
   item: MessageContentItem,
@@ -28,10 +28,20 @@ function shouldRenderAssistantRow(item: Extract<RenderItem, { kind: "assistant" 
   );
 }
 
-/** Group consecutive collab items, render everything else as virtualizer rows. */
+function hasAssetGallery(item: ToolItem): boolean {
+  return Boolean(item.render?.blocks.some((block) => block.type === "asset_gallery"));
+}
+
+function canGroupTool(item: ToolItem): boolean {
+  const normalized = normalizeToolName(item.toolName);
+  return normalized !== "request_user_input" && !hasAssetGallery(item);
+}
+
+/** Group consecutive collab/tool activity items, render everything else as virtualizer rows. */
 export function buildGroupedRows(items: RenderItem[]): VirtualMessageRow[] {
   const result: VirtualMessageRow[] = [];
   let collabBuf: CollabItem[] = [];
+  let toolBuf: ToolItem[] = [];
 
   const flushCollab = () => {
     if (collabBuf.length === 0) return;
@@ -45,25 +55,52 @@ export function buildGroupedRows(items: RenderItem[]): VirtualMessageRow[] {
     collabBuf = [];
   };
 
+  const flushTools = () => {
+    if (toolBuf.length === 0) return;
+    if (toolBuf.length === 1) {
+      result.push(createMessageRow(toolBuf[0]));
+    } else {
+      const groupKey = toolBuf.map((item) => item.id).join("+");
+      result.push({
+        kind: "toolGroup",
+        key: `tool-group:${groupKey}`,
+        estimatedSize: estimateToolGroupHeight(toolBuf),
+        items: [...toolBuf],
+      });
+    }
+    toolBuf = [];
+  };
+
   for (let idx = 0; idx < items.length; idx++) {
     const item = items[idx];
     switch (item.kind) {
       case "collab":
+        flushTools();
         collabBuf.push(item);
         break;
-      case "context":
       case "tool":
+        flushCollab();
+        if (canGroupTool(item)) {
+          toolBuf.push(item);
+        } else {
+          flushTools();
+          result.push(createMessageRow(item));
+        }
+        break;
+      case "context":
       case "user":
         flushCollab();
+        flushTools();
         result.push(createMessageRow(item));
         break;
       case "assistant": {
-        flushCollab();
         const nextItem = items[idx + 1];
         const isFollowedByUserInputTool =
           nextItem?.kind === "tool" && normalizeToolName(nextItem.toolName) === "request_user_input";
         const displayItem = isFollowedByUserInputTool ? { ...item, text: "" } : item;
         if (shouldRenderAssistantRow(displayItem)) {
+          flushCollab();
+          flushTools();
           result.push(createMessageRow(displayItem, false));
         }
         break;
@@ -71,6 +108,7 @@ export function buildGroupedRows(items: RenderItem[]): VirtualMessageRow[] {
     }
   }
   flushCollab();
+  flushTools();
   return result;
 }
 

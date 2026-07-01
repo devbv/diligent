@@ -1,5 +1,7 @@
 // @summary Reusable show-more/less toggle button for expandable content blocks
 
+import { microLabelClasses, subtleDividerClasses } from "./ui-styles";
+
 interface ExpandButtonProps {
   expanded: boolean;
   onToggle: () => void;
@@ -11,7 +13,7 @@ export function ExpandButton({ expanded, onToggle, detail }: ExpandButtonProps) 
     <button
       type="button"
       onClick={onToggle}
-      className="w-full border-t border-border/10 py-1.5 text-center font-mono text-2xs text-muted transition hover:text-text"
+      className={`w-full border-t py-1.5 text-center transition hover:text-text ${subtleDividerClasses} ${microLabelClasses}`}
     >
       {expanded ? "Show less ▴" : `Show more ▾${detail ? ` (${detail})` : ""}`}
     </button>

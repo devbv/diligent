@@ -4,6 +4,7 @@ import type { SessionSummary } from "@diligent/protocol";
 import { memo } from "react";
 import { formatRelativeTime } from "../lib/format-time";
 import { Panel } from "./Panel";
+import { iconButtonClasses, sidebarItemClasses, sidebarListClasses } from "./ui-styles";
 
 interface SidebarProps {
   cwd: string;
@@ -17,7 +18,6 @@ interface SidebarProps {
 }
 
 function SidebarImpl({
-  cwd,
   threadList,
   activeThreadId,
   attentionThreadIds,
@@ -26,8 +26,6 @@ function SidebarImpl({
   onDeleteThread,
   onClose,
 }: SidebarProps) {
-  const _cwdShort = cwd ? cwd.replace(/\\/g, "/").split("/").slice(-2).join("/") : "-";
-
   return (
     <Panel className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden border-border/100 bg-surface-default">
       <div className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border/100 bg-surface-dark px-3 sm:hidden">
@@ -38,7 +36,7 @@ function SidebarImpl({
             aria-label="Close sidebar"
             data-sidebar-initial-focus
             onClick={onClose}
-            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted transition hover:bg-surface-light hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            className={iconButtonClasses}
           >
             <svg
               width="16"
@@ -53,24 +51,12 @@ function SidebarImpl({
           </button>
         ) : null}
       </div>
-      {/* Header */}
-      {/* <div className="flex h-16 shrink-0 items-center gap-3 border-b border-border/100 bg-surface-dark px-5">
-        <div className="min-w-0">
-          <span className="font-mono text-[13px] font-bold uppercase tracking-[0.12em] text-accent">
-            {APP_PROJECT_MARK}
-          </span>
-          <p className="truncate font-mono text-xs- text-muted/90" title={cwd}>
-            {cwdShort}
-          </p>
-        </div>
-      </div> */}
-
       {/* Thread list */}
-      <div className="flex-1 space-y-2 overflow-y-auto bg-bg-sunken px-2 py-3">
+      <div className={sidebarListClasses}>
         <button
           type="button"
           onClick={onNewThread}
-          className="flex w-full items-center gap-2 rounded border border-border/100 bg-surface-light px-3.5 py-3 text-left text-sm font-medium text-text transition hover:bg-[#424A54] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          className={`${sidebarItemClasses} flex items-center gap-2 border border-border/100 bg-surface-light text-sm font-medium text-text hover:bg-surface-strong`}
         >
           <span className="text-lg leading-none">+</span>
           <span>New conversation</span>
@@ -87,7 +73,7 @@ function SidebarImpl({
               <button
                 type="button"
                 onClick={() => onOpenThread(thread.id)}
-                className={`w-full rounded px-3.5 py-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+                className={`${sidebarItemClasses} ${
                   isActive
                     ? "bg-surface-composer text-text"
                     : needsAttention
@@ -101,7 +87,7 @@ function SidebarImpl({
                   ) : null}
                   <span className="truncate text-sm leading-snug text-text">{title}</span>
                 </div>
-                <div className="mt-1 flex items-center gap-1.5 text-xs- text-muted">
+                <div className="mt-1 flex items-center gap-1.5 text-xs text-muted">
                   <span>{time}</span>
                   <span className="opacity-40">·</span>
                   <span>{thread.messageCount} msg</span>
@@ -115,7 +101,7 @@ function SidebarImpl({
                     e.stopPropagation();
                     onDeleteThread(thread.id);
                   }}
-                  className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted opacity-0 transition hover:text-danger focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent group-hover:opacity-100"
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-0.5 text-muted opacity-0 transition hover:text-danger focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent group-hover:opacity-100"
                 >
                   ×
                 </button>

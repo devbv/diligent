@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "../lib/cn";
+import { menuItemClasses, menuPanelClasses, selectedMenuItemClasses } from "./ui-styles";
 
 export interface SelectOption {
   value: string;
@@ -92,22 +93,21 @@ export function Select({
         disabled={disabled}
         onClick={() => !disabled && setIsOpen((open) => !open)}
         className={cn(
-          "inline-flex h-7 w-full items-center justify-between gap-1 rounded border border-border/100 bg-surface-dark px-2 text-xs text-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+          "inline-flex h-7 w-full items-center justify-between gap-1 rounded-md border border-border/100 bg-surface-dark px-2 text-xs text-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
           disabled && "cursor-not-allowed opacity-40",
           triggerClassName,
         )}
       >
         <span className="min-w-0 truncate text-text">{selectedOption?.label ?? value}</span>
-        <span className={cn("text-[10px] leading-none opacity-70 transition-transform", isOpen && "rotate-180")}>
-          ▼
-        </span>
+        <span className={cn("text-2xs leading-none opacity-70 transition-transform", isOpen && "rotate-180")}>▼</span>
       </button>
 
       {isOpen ? (
         <div
           role="listbox"
           className={cn(
-            "absolute z-30 min-w-full overflow-hidden rounded-md border border-border/100 bg-surface-dark shadow-panel",
+            "absolute z-30 min-w-full overflow-hidden",
+            menuPanelClasses,
             openDirection === "up" ? "bottom-full mb-1" : "top-full mt-1",
             menuClassName,
           )}
@@ -116,7 +116,7 @@ export function Select({
             {groupedOptions.map((group) => (
               <div key={group.key}>
                 {group.label ? (
-                  <div className="px-2 pb-1 pt-1 text-[10px] uppercase tracking-wide text-muted/80">{group.label}</div>
+                  <div className="px-2 pb-1 pt-1 text-2xs uppercase tracking-wide text-muted/80">{group.label}</div>
                 ) : null}
                 {group.options.map((option) => (
                   <button
@@ -131,10 +131,8 @@ export function Select({
                       setIsOpen(false);
                     }}
                     className={cn(
-                      "block w-full px-2 py-1.5 text-left text-xs transition",
-                      option.value === value
-                        ? "bg-fill-active text-text"
-                        : "text-muted hover:bg-fill-ghost-hover hover:text-text",
+                      menuItemClasses,
+                      option.value === value && selectedMenuItemClasses,
                       option.disabled && "cursor-not-allowed opacity-40",
                     )}
                   >

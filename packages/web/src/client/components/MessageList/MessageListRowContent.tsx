@@ -8,6 +8,7 @@ import { CompactingIndicator } from "../CompactingIndicator";
 import { ContextMessage } from "../ContextMessage";
 import { QuestionCard } from "../QuestionCard";
 import { StreamingIndicator } from "../StreamingIndicator";
+import { ToolActivityGroup } from "../ToolActivityGroup";
 import { ToolBlock } from "../ToolBlock";
 import { UserMessage } from "../UserMessage";
 import type { VirtualMessageRow } from "./types";
@@ -24,6 +25,8 @@ export function MessageListRowContent({
   switch (row.kind) {
     case "collab":
       return <CollabGroup items={row.items} loadChildThread={onLoadChildThread} />;
+    case "toolGroup":
+      return <ToolActivityGroup items={row.items} />;
     case "message":
       switch (row.item.kind) {
         case "context":

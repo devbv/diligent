@@ -32,3 +32,7 @@ marked.setOptions({
 export function renderMarkdown(text: string): string {
   return marked.parse(text) as string;
 }
+
+export function renderInlineMarkdown(text: string): string {
+  return marked.parseInline(text) as string;
+}

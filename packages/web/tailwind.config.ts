@@ -21,6 +21,8 @@ const config: Config = {
         "surface-light": "rgb(var(--color-bg-surface-light-rgb) / <alpha-value>)",
         "fill-primary": "rgb(var(--color-bg-fill-primary-rgb) / <alpha-value>)",
         "fill-primary-hover": "rgb(var(--color-bg-fill-primary-hover-rgb) / <alpha-value>)",
+        "fill-info": "rgb(var(--color-bg-fill-info-rgb) / <alpha-value>)",
+        "fill-info-hover": "rgb(var(--color-bg-fill-info-hover-rgb) / <alpha-value>)",
         "fill-secondary": "rgb(var(--color-bg-fill-secondary-rgb) / <alpha-value>)",
         "fill-secondary-hover": "rgb(var(--color-bg-fill-secondary-hover-rgb) / <alpha-value>)",
         "fill-ghost-hover": "rgb(var(--color-bg-fill-ghost-hover-rgb) / <alpha-value>)",
@@ -33,6 +35,9 @@ const config: Config = {
         "fill-strong": "rgb(var(--color-fill-strong-rgb) / <alpha-value>)",
         "fill-dark": "rgb(var(--color-fill-dark-rgb) / <alpha-value>)",
         selection: "rgb(var(--color-selection-rgb) / <alpha-value>)",
+        "control-choice": "rgb(var(--color-control-choice-rgb) / <alpha-value>)",
+        "control-choice-border": "rgb(var(--color-control-choice-border-rgb) / <alpha-value>)",
+        "control-choice-border-hover": "rgb(var(--color-control-choice-border-hover-rgb) / <alpha-value>)",
         "surface-muted": "rgb(var(--color-surface-muted-rgb) / <alpha-value>)",
         "surface-strong": "rgb(var(--color-surface-strong-rgb) / <alpha-value>)",
         text: "rgb(var(--color-text-rgb) / <alpha-value>)",
@@ -109,18 +114,43 @@ const config: Config = {
         lg: "var(--space-lg)",
         xl: "var(--space-xl)",
       },
+      width: {
+        sidebar: "280px",
+        toast: "28rem",
+        "toast-mobile": "calc(100vw - 2rem)",
+      },
+      maxHeight: {
+        toast: "40vh",
+      },
       fontSize: {
         "2xs": "0.625rem",
-        "xs-": "0.6875rem",
       },
       maxWidth: {
         message: "80%",
         assistant: "88%",
         "tool-row": "94%",
+        "tool-summary": "64ch",
+        "thinking-summary": "40ch",
+        plan: "900px",
         app: "1200px",
+      },
+      gridTemplateColumns: {
+        "context-checkpoint": "2rem minmax(0, 1fr) 2rem",
+        "knowledge-filters": "minmax(0, 1fr) 10rem 11.25rem",
+      },
+      zIndex: {
+        "composer-menu": "100",
+        "composer-submenu": "110",
+      },
+      borderWidth: {
+        choice: "1.5px",
+      },
+      ringWidth: {
+        choice: "3px",
       },
       boxShadow: {
         panel: "var(--shadow-panel)",
+        choice: "0 0 0 1px rgb(var(--color-control-choice-rgb) / 0.35)",
       },
       fontFamily: {
         sans: ["Noto Sans", "Noto Sans KR", "ui-sans-serif", "system-ui"],

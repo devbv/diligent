@@ -13,7 +13,7 @@ interface CollabGroupProps {
 
 export function CollabGroup({ items, loadChildThread }: CollabGroupProps) {
   return (
-    <div className="pb-4">
+    <div className="pb-1">
       <div className="space-y-0">
         {items.map((item) => (
           <CollabEventBlock key={item.id} item={item} loadChildThread={loadChildThread} />

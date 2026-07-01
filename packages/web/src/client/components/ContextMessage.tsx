@@ -1,8 +1,8 @@
-// @summary Collapsible system checkpoint block for compaction summaries in the visible transcript
+// @summary Subtle divider-style compaction marker for visible transcript context resets
 
 import { useState } from "react";
 import { MarkdownContent } from "./MarkdownContent";
-import { SystemCard } from "./SystemCard";
+import { detailPanelClasses, focusRingClasses } from "./ui-styles";
 
 interface ContextMessageProps {
   summary: string;
@@ -11,51 +11,54 @@ interface ContextMessageProps {
 export function ContextMessage({ summary }: ContextMessageProps) {
   const [open, setOpen] = useState(false);
 
-  const previewLine = summary
-    .split("\n")
-    .map((line) => line.trim())
-    .find((line) => line.length > 0 && !line.startsWith("#"))
-    ?.slice(0, 140);
-
   return (
-    <SystemCard>
-      <div className="space-y-3">
-        <button
-          type="button"
-          className="flex w-full items-start gap-3 text-left"
-          aria-expanded={open}
-          onClick={() => setOpen(!open)}
-        >
-          <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-info/25 bg-info/10 text-[13px] text-info/90">
-            ⟳
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-info/80">
-              <span>Context checkpoint</span>
-              <span className="rounded-full border border-info/20 bg-info/10 px-2 py-0.5 text-[10px] tracking-normal text-text-soft/80">
-                Compacted
-              </span>
-            </div>
-            <div className="mt-1 text-sm text-text/90">
-              Older conversation was compressed to keep the thread efficient.
-            </div>
-            {previewLine ? (
-              <div className="mt-1 text-xs text-muted">
-                {previewLine}
-                {summary.length > previewLine.length ? "…" : ""}
-              </div>
-            ) : null}
-          </div>
-          <div className={`pt-0.5 text-xs text-muted transition-transform ${open ? "rotate-90" : ""}`}>▶</div>
-        </button>
+    <div className="py-2">
+      <button
+        type="button"
+        className={`group flex w-full items-center gap-3 rounded-md py-1 text-muted transition-colors hover:text-text ${focusRingClasses}`}
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <span className="h-px min-w-6 flex-1 bg-border/25" />
+        <span className="inline-flex shrink-0 items-center gap-2 text-xs font-medium leading-5">
+          <svg
+            aria-hidden="true"
+            className="h-4 w-4 text-muted/80 transition-colors group-hover:text-text"
+            fill="none"
+            stroke="currentColor"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="1.8"
+            viewBox="0 0 24 24"
+          >
+            <path d="M4 6h16" />
+            <path d="M4 18h16" />
+            <path d="m8 10 4 4 4-4" />
+          </svg>
+          <span>Context compacted</span>
+          <svg
+            aria-hidden="true"
+            className={`h-3.5 w-3.5 transition-transform duration-150 ${open ? "rotate-180" : "rotate-0"}`}
+            fill="none"
+            stroke="currentColor"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="2"
+            viewBox="0 0 24 24"
+          >
+            <path d="m7 10 5 5 5-5" />
+          </svg>
+        </span>
+        <span className="h-px min-w-6 flex-1 bg-border/25" />
+      </button>
 
-        {open ? (
-          <div className="rounded-md border border-border/40 bg-overlay/10 px-4 py-3">
-            <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Summary details</div>
+      {open ? (
+        <div className="mt-2">
+          <div className={detailPanelClasses}>
             <MarkdownContent text={summary} />
           </div>
-        ) : null}
-      </div>
-    </SystemCard>
+        </div>
+      ) : null}
+    </div>
   );
 }

@@ -1190,6 +1190,38 @@ test("hydrateFromThreadRead keeps assistant text when snapshot has message_end o
   ]);
 });
 
+test("hydrateFromThreadRead does not synthesize zero reasoning duration without timing data", () => {
+  const hydrated = hydrateFromThreadRead(initialThreadState, {
+    cwd: "/repo",
+    items: [
+      {
+        type: "agentMessage",
+        itemId: "a-thinking-1",
+        message: {
+          role: "assistant",
+          content: [
+            { type: "thinking", thinking: "snapshot reasoning" },
+            { type: "text", text: "assistant from snapshot" },
+          ],
+          model: "x",
+          usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
+          stopReason: "end_turn",
+          timestamp: 123,
+        },
+      },
+    ],
+    hasFollowUp: false,
+    entryCount: 1,
+    isRunning: false,
+    currentEffort: "medium",
+  });
+
+  const assistant = hydrated.items.find((item) => item.kind === "assistant");
+  expect(assistant).toBeDefined();
+  expect(assistant && assistant.kind === "assistant" ? assistant.thinking : "").toBe("snapshot reasoning");
+  expect(assistant && assistant.kind === "assistant" ? assistant.reasoningDurationMs : undefined).toBeUndefined();
+});
+
 test("hydrateFromThreadRead preserves provider-native web blocks and citations on assistant items", () => {
   const hydrated = hydrateFromThreadRead(initialThreadState, {
     cwd: "/repo",
