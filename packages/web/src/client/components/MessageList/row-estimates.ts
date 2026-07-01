@@ -9,7 +9,7 @@ import {
   MESSAGE_LIST_VERTICAL_PADDING_PX,
   MESSAGE_ROW_GAP_PX,
 } from "./constants";
-import type { CollabItem, VirtualMessageRow } from "./types";
+import type { CollabItem, ToolItem, VirtualMessageRow } from "./types";
 
 export function estimateRowOuterHeight(row: VirtualMessageRow, index: number, rowCount: number): number {
   return (
@@ -53,6 +53,10 @@ function estimateAssistantThinkingHeight(item: Extract<RenderItem, { kind: "assi
 export function estimateCollabGroupHeight(items: CollabItem[]): number {
   const childToolCount = items.reduce((count, item) => count + item.childTools.length, 0);
   return 112 + items.length * 54 + childToolCount * 24;
+}
+
+export function estimateToolGroupHeight(items: ToolItem[]): number {
+  return items.length > 0 ? 44 : 0;
 }
 
 export function estimateMessageHeight(item: RenderItem): number {

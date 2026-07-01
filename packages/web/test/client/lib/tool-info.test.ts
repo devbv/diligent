@@ -13,6 +13,9 @@ test("normalizeToolName strips namespace separators", () => {
 test("getToolInfo maps namespaced built-in tools", () => {
   expect(getToolInfo("overdare/request_user_input").displayName).toBe("Input");
   expect(getToolInfo("functions.spawn_agent").displayName).toBe("Spawn");
+  expect(getToolInfo("functions.multi_edit").activity.done).toBe("Edited files");
+  expect(getToolInfo("skill").activity.done).toBe("Loaded skill");
+  expect(getToolInfo("search_knowledge").activity.running).toBe("Searching knowledge");
 });
 
 test("isBashTool recognizes namespaced bash", () => {

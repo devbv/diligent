@@ -311,6 +311,64 @@
   z-index: 1;
 }
 
+/* Tool activity shimmer used while an agent tool is actively running. */
+@keyframes tool-shimmer-sweep {
+  0% {
+    opacity: 0;
+    transform: translateX(-120%);
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(120%);
+  }
+}
+@keyframes tool-icon-pulse {
+  0%,
+  100% {
+    opacity: 0.78;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.04);
+  }
+}
+.tool-activity-running {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+}
+.tool-activity-running > * {
+  position: relative;
+  z-index: 1;
+}
+.tool-activity-running::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    100deg,
+    transparent 10%,
+    color-mix(in srgb, var(--color-info) 14%, transparent) 45%,
+    transparent 75%
+  );
+  transform: translateX(-120%);
+  animation: tool-shimmer-sweep 1.8s ease-in-out infinite;
+}
+.tool-activity-icon-running {
+  animation: tool-icon-pulse 1.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tool-activity-running::after,
+  .tool-activity-icon-running {
+    animation: none;
+  }
+}
+
 html,
 body,
 #root {

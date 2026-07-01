@@ -27,6 +27,7 @@ export interface MessageListProps {
 }
 
 export type CollabItem = Extract<RenderItem, { kind: "collab" }>;
+export type ToolItem = Extract<RenderItem, { kind: "tool" }>;
 export type MessageContentItem = Exclude<RenderItem, { kind: "collab" }>;
 export type ApprovalPrompt = NonNullable<MessageListProps["approvalPrompt"]>;
 export type QuestionPrompt = NonNullable<MessageListProps["questionPrompt"]>;
@@ -44,6 +45,7 @@ export interface VirtuosoMessageListContext {
 
 export type VirtualMessageRow =
   | (MessageListRow & { kind: "collab"; items: CollabItem[] })
+  | (MessageListRow & { kind: "toolGroup"; items: ToolItem[] })
   | (MessageListRow & { kind: "message"; item: MessageContentItem; suppressThinking?: boolean })
   | (MessageListRow & { kind: "streaming" })
   | (MessageListRow & { kind: "compacting" })

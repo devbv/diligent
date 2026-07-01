@@ -27,6 +27,7 @@ import { Sidebar } from "../../../src/client/components/Sidebar";
 import { SlashMenu } from "../../../src/client/components/SlashMenu";
 import { ThinkingBlock } from "../../../src/client/components/ThinkingBlock";
 import { Toast } from "../../../src/client/components/Toast";
+import { ToolActivityGroup } from "../../../src/client/components/ToolActivityGroup";
 import { ToolBlock } from "../../../src/client/components/ToolBlock";
 import { ToolSettingsModal } from "../../../src/client/components/ToolSettingsModal";
 import { UserMessage } from "../../../src/client/components/UserMessage";
@@ -410,6 +411,8 @@ test("tool settings modal renders tool and plugin rows", () => {
   expect(html).toContain("bash");
   expect(html).toContain("Locked");
   expect(html).toContain("@acme/diligent-tools");
+  expect(html).toContain("Add Package");
+  expect(html).toContain("min-w-28 shrink-0 whitespace-nowrap");
   expect(html).toContain("jira_comment");
   expect(html).toContain("AI Agent Data Use");
   expect(html).toContain("Improve service with your chats");
@@ -596,16 +599,15 @@ test("user message renders context chips above text", () => {
   expect(html).toContain("Move these");
 });
 
-test("context message renders checkpoint language and expandable summary area", () => {
+test("context message renders a subtle collapsed compaction divider", () => {
   const html = renderToStaticMarkup(<ContextMessage summary={"## Goal\nShip transcript-aware compaction UI"} />);
 
-  expect(html).toContain("Context checkpoint");
-  expect(html).toContain("Compacted");
-  expect(html).toContain("Older conversation was compressed to keep the thread efficient.");
+  expect(html).toContain("Context compacted");
   expect(html).toContain('aria-expanded="false"');
-  expect(html).toContain("grid-cols-context-checkpoint");
-  expect(html).toContain("h-8 w-8");
-  expect(html).toContain("min-h-8");
+  expect(html).toContain("bg-border/25");
+  expect(html).not.toContain("Context checkpoint");
+  expect(html).not.toContain("Older conversation was compressed to keep the thread efficient.");
+  expect(html).not.toContain("Ship transcript-aware compaction UI");
 });
 
 test("app header exposes sidebar toggle state and target", () => {
@@ -749,7 +751,8 @@ test("assistant message renders completed footer when turn duration is available
 
   expect(html).toContain("Completed in 4.2s");
   expect(html).not.toContain("Reasoned for");
-  expect(html).toContain('class="pb-2 pt-3"');
+  expect(html).toContain("text-xs uppercase tracking-wide text-muted/65");
+  expect(html).not.toContain('class="pb-2 pt-3"');
 });
 
 test("thinking block renders markdown emphasis instead of literal markers", () => {
@@ -759,7 +762,7 @@ test("thinking block renders markdown emphasis instead of literal markers", () =
   expect(html).not.toContain("**Considering button sizes**");
 });
 
-test("assistant message keeps divider even when persisted duration is unavailable", () => {
+test("assistant message does not add an empty divider when duration is unavailable", () => {
   const html = renderToStaticMarkup(
     <AssistantMessage
       item={{
@@ -774,7 +777,7 @@ test("assistant message keeps divider even when persisted duration is unavailabl
     />,
   );
 
-  expect(html).toContain("h-px w-full bg-border/10");
+  expect(html).not.toContain("h-px w-full bg-border/10");
   expect(html).not.toContain("Completed in");
 });
 
@@ -814,13 +817,14 @@ test("assistant message renders provider-native web blocks and citations", () =>
     />,
   );
 
-  expect(html).toContain("Web Action");
-  expect(html).toContain("Web Action - Searching diligent");
-  expect(html).toContain("Web Action - Found 1 result");
+  expect(html).toContain("Searching web");
+  expect(html).toContain("Searched web");
+  expect(html).not.toContain("Searching diligent");
+  expect(html).not.toContain("Found 1 result");
   expect(html).toContain("Example");
   expect(html).not.toContain("animate-pulse");
-  expect(html).not.toContain(">running<");
-  expect(html).not.toContain("↳ Found 1 result");
+  expect(html).not.toContain("tool-activity-running");
+  expect(html).not.toContain("Running…");
   expect(html).toContain("Source 1:");
   expect(html).not.toContain("chatgpt");
   expect(html).not.toContain("openai");
@@ -1074,6 +1078,74 @@ test("slash menu renders a flat command list without submenu affordances", () =>
   expect(html).not.toContain("Execute");
 });
 
+test("tool activity group reveals flat child rows with inline previews as the second level", () => {
+  const html = renderToStaticMarkup(
+    <ToolActivityGroup
+      initialOpen={true}
+      items={[
+        {
+          id: "tool-1",
+          kind: "tool",
+          toolName: "bash",
+          inputText: "find /Volumes -maxdepth 4",
+          outputText: "Command completed",
+          isError: false,
+          status: "done",
+          timestamp: 1,
+          toolCallId: "call-1",
+          startedAt: 1,
+          durationMs: 300058,
+          render: {
+            inputSummary: "find /Volumes -maxdepth 4",
+            outputSummary: "Command completed",
+            blocks: [],
+          },
+        },
+      ]}
+    />,
+  );
+
+  expect(html).toContain("Ran 1 command");
+  expect(html).toContain("Ran command: find /Volumes -maxdepth 4 · Command completed");
+  expect(html).toContain("find /Volumes -maxdepth 4");
+  expect(html).toContain("Command completed");
+  expect(html).not.toContain("ml-7 mt-1 space-y-1 border-l");
+  expect(html).not.toContain("max-h-72");
+});
+
+test("nested tool block reveals scrollable third-level details when expanded", () => {
+  const html = renderToStaticMarkup(
+    <ToolBlock
+      nested={true}
+      initialOpen={true}
+      item={{
+        id: "tool-1",
+        kind: "tool",
+        toolName: "bash",
+        inputText: "find /Volumes -maxdepth 4",
+        outputText: "Command completed",
+        isError: false,
+        status: "done",
+        timestamp: 1,
+        toolCallId: "call-1",
+        startedAt: 1,
+        durationMs: 300058,
+        render: {
+          inputSummary: "find /Volumes -maxdepth 4",
+          outputSummary: "Command completed",
+          blocks: [{ type: "text", title: "Output", text: "Command completed" }],
+        },
+      }}
+    />,
+  );
+
+  expect(html).toContain("max-h-72");
+  expect(html).toContain("overflow-y-auto");
+  expect(html).toContain("find /Volumes -maxdepth 4");
+  expect(html).toContain("Command completed");
+  expect(html).toContain("300058ms");
+});
+
 test("tool block renders completed duration in header", () => {
   const html = renderToStaticMarkup(
     <ToolBlock
@@ -1094,7 +1166,7 @@ test("tool block renders completed duration in header", () => {
   );
 
   expect(html).toContain("123ms");
-  expect(html).toContain("Shell");
+  expect(html).toContain("Ran command");
 });
 
 test("tool block hides duration while tool is still running", () => {
@@ -1116,10 +1188,12 @@ test("tool block hides duration while tool is still running", () => {
   );
 
   expect(html).not.toContain("123ms");
-  expect(html).toContain("running");
+  expect(html).toContain("Running command");
+  expect(html).toContain("Running…");
+  expect(html).toContain("tool-activity-running");
 });
 
-test("tool block shows request summary in header and response summary once below", () => {
+test("tool block keeps request and response summaries hidden while collapsed", () => {
   const html = renderToStaticMarkup(
     <ToolBlock
       item={{
@@ -1143,10 +1217,10 @@ test("tool block shows request summary in header and response summary once below
     />,
   );
 
-  expect(html).toContain("Read - src/ARCHITECTURE.md");
+  expect(html).toContain("Read files");
   expect(html).toContain("0ms");
-  expect(html).toContain("↳ 1 # Architecture");
-  expect(html.match(/src\/ARCHITECTURE\.md/g)?.length).toBe(1);
+  expect(html).not.toContain("src/ARCHITECTURE.md");
+  expect(html).not.toContain("1 # Architecture");
 });
 
 test("tool block treats namespaced request_user_input as user-input tool (hides output summary)", () => {
@@ -1173,8 +1247,9 @@ test("tool block treats namespaced request_user_input as user-input tool (hides 
     />,
   );
 
-  expect(html).toContain("Input - Ask player");
-  expect(html).not.toContain("↳ Answer submitted");
+  expect(html).toContain("Requested input");
+  expect(html).not.toContain("Ask player");
+  expect(html).not.toContain("Answer submitted");
 });
 
 test("tool block renders asset gallery previews expanded", () => {

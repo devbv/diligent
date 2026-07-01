@@ -506,6 +506,7 @@ export function ToolSettingsModal({
                 <div className="flex items-center gap-2">
                   <Input
                     aria-label="Plugin package name"
+                    className="min-w-0 flex-1"
                     placeholder="@acme/diligent-tools"
                     value={newPackageName}
                     onChange={(event) => setNewPackageName(event.target.value)}
@@ -516,8 +517,14 @@ export function ToolSettingsModal({
                       }
                     }}
                   />
-                  <Button size="sm" intent="ghost" disabled={!newPackageName.trim()} onClick={handleAddPlugin}>
-                    Add package
+                  <Button
+                    size="sm"
+                    intent="ghost"
+                    className="min-w-28 shrink-0 whitespace-nowrap"
+                    disabled={!newPackageName.trim()}
+                    onClick={handleAddPlugin}
+                  >
+                    Add Package
                   </Button>
                 </div>
 

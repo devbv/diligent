@@ -28,6 +28,129 @@ test("MessageList renders every row during static rendering", () => {
   expect((html.match(/data-message-list-row="user-/g) ?? []).length).toBe(18);
 });
 
+test("MessageList groups consecutive mixed tool activity rows", () => {
+  const items: RenderItem[] = [
+    {
+      id: "tool-read",
+      kind: "tool",
+      toolName: "read",
+      inputText: "src/App.tsx",
+      outputText: "",
+      isError: false,
+      status: "done",
+      timestamp: 1,
+      toolCallId: "call-read",
+      startedAt: 1,
+      durationMs: 4,
+      render: { inputSummary: "src/App.tsx", blocks: [] },
+    },
+    {
+      id: "tool-grep",
+      kind: "tool",
+      toolName: "grep",
+      inputText: "ToolBlock",
+      outputText: "",
+      isError: false,
+      status: "done",
+      timestamp: 2,
+      toolCallId: "call-grep",
+      startedAt: 2,
+      durationMs: 9,
+      render: { inputSummary: "ToolBlock", blocks: [] },
+    },
+    {
+      id: "tool-bash",
+      kind: "tool",
+      toolName: "bash",
+      inputText: "bun test",
+      outputText: "",
+      isError: false,
+      status: "done",
+      timestamp: 3,
+      toolCallId: "call-bash",
+      startedAt: 3,
+      durationMs: 12,
+      render: { inputSummary: "bun test", blocks: [] },
+    },
+    {
+      id: "assistant-empty",
+      kind: "assistant",
+      text: "",
+      thinking: "",
+      contentBlocks: [],
+      thinkingDone: true,
+      timestamp: 4,
+    },
+    {
+      id: "tool-plan",
+      kind: "tool",
+      toolName: "plan",
+      inputText: "Update plan",
+      outputText: "",
+      isError: false,
+      status: "done",
+      timestamp: 5,
+      toolCallId: "call-plan",
+      startedAt: 5,
+      durationMs: 1,
+      render: { inputSummary: "Ship UI cleanup (3 steps)", blocks: [] },
+    },
+  ];
+
+  const html = renderToStaticMarkup(
+    <MessageList items={items} threadStatus="idle" hasProvider={true} onOpenProviders={() => {}} />,
+  );
+
+  expect(html).toContain('data-message-list-row="tool-group:tool-read+tool-grep+tool-bash+tool-plan"');
+  expect(html).not.toContain('data-message-list-row="tool-read"');
+  expect(html).toContain("Read 1 file, searched code, ran 1 command, and updated plan");
+  expect(html).not.toContain("Read file: src/App.tsx");
+  expect(html).not.toContain("Ran command: bun test");
+  expect(html).not.toContain("Ship UI cleanup (3 steps)");
+});
+
+test("MessageList groups failed tool activity rows", () => {
+  const items: RenderItem[] = [
+    {
+      id: "tool-glob-1",
+      kind: "tool",
+      toolName: "glob",
+      inputText: "**/*.lua",
+      outputText: "rg missing",
+      isError: true,
+      status: "done",
+      timestamp: 1,
+      toolCallId: "call-glob-1",
+      startedAt: 1,
+      durationMs: 4,
+      render: { inputSummary: "**/*.lua", blocks: [] },
+    },
+    {
+      id: "tool-glob-2",
+      kind: "tool",
+      toolName: "glob",
+      inputText: "**/*.ovdrjm",
+      outputText: "rg missing",
+      isError: true,
+      status: "done",
+      timestamp: 2,
+      toolCallId: "call-glob-2",
+      startedAt: 2,
+      durationMs: 6,
+      render: { inputSummary: "**/*.ovdrjm", blocks: [] },
+    },
+  ];
+
+  const html = renderToStaticMarkup(
+    <MessageList items={items} threadStatus="idle" hasProvider={true} onOpenProviders={() => {}} />,
+  );
+
+  expect(html).toContain('data-message-list-row="tool-group:tool-glob-1+tool-glob-2"');
+  expect(html).toContain("2 matches failed");
+  expect(html).toContain("Failed");
+  expect(html).not.toContain("**/*.lua");
+});
+
 test("MessageList preserves assistant text hiding before request_user_input tools", () => {
   const items: RenderItem[] = [
     {

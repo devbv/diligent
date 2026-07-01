@@ -2,24 +2,66 @@
 
 import type { ToolRenderPayload } from "@diligent/protocol";
 import { useEffect, useState } from "react";
-import { cn } from "../lib/cn";
 import type { RenderItem } from "../lib/thread-store";
 import { normalizeToolName } from "../lib/thread-utils";
-import { formatToolDurationMs, getToolHeaderTitle, summarizeInput, summarizeOutput } from "../lib/tool-info";
+import {
+  formatToolDurationMs,
+  getToolActivityLabel,
+  getToolInfo,
+  summarizeInput,
+  summarizeOutput,
+} from "../lib/tool-info";
 import { ContentText } from "./ContentText";
-import { StatusDot } from "./StatusDot";
+import { ToolActivityRow } from "./ToolActivityRow";
 import { ToolRenderBlocks } from "./ToolRenderBlocks";
 
 interface ToolBlockProps {
   item: Extract<RenderItem, { kind: "tool" }>;
   threadCwd?: string;
+  nested?: boolean;
+  initialOpen?: boolean;
+  showPreviewWhenCollapsed?: boolean;
+  inlinePreviewWhenCollapsed?: boolean;
 }
 
 /* ── Tool-specific expanded content ───────────────────────────────── */
 
+function payloadIncludesText(render: ToolRenderPayload, text: string): boolean {
+  const value = text.trim();
+  if (!value) return true;
+
+  return render.blocks.some((block) => {
+    switch (block.type) {
+      case "command":
+        return block.command.trim() === value;
+      case "file":
+        return block.filePath.trim() === value;
+      case "text":
+      case "summary":
+        return block.text.trim() === value;
+      case "list":
+        return block.items.some((item) => item.trim() === value);
+      case "key_value":
+        return block.items.some((item) => item.value.trim() === value);
+      default:
+        return false;
+    }
+  });
+}
+
 function ToolContent({ item, render }: { item: Extract<RenderItem, { kind: "tool" }>; render?: ToolRenderPayload }) {
   if (render) {
-    return <ToolRenderBlocks payload={render} />;
+    const inputText = (item.inputText || render.inputSummary || "").trim();
+    const shouldShowInput = Boolean(inputText) && !payloadIncludesText(render, inputText);
+
+    if (!shouldShowInput) return <ToolRenderBlocks payload={render} />;
+
+    return (
+      <div className="space-y-2">
+        <ContentText text={inputText} label="Input" maxLines={4} />
+        <ToolRenderBlocks payload={render} />
+      </div>
+    );
   }
 
   // Final fallback: plugins or unknown tools
@@ -37,21 +79,37 @@ function hasAssetGalleryBlock(render?: ToolRenderPayload): boolean {
   return Boolean(render?.blocks.some((block) => block.type === "asset_gallery"));
 }
 
-export function ToolBlock({ item }: ToolBlockProps) {
+export function ToolBlock({
+  item,
+  nested = false,
+  initialOpen,
+  showPreviewWhenCollapsed = false,
+  inlinePreviewWhenCollapsed = false,
+}: ToolBlockProps) {
   const renderPayload = item.render;
   const shouldAutoOpen = hasAssetGalleryBlock(renderPayload);
-  const [open, setOpen] = useState(shouldAutoOpen);
+  const shouldInitiallyOpen = initialOpen ?? shouldAutoOpen;
+  const [open, setOpen] = useState(shouldInitiallyOpen);
   const [assetGalleryAutoOpened, setAssetGalleryAutoOpened] = useState(shouldAutoOpen);
-  const headerTitle = getToolHeaderTitle(item.toolName, renderPayload);
+  const toolInfo = getToolInfo(item.toolName);
+  const activityTitle = getToolActivityLabel(item.toolName, item.status, item.isError);
   const normalizedToolName = normalizeToolName(item.toolName);
   const isUserInput = normalizedToolName === "request_user_input";
+  const inputSummary = summarizeInput(renderPayload);
   const outputSummary = renderPayload && !isUserInput && item.status === "done" ? summarizeOutput(renderPayload) : "";
   const showOutputSummary =
-    normalizedToolName !== "web_action" && Boolean(outputSummary) && outputSummary !== summarizeInput(renderPayload);
+    normalizedToolName !== "web_action" && Boolean(outputSummary) && outputSummary !== inputSummary;
   const durationLabel = item.status === "done" ? formatToolDurationMs(item.durationMs) : null;
 
   const isStreaming = item.status === "streaming";
   const isWebTool = normalizedToolName === "web_action";
+  const isBusy = isStreaming && !isWebTool;
+  const compactRow = nested && inlinePreviewWhenCollapsed && !open;
+  const inlinePreview =
+    inlinePreviewWhenCollapsed && !open
+      ? [inputSummary, showOutputSummary ? outputSummary : ""].filter((part) => part.trim().length > 0).join(" · ")
+      : "";
+  const rowTitle = inlinePreview ? `${activityTitle}: ${inlinePreview}` : activityTitle;
 
   useEffect(() => {
     if (!shouldAutoOpen || assetGalleryAutoOpened) return;
@@ -59,57 +117,40 @@ export function ToolBlock({ item }: ToolBlockProps) {
     setAssetGalleryAutoOpened(true);
   }, [assetGalleryAutoOpened, shouldAutoOpen]);
 
-  const statusEl =
-    isStreaming && !isWebTool ? (
-      <span className="flex shrink-0 items-center gap-1 text-xs text-accent">
-        <StatusDot color="accent" pulse />
-        <span>running</span>
-      </span>
-    ) : item.isError ? (
-      // Recoverable tool error (the agent can self-correct). Rendered muted/gray so it
-      // reads as informational rather than a fatal provider/runtime failure.
-      <span className="shrink-0 text-xs text-muted">error</span>
-    ) : null;
-
-  const chevronEl = !isStreaming ? (
-    <span
-      className={cn(
-        "shrink-0 text-xs leading-none text-muted transition-transform duration-150",
-        open ? "rotate-180" : "rotate-0",
-      )}
-    >
-      ▾
-    </span>
-  ) : null;
-
   return (
-    <div className="pb-4">
-      <div className="min-w-0 rounded-lg bg-surface-dark">
-        <button
-          type="button"
-          onClick={() => !isStreaming && setOpen((v) => !v)}
-          disabled={isStreaming}
-          className="flex max-w-full flex-col gap-1 rounded-md text-left"
-        >
-          {/* Header row */}
-          <div className="flex items-center gap-2 leading-none">
-            <span className="text-sm font-medium leading-none text-text-soft">{headerTitle}</span>
-            {durationLabel ? <span className="text-xs leading-none text-text/35">{durationLabel}</span> : null}
-            {chevronEl}
-            {statusEl}
-          </div>
-          {/* Summary rows */}
-          {showOutputSummary ? (
-            <div className="flex flex-col gap-0.5">
-              <span className="max-w-tool-summary truncate font-mono text-xs text-text-tertiary">
-                ↳ {outputSummary}
-              </span>
-            </div>
-          ) : null}
-        </button>
+    <div className={compactRow ? "pb-0" : "pb-1"}>
+      <div className="min-w-0">
+        <ToolActivityRow
+          title={rowTitle}
+          detail={showPreviewWhenCollapsed && !inlinePreviewWhenCollapsed ? inputSummary : undefined}
+          outputSummary={
+            showPreviewWhenCollapsed && !inlinePreviewWhenCollapsed
+              ? showOutputSummary
+                ? outputSummary
+                : undefined
+              : undefined
+          }
+          icon={toolInfo.icon}
+          category={toolInfo.category}
+          status={item.status}
+          isError={item.isError}
+          isBusy={isBusy}
+          durationLabel={durationLabel}
+          expanded={open}
+          expandable={!isStreaming}
+          showMeta={showPreviewWhenCollapsed}
+          compact={compactRow}
+          onToggle={() => setOpen((v) => !v)}
+        />
 
         {open && (
-          <div>
+          <div
+            className={
+              nested
+                ? "ml-7 mt-1 max-h-72 overflow-y-auto overscroll-contain border-l border-border/30 py-1 pl-3 pr-2"
+                : "mt-2"
+            }
+          >
             <ToolContent item={item} render={renderPayload} />
           </div>
         )}

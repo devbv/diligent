@@ -32,7 +32,7 @@ export function AssistantMessage({ item, suppressThinking = false }: AssistantMe
   const hasToolLikeBlocks = renderableContentBlocks.some(isToolLikeAssistantContentBlock);
   const turnDuration = formatMs(item.turnDurationMs);
   const reasoningDuration = formatMs(item.reasoningDurationMs);
-  const showTurnDivider = item.thinkingDone && !hasToolLikeBlocks;
+  const showTurnFooter = item.thinkingDone && !hasToolLikeBlocks && Boolean(turnDuration);
 
   if (!hasThinking && !hasText && !hasStructuredBlocks) return null;
 
@@ -52,14 +52,9 @@ export function AssistantMessage({ item, suppressThinking = false }: AssistantMe
       ) : hasText ? (
         <MarkdownContent text={item.text} />
       ) : null}
-      {showTurnDivider ? (
-        <div className="pb-2 pt-3">
-          <div className="h-px w-full bg-border/10" />
-          {turnDuration ? (
-            <div className="pt-2 text-xs uppercase tracking-wide text-muted/80">
-              <span>{`Completed in ${turnDuration}`}</span>
-            </div>
-          ) : null}
+      {showTurnFooter ? (
+        <div className="pt-1 text-xs uppercase tracking-wide text-muted/65">
+          <span>{`Completed in ${turnDuration}`}</span>
         </div>
       ) : null}
     </div>

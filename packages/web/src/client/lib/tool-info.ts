@@ -5,43 +5,231 @@ import { normalizeToolName } from "./thread-utils";
 
 export interface ToolInfo {
   displayName: string;
-  icon: string;
+  icon: ToolIconName;
   category: "context" | "action";
+  activity: {
+    done: string;
+    running: string;
+    failed: string;
+  };
+}
+
+export type ToolIconName =
+  | "agent"
+  | "book"
+  | "checklist"
+  | "clock"
+  | "edit"
+  | "file"
+  | "globe"
+  | "input"
+  | "list"
+  | "plan"
+  | "search"
+  | "send"
+  | "settings"
+  | "sparkles"
+  | "terminal";
+
+function tool(
+  displayName: string,
+  icon: ToolIconName,
+  category: ToolInfo["category"],
+  activity: ToolInfo["activity"],
+): ToolInfo {
+  return { displayName, icon, category, activity };
 }
 
 // Keys are lowercase for case-insensitive matching
 const TOOL_MAP: Record<string, ToolInfo> = {
-  read: { displayName: "Read", icon: "↗", category: "context" },
-  grep: { displayName: "Grep", icon: "⌕", category: "context" },
-  glob: { displayName: "Glob", icon: "⌕", category: "context" },
-  ls: { displayName: "List", icon: "≡", category: "context" },
-  bash: { displayName: "Shell", icon: ">_", category: "action" },
-  write: { displayName: "Write", icon: "✎", category: "action" },
-  apply_patch: { displayName: "Patch", icon: "✎", category: "action" },
-  multiedit: { displayName: "Edit", icon: "✎", category: "action" },
-  agent: { displayName: "Agent", icon: "◈", category: "action" },
-  web_action: { displayName: "Web Action", icon: "⌕", category: "context" },
-  todowrite: { displayName: "Todo", icon: "☑", category: "action" },
-  todoread: { displayName: "Todo", icon: "☑", category: "context" },
-  request_user_input: { displayName: "Input", icon: "?", category: "context" },
-  notebookedit: { displayName: "Notebook", icon: "✎", category: "action" },
-  notebookread: { displayName: "Notebook", icon: "↗", category: "context" },
-  plan: { displayName: "Plan", icon: "◇", category: "action" },
-  spawn_agent: { displayName: "Spawn", icon: "◈", category: "action" },
-  wait: { displayName: "Wait", icon: "⏳", category: "action" },
-  close_agent: { displayName: "Close", icon: "✕", category: "action" },
-  send_input: { displayName: "Send", icon: "→", category: "action" },
-  update_knowledge: { displayName: "Knowledge", icon: "✦", category: "action" },
-  taskwrite: { displayName: "Task", icon: "☑", category: "action" },
-  taskcreate: { displayName: "Task", icon: "☑", category: "action" },
-  taskupdate: { displayName: "Task", icon: "☑", category: "action" },
-  taskget: { displayName: "Task", icon: "☑", category: "context" },
-  tasklist: { displayName: "Tasks", icon: "≡", category: "context" },
+  read: tool("Read", "file", "context", {
+    done: "Read files",
+    running: "Reading files",
+    failed: "Read failed",
+  }),
+  read_image: tool("Image", "file", "context", {
+    done: "Read image",
+    running: "Reading image",
+    failed: "Image read failed",
+  }),
+  grep: tool("Grep", "search", "context", {
+    done: "Searched code",
+    running: "Searching code",
+    failed: "Search failed",
+  }),
+  glob: tool("Glob", "search", "context", {
+    done: "Matched files",
+    running: "Matching files",
+    failed: "Match failed",
+  }),
+  ls: tool("List", "list", "context", {
+    done: "Listed files",
+    running: "Listing files",
+    failed: "List failed",
+  }),
+  bash: tool("Shell", "terminal", "action", {
+    done: "Ran command",
+    running: "Running command",
+    failed: "Command failed",
+  }),
+  write: tool("Write", "edit", "action", {
+    done: "Wrote file",
+    running: "Writing file",
+    failed: "Write failed",
+  }),
+  edit: tool("Edit", "edit", "action", {
+    done: "Edited file",
+    running: "Editing file",
+    failed: "Edit failed",
+  }),
+  apply_patch: tool("Patch", "edit", "action", {
+    done: "Edited files",
+    running: "Editing files",
+    failed: "Edit failed",
+  }),
+  multi_edit: tool("Edit", "edit", "action", {
+    done: "Edited files",
+    running: "Editing files",
+    failed: "Edit failed",
+  }),
+  multiedit: tool("Edit", "edit", "action", {
+    done: "Edited files",
+    running: "Editing files",
+    failed: "Edit failed",
+  }),
+  skill: tool("Skill", "book", "context", {
+    done: "Loaded skill",
+    running: "Loading skill",
+    failed: "Skill load failed",
+  }),
+  agent: tool("Agent", "agent", "action", {
+    done: "Ran agent",
+    running: "Running agent",
+    failed: "Agent failed",
+  }),
+  web_action: tool("Web Action", "globe", "context", {
+    done: "Searched web",
+    running: "Searching web",
+    failed: "Web action failed",
+  }),
+  web_search: tool("Web Search", "globe", "context", {
+    done: "Searched web",
+    running: "Searching web",
+    failed: "Web search failed",
+  }),
+  web_fetch: tool("Web Fetch", "globe", "context", {
+    done: "Opened page",
+    running: "Opening page",
+    failed: "Page open failed",
+  }),
+  overdaresearch: tool("Asset Search", "search", "context", {
+    done: "Searched assets",
+    running: "Searching assets",
+    failed: "Asset search failed",
+  }),
+  todowrite: tool("Todo", "checklist", "action", {
+    done: "Updated todos",
+    running: "Updating todos",
+    failed: "Todo update failed",
+  }),
+  todoread: tool("Todo", "checklist", "context", {
+    done: "Read todos",
+    running: "Reading todos",
+    failed: "Todo read failed",
+  }),
+  request_user_input: tool("Input", "input", "context", {
+    done: "Requested input",
+    running: "Requesting input",
+    failed: "Input request failed",
+  }),
+  notebookedit: tool("Notebook", "edit", "action", {
+    done: "Edited notebook",
+    running: "Editing notebook",
+    failed: "Notebook edit failed",
+  }),
+  notebookread: tool("Notebook", "book", "context", {
+    done: "Read notebook",
+    running: "Reading notebook",
+    failed: "Notebook read failed",
+  }),
+  plan: tool("Plan", "plan", "action", {
+    done: "Updated plan",
+    running: "Updating plan",
+    failed: "Plan update failed",
+  }),
+  spawn_agent: tool("Spawn", "agent", "action", {
+    done: "Started agent",
+    running: "Starting agent",
+    failed: "Agent start failed",
+  }),
+  wait: tool("Wait", "clock", "action", {
+    done: "Waited for agents",
+    running: "Waiting for agents",
+    failed: "Wait failed",
+  }),
+  close_agent: tool("Close", "agent", "action", {
+    done: "Closed agent",
+    running: "Closing agent",
+    failed: "Close failed",
+  }),
+  send_input: tool("Send", "send", "action", {
+    done: "Sent input",
+    running: "Sending input",
+    failed: "Send failed",
+  }),
+  update_knowledge: tool("Knowledge", "sparkles", "action", {
+    done: "Updated knowledge",
+    running: "Updating knowledge",
+    failed: "Knowledge update failed",
+  }),
+  search_knowledge: tool("Knowledge", "search", "context", {
+    done: "Searched knowledge",
+    running: "Searching knowledge",
+    failed: "Knowledge search failed",
+  }),
+  taskwrite: tool("Task", "checklist", "action", {
+    done: "Updated tasks",
+    running: "Updating tasks",
+    failed: "Task update failed",
+  }),
+  taskcreate: tool("Task", "checklist", "action", {
+    done: "Created task",
+    running: "Creating task",
+    failed: "Task creation failed",
+  }),
+  taskupdate: tool("Task", "checklist", "action", {
+    done: "Updated task",
+    running: "Updating task",
+    failed: "Task update failed",
+  }),
+  taskget: tool("Task", "checklist", "context", {
+    done: "Read task",
+    running: "Reading task",
+    failed: "Task read failed",
+  }),
+  tasklist: tool("Tasks", "list", "context", {
+    done: "Listed tasks",
+    running: "Listing tasks",
+    failed: "Task list failed",
+  }),
 };
 
 export function getToolInfo(toolName: string): ToolInfo {
   const normalized = normalizeToolName(toolName);
-  return TOOL_MAP[normalized] ?? { displayName: toolName, icon: "⚙", category: "action" };
+  return (
+    TOOL_MAP[normalized] ??
+    tool(toolName, "settings", "action", {
+      done: toolName,
+      running: `Running ${toolName}`,
+      failed: `${toolName} failed`,
+    })
+  );
+}
+
+export function getToolActivityLabel(toolName: string, status: "streaming" | "done", isError: boolean): string {
+  const info = getToolInfo(toolName);
+  if (isError) return info.activity.failed;
+  return status === "streaming" ? info.activity.running : info.activity.done;
 }
 
 export function formatToolDurationMs(durationMs?: number): string | null {
