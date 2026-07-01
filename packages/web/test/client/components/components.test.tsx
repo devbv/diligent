@@ -629,13 +629,16 @@ test("input dock composer textarea does not inherit field border styles", () => 
   );
 
   const textarea = html.match(/<textarea[^>]*aria-label="Steering input"[^>]*>/)?.[0] ?? "";
-  expect(html).toContain("relative rounded-sm border px-4 py-3");
+  expect(html).toContain("relative rounded-sm border bg-surface-composer px-4 py-3");
   expect(textarea).toContain("min-h-[52px]");
   expect(textarea).toContain("rounded-md");
-  expect(textarea).toContain("px-3");
+  expect(textarea).toContain("px-1");
   expect(textarea).toContain("py-2");
   expect(textarea).toContain("border-0");
   expect(textarea).toContain("bg-transparent");
+  expect(textarea).not.toContain("!px-1");
+  expect(textarea).not.toContain("px-3");
+  expect(textarea).not.toContain("py-0");
   expect(textarea).not.toContain("border-border");
   expect(textarea).not.toContain("bg-surface-dark");
   expect(html).toContain("border-white/10");
@@ -695,6 +698,8 @@ test("input dock composer selectors do not inherit bordered select trigger style
   expect(effortTrigger).toContain("bg-black");
   expect(html).toContain("w-[180px]");
   expect(html).toContain("w-[90px]");
+  expect(modelTrigger).not.toContain("rounded-md");
+  expect(effortTrigger).not.toContain("rounded-md");
   expect(modelTrigger).not.toContain("border-border");
   expect(effortTrigger).not.toContain("border-border");
   expect(modelTrigger).not.toContain("bg-surface-dark");

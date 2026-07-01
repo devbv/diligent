@@ -15,6 +15,10 @@ export const fieldClasses =
   "w-full rounded-md border border-border/100 bg-surface-dark px-3 text-sm text-text placeholder:text-text-subtle " +
   focusRingClasses;
 
+export const textAreaBaseClasses = "resize-none overflow-y-auto";
+
+export const textAreaFieldClasses = `${fieldClasses} py-2`;
+
 export const surfaceCardClasses = "rounded-lg border border-border/100 bg-surface-dark";
 
 export const elevatedCardClasses = "rounded-lg border border-border/100 bg-surface-default shadow-panel";
@@ -73,12 +77,24 @@ export const pillBadgeClasses = "rounded-full border px-2 py-0.5 text-2xs upperc
 
 export const detailPanelClasses = "rounded-md border border-border/40 bg-surface-default px-4 py-3";
 
+export const composerFrameClasses = "relative rounded-sm border bg-surface-composer px-4 py-3";
+
+export const composerTextAreaClasses =
+  "min-h-[52px] w-full rounded-md border-0 bg-transparent px-1 py-2 text-sm text-text placeholder:text-text-subtle focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-transparent";
+
 export const composerToolbarClasses = "mt-2.5 flex items-center justify-between gap-2.5";
 
 export const composerControlGroupClasses = "flex min-w-0 flex-wrap items-center gap-1.5";
 
 export const composerActionButtonClasses =
   "rounded-full px-3 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-30";
+
+export const selectTriggerBaseClasses =
+  "inline-flex h-7 w-full items-center justify-between gap-1 px-2 text-xs text-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent";
+
+export const selectTriggerDefaultClasses = "rounded-md border border-border/100 bg-surface-dark";
+
+export const composerSelectTriggerClasses = "rounded bg-black";
 
 export const sidebarListClasses = "flex-1 space-y-2 overflow-y-auto bg-bg-sunken px-2 py-3";
 

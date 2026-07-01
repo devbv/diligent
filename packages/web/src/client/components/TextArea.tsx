@@ -2,14 +2,21 @@
 
 import { type TextareaHTMLAttributes, useLayoutEffect, useRef } from "react";
 import { cn } from "../lib/cn";
-import { fieldClasses } from "./ui-styles";
+import { composerTextAreaClasses, textAreaBaseClasses, textAreaFieldClasses } from "./ui-styles";
+
+type TextAreaVariant = "field" | "composer";
+
+const textAreaVariantClasses: Record<TextAreaVariant, string> = {
+  field: textAreaFieldClasses,
+  composer: composerTextAreaClasses,
+};
 
 interface TextAreaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
   maxRows?: number;
-  unstyled?: boolean;
+  variant?: TextAreaVariant;
 }
 
-export function TextArea({ maxRows = 6, unstyled = false, className, onChange, value, ...props }: TextAreaProps) {
+export function TextArea({ maxRows = 6, variant = "field", className, onChange, value, ...props }: TextAreaProps) {
   const ref = useRef<HTMLTextAreaElement>(null);
 
   useLayoutEffect(() => {
@@ -25,11 +32,7 @@ export function TextArea({ maxRows = 6, unstyled = false, className, onChange, v
       ref={ref}
       rows={1}
       value={value}
-      className={cn(
-        "resize-none overflow-y-auto",
-        unstyled ? "w-full rounded-md px-3 py-2 text-sm text-text placeholder:text-text-subtle" : fieldClasses,
-        className,
-      )}
+      className={cn(textAreaBaseClasses, textAreaVariantClasses[variant], className)}
       onChange={onChange}
       {...props}
     />

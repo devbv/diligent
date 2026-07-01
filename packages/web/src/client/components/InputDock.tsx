@@ -16,6 +16,7 @@ import { TextArea } from "./TextArea";
 import {
   composerActionButtonClasses,
   composerControlGroupClasses,
+  composerFrameClasses,
   composerToolbarClasses,
   focusRingClasses,
   menuItemClasses,
@@ -386,7 +387,7 @@ export function InputDock({
   return (
     <div className="relative z-20 bg-surface-dark px-2 pb-4 pt-2">
       <div
-        className={`relative rounded-sm border px-4 py-3 ${hasProvider ? "border-white/10 !bg-[#21262C]" : "border-danger/30 !bg-[#21262C]"}${isBusy ? " input-dock-glow" : ""}`}
+        className={`${composerFrameClasses} ${hasProvider ? "border-white/10" : "border-danger/30"}${isBusy ? " input-dock-glow" : ""}`}
       >
         {pendingImages.length > 0 || showImageUploadIndicator ? (
           <div className="mb-3 flex flex-wrap gap-2">
@@ -412,8 +413,7 @@ export function InputDock({
         <div ref={slashMenuRef} className="relative flex items-start gap-2">
           <div className="min-w-0 flex-1">
             <TextArea
-              unstyled
-              className="min-h-[52px] w-full border-0 bg-transparent !px-1 py-0 text-sm text-text placeholder:text-text-subtle focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-transparent"
+              variant="composer"
               aria-label={isBusy ? "Steering input" : "Message input"}
               placeholder={
                 isBusy ? "Steer the agent…" : supportsVision ? "Ask anything or attach images…" : "Ask anything…"
@@ -476,8 +476,7 @@ export function InputDock({
                 onChange={onModelChange}
                 openDirection="up"
                 className="w-[180px]"
-                triggerClassName="rounded bg-black"
-                unstyledTrigger
+                triggerVariant="composer"
                 disabled={isBusy || composerDisabled}
               />
             ) : null}
@@ -490,8 +489,7 @@ export function InputDock({
                 onChange={(value) => onEffortChange(value as ThinkingEffort)}
                 openDirection="up"
                 className="w-[90px]"
-                triggerClassName="rounded bg-black"
-                unstyledTrigger
+                triggerVariant="composer"
                 disabled={isBusy || composerDisabled}
               />
             ) : null}
