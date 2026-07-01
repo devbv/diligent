@@ -2,7 +2,14 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "../lib/cn";
-import { menuItemClasses, menuPanelClasses, selectedMenuItemClasses } from "./ui-styles";
+import {
+  composerSelectTriggerClasses,
+  menuItemClasses,
+  menuPanelClasses,
+  selectedMenuItemClasses,
+  selectTriggerBaseClasses,
+  selectTriggerDefaultClasses,
+} from "./ui-styles";
 
 export interface SelectOption {
   value: string;
@@ -18,6 +25,7 @@ interface SelectProps {
   onChange: (value: string) => void;
   className?: string;
   triggerClassName?: string;
+  triggerVariant?: "default" | "composer";
   menuClassName?: string;
   openDirection?: "up" | "down";
   disabled?: boolean;
@@ -36,6 +44,7 @@ export function Select({
   onChange,
   className,
   triggerClassName,
+  triggerVariant = "default",
   menuClassName,
   openDirection = "down",
   disabled = false,
@@ -93,7 +102,8 @@ export function Select({
         disabled={disabled}
         onClick={() => !disabled && setIsOpen((open) => !open)}
         className={cn(
-          "inline-flex h-7 w-full items-center justify-between gap-1 rounded-md border border-border/100 bg-surface-dark px-2 text-xs text-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+          selectTriggerBaseClasses,
+          triggerVariant === "composer" ? composerSelectTriggerClasses : selectTriggerDefaultClasses,
           disabled && "cursor-not-allowed opacity-40",
           triggerClassName,
         )}
