@@ -6,6 +6,7 @@ import { AssistantMessage } from "../AssistantMessage";
 import { CollabGroup } from "../CollabGroup";
 import { CompactingIndicator } from "../CompactingIndicator";
 import { ContextMessage } from "../ContextMessage";
+import { ProgressActivityGroup } from "../ProgressActivityGroup";
 import { QuestionCard } from "../QuestionCard";
 import { StreamingIndicator } from "../StreamingIndicator";
 import { ToolActivityGroup } from "../ToolActivityGroup";
@@ -27,6 +28,16 @@ export function MessageListRowContent({
       return <CollabGroup items={row.items} loadChildThread={onLoadChildThread} />;
     case "toolGroup":
       return <ToolActivityGroup items={row.items} />;
+    case "progress":
+      return (
+        <ProgressActivityGroup
+          assistant={row.assistant}
+          activityRows={row.activityRows}
+          suppressThinking={row.suppressThinking}
+          threadCwd={threadCwd}
+          loadChildThread={onLoadChildThread}
+        />
+      );
     case "message":
       switch (row.item.kind) {
         case "context":

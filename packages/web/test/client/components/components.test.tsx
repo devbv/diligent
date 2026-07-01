@@ -762,6 +762,66 @@ test("thinking block renders markdown emphasis instead of literal markers", () =
   expect(html).not.toContain("**Considering button sizes**");
 });
 
+test("thinking block renders streaming markdown emphasis instead of raw markers", () => {
+  const html = renderToStaticMarkup(
+    <ThinkingBlock text={"**Considering button sizes**\n\nReasoning body."} streaming={true} />,
+  );
+
+  expect(html).toContain("thinking-content");
+  expect(html).toContain("<strong>Considering button sizes</strong>");
+  expect(html).not.toContain("**Considering button sizes**");
+  expect(html).not.toContain("whitespace-pre-wrap");
+});
+
+test("assistant message collapses skill usage preface into a compact activity row", () => {
+  const html = renderToStaticMarkup(
+    <AssistantMessage
+      item={{
+        id: "assistant-skill-1",
+        kind: "assistant",
+        text: [
+          "Skill used: overdare-debug-expert",
+          "Work area: script",
+          "Classification rationale: decision path points to a script issue.",
+          "Reproduction path: DUO -> CANCEL -> SOLO PLAY.",
+          "Reference cases: inspect state transition examples.",
+          "Goal for this loop: confirm selected mode values.",
+          "First checks: Play.log and controllers.",
+          "",
+          "Starting with the relevant scripts.",
+        ].join("\n"),
+        thinking: "",
+        contentBlocks: [
+          {
+            type: "text",
+            text: [
+              "Skill used: overdare-debug-expert",
+              "Work area: script",
+              "Classification rationale: decision path points to a script issue.",
+              "Reproduction path: DUO -> CANCEL -> SOLO PLAY.",
+              "Reference cases: inspect state transition examples.",
+              "Goal for this loop: confirm selected mode values.",
+              "First checks: Play.log and controllers.",
+              "",
+              "Starting with the relevant scripts.",
+            ].join("\n"),
+          },
+        ],
+        thinkingDone: true,
+        timestamp: 1,
+      }}
+    />,
+  );
+
+  expect(html).toContain("Skill used: overdare-debug-expert");
+  expect((html.match(/Skill used: overdare-debug-expert/g) ?? []).length).toBe(1);
+  expect(html).toContain(">script<");
+  expect(html).toContain('aria-expanded="false"');
+  expect(html).toContain("Starting with the relevant scripts.");
+  expect(html).not.toContain("Classification rationale: decision path points to a script issue.");
+  expect(html).not.toContain("Reproduction path: DUO");
+});
+
 test("assistant message does not add an empty divider when duration is unavailable", () => {
   const html = renderToStaticMarkup(
     <AssistantMessage

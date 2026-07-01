@@ -4,7 +4,14 @@ import type { RenderItem } from "../../lib/thread-store";
 import { normalizeToolName } from "../../lib/thread-utils";
 import { isRenderableAssistantContentBlock } from "../AssistantContentBlocks";
 import { estimateCollabGroupHeight, estimateMessageHeight, estimateToolGroupHeight } from "./row-estimates";
-import type { CollabItem, MessageContentItem, MessageListProps, ToolItem, VirtualMessageRow } from "./types";
+import type {
+  CollabItem,
+  MessageContentItem,
+  MessageListProps,
+  ProgressActivityRow,
+  ToolItem,
+  VirtualMessageRow,
+} from "./types";
 
 function createMessageRow(
   item: MessageContentItem,
@@ -26,6 +33,58 @@ function shouldRenderAssistantRow(item: Extract<RenderItem, { kind: "assistant" 
     item.text.length > 0 ||
     item.contentBlocks.some(isRenderableAssistantContentBlock)
   );
+}
+
+function hasAssistantBody(item: Extract<RenderItem, { kind: "assistant" }>): boolean {
+  return item.text.length > 0 || item.contentBlocks.some(isRenderableAssistantContentBlock);
+}
+
+function isProgressSourceRow(row: VirtualMessageRow): row is Extract<VirtualMessageRow, { kind: "message" }> & {
+  item: Extract<RenderItem, { kind: "assistant" }>;
+} {
+  return row.kind === "message" && row.item.kind === "assistant" && row.item.thinking.length > 0;
+}
+
+function isProgressActivityRow(row: VirtualMessageRow): row is ProgressActivityRow {
+  return row.kind === "collab" || row.kind === "toolGroup" || (row.kind === "message" && row.item.kind === "tool");
+}
+
+function groupProgressRows(rows: VirtualMessageRow[]): VirtualMessageRow[] {
+  const grouped: VirtualMessageRow[] = [];
+
+  for (let index = 0; index < rows.length; index += 1) {
+    const row = rows[index];
+    if (!isProgressSourceRow(row)) {
+      grouped.push(row);
+      continue;
+    }
+
+    const activityRows: ProgressActivityRow[] = [];
+    let nextIndex = index + 1;
+    while (nextIndex < rows.length) {
+      const candidate = rows[nextIndex];
+      if (!isProgressActivityRow(candidate)) break;
+      activityRows.push(candidate);
+      nextIndex += 1;
+    }
+
+    if (activityRows.length === 0) {
+      grouped.push(row);
+      continue;
+    }
+
+    grouped.push({
+      kind: "progress",
+      key: `progress:${row.key}:${activityRows.map((activityRow) => activityRow.key).join("+")}`,
+      estimatedSize: Math.max(52, 44 + (hasAssistantBody(row.item) ? 52 : 0) + activityRows.length * 34),
+      assistant: row.item,
+      activityRows,
+      suppressThinking: row.suppressThinking,
+    });
+    index = nextIndex - 1;
+  }
+
+  return grouped;
 }
 
 function hasAssetGallery(item: ToolItem): boolean {
@@ -109,7 +168,7 @@ export function buildGroupedRows(items: RenderItem[]): VirtualMessageRow[] {
   }
   flushCollab();
   flushTools();
-  return result;
+  return groupProgressRows(result);
 }
 
 export function applyCompactingVisibility(
@@ -119,6 +178,17 @@ export function applyCompactingVisibility(
   if (!isCompacting) return groupedRows;
 
   return groupedRows.flatMap((row) => {
+    if (row.kind === "progress") {
+      if (!shouldRenderAssistantRow(row.assistant, true)) return row.activityRows;
+      return [
+        {
+          ...row,
+          suppressThinking: true,
+          estimatedSize: Math.max(52, row.estimatedSize - 48),
+        },
+      ];
+    }
+
     if (row.kind !== "message" || row.item.kind !== "assistant") return [row];
     if (!shouldRenderAssistantRow(row.item, true)) return [];
     return [createMessageRow(row.item, true, { ...row.item, thinking: "" })];

@@ -4,7 +4,7 @@ import type { ApprovalRequest } from "@diligent/protocol";
 import { Button } from "./Button";
 import { SectionLabel } from "./SectionLabel";
 import { SystemCard } from "./SystemCard";
-import { actionRowClasses, cardPaddingClasses, surfaceCardClasses } from "./ui-styles";
+import { actionRowClasses } from "./ui-styles";
 
 interface ApprovalCardProps {
   request: ApprovalRequest;
@@ -41,9 +41,7 @@ export function ApprovalCard({ request, onDecide }: ApprovalCardProps) {
         <span className="font-medium">{request.permission}</span>
       </p>
       {request.description ? (
-        <pre
-          className={`mb-4 whitespace-pre-wrap ${cardPaddingClasses} font-mono text-xs leading-relaxed text-muted ${surfaceCardClasses}`}
-        >
+        <pre className="mb-4 whitespace-pre-wrap rounded-xl border border-border/10 bg-bg/34 px-3 py-2 font-mono text-xs leading-relaxed text-muted">
           {request.description}
         </pre>
       ) : null}

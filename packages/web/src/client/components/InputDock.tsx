@@ -476,7 +476,7 @@ export function InputDock({
                 onChange={onModelChange}
                 openDirection="up"
                 className="w-44"
-                triggerClassName="border-border/100 bg-surface-dark"
+                triggerClassName="rounded border-0 !bg-black"
                 disabled={isBusy || composerDisabled}
               />
             ) : null}
@@ -489,7 +489,7 @@ export function InputDock({
                 onChange={(value) => onEffortChange(value as ThinkingEffort)}
                 openDirection="up"
                 className="w-24"
-                triggerClassName="border-border/100 bg-surface-dark"
+                triggerClassName="rounded border-0 !bg-black"
                 disabled={isBusy || composerDisabled}
               />
             ) : null}

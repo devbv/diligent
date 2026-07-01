@@ -28,6 +28,7 @@ export interface MessageListProps {
 
 export type CollabItem = Extract<RenderItem, { kind: "collab" }>;
 export type ToolItem = Extract<RenderItem, { kind: "tool" }>;
+export type AssistantItem = Extract<RenderItem, { kind: "assistant" }>;
 export type MessageContentItem = Exclude<RenderItem, { kind: "collab" }>;
 export type ApprovalPrompt = NonNullable<MessageListProps["approvalPrompt"]>;
 export type QuestionPrompt = NonNullable<MessageListProps["questionPrompt"]>;
@@ -38,15 +39,27 @@ export interface MessageListRow {
   estimatedSize: number;
 }
 
+export type CollabRow = MessageListRow & { kind: "collab"; items: CollabItem[] };
+export type ToolGroupRow = MessageListRow & { kind: "toolGroup"; items: ToolItem[] };
+export type MessageRow = MessageListRow & { kind: "message"; item: MessageContentItem; suppressThinking?: boolean };
+export type ToolMessageRow = MessageRow & { item: ToolItem };
+export type ProgressActivityRow = CollabRow | ToolGroupRow | ToolMessageRow;
+
 export interface VirtuosoMessageListContext {
   rowCount: number;
   transcriptKey: string;
 }
 
 export type VirtualMessageRow =
-  | (MessageListRow & { kind: "collab"; items: CollabItem[] })
-  | (MessageListRow & { kind: "toolGroup"; items: ToolItem[] })
-  | (MessageListRow & { kind: "message"; item: MessageContentItem; suppressThinking?: boolean })
+  | CollabRow
+  | ToolGroupRow
+  | MessageRow
+  | (MessageListRow & {
+      kind: "progress";
+      assistant: AssistantItem;
+      activityRows: ProgressActivityRow[];
+      suppressThinking?: boolean;
+    })
   | (MessageListRow & { kind: "streaming" })
   | (MessageListRow & { kind: "compacting" })
   | (MessageListRow & { kind: "approval"; prompt: ApprovalPrompt })

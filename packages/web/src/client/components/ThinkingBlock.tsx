@@ -17,11 +17,7 @@ function summarize(text: string): string {
 
 export function ThinkingBlock({ text, streaming = false, duration = null }: ThinkingBlockProps) {
   if (streaming) {
-    return (
-      <div className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] rounded-lg bg-transparent py-1 font-mono text-xs leading-relaxed text-muted/65">
-        {text}
-      </div>
-    );
+    return <MarkdownContent text={text} className="thinking-content py-1" />;
   }
 
   const summary = summarize(text);
