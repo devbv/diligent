@@ -2466,3 +2466,175 @@ test("hydrateFromThreadRead stores full wait message text from status output", (
   const firstAgent = collabWait && collabWait.kind === "collab" ? collabWait.agents?.[0] : undefined;
   expect(firstAgent?.message).toBe(veryLongMessage);
 });
+
+// The wait tool embeds each child's full output inside its result JSON, which can be
+// large enough to trip the executor's tail-truncation. Tail-truncation drops the leading
+// `{"status":...}` header, so JSON.parse fails on resume. Because wait() only returns after
+// agents finish or time out, a completed wait must never leave sub-agents shown as "running".
+function truncatedWaitOutput(summaryLines: string[], timedOut = false): string {
+  const summary = JSON.stringify(summaryLines);
+  return (
+    `output":"${"x".repeat(80)}"}},"timed_out":${timedOut},"summary":${summary}}` +
+    "\n\n⚠️ WARNING: Output truncated. Some data has been omitted. Full output saved to disk." +
+    "\n(truncated from 120000 bytes. Full output at: /tmp/diligent-x/full-output.txt)"
+  );
+}
+
+test("hydrateFromThreadRead marks sub-agent completed when truncated wait output keeps summary", () => {
+  const hydrated = hydrateFromThreadRead(initialThreadState, {
+    items: [
+      {
+        type: "toolCall",
+        itemId: "tool:tc-spawn-1",
+        toolCallId: "tc-spawn-1",
+        toolName: "spawn_agent",
+        input: { description: "do work" },
+        output: JSON.stringify({ thread_id: "ses-child-1", nickname: "Cleo" }),
+        isError: false,
+        timestamp: 101,
+        startedAt: 100,
+        durationMs: 1,
+      },
+      {
+        type: "toolCall",
+        itemId: "tool:tc-wait-1",
+        toolCallId: "tc-wait-1",
+        toolName: "wait",
+        input: { ids: ["ses-child-1"] },
+        output: truncatedWaitOutput(["Cleo: Completed — did the work"]),
+        isError: false,
+        timestamp: 102,
+        startedAt: 101,
+        durationMs: 1,
+      },
+    ],
+    isRunning: false,
+    hasFollowUp: false,
+    entryCount: 2,
+    currentEffort: "medium",
+  });
+
+  const collab = hydrated.items.find((item) => item.kind === "collab" && item.eventType === "spawn");
+  expect(collab && collab.kind === "collab" ? collab.status : "").toBe("completed");
+  const collabWait = hydrated.items.find((item) => item.kind === "collab" && item.eventType === "wait");
+  expect(collabWait && collabWait.kind === "collab" ? collabWait.status : "").toBe("completed");
+});
+
+test("hydrateFromThreadRead preserves errored status from truncated wait summary", () => {
+  const hydrated = hydrateFromThreadRead(initialThreadState, {
+    items: [
+      {
+        type: "toolCall",
+        itemId: "tool:tc-spawn-1",
+        toolCallId: "tc-spawn-1",
+        toolName: "spawn_agent",
+        input: { description: "do work" },
+        output: JSON.stringify({ thread_id: "ses-child-1", nickname: "Cleo" }),
+        isError: false,
+        timestamp: 101,
+        startedAt: 100,
+        durationMs: 1,
+      },
+      {
+        type: "toolCall",
+        itemId: "tool:tc-wait-1",
+        toolCallId: "tc-wait-1",
+        toolName: "wait",
+        input: { ids: ["ses-child-1"] },
+        output: truncatedWaitOutput(["Cleo: Error — boom"]),
+        isError: false,
+        timestamp: 102,
+        startedAt: 101,
+        durationMs: 1,
+      },
+    ],
+    isRunning: false,
+    hasFollowUp: false,
+    entryCount: 2,
+    currentEffort: "medium",
+  });
+
+  const collab = hydrated.items.find((item) => item.kind === "collab" && item.eventType === "spawn");
+  expect(collab && collab.kind === "collab" ? collab.status : "").toBe("errored");
+});
+
+test("hydrateFromThreadRead falls back to completed via wait ids when summary is fully cut", () => {
+  const hydrated = hydrateFromThreadRead(initialThreadState, {
+    items: [
+      {
+        type: "toolCall",
+        itemId: "tool:tc-spawn-1",
+        toolCallId: "tc-spawn-1",
+        toolName: "spawn_agent",
+        input: { description: "do work" },
+        output: JSON.stringify({ thread_id: "ses-child-1", nickname: "Cleo" }),
+        isError: false,
+        timestamp: 101,
+        startedAt: 100,
+        durationMs: 1,
+      },
+      {
+        type: "toolCall",
+        itemId: "tool:tc-wait-1",
+        toolCallId: "tc-wait-1",
+        toolName: "wait",
+        input: { ids: ["ses-child-1"] },
+        output:
+          `${"x".repeat(200)}` +
+          "\n\n⚠️ WARNING: Output truncated. Some data has been omitted. Full output saved to disk." +
+          "\n(truncated from 120000 bytes. Full output at: /tmp/diligent-x/full-output.txt)",
+        isError: false,
+        timestamp: 102,
+        startedAt: 101,
+        durationMs: 1,
+      },
+    ],
+    isRunning: false,
+    hasFollowUp: false,
+    entryCount: 2,
+    currentEffort: "medium",
+  });
+
+  const collab = hydrated.items.find((item) => item.kind === "collab" && item.eventType === "spawn");
+  expect(collab && collab.kind === "collab" ? collab.status : "").toBe("completed");
+});
+
+test("hydrateFromThreadRead keeps sub-agent running when truncated wait summary reports still running", () => {
+  const hydrated = hydrateFromThreadRead(initialThreadState, {
+    items: [
+      {
+        type: "toolCall",
+        itemId: "tool:tc-spawn-1",
+        toolCallId: "tc-spawn-1",
+        toolName: "spawn_agent",
+        input: { description: "do work" },
+        output: JSON.stringify({ thread_id: "ses-child-1", nickname: "Cleo" }),
+        isError: false,
+        timestamp: 101,
+        startedAt: 100,
+        durationMs: 1,
+      },
+      {
+        type: "toolCall",
+        itemId: "tool:tc-wait-1",
+        toolCallId: "tc-wait-1",
+        toolName: "wait",
+        input: { ids: ["ses-child-1"] },
+        output: truncatedWaitOutput(["Cleo: Still running"], true),
+        isError: false,
+        timestamp: 102,
+        startedAt: 101,
+        durationMs: 1,
+      },
+    ],
+    isRunning: false,
+    hasFollowUp: false,
+    entryCount: 2,
+    currentEffort: "medium",
+  });
+
+  const collab = hydrated.items.find((item) => item.kind === "collab" && item.eventType === "spawn");
+  expect(collab && collab.kind === "collab" ? collab.status : "").toBe("running");
+  const collabWait = hydrated.items.find((item) => item.kind === "collab" && item.eventType === "wait");
+  expect(collabWait && collabWait.kind === "collab" ? collabWait.status : "").toBe("running");
+});

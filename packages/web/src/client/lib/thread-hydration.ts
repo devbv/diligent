@@ -39,6 +39,31 @@ function parseWaitOutput(
   }
 }
 
+const WAIT_SUMMARY_STATUS: Record<string, string> = {
+  Completed: "completed",
+  Error: "errored",
+  "Still running": "running",
+  Pending: "pending",
+  Shutdown: "shutdown",
+};
+
+/**
+ * Extract per-agent status from the human-readable `summary` lines the wait tool emits
+ * (e.g. `"Cleo: Completed — ..."`). These lines live at the tail of the tool output, so they
+ * usually survive tail-truncation even when the leading `{"status":...}` JSON header — and thus
+ * `JSON.parse` — does not.
+ */
+function parseWaitSummaryStatuses(output: string): Map<string, string> {
+  const byNickname = new Map<string, string>();
+  const re = /"([^":]+): (Completed|Error|Still running|Pending|Shutdown)\b/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(output)) !== null) {
+    const status = WAIT_SUMMARY_STATUS[match[2]];
+    if (status) byNickname.set(match[1], status);
+  }
+  return byNickname;
+}
+
 function parseCloseOutput(output: string): { threadId?: string; nickname?: string; status?: string } {
   try {
     const parsed = JSON.parse(output) as { thread_id?: string; nickname?: string; final_status?: { kind?: string } };
@@ -184,16 +209,43 @@ function hydrateFromSnapshotItems(state: ThreadState, payload: ThreadReadRespons
           )
           .findLast((candidate) => candidate.timestamp === (item.timestamp ?? item.startedAt ?? Date.now()));
         const snapshotAgents = new Map((snapshotWaitItem?.agents ?? []).map((agent) => [agent.threadId, agent]));
-        const agents = waitData?.agents.map((agent) => {
-          const snapshotAgent = snapshotAgents.get(agent.threadId);
-          const resolvedStatus = snapshotAgent?.status ?? agent.status;
-          return {
-            threadId: agent.threadId,
-            nickname: snapshotAgent?.nickname ?? childNicknameByThreadId.get(agent.threadId),
-            status: resolvedStatus,
-            message: snapshotAgent?.message ?? agent.message,
-          };
-        });
+
+        let agents: Array<{ threadId: string; nickname?: string; status?: string; message?: string }> | undefined;
+        if (waitData) {
+          agents = waitData.agents.map((agent) => {
+            const snapshotAgent = snapshotAgents.get(agent.threadId);
+            const resolvedStatus = snapshotAgent?.status ?? agent.status;
+            return {
+              threadId: agent.threadId,
+              nickname: snapshotAgent?.nickname ?? childNicknameByThreadId.get(agent.threadId),
+              status: resolvedStatus,
+              message: snapshotAgent?.message ?? agent.message,
+            };
+          });
+        } else {
+          // The wait output is unparseable — almost always because the executor tail-truncated
+          // a large child payload, discarding the leading `{"status":...}` JSON. wait() only
+          // returns after the requested agents finish or time out, so recover their status from
+          // the surviving summary lines (falling back to "completed") instead of leaving them
+          // incorrectly pinned to "running".
+          const waitedIds = Array.isArray((item.input as { ids?: unknown })?.ids)
+            ? (item.input as { ids: unknown[] }).ids.filter((id): id is string => typeof id === "string")
+            : [];
+          if (waitedIds.length > 0) {
+            const summaryByNickname = parseWaitSummaryStatuses(item.output);
+            agents = waitedIds.map((threadId) => {
+              const snapshotAgent = snapshotAgents.get(threadId);
+              const nickname = snapshotAgent?.nickname ?? childNicknameByThreadId.get(threadId);
+              const summaryStatus = nickname ? summaryByNickname.get(nickname) : undefined;
+              return {
+                threadId,
+                nickname,
+                status: snapshotAgent?.status ?? summaryStatus ?? "completed",
+                message: snapshotAgent?.message,
+              };
+            });
+          }
+        }
         const anyStillRunning = agents?.some((agent) => agent.status === "running") ?? false;
         current = withItem(current, `history:collab:wait:${item.toolCallId}`, {
           id: `history:collab:wait:${item.toolCallId}`,
@@ -201,7 +253,7 @@ function hydrateFromSnapshotItems(state: ThreadState, payload: ThreadReadRespons
           eventType: "wait",
           agents,
           status: anyStillRunning ? "running" : "completed",
-          timedOut: anyStillRunning ? waitData?.timedOut : false,
+          timedOut: anyStillRunning ? (waitData?.timedOut ?? /"timed_out":\s*true/.test(item.output)) : false,
           childTools: [],
           childTimeline: undefined,
           timestamp: item.timestamp ?? item.startedAt ?? Date.now(),
