@@ -142,6 +142,7 @@ export async function loadRuntimeConfig(cwd: string, paths: DiligentPaths): Prom
       toolsConfig: config.tools,
       skills,
       enableCollabTools: false,
+      mcpServers: config.mcpServers,
     });
     const result = await discoverAgents({
       cwd,

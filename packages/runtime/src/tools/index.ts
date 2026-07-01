@@ -25,6 +25,19 @@ export { createGlobTool } from "./glob";
 export { createGrepTool } from "./grep";
 export { IMMUTABLE_TOOLS, isImmutableTool } from "./immutable";
 export { createLsTool } from "./ls";
+export type {
+  McpCallResult,
+  McpOAuthDeps,
+  McpServerConfig,
+  McpServerRuntime,
+  McpToolDef,
+} from "./mcp";
+export {
+  createMcpToolProvider,
+  getMcpManager,
+  McpConnectionManager,
+  mcpToolName,
+} from "./mcp";
 export { createPlanTool } from "./plan";
 export type { PluginLoadResult, PluginManifest } from "./plugin-loader";
 export { getGlobalPluginPath, getGlobalPluginRoot, loadPlugin } from "./plugin-loader";

@@ -80,6 +80,7 @@ export interface ThreadHandlersContext {
   consumeTurn: (runtime: ThreadRuntime, runPromise: Promise<void>, turnId: string) => Promise<void>;
   resolveToolsContext: (threadId?: string) => Promise<{ cwd: string; tools: DiligentConfig["tools"] | undefined }>;
   getBundledToolProviders: () => BundledToolProvider[];
+  getMcpServers: () => DiligentConfig["mcpServers"];
   getSkillNames: () => string[];
   setActiveThreadId: (threadId: string | null) => void;
 }

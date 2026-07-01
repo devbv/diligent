@@ -1,14 +1,17 @@
 // @summary Factory that builds a DiligentAppServerConfig from a RuntimeConfig, eliminating Web/CLI duplication
+import { dirname, join } from "node:path";
 import { getModelInfoList, resolveModel } from "@diligent/core/llm/models";
 import type { ProviderName } from "@diligent/core/llm/types";
 import { MODE_SYSTEM_PROMPT_SUFFIXES, type Mode, PLAN_MODE_ALLOWED_TOOLS } from "../agent/mode";
 import { RuntimeAgent } from "../agent/runtime-agent";
+import { openBrowser as defaultOpenBrowser } from "../auth";
 import { applyConsentPatch, refreshPrivacyPolicyUrl, resolveConsentState } from "../config/consent";
 import type { RuntimeConfig } from "../config/runtime";
-import { saveGlobalConsent, saveGlobalModel } from "../config/writer";
+import { getGlobalConfigPath, saveGlobalConsent, saveGlobalModel } from "../config/writer";
 import { type DiligentPaths, ensureDiligentDir } from "../infrastructure";
 import type { BundledToolProvider } from "../tools/bundled-provider";
 import { buildDefaultTools } from "../tools/defaults";
+import { getMcpManager } from "../tools/mcp";
 import type { ConsentConfigManager } from "./config-handlers";
 import type { CreateAgentArgs, DiligentAppServerConfig } from "./server";
 
@@ -74,6 +77,7 @@ async function createRuntimeAgent(args: {
     host: { approve, ask },
     bundledToolProviders,
     provider: model.provider as ProviderName,
+    mcpServers: runtimeConfig.diligent.mcpServers,
   });
 
   const activeMode = (mode ?? "default") as Mode;
@@ -121,6 +125,15 @@ export function createAppServerConfig(opts: CreateAppServerConfigOptions): Dilig
   const { cwd, runtimeConfig, bundledToolProviders = [], consentBackend, overrides } = opts;
   const modelInfoList = getModelInfoList();
   const initialEffort = runtimeConfig.effort;
+
+  // Wire interactive OAuth for remote MCP servers: token state lives under the global
+  // diligent dir, and browser login uses the client-provided opener (falls back to default).
+  if (runtimeConfig.diligent.mcpServers) {
+    getMcpManager().setOAuthDeps({
+      storeDir: join(dirname(getGlobalConfigPath()), "mcp-oauth"),
+      openBrowser: overrides?.openBrowser ?? defaultOpenBrowser,
+    });
+  }
 
   // Consent is owned by `consentBackend` (remote source of truth) when injected; otherwise it
   // falls back to the local `config.jsonc`-backed manager below.
@@ -199,6 +212,7 @@ export function createAppServerConfig(opts: CreateAppServerConfigOptions): Dilig
     skillNames: runtimeConfig.skills.map((skill) => skill.name),
     hooks: runtimeConfig.diligent.hooks,
     bundledToolProviders,
+    mcpServers: runtimeConfig.diligent.mcpServers,
     userId: runtimeConfig.diligent.userId,
     ...overrides,
   };

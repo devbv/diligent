@@ -11,6 +11,48 @@ const HookCommandSchema = z.object({
   timeout: z.number().positive().optional(),
 });
 
+// P069: MCP client — external Model Context Protocol servers exposed as tools.
+// Shared fields across both stdio and HTTP transports.
+const McpServerSharedShape = {
+  enabled: z.boolean().optional(),
+  tools: z.record(z.string(), z.boolean()).optional(),
+  // Connect + initial listTools budget (default ~30s).
+  startupTimeoutMs: z.number().int().positive().optional(),
+  // Per tool-call budget (default ~120s); a hung call aborts instead of stalling the turn.
+  toolTimeoutMs: z.number().int().positive().optional(),
+};
+
+const McpStdioServerSchema = z.object({
+  type: z.literal("stdio").optional(),
+  command: z.string(),
+  args: z.array(z.string()).optional(),
+  env: z.record(z.string(), z.string()).optional(),
+  cwd: z.string().optional(),
+  ...McpServerSharedShape,
+});
+
+const McpOAuthConfigSchema = z.object({
+  enabled: z.boolean().optional(),
+  clientId: z.string().optional(),
+  scopes: z.array(z.string()).optional(),
+  resource: z.string().optional(),
+});
+
+const McpHttpServerSchema = z.object({
+  type: z.enum(["http", "sse"]).optional(),
+  url: z.string().url(),
+  headers: z.record(z.string(), z.string()).optional(),
+  bearerTokenEnvVar: z.string().optional(),
+  oauth: McpOAuthConfigSchema.optional(),
+  ...McpServerSharedShape,
+});
+
+export const McpServerConfigSchema = z.union([McpStdioServerSchema, McpHttpServerSchema]);
+export type McpServerConfig = z.infer<typeof McpServerConfigSchema>;
+export type McpStdioServerConfig = z.infer<typeof McpStdioServerSchema>;
+export type McpHttpServerConfig = z.infer<typeof McpHttpServerSchema>;
+export type McpOAuthConfig = z.infer<typeof McpOAuthConfigSchema>;
+
 export const DiligentConfigSchema = z
   .object({
     $schema: z.string().optional(),
@@ -165,6 +207,10 @@ export const DiligentConfigSchema = z
         conflictPolicy: z.enum(["error", "builtin_wins", "plugin_wins"]).optional(),
       })
       .optional(),
+
+    // MCP servers (P069) — external Model Context Protocol servers whose tools are
+    // exposed to the agent. Merges across global < project via deep object merge.
+    mcpServers: z.record(z.string(), McpServerConfigSchema).optional(),
 
     // AI-data consent (OVDR-11475 §3.A). Stores the first-run notice acknowledgement
     // and the service-improvement toggle. Absent fields fall back to defaults

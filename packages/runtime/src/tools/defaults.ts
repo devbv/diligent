@@ -17,6 +17,7 @@ import { createEditTool, createMultiEditTool } from "./edit";
 import { createGlobTool } from "./glob";
 import { createGrepTool } from "./grep";
 import { createLsTool } from "./ls";
+import { createMcpToolProvider } from "./mcp";
 import { createPlanTool } from "./plan";
 import { createReadTool } from "./read";
 import { createReadImageTool } from "./read-image";
@@ -51,6 +52,8 @@ export interface BuildDefaultToolsOptions {
   host?: RuntimeToolHost;
   bundledToolProviders?: BundledToolProvider[];
   provider?: ProviderName;
+  /** External MCP servers whose tools are exposed to the agent (P069). */
+  mcpServers?: DiligentConfig["mcpServers"];
 }
 
 function createProviderEditTools(
@@ -80,7 +83,12 @@ export async function buildDefaultTools(options: BuildDefaultToolsOptions): Prom
     host,
     bundledToolProviders,
     provider,
+    mcpServers,
   } = options;
+  const providers = [...(bundledToolProviders ?? [])];
+  if (mcpServers && Object.keys(mcpServers).length > 0) {
+    providers.push(createMcpToolProvider(mcpServers));
+  }
   const catalog = parentToolOverride
     ? {
         tools: [...parentToolOverride],
@@ -113,7 +121,7 @@ export async function buildDefaultTools(options: BuildDefaultToolsOptions): Prom
           builtinTools.push(createUpdateKnowledgeTool(paths.knowledge));
         }
 
-        return buildToolCatalog(builtinTools, toolsConfig, cwd, host, { bundledProviders: bundledToolProviders });
+        return buildToolCatalog(builtinTools, toolsConfig, cwd, host, { bundledProviders: providers });
       })();
 
   // 2. Add collab tools (always enabled, not user-configurable)

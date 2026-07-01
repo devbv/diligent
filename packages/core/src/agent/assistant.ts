@@ -16,8 +16,15 @@ import type { Tool } from "../tool/types";
 import type { AssistantMessage, Message } from "../types";
 import type { AgentStream } from "./types";
 
-function toFunctionToolDefinition(tool: Pick<Tool, "name" | "description" | "parameters">): FunctionToolDefinition {
-  const { $schema, ...schema } = zodToJsonSchema(tool.parameters) as Record<string, unknown>;
+function toFunctionToolDefinition(
+  tool: Pick<Tool, "name" | "description" | "parameters" | "inputSchema">,
+): FunctionToolDefinition {
+  const schema = tool.inputSchema
+    ? tool.inputSchema
+    : (() => {
+        const { $schema, ...rest } = zodToJsonSchema(tool.parameters) as Record<string, unknown>;
+        return rest;
+      })();
   return {
     kind: "function",
     name: tool.name,
@@ -26,7 +33,7 @@ function toFunctionToolDefinition(tool: Pick<Tool, "name" | "description" | "par
   };
 }
 
-function toToolDefinition(tool: Pick<Tool, "name" | "description" | "parameters">): ToolDefinition {
+function toToolDefinition(tool: Pick<Tool, "name" | "description" | "parameters" | "inputSchema">): ToolDefinition {
   if (tool.name === "web_action") {
     return {
       kind: "provider_builtin",

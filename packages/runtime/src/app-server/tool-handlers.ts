@@ -24,6 +24,7 @@ export async function handleToolsList(
     paths,
     toolsConfig: tools,
     bundledToolProviders: ctx.getBundledToolProviders(),
+    mcpServers: ctx.getMcpServers(),
   });
 
   return {
@@ -73,6 +74,7 @@ export async function handleToolsSet(
     paths,
     toolsConfig: writeResult.config.tools,
     bundledToolProviders: ctx.getBundledToolProviders(),
+    mcpServers: ctx.getMcpServers(),
   });
 
   return {
