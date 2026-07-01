@@ -55,7 +55,7 @@ export function createGrepTool(cwd: string): Tool<typeof GrepParams> {
           const output = "No matches found.";
           return {
             output,
-            render: createGrepRenderPayload({ ...args, path: searchPath }, output, { cwd }),
+            render: createGrepRenderPayload({ ...args, path: searchPath }, "", { cwd }),
           };
         }
 

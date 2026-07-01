@@ -74,6 +74,9 @@ describe("glob tool", () => {
     const tool = createGlobTool(tmpDir);
     const result = await tool.execute({ pattern: "*.xyz" }, makeCtx());
     expect(result.output).toContain("No files found");
+    expect(result.render?.outputSummary).toBe("0 files found");
+    const listBlock = result.render?.blocks.find((block) => block.type === "list");
+    expect(listBlock).toMatchObject({ type: "list", title: "└ Found 0 files", items: [] });
   });
 
   test("respects nested glob pattern", async () => {

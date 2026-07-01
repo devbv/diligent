@@ -49,7 +49,7 @@ export function createGlobTool(cwd: string): Tool<typeof GlobParams> {
           const output = "No files found matching pattern.";
           return {
             output,
-            render: createGlobRenderPayload({ ...args, path: searchPath }, output, { cwd }),
+            render: createGlobRenderPayload({ ...args, path: searchPath }, "", { cwd }),
           };
         }
 
