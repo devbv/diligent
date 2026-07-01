@@ -327,6 +327,13 @@ function convertAssistantContentBlock(block: ContentBlock): Anthropic.ContentBlo
       return convertWebSearchResultBlock(block);
     case "web_fetch_result":
       return convertWebFetchResultBlock(block);
+    case "thinking":
+      // Thinking blocks from other providers never carry an Anthropic signature.
+      // Replaying them verbatim after a model switch would make every future turn
+      // in this thread fail with "thinking blocks require signature". Drop them
+      // instead, matching how foreign provider_tool_use blocks are omitted.
+      if (!block.signature) return undefined;
+      return convertContentBlock(block);
     default:
       return convertContentBlock(block);
   }

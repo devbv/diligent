@@ -238,4 +238,22 @@ describe("Anthropic message conversion", () => {
 
     expect(converted).toEqual([{ role: "assistant", content: [{ type: "text", text: "done" }] }]);
   });
+
+  test("omits assistant thinking blocks without a signature from another provider", async () => {
+    const converted = await convertMessages([
+      {
+        role: "assistant",
+        content: [
+          { type: "thinking", thinking: "reasoning from another provider" },
+          { type: "text", text: "done" },
+        ],
+        model: TEST_MODEL.id,
+        usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
+        stopReason: "end_turn",
+        timestamp: 1,
+      },
+    ]);
+
+    expect(converted).toEqual([{ role: "assistant", content: [{ type: "text", text: "done" }] }]);
+  });
 });
