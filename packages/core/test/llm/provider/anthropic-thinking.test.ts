@@ -180,6 +180,33 @@ describe("createAnthropicStream", () => {
     ]);
   });
 
+  test("drops unsigned thinking blocks from user messages instead of throwing", async () => {
+    anthropicCalls.length = 0;
+    const stream = createAnthropicStream("test-key")(
+      baseModel({}),
+      {
+        ...EMPTY_CONTEXT,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "thinking", thinking: "leftover from a failed turn" },
+              { type: "text", text: "hello" },
+            ],
+            timestamp: Date.now(),
+          },
+        ],
+      },
+      { effort: "medium" },
+    );
+
+    await stream.result();
+    const request = anthropicCalls.at(-1) as { messages: Array<{ role: string; content: Array<{ type: string }> }> };
+    const userBlocks = request.messages.at(-1)?.content ?? [];
+    expect(userBlocks.some((b) => b.type === "thinking")).toBe(false);
+    expect(userBlocks.some((b) => b.type === "text")).toBe(true);
+  });
+
   test("reuses compactionSummary as a synthetic user message in standard Anthropic requests", async () => {
     anthropicCalls.length = 0;
     const stream = createAnthropicStream("test-key")(

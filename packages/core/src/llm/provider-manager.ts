@@ -8,7 +8,7 @@ import { createOpenAINativeCompaction, createOpenAIStream } from "./provider/ope
 import type { OpenAIImageDetail } from "./provider/openai-responses";
 import { createVertexStream } from "./provider/vertex";
 import { createZaiCodingPlanStream } from "./provider/zai-coding-plan";
-import type { ProviderName, StreamFunction } from "./types";
+import { ProviderError, type ProviderName, type StreamFunction } from "./types";
 
 export interface ExternalProviderAuth {
   isConfigured: () => boolean;
@@ -231,7 +231,11 @@ export class ProviderManager {
 
       const apiKey = this.authState.getApiKey(provider);
       if (!apiKey) {
-        throw new Error(`No authentication configured for ${provider}. Use /provider ${provider} to configure.`);
+        throw new ProviderError(
+          `No authentication configured for ${provider}. Use /provider ${provider} to configure.`,
+          "auth",
+          false,
+        );
       }
 
       const imageDetail = provider === "openai" ? this.openaiImageDetail : undefined;

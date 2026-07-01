@@ -192,7 +192,11 @@ export async function convertMessages(
       const blocks =
         typeof msg.content === "string"
           ? [{ type: "text" as const, text: msg.content }]
-          : (await materializeUserContentBlocks(msg.content, { cwd })).map(convertContentBlock);
+          : (await materializeUserContentBlocks(msg.content, { cwd }))
+              // Unsigned thinking blocks (e.g. persisted from a turn that failed mid-stream) can't be
+              // replayed to Anthropic — they'd 400 the whole thread. Drop them, matching the assistant path.
+              .filter((block) => !(block.type === "thinking" && !block.signature))
+              .map(convertContentBlock);
       result.push({ role: "user", content: blocks });
     } else if (msg.role === "assistant") {
       result.push({
