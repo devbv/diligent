@@ -1,11 +1,17 @@
 // @summary Rollback snapshot helpers: capture/restore .ovdrjm level snapshots.
+
 import { copyFileSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { resolvePaths } from "@diligent/runtime";
 import { resolveOvdrjmPathFromUmap } from "./ovdrjm-utils";
 
-/** Directory holding rollback snapshots, relative to the project cwd. */
+/**
+ * Directory holding rollback snapshots, under the project's storage-namespace
+ * dir (`.overdare/snapshots` in prod, `.diligent/snapshots` in dev). Uses
+ * resolvePaths so the namespace and dot-prefix follow the project convention.
+ */
 export function snapshotsDir(cwd: string): string {
-  return join(cwd, "overdare", "snapshots");
+  return join(resolvePaths(cwd).root, "snapshots");
 }
 
 /**
