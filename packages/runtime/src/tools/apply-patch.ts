@@ -30,6 +30,11 @@ interface FileChange {
   after: string;
 }
 
+interface PatchTouchedPath {
+  sourcePath: string;
+  targetPath: string;
+}
+
 const BEGIN_MARKER = "*** Begin Patch";
 const END_MARKER = "*** End Patch";
 
@@ -133,9 +138,9 @@ It is important to remember:
         };
       }
 
-      let changes: FileChange[];
+      let touchedPaths: PatchTouchedPath[];
       try {
-        changes = await verifyAndPlanChanges(hunks, cwd);
+        touchedPaths = listTouchedPaths(hunks, cwd);
       } catch (error) {
         const output = `apply_patch verification failed: ${error instanceof Error ? error.message : String(error)}`;
         return {
@@ -145,14 +150,14 @@ It is important to remember:
         };
       }
 
-      const previewPath = changes[0]?.targetPath ?? changes[0]?.sourcePath ?? "(none)";
+      const previewPath = touchedPaths[0]?.targetPath ?? touchedPaths[0]?.sourcePath ?? "(none)";
       const approval = await requestToolApproval(host, {
         permission: "write",
         toolName: "apply_patch",
-        description: `Apply patch touching ${changes.length} file(s)`,
+        description: `Apply patch touching ${touchedPaths.length} file(s)`,
         details: {
           file_path: previewPath,
-          paths: changes.map((change) => change.targetPath),
+          paths: touchedPaths.map((path) => path.targetPath),
         },
       });
       if (approval === "reject") {
@@ -164,8 +169,9 @@ It is important to remember:
         };
       }
 
+      let changes: FileChange[];
       try {
-        await applyChanges(changes);
+        changes = await applyHunks(hunks, cwd);
       } catch (error) {
         const output = `Error applying patch: ${error instanceof Error ? error.message : String(error)}`;
         return {
@@ -180,7 +186,7 @@ It is important to remember:
         const relTarget = normalizeRelPath(relativeCrossPlatform(cwd, change.targetPath));
         if (change.type === "add") return `A ${relTarget}`;
         if (change.type === "delete") return `D ${relSource}`;
-        if (change.type === "move") return `M ${relSource} -> ${relTarget}`;
+        if (change.type === "move") return `M ${relTarget}`;
         return `M ${relTarget}`;
       });
 
@@ -356,18 +362,31 @@ function resolvePatchPath(cwd: string, patchPath: string): string {
   return resolveCrossPlatformPath(cwd, patchPath);
 }
 
-async function verifyAndPlanChanges(hunks: PatchHunk[], cwd: string): Promise<FileChange[]> {
+function listTouchedPaths(hunks: PatchHunk[], cwd: string): PatchTouchedPath[] {
+  return hunks.map((hunk) => {
+    const sourcePath = resolvePatchPath(cwd, hunk.path);
+    const targetPath = hunk.type === "update" && hunk.movePath ? resolvePatchPath(cwd, hunk.movePath) : sourcePath;
+    return { sourcePath, targetPath };
+  });
+}
+
+async function applyHunks(hunks: PatchHunk[], cwd: string): Promise<FileChange[]> {
   const changes: FileChange[] = [];
 
   for (const hunk of hunks) {
     if (hunk.type === "add") {
       const targetPath = resolvePatchPath(cwd, hunk.path);
+      const before = await readFile(targetPath, "utf-8").catch(() => "");
       const after = hunk.lines.length === 0 ? "" : `${hunk.lines.join("\n")}\n`;
+
+      await mkdir(dirnameCrossPlatform(targetPath), { recursive: true });
+      await writeFile(targetPath, after, "utf-8");
+
       changes.push({
         type: "add",
         sourcePath: targetPath,
         targetPath,
-        before: "",
+        before,
         after,
       });
       continue;
@@ -377,9 +396,12 @@ async function verifyAndPlanChanges(hunks: PatchHunk[], cwd: string): Promise<Fi
       const sourcePath = resolvePatchPath(cwd, hunk.path);
       const info = await stat(sourcePath).catch(() => null);
       if (!info || !info.isFile()) {
-        throw new Error(`Failed to read file to delete: ${sourcePath}`);
+        throw new Error(`Failed to delete file ${sourcePath}`);
       }
       const before = await readFile(sourcePath, "utf-8");
+
+      await rm(sourcePath);
+
       changes.push({
         type: "delete",
         sourcePath,
@@ -398,6 +420,13 @@ async function verifyAndPlanChanges(hunks: PatchHunk[], cwd: string): Promise<Fi
     const before = await readFile(sourcePath, "utf-8");
     const after = deriveNewContent(sourcePath, before, hunk.chunks);
     const targetPath = hunk.movePath ? resolvePatchPath(cwd, hunk.movePath) : sourcePath;
+
+    await mkdir(dirnameCrossPlatform(targetPath), { recursive: true });
+    await writeFile(targetPath, after, "utf-8");
+
+    if (hunk.movePath && sourcePath !== targetPath) {
+      await rm(sourcePath, { force: true });
+    }
 
     changes.push({
       type: hunk.movePath ? "move" : "update",
@@ -533,20 +562,4 @@ function seekSequence(lines: string[], pattern: string[], start: number, eof = f
   if (trim !== -1) return trim;
 
   return tryMatch(lines, pattern, start, (a, b) => normalizeUnicode(a.trim()) === normalizeUnicode(b.trim()), eof);
-}
-
-async function applyChanges(changes: FileChange[]): Promise<void> {
-  for (const change of changes) {
-    if (change.type === "delete") {
-      await rm(change.sourcePath);
-      continue;
-    }
-
-    await mkdir(dirnameCrossPlatform(change.targetPath), { recursive: true });
-    await writeFile(change.targetPath, change.after, "utf-8");
-
-    if (change.type === "move" && change.sourcePath !== change.targetPath) {
-      await rm(change.sourcePath, { force: true });
-    }
-  }
 }

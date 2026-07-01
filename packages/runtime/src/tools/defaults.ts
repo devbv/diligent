@@ -1,5 +1,6 @@
 // @summary Shared default tool assembly used by both CLI and Web server
 
+import type { ProviderName } from "@diligent/core/llm/types";
 import type { Tool } from "@diligent/core/tool/types";
 import type { AgentRegistry, CollabToolDeps } from "../collab";
 import { createCollabTools } from "../collab";
@@ -12,6 +13,7 @@ import type { BundledToolProvider } from "./bundled-provider";
 import type { RuntimeToolHost } from "./capabilities";
 import type { PluginLoadError, PluginStateEntry, ToolStateEntry } from "./catalog";
 import { buildToolCatalog } from "./catalog";
+import { createEditTool, createMultiEditTool } from "./edit";
 import { createGlobTool } from "./glob";
 import { createGrepTool } from "./grep";
 import { createLsTool } from "./ls";
@@ -48,6 +50,21 @@ export interface BuildDefaultToolsOptions {
   existingRegistry?: AgentRegistry;
   host?: RuntimeToolHost;
   bundledToolProviders?: BundledToolProvider[];
+  provider?: ProviderName;
+}
+
+function createProviderEditTools(
+  provider: ProviderName | undefined,
+  cwd: string,
+  host: RuntimeToolHost | undefined,
+): Tool[] {
+  if (provider === "openai" || provider === "chatgpt") {
+    return [createApplyPatchTool(cwd, host)];
+  }
+  if (provider === undefined) {
+    return [createApplyPatchTool(cwd, host), createEditTool(host), createMultiEditTool(host)];
+  }
+  return [createEditTool(host), createMultiEditTool(host)];
 }
 
 export async function buildDefaultTools(options: BuildDefaultToolsOptions): Promise<BuildDefaultToolsResult> {
@@ -62,6 +79,7 @@ export async function buildDefaultTools(options: BuildDefaultToolsOptions): Prom
     existingRegistry,
     host,
     bundledToolProviders,
+    provider,
   } = options;
   const catalog = parentToolOverride
     ? {
@@ -78,7 +96,7 @@ export async function buildDefaultTools(options: BuildDefaultToolsOptions): Prom
           createSkillTool(skills),
           createReadTool(),
           createReadImageTool(),
-          createApplyPatchTool(cwd, host),
+          ...createProviderEditTools(provider, cwd, host),
           createLsTool(),
           createGlobTool(cwd),
           createGrepTool(cwd),

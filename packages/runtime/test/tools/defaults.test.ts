@@ -7,6 +7,14 @@ import { z } from "zod";
 import type { BundledToolProvider } from "../../src/tools/bundled-provider";
 import { buildDefaultTools } from "../../src/tools/defaults";
 
+function toolNamesFor(result: Awaited<ReturnType<typeof buildDefaultTools>>): string[] {
+  return result.tools.map((tool) => tool.name);
+}
+
+function stateNamesFor(result: Awaited<ReturnType<typeof buildDefaultTools>>): string[] {
+  return result.toolState.map((tool) => tool.name);
+}
+
 describe("buildDefaultTools web gating", () => {
   test("includes provider-native web placeholder tool by default", async () => {
     const result = await buildDefaultTools({ cwd: "/tmp" });
@@ -82,5 +90,71 @@ describe("buildDefaultTools web gating", () => {
       else process.env.HOME = originalHome;
       await rm(isolatedHome, { recursive: true, force: true });
     }
+  });
+});
+
+describe("buildDefaultTools provider-specific edit tools", () => {
+  test("shows all edit tool families when provider is not fixed", async () => {
+    const result = await buildDefaultTools({ cwd: "/tmp" });
+    const names = toolNamesFor(result);
+    const stateNames = stateNamesFor(result);
+
+    expect(names).toContain("apply_patch");
+    expect(names).toContain("edit");
+    expect(names).toContain("multi_edit");
+    expect(stateNames).toContain("apply_patch");
+    expect(stateNames).toContain("edit");
+    expect(stateNames).toContain("multi_edit");
+  });
+
+  test.each(["openai", "chatgpt"] as const)("uses apply_patch only for %s", async (provider) => {
+    const result = await buildDefaultTools({ cwd: "/tmp", provider });
+    const names = toolNamesFor(result);
+    const stateNames = stateNamesFor(result);
+
+    expect(names).toContain("apply_patch");
+    expect(names).not.toContain("edit");
+    expect(names).not.toContain("multi_edit");
+    expect(stateNames).toContain("apply_patch");
+    expect(stateNames).not.toContain("edit");
+    expect(stateNames).not.toContain("multi_edit");
+  });
+
+  test.each([
+    "anthropic",
+    "gemini",
+    "vertex",
+    "zai-coding-plan",
+  ] as const)("uses edit and multi_edit only for %s", async (provider) => {
+    const result = await buildDefaultTools({ cwd: "/tmp", provider });
+    const names = toolNamesFor(result);
+    const stateNames = stateNamesFor(result);
+
+    expect(names).not.toContain("apply_patch");
+    expect(names).toContain("edit");
+    expect(names).toContain("multi_edit");
+    expect(stateNames).not.toContain("apply_patch");
+    expect(stateNames).toContain("edit");
+    expect(stateNames).toContain("multi_edit");
+  });
+
+  test("cannot enable the opposite edit tool family through builtin config when provider is fixed", async () => {
+    const openAiResult = await buildDefaultTools({
+      cwd: "/tmp",
+      provider: "openai",
+      toolsConfig: { builtin: { edit: true, multi_edit: true } },
+    });
+    const anthropicResult = await buildDefaultTools({
+      cwd: "/tmp",
+      provider: "anthropic",
+      toolsConfig: { builtin: { apply_patch: true } },
+    });
+
+    expect(toolNamesFor(openAiResult)).toContain("apply_patch");
+    expect(toolNamesFor(openAiResult)).not.toContain("edit");
+    expect(toolNamesFor(openAiResult)).not.toContain("multi_edit");
+    expect(toolNamesFor(anthropicResult)).not.toContain("apply_patch");
+    expect(toolNamesFor(anthropicResult)).toContain("edit");
+    expect(toolNamesFor(anthropicResult)).toContain("multi_edit");
   });
 });

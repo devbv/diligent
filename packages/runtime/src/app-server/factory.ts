@@ -52,6 +52,7 @@ async function createRuntimeAgent(args: {
   const { cwd, mode, effort, modelId, approve, ask, getSessionId, existingAgent, onChildStop, userId } = request;
   const guardedSystemPrompt = withSkillGuardrail(runtimeConfig);
   const paths = await getPaths();
+  const model = resolveModel(modelId);
   const toolsResult = await buildDefaultTools({
     cwd,
     paths,
@@ -72,10 +73,10 @@ async function createRuntimeAgent(args: {
     existingRegistry: existingAgent?.registry,
     host: { approve, ask },
     bundledToolProviders,
+    provider: model.provider as ProviderName,
   });
 
   const activeMode = (mode ?? "default") as Mode;
-  const model = resolveModel(modelId);
   const llmCompactionFn = runtimeConfig.providerManager.createNativeCompactionForProvider(
     model.provider as ProviderName,
   );

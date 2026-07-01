@@ -15,7 +15,7 @@ export { COLLAB_TOOL_NAMES, CUSTOM_RENDER_TOOLS };
 export interface ToolCapabilities {
   /** Cannot be disabled by user config (D027). */
   immutable?: true;
-  /** Allowed in plan mode (read-only exploration). Bash, write, apply_patch are excluded. */
+  /** Allowed in plan mode (read-only exploration). Bash and file mutation tools are excluded. */
   planModeAllowed?: true;
   /** Belongs to the collab layer — excluded from child agents to prevent nesting. */
   collabExcluded?: true;
@@ -47,6 +47,8 @@ export const TOOL_CAPABILITIES: Record<string, ToolCapabilities> = {
   bash: { hasCustomRender: true },
   write: { hasCustomRender: true },
   apply_patch: { hasCustomRender: true },
+  edit: { hasCustomRender: true },
+  multi_edit: { hasCustomRender: true },
   update_knowledge: { hasCustomRender: true },
 
   // Collab tools (excluded from child agents to prevent nesting)

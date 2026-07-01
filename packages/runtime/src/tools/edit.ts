@@ -257,11 +257,7 @@ When making edits:
 - Do not leave the code in a broken state
 - Always use absolute file paths (starting with /)
 - Use replace_all for replacing and renaming strings across the file. This parameter is useful if you want to rename a variable for instance.
-
-If you want to create a new file, use:
-- A new file path, including dir name if needed
-- First edit: empty old_string and the new file's contents as new_string
-- Subsequent edits: normal edit operations on the created content`,
+`,
     parameters: MultiEditParams,
 
     async execute(args, ctx): Promise<ToolResult> {
