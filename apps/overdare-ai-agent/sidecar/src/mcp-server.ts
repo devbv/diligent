@@ -113,21 +113,30 @@ async function buildPromptRegistry(bootstrapDir: string): Promise<Map<string, Pr
 }
 
 /**
+ * Skills that are not usable through the MCP surface — they depend on host-only features (e.g. the
+ * Knowledge store / project-memory handoff) that this server does not expose — so they must not be
+ * offered via load_skill.
+ */
+const MCP_EXCLUDED_SKILLS = new Set(["project-memory"]);
+
+/**
  * Bootstrap-backed tools the *model* can call directly. Prompts (system prompt, skills) are only
  * surfaced by Claude Code to the user as slash commands — the model cannot fetch them — so the same
  * content is also exposed as tools here: `ensure_system_prompt` returns the base OVERDARE system
  * prompt, and `load_skill` returns a named skill's full instructions. `load_skill`'s description
  * carries the available skill names so the model knows what it can pull without a separate call.
+ * Skills that rely on host-only features unavailable over MCP are filtered out (MCP_EXCLUDED_SKILLS).
  */
 async function buildBootstrapTools(bootstrapDir: string): Promise<Tool[]> {
   const systemPromptPath = join(bootstrapDir, "system-prompt.txt");
 
   const skillsDir = join(bootstrapDir, "skills");
-  const { skills } = await discoverSkills({
+  const { skills: discovered } = await discoverSkills({
     cwd: bootstrapDir,
     globalConfigDir: join(bootstrapDir, "__no_global__"),
     additionalPaths: [skillsDir],
   });
+  const skills = discovered.filter((skill) => !MCP_EXCLUDED_SKILLS.has(skill.name));
   const skillsByName = new Map(skills.map((skill) => [skill.name, skill]));
   const skillIndex = skills.length
     ? skills.map((skill) => `- ${skill.name}: ${skill.description}`).join("\n")
