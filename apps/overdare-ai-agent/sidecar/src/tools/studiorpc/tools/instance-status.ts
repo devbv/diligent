@@ -65,7 +65,7 @@ function statusRender(status: InstanceToolStatus): ToolRenderPayload {
 
 export function instanceStatusResult(status: InstanceToolStatus): ToolResult {
   return {
-    output: status.message,
+    output: statusOutput(status),
     render: statusRender(status),
     metadata: {
       error: true,
@@ -73,6 +73,10 @@ export function instanceStatusResult(status: InstanceToolStatus): ToolResult {
       status,
     },
   };
+}
+
+function statusOutput(status: InstanceToolStatus): string {
+  return ["<studio_instance_status>", JSON.stringify(status), "</studio_instance_status>", status.message].join("\n");
 }
 
 export class InstanceToolStatusError extends Error {

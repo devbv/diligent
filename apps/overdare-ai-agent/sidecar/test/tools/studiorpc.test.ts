@@ -67,6 +67,8 @@ function expectStatus(result: Awaited<ReturnType<Tool["execute"]>>, status: Reco
     method: status.operation,
     status,
   });
+  const outputStatus = parseOutputStatus(result.output);
+  expect(outputStatus).toMatchObject(status);
   expect(result.render).toMatchObject({
     outputSummary: status.code,
     blocks: [
@@ -74,6 +76,12 @@ function expectStatus(result: Awaited<ReturnType<Tool["execute"]>>, status: Reco
       expect.objectContaining({ type: "summary" }),
     ],
   });
+}
+
+function parseOutputStatus(output: string): Record<string, unknown> {
+  const match = output.match(/<studio_instance_status>\n([\s\S]*?)\n<\/studio_instance_status>/);
+  expect(match).not.toBeNull();
+  return JSON.parse(match![1]) as Record<string, unknown>;
 }
 
 afterEach(() => {
