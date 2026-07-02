@@ -57,6 +57,22 @@ export interface BuildDefaultToolsOptions {
   provider?: ProviderName;
   /** External MCP servers whose tools are exposed to the agent (P069). */
   mcpServers?: DiligentConfig["mcpServers"];
+  /**
+   * How MCP tools are surfaced to the model. `eager` (default) exposes every tool; `lazy` exposes
+   * a single `mcp` search/run proxy; `auto` switches to lazy once the exposed tool count exceeds
+   * the threshold. Only the runtime-agent build passes this; the tool-settings surface stays eager.
+   */
+  mcpToolLoading?: NonNullable<DiligentConfig["mcp"]>["toolLoading"];
+  /** Threshold for `auto` mode (see `mcpToolLoading`). */
+  mcpLazyThreshold?: number;
+  /** Default per-MCP-tool output cap in approx tokens. */
+  mcpMaxOutputTokens?: number;
+  /** Console-warn threshold for a single MCP tool's output, in approx tokens. */
+  mcpWarnOutputTokens?: number;
+  /** Expose MCP resource proxy tools when supported (default true). */
+  mcpResources?: boolean;
+  /** Expose MCP prompt proxy tools when supported (default true). */
+  mcpPrompts?: boolean;
 }
 
 function createProviderEditTools(
@@ -87,6 +103,12 @@ export async function buildDefaultTools(options: BuildDefaultToolsOptions): Prom
     bundledToolProviders,
     provider,
     mcpServers,
+    mcpToolLoading = "eager",
+    mcpLazyThreshold,
+    mcpMaxOutputTokens,
+    mcpWarnOutputTokens,
+    mcpResources,
+    mcpPrompts,
   } = options;
   const providers = [...(bundledToolProviders ?? [])];
   if (mcpServers && Object.keys(mcpServers).length > 0) {
@@ -98,7 +120,16 @@ export async function buildDefaultTools(options: BuildDefaultToolsOptions): Prom
     if (!manager.hasOAuthDeps()) {
       manager.setOAuthDeps({ storeDir: join(dirname(getGlobalConfigPath()), "mcp-oauth"), openBrowser });
     }
-    providers.push(createMcpToolProvider(mcpServers));
+    providers.push(
+      createMcpToolProvider(mcpServers, {
+        toolLoading: mcpToolLoading,
+        lazyThreshold: mcpLazyThreshold,
+        maxOutputTokens: mcpMaxOutputTokens,
+        warnOutputTokens: mcpWarnOutputTokens,
+        exposeResources: mcpResources,
+        exposePrompts: mcpPrompts,
+      }),
+    );
   }
   const catalog = parentToolOverride
     ? {

@@ -3,8 +3,13 @@
 import { describe, expect, test } from "bun:test";
 import type { ToolContext } from "@diligent/core/tool/types";
 import type { McpConnectionManager } from "@diligent/runtime/tools";
-import { mcpToolName, mcpToolToDiligentTool } from "../../../src/tools/mcp/to-tool";
-import type { McpCallResult, McpToolDef } from "../../../src/tools/mcp/types";
+import {
+  mapMcpCallResult,
+  mcpToolName,
+  mcpToolToDiligentTool,
+  resolveMcpOutputLimit,
+} from "../../../src/tools/mcp/to-tool";
+import type { McpCallResult, McpOutputLimit, McpToolDef } from "../../../src/tools/mcp/types";
 
 function makeCtx(): ToolContext {
   return { toolCallId: "tc_mcp", signal: new AbortController().signal, abort: () => {} };
@@ -115,5 +120,28 @@ describe("mcpToolToDiligentTool", () => {
     const result = await tool.execute({ q: "open" }, makeCtx());
     expect(result.output).toMatch(/error/i);
     expect(result.metadata).toMatchObject({ isError: true });
+  });
+
+  test("applies the output limit as a per-result byte cap", () => {
+    const limit: McpOutputLimit = { maxBytes: 4000, warnBytes: 2000 };
+    const mapped = mapMcpCallResult({ text: "body", images: [], isError: false }, "s", "t", limit);
+    expect(mapped.maxOutputBytes).toBe(4000);
+  });
+
+  test("no output limit leaves maxOutputBytes unset (default cap applies)", () => {
+    const mapped = mapMcpCallResult({ text: "body", images: [], isError: false }, "s", "t");
+    expect(mapped.maxOutputBytes).toBeUndefined();
+  });
+});
+
+describe("resolveMcpOutputLimit", () => {
+  const base: McpOutputLimit = { maxBytes: 100_000, warnBytes: 40_000 };
+
+  test("per-tool char override replaces maxBytes but keeps warn", () => {
+    expect(resolveMcpOutputLimit(25_000, base)).toEqual({ maxBytes: 25_000, warnBytes: 40_000 });
+  });
+
+  test("no override returns the default limit unchanged", () => {
+    expect(resolveMcpOutputLimit(undefined, base)).toBe(base);
   });
 });

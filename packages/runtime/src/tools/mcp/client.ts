@@ -23,6 +23,10 @@ import {
   isHttpServer,
   isStdioServer,
   type McpCallResult,
+  type McpGetPromptResult,
+  type McpPromptDef,
+  type McpReadResourceResult,
+  type McpResourceDef,
   type McpServerConfig,
   type McpServerRuntime,
   type McpServerStatus,
@@ -36,6 +40,8 @@ interface ActiveConnection {
   transport: Transport;
   tools: McpToolDef[];
   toolTimeoutMs: number;
+  /** Advertised server capabilities (from `initialize`), gating resources/prompts access. */
+  capabilities: ReturnType<Client["getServerCapabilities"]>;
 }
 
 /** Cached per-server outcome from the last `sync()`/`login()`, powering `listStatus` without reconnecting. */
@@ -105,12 +111,19 @@ function timeoutOf(config: McpServerConfig, key: "startupTimeoutMs" | "toolTimeo
   return typeof value === "number" && value > 0 ? value : fallback;
 }
 
+/** Read the optional per-tool output cap advertised via MCP `_meta` (`anthropic/maxResultSizeChars`). */
+function readMaxResultSizeChars(tool: { _meta?: Record<string, unknown> }): number | undefined {
+  const raw = tool._meta?.["anthropic/maxResultSizeChars"];
+  return typeof raw === "number" && Number.isFinite(raw) && raw > 0 ? raw : undefined;
+}
+
 function mapToolDefs(tools: Awaited<ReturnType<Client["listTools"]>>["tools"]): McpToolDef[] {
   return tools.map((tool) => ({
     name: tool.name,
     description: tool.description,
     inputSchema: (tool.inputSchema ?? { type: "object" }) as Record<string, unknown>,
     readOnly: tool.annotations?.readOnlyHint === true,
+    maxResultSizeChars: readMaxResultSizeChars(tool),
   }));
 }
 
@@ -286,6 +299,7 @@ export class McpConnectionManager {
         transport,
         tools,
         toolTimeoutMs,
+        capabilities: client.getServerCapabilities(),
       });
       this.recordStatus(serverName, config, { status: "connected", toolCount: tools.length });
       return { toolCount: tools.length };
@@ -322,6 +336,81 @@ export class McpConnectionManager {
       { signal, timeout: conn.toolTimeoutMs },
     );
     return normalizeCallResult(result);
+  }
+
+  /** True when a connected server advertises the `resources` capability. */
+  supportsResources(serverName: string): boolean {
+    return this.connections.get(serverName)?.capabilities?.resources != null;
+  }
+
+  /** True when a connected server advertises the `prompts` capability. */
+  supportsPrompts(serverName: string): boolean {
+    return this.connections.get(serverName)?.capabilities?.prompts != null;
+  }
+
+  /** List a server's resources. Returns `[]` when not connected or the capability is absent. */
+  async listResources(serverName: string): Promise<McpResourceDef[]> {
+    const conn = this.connections.get(serverName);
+    if (!conn || conn.capabilities?.resources == null) return [];
+    const listed = await conn.client.listResources(undefined, { timeout: conn.toolTimeoutMs });
+    return listed.resources.map((r) => ({
+      uri: r.uri,
+      name: r.name,
+      description: r.description,
+      mimeType: r.mimeType,
+    }));
+  }
+
+  /** Read a resource by URI. Throws only if the server is not connected. */
+  async readResource(serverName: string, uri: string, signal: AbortSignal): Promise<McpReadResourceResult> {
+    const conn = this.connections.get(serverName);
+    if (!conn) throw new Error(`MCP server "${serverName}" is not connected`);
+    const res = await conn.client.readResource({ uri }, { signal, timeout: conn.toolTimeoutMs });
+    const parts: string[] = [];
+    for (const content of res.contents) {
+      if ("text" in content && typeof content.text === "string") parts.push(content.text);
+      else if ("blob" in content)
+        parts.push(`[binary ${content.uri}${content.mimeType ? ` ${content.mimeType}` : ""}]`);
+    }
+    return { text: parts.join("\n").trim() };
+  }
+
+  /** List a server's prompt templates. Returns `[]` when not connected or the capability is absent. */
+  async listPrompts(serverName: string): Promise<McpPromptDef[]> {
+    const conn = this.connections.get(serverName);
+    if (!conn || conn.capabilities?.prompts == null) return [];
+    const listed = await conn.client.listPrompts(undefined, { timeout: conn.toolTimeoutMs });
+    return listed.prompts.map((p) => ({
+      name: p.name,
+      description: p.description,
+      arguments: p.arguments?.map((a) => ({ name: a.name, description: a.description, required: a.required })),
+    }));
+  }
+
+  /** Render a prompt template. Throws only if the server is not connected. */
+  async getPrompt(
+    serverName: string,
+    name: string,
+    args: Record<string, unknown> | undefined,
+    signal: AbortSignal,
+  ): Promise<McpGetPromptResult> {
+    const conn = this.connections.get(serverName);
+    if (!conn) throw new Error(`MCP server "${serverName}" is not connected`);
+    const stringArgs = args
+      ? Object.fromEntries(Object.entries(args).map(([k, v]) => [k, typeof v === "string" ? v : String(v)]))
+      : undefined;
+    const res = await conn.client.getPrompt({ name, arguments: stringArgs }, { signal, timeout: conn.toolTimeoutMs });
+    const lines: string[] = [];
+    for (const message of res.messages) {
+      const content = message.content;
+      if (content.type === "text") lines.push(`${message.role}: ${content.text}`);
+      else if (content.type === "image") lines.push(`${message.role}: [image ${content.mimeType}]`);
+      else if (content.type === "resource") {
+        const resource = content.resource as { text?: string; uri?: string };
+        lines.push(`${message.role}: ${resource.text ?? `[resource ${resource.uri}]`}`);
+      } else lines.push(`${message.role}: [${(content as { type: string }).type}]`);
+    }
+    return { description: res.description as string | undefined, text: lines.join("\n").trim() };
   }
 
   async disposeAll(): Promise<void> {
@@ -408,7 +497,14 @@ export class McpConnectionManager {
     const listed = await withTimeout(client.listTools(), startupTimeoutMs, `MCP "${name}" listTools`, () => {
       void client.close();
     });
-    return { signature, client, transport, tools: mapToolDefs(listed.tools), toolTimeoutMs };
+    return {
+      signature,
+      client,
+      transport,
+      tools: mapToolDefs(listed.tools),
+      toolTimeoutMs,
+      capabilities: client.getServerCapabilities(),
+    };
   }
 
   private async createTransport(

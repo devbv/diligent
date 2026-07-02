@@ -110,4 +110,38 @@ describe("executeTool", () => {
     expect(result.output).toContain("WARNING"); // warning marker
     expect(result.truncateDirection).toBe("head_tail");
   });
+
+  test("per-result maxOutputBytes tightens the cap below the default", async () => {
+    const cappedTool: Tool = {
+      name: "capped",
+      description: "Small custom cap",
+      parameters: z.object({}),
+      async execute() {
+        return { output: "y".repeat(2_000), maxOutputBytes: 500 };
+      },
+    };
+    const registry = new ToolRegistryBuilder().register(cappedTool).build();
+    const toolCall: ToolCallBlock = { type: "tool_call", id: "tc_1", name: "capped", input: {} };
+
+    const result = await executeTool(registry, toolCall, makeCtx());
+    expect(result.metadata?.truncated).toBe(true);
+    expect(result.metadata?.truncatedFrom).toEqual({ bytes: 2_000 });
+  });
+
+  test("per-result maxOutputBytes can raise the cap above the default", async () => {
+    const bigTool: Tool = {
+      name: "big_allowed",
+      description: "Large but allowed",
+      parameters: z.object({}),
+      async execute() {
+        return { output: "z".repeat(60_000), maxOutputBytes: 100_000 };
+      },
+    };
+    const registry = new ToolRegistryBuilder().register(bigTool).build();
+    const toolCall: ToolCallBlock = { type: "tool_call", id: "tc_1", name: "big_allowed", input: {} };
+
+    const result = await executeTool(registry, toolCall, makeCtx());
+    expect(result.metadata?.truncated).toBeUndefined();
+    expect(result.output).toHaveLength(60_000);
+  });
 });

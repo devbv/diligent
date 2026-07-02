@@ -63,4 +63,43 @@ describe("createMcpToolProvider", () => {
     const tools = await provider.createTools({ cwd: process.cwd() });
     expect(tools).toHaveLength(0);
   });
+
+  test("lazy mode exposes only the search + run proxy tools", async () => {
+    __setMcpManagerForTest(new McpConnectionManager(factory));
+    const provider = createMcpToolProvider({ docs: { command: "x" } }, { toolLoading: "lazy" });
+    const tools = await provider.createTools({ cwd: process.cwd() });
+    expect(tools.map((t) => t.name).sort()).toEqual(["mcp_run_tool", "mcp_search_tools"]);
+  });
+
+  test("auto mode stays eager below the threshold", async () => {
+    __setMcpManagerForTest(new McpConnectionManager(factory));
+    const provider = createMcpToolProvider({ docs: { command: "x" } }, { toolLoading: "auto", lazyThreshold: 10 });
+    const tools = await provider.createTools({ cwd: process.cwd() });
+    expect(tools.map((t) => t.name).sort()).toEqual(["mcp__docs__alpha", "mcp__docs__beta"]);
+  });
+
+  test("auto mode switches to lazy above the threshold", async () => {
+    __setMcpManagerForTest(new McpConnectionManager(factory));
+    const provider = createMcpToolProvider({ docs: { command: "x" } }, { toolLoading: "auto", lazyThreshold: 1 });
+    const tools = await provider.createTools({ cwd: process.cwd() });
+    expect(tools.map((t) => t.name).sort()).toEqual(["mcp_run_tool", "mcp_search_tools"]);
+  });
+
+  test("empty catalog exposes no proxy tools even in lazy mode", async () => {
+    __setMcpManagerForTest(new McpConnectionManager(factory));
+    const provider = createMcpToolProvider({ docs: { command: "x", enabled: false } }, { toolLoading: "lazy" });
+    const tools = await provider.createTools({ cwd: process.cwd() });
+    expect(tools).toHaveLength(0);
+  });
+
+  test("eager tools carry the configured default output cap", async () => {
+    __setMcpManagerForTest(new McpConnectionManager(factory));
+    const provider = createMcpToolProvider({ docs: { command: "x" } }, { maxOutputTokens: 1000 });
+    const tools = await provider.createTools({ cwd: process.cwd() });
+    const alpha = tools.find((t) => t.name === "mcp__docs__alpha");
+    const ctx = { toolCallId: "tc", signal: new AbortController().signal, abort: () => {} };
+    const result = await alpha?.execute({ x: "hi" }, ctx);
+    // 1000 tokens × 4 bytes/token = 4000-byte cap surfaced as the per-result maxOutputBytes.
+    expect(result?.maxOutputBytes).toBe(4000);
+  });
 });

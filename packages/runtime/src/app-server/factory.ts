@@ -94,6 +94,12 @@ async function createRuntimeAgent(args: {
     bundledToolProviders,
     provider: model.provider as ProviderName,
     mcpServers: runtimeConfig.diligent.mcpServers,
+    mcpToolLoading: runtimeConfig.diligent.mcp?.toolLoading ?? "auto",
+    mcpLazyThreshold: runtimeConfig.diligent.mcp?.lazyThreshold,
+    mcpMaxOutputTokens: runtimeConfig.diligent.mcp?.maxOutputTokens,
+    mcpWarnOutputTokens: runtimeConfig.diligent.mcp?.warnOutputTokens,
+    mcpResources: runtimeConfig.diligent.mcp?.resources,
+    mcpPrompts: runtimeConfig.diligent.mcp?.prompts,
   });
 
   // Surface unauthenticated MCP servers to the agent. `buildDefaultTools` above already ran the MCP

@@ -14,10 +14,10 @@ export interface TruncationResult {
   savedPath?: string;
 }
 
-/** Check if output exceeds limits */
-export function shouldTruncate(output: string): boolean {
+/** Check if output exceeds limits (optionally against a custom byte cap). */
+export function shouldTruncate(output: string, maxBytes: number = MAX_OUTPUT_BYTES): boolean {
   const bytes = new TextEncoder().encode(output).length;
-  return bytes > MAX_OUTPUT_BYTES;
+  return bytes > maxBytes;
 }
 
 /**

@@ -40,6 +40,12 @@ export interface ToolResult {
   abortRequested?: boolean; // When true, tool signals the agent loop to stop after this result
   metadata?: Record<string, unknown>;
   truncateDirection?: "head" | "tail" | "head_tail"; // D025: hint for auto-truncation. Default: "tail"
+  /**
+   * Per-result byte cap for the executor's auto-truncation safety net. When set, overrides the
+   * default MAX_OUTPUT_BYTES for this result — letting a tool allow larger legitimate output or
+   * enforce a tighter limit (e.g. MCP per-tool `maxResultSizeChars`). Default: MAX_OUTPUT_BYTES.
+   */
+  maxOutputBytes?: number;
 }
 
 // D014: Registry type

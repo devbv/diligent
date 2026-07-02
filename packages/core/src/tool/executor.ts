@@ -2,6 +2,7 @@
 import type { ZodIssue } from "zod";
 import type { ToolCallBlock } from "../types";
 import {
+  MAX_OUTPUT_BYTES,
   persistFullOutput,
   shouldTruncate,
   TRUNCATION_WARNING,
@@ -54,15 +55,16 @@ export async function executeTool(
     };
   }
 
-  // D025: Auto-truncation safety net
-  if (shouldTruncate(result.output)) {
+  // D025: Auto-truncation safety net (honors a per-result byte cap when the tool sets one).
+  const maxBytes = result.maxOutputBytes ?? MAX_OUTPUT_BYTES;
+  if (shouldTruncate(result.output, maxBytes)) {
     const direction = result.truncateDirection ?? "tail";
     const truncated =
       direction === "head"
-        ? truncateHead(result.output)
+        ? truncateHead(result.output, maxBytes)
         : direction === "head_tail"
-          ? truncateHeadTail(result.output)
-          : truncateTail(result.output);
+          ? truncateHeadTail(result.output, maxBytes)
+          : truncateTail(result.output, maxBytes);
 
     const savedPath = await persistFullOutput(result.output);
 

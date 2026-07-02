@@ -48,7 +48,28 @@ const McpHttpServerSchema = z.object({
 });
 
 export const McpServerConfigSchema = z.union([McpStdioServerSchema, McpHttpServerSchema]);
+
+// Global MCP behavior (not per-server). `toolLoading` controls how many MCP tools are exposed
+// to the model: `eager` surfaces every tool's full schema; `lazy` exposes only two proxy tools
+// (search + run) so schemas load on demand; `auto` (default) uses `lazy` once the exposed tool
+// count exceeds `lazyThreshold`, keeping small setups unchanged.
+const McpGlobalConfigSchema = z.object({
+  toolLoading: z.enum(["auto", "eager", "lazy"]).optional(),
+  lazyThreshold: z.number().int().positive().optional(),
+  // Cap on a single MCP tool's output (approx tokens; ~4 bytes/token). Larger output is
+  // truncated by the executor safety net. A tool may raise its own cap via the MCP `_meta`
+  // field `anthropic/maxResultSizeChars`.
+  maxOutputTokens: z.number().int().positive().optional(),
+  // Emit a console warning when an MCP tool's output exceeds this (approx tokens).
+  warnOutputTokens: z.number().int().positive().optional(),
+  // Expose resource list/read proxy tools for servers that advertise the capability (default true).
+  resources: z.boolean().optional(),
+  // Expose prompt list/get proxy tools for servers that advertise the capability (default true).
+  prompts: z.boolean().optional(),
+});
+
 export type McpServerConfig = z.infer<typeof McpServerConfigSchema>;
+export type McpGlobalConfig = z.infer<typeof McpGlobalConfigSchema>;
 export type McpStdioServerConfig = z.infer<typeof McpStdioServerSchema>;
 export type McpHttpServerConfig = z.infer<typeof McpHttpServerSchema>;
 export type McpOAuthConfig = z.infer<typeof McpOAuthConfigSchema>;
@@ -211,6 +232,9 @@ export const DiligentConfigSchema = z
     // MCP servers (P069) — external Model Context Protocol servers whose tools are
     // exposed to the agent. Merges across global < project via deep object merge.
     mcpServers: z.record(z.string(), McpServerConfigSchema).optional(),
+
+    // Global MCP behavior (tool-loading strategy). See McpGlobalConfigSchema.
+    mcp: McpGlobalConfigSchema.optional(),
 
     // AI-data consent (OVDR-11475 §3.A). Stores the first-run notice acknowledgement
     // and the service-improvement toggle. Absent fields fall back to defaults
