@@ -150,6 +150,6 @@ function resolveZaiCodingPlanApiKey(apiKey?: string): string {
   );
 }
 
-function resolveZaiCodingPlanBaseUrl(baseUrl?: string): string {
+export function resolveZaiCodingPlanBaseUrl(baseUrl?: string): string {
   return (baseUrl ?? DEFAULT_ZAI_CODING_PLAN_BASE_URL).replace(/\/+$/, "");
 }

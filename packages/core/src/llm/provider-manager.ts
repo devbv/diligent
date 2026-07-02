@@ -222,7 +222,7 @@ export class ProviderManager {
 
   // Verify an API key before persisting it. Throws with a user-facing message if the key is invalid.
   async validateApiKey(provider: ProviderName, apiKey: string): Promise<void> {
-    await validateProviderApiKey(provider, apiKey, this.baseUrls[provider]);
+    await validateProviderApiKey(provider, apiKey, this.baseUrls[provider], DEFAULT_MODELS[provider]);
   }
 
   createProxyStream(): StreamFunction {

@@ -4,12 +4,34 @@ import Anthropic from "@anthropic-ai/sdk";
 import { GoogleGenAI } from "@google/genai";
 import OpenAI from "openai";
 import type { ProviderName } from "../types";
+import { resolveZaiCodingPlanBaseUrl } from "./zai-coding-plan";
 
 const PROVIDER_LABELS: Partial<Record<ProviderName, string>> = {
   anthropic: "Anthropic",
   openai: "OpenAI",
   gemini: "Gemini",
+  "zai-coding-plan": "z.ai",
 };
+
+// z.ai has no reliable models-list endpoint, so validate with a 1-token chat completion —
+// the same endpoint the provider actually uses. A bad key returns 401/403; a valid one returns 200.
+async function validateZaiCodingPlanKey(apiKey: string, baseUrl?: string, model?: string): Promise<void> {
+  const response = await fetch(`${resolveZaiCodingPlanBaseUrl(baseUrl)}/chat/completions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model: model ?? "glm-5.2",
+      messages: [{ role: "user", content: "hi" }],
+      max_tokens: 1,
+      stream: false,
+    }),
+    signal: AbortSignal.timeout(VALIDATE_TIMEOUT_MS),
+  });
+  if (!response.ok) {
+    const body = (await response.text().catch(() => "")).trim();
+    throw Object.assign(new Error(body || `z.ai API error (${response.status})`), { status: response.status });
+  }
+}
 
 function authStatus(err: unknown): number | undefined {
   const status =
@@ -18,9 +40,9 @@ function authStatus(err: unknown): number | undefined {
   return typeof status === "number" ? status : undefined;
 }
 
-// Validate a provider API key with the cheapest authenticated call available — listing models,
-// a free GET that returns 401/403 on a bad key. Providers without a uniform list endpoint
-// (vertex uses a Google access token, z.ai/chatgpt differ) are skipped: best-effort, saved as before.
+// Validate a provider API key with the cheapest authenticated call available. Anthropic/OpenAI/Gemini
+// use a free "list models" GET; z.ai has no reliable list endpoint so it uses a 1-token chat completion.
+// Vertex (Google access token) and chatgpt (OAuth login) are skipped: best-effort, saved as before.
 // Throws on an invalid key so the caller can refuse to persist it.
 //
 // Fail fast: the SDK defaults are a 10-minute timeout with 2 automatic retries (and timeouts are
@@ -28,7 +50,12 @@ function authStatus(err: unknown): number | undefined {
 // interactive save we want a single quick attempt — no retries, a short timeout.
 const VALIDATE_TIMEOUT_MS = 10_000;
 
-export async function validateProviderApiKey(provider: ProviderName, apiKey: string, baseUrl?: string): Promise<void> {
+export async function validateProviderApiKey(
+  provider: ProviderName,
+  apiKey: string,
+  baseUrl?: string,
+  model?: string,
+): Promise<void> {
   try {
     if (provider === "anthropic") {
       await new Anthropic({ apiKey, baseURL: baseUrl, maxRetries: 0, timeout: VALIDATE_TIMEOUT_MS }).models.list({
@@ -41,8 +68,10 @@ export async function validateProviderApiKey(provider: ProviderName, apiKey: str
         apiKey,
         httpOptions: { ...(baseUrl ? { baseUrl } : {}), timeout: VALIDATE_TIMEOUT_MS },
       }).models.list({ config: { pageSize: 1 } });
+    } else if (provider === "zai-coding-plan") {
+      await validateZaiCodingPlanKey(apiKey, baseUrl, model);
     }
-    // Other providers: no validation (preserves prior save-anything behavior).
+    // Other providers (vertex, chatgpt): no validation (preserves prior save-anything behavior).
   } catch (err) {
     const label = PROVIDER_LABELS[provider] ?? provider;
     const status = authStatus(err);
