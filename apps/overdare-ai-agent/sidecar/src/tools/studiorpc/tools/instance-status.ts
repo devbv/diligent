@@ -37,30 +37,44 @@ const missingGuidCodeByRole: Record<InstanceGuidRole, MissingGuidCode> = {
   new_parent: "missing_new_parent_guid",
 };
 
+const statusOutputOpen = "<studio_instance_status>";
+const statusOutputClose = "</studio_instance_status>";
+
+type StatusRenderItem = { key: string; value: string };
+
 function roleLabel(role: InstanceGuidRole): string {
   return role.replace("_", " ");
 }
 
 function statusRender(status: InstanceToolStatus): ToolRenderPayload {
-  const items = [
+  return {
+    inputSummary: `${status.operation} ${roleLabel(status.role)} ${status.guid}`,
+    outputSummary: status.code,
+    blocks: [
+      { type: "key_value", title: "Studio instance status", items: statusRenderItems(status) },
+      { type: "summary", text: status.message, tone: status.kind === "missing_guid" ? "warning" : "danger" },
+    ],
+  };
+}
+
+function statusRenderItems(status: InstanceToolStatus): StatusRenderItem[] {
+  const items: StatusRenderItem[] = [
     { key: "kind", value: status.kind },
     { key: "code", value: status.code },
     { key: "operation", value: status.operation },
     { key: "role", value: status.role },
     { key: "guid", value: status.guid },
     { key: "requiresReadback", value: String(status.requiresReadback) },
-    ...("suggestedTool" in status ? [{ key: "suggestedTool", value: status.suggestedTool }] : []),
-    ...("class" in status && status.class ? [{ key: "class", value: status.class }] : []),
   ];
 
-  return {
-    inputSummary: `${status.operation} ${roleLabel(status.role)} ${status.guid}`,
-    outputSummary: status.code,
-    blocks: [
-      { type: "key_value", title: "Studio instance status", items },
-      { type: "summary", text: status.message, tone: status.kind === "missing_guid" ? "warning" : "danger" },
-    ],
-  };
+  if ("suggestedTool" in status) {
+    items.push({ key: "suggestedTool", value: status.suggestedTool });
+  }
+  if ("class" in status && status.class) {
+    items.push({ key: "class", value: status.class });
+  }
+
+  return items;
 }
 
 export function instanceStatusResult(status: InstanceToolStatus): ToolResult {
@@ -76,7 +90,8 @@ export function instanceStatusResult(status: InstanceToolStatus): ToolResult {
 }
 
 function statusOutput(status: InstanceToolStatus): string {
-  return ["<studio_instance_status>", JSON.stringify(status), "</studio_instance_status>", status.message].join("\n");
+  const serializedStatus = JSON.stringify(status);
+  return `${statusOutputOpen}\n${serializedStatus}\n${statusOutputClose}\n${status.message}`;
 }
 
 export class InstanceToolStatusError extends Error {

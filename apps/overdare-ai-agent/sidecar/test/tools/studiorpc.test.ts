@@ -13,6 +13,7 @@ const createdDirs: string[] = [];
 const workspaceGuid = "workspace-guid";
 const folderGuid = "folder-guid";
 const partGuid = "part-guid";
+const statusOutputPattern = /^<studio_instance_status>\n(?<statusJson>[\s\S]*?)\n<\/studio_instance_status>\n/;
 
 function makeStudioProject(): string {
   const cwd = join(tmpdir(), `sidecar-studiorpc-${process.pid}-${Date.now()}-${createdDirs.length}`);
@@ -79,9 +80,9 @@ function expectStatus(result: Awaited<ReturnType<Tool["execute"]>>, status: Reco
 }
 
 function parseOutputStatus(output: string): Record<string, unknown> {
-  const match = output.match(/<studio_instance_status>\n([\s\S]*?)\n<\/studio_instance_status>/);
-  expect(match).not.toBeNull();
-  return JSON.parse(match![1]) as Record<string, unknown>;
+  const statusJson = statusOutputPattern.exec(output)?.groups?.statusJson;
+  expect(statusJson).toBeDefined();
+  return JSON.parse(statusJson!) as Record<string, unknown>;
 }
 
 afterEach(() => {
