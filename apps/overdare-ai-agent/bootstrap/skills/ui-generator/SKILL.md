@@ -198,6 +198,7 @@ Common Studio tools:
 
 - `studiorpc_level_browse` to inspect hierarchy.
 - `studiorpc_instance_read` to inspect GUI properties.
+- `studiorpc_game_screenshot` to capture a screenshot path for UI verification when the current task creates, modifies, or debugs visible UI. Use `read_image` on the returned path when available so the screenshot is model-visible.
 - `studiorpc_instance_upsert` to add or update GUI instances.
 - `studiorpc_instance_move` to reparent imported or existing UI.
 - `studiorpc_instance_delete` to remove UI when explicitly requested.
@@ -208,6 +209,7 @@ Tool usage rules:
 
 - Use `studiorpc_level_browse` first to find `StarterGui`, existing `ScreenGui`, and any existing custom UI.
 - Use `studiorpc_instance_read` when exact properties or recursive children are needed.
+- Use `studiorpc_game_screenshot` after visible UI/layout changes when the tool is available. If it returns a screenshot path and `read_image` is available, call `read_image` on that path before judging the image. If capture fails, Studio is unavailable, `read_image` is unavailable, or the image cannot be made model-visible, record the reason and fall back to hierarchy/property/runtime checks. Do not claim visual verification unless a screenshot or equivalent visual state was actually inspected.
 - Do not mix new-instance adds and existing-instance updates in the same `studiorpc_instance_upsert` call.
 - Use `studiorpc_instance_move` for hierarchy/parent changes; do not delete and recreate UI just to move it.
 - Use `studiorpc_instance_delete` only after confirming the deletion target, because deleting a parent removes its children.
@@ -516,7 +518,19 @@ Follow this workflow for UI tasks.
    - Validate with `validatelua` after script changes.
 9. Read or browse the result when useful and address any warnings from tool output.
 10. Save the level after meaningful changes.
-11. Tell the user where the UI was created and how to test it.
+11. For visible UI/layout work, run the Visual Verification Gate below before the completion response.
+12. Tell the user where the UI was created and how to test it.
+
+### Visual Verification Gate
+
+Run this gate before finishing any task that creates, changes, or debugs visible UI, including screen-space GUI, world-space GUI, layout, visibility, overlap, safe-area placement, text readability, or imported UI assets.
+
+1. Inspect the relevant hierarchy/properties with `studiorpc_level_browse` or `studiorpc_instance_read`.
+2. Capture a viewport screenshot with `studiorpc_game_screenshot` when available.
+3. If the screenshot tool returns an image path and `read_image` is available, call `read_image` on that path to make the screenshot model-visible.
+4. If a model-visible screenshot is available, inspect it for visibility, readability, overlap, clipping, expected screen, ZIndex/DisplayOrder layering, and reserved mobile HUD areas.
+5. If screenshot capture is unavailable or not model-visible, state the skip reason and use hierarchy/property/runtime checks instead.
+6. Do not say "visually verified" unless step 4 actually happened.
 
 ---
 
@@ -645,6 +659,7 @@ When finishing a UI task, report:
 - Any imported asset name and assetId.
 - Any script added or modified.
 - Any tool warnings or safe-area conflicts that were handled.
+- Visual verification result: screenshot checked, or screenshot skipped with fallback reason.
 - How the user can visually verify the result.
 - Any known limitations or next recommended step.
 

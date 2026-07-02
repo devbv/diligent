@@ -29,6 +29,7 @@ If **any one** of the following applies, load this skill before any other task/s
 **MUST**
 - Output the **first response format** (§3) before implementation/patching.
 - Before making changes, **directly check logs (Play.log, etc.) or runtime state at least once**. (Do not say "logs are clean" before opening the file.)
+- For ui or visual-only 3d symptoms, capture a `studiorpc_game_screenshot` when available. If it returns a screenshot path and `read_image` is available, call `read_image` on that path and inspect the model-visible image. If capture is unavailable or the screenshot cannot be made model-visible, state that and continue with logs/state/hierarchy checks.
 - Choose the work area using the **Decision order** (§4), and include the step number in the classification rationale.
 - Handle only **one goal · one work area** at a time.
 - Apply changes only to the single most suspicious cause, then **verify through the reproduction path** after applying.
@@ -40,6 +41,7 @@ If **any one** of the following applies, load this skill before any other task/s
 - Do not copy a RAG-provided "solution case" directly into a patch (§6).
 - Do not touch two or more work areas in the same loop.
 - Do not report "fixed" without a reproduction path.
+- Do not claim visual verification unless a screenshot or equivalent visual state was actually inspected.
 - If minimum input is insufficient, **ask instead of guessing**.
 
 ---
@@ -54,6 +56,7 @@ Reproduction path: (when / where / what action)
 Reference cases: {case ID — check priority} | none (reason)
 Goal for this loop: (one sentence: what to reproduce or verify)
 First checks: (1–3 logs/state items)
+Visual check: screenshot planned | screenshot unavailable — fallback planned | not visual
 ```
 
 If minimum input is insufficient, ask first (symptom / reproduction method / recent changes / error message / impact). Do not guess.
@@ -88,8 +91,9 @@ Classification aid: **if there is an error log, script**; **if it is visible and
 2. **Fix the work area** — one §4 classification. Do not change it during the loop.
 3. **Collect RAG hints** — query §6 → extract only the "how to check" items.
 4. **Check logs/state** — directly inspect logs/state in the priority order suggested by RAG. Separate input → judgment → application, and record server authority and client display separately.
-5. **Single hypothesis → single change → reproduction verification.** If it fails, roll back **only the last change**.
-6. **Judge loop completion** (§5.2).
+5. **Visual check for ui/visual-only 3d** — capture a screenshot when available, call `read_image` on the returned path when needed and available, then inspect the model-visible image; otherwise record the fallback reason and inspect hierarchy/properties/state.
+6. **Single hypothesis → single change → reproduction verification.** If it fails, roll back **only the last change**.
+7. **Judge loop completion** (§5.2).
 
 **Same failure twice rule:** If the same symptom repeats twice, do not keep tweaking only the same property. Return to the baseline (rollback) or narrow the reproduction scope further, and change **only one axis** per loop. If stuck, proceed in this order: scope reduction → single alternative → structural rework (separation/modularization). If there are 2+ consecutive creator requests without confirmation of resolution → switch to **§5.3 log-insertion diagnosis**.
 
@@ -107,6 +111,7 @@ If completion criteria are not met within 20 minutes, stop the loop, summarize o
 Complete only when **all** of the following are satisfied:
 - The symptom no longer appears on the fixed reproduction path.
 - Logs/state confirm that the change was actually reflected at runtime.
+- For ui or visual-only 3d symptoms, screenshot evidence was inspected, or screenshot capture was skipped with an explicit fallback reason and hierarchy/properties/state confirm the change.
 - Confirmed there are no side effects (regressions in other work areas).
 
 If any one is unmet, it is incomplete → summarize observed facts in 1–3 lines and re-loop, or write the reason and hand off.

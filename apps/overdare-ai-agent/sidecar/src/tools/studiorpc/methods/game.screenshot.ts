@@ -5,7 +5,8 @@ export const method = "game.screenshot";
 
 export const description =
   "Capture a screenshot of the OVERDARE Studio viewport and save it to a file. " +
-  "Use this only when the user explicitly requests a screenshot; do not use it for autonomous validation. " +
+  "Use this when the user explicitly requests a screenshot or when a UI/visual debugging workflow requires visual verification. " +
+  "When model-visible inspection is required, call read_image on the returned screenshot path if that tool is available. " +
   'Currently only the "Viewport" mode is supported (defaults to "Viewport" when omitted). ' +
   "Other modes (Thumbnail / HubScreenshot / Custom with explicit size) are planned and not yet available.";
 

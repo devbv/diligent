@@ -26,14 +26,19 @@ describe("createStudioRpcToolProvider", () => {
     expect(toolNames).toContain("hub_world_categories_list");
     expect(toolNames).toContain("studiorpc_level_save_file");
     expect(toolNames).toContain("studiorpc_game_play");
+    expect(toolNames).toContain("studiorpc_game_screenshot");
 
     const saveTool = tools.find((tool) => tool.name === "studiorpc_level_save_file")!;
     const hubLookupTool = tools.find((tool) => tool.name === "hub_world_lookup")!;
     const scriptEditTool = tools.find((tool) => tool.name === "studiorpc_script_edit")!;
+    const screenshotTool = tools.find((tool) => tool.name === "studiorpc_game_screenshot")!;
 
     expect(() => saveTool.parameters.parse({})).not.toThrow();
     expect(() => tools.find((tool) => tool.name === "get_collision_profiles")!.parameters.parse({})).not.toThrow();
+    expect(() => screenshotTool.parameters.parse({})).not.toThrow();
     expect(() => hubLookupTool.parameters.parse({ worldId: 123 })).not.toThrow();
+    expect(screenshotTool.description).toContain("call read_image on the returned screenshot path");
+    expect(screenshotTool.description).toContain("visual verification");
     expect(scriptEditTool.description).toContain(
       "If an edit fails, call script_read to check the current source before retrying",
     );

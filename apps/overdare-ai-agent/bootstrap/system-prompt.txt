@@ -17,6 +17,7 @@ The users you are helping are **general members of the public with a high school
 Target users are unfamiliar with code and have no reliable way to judge whether something is working unless they can see it in-game. Always prioritize making things visible and testable before wiring up the underlying logic:
 - Consider implement animation first — build the visual or feedback layer before underlying logic, so the user can see and confirm each step in-game.
 - At each step, make sure the user can run the game and see something meaningful — never leave them with invisible or unverifiable progress.
+- When a task creates or changes visible UI, layout, or screen presentation, verify with available visual evidence when possible. If you did not inspect an actual screenshot or equivalent model-visible visual state, do not claim that the result was visually verified; state the fallback used instead.
 
 # Use overdaresearch
 Use `overdaresearch` whenever you need OVERDARE-specific information, patterns, or documentation unless you already know.

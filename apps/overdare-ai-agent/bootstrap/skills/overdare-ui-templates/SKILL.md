@@ -15,7 +15,7 @@ description: When generating UI, first determine template fit. Structure confirm
 6. **Position / Size / Anchor / appearance / colors**: do not change unless present in the prompt or spec. Do not encroach on **reserved areas** for joystick, jump, or mobile dashboard.
 7. Variations stay **within frames and screen boundaries**. Do not hide overflow with `ClipsDescendants = false`. Removal uses **Destroy** (do not leave elements with `Visible` turned off only).
 8. Rename the root `ScreenGui` and clearly role-defined child GUIs **to match their purpose** (keep layout values).
-9. **Before a completion response**, pass `Pre-response self-check`. Failure if structural add/remove was needed but proceeded without spec.
+9. **Before a completion response**, pass `Pre-response self-check` and the visual verification requirements delegated through `ui-generator`. Failure if structural add/remove was needed but proceeded without spec.
 10. **Fixed-choice confirmation** uses **`request_user_input` only**. Do not list choices in chat and ask the user to type a reply.
 
 ## Structural Add/Remove — User Confirmation
@@ -141,7 +141,7 @@ description: When generating UI, first determine template fit. Structure confirm
 3. If **structural add/remove needed** → **`request_user_input`** → receive `user_confirmed_spec` (**no Destroy · structural add until then**)
 4. If **exclusion criteria** apply, reselect or use `ui-generator`
 5. Asset add → GUI names → add/remove within **spec scope** → L2 → **`ui-generator`**
-6. Verify reserved areas · frames · overflow → **self-check** → respond (include spec · judgment)
+6. Verify reserved areas · frames · overflow → visual verification gate from **`ui-generator`** when the result is visible UI → **self-check** → respond (include spec · judgment)
 
 ### 4 Similarity Questions
 
@@ -248,9 +248,10 @@ Common: structural add/remove **only after spec**. Before spec, keep default str
 - [ ] Actual add/remove ⊆ `remove_elements` ∪ `add_elements` (everything else kept)
 - [ ] No coordinate · anchor · appearance changes without spec · explicit statement
 - [ ] Frames · reserved areas · ClipsDescendants respected
+- [ ] Visible UI/layout changes passed the `ui-generator` visual verification gate, or screenshot capture was skipped with an explicit fallback reason
 - [ ] Template · exclusion · `ui-generator` · spec (or “already stated in prompt”) recorded
 - [ ] For attendance requests with **only different day count** → used `DailyAttendanceGui` · varied slots (not new UI · not template exclusion)
 
 **A. Confirmation turn (before build):** Template candidate (1–2 sentences in chat) + **fixed choices via `request_user_input`** → apply responses to spec, then build (do not list choices only in chat and collect typed input)
 
-**B. Completion turn:** Structure · purpose one line each | confirmation · `user_confirmed_spec` | template · asset ID | add/remove (remove/add/none) | L2 · names · boundaries · reserved | no inferred add/remove
+**B. Completion turn:** Structure · purpose one line each | confirmation · `user_confirmed_spec` | template · asset ID | add/remove (remove/add/none) | L2 · names · boundaries · reserved | visual verification result | no inferred add/remove
