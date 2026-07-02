@@ -200,6 +200,7 @@ export function buildThreadReadItems(transcript: ThreadReadTranscriptEntry[]): T
         ...(message.outputImages ? { outputImages: message.outputImages } : {}),
         isError: message.isError,
         render: mergeToolRenderPayload(startRender, message.render ?? derivedRender),
+        ...(message.metadata ? { metadata: message.metadata } : {}),
       });
     }
   }

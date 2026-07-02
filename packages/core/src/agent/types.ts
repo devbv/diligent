@@ -76,6 +76,7 @@ export type CoreAgentEvent =
       outputImages?: ImageBlock[];
       isError: boolean;
       render?: ToolRenderPayloadLike;
+      metadata?: Record<string, unknown>;
       childThreadId?: string;
       nickname?: string;
     }

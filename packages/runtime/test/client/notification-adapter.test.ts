@@ -135,6 +135,15 @@ test("item lifecycle: toolCall started → delta → completed", () => {
         input: { cmd: "ls" },
         output: "file.txt\ndir/",
         isError: false,
+        metadata: {
+          status: {
+            kind: "invalid_scope",
+            code: "filesystem_root",
+            path: "/",
+            retryable: false,
+            actionable: true,
+          },
+        },
       },
     },
   };
@@ -145,6 +154,9 @@ test("item lifecycle: toolCall started → delta → completed", () => {
   if (events3[0].type === "tool_end") {
     expect(events3[0].output).toBe("file.txt\ndir/");
     expect(events3[0].isError).toBe(false);
+    expect(events3[0].metadata).toMatchObject({
+      status: { kind: "invalid_scope", code: "filesystem_root", path: "/" },
+    });
   }
 });
 

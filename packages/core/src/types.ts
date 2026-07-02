@@ -36,6 +36,7 @@ export interface ToolResultMessage {
   isError: boolean;
   timestamp: number;
   render?: ToolRenderPayloadLike;
+  metadata?: Record<string, unknown>;
 }
 
 export type Message = UserMessage | AssistantMessage | ToolResultMessage;

@@ -132,6 +132,29 @@ const sequentialTool: Tool = {
   },
 };
 
+const invalidScopeStatus = {
+  kind: "invalid_scope",
+  code: "filesystem_root",
+  path: "/",
+  retryable: false,
+  actionable: true,
+};
+
+const scopeErrorTool: Tool = {
+  name: "scope_error",
+  description: "Return a structured invalid-scope failure",
+  parameters: z.object({ path: z.string() }),
+  async execute() {
+    return {
+      output: "Error: refusing to search the filesystem root",
+      metadata: {
+        error: true,
+        status: invalidScopeStatus,
+      },
+    };
+  },
+};
+
 /** Helper: run agent with a single user message and collect events */
 async function runAgent(
   agent: Agent,
@@ -267,6 +290,31 @@ describe("Agent loop", () => {
     const toolEnd = events.find((e) => e.type === "tool_end") as Extract<CoreAgentEvent, { type: "tool_end" }>;
     expect(toolEnd.isError).toBe(true);
     expect(toolEnd.output).toContain("Unknown tool");
+  });
+
+  test("tool metadata is preserved on tool_end and tool_result messages", async () => {
+    const toolCallMsg = makeAssistant(
+      [{ type: "tool_call", id: "tc_1", name: "scope_error", input: { path: "/" } }],
+      "tool_use",
+    );
+    const responseMsg = makeAssistant([{ type: "text", text: "I need a narrower path." }]);
+    const streamFn = createMockStreamFunction([toolCallMsg, responseMsg]);
+
+    const agent = new Agent(TEST_MODEL, [{ label: "test", content: "test" }], [scopeErrorTool], {
+      effort: "medium",
+      llmMsgStreamFn: streamFn,
+    });
+
+    const { events, result } = await runAgent(agent, { role: "user", content: "search /", timestamp: Date.now() });
+
+    const toolEnd = events.find((e) => e.type === "tool_end") as Extract<CoreAgentEvent, { type: "tool_end" }>;
+    expect(toolEnd.metadata).toEqual({ error: true, status: invalidScopeStatus });
+
+    const turnEnd = events.find((e) => e.type === "turn_end") as Extract<CoreAgentEvent, { type: "turn_end" }>;
+    expect(turnEnd.toolResults[0].metadata).toEqual({ error: true, status: invalidScopeStatus });
+
+    const toolResult = result.find((message) => message.role === "tool_result");
+    expect(toolResult?.metadata).toEqual({ error: true, status: invalidScopeStatus });
   });
 
   test("parallel tools: all supportParallel=true → parallel execution (all tool_start before tool_end)", async () => {

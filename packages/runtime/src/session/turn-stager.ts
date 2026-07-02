@@ -38,6 +38,7 @@ export class TurnStager {
         isError: event.isError,
         timestamp: Date.now(),
         render: event.render,
+        metadata: event.metadata,
       });
       return;
     }

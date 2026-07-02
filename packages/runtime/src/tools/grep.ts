@@ -6,6 +6,7 @@ import { isAbsolute, stripExtendedLengthPrefix } from "../util/path";
 import { spawnCollect } from "../util/process";
 import { resolveRgBinary } from "../util/ripgrep";
 import { createGrepRenderPayload, createTextRenderPayload } from "./render-payload";
+import { createSearchScopeErrorResult } from "./search-status";
 
 const GrepParams = z.object({
   pattern: z.string().describe("Regex pattern to search for in file contents"),
@@ -37,7 +38,13 @@ export function createGrepTool(cwd: string): Tool<typeof GrepParams> {
 
       if (isFilesystemRoot(searchPath)) {
         const output = `Error: refusing to grep the filesystem root: ${searchPath}. Provide a narrower path.`;
-        return { output, render: createTextRenderPayload(undefined, output, true), metadata: { error: true } };
+        return createSearchScopeErrorResult(output, {
+          kind: "invalid_scope",
+          code: "filesystem_root",
+          path: searchPath,
+          retryable: false,
+          actionable: true,
+        });
       }
 
       const rgBin = resolveRgBinary();
