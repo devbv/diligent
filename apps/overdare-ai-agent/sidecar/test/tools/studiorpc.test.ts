@@ -3,6 +3,7 @@
 import { describe, expect, test } from "bun:test";
 import { createStudioBundledToolProviders } from "../../src/tools";
 import { createStudioRpcToolProvider } from "../../src/tools/studiorpc";
+import * as levelBrowse from "../../src/tools/studiorpc/methods/level.browse";
 
 describe("createStudioRpcToolProvider", () => {
   test("creates bundled Studio RPC tools with Zod schemas and plugin supersession", async () => {
@@ -38,6 +39,36 @@ describe("createStudioRpcToolProvider", () => {
     );
     expect(scriptEditTool.description).toContain("call studiorpc_script_edit once per edited region");
     expect(scriptEditTool.description).toContain("apply them sequentially or choose non-overlapping");
+  });
+
+  test("accepts maxDepth 0 as unlimited for level browsing", async () => {
+    const providers = createStudioBundledToolProviders({ cwd: "/tmp/project" });
+    const provider = providers.find((candidate) => candidate.id === "@overdare/studiorpc-tools")!;
+    const tools = await provider.createTools({ cwd: "/tmp/project" });
+    const browseTool = tools.find((tool) => tool.name === "studiorpc_level_browse")!;
+
+    expect(() => browseTool.parameters.parse({ maxDepth: 0 })).not.toThrow();
+    expect(browseTool.parameters.parse({ maxDepth: 0 })).toMatchObject({ maxDepth: 0 });
+  });
+
+  test("treats maxDepth 0 and omitted maxDepth as unlimited after level browsing", () => {
+    const tree = [
+      {
+        guid: "root",
+        class: "Folder",
+        children: [
+          {
+            guid: "part",
+            class: "Part",
+            children: [{ guid: "script", class: "Script" }],
+          },
+        ],
+      },
+    ];
+
+    expect(levelBrowse.postProcess({ level: tree }, { maxDepth: 0 })).toEqual(tree);
+    expect(levelBrowse.postProcess({ level: tree }, {})).toEqual(tree);
+    expect(levelBrowse.postProcess({ level: tree }, { maxDepth: 1 })).toEqual([{ guid: "root", class: "Folder" }]);
   });
 
   test("preserves generic RPC approval rejection behavior without calling Studio", async () => {
