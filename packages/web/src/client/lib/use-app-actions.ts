@@ -177,6 +177,8 @@ export function useAppActions({
   changeModel,
   startNewThread,
   openThread,
+  openMcpModal,
+  bumpMcpRefreshNonce,
   steeringControl,
   modeRef,
   cwdRef,
@@ -209,6 +211,8 @@ export function useAppActions({
   changeModel: (modelId: string, threadId?: string) => Promise<void>;
   startNewThread: () => Promise<void>;
   openThread: (threadId: string) => Promise<void>;
+  openMcpModal: () => void;
+  bumpMcpRefreshNonce: () => void;
   steeringControl: SteeringControl;
   modeRef: RefObject<Mode>;
   cwdRef: RefObject<string>;
@@ -510,6 +514,54 @@ export function useAppActions({
           void setEffort(normalized as ThinkingEffort);
           return;
         }
+        case "mcp": {
+          if (!rpc) {
+            dispatch({ type: "show_info_toast", payload: "Not connected to the app server." });
+            return;
+          }
+          const [sub, server] = (arg ?? "").trim().split(/\s+/).filter(Boolean);
+          if (!sub || sub === "list") {
+            openMcpModal();
+            return;
+          }
+          if (sub === "login" || sub === "logout") {
+            if (!server) {
+              dispatch({ type: "show_info_toast", payload: `Usage: /mcp ${sub} <server>` });
+              return;
+            }
+            if (sub === "login") {
+              // Open the modal so the user sees the status flip once login completes, then let the
+              // app-server open the browser and drive OAuth (completion arrives via notification).
+              openMcpModal();
+              dispatch({ type: "show_info_toast", payload: `Opening browser for "${server}" authorization…` });
+              void rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.MCP_LOGIN_START, { server }).catch((cause) => {
+                dispatch({
+                  type: "show_info_toast",
+                  payload: `Login failed for "${server}": ${cause instanceof Error ? cause.message : String(cause)}`,
+                });
+              });
+              return;
+            }
+            void rpc
+              .request(DILIGENT_CLIENT_REQUEST_METHODS.MCP_LOGOUT, { server })
+              .then(() => {
+                dispatch({ type: "show_info_toast", payload: `Cleared stored credentials for "${server}".` });
+                bumpMcpRefreshNonce();
+              })
+              .catch((cause) => {
+                dispatch({
+                  type: "show_info_toast",
+                  payload: `Logout failed for "${server}": ${cause instanceof Error ? cause.message : String(cause)}`,
+                });
+              });
+            return;
+          }
+          dispatch({
+            type: "show_info_toast",
+            payload: "Usage: /mcp list | login <server> | logout <server>",
+          });
+          return;
+        }
         default: {
           const isSkill = slashCommands.some((command) => command.name === name && command.isSkill);
           if (isSkill && rpc && activeThreadId) {
@@ -534,6 +586,8 @@ export function useAppActions({
       dispatch,
       startNewThread,
       openThread,
+      openMcpModal,
+      bumpMcpRefreshNonce,
       availableModels,
       changeModel,
       effort,

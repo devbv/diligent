@@ -130,6 +130,7 @@ export type RenderItem =
       childTimeline?: Array<
         | {
             kind: "assistant";
+            itemId?: string;
             message: string;
           }
         | {
@@ -285,7 +286,7 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent, turnId?: string
   switch (event.type) {
     case "message_start": {
       if ("childThreadId" in event && typeof event.childThreadId === "string") {
-        return appendChildAssistantTimelineStart(merged, event.childThreadId);
+        return appendChildAssistantTimelineStart(merged, event.childThreadId, event.itemId);
       }
       const renderId = `item:${event.itemId}:${++renderSeq}`;
       if (merged.itemSlots[event.itemId]) return merged;
@@ -305,7 +306,6 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent, turnId?: string
               typeof (event as { timestamp?: number }).timestamp === "number"
                 ? (event as { timestamp?: number }).timestamp!
                 : event.message.timestamp,
-            reasoningDurationMs: 0,
           },
         ],
       };
@@ -376,6 +376,13 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent, turnId?: string
               activeReasoningStartedAt: null,
             }
           : merged;
+      const eventReasoningDuration = (event as { reasoningDurationMs?: number }).reasoningDurationMs;
+      const measuredReasoningDuration =
+        typeof eventReasoningDuration === "number"
+          ? eventReasoningDuration
+          : nextState.activeReasoningDurationMs > 0
+            ? nextState.activeReasoningDurationMs
+            : undefined;
       return {
         ...updateItem(nextState, renderId, (current) =>
           current.kind === "assistant"
@@ -389,10 +396,7 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent, turnId?: string
                     : event.message.timestamp,
                 text: current.text.length > 0 ? current.text : finalText,
                 thinking: current.thinking.length > 0 ? current.thinking : finalThinking,
-                reasoningDurationMs:
-                  typeof (event as { reasoningDurationMs?: number }).reasoningDurationMs === "number"
-                    ? (event as { reasoningDurationMs?: number }).reasoningDurationMs!
-                    : nextState.activeReasoningDurationMs,
+                ...(measuredReasoningDuration !== undefined ? { reasoningDurationMs: measuredReasoningDuration } : {}),
                 ...(typeof (event as { turnDurationMs?: number }).turnDurationMs === "number"
                   ? { turnDurationMs: (event as { turnDurationMs?: number }).turnDurationMs }
                   : {}),
@@ -612,20 +616,21 @@ function isThreadIdentityNotification(notification: DiligentServerNotification):
   );
 }
 
-function getTurnTimingMetrics(state: ThreadState): { turnDurationMs?: number; reasoningDurationMs: number } {
+function getTurnTimingMetrics(state: ThreadState): { turnDurationMs?: number; reasoningDurationMs?: number } {
   const now = Date.now();
   const turnDurationMs = state.activeTurnStartedAt !== null ? Math.max(0, now - state.activeTurnStartedAt) : undefined;
-  const reasoningDurationMs =
+  const elapsedReasoningMs =
     state.activeReasoningStartedAt !== null
       ? state.activeReasoningDurationMs + (now - state.activeReasoningStartedAt)
       : state.activeReasoningDurationMs;
+  const reasoningDurationMs = elapsedReasoningMs > 0 ? elapsedReasoningMs : undefined;
   return { turnDurationMs, reasoningDurationMs };
 }
 
 function applyLatestAssistantDurations(
   state: ThreadState,
   turnDurationMs: number | undefined,
-  reasoningDurationMs: number,
+  reasoningDurationMs: number | undefined,
 ): ThreadState {
   let next = state;
   for (let i = next.items.length - 1; i >= 0; i--) {
@@ -636,7 +641,7 @@ function applyLatestAssistantDurations(
         ? {
             ...current,
             ...(turnDurationMs !== undefined ? { turnDurationMs } : {}),
-            reasoningDurationMs,
+            ...(reasoningDurationMs !== undefined ? { reasoningDurationMs } : {}),
           }
         : current,
     );

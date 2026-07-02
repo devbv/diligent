@@ -97,6 +97,26 @@ describe("AgentRegistry", () => {
     expect(status.kind === "pending" || status.kind === "running").toBe(true);
   });
 
+  it("includes cwd in child agent system prompt", async () => {
+    let inspectedAgent: RuntimeAgent | undefined;
+    const registry = new AgentRegistry(
+      makeCollabDeps({
+        cwd: "/Users/devbv/git/diligent",
+        sessionManagerFactory: makeInspectingSessionManagerFactory((agent) => {
+          inspectedAgent = agent;
+        }),
+      }),
+    );
+
+    const { threadId } = registry.spawn({ prompt: "inspect", description: "inspect", agentType: "explore" });
+    await registry.wait([threadId], 5000);
+
+    expect(inspectedAgent?.systemPrompt).toContainEqual({
+      label: "runtime_context",
+      content: "Current working directory: /Users/devbv/git/diligent",
+    });
+  });
+
   it("wait resolves when agent completes", async () => {
     const registry = new AgentRegistry(
       makeCollabDeps({
@@ -567,13 +587,15 @@ describe("AgentRegistry", () => {
     expect(observedEfforts).toEqual(["medium", "low", "high"]);
   });
 
-  it("updates reused registry deps so later child spawns see the latest parent effort", async () => {
+  it("updates reused registry deps so later child spawns see the latest parent model", async () => {
+    const observedModels: string[] = [];
     const observedEfforts: string[] = [];
     const registry = new AgentRegistry(
       makeCollabDeps({
         modelId: "gpt-5.3-chat-latest",
         effort: "medium",
         sessionManagerFactory: makeInspectingSessionManagerFactory((agent) => {
+          observedModels.push(agent.model.id);
           observedEfforts.push(agent.effort);
         }),
       }),
@@ -581,9 +603,10 @@ describe("AgentRegistry", () => {
 
     registry.updateDeps(makeCollabDeps({ modelId: "gpt-5.3-chat-latest", effort: "high" }));
 
-    const { threadId } = registry.spawn({ prompt: "task", description: "", agentType: "general" });
+    const { threadId } = registry.spawn({ prompt: "task", description: "", agentType: "general", modelClass: "lite" });
     await registry.wait([threadId], 5000);
 
-    expect(observedEfforts).toEqual(["high"]);
+    expect(observedModels).toEqual(["gpt-5.4-mini"]);
+    expect(observedEfforts).toEqual(["low"]);
   });
 });

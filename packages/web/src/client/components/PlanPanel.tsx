@@ -23,12 +23,12 @@ function PlanPanelImpl({ planState }: { planState: PlanState }) {
   }
 
   return (
-    <div className="shrink-0 border-t border-border/10 bg-surface-dark px-6 pt-3 pb-0">
-      <div className="mx-auto w-full max-w-[900px] overflow-hidden rounded-xl border border-border/100 bg-surface-default">
+    <div className="shrink-0 border-t border-border/10 bg-surface-dark px-7 pt-3 pb-0">
+      <div className="mx-auto w-full max-w-plan overflow-hidden rounded-lg border border-border/100 bg-surface-default">
         <button
           type="button"
           onClick={() => setCollapsed((value) => !value)}
-          className="flex w-full items-center justify-between gap-2 border-b border-border/10 px-4 py-2 text-left transition hover:bg-white/5"
+          className="flex w-full items-center justify-between gap-2 border-b border-border/20 px-4 py-2 text-left transition hover:bg-fill-ghost-hover"
         >
           <div className="min-w-0 flex items-center gap-2 overflow-hidden pl-2">
             <span className="shrink-0 font-mono text-sm text-text-secondary">☷</span>

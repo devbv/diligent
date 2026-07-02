@@ -8,6 +8,11 @@ export function useModalState({ providerMgr }: { providerMgr: ProviderMgrResult 
   const [showProviderModal, setShowProviderModal] = useState(false);
   const [showToolModal, setShowToolModal] = useState(false);
   const [showKnowledgeModal, setShowKnowledgeModal] = useState(false);
+  const [showMcpModal, setShowMcpModal] = useState(false);
+  // Bumped on each `mcp/login/completed` notification so an open MCP modal re-fetches its list.
+  const [mcpRefreshNonce, setMcpRefreshNonce] = useState(0);
+  const bumpMcpRefreshNonce = useCallback(() => setMcpRefreshNonce((n) => n + 1), []);
+  const openMcpModal = useCallback(() => setShowMcpModal(true), []);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [focusedProvider, setFocusedProvider] = useState<string | null>(null);
   const [oauthPending, setOauthPending] = useState(false);
@@ -16,6 +21,7 @@ export function useModalState({ providerMgr }: { providerMgr: ProviderMgrResult 
   const closeModals = useCallback(() => {
     setShowKnowledgeModal(false);
     setShowToolModal(false);
+    setShowMcpModal(false);
   }, []);
 
   const handleOpenProviders = useCallback(() => {
@@ -64,6 +70,11 @@ export function useModalState({ providerMgr }: { providerMgr: ProviderMgrResult 
     setShowToolModal,
     showKnowledgeModal,
     setShowKnowledgeModal,
+    showMcpModal,
+    setShowMcpModal,
+    mcpRefreshNonce,
+    bumpMcpRefreshNonce,
+    openMcpModal,
     sidebarOpen,
     setSidebarOpen,
     focusedProvider,

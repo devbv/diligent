@@ -1,5 +1,7 @@
 // @summary Static render tests for core UI components and accessibility attributes
+
 import { expect, test } from "bun:test";
+import { DEFAULT_ANTHROPIC_MODEL_ID } from "@diligent/core/llm/models";
 import { renderToStaticMarkup } from "react-dom/server";
 import { AppHeader } from "../../../src/client/components/AppHeader";
 import { AssetThumbnail } from "../../../src/client/components/AssetThumbnail";
@@ -7,6 +9,7 @@ import { AssistantMessage } from "../../../src/client/components/AssistantMessag
 import { Button } from "../../../src/client/components/Button";
 import {
   CollabEventBlock,
+  deriveChildPreview,
   getCollabEventPersistenceKey,
   resolveEffectiveTimeline,
 } from "../../../src/client/components/CollabEventBlock";
@@ -18,6 +21,7 @@ import { Input } from "../../../src/client/components/Input";
 import { extractPastedImageFiles, InputDock } from "../../../src/client/components/InputDock";
 import { KnowledgeManagerModal } from "../../../src/client/components/KnowledgeManagerModal";
 import { MarkdownContent } from "../../../src/client/components/MarkdownContent";
+import { McpServersModal } from "../../../src/client/components/McpServersModal";
 import { MessageList } from "../../../src/client/components/MessageList";
 import { Modal } from "../../../src/client/components/Modal";
 import { ProviderSettingsModal } from "../../../src/client/components/ProviderSettingsModal";
@@ -25,7 +29,9 @@ import { isUserInputComplete, QuestionCard } from "../../../src/client/component
 import { ResponsiveSidebar } from "../../../src/client/components/ResponsiveSidebar";
 import { Sidebar } from "../../../src/client/components/Sidebar";
 import { SlashMenu } from "../../../src/client/components/SlashMenu";
+import { ThinkingBlock } from "../../../src/client/components/ThinkingBlock";
 import { Toast } from "../../../src/client/components/Toast";
+import { ToolActivityGroup } from "../../../src/client/components/ToolActivityGroup";
 import { ToolBlock } from "../../../src/client/components/ToolBlock";
 import { ToolSettingsModal } from "../../../src/client/components/ToolSettingsModal";
 import { UserMessage } from "../../../src/client/components/UserMessage";
@@ -34,6 +40,52 @@ import { normalizeImageFileName } from "../../../src/client/lib/app-utils";
 function createClipboardFile(name: string, type: string): File {
   return new File([`${name}:${type}`], name, { type });
 }
+
+test("mcp servers modal renders server rows with login/logout affordances", () => {
+  const html = renderToStaticMarkup(
+    <McpServersModal
+      initialState={{
+        servers: [
+          { name: "linear", transport: "http", status: "needs_auth", toolCount: 0 },
+          { name: "notion-http", transport: "http", status: "connected", toolCount: 5 },
+          { name: "github", transport: "stdio", status: "connected", toolCount: 8 },
+          { name: "notion", transport: "http", status: "error", toolCount: 0, error: "connect timeout" },
+        ],
+      }}
+      onList={async () => ({ servers: [] })}
+      onLoginStart={async () => ({ authUrl: "https://example.com/auth" })}
+      onLogout={async () => ({ ok: true })}
+      onClose={() => {}}
+    />,
+  );
+
+  expect(html).toContain("MCP Servers");
+  expect(html).toContain("linear");
+  // HTTP servers get auth affordances: needs_auth -> Login, connected -> Logout.
+  expect(html).toContain("Login");
+  expect(html).toContain("Logout");
+  // stdio servers are not OAuth-backed, so they expose neither Login nor Logout.
+  expect(html).toContain("github");
+  expect(html).toContain("connect timeout");
+});
+
+test("mcp servers modal omits login/logout for stdio transports", () => {
+  const html = renderToStaticMarkup(
+    <McpServersModal
+      initialState={{
+        servers: [{ name: "github", transport: "stdio", status: "connected", toolCount: 8 }],
+      }}
+      onList={async () => ({ servers: [] })}
+      onLoginStart={async () => ({ authUrl: "https://example.com/auth" })}
+      onLogout={async () => ({ ok: true })}
+      onClose={() => {}}
+    />,
+  );
+
+  expect(html).toContain("github");
+  expect(html).not.toContain("Login");
+  expect(html).not.toContain("Logout");
+});
 
 test("tool settings modal renders vertex provider badge label", () => {
   const html = renderToStaticMarkup(
@@ -219,8 +271,8 @@ test("question card renders multi-select options as clear checkboxes", () => {
 
   expect(html).toContain('type="checkbox"');
   expect(html).toContain('checked=""');
-  expect(html).toContain("rounded-[2px]");
-  expect(html).toContain("bg-[#2b8cff]");
+  expect(html).toContain("rounded-sm");
+  expect(html).toContain("bg-control-choice");
   expect(html).toContain('stroke="currentColor"');
   expect(html).not.toContain("[x]");
   expect(html).not.toContain("[ ]");
@@ -255,8 +307,8 @@ test("question card renders single-select options as design system radios", () =
   expect(html).toContain('type="radio"');
   expect(html).toContain('checked=""');
   expect(html).toContain("rounded-full");
-  expect(html).toContain("bg-[#2b8cff]");
-  expect(html).toContain("bg-white");
+  expect(html).toContain("bg-control-choice");
+  expect(html).toContain("bg-text");
 });
 
 test("modal renders dialog role", () => {
@@ -279,8 +331,9 @@ test("toast keeps long provider errors bounded and wrappable", () => {
 
   expect(html).toContain('role="alert"');
   expect(html).toContain("fixed right-4 top-20 z-50");
-  expect(html).toContain("w-[calc(100vw-2rem)]");
-  expect(html).toContain("sm:w-[28rem]");
+  expect(html).toContain("w-toast-mobile");
+  expect(html).toContain("sm:w-toast");
+  expect(html).toContain("max-h-toast");
   expect(html).toContain("whitespace-pre-wrap break-words");
   expect(html).toContain("00f97018-852a-44a9-8da4-ffa4773df9d5");
 });
@@ -408,6 +461,9 @@ test("tool settings modal renders tool and plugin rows", () => {
   expect(html).toContain("bash");
   expect(html).toContain("Locked");
   expect(html).toContain("@acme/diligent-tools");
+  expect(html).toContain("Add Package");
+  expect(html).toContain("min-w-28 shrink-0 whitespace-nowrap");
+  expect(html).toContain("focus-visible:ring-inset focus-visible:ring-offset-0");
   expect(html).toContain("jira_comment");
   expect(html).toContain("AI Agent Data Use");
   expect(html).toContain("Improve service with your chats");
@@ -582,6 +638,121 @@ test("input dock only blocks submission while a prompt is pending", () => {
   expect(html).toContain('<button type="button" aria-label="Steer agent" disabled=""');
 });
 
+test("input dock composer textarea does not inherit field border styles", () => {
+  const html = renderToStaticMarkup(
+    <InputDock
+      input=""
+      onInputChange={() => {}}
+      onSend={() => {}}
+      onSteer={() => {}}
+      onInterrupt={() => {}}
+      onCompactionClick={() => {}}
+      isCompacting={false}
+      canSend={false}
+      canSteer={true}
+      threadStatus="busy"
+      mode="default"
+      onModeChange={() => {}}
+      effort="medium"
+      onEffortChange={() => {}}
+      currentModel="gpt-5"
+      availableModels={[]}
+      onModelChange={() => {}}
+      usage={{ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalCost: 0 }}
+      currentContextTokens={0}
+      contextWindow={0}
+      hasProvider={true}
+      supportsVision={false}
+      supportsThinking={false}
+      pendingImages={[]}
+      contextItems={[]}
+      isUploadingImages={false}
+      onAddImages={() => {}}
+      onRemoveImage={() => {}}
+      onRemoveContextItem={() => {}}
+      onClearContextItems={() => {}}
+      slashCommands={[]}
+    />,
+  );
+
+  const textarea = html.match(/<textarea[^>]*aria-label="Steering input"[^>]*>/)?.[0] ?? "";
+  expect(html).toContain("relative rounded-sm border bg-surface-composer px-4 py-3");
+  expect(textarea).toContain("min-h-[52px]");
+  expect(textarea).toContain("rounded-md");
+  expect(textarea).toContain("px-1");
+  expect(textarea).toContain("py-2");
+  expect(textarea).toContain("border-0");
+  expect(textarea).toContain("bg-transparent");
+  expect(textarea).not.toContain("!px-1");
+  expect(textarea).not.toContain("px-3");
+  expect(textarea).not.toContain("py-0");
+  expect(textarea).not.toContain("border-border");
+  expect(textarea).not.toContain("bg-surface-dark");
+  expect(html).toContain("border-white/10");
+});
+
+test("input dock composer selectors do not inherit bordered select trigger styles", () => {
+  const html = renderToStaticMarkup(
+    <InputDock
+      input=""
+      onInputChange={() => {}}
+      onSend={() => {}}
+      onSteer={() => {}}
+      onInterrupt={() => {}}
+      onCompactionClick={() => {}}
+      isCompacting={false}
+      canSend={true}
+      canSteer={false}
+      threadStatus="idle"
+      mode="default"
+      onModeChange={() => {}}
+      effort="medium"
+      onEffortChange={() => {}}
+      currentModel="gpt-5"
+      availableModels={[
+        {
+          id: "gpt-5",
+          provider: "openai",
+          contextWindow: 300000,
+          maxOutputTokens: 64000,
+          supportsVision: true,
+          supportsThinking: true,
+          supportedEfforts: ["low", "medium", "high"],
+        },
+      ]}
+      onModelChange={() => {}}
+      usage={{ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalCost: 0 }}
+      currentContextTokens={0}
+      contextWindow={0}
+      hasProvider={true}
+      supportsVision={true}
+      supportsThinking={true}
+      pendingImages={[]}
+      contextItems={[]}
+      isUploadingImages={false}
+      onAddImages={() => {}}
+      onRemoveImage={() => {}}
+      onRemoveContextItem={() => {}}
+      onClearContextItems={() => {}}
+      slashCommands={[]}
+    />,
+  );
+
+  const modelTrigger = html.match(/<button[^>]*aria-label="Model selector"[^>]*>/)?.[0] ?? "";
+  const effortTrigger = html.match(/<button[^>]*aria-label="Effort selector"[^>]*>/)?.[0] ?? "";
+
+  expect(modelTrigger).toContain("bg-black");
+  expect(effortTrigger).toContain("bg-black");
+  expect(html).toContain("w-[180px]");
+  expect(html).toContain("w-[90px]");
+  expect(modelTrigger).not.toContain("rounded-md");
+  expect(effortTrigger).not.toContain("rounded-md");
+  expect(modelTrigger).not.toContain("border-border");
+  expect(effortTrigger).not.toContain("border-border");
+  expect(modelTrigger).not.toContain("bg-surface-dark");
+  expect(effortTrigger).not.toContain("bg-surface-dark");
+});
+
 test("user message renders context chips above text", () => {
   const html = renderToStaticMarkup(
     <UserMessage
@@ -594,13 +765,15 @@ test("user message renders context chips above text", () => {
   expect(html).toContain("Move these");
 });
 
-test("context message renders checkpoint language and expandable summary area", () => {
+test("context message renders a subtle collapsed compaction divider", () => {
   const html = renderToStaticMarkup(<ContextMessage summary={"## Goal\nShip transcript-aware compaction UI"} />);
 
-  expect(html).toContain("Context checkpoint");
-  expect(html).toContain("Compacted");
-  expect(html).toContain("Older conversation was compressed to keep the thread efficient.");
+  expect(html).toContain("Context compacted");
   expect(html).toContain('aria-expanded="false"');
+  expect(html).toContain("bg-border/25");
+  expect(html).not.toContain("Context checkpoint");
+  expect(html).not.toContain("Older conversation was compressed to keep the thread efficient.");
+  expect(html).not.toContain("Ship transcript-aware compaction UI");
 });
 
 test("app header exposes sidebar toggle state and target", () => {
@@ -633,7 +806,7 @@ test("responsive sidebar renders a mobile full-screen overlay when open", () => 
   expect(html).toContain("fixed inset-0 z-50");
   expect(html).toContain("w-screen");
   expect(html).toContain("translate-x-0");
-  expect(html).toContain("sm:w-[280px]");
+  expect(html).toContain("sm:w-sidebar");
   expect(html).toContain("transition-transform");
   expect(html).not.toContain("bg-overlay/45");
 });
@@ -725,7 +898,7 @@ test("empty state is hidden when provider is configured", () => {
   expect(html).toBe("");
 });
 
-test("assistant message renders completed footer when turn duration is available", () => {
+test("assistant message only shows meaningful thinking duration in the default transcript", () => {
   const html = renderToStaticMarkup(
     <AssistantMessage
       item={{
@@ -742,12 +915,122 @@ test("assistant message renders completed footer when turn duration is available
     />,
   );
 
-  expect(html).toContain("Completed in 4.2s");
+  expect(html).not.toContain("Completed in 4.2s");
+  expect(html).not.toContain("1.2s");
+  expect(html).toContain(">1s<");
   expect(html).not.toContain("Reasoned for");
-  expect(html).toContain('class="pb-2 pt-3"');
+  expect(html).not.toContain("text-xs uppercase tracking-wide text-muted/65");
+  expect(html).not.toContain('class="pb-2 pt-3"');
 });
 
-test("assistant message keeps divider even when persisted duration is unavailable", () => {
+test("assistant message hides zero reasoning duration", () => {
+  const html = renderToStaticMarkup(
+    <AssistantMessage
+      item={{
+        id: "assistant-zero-reasoning",
+        kind: "assistant",
+        text: "Done.",
+        thinking: "Checked relevant files",
+        contentBlocks: [{ type: "text", text: "Done." }],
+        thinkingDone: true,
+        timestamp: 1,
+        reasoningDurationMs: 0,
+      }}
+    />,
+  );
+
+  expect(html).toContain("Thought");
+  expect(html).not.toContain("0ms");
+});
+
+test("thinking block renders markdown emphasis instead of literal markers", () => {
+  const html = renderToStaticMarkup(<ThinkingBlock text={"**Considering button sizes**\n\nReasoning body."} />);
+
+  expect(html).toContain("<strong>Considering button sizes</strong>");
+  expect(html).not.toContain("**Considering button sizes**");
+});
+
+test("thinking block renders streaming markdown emphasis instead of raw markers", () => {
+  const html = renderToStaticMarkup(
+    <ThinkingBlock text={"**Considering button sizes**\n\nReasoning body."} streaming={true} />,
+  );
+
+  expect(html).toContain("thinking-content");
+  expect(html).toContain("<strong>Considering button sizes</strong>");
+  expect(html).not.toContain("**Considering button sizes**");
+  expect(html).not.toContain("whitespace-pre-wrap");
+});
+
+test("assistant message collapses skill usage preface into a compact activity row", () => {
+  const html = renderToStaticMarkup(
+    <AssistantMessage
+      item={{
+        id: "assistant-skill-1",
+        kind: "assistant",
+        text: [
+          "Skill used: overdare-debug-expert",
+          "Work area: script",
+          "Classification rationale: decision path points to a script issue.",
+          "Reproduction path: DUO -> CANCEL -> SOLO PLAY.",
+          "Reference cases: inspect state transition examples.",
+          "Goal for this loop: confirm selected mode values.",
+          "First checks: Play.log and controllers.",
+          "",
+          "Starting with the relevant scripts.",
+        ].join("\n"),
+        thinking: "",
+        contentBlocks: [
+          {
+            type: "text",
+            text: [
+              "Skill used: overdare-debug-expert",
+              "Work area: script",
+              "Classification rationale: decision path points to a script issue.",
+              "Reproduction path: DUO -> CANCEL -> SOLO PLAY.",
+              "Reference cases: inspect state transition examples.",
+              "Goal for this loop: confirm selected mode values.",
+              "First checks: Play.log and controllers.",
+              "",
+              "Starting with the relevant scripts.",
+            ].join("\n"),
+          },
+        ],
+        thinkingDone: true,
+        timestamp: 1,
+      }}
+    />,
+  );
+
+  expect(html).toContain("Skill used: overdare-debug-expert");
+  expect((html.match(/Skill used: overdare-debug-expert/g) ?? []).length).toBe(1);
+  expect(html).toContain(">script<");
+  expect(html).toContain('aria-expanded="false"');
+  expect(html).toContain("Starting with the relevant scripts.");
+  expect(html).not.toContain("Classification rationale: decision path points to a script issue.");
+  expect(html).not.toContain("Reproduction path: DUO");
+});
+
+test("assistant message keeps standalone skill usage row spacing compact", () => {
+  const html = renderToStaticMarkup(
+    <AssistantMessage
+      item={{
+        id: "assistant-skill-standalone",
+        kind: "assistant",
+        text: "Skill used: overdare-debug-expert\nWork area: script",
+        thinking: "",
+        contentBlocks: [],
+        thinkingDone: true,
+        timestamp: 1,
+      }}
+    />,
+  );
+
+  expect(html).toContain("Skill used: overdare-debug-expert");
+  expect(html).toContain('class="mb-0"');
+  expect(html).not.toContain("mb-1");
+});
+
+test("assistant message does not add an empty divider when duration is unavailable", () => {
   const html = renderToStaticMarkup(
     <AssistantMessage
       item={{
@@ -762,7 +1045,7 @@ test("assistant message keeps divider even when persisted duration is unavailabl
     />,
   );
 
-  expect(html).toContain("h-px w-full bg-border/10");
+  expect(html).not.toContain("h-px w-full bg-border/10");
   expect(html).not.toContain("Completed in");
 });
 
@@ -802,13 +1085,14 @@ test("assistant message renders provider-native web blocks and citations", () =>
     />,
   );
 
-  expect(html).toContain("Web Action");
-  expect(html).toContain("Web Action - Searching diligent");
-  expect(html).toContain("Web Action - Found 1 result");
+  expect(html).toContain("Searching web");
+  expect(html).toContain("Searched web");
+  expect(html).not.toContain("Searching diligent");
+  expect(html).not.toContain("Found 1 result");
   expect(html).toContain("Example");
   expect(html).not.toContain("animate-pulse");
+  expect(html).not.toContain("tool-activity-running");
   expect(html).not.toContain(">running<");
-  expect(html).not.toContain("↳ Found 1 result");
   expect(html).toContain("Source 1:");
   expect(html).not.toContain("chatgpt");
   expect(html).not.toContain("openai");
@@ -874,7 +1158,7 @@ test("input dock renders pending image preview and add-images action", () => {
           id: "gpt-5.4",
           provider: "openai",
           contextWindow: 400000,
-          maxOutputTokens: 128000,
+          maxOutputTokens: 64000,
           supportsVision: true,
           supportsThinking: true,
           supportedEfforts: ["none", "low", "medium", "high", "max"],
@@ -883,7 +1167,7 @@ test("input dock renders pending image preview and add-images action", () => {
       onModelChange={() => {}}
       usage={{ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalCost: 0 }}
       currentContextTokens={0}
-      contextWindow={200000}
+      contextWindow={1000000}
       hasProvider={true}
       onOpenProviders={() => {}}
       supportsVision={true}
@@ -961,20 +1245,20 @@ test("input dock shows uploading state and disables send affordance", () => {
       onModeChange={() => {}}
       effort="high"
       onEffortChange={() => {}}
-      currentModel="claude-sonnet-4-6"
+      currentModel={DEFAULT_ANTHROPIC_MODEL_ID}
       availableModels={[
         {
-          id: "claude-sonnet-4-6",
+          id: DEFAULT_ANTHROPIC_MODEL_ID,
           provider: "anthropic",
-          contextWindow: 200000,
-          maxOutputTokens: 16384,
+          contextWindow: 1000000,
+          maxOutputTokens: 64000,
           supportsVision: true,
         },
       ]}
       onModelChange={() => {}}
       usage={{ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalCost: 0 }}
       currentContextTokens={0}
-      contextWindow={200000}
+      contextWindow={1000000}
       hasProvider={true}
       onOpenProviders={() => {}}
       supportsVision={true}
@@ -1062,7 +1346,87 @@ test("slash menu renders a flat command list without submenu affordances", () =>
   expect(html).not.toContain("Execute");
 });
 
-test("tool block renders completed duration in header", () => {
+test("tool activity group reveals flat child rows with inline previews as the second level", () => {
+  const html = renderToStaticMarkup(
+    <ToolActivityGroup
+      initialOpen={true}
+      items={[
+        {
+          id: "tool-1",
+          kind: "tool",
+          toolName: "bash",
+          inputText: "find /Volumes -maxdepth 4",
+          outputText: "Command completed",
+          isError: false,
+          status: "done",
+          timestamp: 1,
+          toolCallId: "call-1",
+          startedAt: 1,
+          durationMs: 300058,
+          render: {
+            inputSummary: "find /Volumes -maxdepth 4",
+            outputSummary: "Command completed",
+            blocks: [],
+          },
+        },
+      ]}
+    />,
+  );
+
+  expect(html).toContain("Ran 1 command");
+  expect(html).toContain("Ran command: find /Volumes -maxdepth 4 · Command completed");
+  expect(html).toContain("find /Volumes -maxdepth 4");
+  expect(html).toContain("Command completed");
+  expect(html).toContain(">5m<");
+  expect(html).toContain("gap-2 py-0.5");
+  expect(html).not.toContain("gap-1.5");
+  expect(html).not.toContain("ml-7 mt-1 space-y-1 border-l");
+  expect(html).not.toContain("max-h-72");
+});
+
+test("nested tool block reveals scrollable third-level details when expanded", () => {
+  const html = renderToStaticMarkup(
+    <ToolBlock
+      nested={true}
+      initialOpen={true}
+      inlinePreviewWhenCollapsed={true}
+      item={{
+        id: "tool-1",
+        kind: "tool",
+        toolName: "bash",
+        inputText: "find /Volumes -maxdepth 4",
+        outputText: "Command completed",
+        isError: false,
+        status: "done",
+        timestamp: 1,
+        toolCallId: "call-1",
+        startedAt: 1,
+        durationMs: 300058,
+        render: {
+          inputSummary: "find /Volumes -maxdepth 4",
+          outputSummary: "Command completed",
+          blocks: [{ type: "text", title: "Output", text: "Command completed" }],
+        },
+      }}
+    />,
+  );
+
+  expect(html).toContain("max-h-72");
+  expect(html).toContain("overflow-y-auto");
+  expect(html).toContain("Ran command: find /Volumes -maxdepth 4 · Command completed");
+  expect(html).toContain("find /Volumes -maxdepth 4");
+  expect(html).toContain("Command completed");
+  expect(html).not.toContain("300058ms");
+  expect(html).toContain(">5m<");
+  expect(html).toContain("gap-2 py-0.5");
+  expect(html).toContain("flex h-5 w-5");
+  expect(html).not.toContain("gap-1.5");
+  expect(html).not.toContain("ml-7");
+  expect(html).not.toContain("border-l border-border");
+  expect(html).not.toContain("pl-3");
+});
+
+test("tool block hides completed duration in the default row", () => {
   const html = renderToStaticMarkup(
     <ToolBlock
       item={{
@@ -1081,8 +1445,54 @@ test("tool block renders completed duration in header", () => {
     />,
   );
 
-  expect(html).toContain("123ms");
-  expect(html).toContain("Shell");
+  expect(html).not.toContain("123ms");
+  expect(html).toContain("Ran command");
+});
+
+test("tool block shows completed duration only after one second", () => {
+  const html = renderToStaticMarkup(
+    <ToolBlock
+      item={{
+        id: "tool-long",
+        kind: "tool",
+        toolName: "bash",
+        inputText: '{"command":"sleep 1"}',
+        outputText: "done",
+        isError: false,
+        status: "done",
+        timestamp: 1_500,
+        toolCallId: "call-long",
+        startedAt: 100,
+        durationMs: 1_350,
+      }}
+    />,
+  );
+
+  expect(html).toContain(">1s<");
+  expect(html).not.toContain("1350ms");
+});
+
+test("tool block uses a neutral fallback icon instead of the target glyph", () => {
+  const html = renderToStaticMarkup(
+    <ToolBlock
+      item={{
+        id: "tool-fallback",
+        kind: "tool",
+        toolName: "unknown_custom_tool",
+        inputText: "{}",
+        outputText: "done",
+        isError: false,
+        status: "done",
+        timestamp: 1,
+        toolCallId: "call-fallback",
+        startedAt: 1,
+      }}
+    />,
+  );
+
+  expect(html).toContain('cx="11"');
+  expect(html).not.toContain("M12 8.5a3.5");
+  expect(html).not.toContain("M3.5 12h2");
 });
 
 test("tool block hides duration while tool is still running", () => {
@@ -1104,10 +1514,13 @@ test("tool block hides duration while tool is still running", () => {
   );
 
   expect(html).not.toContain("123ms");
-  expect(html).toContain("running");
+  expect(html).toContain("Running command");
+  expect(html).toContain(">running<");
+  expect(html).toContain("tool-activity-running");
+  expect(html).not.toContain("px-1 pr-2");
 });
 
-test("tool block shows request summary in header and response summary once below", () => {
+test("tool block keeps request and response summaries hidden while collapsed", () => {
   const html = renderToStaticMarkup(
     <ToolBlock
       item={{
@@ -1131,10 +1544,10 @@ test("tool block shows request summary in header and response summary once below
     />,
   );
 
-  expect(html).toContain("Read - src/ARCHITECTURE.md");
-  expect(html).toContain("0ms");
-  expect(html).toContain("↳ 1 # Architecture");
-  expect(html.match(/src\/ARCHITECTURE\.md/g)?.length).toBe(1);
+  expect(html).toContain("Read files");
+  expect(html).not.toContain("0ms");
+  expect(html).not.toContain("src/ARCHITECTURE.md");
+  expect(html).not.toContain("1 # Architecture");
 });
 
 test("tool block treats namespaced request_user_input as user-input tool (hides output summary)", () => {
@@ -1161,8 +1574,9 @@ test("tool block treats namespaced request_user_input as user-input tool (hides 
     />,
   );
 
-  expect(html).toContain("Input - Ask player");
-  expect(html).not.toContain("↳ Answer submitted");
+  expect(html).toContain("Requested input");
+  expect(html).not.toContain("Ask player");
+  expect(html).not.toContain("Answer submitted");
 });
 
 test("tool block renders asset gallery previews expanded", () => {
@@ -1218,7 +1632,7 @@ test("tool block renders asset gallery previews expanded", () => {
   expect(html).not.toContain("aria-pressed");
 });
 
-test("collab event block uses clickable card semantics without explicit expand labels", () => {
+test("collab event block renders as a compact agent activity row", () => {
   const html = renderToStaticMarkup(
     <CollabEventBlock
       item={{
@@ -1236,12 +1650,80 @@ test("collab event block uses clickable card semantics without explicit expand l
     />,
   );
 
-  expect(html).toContain('role="button"');
+  expect(html).toContain('type="button"');
+  expect(html).toContain('aria-expanded="false"');
   expect(html).toContain("Spawned Juniper [explore]");
-  expect(html).toContain("cursor-pointer");
-  expect(html).not.toContain("focus:ring-");
+  expect(html).toContain("completed");
+  expect(html).toContain("text-success/85");
+  expect(html).toContain("gap-2 py-0.5");
+  expect(html).not.toContain("bg-surface-dark py-2.5");
   expect(html).not.toContain(">expand<");
   expect(html).not.toContain(">collapse<");
+});
+
+test("collab event expanded timeline renders compact child activity rows", () => {
+  const html = renderToStaticMarkup(
+    <CollabEventBlock
+      initialOpen={true}
+      item={{
+        id: "collab-expanded-1",
+        kind: "collab",
+        eventType: "spawn",
+        childThreadId: "child-expanded-1",
+        nickname: "Camellia",
+        agentType: "explore",
+        description: "Analyze Lua and level hierarchy",
+        status: "running",
+        childTools: [
+          {
+            toolCallId: "tool-read-1",
+            toolName: "read",
+            status: "running",
+            isError: false,
+            inputText: '{"file_path":"/Volumes/overdare-newgame/Lua/FRU_RoundManager.lua","offset":1,"limit":400}',
+            outputText: "undefined",
+          },
+        ],
+        childTimeline: [
+          {
+            kind: "assistant",
+            message: "**Inspecting files** I am planning to inspect files before using grep.",
+          },
+          {
+            kind: "tool",
+            toolCallId: "tool-grep-1",
+            toolName: "grep",
+            status: "done",
+            isError: true,
+            inputText: '{"pattern":"RoundState","path":"/Volumes/overdare-newgame"}',
+            outputText: 'Error running grep: Executable not found in $PATH: "rg"',
+          },
+          {
+            kind: "tool",
+            toolCallId: "tool-read-1",
+            toolName: "read",
+            status: "running",
+            isError: false,
+            inputText: '{"file_path":"/Volumes/overdare-newgame/Lua/FRU_RoundManager.lua","offset":1,"limit":400}',
+            outputText: "undefined",
+          },
+        ],
+        timestamp: 1,
+      }}
+    />,
+  );
+
+  expect(html).toContain("Spawned Camellia [explore]");
+  expect(html).toContain('aria-expanded="true"');
+  expect(html).toContain("Analyze Lua and level hierarchy");
+  expect(html).toContain("Thought: Inspecting files I am planning to inspect files before using grep.");
+  expect(html).toContain("Search failed: pattern=RoundState, path=/Volumes/overdare-newgame");
+  expect(html).toContain("Error running grep: Executable not found in $PATH");
+  expect(html).toContain("Reading files: file_path=/Volumes/overdare-newgame/Lua/FRU_RoundManager.lua");
+  expect(html).toContain("ml-7 space-y-0.5");
+  expect(html).not.toContain("**Inspecting files**");
+  expect(html).not.toContain("ㄴ");
+  expect(html).not.toContain("&gt;undefined&lt;");
 });
 
 test("collab wait event shows animated spinner while agents are still running", () => {
@@ -1268,7 +1750,8 @@ test("collab wait event shows animated spinner while agents are still running", 
 
   expect(html).toContain("Waiting for Juniper");
   expect(html).toContain(">running<");
-  expect(html).toContain("animate-spin");
+  expect(html).toContain("tool-activity-running");
+  expect(html).not.toContain("px-1 pr-2");
 });
 
 test("collab wait timeout keeps ongoing spinner UI without explicit timeout label", () => {
@@ -1296,7 +1779,7 @@ test("collab wait timeout keeps ongoing spinner UI without explicit timeout labe
 
   expect(html).toContain("Waiting for Juniper");
   expect(html).toContain(">running<");
-  expect(html).toContain("animate-spin");
+  expect(html).toContain("tool-activity-running");
   expect(html).not.toContain("timed out");
 });
 
@@ -1334,6 +1817,45 @@ test("collab event prefers live child timeline over loaded snapshot preview", ()
 
   expect(resolveEffectiveTimeline(liveTimeline, loadedPreview)).toEqual(liveTimeline);
   expect(resolveEffectiveTimeline(undefined, loadedPreview)).toEqual(loadedPreview.childTimeline);
+});
+
+test("collab child snapshot preview merges tool start and completed rows by toolCallId", () => {
+  const preview = deriveChildPreview({
+    threadId: "child-1",
+    cwd: "/repo",
+    items: [
+      {
+        type: "toolCall",
+        itemId: "tool:tc-ls",
+        toolCallId: "tc-ls",
+        toolName: "ls",
+        input: { path: "/Users/devbv/git" },
+        timestamp: 1,
+        startedAt: 1,
+      },
+      {
+        type: "toolCall",
+        itemId: "tool:tc-ls",
+        toolCallId: "tc-ls",
+        toolName: "ls",
+        input: { path: "/Users/devbv/git" },
+        output: "diligent/",
+        isError: false,
+        timestamp: 2,
+        startedAt: 1,
+      },
+    ],
+    errors: [],
+    hasFollowUp: false,
+    entryCount: 2,
+    isRunning: false,
+    totalCost: 0,
+  });
+
+  expect(preview.childTools).toHaveLength(1);
+  expect(preview.childTimeline).toHaveLength(1);
+  expect(preview.childTools[0]).toMatchObject({ toolCallId: "tc-ls", status: "done", outputText: "diligent/" });
+  expect(preview.childTimeline[0]).toMatchObject({ kind: "tool", toolCallId: "tc-ls", status: "done" });
 });
 
 test("collab group renders consecutive events directly without earlier-events toggle", () => {

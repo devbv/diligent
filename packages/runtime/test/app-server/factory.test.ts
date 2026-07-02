@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getModelInfoList } from "@diligent/core/llm/models";
+import { DEFAULT_ANTHROPIC_MODEL_ID, getModelInfoList } from "@diligent/core/llm/models";
 import { ProviderManager } from "@diligent/core/llm/provider-manager";
 import type { Model } from "@diligent/core/llm/types";
 import { createAppServerConfig } from "@diligent/runtime/app-server";
@@ -19,10 +19,10 @@ function makeRuntimeConfig(overrides?: Partial<RuntimeConfig>): RuntimeConfig {
     remember: () => {},
   };
   const model: Model = {
-    id: "claude-sonnet-4-6",
+    id: DEFAULT_ANTHROPIC_MODEL_ID,
     provider: "anthropic",
     contextWindow: 200_000,
-    maxOutputTokens: 128_000,
+    maxOutputTokens: 64_000,
     supportsThinking: false,
   };
   return {
@@ -70,7 +70,7 @@ describe("createAppServerConfig", () => {
     expect(config.authStore).toEqual(runtimeConfig.authStore);
     expect(config.permissionEngine).toBe(runtimeConfig.permissionEngine);
     expect(config.modelConfig).toBeDefined();
-    expect(config.modelConfig?.currentModelId).toBe("claude-sonnet-4-6");
+    expect(config.modelConfig?.currentModelId).toBe(DEFAULT_ANTHROPIC_MODEL_ID);
     expect(config.defaultEffort).toBe("medium");
     expect(config.skillNames).toEqual([]);
   });
@@ -161,7 +161,7 @@ describe("createAppServerConfig", () => {
 
       config.modelConfig?.onModelChange("claude-haiku-4-5", "thread-child");
 
-      expect(runtimeConfig.model?.id).toBe("claude-sonnet-4-6");
+      expect(runtimeConfig.model?.id).toBe(DEFAULT_ANTHROPIC_MODEL_ID);
       const configPath = join(fakeHome, ".diligent", "config.jsonc");
       expect(await Bun.file(configPath).exists()).toBe(false);
     } finally {
@@ -216,7 +216,7 @@ describe("createAppServerConfig", () => {
       cwd: "/tmp/test",
       mode: "default",
       effort: "medium",
-      modelId: "claude-sonnet-4-6",
+      modelId: DEFAULT_ANTHROPIC_MODEL_ID,
       approve: async () => "once",
       ask: async () => null,
     });

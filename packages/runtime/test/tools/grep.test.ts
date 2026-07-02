@@ -97,6 +97,9 @@ describe("grep tool", () => {
     const result = await tool.execute({ pattern: "nonexistent" }, makeCtx());
     expect(result.render).toBeDefined();
     expect(result.output).toContain("No matches found");
+    expect(result.render?.outputSummary).toBe("0 matches found");
+    const listBlock = result.render?.blocks.find((block) => block.type === "list");
+    expect(listBlock).toMatchObject({ type: "list", title: "└ Found 0 matches", items: [] });
   });
 
   test("resolves relative path against cwd", async () => {

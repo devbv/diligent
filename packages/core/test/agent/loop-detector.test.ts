@@ -60,6 +60,22 @@ describe("DoomLoopDetector", () => {
     expect(result.toolName).toBe("bash");
   });
 
+  test("length-4: detects repeated directory probing sequence with default window", () => {
+    const d = new DoomLoopDetector();
+    const paths = ["/Users/devbv/git", "/Users/devbv/recruit", "/Users/devbv/Documents", "/Users/devbv/Desktop"];
+
+    for (let repeat = 0; repeat < 3; repeat++) {
+      for (const path of paths) {
+        d.record("ls", { path });
+      }
+    }
+
+    const result = d.check();
+    expect(result.detected).toBe(true);
+    expect(result.patternLength).toBe(4);
+    expect(result.toolName).toBe("ls");
+  });
+
   test("window limits stored signatures", () => {
     const d = new DoomLoopDetector(5);
     // Fill with unique calls beyond window

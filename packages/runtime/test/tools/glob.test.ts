@@ -74,6 +74,9 @@ describe("glob tool", () => {
     const tool = createGlobTool(tmpDir);
     const result = await tool.execute({ pattern: "*.xyz" }, makeCtx());
     expect(result.output).toContain("No files found");
+    expect(result.render?.outputSummary).toBe("0 files found");
+    const listBlock = result.render?.blocks.find((block) => block.type === "list");
+    expect(listBlock).toMatchObject({ type: "list", title: "└ Found 0 files", items: [] });
   });
 
   test("respects nested glob pattern", async () => {
@@ -97,6 +100,36 @@ describe("glob tool", () => {
     expect(result.render?.blocks[0]).toMatchObject({ type: "text", title: "Output" });
     expect(result.output).toContain("path must be absolute");
     expect(result.metadata?.error).toBe(true);
+  });
+
+  test("returns error for absolute filesystem patterns", async () => {
+    const tool = createGlobTool(tmpDir);
+    const result = await tool.execute({ pattern: `${tmpDir}/src/**/*.ts` }, makeCtx());
+
+    expect(result.output).toContain("pattern must be relative to the search path");
+    expect(result.output).toContain("Use a relative pattern like");
+    expect(result.metadata?.error).toBe(true);
+  });
+
+  test("returns error for Windows absolute filesystem patterns", async () => {
+    const tool = createGlobTool(tmpDir);
+    const result = await tool.execute({ pattern: "C:/Users/alice/project/src/**/*.ts" }, makeCtx());
+
+    expect(result.output).toContain("pattern must be relative to the search path");
+    expect(result.metadata?.error).toBe(true);
+  });
+
+  test("allows root-anchored glob patterns", async () => {
+    if (!rgAvailable) return;
+
+    await mkdir(join(tmpDir, "src"), { recursive: true });
+    await writeFile(join(tmpDir, "src", "index.ts"), "");
+
+    const tool = createGlobTool(tmpDir);
+    const result = await tool.execute({ pattern: "/**/src/**/*.ts" }, makeCtx());
+
+    expect(result.output).toContain("index.ts");
+    expect(result.metadata?.error).toBeUndefined();
   });
 
   test("returns error for filesystem root path", async () => {

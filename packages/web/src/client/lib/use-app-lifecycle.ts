@@ -70,6 +70,7 @@ export function useAppRpcBindings({
   refreshThreadList,
   onAccountLoginCompleted,
   onAccountUpdated,
+  onMcpLoginCompleted,
   markAttention,
   onBackgroundNotification,
   handleServerRequest,
@@ -84,6 +85,7 @@ export function useAppRpcBindings({
   refreshThreadList: (rpc?: WebRpcClient | null) => Promise<void>;
   onAccountLoginCompleted: (params: { loginId: string | null; success: boolean; error: string | null }) => void;
   onAccountUpdated: (params: { providers: ProviderAuthStatus[] }) => Promise<void>;
+  onMcpLoginCompleted: (params: { server: string; success: boolean; error: string | null }) => void;
   markAttention: (threadId: string) => void;
   onBackgroundNotification: (notification: DiligentServerNotification) => void;
   handleServerRequest: (requestId: number, request: DiligentServerRequest) => void;
@@ -113,6 +115,15 @@ export function useAppRpcBindings({
 
       if (notification.method === DILIGENT_SERVER_NOTIFICATION_METHODS.ACCOUNT_UPDATED) {
         void onAccountUpdated(notification.params);
+        return;
+      }
+
+      if (notification.method === DILIGENT_SERVER_NOTIFICATION_METHODS.MCP_LOGIN_COMPLETED) {
+        onMcpLoginCompleted({
+          server: notification.params.server,
+          success: notification.params.success,
+          error: notification.params.error ?? null,
+        });
         return;
       }
 
@@ -182,6 +193,7 @@ export function useAppRpcBindings({
     refreshThreadList,
     onAccountLoginCompleted,
     onAccountUpdated,
+    onMcpLoginCompleted,
     markAttention,
     onBackgroundNotification,
     handleServerRequest,

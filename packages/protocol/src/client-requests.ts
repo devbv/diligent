@@ -498,6 +498,49 @@ export const ImageUploadResponseSchema = z.object({
 });
 export type ImageUploadResponse = z.infer<typeof ImageUploadResponseSchema>;
 
+// --- mcp/* (server management, P070) ---
+export const McpServerStatusSchema = z.object({
+  name: z.string(),
+  transport: z.enum(["stdio", "http", "sse"]),
+  status: z.enum(["connected", "needs_auth", "error", "disabled"]),
+  toolCount: z.number().int().nonnegative(),
+  error: z.string().optional(),
+});
+export type McpServerStatus = z.infer<typeof McpServerStatusSchema>;
+
+// --- mcp/list ---
+export const McpListParamsSchema = z.object({
+  threadId: z.string().optional(),
+});
+export type McpListParams = z.infer<typeof McpListParamsSchema>;
+
+export const McpListResponseSchema = z.object({
+  servers: z.array(McpServerStatusSchema),
+});
+export type McpListResponse = z.infer<typeof McpListResponseSchema>;
+
+// --- mcp/login/start ---
+export const McpLoginStartParamsSchema = z.object({
+  server: z.string(),
+});
+export type McpLoginStartParams = z.infer<typeof McpLoginStartParamsSchema>;
+
+export const McpLoginStartResponseSchema = z.object({
+  authUrl: z.string(),
+});
+export type McpLoginStartResponse = z.infer<typeof McpLoginStartResponseSchema>;
+
+// --- mcp/logout ---
+export const McpLogoutParamsSchema = z.object({
+  server: z.string(),
+});
+export type McpLogoutParams = z.infer<typeof McpLogoutParamsSchema>;
+
+export const McpLogoutResponseSchema = z.object({
+  ok: z.literal(true),
+});
+export type McpLogoutResponse = z.infer<typeof McpLogoutResponseSchema>;
+
 export const DiligentClientRequestSchema = z.discriminatedUnion("method", [
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.INITIALIZE), params: InitializeParamsSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.THREAD_START), params: ThreadStartParamsSchema }),
@@ -548,6 +591,9 @@ export const DiligentClientRequestSchema = z.discriminatedUnion("method", [
     params: ThreadUnsubscribeParamsSchema,
   }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.IMAGE_UPLOAD), params: ImageUploadParamsSchema }),
+  z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.MCP_LIST), params: McpListParamsSchema }),
+  z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.MCP_LOGIN_START), params: McpLoginStartParamsSchema }),
+  z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.MCP_LOGOUT), params: McpLogoutParamsSchema }),
 ]);
 export type DiligentClientRequest = z.infer<typeof DiligentClientRequestSchema>;
 
@@ -604,5 +650,8 @@ export const DiligentClientResponseSchema = z.discriminatedUnion("method", [
     result: ThreadUnsubscribeResponseSchema,
   }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.IMAGE_UPLOAD), result: ImageUploadResponseSchema }),
+  z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.MCP_LIST), result: McpListResponseSchema }),
+  z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.MCP_LOGIN_START), result: McpLoginStartResponseSchema }),
+  z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.MCP_LOGOUT), result: McpLogoutResponseSchema }),
 ]);
 export type DiligentClientResponse = z.infer<typeof DiligentClientResponseSchema>;

@@ -7,6 +7,11 @@ export interface Tool<TParams extends z.ZodType = any> {
   name: string;
   description: string;
   parameters: TParams;
+  /**
+   * When set, this raw JSON Schema is advertised to the LLM instead of deriving it
+   * from `parameters`. Used by tools whose schema is not Zod-authored (e.g. MCP).
+   */
+  inputSchema?: Record<string, unknown>;
   execute: (args: z.infer<TParams>, ctx: ToolContext) => Promise<ToolResult>;
   supportParallel?: boolean; // D015: When true, tool can run concurrently with other parallel tools
   /** Custom arg parser. When provided, executor uses this instead of parameters.safeParse(). */

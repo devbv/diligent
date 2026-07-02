@@ -1,4 +1,6 @@
 // @summary Unified provider manager — provider stream dispatch with injected auth bindings
+
+import { DEFAULT_ANTHROPIC_MODEL_ID } from "./models";
 import { createAnthropicNativeCompaction, createAnthropicStream } from "./provider/anthropic";
 import { createGeminiStream } from "./provider/gemini";
 import type { NativeCompactionLookup } from "./provider/native-compaction";
@@ -44,10 +46,10 @@ export const PROVIDER_DISPLAY_NAMES: Record<ProviderName, string> = {
 };
 
 export const DEFAULT_MODELS: Record<ProviderName, string> = {
-  anthropic: "claude-sonnet-4-6",
+  anthropic: DEFAULT_ANTHROPIC_MODEL_ID,
   openai: "gpt-5.5",
   chatgpt: "chatgpt-5.5",
-  gemini: "gemini-2.5-flash",
+  gemini: "gemini-3.5-flash",
   vertex: "vertex-gemma-4-26b-it",
   "zai-coding-plan": "glm-5.2",
 };

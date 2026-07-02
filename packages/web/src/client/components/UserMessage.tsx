@@ -25,10 +25,10 @@ function UserImageAttachment({ image }: { image: UserMessageImage }) {
         href={image.url}
         target="_blank"
         rel="noreferrer"
-        className="inline-flex h-20 max-w-[220px] items-center gap-2 rounded-lg border border-border/100 bg-surface-dark px-3 text-xs text-muted"
+        className="inline-flex h-20 max-w-56 items-center gap-2 rounded-lg border border-border/100 bg-surface-dark px-3 text-xs text-muted"
         title={label}
       >
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-surface-light text-[10px] font-semibold text-muted">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-surface-light text-2xs font-semibold text-muted">
           IMG
         </span>
         <span className="min-w-0">
@@ -47,12 +47,7 @@ function UserImageAttachment({ image }: { image: UserMessageImage }) {
       className="block overflow-hidden rounded-lg bg-surface-dark"
       title={label}
     >
-      <img
-        src={image.url}
-        alt={label}
-        className="max-h-48 max-w-[220px] object-cover"
-        onError={() => setFailed(true)}
-      />
+      <img src={image.url} alt={label} className="max-h-48 max-w-56 object-cover" onError={() => setFailed(true)} />
     </a>
   );
 }
@@ -66,7 +61,7 @@ export function UserMessage({ text, images = [], contextItems = [] }: UserMessag
             {contextItems.map((item) => (
               <span
                 key={getAgentContextItemKey(item)}
-                className="inline-flex max-w-full items-center rounded-full border border-border/100 bg-surface-dark px-2.5 py-1 text-[11px] text-muted"
+                className="inline-flex max-w-full items-center rounded-full border border-border/100 bg-surface-dark px-2.5 py-1 text-xs text-muted"
                 title={formatAgentContextItemLabel(item)}
               >
                 <span className="truncate">{formatAgentContextItemLabel(item)}</span>
@@ -82,9 +77,7 @@ export function UserMessage({ text, images = [], contextItems = [] }: UserMessag
           </div>
         ) : null}
         {text ? (
-          <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm leading-7 text-white">
-            {text}
-          </p>
+          <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm leading-7 text-text">{text}</p>
         ) : null}
       </div>
     </div>

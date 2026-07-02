@@ -18,6 +18,7 @@ export interface AppEventControllerDeps {
   onTurnErrored: (message: string) => void;
   onUserInputRequestResolved: () => void;
   onAccountLoginCompleted: (result: { success: boolean; error: string | null }) => void;
+  onMcpLoginCompleted: (result: { server: string; success: boolean; toolCount?: number; error: string | null }) => void;
   requestApproval: (request: ApprovalRequest) => Promise<ApprovalResponse>;
   requestUserInput: (request: UserInputRequest) => Promise<UserInputResponse>;
 }
@@ -116,6 +117,11 @@ export class AppEventController {
     if (notification.method === DILIGENT_SERVER_NOTIFICATION_METHODS.ACCOUNT_LOGIN_COMPLETED) {
       const { success, error } = notification.params;
       this.deps.onAccountLoginCompleted({ success, error: error ?? null });
+    }
+
+    if (notification.method === DILIGENT_SERVER_NOTIFICATION_METHODS.MCP_LOGIN_COMPLETED) {
+      const { server, success, toolCount, error } = notification.params;
+      this.deps.onMcpLoginCompleted({ server, success, toolCount, error: error ?? null });
     }
   }
 

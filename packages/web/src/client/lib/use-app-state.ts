@@ -200,6 +200,7 @@ export function useAppState({
     refreshThreadList: threadMgr.refreshThreadList,
     onAccountLoginCompleted: providerMgr.onAccountLoginCompleted,
     onAccountUpdated: providerMgr.onAccountUpdated,
+    onMcpLoginCompleted: modalState.bumpMcpRefreshNonce,
     markAttention: notificationState.markAttention,
     onBackgroundNotification: (notification) =>
       void notificationState.desktopNotificationsRef.current.notifyForNotification(notification),
@@ -259,6 +260,8 @@ export function useAppState({
     changeModel: providerMgr.changeModel,
     startNewThread: threadMgr.startNewThread,
     openThread: threadMgr.openThread,
+    openMcpModal: modalState.openMcpModal,
+    bumpMcpRefreshNonce: modalState.bumpMcpRefreshNonce,
     steeringControl: {
       pendingAbortRestartMessageRef: steeringQueue.pendingAbortRestartMessageRef,
       suppressNextSteeringInjectedRef: steeringQueue.suppressNextSteeringInjectedRef,
@@ -341,6 +344,9 @@ export function useAppState({
     saveTools: threadData.saveTools,
     listKnowledge: threadData.listKnowledge,
     updateKnowledge: threadData.updateKnowledge,
+    listMcpServers: threadData.listMcpServers,
+    mcpLoginStart: threadData.mcpLoginStart,
+    mcpLogout: threadData.mcpLogout,
     approvalPrompt: serverRequests.approvalPrompt,
     questionPrompt: serverRequests.questionPrompt,
     loadChildThread: threadData.loadChildThread,

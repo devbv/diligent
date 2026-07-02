@@ -21,6 +21,11 @@ export class AppRuntimeState {
   reasoningStartedAtMs: number | null = null;
   reasoningAccumulatedMs = 0;
   pendingOAuthResolve: ((result: { success: boolean; error: string | null }) => void) | null = null;
+  /** Per-server resolvers awaiting an `mcp/login/completed` notification, keyed by server name. */
+  pendingMcpLoginResolve = new Map<
+    string,
+    (result: { success: boolean; toolCount?: number; error: string | null }) => void
+  >();
   pendingSteers: PendingSteer[] = [];
   cancelRequested = false;
 

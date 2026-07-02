@@ -11,6 +11,7 @@ export { compact, compactMessages, generateSummary, resolveCompaction } from "./
 export type { ModelClass, ModelDefinition } from "./models";
 export {
   agentTypeToModelClass,
+  DEFAULT_ANTHROPIC_MODEL_ID,
   getModelClass,
   getModelInfoList,
   KNOWN_MODELS,

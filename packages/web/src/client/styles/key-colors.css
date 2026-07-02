@@ -23,9 +23,11 @@
   --color-bg-surface-dimd-strong: rgb(0 0 0 / 0.72);
   --color-bg-surface-dimd-weak: rgb(0 0 0 / 0.4);
   --color-bg-fill-primary: #ff2d5c;
-  --color-bg-fill-primary-hover: #ff4d6e;
+  --color-bg-fill-primary-hover: #bb002f;
   --color-bg-fill-primary-dark: color-mix(in srgb, var(--color-bg-fill-primary) 45%, var(--color-bg-sunken));
   --color-bg-fill-primary-dark-hover: color-mix(in srgb, var(--color-bg-fill-primary) 58%, var(--color-bg-sunken));
+  --color-bg-fill-info: #2563eb;
+  --color-bg-fill-info-hover: #1d4ed8;
   --color-bg-fill-secondary: #2a2a2e;
   --color-bg-fill-secondary-hover: #34343a;
   --color-bg-fill-ghost-hover: #1f1f22;
@@ -42,6 +44,9 @@
   --color-fill-dark: #040405;
   --color-fill-dark-hover: rgb(4 4 5 / 0.82);
   --color-selection: #ff2d5c;
+  --color-control-choice: #2b8cff;
+  --color-control-choice-border: #8d96a3;
+  --color-control-choice-border-hover: #c7d0dc;
 
   --color-text: #ececee;
   --color-text-soft: #d4d4d8;
@@ -139,7 +144,9 @@
   --color-bg-surface-warning-rgb: 48 40 16;
   --color-bg-surface-error-rgb: 48 24 28;
   --color-bg-fill-primary-rgb: 255 45 92;
-  --color-bg-fill-primary-hover-rgb: 255 77 110;
+  --color-bg-fill-primary-hover-rgb: 187 0 47;
+  --color-bg-fill-info-rgb: 37 99 235;
+  --color-bg-fill-info-hover-rgb: 29 78 216;
   --color-bg-fill-secondary-rgb: 42 42 46;
   --color-bg-fill-secondary-hover-rgb: 52 52 58;
   --color-bg-fill-ghost-hover-rgb: 31 31 34;
@@ -152,6 +159,9 @@
   --color-fill-strong-rgb: 255 255 255;
   --color-fill-dark-rgb: 4 4 5;
   --color-selection-rgb: 255 45 92;
+  --color-control-choice-rgb: 43 140 255;
+  --color-control-choice-border-rgb: 141 150 163;
+  --color-control-choice-border-hover-rgb: 199 208 220;
 
   --color-text-rgb: 236 236 238;
   --color-text-soft-rgb: 212 212 216;

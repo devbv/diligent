@@ -4,6 +4,7 @@ import type { ApprovalRequest } from "@diligent/protocol";
 import { Button } from "./Button";
 import { SectionLabel } from "./SectionLabel";
 import { SystemCard } from "./SystemCard";
+import { actionRowClasses } from "./ui-styles";
 
 interface ApprovalCardProps {
   request: ApprovalRequest;
@@ -44,7 +45,7 @@ export function ApprovalCard({ request, onDecide }: ApprovalCardProps) {
           {request.description}
         </pre>
       ) : null}
-      <div className="flex flex-wrap gap-2">
+      <div className={`${actionRowClasses} flex-wrap justify-start`}>
         <Button size="sm" intent="ghost" onClick={() => onDecide("once")}>
           Once
         </Button>

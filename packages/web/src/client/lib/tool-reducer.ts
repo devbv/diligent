@@ -56,36 +56,26 @@ export function reduceToolEvent(state: ThreadState, event: ToolAgentEvent): Thre
           );
           return state;
         }
+        const childTool = {
+          toolCallId: event.toolCallId,
+          toolName: event.toolName,
+          status: "running" as const,
+          isError: false,
+          inputText: stringifyUnknown(event.input),
+          outputText: "",
+          render: ("render" in event ? toToolRenderPayload(event.render) : undefined) ?? undefined,
+        };
+        const childTimelineEntry = {
+          kind: "tool" as const,
+          toolCallId: event.toolCallId,
+          toolName: event.toolName,
+          status: "running" as const,
+          isError: false,
+          inputText: stringifyUnknown(event.input),
+          outputText: "",
+        };
         return updateItem(state, spawnItem.id, (item) =>
-          item.kind === "collab"
-            ? {
-                ...item,
-                childTools: [
-                  ...item.childTools,
-                  {
-                    toolCallId: event.toolCallId,
-                    toolName: event.toolName,
-                    status: "running" as const,
-                    isError: false,
-                    inputText: stringifyUnknown(event.input),
-                    outputText: "",
-                    render: ("render" in event ? toToolRenderPayload(event.render) : undefined) ?? undefined,
-                  },
-                ],
-                childTimeline: [
-                  ...(item.childTimeline ?? []),
-                  {
-                    kind: "tool" as const,
-                    toolCallId: event.toolCallId,
-                    toolName: event.toolName,
-                    status: "running" as const,
-                    isError: false,
-                    inputText: stringifyUnknown(event.input),
-                    outputText: "",
-                  },
-                ],
-              }
-            : item,
+          item.kind === "collab" ? upsertChildToolStart(item, childTool, childTimelineEntry) : item,
         );
       }
 
@@ -236,4 +226,25 @@ export function reduceToolEvent(state: ThreadState, event: ToolAgentEvent): Thre
       return next;
     }
   }
+}
+
+type CollabItem = Extract<ThreadState["items"][number], { kind: "collab" }>;
+type ChildTool = CollabItem["childTools"][number];
+type ChildTimelineTool = Extract<NonNullable<CollabItem["childTimeline"]>[number], { kind: "tool" }>;
+
+function upsertChildToolStart(
+  item: CollabItem,
+  childTool: ChildTool,
+  childTimelineEntry: ChildTimelineTool,
+): CollabItem {
+  const childToolExists = item.childTools.some((tool) => tool.toolCallId === childTool.toolCallId);
+  const childTimeline = item.childTimeline ?? [];
+  const childTimelineExists = childTimeline.some(
+    (entry) => entry.kind === "tool" && entry.toolCallId === childTimelineEntry.toolCallId,
+  );
+  return {
+    ...item,
+    childTools: childToolExists ? item.childTools : [...item.childTools, childTool],
+    childTimeline: childTimelineExists ? childTimeline : [...childTimeline, childTimelineEntry],
+  };
 }

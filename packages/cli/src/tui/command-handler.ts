@@ -54,6 +54,7 @@ export interface CommandHandlerDeps {
   onModelChanged: (modelId: string) => void;
   onEffortChanged: (effort: ThinkingEffort, label: string) => void;
   waitForOAuthComplete: () => Promise<{ success: boolean; error: string | null }>;
+  waitForMcpLogin: (server: string) => Promise<{ success: boolean; toolCount?: number; error: string | null }>;
   syncActiveThreadState: () => Promise<void>;
   queuePendingSteer: (steer: PendingSteer) => void;
   // Domain modules
@@ -156,6 +157,7 @@ export function createCommandHandler(deps: CommandHandlerDeps): CommandHandler {
           stop: () => deps.shutdown(),
           getRpcClient: () => deps.getRpcClient(),
           waitForOAuthComplete: () => deps.waitForOAuthComplete(),
+          waitForMcpLogin: (server) => deps.waitForMcpLogin(server),
         },
         config: deps.getConfig(),
         threadId: deps.getCurrentThreadId(),

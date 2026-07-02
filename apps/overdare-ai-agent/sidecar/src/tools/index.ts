@@ -8,14 +8,19 @@ import { createRagToolProvider } from "./rag";
 import { createStudioRpcToolProvider } from "./studiorpc";
 import { createValidatorToolProvider } from "./validator";
 
-export interface StudioBundledToolProviderOptions extends StudioToolProviderOptions {}
+export interface StudioBundledToolProviderOptions extends StudioToolProviderOptions {
+  /** When true, omit the Studio RPC provider so nothing connects to Studio (13377). */
+  studioDisabled?: boolean;
+}
 
 export function createStudioBundledToolProviders(options: StudioBundledToolProviderOptions): BundledToolProvider[] {
   return [
     createHelloWorldToolProvider(options),
     createRagToolProvider(),
     createValidatorToolProvider(),
-    createStudioRpcToolProvider(),
+    // Studio RPC provider carries the level.save.file turn hooks, so skipping it
+    // means zero connection attempts to Studio when running without one.
+    ...(options.studioDisabled ? [] : [createStudioRpcToolProvider()]),
     createAnalyticsToolProvider(),
     createGatewayToolProvider(options),
   ];

@@ -9,7 +9,7 @@ export function ScrollToBottom({ onClick }: ScrollToBottomProps) {
     <button
       type="button"
       onClick={onClick}
-      className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full border border-border-strong/100 bg-surface-light px-3 py-1.5 font-mono text-xs- text-text shadow-panel transition hover:bg-fill-ghost-hover hover:text-text"
+      className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full border border-border-strong/100 bg-surface-light px-3 py-1.5 font-mono text-xs text-text shadow-panel transition hover:bg-fill-ghost-hover hover:text-text"
     >
       ↓ scroll to bottom
     </button>

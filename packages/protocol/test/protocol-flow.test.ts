@@ -18,6 +18,8 @@ import {
   ToolsListResponseSchema,
 } from "../src";
 
+const TEST_MODEL_ID = "claude-sonnet-4-6";
+
 describe("protocol/flow", () => {
   it("accepts thread and turn client requests", () => {
     expect(
@@ -87,7 +89,7 @@ describe("protocol/flow", () => {
         cwd: "/repo",
         mode: "default",
         effort: "medium",
-        currentModel: "claude-sonnet-4-6",
+        currentModel: TEST_MODEL_ID,
         availableModels: [],
       }).success,
     ).toBe(true);
@@ -380,7 +382,7 @@ describe("protocol/flow", () => {
           message: {
             role: "assistant",
             content: [{ type: "text", text: "hi" }],
-            model: "claude-sonnet-4-6",
+            model: TEST_MODEL_ID,
             usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
             stopReason: "end_turn",
             timestamp: Date.now(),
@@ -521,6 +523,62 @@ describe("protocol/flow", () => {
       },
     });
     expect(msg.success).toBe(true);
+  });
+
+  it("accepts mcp/list, mcp/login/start, and mcp/logout request + response payloads", () => {
+    expect(
+      DiligentClientRequestSchema.safeParse({
+        method: DILIGENT_CLIENT_REQUEST_METHODS.MCP_LIST,
+        params: { threadId: "th-1" },
+      }).success,
+    ).toBe(true);
+    expect(
+      DiligentClientResponseSchema.safeParse({
+        method: DILIGENT_CLIENT_REQUEST_METHODS.MCP_LIST,
+        result: {
+          servers: [
+            { name: "github", transport: "stdio", status: "connected", toolCount: 12 },
+            { name: "linear", transport: "http", status: "needs_auth", toolCount: 0 },
+            { name: "notion", transport: "http", status: "error", toolCount: 0, error: "connect timeout" },
+          ],
+        },
+      }).success,
+    ).toBe(true);
+
+    expect(
+      DiligentClientRequestSchema.safeParse({
+        method: DILIGENT_CLIENT_REQUEST_METHODS.MCP_LOGIN_START,
+        params: { server: "linear" },
+      }).success,
+    ).toBe(true);
+    expect(
+      DiligentClientResponseSchema.safeParse({
+        method: DILIGENT_CLIENT_REQUEST_METHODS.MCP_LOGIN_START,
+        result: { authUrl: "https://example.com/oauth/authorize?x=1" },
+      }).success,
+    ).toBe(true);
+
+    expect(
+      DiligentClientResponseSchema.safeParse({
+        method: DILIGENT_CLIENT_REQUEST_METHODS.MCP_LOGOUT,
+        result: { ok: true },
+      }).success,
+    ).toBe(true);
+  });
+
+  it("accepts the mcp/login/completed server notification", () => {
+    expect(
+      DiligentServerNotificationSchema.safeParse({
+        method: DILIGENT_SERVER_NOTIFICATION_METHODS.MCP_LOGIN_COMPLETED,
+        params: { server: "linear", success: true, toolCount: 8, error: null },
+      }).success,
+    ).toBe(true);
+    expect(
+      DiligentServerNotificationSchema.safeParse({
+        method: DILIGENT_SERVER_NOTIFICATION_METHODS.MCP_LOGIN_COMPLETED,
+        params: { server: "linear", success: false, error: "timed out" },
+      }).success,
+    ).toBe(true);
   });
 
   it("rejects malformed flow payloads", () => {

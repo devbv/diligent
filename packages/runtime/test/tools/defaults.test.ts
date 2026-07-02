@@ -1,11 +1,52 @@
 // @summary Tests default tool assembly gating for provider-native web tools
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { z } from "zod";
 import type { BundledToolProvider } from "../../src/tools/bundled-provider";
 import { buildDefaultTools } from "../../src/tools/defaults";
+import {
+  __resetMcpManagerForTest,
+  __setMcpManagerForTest,
+  McpConnectionManager,
+  type McpTransportFactory,
+} from "../../src/tools/mcp/client";
+
+function toolNamesFor(result: Awaited<ReturnType<typeof buildDefaultTools>>): string[] {
+  return result.tools.map((tool) => tool.name);
+}
+
+function stateNamesFor(result: Awaited<ReturnType<typeof buildDefaultTools>>): string[] {
+  return result.toolState.map((tool) => tool.name);
+}
+
+describe("buildDefaultTools MCP OAuth wiring", () => {
+  afterEach(() => {
+    __resetMcpManagerForTest();
+  });
+
+  // Regression: HTTP OAuth MCP servers connected tokenless (invalid_token) at startup because the
+  // tool build could run before the app-server wired OAuth deps. buildDefaultTools must guarantee
+  // the deps are set on the very manager it syncs.
+  test("wires OAuth deps on the manager before syncing MCP servers", async () => {
+    const factory: McpTransportFactory = async (name): Promise<Transport> => {
+      const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+      await new McpServer({ name, version: "1.0.0" }).connect(serverTransport);
+      return clientTransport;
+    };
+    const manager = new McpConnectionManager(factory);
+    __setMcpManagerForTest(manager);
+    expect(manager.hasOAuthDeps()).toBe(false);
+
+    await buildDefaultTools({ cwd: "/tmp", mcpServers: { atlassian: { url: "https://example.test/mcp" } } });
+
+    expect(manager.hasOAuthDeps()).toBe(true);
+  });
+});
 
 describe("buildDefaultTools web gating", () => {
   test("includes provider-native web placeholder tool by default", async () => {
@@ -82,5 +123,71 @@ describe("buildDefaultTools web gating", () => {
       else process.env.HOME = originalHome;
       await rm(isolatedHome, { recursive: true, force: true });
     }
+  });
+});
+
+describe("buildDefaultTools provider-specific edit tools", () => {
+  test("shows all edit tool families when provider is not fixed", async () => {
+    const result = await buildDefaultTools({ cwd: "/tmp" });
+    const names = toolNamesFor(result);
+    const stateNames = stateNamesFor(result);
+
+    expect(names).toContain("apply_patch");
+    expect(names).toContain("edit");
+    expect(names).toContain("multi_edit");
+    expect(stateNames).toContain("apply_patch");
+    expect(stateNames).toContain("edit");
+    expect(stateNames).toContain("multi_edit");
+  });
+
+  test.each(["openai", "chatgpt"] as const)("uses apply_patch only for %s", async (provider) => {
+    const result = await buildDefaultTools({ cwd: "/tmp", provider });
+    const names = toolNamesFor(result);
+    const stateNames = stateNamesFor(result);
+
+    expect(names).toContain("apply_patch");
+    expect(names).not.toContain("edit");
+    expect(names).not.toContain("multi_edit");
+    expect(stateNames).toContain("apply_patch");
+    expect(stateNames).not.toContain("edit");
+    expect(stateNames).not.toContain("multi_edit");
+  });
+
+  test.each([
+    "anthropic",
+    "gemini",
+    "vertex",
+    "zai-coding-plan",
+  ] as const)("uses edit and multi_edit only for %s", async (provider) => {
+    const result = await buildDefaultTools({ cwd: "/tmp", provider });
+    const names = toolNamesFor(result);
+    const stateNames = stateNamesFor(result);
+
+    expect(names).not.toContain("apply_patch");
+    expect(names).toContain("edit");
+    expect(names).toContain("multi_edit");
+    expect(stateNames).not.toContain("apply_patch");
+    expect(stateNames).toContain("edit");
+    expect(stateNames).toContain("multi_edit");
+  });
+
+  test("cannot enable the opposite edit tool family through builtin config when provider is fixed", async () => {
+    const openAiResult = await buildDefaultTools({
+      cwd: "/tmp",
+      provider: "openai",
+      toolsConfig: { builtin: { edit: true, multi_edit: true } },
+    });
+    const anthropicResult = await buildDefaultTools({
+      cwd: "/tmp",
+      provider: "anthropic",
+      toolsConfig: { builtin: { apply_patch: true } },
+    });
+
+    expect(toolNamesFor(openAiResult)).toContain("apply_patch");
+    expect(toolNamesFor(openAiResult)).not.toContain("edit");
+    expect(toolNamesFor(openAiResult)).not.toContain("multi_edit");
+    expect(toolNamesFor(anthropicResult)).not.toContain("apply_patch");
+    expect(toolNamesFor(anthropicResult)).toContain("edit");
+    expect(toolNamesFor(anthropicResult)).toContain("multi_edit");
   });
 });

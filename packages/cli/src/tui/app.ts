@@ -209,6 +209,11 @@ export class App {
         this.runtime.pendingOAuthResolve?.(result);
         this.runtime.pendingOAuthResolve = null;
       },
+      onMcpLoginCompleted: ({ server, success, toolCount, error }) => {
+        const resolve = this.runtime.pendingMcpLoginResolve.get(server);
+        this.runtime.pendingMcpLoginResolve.delete(server);
+        resolve?.({ success, toolCount, error });
+      },
       requestApproval: (request) => this.dialogs.handleApprove(request),
       requestUserInput: (request) => this.dialogs.handleAsk(request),
     });
@@ -325,6 +330,10 @@ export class App {
       waitForOAuthComplete: () =>
         new Promise((resolve) => {
           this.runtime.pendingOAuthResolve = resolve;
+        }),
+      waitForMcpLogin: (server: string) =>
+        new Promise((resolve) => {
+          this.runtime.pendingMcpLoginResolve.set(server, resolve);
         }),
       syncActiveThreadState: () => this.syncActiveThreadState(),
       queuePendingSteer: (steer) => {

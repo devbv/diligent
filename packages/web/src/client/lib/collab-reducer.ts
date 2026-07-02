@@ -44,16 +44,15 @@ function normalizeSpawnStatusFromWait(status: string, timedOut: boolean): string
   return status;
 }
 
-export function appendChildAssistantTimelineStart(state: ThreadState, childThreadId: string): ThreadState {
+export function appendChildAssistantTimelineStart(
+  state: ThreadState,
+  childThreadId: string,
+  itemId?: string,
+): ThreadState {
   const spawnItem = findCollabSpawnItem(state, childThreadId);
   if (!spawnItem) return state;
   return updateItem(state, spawnItem.id, (item) =>
-    item.kind === "collab"
-      ? {
-          ...item,
-          childTimeline: [...(item.childTimeline ?? []), { kind: "assistant" as const, message: "" }],
-        }
-      : item,
+    item.kind === "collab" ? appendAssistantTimelineStartToItem(item, itemId) : item,
   );
 }
 
@@ -77,6 +76,17 @@ export function appendChildAssistantTimelineDelta(
     timeline.push({ kind: "assistant" as const, message: delta });
     return { ...item, childTimeline: timeline };
   });
+}
+
+type CollabItem = Extract<ThreadState["items"][number], { kind: "collab" }>;
+
+function appendAssistantTimelineStartToItem(item: CollabItem, itemId?: string): CollabItem {
+  const timeline = item.childTimeline ?? [];
+  if (itemId && timeline.some((entry) => entry.kind === "assistant" && entry.itemId === itemId)) return item;
+  return {
+    ...item,
+    childTimeline: [...timeline, { kind: "assistant" as const, itemId, message: "" }],
+  };
 }
 
 export function finalizeChildAssistantTimeline(

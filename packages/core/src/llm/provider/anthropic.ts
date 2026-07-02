@@ -197,7 +197,10 @@ export async function convertMessages(
     } else if (msg.role === "assistant") {
       result.push({
         role: "assistant",
-        content: msg.content.map(convertContentBlock),
+        content: msg.content.flatMap((block) => {
+          const converted = convertAssistantContentBlock(block);
+          return converted ? [converted] : [];
+        }),
       });
     } else if (msg.role === "tool_result") {
       // Tool results go into a user message with tool_result blocks
@@ -314,6 +317,95 @@ function convertContentBlock(block: ContentBlock): Anthropic.ContentBlockParam {
     default:
       throw new Error(`Unsupported content block for Anthropic conversion: ${block.type}`);
   }
+}
+
+function convertAssistantContentBlock(block: ContentBlock): Anthropic.ContentBlockParam | undefined {
+  switch (block.type) {
+    case "provider_tool_use":
+      return convertProviderToolUseBlock(block);
+    case "web_search_result":
+      return convertWebSearchResultBlock(block);
+    case "web_fetch_result":
+      return convertWebFetchResultBlock(block);
+    case "thinking":
+      // Thinking blocks from other providers never carry an Anthropic signature.
+      // Replaying them verbatim after a model switch would make every future turn
+      // in this thread fail with "thinking blocks require signature". Drop them
+      // instead, matching how foreign provider_tool_use blocks are omitted.
+      if (!block.signature) return undefined;
+      return convertContentBlock(block);
+    default:
+      return convertContentBlock(block);
+  }
+}
+
+function convertProviderToolUseBlock(block: ProviderToolUseBlock): Anthropic.ContentBlockParam | undefined {
+  if (block.provider !== "anthropic") return undefined;
+  return {
+    type: "server_tool_use",
+    id: block.id,
+    name: block.name,
+    input: block.input,
+  } as Anthropic.ServerToolUseBlockParam;
+}
+
+function convertWebSearchResultBlock(block: WebSearchResultBlock): Anthropic.ContentBlockParam | undefined {
+  if (block.provider !== "anthropic") return undefined;
+  return {
+    type: "web_search_tool_result",
+    tool_use_id: block.toolUseId,
+    caller: { type: "direct" },
+    content: block.error
+      ? {
+          type: "web_search_tool_result_error",
+          error_code: block.error.code as Anthropic.WebSearchToolResultErrorCode,
+        }
+      : block.results.flatMap((result): Anthropic.WebSearchResultBlockParam[] => {
+          if (!result.encryptedContent) return [];
+          return [
+            {
+              type: "web_search_result",
+              url: result.url,
+              title: result.title ?? result.url,
+              encrypted_content: result.encryptedContent,
+              ...(result.pageAge ? { page_age: result.pageAge } : {}),
+            },
+          ];
+        }),
+  } as Anthropic.WebSearchToolResultBlockParam;
+}
+
+function convertWebFetchResultBlock(block: WebFetchResultBlock): Anthropic.ContentBlockParam | undefined {
+  if (block.provider !== "anthropic") return undefined;
+  return {
+    type: "web_fetch_tool_result",
+    tool_use_id: block.toolUseId,
+    caller: { type: "direct" },
+    content: block.error
+      ? {
+          type: "web_fetch_tool_result_error",
+          error_code: block.error.code as Anthropic.WebFetchToolResultErrorCode,
+        }
+      : {
+          type: "web_fetch_result",
+          url: block.url,
+          ...(block.retrievedAt ? { retrieved_at: block.retrievedAt } : {}),
+          content: toAnthropicFetchDocument(block.document),
+        },
+  } as Anthropic.WebFetchToolResultBlockParam;
+}
+
+function toAnthropicFetchDocument(document: WebFetchResultBlock["document"]): Anthropic.DocumentBlockParam {
+  return {
+    type: "document",
+    source: {
+      type: "text",
+      media_type: "text/plain",
+      data: document?.text ?? "",
+    },
+    ...(document?.title ? { title: document.title } : {}),
+    ...(document?.citationsEnabled !== undefined ? { citations: { enabled: document.citationsEnabled } } : {}),
+  };
 }
 
 function convertTools(tools: ToolDefinition[]): Anthropic.MessageCreateParams["tools"] {

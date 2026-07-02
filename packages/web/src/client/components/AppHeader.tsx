@@ -1,5 +1,7 @@
 // @summary Top navigation bar: sidebar toggle, thread status, title, and tool/knowledge buttons
 
+import { iconButtonClasses } from "./ui-styles";
+
 interface AppHeaderProps {
   sidebarOpen: boolean;
   onToggleSidebar: () => void;
@@ -28,7 +30,7 @@ export function AppHeader({
         aria-controls="app-sidebar"
         aria-expanded={sidebarOpen}
         title={sidebarOpen ? "Close sidebar" : "Open sidebar"}
-        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted transition hover:bg-surface-light hover:text-text"
+        className={iconButtonClasses}
       >
         <svg
           width="16"
@@ -43,7 +45,7 @@ export function AppHeader({
           <rect x="1" y="11.3" width="14" height="1.2" rx="0.6" fill="currentColor" />
         </svg>
       </button>
-      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--color-icon-success)]" aria-hidden="true" />
+      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-icon-success" aria-hidden="true" />
       {(threadStatus !== "idle" || isCompacting) && (
         <span
           className={`shrink-0 font-mono text-xs ${isCompacting || threadStatus === "busy" ? "text-text-success" : "text-danger"}`}
@@ -57,7 +59,7 @@ export function AppHeader({
         onClick={onOpenKnowledge}
         aria-label="Open knowledge"
         title="Knowledge"
-        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded border border-knowledge-backlog/35 bg-knowledge-backlog/12 text-sm text-knowledge-backlog/90 transition hover:border-knowledge-backlog/55 hover:bg-knowledge-backlog/18 hover:text-knowledge-backlog"
+        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-knowledge-backlog/35 bg-knowledge-backlog/12 text-sm text-knowledge-backlog/90 transition hover:border-knowledge-backlog/55 hover:bg-knowledge-backlog/18 hover:text-knowledge-backlog"
       >
         <span className="block leading-none">✦</span>
       </button>
@@ -66,7 +68,7 @@ export function AppHeader({
         onClick={onOpenConfig}
         aria-label="Open config"
         title="Config"
-        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded border border-border/100 bg-surface-light text-sm text-muted transition hover:border-border-strong/100 hover:bg-surface-strong hover:text-text"
+        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border/100 bg-surface-light text-sm text-muted transition hover:border-border-strong/100 hover:bg-surface-strong hover:text-text"
       >
         <span className="block leading-none">⚙</span>
       </button>

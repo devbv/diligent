@@ -75,9 +75,48 @@ describe("apply_patch tool", () => {
     ].join("\n");
 
     const result = await tool.execute({ patch }, makeCtx());
-    expect(result.output).toContain("M old/name.txt -> renamed/dir/name.txt");
+    expect(result.output).toContain("M renamed/dir/name.txt");
     await expect(readFile(from, "utf-8")).rejects.toThrow();
     expect(await readFile(join(tmpDir, "renamed/dir/name.txt"), "utf-8")).toBe("new content\n");
+  });
+
+  test("add overwrites existing file", async () => {
+    const target = join(tmpDir, "duplicate.txt");
+    await writeFile(target, "old content\n", "utf-8");
+
+    const patch = ["*** Begin Patch", "*** Add File: duplicate.txt", "+new content", "*** End Patch"].join("\n");
+
+    const result = await tool.execute({ patch }, makeCtx());
+
+    expect(result.metadata?.error).not.toBe(true);
+    expect(result.output).toContain("A duplicate.txt");
+    expect(await readFile(target, "utf-8")).toBe("new content\n");
+  });
+
+  test("move overwrites existing destination", async () => {
+    const from = join(tmpDir, "old/name.txt");
+    const destination = join(tmpDir, "renamed/dir/name.txt");
+    await mkdir(join(tmpDir, "old"), { recursive: true });
+    await mkdir(join(tmpDir, "renamed/dir"), { recursive: true });
+    await writeFile(from, "from\n", "utf-8");
+    await writeFile(destination, "existing\n", "utf-8");
+
+    const patch = [
+      "*** Begin Patch",
+      "*** Update File: old/name.txt",
+      "*** Move to: renamed/dir/name.txt",
+      "@@",
+      "-from",
+      "+new",
+      "*** End Patch",
+    ].join("\n");
+
+    const result = await tool.execute({ patch }, makeCtx());
+
+    expect(result.metadata?.error).not.toBe(true);
+    expect(result.output).toContain("M renamed/dir/name.txt");
+    await expect(readFile(from, "utf-8")).rejects.toThrow();
+    expect(await readFile(destination, "utf-8")).toBe("new\n");
   });
 
   test("rejects malformed patch envelope", async () => {
@@ -110,6 +149,27 @@ describe("apply_patch tool", () => {
     expect(result.metadata?.error).toBe(true);
     expect(result.output).toContain("Failed to find expected lines");
     expect(await readFile(target, "utf-8")).toBe("a\nb\nc\n");
+  });
+
+  test("failure after partial success leaves earlier changes", async () => {
+    const created = join(tmpDir, "created.txt");
+
+    const patch = [
+      "*** Begin Patch",
+      "*** Add File: created.txt",
+      "+hello",
+      "*** Update File: missing.txt",
+      "@@",
+      "-old",
+      "+new",
+      "*** End Patch",
+    ].join("\n");
+
+    const result = await tool.execute({ patch }, makeCtx());
+
+    expect(result.metadata?.error).toBe(true);
+    expect(result.output).toContain("Failed to read file to update");
+    expect(await readFile(created, "utf-8")).toBe("hello\n");
   });
 
   test("rejects absolute paths in patch headers", async () => {

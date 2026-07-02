@@ -298,6 +298,30 @@ test("tool_start with childThreadId adds tool to collab item's childTools", () =
   }
 });
 
+test("tool_start with childThreadId is idempotent for duplicate toolCallId", () => {
+  let state = stateWithCollabSpawn("child-dup");
+  const event: ToolAgentEvent = {
+    type: "tool_start",
+    itemId: "child-item-dup",
+    toolCallId: "child-tc-dup",
+    toolName: "ls",
+    input: { path: "/Users/devbv/git" },
+    childThreadId: "child-dup",
+  };
+
+  state = reduceToolEvent(state, event);
+  state = reduceToolEvent(state, event);
+  state = reduceToolEvent(state, event);
+
+  const collabItem = state.items[0];
+  expect(collabItem.kind).toBe("collab");
+  if (collabItem.kind === "collab") {
+    expect(collabItem.childTools).toHaveLength(1);
+    expect(collabItem.childTimeline).toHaveLength(1);
+    expect(collabItem.childTimeline?.[0]).toMatchObject({ kind: "tool", toolCallId: "child-tc-dup" });
+  }
+});
+
 test("tool_start with childThreadId returns state unchanged when spawn not found", () => {
   const event: ToolAgentEvent = {
     type: "tool_start",

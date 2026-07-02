@@ -2,6 +2,7 @@
 import { describe, expect, it } from "bun:test";
 import {
   agentTypeToModelClass,
+  DEFAULT_ANTHROPIC_MODEL_ID,
   getModelClass,
   KNOWN_MODELS,
   resolveModel,
@@ -35,8 +36,14 @@ describe("resolveModel", () => {
   });
 
   it("uses 1M context for known Sonnet and Opus models", () => {
-    expect(resolveModel("claude-sonnet-4-6").contextWindow).toBe(1_000_000);
+    expect(resolveModel(DEFAULT_ANTHROPIC_MODEL_ID).contextWindow).toBe(1_000_000);
     expect(resolveModel("claude-opus-4-8").contextWindow).toBe(1_000_000);
+  });
+
+  it("keeps Sonnet 5 available as an experimental model", () => {
+    const model = resolveModel("claude-sonnet-5");
+    expect(model.provider).toBe("anthropic");
+    expect(model.maxOutputTokens).toBe(128_000);
   });
 
   it("resolves claude-opus alias to the only retained Opus version", () => {
@@ -51,7 +58,7 @@ describe("resolveModel", () => {
   });
 
   it("infers chatgpt from chatgpt- prefix", () => {
-    const model = resolveModel("chatgpt-5.3-codex");
+    const model = resolveModel("chatgpt-5.5");
     expect(model.provider).toBe("chatgpt");
   });
 
@@ -91,10 +98,11 @@ describe("model class annotations", () => {
     }
   });
 
-  it("every known model has a modelClass", () => {
+  it("modelClass annotations are valid when present", () => {
     for (const model of KNOWN_MODELS) {
-      expect(model.modelClass).toBeDefined();
-      expect(["pro", "general", "lite"]).toContain(model.modelClass);
+      if (model.modelClass !== undefined) {
+        expect(["pro", "general", "lite"]).toContain(model.modelClass);
+      }
     }
   });
 
@@ -116,28 +124,27 @@ describe("model class annotations", () => {
 
   it("anthropic classes map correctly", () => {
     expect(KNOWN_MODELS.find((m) => m.id === "claude-opus-4-8")?.modelClass).toBe("pro");
-    expect(KNOWN_MODELS.find((m) => m.id === "claude-fable-5")?.modelClass).toBe("pro");
-    expect(KNOWN_MODELS.find((m) => m.id === "claude-sonnet-4-6")?.modelClass).toBe("general");
+    expect(KNOWN_MODELS.find((m) => m.id === "claude-fable-5")?.modelClass).toBeUndefined();
+    expect(KNOWN_MODELS.find((m) => m.id === "claude-sonnet-5")?.modelClass).toBe("general");
+    expect(KNOWN_MODELS.find((m) => m.id === DEFAULT_ANTHROPIC_MODEL_ID)?.modelClass).toBe("general");
     expect(KNOWN_MODELS.find((m) => m.id === "claude-haiku-4-5-20251001")?.modelClass).toBe("lite");
   });
 
   it("openai classes map correctly", () => {
     expect(KNOWN_MODELS.find((m) => m.id === "gpt-5.5")?.modelClass).toBe("pro");
     expect(KNOWN_MODELS.find((m) => m.id === "gpt-5.4")?.modelClass).toBe("general");
-    expect(KNOWN_MODELS.find((m) => m.id === "gpt-5.3-codex")?.modelClass).toBe("general");
     expect(KNOWN_MODELS.find((m) => m.id === "gpt-5.4-mini")?.modelClass).toBe("lite");
   });
 
   it("gemini classes map correctly", () => {
     expect(KNOWN_MODELS.find((m) => m.id === "gemini-3.1-pro-preview")?.modelClass).toBe("pro");
-    expect(KNOWN_MODELS.find((m) => m.id === "gemini-3-flash-preview")?.modelClass).toBe("general");
-    expect(KNOWN_MODELS.find((m) => m.id === "gemini-3.1-flash-lite-preview")?.modelClass).toBe("lite");
+    expect(KNOWN_MODELS.find((m) => m.id === "gemini-3.5-flash")?.modelClass).toBe("general");
+    expect(KNOWN_MODELS.find((m) => m.id === "gemini-3.1-flash-lite")?.modelClass).toBe("lite");
   });
 
   it("chatgpt classes map correctly", () => {
     expect(KNOWN_MODELS.find((m) => m.id === "chatgpt-5.5")?.modelClass).toBe("pro");
     expect(KNOWN_MODELS.find((m) => m.id === "chatgpt-5.4")?.modelClass).toBe("general");
-    expect(KNOWN_MODELS.find((m) => m.id === "chatgpt-5.3-codex")?.modelClass).toBe("general");
     expect(KNOWN_MODELS.find((m) => m.id === "chatgpt-5.4-mini")?.modelClass).toBe("lite");
   });
 
@@ -145,7 +152,6 @@ describe("model class annotations", () => {
     expect(KNOWN_MODELS.filter((m) => m.provider === "chatgpt").map((m) => m.id)).toEqual([
       "chatgpt-5.5",
       "chatgpt-5.4",
-      "chatgpt-5.3-codex",
       "chatgpt-5.4-mini",
     ]);
   });
@@ -163,7 +169,7 @@ describe("model class annotations", () => {
 
 describe("getModelClass", () => {
   it("returns modelClass for known models", () => {
-    const sonnet = resolveModel("claude-sonnet-4-6");
+    const sonnet = resolveModel(DEFAULT_ANTHROPIC_MODEL_ID);
     expect(getModelClass(sonnet)).toBe("general");
 
     const opus = resolveModel("claude-opus-4-8");
@@ -186,29 +192,29 @@ describe("getModelClass", () => {
 
 describe("resolveModelForClass", () => {
   it("returns same model if already matching class", () => {
-    const sonnet = resolveModel("claude-sonnet-4-6");
+    const sonnet = resolveModel(DEFAULT_ANTHROPIC_MODEL_ID);
     const result = resolveModelForClass(sonnet, "general");
-    expect(result.id).toBe("claude-sonnet-4-6");
+    expect(result.id).toBe(DEFAULT_ANTHROPIC_MODEL_ID);
   });
 
   it("resolves anthropic pro → opus", () => {
-    const sonnet = resolveModel("claude-sonnet-4-6");
+    const sonnet = resolveModel(DEFAULT_ANTHROPIC_MODEL_ID);
     const pro = resolveModelForClass(sonnet, "pro");
     expect(pro.id).toBe("claude-opus-4-8");
     expect(pro.provider).toBe("anthropic");
   });
 
-  it("keeps anthropic pro models on their selected pro model", () => {
+  it("routes unclassified anthropic pro-capable models to the provider pro default", () => {
     const fable = resolveModel("claude-fable-5");
     const pro = resolveModelForClass(fable, "pro");
-    expect(pro.id).toBe("claude-fable-5");
+    expect(pro.id).toBe("claude-opus-4-8");
 
-    const sonnet = resolveModel("claude-sonnet-4-6");
+    const sonnet = resolveModel(DEFAULT_ANTHROPIC_MODEL_ID);
     expect(resolveModelForClass(sonnet, "pro").id).toBe("claude-opus-4-8");
   });
 
   it("resolves anthropic lite → haiku", () => {
-    const sonnet = resolveModel("claude-sonnet-4-6");
+    const sonnet = resolveModel(DEFAULT_ANTHROPIC_MODEL_ID);
     const lite = resolveModelForClass(sonnet, "lite");
     expect(lite.id).toBe("claude-haiku-4-5-20251001");
     expect(lite.provider).toBe("anthropic");
@@ -222,29 +228,29 @@ describe("resolveModelForClass", () => {
   });
 
   it("resolves gemini general → pro", () => {
-    const flash = resolveModel("gemini-3-flash-preview");
+    const flash = resolveModel("gemini-3.5-flash");
     const pro = resolveModelForClass(flash, "pro");
     expect(pro.id).toBe("gemini-3.1-pro-preview");
     expect(pro.provider).toBe("gemini");
   });
 
   it("resolves gemini general → lite", () => {
-    const flash = resolveModel("gemini-3-flash-preview");
+    const flash = resolveModel("gemini-3.5-flash");
     const lite = resolveModelForClass(flash, "lite");
-    expect(lite.id).toBe("gemini-3.1-flash-lite-preview");
+    expect(lite.id).toBe("gemini-3.1-flash-lite");
     expect(lite.provider).toBe("gemini");
   });
 
   it("resolves chatgpt general → lite", () => {
-    const codex = resolveModel("chatgpt-5.3-codex");
-    const lite = resolveModelForClass(codex, "lite");
+    const chatgpt = resolveModel("chatgpt-5.4");
+    const lite = resolveModelForClass(chatgpt, "lite");
     expect(lite.id).toBe("chatgpt-5.4-mini");
     expect(lite.provider).toBe("chatgpt");
   });
 
   it("resolves chatgpt general → pro", () => {
-    const codex = resolveModel("chatgpt-5.3-codex");
-    const pro = resolveModelForClass(codex, "pro");
+    const chatgpt = resolveModel("chatgpt-5.4");
+    const pro = resolveModelForClass(chatgpt, "pro");
     expect(pro.id).toBe("chatgpt-5.5");
     expect(pro.provider).toBe("chatgpt");
   });
@@ -262,7 +268,7 @@ describe("resolveModelForClass", () => {
   });
 
   it("stays within the same provider", () => {
-    const sonnet = resolveModel("claude-sonnet-4-6");
+    const sonnet = resolveModel(DEFAULT_ANTHROPIC_MODEL_ID);
     const pro = resolveModelForClass(sonnet, "pro");
     expect(pro.provider).toBe("anthropic");
     // Should never cross providers
@@ -273,12 +279,12 @@ describe("resolveModelForClass", () => {
 
 describe("agentTypeToModelClass", () => {
   it("maps explore → lite", () => {
-    const sonnet = resolveModel("claude-sonnet-4-6");
+    const sonnet = resolveModel(DEFAULT_ANTHROPIC_MODEL_ID);
     expect(agentTypeToModelClass("explore", sonnet)).toBe("lite");
   });
 
   it("maps general → same class as parent (general)", () => {
-    const sonnet = resolveModel("claude-sonnet-4-6");
+    const sonnet = resolveModel(DEFAULT_ANTHROPIC_MODEL_ID);
     expect(agentTypeToModelClass("general", sonnet)).toBe("general");
   });
 
@@ -293,7 +299,7 @@ describe("agentTypeToModelClass", () => {
   });
 
   it("maps unknown agent type → general (same as parent default)", () => {
-    const sonnet = resolveModel("claude-sonnet-4-6");
+    const sonnet = resolveModel(DEFAULT_ANTHROPIC_MODEL_ID);
     expect(agentTypeToModelClass("unknown_type", sonnet)).toBe("general");
   });
 });

@@ -2,6 +2,9 @@
 import type {
   KnowledgeEntry,
   KnowledgeUpdateParams,
+  McpListResponse,
+  McpLoginStartResponse,
+  McpLogoutResponse,
   ThreadReadResponse,
   ToolsListResponse,
   ToolsSetParams,
@@ -72,6 +75,32 @@ export function useThreadData({
     [rpcRef, childThreadCacheRef],
   );
 
+  const listMcpServers = useCallback(async (): Promise<McpListResponse> => {
+    const rpc = rpcRef.current;
+    if (!rpc) throw new Error("WebSocket is not connected");
+    return rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.MCP_LIST, {
+      threadId: state.activeThreadId ?? undefined,
+    });
+  }, [rpcRef, state.activeThreadId]);
+
+  const mcpLoginStart = useCallback(
+    async (server: string): Promise<McpLoginStartResponse> => {
+      const rpc = rpcRef.current;
+      if (!rpc) throw new Error("WebSocket is not connected");
+      return rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.MCP_LOGIN_START, { server });
+    },
+    [rpcRef],
+  );
+
+  const mcpLogout = useCallback(
+    async (server: string): Promise<McpLogoutResponse> => {
+      const rpc = rpcRef.current;
+      if (!rpc) throw new Error("WebSocket is not connected");
+      return rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.MCP_LOGOUT, { server });
+    },
+    [rpcRef],
+  );
+
   const threadTitle = useMemo(() => {
     const active = state.threadList.find((t) => t.id === state.activeThreadId);
     const raw = active?.firstUserMessage ?? state.items.find((i) => i.kind === "user")?.text ?? "";
@@ -84,6 +113,9 @@ export function useThreadData({
     listKnowledge,
     updateKnowledge,
     loadChildThread,
+    listMcpServers,
+    mcpLoginStart,
+    mcpLogout,
     threadTitle,
   };
 }

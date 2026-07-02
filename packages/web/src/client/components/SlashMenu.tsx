@@ -2,6 +2,7 @@
 
 import { type CSSProperties, useEffect, useRef } from "react";
 import type { SlashCommand } from "../lib/slash-commands";
+import { menuPanelClasses } from "./ui-styles";
 
 interface SlashMenuProps {
   /** Filtered commands to display */
@@ -31,13 +32,10 @@ export function SlashMenu({ commands, selectedIndex, onSelect, className, style 
       ref={listRef}
       role="listbox"
       aria-label="Slash commands"
-      className={
-        className ??
-        "absolute bottom-full left-0 z-30 mb-2 w-[280px] overflow-hidden rounded-xl border border-border/100 bg-surface-dark shadow-panel"
-      }
+      className={className ?? `absolute bottom-full left-0 z-30 mb-2 w-72 overflow-hidden ${menuPanelClasses}`}
       style={style}
     >
-      <div className="max-h-[240px] overflow-y-auto py-1">
+      <div className="max-h-60 overflow-y-auto py-1">
         {commands.map((cmd, i) => {
           const isSelected = i === selectedIndex;
 

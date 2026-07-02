@@ -29,9 +29,11 @@ Vite proxies `/rpc` to `ws://localhost:7433` (`packages/web/vite.config.ts`), so
 
 | What you want | One-line command | Manual (see modes below) |
 | --- | --- | --- |
-| web-only backend | `bun run web:dev` | Mode A |
-| frontend (Vite) | `make web-dev` | Mode A & B |
+| web-only backend + frontend (one command) | **`make web-dev`** | Mode A |
+| web-only backend only | `bun run web:dev` | — |
+| frontend only (Vite) | `bun run --cwd packages/web dev` | Mode B manual |
 | sidecar + frontend (local Studio) | **`make dev-agent`** | Mode B |
+| sidecar + frontend, no Studio (no 13377) | **`make dev-agent-nostudio`** | — |
 | sidecar + frontend (remote Studio) | **`make dev-cross`** | [`mac-agent-windows-studio.md`](./mac-agent-windows-studio.md) |
 
 ---
@@ -54,17 +56,16 @@ bun install
 Lightest option when you only want to see web UI changes (code blocks, copy button, Config panel, etc.). (`studiorpc_*` tools are not attached.)
 
 ```bash
-# Terminal 1 — web-only backend RPC (7433)
-bun run web:dev
-#   = bun run packages/web/src/server/index.ts --dev
-#   defaults to 7433 if no port is given
-
-# Terminal 2 — frontend (Vite, 5174)
 make web-dev
-#   = bun run --cwd packages/web dev
+#   Starts both, together (Ctrl+C stops both):
+#     - web-only backend RPC (:7433) = packages/web/src/server/index.ts --dev
+#     - Vite frontend (:5174)
 ```
 
 Browser: **http://localhost:5174**
+
+Need just one half? Run the backend alone with `bun run web:dev`, or the
+frontend alone with `bun run --cwd packages/web dev`.
 
 ---
 
@@ -86,8 +87,10 @@ make dev-agent                 # connect to a local Studio (localhost)
 STUDIO_PORT=13377 \
 bun run apps/overdare-ai-agent/sidecar/src/server.ts --dev --port=7433 --cwd="$(pwd)"
 
-# Terminal 2 — frontend (Vite, 5174) — same as Mode A
-make web-dev
+# Terminal 2 — frontend (Vite, 5174)
+# NOT `make web-dev` here — it now starts its own web-only backend on 7433 and
+# would clash with the sidecar. Run Vite directly:
+bun run --cwd packages/web dev
 ```
 
 Browser: **http://localhost:5174**

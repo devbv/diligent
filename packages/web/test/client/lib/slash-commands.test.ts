@@ -1,6 +1,7 @@
 // @summary Unit tests for slash command parser, filter, prefix detection, and skill merging
 
 import { describe, expect, test } from "bun:test";
+import { DEFAULT_ANTHROPIC_MODEL_ID } from "@diligent/core/llm/models";
 import {
   BUILTIN_COMMANDS,
   buildCommandList,
@@ -23,9 +24,9 @@ describe("parseSlashCommand", () => {
   });
 
   test("trims arg whitespace", () => {
-    expect(parseSlashCommand("/model   claude-sonnet-4-6  ")).toEqual({
+    expect(parseSlashCommand(` /model   ${DEFAULT_ANTHROPIC_MODEL_ID}  `.trimStart())).toEqual({
       name: "model",
-      args: "claude-sonnet-4-6",
+      args: DEFAULT_ANTHROPIC_MODEL_ID,
     });
   });
 
@@ -118,7 +119,7 @@ describe("isSlashPrefix", () => {
 describe("BUILTIN_COMMANDS", () => {
   test("has expected core commands", () => {
     const names = BUILTIN_COMMANDS.map((c) => c.name);
-    expect(names).toEqual(["help", "new", "resume", "model", "effort"]);
+    expect(names).toEqual(["help", "new", "resume", "model", "effort", "mcp"]);
   });
 
   test("resume requires args and exposes usage", () => {
@@ -137,6 +138,12 @@ describe("BUILTIN_COMMANDS", () => {
     const help = BUILTIN_COMMANDS.find((c) => c.name === "help");
     expect(help?.requiresArgs).toBeUndefined();
     expect(help?.usage).toBeUndefined();
+  });
+
+  test("mcp exposes usage but does not require args (bare /mcp lists servers)", () => {
+    const mcp = BUILTIN_COMMANDS.find((c) => c.name === "mcp");
+    expect(mcp?.requiresArgs).toBeUndefined();
+    expect(mcp?.usage).toBe("/mcp list | login <server> | logout <server>");
   });
 });
 

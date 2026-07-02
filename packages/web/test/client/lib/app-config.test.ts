@@ -1,8 +1,10 @@
 // @summary Tests for loadRuntimeConfig happy-path: model, mode, compaction defaults, and streamFunction
+
 import { expect, test } from "bun:test";
 import { mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DEFAULT_ANTHROPIC_MODEL_ID } from "@diligent/core/llm/models";
 import { loadRuntimeConfig } from "@diligent/runtime";
 
 function makeTmpEnv(base: string) {
@@ -26,14 +28,14 @@ test("loads model from config.jsonc and returns required fields", async () => {
   mkdirSync(base, { recursive: true });
   const paths = makeTmpEnv(base);
 
-  await Bun.write(join(base, ".diligent", "config.jsonc"), JSON.stringify({ model: "claude-sonnet-4-6" }));
+  await Bun.write(join(base, ".diligent", "config.jsonc"), JSON.stringify({ model: DEFAULT_ANTHROPIC_MODEL_ID }));
 
   const origHome = process.env.HOME;
   process.env.HOME = base;
   try {
     const config = await loadRuntimeConfig(base, paths);
 
-    expect(config.model!.id).toBe("claude-sonnet-4-6");
+    expect(config.model!.id).toBe(DEFAULT_ANTHROPIC_MODEL_ID);
     expect(config.authStore.mode).toBe("auto");
     expect(typeof config.streamFunction).toBe("function");
     expect(Array.isArray(config.systemPrompt)).toBe(true);
@@ -49,7 +51,7 @@ test("compaction defaults when not configured", async () => {
   mkdirSync(base, { recursive: true });
   const paths = makeTmpEnv(base);
 
-  await Bun.write(join(base, ".diligent", "config.jsonc"), JSON.stringify({ model: "claude-sonnet-4-6" }));
+  await Bun.write(join(base, ".diligent", "config.jsonc"), JSON.stringify({ model: DEFAULT_ANTHROPIC_MODEL_ID }));
 
   const origHome = process.env.HOME;
   process.env.HOME = base;
@@ -70,7 +72,7 @@ test("mode defaults to default when not configured", async () => {
   mkdirSync(base, { recursive: true });
   const paths = makeTmpEnv(base);
 
-  await Bun.write(join(base, ".diligent", "config.jsonc"), JSON.stringify({ model: "claude-sonnet-4-6" }));
+  await Bun.write(join(base, ".diligent", "config.jsonc"), JSON.stringify({ model: DEFAULT_ANTHROPIC_MODEL_ID }));
 
   const origHome = process.env.HOME;
   process.env.HOME = base;

@@ -31,11 +31,7 @@ export function FirstRunNoticeModal({ privacyPolicyUrl, onGetStarted }: FirstRun
           >
             Privacy Policy
           </a>
-          <Button
-            intent="primary"
-            className="!bg-blue-600 hover:!bg-blue-700 focus-visible:!ring-blue-500"
-            onClick={() => void onGetStarted()}
-          >
+          <Button intent="info" onClick={() => void onGetStarted()}>
             Get started
           </Button>
         </div>

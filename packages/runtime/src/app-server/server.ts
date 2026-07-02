@@ -111,6 +111,8 @@ export interface DiligentAppServerConfig {
   hooks?: DiligentConfig["hooks"];
   /** Product-owned in-process bundled tool providers. */
   bundledToolProviders?: BundledToolProvider[];
+  /** External MCP servers whose tools are exposed to the agent (P069). */
+  mcpServers?: DiligentConfig["mcpServers"];
   /** User identifier included in hook inputs. Falls back to OS username if unset. */
   userId?: string;
   /** Called when a connection switches to a current thread. */
@@ -800,6 +802,7 @@ export class DiligentAppServer {
         this.consumeTurn(runtime, runPromise, turnId),
       resolveToolsContext: (threadId?: string) => this.resolveToolsContext(threadId),
       getBundledToolProviders: () => this.config.bundledToolProviders ?? [],
+      getMcpServers: () => this.config.mcpServers,
       getSkillNames: () => this.getSkillNames(),
       setActiveThreadId: (threadId: string | null) => {
         this.activeThreadId = threadId;

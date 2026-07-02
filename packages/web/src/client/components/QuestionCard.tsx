@@ -8,6 +8,7 @@ import { AssetThumbnail } from "./AssetThumbnail";
 import { Button } from "./Button";
 import { SectionLabel } from "./SectionLabel";
 import { SystemCard } from "./SystemCard";
+import { actionRowClasses, cardPaddingLooseClasses, formStackClasses, surfaceCardClasses } from "./ui-styles";
 
 export { isQuestionAnswered, isUserInputComplete } from "../lib/user-input-completeness";
 
@@ -30,11 +31,12 @@ function optionValue(option: { label: string; value?: string }): string {
 }
 
 const choiceFocusRing =
-  "peer-focus-visible:ring-[3px] peer-focus-visible:ring-[#2b8cff]/30 peer-focus-visible:ring-offset-1 peer-focus-visible:ring-offset-[#11131a]";
+  "peer-focus-visible:ring-choice peer-focus-visible:ring-control-choice/30 peer-focus-visible:ring-offset-1 peer-focus-visible:ring-offset-surface-dark";
 const choiceMarkerBase =
-  "mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center border-[1.5px] transition-colors duration-150";
-const uncheckedChoiceClasses = "border-[#8d96a3] bg-transparent text-transparent group-hover:border-[#c7d0dc]";
-const checkedChoiceClasses = "border-[#2b8cff] bg-[#2b8cff] text-white shadow-[0_0_0_1px_rgba(43,140,255,0.35)]";
+  "mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center border-choice transition-colors duration-150";
+const uncheckedChoiceClasses =
+  "border-control-choice-border bg-transparent text-transparent group-hover:border-control-choice-border-hover";
+const checkedChoiceClasses = "border-control-choice bg-control-choice text-text shadow-choice";
 
 function ChoiceMarker({ checked, allowMultiple }: { checked: boolean; allowMultiple: boolean }) {
   if (allowMultiple) {
@@ -44,7 +46,7 @@ function ChoiceMarker({ checked, allowMultiple }: { checked: boolean; allowMulti
         className={cn(
           choiceMarkerBase,
           choiceFocusRing,
-          "rounded-[2px]",
+          "rounded-sm",
           checked ? checkedChoiceClasses : uncheckedChoiceClasses,
         )}
       >
@@ -79,7 +81,7 @@ function ChoiceMarker({ checked, allowMultiple }: { checked: boolean; allowMulti
         checked ? checkedChoiceClasses : uncheckedChoiceClasses,
       )}
     >
-      {checked ? <span className="h-1.5 w-1.5 rounded-full bg-white" /> : null}
+      {checked ? <span className="h-1.5 w-1.5 rounded-full bg-text" /> : null}
     </span>
   );
 }
@@ -105,7 +107,7 @@ export function QuestionCard({ request, answers, onAnswerChange, onSubmit, onCan
     <SystemCard>
       <div onKeyDownCapture={stopInputEnter}>
         <SectionLabel>Input required</SectionLabel>
-        <div className="space-y-5">
+        <div className={formStackClasses}>
           {request.questions.map((question) => {
             const rawSelected = answers[question.id];
             const selected = toStringArray(rawSelected);
@@ -116,7 +118,7 @@ export function QuestionCard({ request, answers, onAnswerChange, onSubmit, onCan
             const customValue = selected.find((value) => !question.options.some((o) => optionValue(o) === value)) ?? "";
 
             return (
-              <div key={question.id} className="rounded-lg border border-border/100 bg-[#11131a] px-4 py-4">
+              <div key={question.id} className={`${surfaceCardClasses} ${cardPaddingLooseClasses}`}>
                 <p className="mb-3 text-sm font-semibold leading-6 text-text">{question.question}</p>
 
                 {isAsset ? (
@@ -160,7 +162,9 @@ export function QuestionCard({ request, answers, onAnswerChange, onSubmit, onCan
                         <label
                           key={opt.label}
                           className={`group flex w-full cursor-pointer items-start gap-3 rounded-lg px-3 py-2 text-left text-sm transition ${
-                            checked ? "bg-white/5 text-text" : "text-muted hover:bg-white/[.03] hover:text-text"
+                            checked
+                              ? "bg-fill-active text-text"
+                              : "text-muted hover:bg-fill-ghost-hover hover:text-text"
                           }`}
                         >
                           <span className="w-4 shrink-0 pt-0.5 text-right font-mono text-xs opacity-40">{i + 1}</span>
@@ -227,7 +231,7 @@ export function QuestionCard({ request, answers, onAnswerChange, onSubmit, onCan
             );
           })}
         </div>
-        <div className="mt-5 flex justify-end gap-2">
+        <div className={`mt-4 ${actionRowClasses}`}>
           <Button size="sm" intent="ghost" onClick={onCancel}>
             Cancel
           </Button>

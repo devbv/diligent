@@ -1,6 +1,6 @@
 // @summary Tests for provider manager configuration and model handling
 import { describe, expect, test } from "bun:test";
-import { createChatGPTOAuthBinding } from "@diligent/runtime";
+import { createChatGPTOAuthBinding, DEFAULT_ANTHROPIC_MODEL_ID } from "@diligent/runtime";
 import { DEFAULT_MODELS, PROVIDER_NAMES, ProviderManager } from "../src/provider-manager";
 
 describe("ProviderManager", () => {
@@ -63,7 +63,7 @@ describe("ProviderManager", () => {
     const proxy = pm.createProxyStream();
     expect(() => {
       proxy(
-        { id: "claude-sonnet-4-6", provider: "anthropic", contextWindow: 200_000, maxOutputTokens: 16384 },
+        { id: DEFAULT_ANTHROPIC_MODEL_ID, provider: "anthropic", contextWindow: 1_000_000, maxOutputTokens: 64_000 },
         { systemPrompt: [], messages: [], tools: [] },
         {},
       );
