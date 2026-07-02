@@ -3,6 +3,17 @@
 import { describe, expect, test } from "bun:test";
 import { createStudioBundledToolProviders } from "../../src/tools";
 import { createStudioRpcToolProvider } from "../../src/tools/studiorpc";
+import { parseArgs as parseInstanceUpsertArgs } from "../../src/tools/studiorpc/methods/instance.upsert";
+import * as levelBrowse from "../../src/tools/studiorpc/methods/level.browse";
+
+function thrownMessage(fn: () => void): string {
+  try {
+    fn();
+  } catch (err) {
+    return err instanceof Error ? err.message : String(err);
+  }
+  throw new Error("Expected function to throw.");
+}
 
 describe("createStudioRpcToolProvider", () => {
   test("creates bundled Studio RPC tools with Zod schemas and plugin supersession", async () => {
@@ -38,6 +49,75 @@ describe("createStudioRpcToolProvider", () => {
     );
     expect(scriptEditTool.description).toContain("call studiorpc_script_edit once per edited region");
     expect(scriptEditTool.description).toContain("apply them sequentially or choose non-overlapping");
+  });
+
+  test("accepts maxDepth 0 as unlimited for level browsing", async () => {
+    const providers = createStudioBundledToolProviders({ cwd: "/tmp/project" });
+    const provider = providers.find((candidate) => candidate.id === "@overdare/studiorpc-tools")!;
+    const tools = await provider.createTools({ cwd: "/tmp/project" });
+    const browseTool = tools.find((tool) => tool.name === "studiorpc_level_browse")!;
+
+    expect(() => browseTool.parameters.parse({ maxDepth: 0 })).not.toThrow();
+    expect(browseTool.parameters.parse({ maxDepth: 0 })).toMatchObject({ maxDepth: 0 });
+  });
+
+  test("treats maxDepth 0 and omitted maxDepth as unlimited after level browsing", () => {
+    const tree = [
+      {
+        guid: "root",
+        class: "Folder",
+        children: [
+          {
+            guid: "part",
+            class: "Part",
+            children: [{ guid: "script", class: "Script" }],
+          },
+        ],
+      },
+    ];
+
+    expect(levelBrowse.postProcess({ level: tree }, { maxDepth: 0 })).toEqual(tree);
+    expect(levelBrowse.postProcess({ level: tree }, {})).toEqual(tree);
+    expect(levelBrowse.postProcess({ level: tree }, { maxDepth: 1 })).toEqual([{ guid: "root", class: "Folder" }]);
+  });
+
+  test("adds correction hints for common instance upsert property shape mistakes", () => {
+    const partError = thrownMessage(() =>
+      parseInstanceUpsertArgs({
+        items: [
+          {
+            class: "Part",
+            parentGuid: "parent",
+            name: "BadColorPart",
+            properties: { BaseColorR: 255, BaseColorG: 128, BaseColorB: 0 },
+          },
+        ],
+      }),
+    );
+
+    expect(partError).toContain("[items[0].properties]");
+    expect(partError).toContain("Suggested fix: replace BaseColorR/BaseColorG/BaseColorB with Color: { R, G, B }");
+
+    const particleError = thrownMessage(() =>
+      parseInstanceUpsertArgs({
+        items: [
+          {
+            class: "ParticleEmitter",
+            parentGuid: "parent",
+            name: "BadEmitter",
+            properties: {
+              Color: { R: 255, G: 128, B: 0 },
+              Size: { Min: 1, Max: 2 },
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(particleError).toContain("[items[0].properties.Color]");
+    expect(particleError).toContain("Suggested fix: Color must be a ColorSequence array");
+    expect(particleError).toContain("[items[0].properties.Size]");
+    expect(particleError).toContain("Suggested fix: Size must be a NumberSequence array");
   });
 
   test("preserves generic RPC approval rejection behavior without calling Studio", async () => {

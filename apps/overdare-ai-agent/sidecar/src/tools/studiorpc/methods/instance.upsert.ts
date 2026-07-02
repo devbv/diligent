@@ -1,5 +1,5 @@
 // @summary Defines batched argument schemas for instance upserts.
-import { z } from "zod";
+import { type ZodIssue, z } from "zod";
 import {
   classPropertiesSchemas,
   classPropertyShapes,
@@ -32,6 +32,9 @@ const itemParams = z
   .describe(
     "Each item is inferred by its fields: add uses parentGuid/class/name/properties, update uses guid/(optional name)/properties.",
   );
+
+const baseColorChannelKeys = ["BaseColorR", "BaseColorG", "BaseColorB"] as const;
+const particleEmitterNumberSequenceProperties = new Set(["Size", "Transparency", "Squash"]);
 
 export const params = z
   .object({
@@ -472,19 +475,45 @@ function validateItemProperties(item: Record<string, unknown>, path: string, det
   const className = typeof item.class === "string" ? item.class : undefined;
   const props = item.properties;
   if (props == null || typeof props !== "object") return;
+  const propsRecord = props as Record<string, unknown>;
 
-  const resolvedClass = className ?? inferClassFromProperties(props as Record<string, unknown>);
+  const resolvedClass = className ?? inferClassFromProperties(propsRecord);
   if (!resolvedClass) return;
 
   const schema = classPropertiesSchemas.get(resolvedClass);
   if (!schema) return;
 
-  const r = schema.safeParse(props);
+  const r = schema.safeParse(propsRecord);
   if (!r.success) {
     const label = className ? `class=${resolvedClass}` : `closest match: ${resolvedClass}`;
     for (const issue of r.error.issues) {
       const loc = issue.path.length > 0 ? `.${issue.path.join(".")}` : "";
-      details.push(`  [${path}.properties${loc}] (${label}) ${issue.message}`);
+      const suggestion = suggestedFixForPropertyIssue(resolvedClass, issue);
+      const detail = `  [${path}.properties${loc}] (${label}) ${issue.message}`;
+      details.push(suggestion ? `${detail}\n    Suggested fix: ${suggestion}` : detail);
     }
   }
+}
+
+function suggestedFixForPropertyIssue(className: string, issue: ZodIssue): string | undefined {
+  if (isUnrecognizedBaseColorIssue(issue)) {
+    return "replace BaseColorR/BaseColorG/BaseColorB with Color: { R, G, B } using 0-255 integer channels.";
+  }
+
+  if (className !== "ParticleEmitter") return undefined;
+
+  const propertyName = typeof issue.path[0] === "string" ? issue.path[0] : undefined;
+  if (propertyName === "Color") {
+    return "Color must be a ColorSequence array, e.g. Color: [{ Time: 0, Color: { R: 255, G: 255, B: 255 } }].";
+  }
+  if (propertyName && particleEmitterNumberSequenceProperties.has(propertyName)) {
+    return `${propertyName} must be a NumberSequence array, e.g. ${propertyName}: [{ Time: 0, Value: 1 }].`;
+  }
+
+  return undefined;
+}
+
+function isUnrecognizedBaseColorIssue(issue: ZodIssue): boolean {
+  if (issue.code !== "unrecognized_keys" || !("keys" in issue)) return false;
+  return issue.keys.some((key) => baseColorChannelKeys.some((candidate) => candidate === key));
 }

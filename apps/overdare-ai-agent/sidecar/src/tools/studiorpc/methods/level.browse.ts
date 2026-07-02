@@ -14,7 +14,7 @@ export const params = z.object({
   maxDepth: z
     .number()
     .int()
-    .min(1)
+    .min(0)
     .optional()
     .describe(
       "Maximum depth of the tree to return. 1 = top-level nodes only, 2 = nodes + direct children, etc. 0 or omit for unlimited depth. Recommended to start with 1.",
