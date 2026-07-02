@@ -161,3 +161,37 @@ Additional OVERDARE-owned assets now live here as well:
 - `apps/overdare-ai-agent/plugins/`
 - `apps/overdare-ai-agent/scripts/deploy.ts`
 - `apps/overdare-ai-agent/scripts/tool-cli.ts`
+
+## MCP server (re-expose OVERDARE systems)
+
+The MCP server is a **subcommand of the same `diligent-web-server` binary** (no separate
+artifact or pipeline). Run `diligent-web-server mcp-serve` to re-expose OVERDARE-only systems
+to any MCP client over **stdio** (the client spawns it as a subprocess):
+
+- **Tools** — studio built-in tools (`studiorpc_*`, `validatelua`) plus RAG search
+  (`overdaresearch`, `overdaresearch_deep`). Stateless: each call is delegated to the tool's
+  `execute()` with auto-approval (no interactive host).
+- **Prompts** — bootstrap skills (`bootstrap/skills/*`), bootstrap agents (`agent-<name>`),
+  and the base system prompt (`overdare-system-prompt`).
+
+It ships inside the normal runtime bundle (`build-overdare-runtime-bundle.ts`) — the same
+`diligent-web-server`, `assets/`, and `defaults/` (bootstrap) already staged there are reused.
+
+### Configure in an MCP client
+
+Point the client at the bundled executable with the `mcp-serve` arg:
+
+```jsonc
+{
+  "command": "/abs/path/to/diligent-web-server",
+  "args": ["mcp-serve"]
+}
+```
+
+- stdio only — no port to manage. The Studio RPC target stays the fixed default `13377`;
+  studio tools only connect to Studio on execution.
+- Bootstrap resolution order: `OVERDARE_BOOTSTRAP_DIR` env → `bootstrap/` or `defaults/` next to
+  the binary (the bundle stages it as `defaults/`) → repo source. `OVERDARE_MCP_CWD` sets the
+  tool working directory.
+- stdout is the JSON-RPC channel; all diagnostics are written to stderr.
+- Dev shortcut (needs `bun` + repo): `cd apps/overdare-ai-agent/sidecar && bun run mcp-serve`.

@@ -21,7 +21,9 @@
         "@diligent/core": "workspace:*",
         "@diligent/runtime": "workspace:*",
         "@diligent/web": "workspace:*",
+        "@modelcontextprotocol/sdk": "^1.29.0",
         "zod": "^3.24.0",
+        "zod-to-json-schema": "^3.25.1",
       },
       "devDependencies": {
         "@types/bun": "^1.3.0",

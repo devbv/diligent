@@ -1,6 +1,7 @@
 // @summary OVERDARE Studio product web-server runner that injects product-owned bundled tools.
 
 import { createWebServer, enableProcessLogFile, parseArgs } from "@diligent/web/server";
+import { runMcpServerMain } from "./mcp-server";
 import { createStudioBundledToolProviders } from "./tools";
 import { createGatewayConsentBackend } from "./tools/gateway/consent";
 
@@ -90,13 +91,19 @@ export async function startStudioServer(argv: string[] = process.argv.slice(2)):
 }
 
 if (import.meta.main) {
-  process.on("uncaughtException", (err) => {
-    console.error("[Studio Server] Uncaught exception (swallowed to keep server alive):", err?.message ?? err);
-  });
-  process.on("unhandledRejection", (reason) => {
-    const message = reason instanceof Error ? reason.message : String(reason);
-    console.error("[Studio Server] Unhandled promise rejection (swallowed to keep server alive):", message);
-  });
+  // `diligent-web-server mcp-serve` re-exposes OVERDARE studio tools + bootstrap prompts to
+  // any MCP client over stdio, sharing this same binary/bundle (no separate artifact).
+  if (process.argv[2] === "mcp-serve") {
+    await runMcpServerMain();
+  } else {
+    process.on("uncaughtException", (err) => {
+      console.error("[Studio Server] Uncaught exception (swallowed to keep server alive):", err?.message ?? err);
+    });
+    process.on("unhandledRejection", (reason) => {
+      const message = reason instanceof Error ? reason.message : String(reason);
+      console.error("[Studio Server] Unhandled promise rejection (swallowed to keep server alive):", message);
+    });
 
-  await startStudioServer();
+    await startStudioServer();
+  }
 }
