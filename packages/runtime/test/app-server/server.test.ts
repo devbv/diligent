@@ -707,6 +707,58 @@ describe("DiligentAppServer", () => {
     expect((readResult(newThreadRead) as { currentModel?: string }).currentModel).toBe("gpt-5.4");
   });
 
+  it("config/reload re-discovers skills and forces the next turn to rebuild its agent", async () => {
+    const originalHome = process.env.HOME;
+    const fakeHome = await mkdtemp(join(tmpdir(), "diligent-app-server-reload-home-"));
+    process.env.HOME = fakeHome;
+    const projectRoot = await mkdtemp(join(process.env.TMPDIR ?? "/tmp", "diligent-app-server-reload-"));
+
+    try {
+      const server = new DiligentAppServer(
+        createAppServerConfig({
+          cwd: projectRoot,
+          runtimeConfig: makeFactoryRuntimeConfig(),
+        }),
+      );
+      connectTestPeer(server);
+
+      const started = await server.handleRequest(TEST_CONNECTION_ID, {
+        id: 700,
+        method: "thread/start",
+        params: { cwd: projectRoot },
+      });
+      const threadId = (readResult(started) as { threadId: string }).threadId;
+
+      // Drive one turn so the thread caches a built agent instance.
+      await server.handleRequest(TEST_CONNECTION_ID, {
+        id: 701,
+        method: "turn/start",
+        params: { threadId, message: "hi", content: [{ type: "text", text: "hi" }] },
+      });
+
+      const skillDir = join(projectRoot, ".diligent", "skills", "my-skill");
+      await mkdir(skillDir, { recursive: true });
+      await writeFile(
+        join(skillDir, "SKILL.md"),
+        ["---", "name: my-skill", "description: Discovered on reload", "---", "", "Do the thing."].join("\n"),
+      );
+
+      const reloaded = await server.handleRequest(TEST_CONNECTION_ID, {
+        id: 702,
+        method: "config/reload",
+        params: {},
+      });
+      expect(readResult(reloaded)).toEqual({ skills: [{ name: "my-skill", description: "Discovered on reload" }] });
+    } finally {
+      await rm(fakeHome, { recursive: true, force: true });
+      if (originalHome === undefined) {
+        delete process.env.HOME;
+      } else {
+        process.env.HOME = originalHome;
+      }
+    }
+  });
+
   it("does not keep a failed Anthropic key path active after disconnecting it", async () => {
     const projectRoot = await mkdtemp(join(process.env.TMPDIR ?? "/tmp", "diligent-app-server-"));
     const paths = await ensureDiligentDir(projectRoot);

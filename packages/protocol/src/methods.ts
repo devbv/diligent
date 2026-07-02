@@ -28,6 +28,7 @@ export const DILIGENT_CLIENT_REQUEST_METHODS = {
   TOOLS_LIST: "tools/list",
   TOOLS_SET: "tools/set",
   CONFIG_SET: "config/set",
+  CONFIG_RELOAD: "config/reload",
   CONSENT_SET: "consent/set",
   AUTH_LIST: "auth/list",
   AUTH_SET: "auth/set",

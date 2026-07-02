@@ -119,7 +119,7 @@ describe("isSlashPrefix", () => {
 describe("BUILTIN_COMMANDS", () => {
   test("has expected core commands", () => {
     const names = BUILTIN_COMMANDS.map((c) => c.name);
-    expect(names).toEqual(["help", "new", "resume", "model", "effort", "mcp"]);
+    expect(names).toEqual(["help", "new", "resume", "model", "effort", "mcp", "reload"]);
   });
 
   test("resume requires args and exposes usage", () => {

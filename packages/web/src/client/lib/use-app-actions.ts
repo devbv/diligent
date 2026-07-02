@@ -1,6 +1,13 @@
 // @summary App action handlers for sending, image uploads, slash commands, and turn controls
 
-import type { ImageUploadAttachment, Mode, ModelInfo, ThinkingEffort, ThreadReadResponse } from "@diligent/protocol";
+import type {
+  ImageUploadAttachment,
+  Mode,
+  ModelInfo,
+  SkillInfo,
+  ThinkingEffort,
+  ThreadReadResponse,
+} from "@diligent/protocol";
 import { DILIGENT_CLIENT_REQUEST_METHODS } from "@diligent/protocol";
 import { type Dispatch, type MutableRefObject, type RefObject, type SetStateAction, useCallback } from "react";
 import { toWebImageUrl } from "../../shared/image-routes";
@@ -179,6 +186,7 @@ export function useAppActions({
   openThread,
   openMcpModal,
   bumpMcpRefreshNonce,
+  setSkills,
   steeringControl,
   modeRef,
   cwdRef,
@@ -213,6 +221,7 @@ export function useAppActions({
   openThread: (threadId: string) => Promise<void>;
   openMcpModal: () => void;
   bumpMcpRefreshNonce: () => void;
+  setSkills: Dispatch<SetStateAction<SkillInfo[]>>;
   steeringControl: SteeringControl;
   modeRef: RefObject<Mode>;
   cwdRef: RefObject<string>;
@@ -562,6 +571,25 @@ export function useAppActions({
           });
           return;
         }
+        case "reload": {
+          if (!rpc) {
+            dispatch({ type: "show_info_toast", payload: "Not connected to the app server." });
+            return;
+          }
+          void rpc
+            .request(DILIGENT_CLIENT_REQUEST_METHODS.CONFIG_RELOAD, {})
+            .then((result) => {
+              setSkills(result.skills);
+              dispatch({ type: "show_info_toast", payload: "Reloaded config, skills, agents, tools & MCP servers." });
+            })
+            .catch((cause) => {
+              dispatch({
+                type: "show_info_toast",
+                payload: `Reload failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+              });
+            });
+          return;
+        }
         default: {
           const isSkill = slashCommands.some((command) => command.name === name && command.isSkill);
           if (isSkill && rpc && activeThreadId) {
@@ -588,6 +616,7 @@ export function useAppActions({
       openThread,
       openMcpModal,
       bumpMcpRefreshNonce,
+      setSkills,
       availableModels,
       changeModel,
       effort,

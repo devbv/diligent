@@ -45,6 +45,10 @@ export const BUILTIN_COMMANDS: SlashCommand[] = [
     description: "List and manage MCP servers",
     usage: "/mcp list | login <server> | logout <server>",
   },
+  {
+    name: "reload",
+    description: "Reload config, skills, agents, tools & MCP servers",
+  },
 ];
 
 /** Build the full command list by merging builtins with dynamic skill commands. */

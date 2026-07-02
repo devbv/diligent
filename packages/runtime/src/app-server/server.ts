@@ -40,7 +40,7 @@ import type { AppendedEntryInfo } from "../session/types";
 import { type BundledToolProvider, collectBundledHooks } from "../tools/bundled-provider";
 import { collectPluginHooks } from "../tools/plugin-loader";
 import type { UserInputRequest, UserInputResponse } from "../tools/user-input-types";
-import type { ConsentConfigManager } from "./config-handlers";
+import type { ConfigReloadResult, ConsentConfigManager } from "./config-handlers";
 import { createKeyedSerializer } from "./keyed-serializer";
 import {
   applySessionDefaults,
@@ -119,6 +119,13 @@ export interface DiligentAppServerConfig {
   onCurrentThreadChange?: (threadId: string) => void;
   /** Auth credential storage backend configuration. */
   authStore?: AuthStoreOptions;
+  /**
+   * Re-discovers skills, agents, tools, and MCP servers from disk config and applies them
+   * in place, without restarting the process. Powers `config/reload` for hosts (e.g. Web)
+   * that run as a long-lived shared server and can't restart per client like the CLI TUI's
+   * `/reload` (which respawns its own app-server child process).
+   */
+  reloadConfig?: () => Promise<ConfigReloadResult>;
 }
 
 async function resolveProviderPlanType(
@@ -735,6 +742,7 @@ export class DiligentAppServer {
       turnInitiators: this.turnInitiators,
       toolConfig: this.config.toolConfig,
       consentConfig: this.config.consentConfig,
+      reloadConfig: this.config.reloadConfig,
       subscribeToThread: (connectionId, threadId) => this.subscribeToThread(connectionId, threadId),
       unsubscribeFromThread: (subscriptionId) => this.unsubscribeFromThread(subscriptionId),
       resolveThreadRuntime: (threadId) => this.resolveThreadRuntime(threadId),

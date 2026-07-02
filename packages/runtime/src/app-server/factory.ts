@@ -6,13 +6,13 @@ import { MODE_SYSTEM_PROMPT_SUFFIXES, type Mode, PLAN_MODE_ALLOWED_TOOLS } from 
 import { RuntimeAgent } from "../agent/runtime-agent";
 import { openBrowser as defaultOpenBrowser } from "../auth";
 import { applyConsentPatch, refreshPrivacyPolicyUrl, resolveConsentState } from "../config/consent";
-import type { RuntimeConfig } from "../config/runtime";
+import { loadRuntimeConfig, type RuntimeConfig } from "../config/runtime";
 import { getGlobalConfigPath, saveGlobalConsent, saveGlobalModel } from "../config/writer";
 import { type DiligentPaths, ensureDiligentDir } from "../infrastructure";
 import type { BundledToolProvider } from "../tools/bundled-provider";
 import { buildDefaultTools } from "../tools/defaults";
 import { buildMcpNeedsAuthNote, getMcpManager } from "../tools/mcp";
-import type { ConsentConfigManager } from "./config-handlers";
+import type { ConfigReloadResult, ConsentConfigManager } from "./config-handlers";
 import type { CreateAgentArgs, DiligentAppServerConfig } from "./server";
 
 function withSkillGuardrail(runtimeConfig: RuntimeConfig) {
@@ -246,6 +246,24 @@ export function createAppServerConfig(opts: CreateAppServerConfigOptions): Dilig
     mcpServers: runtimeConfig.diligent.mcpServers,
     userId: runtimeConfig.diligent.userId,
     ...overrides,
+  };
+
+  // Assigned after `config` exists so it can refresh the frozen snapshots (`mcpServers`,
+  // `skillNames`, `hooks`) alongside the mutable `runtimeConfig` fields that `createAgent`
+  // reads live on every call.
+  config.reloadConfig = async (): Promise<ConfigReloadResult> => {
+    const paths = await getPaths();
+    const fresh = await loadRuntimeConfig(cwd, paths);
+    runtimeConfig.skills = fresh.skills;
+    runtimeConfig.agents = fresh.agents;
+    runtimeConfig.agentDefinitions = fresh.agentDefinitions;
+    runtimeConfig.systemPrompt = fresh.systemPrompt;
+    runtimeConfig.diligent = fresh.diligent;
+    runtimeConfig.sources = fresh.sources;
+    config.mcpServers = fresh.diligent.mcpServers;
+    config.skillNames = fresh.skills.map((skill) => skill.name);
+    config.hooks = fresh.diligent.hooks;
+    return { skills: fresh.skills.map((skill) => ({ name: skill.name, description: skill.description })) };
   };
 
   return config;

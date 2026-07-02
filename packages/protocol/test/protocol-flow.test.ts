@@ -566,6 +566,21 @@ describe("protocol/flow", () => {
     ).toBe(true);
   });
 
+  it("accepts config/reload request + response payloads", () => {
+    expect(
+      DiligentClientRequestSchema.safeParse({
+        method: DILIGENT_CLIENT_REQUEST_METHODS.CONFIG_RELOAD,
+        params: {},
+      }).success,
+    ).toBe(true);
+    expect(
+      DiligentClientResponseSchema.safeParse({
+        method: DILIGENT_CLIENT_REQUEST_METHODS.CONFIG_RELOAD,
+        result: { skills: [{ name: "write-plan", description: "Create implementation plans" }] },
+      }).success,
+    ).toBe(true);
+  });
+
   it("accepts the mcp/login/completed server notification", () => {
     expect(
       DiligentServerNotificationSchema.safeParse({

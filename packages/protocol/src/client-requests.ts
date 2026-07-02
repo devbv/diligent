@@ -393,6 +393,15 @@ export const ConfigSetResponseSchema = z.object({
 });
 export type ConfigSetResponse = z.infer<typeof ConfigSetResponseSchema>;
 
+// --- config/reload ---
+export const ConfigReloadParamsSchema = z.object({});
+export type ConfigReloadParams = z.infer<typeof ConfigReloadParamsSchema>;
+
+export const ConfigReloadResponseSchema = z.object({
+  skills: z.array(SkillInfoSchema),
+});
+export type ConfigReloadResponse = z.infer<typeof ConfigReloadResponseSchema>;
+
 // --- consent/set ---
 export const ConsentSetParamsSchema = z.object({
   noticeAcknowledged: z.boolean().optional(),
@@ -574,6 +583,7 @@ export const DiligentClientRequestSchema = z.discriminatedUnion("method", [
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.TOOLS_LIST), params: ToolsListParamsSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.TOOLS_SET), params: ToolsSetParamsSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.CONFIG_SET), params: ConfigSetParamsSchema }),
+  z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.CONFIG_RELOAD), params: ConfigReloadParamsSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.CONSENT_SET), params: ConsentSetParamsSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.AUTH_LIST), params: AuthListParamsSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.AUTH_SET), params: AuthSetParamsSchema }),
@@ -630,6 +640,7 @@ export const DiligentClientResponseSchema = z.discriminatedUnion("method", [
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.TOOLS_LIST), result: ToolsListResponseSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.TOOLS_SET), result: ToolsSetResponseSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.CONFIG_SET), result: ConfigSetResponseSchema }),
+  z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.CONFIG_RELOAD), result: ConfigReloadResponseSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.CONSENT_SET), result: ConsentSetResponseSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.AUTH_LIST), result: AuthListResponseSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.AUTH_SET), result: AuthSetResponseSchema }),

@@ -262,6 +262,7 @@ export function useAppState({
     openThread: threadMgr.openThread,
     openMcpModal: modalState.openMcpModal,
     bumpMcpRefreshNonce: modalState.bumpMcpRefreshNonce,
+    setSkills,
     steeringControl: {
       pendingAbortRestartMessageRef: steeringQueue.pendingAbortRestartMessageRef,
       suppressNextSteeringInjectedRef: steeringQueue.suppressNextSteeringInjectedRef,

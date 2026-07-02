@@ -18,11 +18,13 @@ import {
 import type { RpcPeer } from "../rpc/channel";
 import {
   buildProviderList,
+  type ConfigReloadResult,
   type ConsentConfigManager,
   handleAuthOAuthCancel,
   handleAuthOAuthStart,
   handleAuthRemove,
   handleAuthSet,
+  handleConfigReload,
   handleConfigSet,
   handleConsentSet,
   handleImageUpload,
@@ -95,6 +97,7 @@ export interface ClientRequestDispatchContext {
   turnInitiators: Map<string, string>;
   toolConfig: ToolConfigManager | undefined;
   consentConfig: ConsentConfigManager | undefined;
+  reloadConfig: (() => Promise<ConfigReloadResult>) | undefined;
 
   // Subscription management
   subscribeToThread(connectionId: string, threadId: string): string;
@@ -328,6 +331,9 @@ export async function dispatchClientRequest(
       }
       return result;
     }
+
+    case DILIGENT_CLIENT_REQUEST_METHODS.CONFIG_RELOAD:
+      return handleConfigReload(ctx.reloadConfig, ctx.threadHandlersCtx.threads);
 
     case DILIGENT_CLIENT_REQUEST_METHODS.CONSENT_SET:
       return await handleConsentSet(ctx.consentConfig, request.params);

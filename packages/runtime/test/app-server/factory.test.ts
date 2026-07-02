@@ -1,6 +1,6 @@
 // @summary Tests for createAppServerConfig factory — validates config assembly and override merging
 import { afterEach, describe, expect, it } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_ANTHROPIC_MODEL_ID, getModelInfoList } from "@diligent/core/llm/models";
@@ -237,6 +237,50 @@ describe("createAppServerConfig", () => {
     });
 
     expect(agent.tools.map((tool) => tool.name)).toContain("factory_bundled_tool");
+  });
+});
+
+describe("reloadConfig", () => {
+  const tempProjects: string[] = [];
+
+  afterEach(async () => {
+    await Promise.all(tempProjects.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+  });
+
+  it("re-discovers skills from disk and clears the frozen skillNames/mcpServers snapshot", async () => {
+    const originalHome = process.env.HOME;
+    const fakeHome = await mkdtemp(join(tmpdir(), "diligent-factory-home-"));
+    tempHomes.push(fakeHome);
+    process.env.HOME = fakeHome;
+
+    const projectRoot = await mkdtemp(join(tmpdir(), "diligent-factory-reload-"));
+    tempProjects.push(projectRoot);
+
+    try {
+      const runtimeConfig = makeRuntimeConfig();
+      const config = createAppServerConfig({ cwd: projectRoot, runtimeConfig });
+      expect(config.skillNames).toEqual([]);
+
+      const skillDir = join(projectRoot, ".diligent", "skills", "my-skill");
+      await mkdir(skillDir, { recursive: true });
+      await writeFile(
+        join(skillDir, "SKILL.md"),
+        ["---", "name: my-skill", "description: A reloaded skill", "---", "", "Do the thing."].join("\n"),
+      );
+
+      expect(config.reloadConfig).toBeTypeOf("function");
+      const result = await config.reloadConfig?.();
+
+      expect(result?.skills).toEqual([{ name: "my-skill", description: "A reloaded skill" }]);
+      expect(runtimeConfig.skills.map((skill) => skill.name)).toEqual(["my-skill"]);
+      expect(config.skillNames).toEqual(["my-skill"]);
+    } finally {
+      if (originalHome === undefined) {
+        delete process.env.HOME;
+      } else {
+        process.env.HOME = originalHome;
+      }
+    }
   });
 });
 
