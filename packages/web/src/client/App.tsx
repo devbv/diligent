@@ -107,7 +107,7 @@ export function App() {
   } = useAppState({ rpcRef, providerMgr, connection, reconnectAttempts });
 
   const { startNewThread, openThread, confirmDeleteThread } = threadMgr;
-  const { handleSteer, canSteer } = steeringQueue;
+  const { handleSteer, canSteer, cancelSteer, updateSteer } = steeringQueue;
   const {
     handleSend,
     handleInterrupt,
@@ -227,7 +227,11 @@ export function App() {
 
           {state.planState?.steps.some((s) => s.status !== "done") && <PlanPanel planState={state.planState!} />}
 
-          <SteeringQueuePanel pendingSteers={state.pendingSteers} />
+          <SteeringQueuePanel
+            pendingSteers={state.pendingSteers}
+            onCancelSteer={cancelSteer}
+            onUpdateSteer={updateSteer}
+          />
 
           {!providerMgr.hasProvider && state.items.length > 0 ? (
             <div className="mx-3 mb-2 flex items-center justify-between gap-3 rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-text-soft">

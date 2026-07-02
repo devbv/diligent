@@ -229,21 +229,58 @@ test("reset_draft clears active thread and items but preserves thread list", () 
 test("consume_first_pending_steer removes head entry only", () => {
   const seeded = {
     ...initialThreadState,
-    pendingSteers: ["a", "b", "c"],
+    pendingSteers: [
+      { id: "s1", content: "a" },
+      { id: "s2", content: "b" },
+      { id: "s3", content: "c" },
+    ],
   };
 
   const next = appReducer(seeded, { type: "consume_first_pending_steer" });
 
-  expect(next.pendingSteers).toEqual(["b", "c"]);
+  expect(next.pendingSteers.map((steer) => steer.content)).toEqual(["b", "c"]);
+});
+
+test("cancel_pending_steer removes the selected queued steer", () => {
+  const seeded = {
+    ...initialThreadState,
+    pendingSteers: [
+      { id: "s1", content: "a" },
+      { id: "s2", content: "b" },
+      { id: "s3", content: "c" },
+    ],
+  };
+
+  const next = appReducer(seeded, { type: "cancel_pending_steer", payload: { steerId: "s2" } });
+
+  expect(next.pendingSteers.map((steer) => steer.content)).toEqual(["a", "c"]);
+});
+
+test("update_pending_steer replaces the selected queued steer", () => {
+  const seeded = {
+    ...initialThreadState,
+    pendingSteers: [
+      { id: "s1", content: "a" },
+      { id: "s2", content: "b" },
+      { id: "s3", content: "c" },
+    ],
+  };
+
+  const next = appReducer(seeded, {
+    type: "update_pending_steer",
+    payload: { steerId: "s2", content: "updated" },
+  });
+
+  expect(next.pendingSteers.map((steer) => steer.content)).toEqual(["a", "updated", "c"]);
 });
 
 test("local_steer queues steer text without creating a local user item", () => {
   const next = appReducer(initialThreadState, {
     type: "local_steer",
-    payload: "adjust plan",
+    payload: { id: "s1", content: "adjust plan" },
   });
 
-  expect(next.pendingSteers).toEqual(["adjust plan"]);
+  expect(next.pendingSteers).toEqual([{ id: "s1", content: "adjust plan" }]);
   expect(next.items).toEqual([]);
 });
 

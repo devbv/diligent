@@ -1,6 +1,7 @@
 // @summary Factory for command dispatch, user submit, steering, and CommandContext assembly
 
-import type { Mode as ProtocolMode, ThinkingEffort } from "@diligent/protocol";
+import { randomUUID } from "node:crypto";
+import type { PendingSteer, Mode as ProtocolMode, ThinkingEffort } from "@diligent/protocol";
 import { DILIGENT_CLIENT_REQUEST_METHODS } from "@diligent/protocol";
 import type { SkillMetadata } from "@diligent/runtime";
 import type { AppConfig } from "../config";
@@ -55,7 +56,7 @@ export interface CommandHandlerDeps {
   waitForOAuthComplete: () => Promise<{ success: boolean; error: string | null }>;
   waitForMcpLogin: (server: string) => Promise<{ success: boolean; toolCount?: number; error: string | null }>;
   syncActiveThreadState: () => Promise<void>;
-  queuePendingSteer: (text: string) => void;
+  queuePendingSteer: (steer: PendingSteer) => void;
   // Domain modules
   threadManager: ThreadManager;
   configManager: ConfigManager;
@@ -210,15 +211,17 @@ export function createCommandHandler(deps: CommandHandlerDeps): CommandHandler {
       const rpc = deps.getRpcClient();
       const threadId = deps.getCurrentThreadId();
       if (!rpc || !threadId) return;
-      deps.queuePendingSteer(text);
+      const steerId = `steer-${randomUUID()}`;
+      deps.queuePendingSteer({ id: steerId, content: text });
+      deps.requestRender();
       void rpc
         .request(DILIGENT_CLIENT_REQUEST_METHODS.TURN_STEER, {
           threadId,
+          steerId,
           content: text,
           followUp: false,
         })
         .catch(() => {});
-      deps.requestRender();
     },
   };
 

@@ -8,7 +8,7 @@ import type { AssistantMessage, Message, ToolCallBlock } from "../types";
 import { streamAssistantMessage } from "./assistant";
 import { getCompactionDecision, runCompaction } from "./compaction";
 import { runToolCalls } from "./tool";
-import type { AgentStream, CompactionConfig } from "./types";
+import type { AgentStream, CompactionConfig, QueuedSteeringMessage } from "./types";
 import { DoomLoopDetector } from "./util/doom-loop";
 import { toSerializableError } from "./util/errors";
 
@@ -30,7 +30,7 @@ export interface LoopRuntime {
   sessionId?: string;
   compactionSummary?: Record<string, unknown>;
   hooks: {
-    drainSteeringMessages: () => Message[];
+    drainSteeringMessages: () => QueuedSteeringMessage[];
     pendingSteeringCount: () => number;
   };
 }
@@ -84,8 +84,14 @@ export async function runAgentLoop(
 
       const steering = hooks.drainSteeringMessages();
       if (steering.length > 0) {
-        conversation.push(...steering);
-        stream.emit({ type: "steering_injected", messageCount: steering.length, messages: steering });
+        const steeringMessages = steering.map((entry) => entry.message);
+        conversation.push(...steeringMessages);
+        stream.emit({
+          type: "steering_injected",
+          messageCount: steering.length,
+          messages: steeringMessages,
+          steerIds: steering.map((entry) => entry.id),
+        });
       }
 
       let retriedAfterContextOverflow = false;

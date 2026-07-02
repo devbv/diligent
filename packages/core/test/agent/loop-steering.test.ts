@@ -127,6 +127,64 @@ describe("agent steering", () => {
     expect(hasSteeringMsg).toBe(true);
   });
 
+  test("cancelPendingMessage removes queued steering before injection", async () => {
+    const streamFn = createMockStreamFunction([makeAssistant([{ type: "text", text: "done" }])]);
+    const agent = makeAgent(streamFn);
+
+    const dropId = agent.steer({ role: "user", content: "drop me", timestamp: Date.now() });
+    agent.steer({ role: "user", content: "keep me", timestamp: Date.now() });
+
+    expect(agent.cancelPendingMessage(dropId)).toBe(true);
+
+    const { events } = await runAgent(agent, { role: "user", content: "hello", timestamp: Date.now() });
+    const steering = events.find((e) => e.type === "steering_injected") as
+      | { type: "steering_injected"; messages: Message[] }
+      | undefined;
+
+    expect(steering?.messages.map((m) => m.content)).toEqual(["keep me"]);
+  });
+
+  test("cancelPendingMessage uses steer id when queue index shifted", () => {
+    const agent = makeAgent(createMockStreamFunction([makeAssistant([{ type: "text", text: "done" }])]));
+
+    const keepId = agent.steer({ role: "user", content: "keep me", timestamp: Date.now() });
+
+    expect(agent.cancelPendingMessage(keepId)).toBe(true);
+    expect(agent.hasPendingMessages()).toBe(false);
+  });
+
+  test("updatePendingMessage edits queued steering before injection", async () => {
+    const streamFn = createMockStreamFunction([makeAssistant([{ type: "text", text: "done" }])]);
+    const agent = makeAgent(streamFn);
+
+    const steerId = agent.steer({ role: "user", content: "old", timestamp: Date.now() });
+
+    expect(agent.updatePendingMessage(steerId, "new")).toBe(true);
+
+    const { events } = await runAgent(agent, { role: "user", content: "hello", timestamp: Date.now() });
+    const steering = events.find((e) => e.type === "steering_injected") as
+      | { type: "steering_injected"; messages: Message[] }
+      | undefined;
+
+    expect(steering?.messages.map((m) => m.content)).toEqual(["new"]);
+  });
+
+  test("updatePendingMessage uses steer id when queue index shifted", async () => {
+    const streamFn = createMockStreamFunction([makeAssistant([{ type: "text", text: "done" }])]);
+    const agent = makeAgent(streamFn);
+
+    const steerId = agent.steer({ role: "user", content: "old", timestamp: Date.now() });
+
+    expect(agent.updatePendingMessage(steerId, "new")).toBe(true);
+
+    const { events } = await runAgent(agent, { role: "user", content: "hello", timestamp: Date.now() });
+    const steering = events.find((e) => e.type === "steering_injected") as
+      | { type: "steering_injected"; messages: Message[] }
+      | undefined;
+
+    expect(steering?.messages.map((m) => m.content)).toEqual(["new"]);
+  });
+
   test("steering messages injected before next LLM call (drain at loop top)", async () => {
     // Two tool call rounds, then text response
     const toolCallMsg1 = makeAssistant(

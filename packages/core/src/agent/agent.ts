@@ -11,7 +11,8 @@ import type { Message } from "../types";
 import { runCompaction } from "./compaction";
 import type { LoopRuntime } from "./loop";
 import { runAgentLoop } from "./loop";
-import type { AgentOptions, CompactionConfig } from "./types";
+import { updateUserMessageContent } from "./message-content";
+import type { AgentOptions, CompactionConfig, QueuedSteeringMessage } from "./types";
 import { AgentStream, type LLMRetryConfig } from "./types";
 
 export class Agent {
@@ -26,7 +27,8 @@ export class Agent {
   private compactionConfig: CompactionConfig;
   private messages: Message[] = [];
   private compactionSummary?: Record<string, unknown>;
-  private pendingSteeringMessages: Message[] = [];
+  private pendingSteeringMessages: QueuedSteeringMessage[] = [];
+  private nextSteeringId = 0;
   private _running = false;
   private sessionId?: string;
   readonly agentStream = new AgentStream();
@@ -127,8 +129,26 @@ export class Agent {
   }
 
   /** Queue a steering message to be injected into the running loop. */
-  steer(msg: Message): void {
-    this.pendingSteeringMessages.push(msg);
+  steer(msg: Message, id = this.createSteeringId()): string {
+    this.pendingSteeringMessages.push({ id, message: msg });
+    return id;
+  }
+
+  /** Remove one queued steering message before it is injected. */
+  cancelPendingMessage(id: string): boolean {
+    const index = this.pendingSteeringMessages.findIndex((entry) => entry.id === id);
+    if (index === -1) return false;
+    this.pendingSteeringMessages.splice(index, 1);
+    return true;
+  }
+
+  /** Update one queued steering message before it is injected. */
+  updatePendingMessage(id: string, content: string): boolean {
+    const entry = this.pendingSteeringMessages.find((pending) => pending.id === id);
+    const msg = entry?.message;
+    if (!msg || msg.role !== "user") return false;
+    msg.content = updateUserMessageContent(msg.content, content);
+    return true;
   }
 
   /** Returns true if there are pending steering messages. */
@@ -137,8 +157,17 @@ export class Agent {
   }
 
   /** Drain all steering messages from the queue. */
-  drainPendingMessages(): Message[] {
+  drainPendingMessages(): QueuedSteeringMessage[] {
     return this.pendingSteeringMessages.splice(0);
+  }
+
+  getPendingSteeringMessages(): QueuedSteeringMessage[] {
+    return this.pendingSteeringMessages.map((entry) => ({ id: entry.id, message: entry.message }));
+  }
+
+  private createSteeringId(): string {
+    this.nextSteeringId += 1;
+    return `steer-${this.nextSteeringId}`;
   }
 
   setModel(model: string | Model, streamFn?: StreamFunction, compactionFn?: NativeCompactFn): void {

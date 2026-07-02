@@ -1,6 +1,6 @@
 // @summary Tests for WebRpcClient raw JSON-RPC request handling and reconnect delay policy
 import { afterEach, expect, test } from "bun:test";
-import { DILIGENT_SERVER_NOTIFICATION_METHODS } from "@diligent/protocol";
+import { DILIGENT_SERVER_NOTIFICATION_METHODS, DILIGENT_SERVER_REQUEST_METHODS } from "@diligent/protocol";
 import { getReconnectAttemptLimit, getReconnectDelay, WebRpcClient } from "../../../src/client/lib/rpc-client";
 
 const OriginalWebSocket = globalThis.WebSocket;
@@ -262,6 +262,52 @@ test("server request response resolution emits server/request/resolved notificat
   });
 
   expect(resolved).toEqual([41]);
+  client.disconnect();
+});
+
+test("respondServerRequest sends response and clears retry after resolved notification", async () => {
+  globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+
+  const client = new WebRpcClient("ws://example.test/rpc");
+  await client.connect();
+
+  FakeWebSocket.instances[0]!.onmessage?.({
+    data: JSON.stringify({
+      id: 42,
+      method: DILIGENT_SERVER_REQUEST_METHODS.USER_INPUT_REQUEST,
+      params: {
+        threadId: "thread-1",
+        request: {
+          questions: [
+            {
+              id: "q1",
+              header: "Next",
+              question: "Continue?",
+              options: [{ label: "Yes", description: "Continue." }],
+            },
+          ],
+        },
+      },
+    }),
+  });
+
+  client.respondServerRequest(42, {
+    method: DILIGENT_SERVER_REQUEST_METHODS.USER_INPUT_REQUEST,
+    result: { answers: { q1: "Yes" } },
+  });
+
+  expect(FakeWebSocket.instances[0]!.sent.map((entry) => JSON.parse(entry))).toContainEqual({
+    id: 42,
+    result: { answers: { q1: "Yes" } },
+  });
+
+  FakeWebSocket.instances[0]!.onmessage?.({
+    data: JSON.stringify({
+      method: DILIGENT_SERVER_NOTIFICATION_METHODS.SERVER_REQUEST_RESOLVED,
+      params: { requestId: 42 },
+    }),
+  });
+
   client.disconnect();
 });
 

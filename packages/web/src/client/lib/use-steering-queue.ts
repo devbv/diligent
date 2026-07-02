@@ -1,4 +1,6 @@
 // @summary React hook for steering queue state: pending steers, abort-restart, and suppress-injected logic
+
+import type { PendingSteer } from "@diligent/protocol";
 import { DILIGENT_CLIENT_REQUEST_METHODS } from "@diligent/protocol";
 import type { RefObject } from "react";
 import { useCallback, useRef } from "react";
@@ -7,7 +9,9 @@ import type { WebRpcClient } from "./rpc-client";
 import type { ThreadState } from "./thread-store";
 
 type SteeringAction =
-  | { type: "local_steer"; payload: string }
+  | { type: "local_steer"; payload: PendingSteer }
+  | { type: "cancel_pending_steer"; payload: { steerId: string } }
+  | { type: "update_pending_steer"; payload: { steerId: string; content: string } }
   | { type: "consume_first_pending_steer" }
   | { type: "local_user"; payload: { text: string; images: PendingImage[] } }
   | { type: "optimistic_thread"; payload: { threadId: string; message: string } };
@@ -29,12 +33,14 @@ export async function executeSteer({
   clearThreadInput: (threadId: string) => void;
   clearPendingImages: () => void;
 }): Promise<void> {
+  const steerId = createClientSteerId();
   clearThreadInput(threadId);
   clearPendingImages();
-  dispatch({ type: "local_steer", payload: content });
+  dispatch({ type: "local_steer", payload: { id: steerId, content } });
   try {
     await rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.TURN_STEER, {
       threadId,
+      steerId,
       content,
       attachments: images.map((image) => ({
         type: "local_image" as const,
@@ -45,8 +51,48 @@ export async function executeSteer({
       followUp: false,
     });
   } catch (error) {
+    dispatch({ type: "cancel_pending_steer", payload: { steerId } });
     console.error(error);
   }
+}
+
+export async function executeCancelSteer({
+  rpc,
+  threadId,
+  steerId,
+  dispatch,
+}: {
+  rpc: WebRpcClient;
+  threadId: string;
+  steerId: string;
+  dispatch: (action: SteeringAction) => void;
+}): Promise<void> {
+  dispatch({ type: "cancel_pending_steer", payload: { steerId } });
+  await rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.TURN_STEER_CANCEL, { threadId, steerId });
+}
+
+export async function executeUpdateSteer({
+  rpc,
+  threadId,
+  steerId,
+  content,
+  dispatch,
+}: {
+  rpc: WebRpcClient;
+  threadId: string;
+  steerId: string;
+  content: string;
+  dispatch: (action: SteeringAction) => void;
+}): Promise<void> {
+  dispatch({
+    type: "update_pending_steer",
+    payload: { steerId, content },
+  });
+  await rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.TURN_STEER_UPDATE, {
+    threadId,
+    steerId,
+    content,
+  });
 }
 
 export async function executeRestartFromAbort({
@@ -147,6 +193,28 @@ export function useSteeringQueue({
     void steerMessage();
   }, [steerMessage]);
 
+  const cancelSteer = useCallback(
+    (steerId: string) => {
+      const rpc = rpcRef.current;
+      if (!rpc || !activeThreadId) return;
+      void executeCancelSteer({ rpc, threadId: activeThreadId, steerId, dispatch }).catch((error) => {
+        console.error(error);
+      });
+    },
+    [rpcRef, activeThreadId, dispatch],
+  );
+
+  const updateSteer = useCallback(
+    (steerId: string, content: string) => {
+      const rpc = rpcRef.current;
+      if (!rpc || !activeThreadId) return;
+      void executeUpdateSteer({ rpc, threadId: activeThreadId, steerId, content, dispatch }).catch((error) => {
+        console.error(error);
+      });
+    },
+    [rpcRef, activeThreadId, dispatch],
+  );
+
   return {
     canSteer,
     pendingAbortRestartMessageRef,
@@ -154,5 +222,11 @@ export function useSteeringQueue({
     restartFromPendingAbortSteer,
     steerMessage,
     handleSteer,
+    cancelSteer,
+    updateSteer,
   };
+}
+
+function createClientSteerId(): string {
+  return `steer-${globalThis.crypto.randomUUID()}`;
 }

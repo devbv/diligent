@@ -1,6 +1,7 @@
 // @summary Session manager orchestrating agent loop, persistence, compaction, and steering
 
 import type { Message } from "@diligent/core/types";
+import type { PendingSteer } from "@diligent/protocol";
 import type { Mode } from "../agent/mode";
 import type { AgentEvent } from "../agent-event";
 import { CollabSessionHandler } from "./collab-session-handler";
@@ -210,8 +211,20 @@ export class SessionManager {
   }
 
   /** Queue a steering message. If agent is active, steers directly; otherwise queues locally. */
-  steer(message: Message | string): void {
-    this.orchestrator.steer(message);
+  steer(message: Message | string, id?: string): string {
+    return this.orchestrator.steer(message, id);
+  }
+
+  cancelPendingMessage(id: string): boolean {
+    return this.orchestrator.cancelPendingMessage(id);
+  }
+
+  updatePendingMessage(id: string, content: string): boolean {
+    return this.orchestrator.updatePendingMessage(id, content);
+  }
+
+  getPendingSteers(): PendingSteer[] {
+    return this.orchestrator.getPendingSteers();
   }
 
   /** Check if pending messages exist (steering or follow-up). */

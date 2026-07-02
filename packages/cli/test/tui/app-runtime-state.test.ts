@@ -5,27 +5,36 @@ import { AppRuntimeState } from "../../src/tui/app-runtime-state";
 describe("AppRuntimeState", () => {
   test("queues and consumes pending steers", () => {
     const state = new AppRuntimeState("default", "medium");
-    state.queuePendingSteer("first");
-    state.queuePendingSteer("second");
+    state.queuePendingSteer({ id: "s1", content: "first" });
+    state.queuePendingSteer({ id: "s2", content: "second" });
 
     expect(state.consumePendingSteersByText(["second"])).toEqual(["second"]);
-    expect(state.pendingSteers).toEqual(["first"]);
+    expect(state.pendingSteerContents()).toEqual(["first"]);
     expect(state.consumePendingSteersFallback(1)).toEqual(["first"]);
   });
 
   test("consumes matching steering texts without fallback", () => {
     const state = new AppRuntimeState("default", "medium");
-    state.queuePendingSteer("change approach");
+    state.queuePendingSteer({ id: "s1", content: "change approach" });
 
     expect(state.consumePendingSteersByText(["change approach"])).toEqual(["change approach"]);
     expect(state.pendingSteers).toEqual([]);
     expect(state.consumePendingSteersFallback(0)).toEqual([]);
   });
 
+  test("consumes matching steering ids", () => {
+    const state = new AppRuntimeState("default", "medium");
+    state.queuePendingSteer({ id: "s1", content: "first" });
+    state.queuePendingSteer({ id: "s2", content: "second" });
+
+    expect(state.consumePendingSteersByIds(["s2"])).toEqual(["second"]);
+    expect(state.pendingSteerContents()).toEqual(["first"]);
+  });
+
   test("drains pending steers", () => {
     const state = new AppRuntimeState("default", "medium");
-    state.queuePendingSteer("first");
-    state.queuePendingSteer("second");
+    state.queuePendingSteer({ id: "s1", content: "first" });
+    state.queuePendingSteer({ id: "s2", content: "second" });
 
     expect(state.drainPendingSteers()).toEqual(["first", "second"]);
     expect(state.pendingSteers).toHaveLength(0);

@@ -284,7 +284,7 @@ export class App {
       clearChatHistory: () => {
         this.chatView.clearHistory();
         this.runtime.pendingSteers = [];
-        this.viewModel.prompt.setPendingSteers(this.runtime.pendingSteers);
+        this.viewModel.prompt.setPendingSteers(this.runtime.pendingSteerContents());
         this.viewModel.status.resetUsage();
         this.chatView.addLines(
           buildWelcomeBanner({
@@ -336,9 +336,9 @@ export class App {
           this.runtime.pendingMcpLoginResolve.set(server, resolve);
         }),
       syncActiveThreadState: () => this.syncActiveThreadState(),
-      queuePendingSteer: (text) => {
-        this.runtime.queuePendingSteer(text);
-        this.viewModel.prompt.setPendingSteers(this.runtime.pendingSteers);
+      queuePendingSteer: (steer) => {
+        this.runtime.queuePendingSteer(steer);
+        this.viewModel.prompt.setPendingSteers(this.runtime.pendingSteerContents());
       },
       threadManager: this.threadManager,
       configManager: this.configManager,
@@ -470,12 +470,14 @@ export class App {
 
       if (this.suppressNextSteeringInjectedCommit) {
         this.suppressNextSteeringInjectedCommit = false;
-        this.viewModel.prompt.setPendingSteers(this.runtime.pendingSteers);
+        this.viewModel.prompt.setPendingSteers(this.runtime.pendingSteerContents());
         return;
       }
 
       const expectedCount = Math.max(0, event.messageCount);
-      const consumed = this.runtime.consumePendingSteersByText(injectedTexts);
+      const consumed = event.steerIds?.length
+        ? this.runtime.consumePendingSteersByIds(event.steerIds)
+        : this.runtime.consumePendingSteersByText(injectedTexts);
       const fallbackCount = Math.max(0, (expectedCount > 0 ? expectedCount : injectedTexts.length) - consumed.length);
       if (fallbackCount > 0) {
         consumed.push(...this.runtime.consumePendingSteersFallback(fallbackCount));
@@ -483,7 +485,7 @@ export class App {
       if (consumed.length === 0 && injectedTexts.length > 0) {
         consumed.push(...injectedTexts.slice(0, expectedCount > 0 ? expectedCount : injectedTexts.length));
       }
-      this.viewModel.prompt.setPendingSteers(this.runtime.pendingSteers);
+      this.viewModel.prompt.setPendingSteers(this.runtime.pendingSteerContents());
 
       if (consumed.length > 0) {
         this.chatView.commitSteeringMessages(consumed);

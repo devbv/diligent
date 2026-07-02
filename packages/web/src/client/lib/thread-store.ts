@@ -8,6 +8,7 @@ import type {
   ConversationLiveState,
   DiligentServerNotification,
   Mode,
+  PendingSteer,
   SessionSummary,
   ThreadStatus,
   ToolRenderPayload,
@@ -161,7 +162,7 @@ export interface ThreadState {
   usage: UsageState;
   currentContextTokens: number; // latest turn's total input tokens including cache (not cumulative)
   planState: PlanState | null;
-  pendingSteers: string[];
+  pendingSteers: PendingSteer[];
   activeTurnHadError: boolean;
   activeTurnId: string | null;
   activeTurnStartedAt: number | null;
@@ -411,7 +412,7 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent, turnId?: string
       const { contextItems, remainingText } = parseContextFromText(text);
       let nextState = merged;
       if (nextState.pendingSteers.length > 0) {
-        const joinedSteers = nextState.pendingSteers.join("\n");
+        const joinedSteers = nextState.pendingSteers.map((steer) => steer.content).join("\n");
         if (remainingText === joinedSteers || text === joinedSteers) {
           nextState = { ...nextState, pendingSteers: [] };
         }
@@ -494,16 +495,24 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent, turnId?: string
     }
 
     case "steering_injected": {
-      const drainedFromQueue = merged.pendingSteers.slice(0, event.messageCount);
-      const remaining = merged.pendingSteers.slice(event.messageCount);
       const fallbackFromEvent = event.messages
         .filter((message) => message.role === "user")
         .map((message) => extractUserTextAndImages(message.content))
         .filter(({ text, images }) => text.length > 0 || images.length > 0);
+      const steerIds = event.steerIds ?? [];
+      const steerIdSet = new Set(steerIds);
+      const drainedFromQueue =
+        steerIds.length > 0
+          ? merged.pendingSteers.filter((steer) => steerIdSet.has(steer.id))
+          : merged.pendingSteers.slice(0, event.messageCount);
+      const remaining =
+        steerIds.length > 0
+          ? merged.pendingSteers.filter((steer) => !steerIdSet.has(steer.id))
+          : merged.pendingSteers.slice(event.messageCount);
       const drained =
         drainedFromQueue.length > 0
-          ? drainedFromQueue.map((text, index) => ({
-              text,
+          ? drainedFromQueue.map((steer, index) => ({
+              text: fallbackFromEvent[index]?.text || steer.content,
               images: fallbackFromEvent[index]?.images ?? [],
             }))
           : fallbackFromEvent.slice(0, event.messageCount);

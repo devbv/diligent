@@ -60,6 +60,12 @@ export type ToolResultMessage = z.infer<typeof ToolResultMessageSchema>;
 export const MessageSchema = z.union([UserMessageSchema, AssistantMessageSchema, ToolResultMessageSchema]);
 export type Message = z.infer<typeof MessageSchema>;
 
+export const PendingSteerSchema = z.object({
+  id: z.string(),
+  content: z.string(),
+});
+export type PendingSteer = z.infer<typeof PendingSteerSchema>;
+
 export const MessageDeltaSchema = z.union([
   z.object({ type: z.literal("text_delta"), delta: z.string() }),
   z.object({ type: z.literal("thinking_delta"), delta: z.string() }),
@@ -197,6 +203,7 @@ export const AgentEventSchema = z.union([
     type: z.literal("steering_injected"),
     messageCount: z.number().int().nonnegative(),
     messages: z.array(MessageSchema),
+    steerIds: z.array(z.string()).optional(),
   }),
   // Collab — sub-agent orchestration events (3 pairs of begin/end)
   z.object({

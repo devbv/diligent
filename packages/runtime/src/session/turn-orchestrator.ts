@@ -4,10 +4,13 @@ import type { CoreAgentEvent } from "@diligent/core/agent";
 import {
   type Agent,
   formatSerializableErrorForLog,
+  type QueuedSteeringMessage,
   selectForCompaction,
   toSerializableError,
+  updateUserMessageContent,
 } from "@diligent/core/agent";
 import type { Message } from "@diligent/core/types";
+import type { PendingSteer } from "@diligent/protocol";
 import type { AgentEvent } from "../agent-event";
 import { calculateUsageCost } from "../cost";
 import { createToolStartRenderPayload } from "../tools/render-strategies";
@@ -38,7 +41,7 @@ export class TurnOrchestrator {
   /** Track which agent instance has been restored with session history */
   private _initializedAgent: Agent | null = null;
   /** Pre-agent steering queue — drained into agent at start of run() */
-  private pendingMessages: Message[] = [];
+  private pendingMessages: QueuedSteeringMessage[] = [];
 
   constructor(private ctx: TurnOrchestratorContext) {}
 
@@ -155,7 +158,7 @@ export class TurnOrchestrator {
   }
 
   /** Queue a steering message. If agent is active, steers directly; otherwise queues locally. */
-  steer(message: Message | string): void {
+  steer(message: Message | string, id?: string): string {
     const msg: Message =
       typeof message === "string"
         ? {
@@ -164,11 +167,37 @@ export class TurnOrchestrator {
             timestamp: Date.now(),
           }
         : message;
+    const steerId = id ?? `steer-${generateEntryId()}`;
     if (this._agent) {
-      this._agent.steer(msg);
+      return this._agent.steer(msg, steerId);
     } else {
-      this.pendingMessages.push(msg);
+      this.pendingMessages.push({ id: steerId, message: msg });
+      return steerId;
     }
+  }
+
+  cancelPendingMessage(id: string): boolean {
+    if (this._agent?.cancelPendingMessage(id)) return true;
+    const index = this.pendingMessages.findIndex((entry) => entry.id === id);
+    if (index === -1) return false;
+    this.pendingMessages.splice(index, 1);
+    return true;
+  }
+
+  updatePendingMessage(id: string, content: string): boolean {
+    if (this._agent?.updatePendingMessage(id, content)) return true;
+    const msg = this.pendingMessages.find((entry) => entry.id === id)?.message;
+    if (!msg || msg.role !== "user") return false;
+    msg.content = updateUserMessageContent(msg.content, content);
+    return true;
+  }
+
+  getPendingSteers(): PendingSteer[] {
+    const agentMessages = this._agent?.getPendingSteeringMessages() ?? [];
+    return [...agentMessages, ...this.pendingMessages].map(({ id, message }) => ({
+      id,
+      content: getUserMessageText(message) ?? "",
+    }));
   }
 
   /** Check if pending messages exist (steering or follow-up). */
@@ -182,10 +211,10 @@ export class TurnOrchestrator {
     const msgs: Message[] = [];
 
     if (this._agent) {
-      msgs.push(...this._agent.drainPendingMessages());
+      msgs.push(...this._agent.drainPendingMessages().map((entry) => entry.message));
     }
 
-    msgs.push(...this.pendingMessages.splice(0));
+    msgs.push(...this.pendingMessages.splice(0).map((entry) => entry.message));
 
     if (msgs.length === 0) return null;
     return msgs.map((m) => (m.role === "user" && typeof m.content === "string" ? m.content : ""));
@@ -210,8 +239,8 @@ export class TurnOrchestrator {
 
     agent.setSessionId(this.ctx.persistence.sessionId);
 
-    for (const msg of this.pendingMessages.splice(0)) {
-      agent.steer(msg);
+    for (const { id, message } of this.pendingMessages.splice(0)) {
+      agent.steer(message, id);
     }
 
     const compactionConfig = this.ctx.config.compaction;
@@ -358,6 +387,15 @@ export class TurnOrchestrator {
   private resolveAgent(): Agent | Promise<Agent> {
     return typeof this.ctx.config.agent === "function" ? this.ctx.config.agent() : this.ctx.config.agent;
   }
+}
+
+function getUserMessageText(message: Message): string | undefined {
+  if (message.role !== "user") return undefined;
+  if (typeof message.content === "string") return message.content;
+  return message.content
+    .filter((block) => block.type === "text")
+    .map((block) => block.text)
+    .join("\n");
 }
 
 export function summarizeLastPersistedMessage(entries: SessionEntry[]): string {

@@ -113,6 +113,7 @@ export async function handleThreadRead(
   items: ThreadItem[];
   errors: unknown[];
   hasFollowUp: boolean;
+  pendingSteers: Array<{ id: string; content: string }>;
   entryCount: number;
   isRunning: boolean;
   currentEffort: ThinkingEffort;
@@ -151,6 +152,7 @@ export async function handleThreadRead(
     items,
     errors: runtime.manager.getErrors(),
     hasFollowUp: runtime.manager.hasPendingMessages(),
+    pendingSteers: runtime.manager.getPendingSteers(),
     entryCount: runtime.manager.entryCount,
     isRunning: runtime.isRunning,
     currentEffort: runtime.manager.getCurrentEffort() ?? runtime.effort,

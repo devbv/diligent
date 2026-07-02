@@ -226,7 +226,7 @@ export class DiligentAppServer {
       if (pending.sentTo.has(connectionId)) {
         pending.sentTo.delete(connectionId);
         if (pending.sentTo.size === 0) {
-          clearTimeout(pending.timeoutId);
+          if (pending.timeoutId !== null) clearTimeout(pending.timeoutId);
           this.pendingServerRequests.delete(reqId);
           pending.resolve(null);
         }

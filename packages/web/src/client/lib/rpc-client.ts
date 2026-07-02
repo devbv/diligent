@@ -18,6 +18,7 @@ import {
 
 export type ConnectionState = "connecting" | "connected" | "reconnecting" | "disconnected";
 export const RECONNECT_DELAYS_MS = [1000, 2000, 5000, 5000, 5000] as const;
+const SERVER_RESPONSE_RETRY_MS = 1000;
 
 type RequestMethod = DiligentClientRequest["method"];
 type RequestParams<M extends RequestMethod> = Extract<DiligentClientRequest, { method: M }>["params"];
@@ -48,6 +49,7 @@ interface PendingRequest {
 
 interface PendingServerRequest {
   method: DiligentServerRequest["method"];
+  response?: DiligentServerRequestResponse;
 }
 
 export class WebRpcClient {
@@ -60,6 +62,7 @@ export class WebRpcClient {
 
   private readonly activeSubscriptions = new Map<string, string>(); // subscriptionId → threadId
   private readonly pendingServerRequests = new Map<number, PendingServerRequest>();
+  private serverResponseRetryId: ReturnType<typeof setInterval> | null = null;
 
   private connectionListener: ((state: ConnectionState) => void) | null = null;
   private notificationListener: ((notification: DiligentServerNotification) => void) | null = null;
@@ -98,7 +101,7 @@ export class WebRpcClient {
     this.ws?.close();
     this.ws = null;
     this.activeSubscriptions.clear();
-    this.pendingServerRequests.clear();
+    this.clearPendingServerRequests();
     this.rejectPending("disconnected");
     this.emitConnection("disconnected");
   }
@@ -178,11 +181,11 @@ export class WebRpcClient {
   }
 
   respondServerRequest(id: number, response: DiligentServerRequestResponse): void {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-
-    this.pendingServerRequests.delete(id);
-    const payload: JSONRPCResponse = { id, result: response.result };
-    this.ws.send(JSON.stringify(payload));
+    const pending = this.pendingServerRequests.get(id) ?? { method: response.method };
+    pending.response = response;
+    this.pendingServerRequests.set(id, pending);
+    this.ensureServerResponseRetry();
+    this.sendServerResponse(id, response);
   }
 
   private async openSocket(): Promise<void> {
@@ -264,6 +267,33 @@ export class WebRpcClient {
     }
   }
 
+  private sendPendingServerResponses(): void {
+    for (const [id, pending] of this.pendingServerRequests) {
+      if (pending.response) this.sendServerResponse(id, pending.response);
+    }
+  }
+
+  private sendServerResponse(id: number, response: DiligentServerRequestResponse): void {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    const payload: JSONRPCResponse = { id, result: response.result };
+    try {
+      this.ws.send(JSON.stringify(payload));
+    } catch {
+      // Retry loop will try again.
+    }
+  }
+
+  private ensureServerResponseRetry(): void {
+    if (this.serverResponseRetryId) return;
+    this.serverResponseRetryId = setInterval(() => this.sendPendingServerResponses(), SERVER_RESPONSE_RETRY_MS);
+  }
+
+  private stopServerResponseRetry(): void {
+    if (!this.serverResponseRetryId) return;
+    clearInterval(this.serverResponseRetryId);
+    this.serverResponseRetryId = null;
+  }
+
   private handleMessage(raw: unknown): void {
     let message: JSONRPCMessage;
     try {
@@ -304,7 +334,7 @@ export class WebRpcClient {
     if (notification.method === DILIGENT_SERVER_NOTIFICATION_METHODS.SERVER_REQUEST_RESOLVED) {
       const requestId = (notification.params as { requestId?: number } | undefined)?.requestId;
       if (typeof requestId === "number") {
-        this.pendingServerRequests.delete(requestId);
+        this.clearPendingServerRequest(requestId);
         this.notificationListener?.({
           method: DILIGENT_SERVER_NOTIFICATION_METHODS.SERVER_REQUEST_RESOLVED,
           params: { requestId },
@@ -342,7 +372,7 @@ export class WebRpcClient {
       return;
     }
 
-    this.pendingServerRequests.delete(id);
+    this.clearPendingServerRequest(id);
     if ("error" in response) {
       return;
     }
@@ -361,6 +391,18 @@ export class WebRpcClient {
     }
   }
 
+  private clearPendingServerRequest(id: number): void {
+    this.pendingServerRequests.delete(id);
+    if (![...this.pendingServerRequests.values()].some((pending) => pending.response)) {
+      this.stopServerResponseRetry();
+    }
+  }
+
+  private clearPendingServerRequests(): void {
+    this.pendingServerRequests.clear();
+    this.stopServerResponseRetry();
+  }
+
   private resubscribeAll(): void {
     const threadIds = new Set(this.activeSubscriptions.values());
     this.activeSubscriptions.clear();
@@ -368,6 +410,7 @@ export class WebRpcClient {
     for (const threadId of threadIds) {
       void this.subscribe(threadId).catch(() => {});
     }
+    this.sendPendingServerResponses();
   }
 
   private isResponse(message: JSONRPCMessage): message is JSONRPCResponse {

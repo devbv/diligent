@@ -14,7 +14,7 @@ import type { UserInputRequest, UserInputResponse } from "../tools/user-input-ty
 export interface PendingServerRequest {
   method: string;
   resolve: (response: DiligentServerRequestResponse | null) => void;
-  timeoutId: ReturnType<typeof setTimeout>;
+  timeoutId: ReturnType<typeof setTimeout> | null;
   sentTo: Set<string>;
 }
 
@@ -37,11 +37,10 @@ export async function handleServerResponseMessage(args: HandleServerResponseArgs
   const pending = args.pendingServerRequests.get(reqId);
   if (!pending) return;
 
-  clearTimeout(pending.timeoutId);
+  if (pending.timeoutId !== null) clearTimeout(pending.timeoutId);
   args.pendingServerRequests.delete(reqId);
 
   for (const otherId of pending.sentTo) {
-    if (otherId === args.connectionId) continue;
     const other = args.getConnectionById(otherId);
     if (!other) continue;
     await other.peer.send({
@@ -68,7 +67,7 @@ interface BroadcastServerRequestArgs {
   connections: Map<string, ServerRequestPeer>;
   pendingServerRequests: Map<number, PendingServerRequest>;
   allocateServerRequestId: () => number;
-  timeoutMs?: number;
+  timeoutMs?: number | null;
 }
 
 export async function broadcastServerRequest(
@@ -81,18 +80,21 @@ export async function broadcastServerRequest(
   const timeoutMs = args.timeoutMs ?? 5 * 60 * 1000;
 
   return new Promise<DiligentServerRequestResponse | null>((resolve) => {
-    const timeoutId = setTimeout(() => {
-      args.pendingServerRequests.delete(id);
-      for (const connectionId of sentTo) {
-        const connection = args.connections.get(connectionId);
-        if (!connection) continue;
-        void connection.peer.send({
-          method: DILIGENT_SERVER_NOTIFICATION_METHODS.SERVER_REQUEST_RESOLVED,
-          params: { requestId: id },
-        } as DiligentServerNotification);
-      }
-      resolve(null);
-    }, timeoutMs);
+    const timeoutId =
+      timeoutMs === null
+        ? null
+        : setTimeout(() => {
+            args.pendingServerRequests.delete(id);
+            for (const connectionId of sentTo) {
+              const connection = args.connections.get(connectionId);
+              if (!connection) continue;
+              void connection.peer.send({
+                method: DILIGENT_SERVER_NOTIFICATION_METHODS.SERVER_REQUEST_RESOLVED,
+                params: { requestId: id },
+              } as DiligentServerNotification);
+            }
+            resolve(null);
+          }, timeoutMs);
 
     args.pendingServerRequests.set(id, {
       method: args.method,
@@ -150,6 +152,7 @@ export async function requestUserInputFromConnections(args: RequestUserInputArgs
     connections: args.connections,
     pendingServerRequests: args.pendingServerRequests,
     allocateServerRequestId: args.allocateServerRequestId,
+    timeoutMs: null,
   });
   if (!response) return { answers: {} };
 

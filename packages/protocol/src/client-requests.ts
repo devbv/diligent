@@ -6,6 +6,7 @@ import {
   LocalImageBlockSchema,
   MessageSchema,
   ModeSchema,
+  PendingSteerSchema,
   ProtocolCapabilitiesSchema,
   ProtocolVersionSchema,
   ProviderAuthStatusSchema,
@@ -132,6 +133,7 @@ export const ThreadReadResponseSchema = z.object({
     )
     .optional(),
   hasFollowUp: z.boolean(),
+  pendingSteers: z.array(PendingSteerSchema).optional(),
   entryCount: z.number().int().nonnegative(),
   isRunning: z.boolean(),
   currentEffort: ThinkingEffortSchema,
@@ -188,6 +190,7 @@ export type TurnInterruptResponse = z.infer<typeof TurnInterruptResponseSchema>;
 
 export const TurnSteerParamsSchema = z.object({
   threadId: z.string().optional(),
+  steerId: z.string().optional(),
   content: z.string(),
   attachments: z.array(TurnAttachmentSchema).max(4).optional(),
   followUp: z.boolean().default(false),
@@ -196,8 +199,32 @@ export type TurnSteerParams = z.infer<typeof TurnSteerParamsSchema>;
 
 export const TurnSteerResponseSchema = z.object({
   queued: z.literal(true),
+  steerId: z.string(),
 });
 export type TurnSteerResponse = z.infer<typeof TurnSteerResponseSchema>;
+
+export const TurnSteerCancelParamsSchema = z.object({
+  threadId: z.string().optional(),
+  steerId: z.string(),
+});
+export type TurnSteerCancelParams = z.infer<typeof TurnSteerCancelParamsSchema>;
+
+export const TurnSteerCancelResponseSchema = z.object({
+  cancelled: z.boolean(),
+});
+export type TurnSteerCancelResponse = z.infer<typeof TurnSteerCancelResponseSchema>;
+
+export const TurnSteerUpdateParamsSchema = z.object({
+  threadId: z.string().optional(),
+  steerId: z.string(),
+  content: z.string(),
+});
+export type TurnSteerUpdateParams = z.infer<typeof TurnSteerUpdateParamsSchema>;
+
+export const TurnSteerUpdateResponseSchema = z.object({
+  updated: z.boolean(),
+});
+export type TurnSteerUpdateResponse = z.infer<typeof TurnSteerUpdateResponseSchema>;
 
 export const ModeSetParamsSchema = z.object({
   threadId: z.string().optional(),
@@ -527,6 +554,14 @@ export const DiligentClientRequestSchema = z.discriminatedUnion("method", [
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.TURN_START), params: TurnStartParamsSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.TURN_INTERRUPT), params: TurnInterruptParamsSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.TURN_STEER), params: TurnSteerParamsSchema }),
+  z.object({
+    method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.TURN_STEER_CANCEL),
+    params: TurnSteerCancelParamsSchema,
+  }),
+  z.object({
+    method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.TURN_STEER_UPDATE),
+    params: TurnSteerUpdateParamsSchema,
+  }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.MODE_SET), params: ModeSetParamsSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.EFFORT_SET), params: EffortSetParamsSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.KNOWLEDGE_LIST), params: KnowledgeListParamsSchema }),
@@ -575,6 +610,14 @@ export const DiligentClientResponseSchema = z.discriminatedUnion("method", [
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.TURN_START), result: TurnStartResponseSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.TURN_INTERRUPT), result: TurnInterruptResponseSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.TURN_STEER), result: TurnSteerResponseSchema }),
+  z.object({
+    method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.TURN_STEER_CANCEL),
+    result: TurnSteerCancelResponseSchema,
+  }),
+  z.object({
+    method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.TURN_STEER_UPDATE),
+    result: TurnSteerUpdateResponseSchema,
+  }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.MODE_SET), result: ModeSetResponseSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.EFFORT_SET), result: EffortSetResponseSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.KNOWLEDGE_LIST), result: KnowledgeListResponseSchema }),

@@ -1,6 +1,6 @@
 // @summary Renderer-agnostic runtime state for the CLI TUI orchestration layer
 
-import type { Mode as ProtocolMode, RequestId, ThinkingEffort } from "@diligent/protocol";
+import type { PendingSteer, Mode as ProtocolMode, RequestId, ThinkingEffort } from "@diligent/protocol";
 
 export interface PendingTurnState {
   resolve: () => void;
@@ -26,7 +26,7 @@ export class AppRuntimeState {
     string,
     (result: { success: boolean; toolCount?: number; error: string | null }) => void
   >();
-  pendingSteers: string[] = [];
+  pendingSteers: PendingSteer[] = [];
   cancelRequested = false;
 
   constructor(mode: ProtocolMode, effort: ThinkingEffort) {
@@ -34,27 +34,39 @@ export class AppRuntimeState {
     this.currentEffort = effort;
   }
 
-  queuePendingSteer(text: string): void {
-    this.pendingSteers.push(text);
+  queuePendingSteer(steer: PendingSteer): void {
+    this.pendingSteers.push(steer);
+  }
+
+  pendingSteerContents(): string[] {
+    return this.pendingSteers.map((steer) => steer.content);
+  }
+
+  consumePendingSteersByIds(ids: string[]): string[] {
+    return this.consumePendingSteersBy(ids, (steer) => steer.id);
   }
 
   consumePendingSteersByText(texts: string[]): string[] {
+    return this.consumePendingSteersBy(texts, (steer) => steer.content);
+  }
+
+  private consumePendingSteersBy(values: string[], getValue: (steer: PendingSteer) => string): string[] {
     const consumed: string[] = [];
-    for (const text of texts) {
-      const index = this.pendingSteers.indexOf(text);
+    for (const value of values) {
+      const index = this.pendingSteers.findIndex((steer) => getValue(steer) === value);
       if (index === -1) continue;
-      this.pendingSteers.splice(index, 1);
-      consumed.push(text);
+      const [steer] = this.pendingSteers.splice(index, 1);
+      if (steer) consumed.push(steer.content);
     }
     return consumed;
   }
 
   consumePendingSteersFallback(count: number): string[] {
-    return this.pendingSteers.splice(0, Math.max(0, count));
+    return this.pendingSteers.splice(0, Math.max(0, count)).map((steer) => steer.content);
   }
 
   drainPendingSteers(): string[] {
-    const drained = this.pendingSteers.slice();
+    const drained = this.pendingSteers.map((steer) => steer.content);
     this.pendingSteers.length = 0;
     return drained;
   }
