@@ -93,7 +93,11 @@ export async function startStudioServer(argv: string[] = process.argv.slice(2)):
 if (import.meta.main) {
   // `diligent-web-server mcp-serve` re-exposes OVERDARE studio tools + bootstrap prompts to
   // any MCP client over stdio, sharing this same binary/bundle (no separate artifact).
-  if (process.argv[2] === "mcp-serve") {
+  // Match the subcommand by presence rather than a fixed argv index: `bun run server.ts
+  // mcp-serve` puts it at argv[2] (argv[1] is the script), but the compiled standalone binary
+  // has no script entry so `diligent-web-server mcp-serve` lands it at argv[1]. A fixed index
+  // silently fell through to the web server in the packaged build.
+  if (process.argv.slice(1).includes("mcp-serve")) {
     await runMcpServerMain();
   } else {
     process.on("uncaughtException", (err) => {

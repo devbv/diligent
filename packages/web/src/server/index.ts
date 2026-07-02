@@ -103,8 +103,8 @@ export async function createWebServer(options: CreateServerOptions = {}): Promis
   const dev = options.dev ?? false;
 
   const paths = await ensureDiligentDir(cwd);
-  const runtimeConfig = await loadRuntimeConfig(cwd, paths);
   const bundledToolProviders = options.bundledToolProviders ?? [];
+  const runtimeConfig = await loadRuntimeConfig(cwd, paths, { bundledToolProviders });
   if (options.userId?.trim()) {
     runtimeConfig.diligent = {
       ...runtimeConfig.diligent,

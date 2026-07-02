@@ -1,12 +1,13 @@
-// @summary OVERDARE MCP server runner: re-exposes studio built-in tools as MCP tools,
-// and bootstrap skills + agents + the base system prompt as MCP prompts, over stdio.
+// @summary OVERDARE MCP server runner: re-exposes studio built-in tools as MCP tools (plus
+// model-callable `ensure_system_prompt` / `load_skill` bootstrap tools), and bootstrap agents as
+// MCP prompts (user-facing slash commands to seed a session), over stdio.
 
 import { randomUUID } from "node:crypto";
 import type { Dirent } from "node:fs";
 import { existsSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import type { Tool, ToolContext } from "@diligent/core/tool/types";
+import type { Tool, ToolContext, ToolResult } from "@diligent/core/tool/types";
 import type { BundledToolProvider } from "@diligent/runtime";
 import { discoverSkills, extractBody, parseFrontmatter } from "@diligent/runtime/skills";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -17,6 +18,7 @@ import {
   ListPromptsRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
+import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { createRagToolProvider } from "./tools/rag";
 import { createStudioRpcToolProvider } from "./tools/studiorpc";
@@ -26,9 +28,10 @@ const SERVER_INFO = { name: "overdare-ai-agent", version: "0.0.1" } as const;
 
 /** Server-level guidance surfaced to the client on `initialize`. */
 const SERVER_INSTRUCTIONS =
-  "This server exposes OVERDARE Studio tools and prompts. Before doing anything else, fetch the " +
-  '"overdare-system-prompt" prompt (prompts/get) and follow it — it establishes how to work with ' +
-  "OVERDARE. The other prompts are OVERDARE skills/agents you can pull in when relevant. " +
+  "This server exposes OVERDARE Studio tools. Before doing anything else, call the " +
+  '"ensure_system_prompt" tool and follow what it returns — it establishes how to work with ' +
+  'OVERDARE. Use the "load_skill" tool to pull in an OVERDARE skill when a task matches one ' +
+  "(its available skills are listed in that tool's description). " +
   "IMPORTANT: the agent's working directory (cwd) MUST be an OVERDARE Studio project folder that " +
   "contains a .uasset file; the studio tools resolve project paths against that cwd, so if it is " +
   "not such a folder, do not proceed — set the cwd correctly first.";
@@ -74,29 +77,10 @@ async function buildToolRegistry(cwd: string): Promise<Map<string, Tool>> {
 async function buildPromptRegistry(bootstrapDir: string): Promise<Map<string, PromptEntry>> {
   const prompts = new Map<string, PromptEntry>();
 
-  // Base system prompt.
-  const systemPromptPath = join(bootstrapDir, "system-prompt.txt");
-  prompts.set("overdare-system-prompt", {
-    name: "overdare-system-prompt",
-    description: "OVERDARE base system prompt.",
-    load: () => readFile(systemPromptPath, "utf-8"),
-  });
-
-  // Bootstrap skills (each SKILL.md body becomes a prompt).
-  const skillsDir = join(bootstrapDir, "skills");
-  const { skills } = await discoverSkills({
-    cwd: bootstrapDir,
-    globalConfigDir: join(bootstrapDir, "__no_global__"),
-    additionalPaths: [skillsDir],
-  });
-  for (const skill of skills) {
-    const path = skill.path;
-    prompts.set(skill.name, {
-      name: skill.name,
-      description: skill.description,
-      load: async () => extractBody(await readFile(path, "utf-8")),
-    });
-  }
+  // The base system prompt and skills are exposed as model-callable tools (ensure_system_prompt /
+  // load_skill in buildBootstrapTools), not prompts — Claude Code only surfaces prompts to the user
+  // as slash commands, so a prompt could never be fetched by the model that actually needs them.
+  // Only agents remain as prompts (a user picks one to seed a session).
 
   // Bootstrap agents (each AGENT.md body becomes an `agent-<name>` prompt).
   const agentsDir = join(bootstrapDir, "agents");
@@ -128,11 +112,77 @@ async function buildPromptRegistry(bootstrapDir: string): Promise<Map<string, Pr
   return prompts;
 }
 
+/**
+ * Bootstrap-backed tools the *model* can call directly. Prompts (system prompt, skills) are only
+ * surfaced by Claude Code to the user as slash commands — the model cannot fetch them — so the same
+ * content is also exposed as tools here: `ensure_system_prompt` returns the base OVERDARE system
+ * prompt, and `load_skill` returns a named skill's full instructions. `load_skill`'s description
+ * carries the available skill names so the model knows what it can pull without a separate call.
+ */
+async function buildBootstrapTools(bootstrapDir: string): Promise<Tool[]> {
+  const systemPromptPath = join(bootstrapDir, "system-prompt.txt");
+
+  const skillsDir = join(bootstrapDir, "skills");
+  const { skills } = await discoverSkills({
+    cwd: bootstrapDir,
+    globalConfigDir: join(bootstrapDir, "__no_global__"),
+    additionalPaths: [skillsDir],
+  });
+  const skillsByName = new Map(skills.map((skill) => [skill.name, skill]));
+  const skillIndex = skills.length
+    ? skills.map((skill) => `- ${skill.name}: ${skill.description}`).join("\n")
+    : "(no skills available)";
+
+  const ensureSystemPrompt: Tool = {
+    name: "ensure_system_prompt",
+    description:
+      "Return the OVERDARE base system prompt. Call this before other work and follow it — it " +
+      "establishes how to operate in OVERDARE Studio.",
+    parameters: z.object({}),
+    supportParallel: true,
+    async execute(): Promise<ToolResult> {
+      try {
+        return { output: await readFile(systemPromptPath, "utf-8") };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return { output: `Failed to read system prompt: ${message}`, metadata: { error: true } };
+      }
+    },
+  };
+
+  const loadSkill: Tool = {
+    name: "load_skill",
+    description:
+      "Load an OVERDARE skill's full instructions by name, then follow them. Call when a task " +
+      `matches one of these skills:\n${skillIndex}\nPass the exact skill name as \`name\`.`,
+    parameters: z.object({
+      name: z.string().describe("Exact skill name from the list in this tool's description."),
+    }),
+    supportParallel: true,
+    async execute({ name }): Promise<ToolResult> {
+      const skill = skillsByName.get(name);
+      if (!skill) {
+        return { output: `Unknown skill "${name}". Available skills:\n${skillIndex}`, metadata: { error: true } };
+      }
+      try {
+        return { output: extractBody(await readFile(skill.path, "utf-8")) };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return { output: `Failed to load skill "${name}": ${message}`, metadata: { error: true } };
+      }
+    },
+  };
+
+  return [ensureSystemPrompt, loadSkill];
+}
+
 export async function buildRegistries(options: McpServerOptions): Promise<McpRegistries> {
-  const [tools, prompts] = await Promise.all([
+  const [tools, bootstrapTools, prompts] = await Promise.all([
     buildToolRegistry(options.cwd),
+    buildBootstrapTools(options.bootstrapDir),
     buildPromptRegistry(options.bootstrapDir),
   ]);
+  for (const tool of bootstrapTools) tools.set(tool.name, tool);
   return { tools, prompts };
 }
 
@@ -244,6 +294,25 @@ function resolveBootstrapDir(): string {
  * subcommand (see server.ts). Runs the stdio MCP server; diagnostics go to stderr.
  */
 export async function runMcpServerMain(): Promise<void> {
+  // stdout is the JSON-RPC transport for the stdio MCP server. Any stray write to it corrupts the
+  // protocol stream and makes the client (e.g. Claude) drop the connection mid-session — which is
+  // exactly what the studio RPC tracing in tools/studiorpc/rpc.ts (console.log `[RPC →]`/`[RPC ←]`)
+  // would do on every tool call. Route all would-be-stdout diagnostics to stderr so nothing but the
+  // transport can write to stdout. Bind first, before any tool code can run.
+  console.log = (...args: unknown[]) => console.error(...args);
+  console.info = (...args: unknown[]) => console.error(...args);
+  console.debug = (...args: unknown[]) => console.error(...args);
+
+  // Keep the server alive across stray async faults (e.g. a Studio socket 'error' with no listener)
+  // rather than letting an uncaught error kill the process and drop the client. Mirrors the
+  // web-server path's guards in server.ts.
+  process.on("uncaughtException", (err) => {
+    console.error("[mcp] uncaught exception (kept alive):", err instanceof Error ? err.message : err);
+  });
+  process.on("unhandledRejection", (reason) => {
+    console.error("[mcp] unhandled rejection (kept alive):", reason instanceof Error ? reason.message : reason);
+  });
+
   const cwd = process.env.OVERDARE_MCP_CWD ?? process.cwd();
   const bootstrapDir = resolveBootstrapDir();
   try {

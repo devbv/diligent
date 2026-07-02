@@ -1,5 +1,5 @@
-// @summary Tests the OVERDARE MCP server: studio tools exposed as MCP tools and bootstrap
-// skills/agents/system-prompt exposed as MCP prompts, via an in-memory MCP client.
+// @summary Tests the OVERDARE MCP server: studio tools + bootstrap ensure_system_prompt/load_skill
+// exposed as MCP tools, and bootstrap agents exposed as MCP prompts, via an in-memory MCP client.
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
@@ -90,37 +90,59 @@ describe("OVERDARE MCP server", () => {
     await client.close();
   });
 
-  test("surfaces instructions telling the client to read overdare-system-prompt first", async () => {
+  test("surfaces instructions telling the client to call ensure_system_prompt first", async () => {
     const client = await connectClient(await makeBootstrapDir());
     const instructions = client.getInstructions();
-    expect(instructions).toContain("overdare-system-prompt");
+    expect(instructions).toContain("ensure_system_prompt");
     expect(instructions).toContain(".uasset");
     await client.close();
   });
 
-  test("exposes bootstrap skills, agents, and the system prompt as prompts", async () => {
+  test("exposes the base system prompt and skills as model-callable tools, not prompts", async () => {
+    const client = await connectClient(await makeBootstrapDir());
+    const { tools } = await client.listTools();
+    const toolNames = tools.map((tool) => tool.name);
+    expect(toolNames).toContain("ensure_system_prompt");
+    expect(toolNames).toContain("load_skill");
+
+    // Skills and the system prompt are tools now — they must not leak back in as prompts.
+    const { prompts } = await client.listPrompts();
+    const promptNames = prompts.map((prompt) => prompt.name);
+    expect(promptNames).not.toContain("overdare-system-prompt");
+    expect(promptNames).not.toContain("test-skill");
+    await client.close();
+  });
+
+  test("exposes bootstrap agents as prompts", async () => {
     const client = await connectClient(await makeBootstrapDir());
     const { prompts } = await client.listPrompts();
     const names = prompts.map((prompt) => prompt.name);
-    expect(names).toContain("overdare-system-prompt");
-    expect(names).toContain("test-skill");
     expect(names).toContain("agent-test-agent");
     await client.close();
   });
 
-  test("returns skill body via getPrompt", async () => {
+  test("returns the base system prompt via the ensure_system_prompt tool", async () => {
     const client = await connectClient(await makeBootstrapDir());
-    const result = await client.getPrompt({ name: "test-skill" });
-    const message = result.messages[0];
-    expect(message?.role).toBe("user");
-    expect((message?.content as { text?: string })?.text).toContain("SKILL BODY CONTENT");
+    const result = await client.callTool({ name: "ensure_system_prompt", arguments: {} });
+    const content = result.content as Array<{ type: string; text?: string }>;
+    expect(content[0]?.text).toBe("SYSTEM PROMPT BODY");
     await client.close();
   });
 
-  test("returns system prompt via getPrompt", async () => {
+  test("loads a skill body via the load_skill tool", async () => {
     const client = await connectClient(await makeBootstrapDir());
-    const result = await client.getPrompt({ name: "overdare-system-prompt" });
-    expect((result.messages[0]?.content as { text?: string })?.text).toBe("SYSTEM PROMPT BODY");
+    const result = await client.callTool({ name: "load_skill", arguments: { name: "test-skill" } });
+    const content = result.content as Array<{ type: string; text?: string }>;
+    expect(content[0]?.text).toContain("SKILL BODY CONTENT");
+    await client.close();
+  });
+
+  test("reports an unknown skill name as an error listing available skills", async () => {
+    const client = await connectClient(await makeBootstrapDir());
+    const result = await client.callTool({ name: "load_skill", arguments: { name: "nope" } });
+    expect(result.isError).toBe(true);
+    const content = result.content as Array<{ type: string; text?: string }>;
+    expect(content[0]?.text).toContain("test-skill");
     await client.close();
   });
 });
