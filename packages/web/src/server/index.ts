@@ -167,6 +167,8 @@ export async function createWebServer(options: CreateServerOptions = {}): Promis
 
   const server = Bun.serve<WsData>({
     port,
+    // ponytail: bind loopback only — local browser access; avoids Windows Firewall prompt. Use 0.0.0.0 if LAN access is needed.
+    hostname: "127.0.0.1",
     fetch(req, bunServer) {
       const url = new URL(req.url);
 
