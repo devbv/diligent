@@ -39,11 +39,32 @@ export function isRenderableAssistantContentBlock(block: ContentBlock): boolean 
   }
 }
 
-function CitationList({ block }: { block: Extract<ContentBlock, { type: "text" }> }) {
-  if (!block.citations || block.citations.length === 0) return null;
+type TextBlock = Extract<ContentBlock, { type: "text" }>;
+type TextCitation = NonNullable<TextBlock["citations"]>[number];
+
+export function mergeTextRun(blocks: TextBlock[]): { text: string; citations: TextCitation[] } {
+  const text = blocks.map((block) => block.text).join("");
+  const citations: TextCitation[] = [];
+  const seen = new Set<string>();
+  for (const block of blocks) {
+    for (const citation of block.citations ?? []) {
+      const key =
+        citation.type === "web_search_result_location"
+          ? `web:${citation.url}`
+          : `doc:${citation.documentIndex}:${citation.startCharIndex}-${citation.endCharIndex}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      citations.push(citation);
+    }
+  }
+  return { text, citations };
+}
+
+function CitationList({ citations }: { citations: TextCitation[] }) {
+  if (citations.length === 0) return null;
   return (
     <ul className="mt-3 space-y-1.5 border-l border-border/30 pl-3 text-xs text-muted/90">
-      {block.citations.map((citation, index) => (
+      {citations.map((citation, index) => (
         <li key={`${citation.type}-${index}`}>
           {citation.type === "web_search_result_location" ? (
             <>
@@ -215,14 +236,29 @@ export function AssistantContentBlocks({ blocks }: AssistantContentBlocksProps) 
   const visibleBlocks = blocks.filter(isRenderableAssistantContentBlock);
   if (visibleBlocks.length === 0) return null;
 
+  const grouped: Array<ContentBlock | { type: "text_run"; blocks: TextBlock[] }> = [];
+  for (const block of visibleBlocks) {
+    const last = grouped[grouped.length - 1];
+    if (block.type === "text") {
+      if (last && last.type === "text_run") {
+        last.blocks.push(block);
+      } else {
+        grouped.push({ type: "text_run", blocks: [block] });
+      }
+      continue;
+    }
+    grouped.push(block);
+  }
+
   return (
     <div className="space-y-3">
-      {visibleBlocks.map((block, index) => {
-        if (block.type === "text") {
+      {grouped.map((block, index) => {
+        if (block.type === "text_run") {
+          const { text, citations } = mergeTextRun(block.blocks);
           return (
-            <div key={`text-${block.text.slice(0, 32)}-${index}`}>
-              <MarkdownContent text={block.text} />
-              <CitationList block={block} />
+            <div key={`text-${text.slice(0, 32)}-${index}`}>
+              <MarkdownContent text={text} />
+              <CitationList citations={citations} />
             </div>
           );
         }

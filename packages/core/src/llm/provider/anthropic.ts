@@ -18,6 +18,8 @@ import type {
 import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError } from "../types";
 import type { NativeCompactFn } from "./native-compaction";
 
+type TextBlock = Extract<ContentBlock, { type: "text" }>;
+type TextCitation = NonNullable<TextBlock["citations"]>[number];
 type ProviderToolUseBlock = Extract<ContentBlock, { type: "provider_tool_use" }>;
 type WebSearchResultBlock = Extract<ContentBlock, { type: "web_search_result" }>;
 type WebFetchResultBlock = Extract<ContentBlock, { type: "web_fetch_result" }>;
@@ -446,10 +448,37 @@ function createAnthropicWebTool(tool: Extract<ToolDefinition, { kind: "provider_
   } as unknown as Anthropic.Tool;
 }
 
+function mapTextCitations(citations: Anthropic.TextCitation[] | null | undefined): TextCitation[] | undefined {
+  if (!citations || citations.length === 0) return undefined;
+  const mapped: TextCitation[] = [];
+  for (const citation of citations) {
+    if (citation.type === "web_search_result_location") {
+      mapped.push({
+        type: "web_search_result_location",
+        url: citation.url,
+        ...(citation.title != null ? { title: citation.title } : {}),
+        ...(citation.encrypted_index ? { encryptedIndex: citation.encrypted_index } : {}),
+        ...(citation.cited_text ? { citedText: citation.cited_text } : {}),
+      });
+    } else if (citation.type === "char_location") {
+      mapped.push({
+        type: "char_location",
+        documentIndex: citation.document_index,
+        ...(citation.document_title != null ? { documentTitle: citation.document_title } : {}),
+        startCharIndex: citation.start_char_index,
+        endCharIndex: citation.end_char_index,
+        ...(citation.cited_text ? { citedText: citation.cited_text } : {}),
+      });
+    }
+  }
+  return mapped.length > 0 ? mapped : undefined;
+}
+
 function mapToAssistantMessage(msg: Anthropic.Message, model: Model): AssistantMessage {
   const content: ContentBlock[] = msg.content.map((block): ContentBlock => {
     if (block.type === "text") {
-      return { type: "text", text: block.text };
+      const citations = mapTextCitations(block.citations);
+      return { type: "text", text: block.text, ...(citations ? { citations } : {}) };
     } else if (block.type === "tool_use") {
       return {
         type: "tool_call",
