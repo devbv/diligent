@@ -1,9 +1,96 @@
 // @summary Tests OVERDARE Studio bundled Studio RPC tool provider assembly.
 
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { Tool } from "@diligent/core/tool/types";
 import { createStudioBundledToolProviders } from "../../src/tools";
 import { createStudioRpcToolProvider } from "../../src/tools/studiorpc";
 import * as levelBrowse from "../../src/tools/studiorpc/methods/level.browse";
+
+const createdDirs: string[] = [];
+
+const workspaceGuid = "workspace-guid";
+const folderGuid = "folder-guid";
+const partGuid = "part-guid";
+const statusOutputPattern = /^<studio_instance_status>\n(?<statusJson>[\s\S]*?)\n<\/studio_instance_status>\n/;
+
+function makeStudioProject(): string {
+  const cwd = join(tmpdir(), `sidecar-studiorpc-${process.pid}-${Date.now()}-${createdDirs.length}`);
+  mkdirSync(cwd, { recursive: true });
+  writeFileSync(join(cwd, "Test.umap"), "");
+  writeFileSync(
+    join(cwd, "Test.ovdrjm"),
+    JSON.stringify(
+      {
+        Root: {
+          InstanceType: "Workspace",
+          ActorGuid: workspaceGuid,
+          Name: "Workspace",
+          LuaChildren: [
+            { InstanceType: "Folder", ActorGuid: folderGuid, Name: "Folder", LuaChildren: [] },
+            { InstanceType: "Part", ActorGuid: partGuid, Name: "Part" },
+          ],
+        },
+      },
+      null,
+      2,
+    ),
+  );
+  createdDirs.push(cwd);
+  return cwd;
+}
+
+async function loadStudioTools(
+  cwd: string,
+  rpcCalls: Array<{ method: string; params?: Record<string, unknown> }> = [],
+): Promise<Map<string, Tool>> {
+  const provider = createStudioRpcToolProvider({
+    callRpc: async (method, params) => {
+      rpcCalls.push({ method, params });
+      return { ok: true };
+    },
+  });
+  const tools = await provider.createTools({
+    cwd,
+    host: { approve: async () => "once" },
+  });
+  return new Map(tools.map((tool) => [tool.name, tool]));
+}
+
+function toolContext() {
+  return { toolCallId: "test", signal: new AbortController().signal, abort: () => {} };
+}
+
+function expectStatus(result: Awaited<ReturnType<Tool["execute"]>>, status: Record<string, unknown>) {
+  expect(result.metadata).toMatchObject({
+    error: true,
+    method: status.operation,
+    status,
+  });
+  const outputStatus = parseOutputStatus(result.output);
+  expect(outputStatus).toMatchObject(status);
+  expect(result.render).toMatchObject({
+    outputSummary: status.code,
+    blocks: [
+      expect.objectContaining({ type: "key_value", title: "Studio instance status" }),
+      expect.objectContaining({ type: "summary" }),
+    ],
+  });
+}
+
+function parseOutputStatus(output: string): Record<string, unknown> {
+  const statusJson = statusOutputPattern.exec(output)?.groups?.statusJson;
+  expect(statusJson).toBeDefined();
+  return JSON.parse(statusJson!) as Record<string, unknown>;
+}
+
+afterEach(() => {
+  for (const dir of createdDirs.splice(0)) {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 describe("createStudioRpcToolProvider", () => {
   test("creates bundled Studio RPC tools with Zod schemas and plugin supersession", async () => {
@@ -156,5 +243,151 @@ describe("createStudioRpcToolProvider", () => {
         params: { assetid: "ovdrassetid://123", assetName: "Tree", assetType: "MODEL" },
       },
     ]);
+  });
+
+  test("returns structured readback status when instance_read gets a missing target GUID", async () => {
+    const cwd = makeStudioProject();
+    const tools = await loadStudioTools(cwd);
+
+    const result = await tools
+      .get("studiorpc_instance_read")!
+      .execute({ guid: "missing-target", recursive: false }, toolContext());
+
+    expectStatus(result, {
+      kind: "missing_guid",
+      code: "missing_target_guid",
+      operation: "instance.read",
+      guid: "missing-target",
+      role: "target",
+      requiresReadback: true,
+      suggestedTool: "studiorpc_level_browse",
+    });
+    expect(result.output).toContain("studiorpc_level_browse");
+  });
+
+  test("returns structured readback status for upsert missing target and parent GUIDs", async () => {
+    const cwd = makeStudioProject();
+    const rpcCalls: Array<{ method: string; params?: Record<string, unknown> }> = [];
+    const tools = await loadStudioTools(cwd, rpcCalls);
+    const upsertTool = tools.get("studiorpc_instance_upsert")!;
+
+    const updateResult = await upsertTool.execute(
+      { items: [{ guid: "missing-target", properties: {} }] },
+      toolContext(),
+    );
+    const addResult = await upsertTool.execute(
+      { items: [{ class: "Folder", parentGuid: "missing-parent", name: "NewFolder", properties: {} }] },
+      toolContext(),
+    );
+
+    expectStatus(updateResult, {
+      kind: "missing_guid",
+      code: "missing_target_guid",
+      operation: "instance.upsert",
+      guid: "missing-target",
+      role: "target",
+      requiresReadback: true,
+      suggestedTool: "studiorpc_level_browse",
+    });
+    expectStatus(addResult, {
+      kind: "missing_guid",
+      code: "missing_parent_guid",
+      operation: "instance.upsert",
+      guid: "missing-parent",
+      role: "parent",
+      requiresReadback: true,
+      suggestedTool: "studiorpc_level_browse",
+    });
+    expect(rpcCalls).toEqual([]);
+  });
+
+  test("returns structured readback status for move missing target and new parent GUIDs", async () => {
+    const cwd = makeStudioProject();
+    const rpcCalls: Array<{ method: string; params?: Record<string, unknown> }> = [];
+    const tools = await loadStudioTools(cwd, rpcCalls);
+    const moveTool = tools.get("studiorpc_instance_move")!;
+
+    const targetResult = await moveTool.execute(
+      { items: [{ guid: "missing-target", parentGuid: folderGuid }] },
+      toolContext(),
+    );
+    const parentResult = await moveTool.execute(
+      { items: [{ guid: partGuid, parentGuid: "missing-parent" }] },
+      toolContext(),
+    );
+
+    expectStatus(targetResult, {
+      kind: "missing_guid",
+      code: "missing_target_guid",
+      operation: "instance.move",
+      guid: "missing-target",
+      role: "target",
+      requiresReadback: true,
+      suggestedTool: "studiorpc_level_browse",
+    });
+    expectStatus(parentResult, {
+      kind: "missing_guid",
+      code: "missing_new_parent_guid",
+      operation: "instance.move",
+      guid: "missing-parent",
+      role: "new_parent",
+      requiresReadback: true,
+      suggestedTool: "studiorpc_level_browse",
+    });
+    expect(rpcCalls).toEqual([]);
+  });
+
+  test("returns structured readback status when instance_delete gets a missing target GUID", async () => {
+    const cwd = makeStudioProject();
+    const rpcCalls: Array<{ method: string; params?: Record<string, unknown> }> = [];
+    const tools = await loadStudioTools(cwd, rpcCalls);
+
+    const result = await tools
+      .get("studiorpc_instance_delete")!
+      .execute({ items: [{ targetGuid: "missing-target" }] }, toolContext());
+
+    expectStatus(result, {
+      kind: "missing_guid",
+      code: "missing_target_guid",
+      operation: "instance.delete",
+      guid: "missing-target",
+      role: "target",
+      requiresReadback: true,
+      suggestedTool: "studiorpc_level_browse",
+    });
+    expect(rpcCalls).toEqual([]);
+  });
+
+  test("returns invalid_operation status for protected service move and delete", async () => {
+    const cwd = makeStudioProject();
+    const rpcCalls: Array<{ method: string; params?: Record<string, unknown> }> = [];
+    const tools = await loadStudioTools(cwd, rpcCalls);
+
+    const moveResult = await tools
+      .get("studiorpc_instance_move")!
+      .execute({ items: [{ guid: workspaceGuid, parentGuid: folderGuid }] }, toolContext());
+    const deleteResult = await tools
+      .get("studiorpc_instance_delete")!
+      .execute({ items: [{ targetGuid: workspaceGuid }] }, toolContext());
+
+    expectStatus(moveResult, {
+      kind: "invalid_operation",
+      code: "protected_service_class",
+      operation: "instance.move",
+      guid: workspaceGuid,
+      role: "target",
+      class: "Workspace",
+      requiresReadback: false,
+    });
+    expectStatus(deleteResult, {
+      kind: "invalid_operation",
+      code: "protected_service_class",
+      operation: "instance.delete",
+      guid: workspaceGuid,
+      role: "target",
+      class: "Workspace",
+      requiresReadback: false,
+    });
+    expect(rpcCalls).toEqual([]);
   });
 });

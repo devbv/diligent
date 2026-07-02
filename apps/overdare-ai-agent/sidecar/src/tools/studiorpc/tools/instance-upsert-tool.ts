@@ -6,6 +6,7 @@ import { buildInstanceUpsertRender } from "../render";
 import { applyLevelChanges } from "../rpc";
 import type { Tool, ToolContext, ToolResult } from "../types";
 import type { WriteLock } from "../write-lock";
+import { invalidInstanceOperationError, missingGuidError, resultFromInstanceToolStatusError } from "./instance-status";
 import { findNodeByActorGuid, isRecord, type OvdrjmNode, readAndWriteOvdrjm } from "./ovdrjm-utils";
 
 function toToolName(method: string): string {
@@ -79,48 +80,65 @@ async function executeInstanceUpsertInner(
 ): Promise<ToolResult> {
   let ovdrjmRoot: OvdrjmNode | undefined;
 
-  const fileResult = readAndWriteOvdrjm(cwd, (rootDoc) => {
-    const root = rootDoc.Root;
-    if (!isRecord(root)) {
-      throw new Error("Invalid .ovdrjm format: Root object is missing.");
-    }
-
-    const added: { guid: string; name: string; class: string }[] = [];
-    for (const item of parsedArgs.items) {
-      if (instanceUpsert.isUpdateItem(item)) {
-        const target = findNodeByActorGuid(root as OvdrjmNode, item.guid);
-        if (!target) {
-          throw new Error(`ActorGuid not found in .ovdrjm: ${item.guid}`);
+  const fileResult = (() => {
+    try {
+      return readAndWriteOvdrjm(cwd, (rootDoc) => {
+        const root = rootDoc.Root;
+        if (!isRecord(root)) {
+          throw new Error("Invalid .ovdrjm format: Root object is missing.");
         }
-        Object.assign(target, item.properties);
-        if (typeof item.name === "string") {
-          target.Name = item.name;
+
+        const added: { guid: string; name: string; class: string }[] = [];
+        for (const item of parsedArgs.items) {
+          if (instanceUpsert.isUpdateItem(item)) {
+            const target = findNodeByActorGuid(root as OvdrjmNode, item.guid);
+            if (!target) {
+              throw missingGuidError({ operation: "instance.upsert", guid: item.guid, role: "target" });
+            }
+            Object.assign(target, item.properties);
+            if (typeof item.name === "string") {
+              target.Name = item.name;
+            }
+            continue;
+          }
+
+          const parent = findNodeByActorGuid(root as OvdrjmNode, item.parentGuid);
+          if (!parent) {
+            throw missingGuidError({ operation: "instance.upsert", guid: item.parentGuid, role: "parent" });
+          }
+
+          if (item.class === "MaterialVariant" && parent.InstanceType !== "MaterialService") {
+            throw invalidInstanceOperationError({
+              operation: "instance.upsert",
+              code: "invalid_parent_class",
+              guid: item.parentGuid,
+              role: "parent",
+              class: String(parent.InstanceType ?? "unknown"),
+              message: `MaterialVariant can only be created under MaterialService, but parent is ${String(parent.InstanceType ?? "unknown")}.`,
+            });
+          }
+
+          const childList = Array.isArray(parent.LuaChildren) ? parent.LuaChildren : [];
+          parent.LuaChildren = childList;
+
+          const newNode = buildAddedNode({ ...item, properties: item.properties ?? {} }, rootDoc);
+          childList.push(newNode);
+          added.push({ guid: String(newNode.ActorGuid), name: item.name, class: item.class });
         }
-        continue;
-      }
 
-      const parent = findNodeByActorGuid(root as OvdrjmNode, item.parentGuid);
-      if (!parent) {
-        throw new Error(`Parent ActorGuid not found in .ovdrjm: ${item.parentGuid}`);
-      }
-
-      if (item.class === "MaterialVariant" && parent.InstanceType !== "MaterialService") {
-        throw new Error(
-          `MaterialVariant can only be created under MaterialService, but parent is ${String(parent.InstanceType ?? "unknown")}`,
-        );
-      }
-
-      const childList = Array.isArray(parent.LuaChildren) ? parent.LuaChildren : [];
-      parent.LuaChildren = childList;
-
-      const newNode = buildAddedNode({ ...item, properties: item.properties ?? {} }, rootDoc);
-      childList.push(newNode);
-      added.push({ guid: String(newNode.ActorGuid), name: item.name, class: item.class });
+        ovdrjmRoot = root as OvdrjmNode;
+        return { added };
+      });
+    } catch (error) {
+      const result = resultFromInstanceToolStatusError(error);
+      if (result) return result;
+      throw error;
     }
+  })();
 
-    ovdrjmRoot = root as OvdrjmNode;
-    return { added };
-  });
+  if ("output" in fileResult) {
+    return fileResult;
+  }
 
   await applyLevelChanges();
   const diag = ovdrjmRoot ? collectUiDiagnostics(ovdrjmRoot) : { warnings: [], info: [] };

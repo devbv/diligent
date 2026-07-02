@@ -6,6 +6,7 @@ import { buildInstanceMoveRender } from "../render";
 import { applyLevelChanges } from "../rpc";
 import type { Tool, ToolContext, ToolResult } from "../types";
 import type { WriteLock } from "../write-lock";
+import { invalidInstanceOperationError, missingGuidError, resultFromInstanceToolStatusError } from "./instance-status";
 import {
   findNodeByActorGuid,
   isRecord,
@@ -50,41 +51,60 @@ async function executeInstanceMoveInner(
   parsedArgs: ReturnType<typeof instanceMove.parseArgs>,
   cwd: string,
 ): Promise<ToolResult> {
-  const fileResult = readAndWriteOvdrjm(cwd, (rootDoc) => {
-    const root = rootDoc.Root;
-    if (!isRecord(root)) {
-      throw new Error("Invalid .ovdrjm format: Root object is missing.");
+  const fileResult = (() => {
+    try {
+      return readAndWriteOvdrjm(cwd, (rootDoc) => {
+        const root = rootDoc.Root;
+        if (!isRecord(root)) {
+          throw new Error("Invalid .ovdrjm format: Root object is missing.");
+        }
+
+        const movedGuids: string[] = [];
+        for (const item of parsedArgs.items) {
+          const target = findNodeByActorGuid(root as OvdrjmNode, item.guid);
+          if (!target) {
+            throw missingGuidError({ operation: "instance.move", guid: item.guid, role: "target" });
+          }
+          const instanceType = typeof target.InstanceType === "string" ? target.InstanceType : undefined;
+          if (instanceType && serviceClasses.has(instanceType)) {
+            throw invalidInstanceOperationError({
+              operation: "instance.move",
+              code: "protected_service_class",
+              guid: item.guid,
+              role: "target",
+              class: instanceType,
+              message: `"${instanceType}" is a Service and cannot be moved.`,
+            });
+          }
+
+          const newParent = findNodeByActorGuid(root as OvdrjmNode, item.parentGuid);
+          if (!newParent) {
+            throw missingGuidError({ operation: "instance.move", guid: item.parentGuid, role: "new_parent" });
+          }
+
+          const removed = removeNodeByActorGuid(root as OvdrjmNode, item.guid);
+          if (!removed) {
+            throw new Error(`Failed to detach ActorGuid from .ovdrjm: ${item.guid}`);
+          }
+
+          const childList = Array.isArray(newParent.LuaChildren) ? newParent.LuaChildren : [];
+          newParent.LuaChildren = childList;
+          childList.push(target);
+          movedGuids.push(item.guid);
+        }
+
+        return { added: movedGuids.map((g) => ({ guid: g, name: "", class: "" })) };
+      });
+    } catch (error) {
+      const result = resultFromInstanceToolStatusError(error);
+      if (result) return result;
+      throw error;
     }
+  })();
 
-    const movedGuids: string[] = [];
-    for (const item of parsedArgs.items) {
-      const target = findNodeByActorGuid(root as OvdrjmNode, item.guid);
-      if (!target) {
-        throw new Error(`ActorGuid not found in .ovdrjm: ${item.guid}`);
-      }
-      const instanceType = typeof target.InstanceType === "string" ? target.InstanceType : undefined;
-      if (instanceType && serviceClasses.has(instanceType)) {
-        throw new Error(`"${instanceType}" is a Service — it cannot be moved.`);
-      }
-
-      const newParent = findNodeByActorGuid(root as OvdrjmNode, item.parentGuid);
-      if (!newParent) {
-        throw new Error(`New parent ActorGuid not found in .ovdrjm: ${item.parentGuid}`);
-      }
-
-      const removed = removeNodeByActorGuid(root as OvdrjmNode, item.guid);
-      if (!removed) {
-        throw new Error(`Failed to detach ActorGuid from .ovdrjm: ${item.guid}`);
-      }
-
-      const childList = Array.isArray(newParent.LuaChildren) ? newParent.LuaChildren : [];
-      newParent.LuaChildren = childList;
-      childList.push(target);
-      movedGuids.push(item.guid);
-    }
-
-    return { added: movedGuids.map((g) => ({ guid: g, name: "", class: "" })) };
-  });
+  if ("output" in fileResult) {
+    return fileResult;
+  }
 
   const result = await applyLevelChanges();
   const output = typeof result === "string" ? result : JSON.stringify(result, null, 2);
