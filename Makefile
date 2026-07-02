@@ -96,7 +96,7 @@ web-build: node_modules
 	bun run --cwd packages/web build
 
 web-start: node_modules
-	bun run --cwd packages/web start
+	bun run --cwd packages/web start -- --cwd=$(CURDIR)
 
 # Run the OVERDARE agent (the product) in dev — connect to a local Studio, use .overdare.
 # (make dev is the diligent CLI dev assistant; this is the OVERDARE agent itself.)
