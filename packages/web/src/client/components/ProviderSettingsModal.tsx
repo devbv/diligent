@@ -190,7 +190,10 @@ export function ProviderSettingsModal({
                       placeholder={PROVIDER_INPUT_PLACEHOLDERS[p.provider] ?? "API key"}
                       className="h-8"
                       value={keyInput}
-                      onChange={(e) => setKeyInput(e.target.value)}
+                      // API keys go into an HTTP header (X-Api-Key), which only accepts printable
+                      // ASCII. Strip anything else (e.g. Korean IME input) so it can't reach the
+                      // provider and 400 with "Header has invalid value".
+                      onChange={(e) => setKeyInput(e.target.value.replace(/[^\x21-\x7E]/g, ""))}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") void handleSave(p.provider);
                         if (e.key === "Escape") handleCancel();
