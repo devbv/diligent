@@ -3,7 +3,7 @@
 	       setup check-env config \
 	       web-dev web-build web-start \
 	       debug-dev debug-build \
-	       dev-agent dev-cross \
+	       dev-agent dev-cross dev-agent-nostudio \
 	       check
 
 help:
@@ -18,7 +18,9 @@ help:
 	@echo "                  [STUDIO_PORT=13377] [STUDIO_PROJECT_DIR=/path for editing]"
 	@echo "  dev-cross       Same as dev-agent but for a remote Studio (e.g. Windows):"
 	@echo "                  STUDIO_HOST=<ip> [STUDIO_PORT=13377] [STUDIO_PROJECT_DIR=/Volumes/...]"
-	@echo "  web-dev         Run web frontend dev server (Vite)"
+	@echo "  dev-agent-nostudio  Run the OVERDARE agent in dev WITHOUT Studio (no 13377 connect;"
+	@echo "                  UI/chat only, edit & rollback tools unavailable)"
+	@echo "  web-dev         Run the Web CLI locally: backend (:7433) + Vite (:5174), no Studio"
 	@echo "  web-start       Run web backend server"
 	@echo "  debug-dev       Run debug-viewer dev server"
 	@echo ""
@@ -82,8 +84,13 @@ dev: node_modules
 
 # --- Web ---
 
+# Run the Web CLI locally: web-only backend (:7433) + Vite frontend (:5174).
+# Browser: http://localhost:5174 (Vite proxies /rpc to the backend). Ctrl+C stops both.
+# No Studio tools (bundledToolProviders: []). For the OVERDARE agent use dev-agent*.
 web-dev: node_modules
-	bun run --cwd packages/web dev
+	@bun run packages/web/src/server/index.ts --dev & backend=$$!; \
+	 trap "kill $$backend 2>/dev/null || true" EXIT INT TERM; \
+	 bun run --cwd packages/web dev
 
 web-build: node_modules
 	bun run --cwd packages/web build
@@ -103,6 +110,13 @@ dev-agent: node_modules
 # Values are also read from .env.local, so `make dev-cross` with no args works too.
 dev-cross: node_modules
 	@STUDIO_HOST="$(STUDIO_HOST)" STUDIO_PORT="$(STUDIO_PORT)" STUDIO_PROJECT_DIR="$(STUDIO_PROJECT_DIR)" bash scripts/dev-cross-studio.sh
+
+# Run the OVERDARE agent in dev WITHOUT Studio — no connection to 13377 at all.
+# The Studio RPC provider is skipped, so UI/chat work but edit & rollback tools
+# are unavailable. Use when no Studio is running (e.g. web/UI development).
+#   make dev-agent-nostudio
+dev-agent-nostudio: node_modules
+	@STUDIO_DISABLED=1 bash scripts/dev-cross-studio.sh
 
 # --- Debug Viewer ---
 

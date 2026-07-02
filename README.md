@@ -28,7 +28,7 @@ make dev
 
 - `make dev` — run the CLI/TUI
 - `make release-local` — build and install `diligent` into your user bin directory
-- `make web-dev` — run the web client dev server
+- `make web-dev` — run the Web CLI locally: backend (:7433) + Vite frontend (:5174)
 - `make web-start` — run the web backend server
 - `make debug-dev` — run the debug viewer
 
