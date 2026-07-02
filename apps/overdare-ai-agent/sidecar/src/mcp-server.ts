@@ -114,10 +114,10 @@ async function buildPromptRegistry(bootstrapDir: string): Promise<Map<string, Pr
 
 /**
  * Skills that are not usable through the MCP surface — they depend on host-only features (e.g. the
- * Knowledge store / project-memory handoff) that this server does not expose — so they must not be
- * offered via load_skill.
+ * Knowledge store / record-project-memory handoff) that this server does not expose — so they must
+ * not be offered via load_skill.
  */
-const MCP_EXCLUDED_SKILLS = new Set(["project-memory"]);
+const MCP_EXCLUDED_SKILLS = new Set(["record-project-memory"]);
 
 /**
  * Bootstrap-backed tools the *model* can call directly. Prompts (system prompt, skills) are only

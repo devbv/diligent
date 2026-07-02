@@ -35,11 +35,11 @@ async function makeBootstrapDir(): Promise<string> {
   );
 
   // A skill that is not usable over MCP — load_skill must exclude it (see MCP_EXCLUDED_SKILLS).
-  const excludedSkillDir = join(dir, "skills", "project-memory");
+  const excludedSkillDir = join(dir, "skills", "record-project-memory");
   await mkdir(excludedSkillDir, { recursive: true });
   await writeFile(
     join(excludedSkillDir, "SKILL.md"),
-    "---\nname: project-memory\ndescription: Host-only knowledge handoff\n---\nMEMORY SKILL BODY",
+    "---\nname: record-project-memory\ndescription: Host-only knowledge handoff\n---\nMEMORY SKILL BODY",
     "utf-8",
   );
 
@@ -155,15 +155,15 @@ describe("OVERDARE MCP server", () => {
     await client.close();
   });
 
-  test("excludes MCP-unusable skills (project-memory) from load_skill", async () => {
+  test("excludes MCP-unusable skills (record-project-memory) from load_skill", async () => {
     const client = await connectClient(await makeBootstrapDir());
     // Not advertised in the tool description...
     const { tools } = await client.listTools();
     const loadSkill = tools.find((tool) => tool.name === "load_skill");
     expect(loadSkill?.description).toContain("test-skill");
-    expect(loadSkill?.description).not.toContain("project-memory");
+    expect(loadSkill?.description).not.toContain("record-project-memory");
     // ...and not loadable by name.
-    const result = await client.callTool({ name: "load_skill", arguments: { name: "project-memory" } });
+    const result = await client.callTool({ name: "load_skill", arguments: { name: "record-project-memory" } });
     expect(result.isError).toBe(true);
     await client.close();
   });
