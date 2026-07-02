@@ -125,10 +125,12 @@ export async function runAgentLoop(
         toolAbortController.abort(),
       );
 
+      // Always record tool results — including when the turn was aborted. Every
+      // tool_use must be paired with its tool_result, otherwise the next request
+      // sends an orphaned tool_use and the provider rejects the whole conversation
+      // (e.g. Anthropic 400 "tool_use ids were found without tool_result blocks").
       for (const execution of executions) {
-        if (!signal.aborted) {
-          conversation.push(execution.toolResult);
-        }
+        conversation.push(execution.toolResult);
         doomLoopTracker.record(execution.toolCall.name, execution.toolCall.input);
       }
 

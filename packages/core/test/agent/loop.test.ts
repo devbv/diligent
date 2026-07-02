@@ -399,8 +399,50 @@ describe("Agent loop", () => {
 
     expect(events.filter((event) => event.type === "turn_start")).toHaveLength(1);
     expect(events.filter((event) => event.type === "tool_start")).toHaveLength(2);
-    expect(events.filter((event) => event.type === "tool_end")).toHaveLength(1);
-    expect(result.filter((message) => message.role === "tool_result")).toHaveLength(0);
+    // Every tool_use must be paired: the aborting call plus a synthesized aborted
+    // result for the dropped one, so the conversation stays valid for the next turn.
+    expect(events.filter((event) => event.type === "tool_end")).toHaveLength(2);
+    const toolResults = result.filter((message) => message.role === "tool_result");
+    expect(toolResults.map((message) => (message as { toolCallId: string }).toolCallId).sort()).toEqual([
+      "tc_1",
+      "tc_2",
+    ]);
+  });
+
+  test("aborted single tool: result stays in conversation (no orphaned tool_use)", async () => {
+    // Reproduces the Anthropic 400 "tool_use ids were found without tool_result
+    // blocks" case: a tool aborts mid-turn and its result must remain paired with
+    // the assistant tool_use in the agent's in-memory conversation.
+    const abortTool: Tool = {
+      name: "abort_tool",
+      description: "A tool that requests abort",
+      parameters: z.object({ query: z.string() }),
+      async execute(args: { query: string }) {
+        return { output: `aborted:${args.query}`, abortRequested: true };
+      },
+    };
+
+    const toolCallMsg = makeAssistant(
+      [{ type: "tool_call", id: "tc_1", name: "abort_tool", input: { query: "stop" } }],
+      "tool_use",
+    );
+    const streamFn = createMockStreamFunction([toolCallMsg]);
+
+    const agent = new Agent(TEST_MODEL, [{ label: "test", content: "test" }], [abortTool], {
+      effort: "medium",
+      llmMsgStreamFn: streamFn,
+    });
+
+    const { result } = await runAgent(agent, { role: "user", content: "go", timestamp: Date.now() });
+
+    const assistant = result.find((message) => message.role === "assistant") as AssistantMessage;
+    const toolUseIds = assistant.content.filter((block) => block.type === "tool_call").map((block) => block.id);
+    const toolResultIds = result
+      .filter((message) => message.role === "tool_result")
+      .map((message) => (message as { toolCallId: string }).toolCallId);
+
+    // Invariant: every tool_use in the conversation has a matching tool_result.
+    expect(toolResultIds.sort()).toEqual(toolUseIds.sort());
   });
 });
 

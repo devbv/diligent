@@ -66,6 +66,8 @@ export async function runToolCalls(
       if (signal?.aborted) break;
     }
 
+    // Parallel: tool_start was already emitted for every call above.
+    fillAbortedExecutions(toolCalls, itemIds, executions, signal, stream, true);
     return { executions };
   }
 
@@ -89,7 +91,64 @@ export async function runToolCalls(
     if (signal?.aborted) break;
   }
 
+  // Sequential: only executed calls emitted tool_start, so unexecuted ones still need it.
+  fillAbortedExecutions(toolCalls, itemIds, executions, signal, stream, false);
   return { executions };
+}
+
+/**
+ * When a turn is aborted mid-batch, some tool calls may never run (parallel: results
+ * after the first are dropped; sequential: later calls never start). Every tool_use
+ * still needs a matching tool_result, or the next provider request sends an orphaned
+ * tool_use. Synthesize an aborted result for each unexecuted call, emitting tool_start
+ * (if not already emitted) + tool_end so the stream, persisted session, and in-memory
+ * conversation all stay consistent.
+ */
+function fillAbortedExecutions(
+  toolCalls: ToolCallBlock[],
+  itemIds: string[],
+  executions: Array<{ toolCall: ToolCallBlock; toolResult: ToolResultMessage }>,
+  signal: AbortSignal | undefined,
+  stream: AgentStream,
+  allStarted: boolean,
+): void {
+  if (!signal?.aborted) return;
+  const executed = new Set(executions.map((execution) => execution.toolCall.id));
+
+  for (let index = 0; index < toolCalls.length; index++) {
+    const toolCall = toolCalls[index];
+    if (executed.has(toolCall.id)) continue;
+
+    if (!allStarted) {
+      stream.emit({
+        type: "tool_start",
+        itemId: itemIds[index],
+        toolCallId: toolCall.id,
+        toolName: toolCall.name,
+        input: toolCall.input,
+      });
+    }
+
+    const toolResult: ToolResultMessage = {
+      role: "tool_result",
+      toolCallId: toolCall.id,
+      toolName: toolCall.name,
+      output: "[Aborted by user]",
+      isError: false,
+      timestamp: Date.now(),
+    };
+
+    stream.emit({
+      type: "tool_end",
+      itemId: itemIds[index],
+      toolCallId: toolCall.id,
+      toolName: toolCall.name,
+      output: toolResult.output,
+      isError: false,
+    });
+
+    executions.push({ toolCall, toolResult });
+  }
 }
 
 function toToolCallExecution(
