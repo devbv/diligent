@@ -7,10 +7,15 @@ import { parseArgs as parseInstanceUpsertArgs } from "../../src/tools/studiorpc/
 import * as levelBrowse from "../../src/tools/studiorpc/methods/level.browse";
 
 function thrownMessage(fn: () => void): string {
+  return thrownError(fn).message;
+}
+
+function thrownError(fn: () => void): Error & { invalidArgs?: Record<string, unknown> } {
   try {
     fn();
   } catch (err) {
-    return err instanceof Error ? err.message : String(err);
+    if (err instanceof Error) return err as Error & { invalidArgs?: Record<string, unknown> };
+    throw new Error(String(err));
   }
   throw new Error("Expected function to throw.");
 }
@@ -118,6 +123,60 @@ describe("createStudioRpcToolProvider", () => {
     expect(particleError).toContain("Suggested fix: Color must be a ColorSequence array");
     expect(particleError).toContain("[items[0].properties.Size]");
     expect(particleError).toContain("Suggested fix: Size must be a NumberSequence array");
+
+    const promptError = thrownMessage(() =>
+      parseInstanceUpsertArgs({
+        items: [
+          {
+            class: "ProximityPrompt",
+            parentGuid: "parent",
+            name: "BadPrompt",
+            properties: {},
+          },
+        ],
+      }),
+    );
+
+    expect(promptError).toContain("[items[0].properties.KeyboardKeyCode]");
+    expect(promptError).toContain("Suggested fix: include required ProximityPrompt fields");
+    expect(promptError).toContain("[items[0].properties.ActionText]");
+    expect(promptError).toContain("[items[0].properties.ObjectText]");
+  });
+
+  test("preserves structured invalid args metadata for instance upsert hints", () => {
+    const error = thrownError(() =>
+      parseInstanceUpsertArgs({
+        items: [
+          {
+            class: "ParticleEmitter",
+            parentGuid: "parent",
+            name: "BadEmitter",
+            properties: {
+              Color: { R: 255, G: 128, B: 0 },
+              Size: { Min: 1, Max: 2 },
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(error.invalidArgs).toMatchObject({
+      status: { kind: "invalid_args" },
+      code: "invalid_args",
+      issues: [
+        {
+          path: "items[0].properties.Color",
+          code: "invalid_type",
+          suggestedFix:
+            "Color must be a ColorSequence array, e.g. Color: [{ Time: 0, Color: { R: 255, G: 255, B: 255 } }].",
+        },
+        {
+          path: "items[0].properties.Size",
+          code: "invalid_type",
+          suggestedFix: "Size must be a NumberSequence array, e.g. Size: [{ Time: 0, Value: 1 }].",
+        },
+      ],
+    });
   });
 
   test("preserves generic RPC approval rejection behavior without calling Studio", async () => {

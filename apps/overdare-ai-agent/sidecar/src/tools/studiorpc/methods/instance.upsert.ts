@@ -35,6 +35,32 @@ const itemParams = z
 
 const baseColorChannelKeys = ["BaseColorR", "BaseColorG", "BaseColorB"] as const;
 const particleEmitterNumberSequenceProperties = new Set(["Size", "Transparency", "Squash"]);
+const proximityPromptRequiredProperties = new Set(["KeyboardKeyCode", "ActionText", "ObjectText"]);
+
+type StudioRpcInvalidArgIssue = {
+  path: string;
+  message: string;
+  code: string;
+  suggestedFix?: string;
+};
+
+class StudioRpcInvalidArgsError extends Error {
+  readonly invalidArgs: {
+    status: { kind: "invalid_args" };
+    code: "invalid_args";
+    issues: StudioRpcInvalidArgIssue[];
+  };
+
+  constructor(issues: StudioRpcInvalidArgIssue[]) {
+    super(issues.map(formatInvalidArgIssue).join("\n"));
+    this.name = "StudioRpcInvalidArgsError";
+    this.invalidArgs = {
+      status: { kind: "invalid_args" },
+      code: "invalid_args",
+      issues,
+    };
+  }
+}
 
 export const params = z
   .object({
@@ -74,11 +100,20 @@ export function isUpdateItem(value: InstanceUpsertItemArgs): value is InstanceUp
  */
 export function parseArgs(value: Record<string, unknown>): InstanceUpsertArgs {
   const result = params.safeParse(value);
+  const details: StudioRpcInvalidArgIssue[] = [];
+  collectClassAwareIssues(value, details);
+
+  if (details.length > 0) {
+    throw new StudioRpcInvalidArgsError(details);
+  }
   if (result.success) return result.data;
 
-  // Attempt class-aware re-validation for actionable error messages
+  // No class-specific issues found — throw the original zod error
+  throw result.error;
+}
+
+function collectClassAwareIssues(value: Record<string, unknown>, details: StudioRpcInvalidArgIssue[]): void {
   const items = Array.isArray(value.items) ? (value.items as Record<string, unknown>[]) : [];
-  const details: string[] = [];
   const serviceClasses = new Set<string>(serviceClassEnum.options);
 
   for (let i = 0; i < items.length; i++) {
@@ -86,17 +121,16 @@ export function parseArgs(value: Record<string, unknown>): InstanceUpsertArgs {
     if (!item || typeof item !== "object") continue;
     const cls = typeof item.class === "string" ? item.class : undefined;
     if (cls && serviceClasses.has(cls)) {
-      details.push(`  [items[${i}]] "${cls}" is a Service — it cannot be added, only updated by guid.`);
+      details.push({
+        path: `items[${i}]`,
+        message: `"${cls}" is a Service — it cannot be added, only updated by guid.`,
+        code: "service_class_add",
+        suggestedFix: `Update the existing ${cls} service by guid instead of creating it as a child instance.`,
+      });
       continue;
     }
     validateItemProperties(item, `items[${i}]`, details);
   }
-
-  if (details.length > 0) {
-    throw new Error(details.join("\n"));
-  }
-  // No class-specific issues found — throw the original zod error
-  throw result.error;
 }
 
 /**
@@ -471,7 +505,11 @@ function walkNodes(
 
 // ---------------------------------------------------------------------------
 
-function validateItemProperties(item: Record<string, unknown>, path: string, details: string[]): void {
+function validateItemProperties(
+  item: Record<string, unknown>,
+  path: string,
+  details: StudioRpcInvalidArgIssue[],
+): void {
   const className = typeof item.class === "string" ? item.class : undefined;
   const props = item.properties;
   if (props == null || typeof props !== "object") return;
@@ -489,10 +527,19 @@ function validateItemProperties(item: Record<string, unknown>, path: string, det
     for (const issue of r.error.issues) {
       const loc = issue.path.length > 0 ? `.${issue.path.join(".")}` : "";
       const suggestion = suggestedFixForPropertyIssue(resolvedClass, issue);
-      const detail = `  [${path}.properties${loc}] (${label}) ${issue.message}`;
-      details.push(suggestion ? `${detail}\n    Suggested fix: ${suggestion}` : detail);
+      details.push({
+        path: `${path}.properties${loc}`,
+        message: `(${label}) ${issue.message}`,
+        code: issue.code,
+        ...(suggestion && { suggestedFix: suggestion }),
+      });
     }
   }
+}
+
+function formatInvalidArgIssue(issue: StudioRpcInvalidArgIssue): string {
+  const detail = `  [${issue.path}] ${issue.message}`;
+  return issue.suggestedFix ? `${detail}\n    Suggested fix: ${issue.suggestedFix}` : detail;
 }
 
 function suggestedFixForPropertyIssue(className: string, issue: ZodIssue): string | undefined {
@@ -500,9 +547,18 @@ function suggestedFixForPropertyIssue(className: string, issue: ZodIssue): strin
     return "replace BaseColorR/BaseColorG/BaseColorB with Color: { R, G, B } using 0-255 integer channels.";
   }
 
+  const propertyName = typeof issue.path[0] === "string" ? issue.path[0] : undefined;
+  if (
+    className === "ProximityPrompt" &&
+    propertyName &&
+    proximityPromptRequiredProperties.has(propertyName) &&
+    issue.message === "Required"
+  ) {
+    return 'include required ProximityPrompt fields: KeyboardKeyCode, ActionText, and ObjectText. Example: { KeyboardKeyCode: "E", ActionText: "Interact", ObjectText: "Target" }.';
+  }
+
   if (className !== "ParticleEmitter") return undefined;
 
-  const propertyName = typeof issue.path[0] === "string" ? issue.path[0] : undefined;
   if (propertyName === "Color") {
     return "Color must be a ColorSequence array, e.g. Color: [{ Time: 0, Color: { R: 255, G: 255, B: 255 } }].";
   }
