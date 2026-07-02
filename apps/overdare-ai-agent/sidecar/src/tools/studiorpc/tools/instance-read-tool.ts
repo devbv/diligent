@@ -4,6 +4,7 @@ import { classPropertyShapes, instanceClassEnum, type ShapeSpec, serviceClassEnu
 import * as instanceRead from "../methods/instance.read";
 import { buildInstanceReadRender } from "../render";
 import type { Tool, ToolContext, ToolResult } from "../types";
+import { missingGuidResult } from "./instance-status";
 import { findNodeByActorGuid, isRecord, type OvdrjmNode, readOvdrjmRoot } from "./ovdrjm-utils";
 
 const knownClasses = new Set<string>([...instanceClassEnum.options, ...serviceClassEnum.options]);
@@ -83,10 +84,7 @@ async function executeInstanceRead(args: Record<string, unknown>, _ctx: ToolCont
 
   const target = findNodeByActorGuid(root, parsed.guid);
   if (!target) {
-    return {
-      output: `Instance not found: ${parsed.guid}`,
-      metadata: { error: true, method: "instance.read" },
-    };
+    return missingGuidResult({ operation: "instance.read", guid: parsed.guid, role: "target" });
   }
 
   const readable = toReadableNode(target, parsed.recursive);
