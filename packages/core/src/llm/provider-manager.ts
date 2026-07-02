@@ -6,6 +6,7 @@ import { createGeminiStream } from "./provider/gemini";
 import type { NativeCompactionLookup } from "./provider/native-compaction";
 import { createOpenAINativeCompaction, createOpenAIStream } from "./provider/openai";
 import type { OpenAIImageDetail } from "./provider/openai-responses";
+import { validateProviderApiKey } from "./provider/validate-key";
 import { createVertexStream } from "./provider/vertex";
 import { createZaiCodingPlanStream } from "./provider/zai-coding-plan";
 import type { ProviderName, StreamFunction } from "./types";
@@ -217,6 +218,11 @@ export class ProviderManager {
 
   hasOAuthFor(provider: "chatgpt"): boolean {
     return this.authState.getExternalAuth(provider) !== undefined;
+  }
+
+  // Verify an API key before persisting it. Throws with a user-facing message if the key is invalid.
+  async validateApiKey(provider: ProviderName, apiKey: string): Promise<void> {
+    await validateProviderApiKey(provider, apiKey, this.baseUrls[provider], DEFAULT_MODELS[provider]);
   }
 
   createProxyStream(): StreamFunction {
