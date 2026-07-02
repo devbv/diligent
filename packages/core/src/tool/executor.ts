@@ -12,23 +12,6 @@ import {
 } from "./truncation";
 import type { ToolContext, ToolRegistry, ToolResult } from "./types";
 
-type InvalidArgsIssueMetadata = {
-  path: string;
-  message: string;
-  code?: string;
-  suggestedFix?: string;
-};
-
-type InvalidArgsMetadata = {
-  status: { kind: "invalid_args" };
-  code: "invalid_args";
-  issues?: InvalidArgsIssueMetadata[];
-};
-
-type ErrorWithInvalidArgs = Error & {
-  invalidArgs?: Partial<InvalidArgsMetadata>;
-};
-
 export async function executeTool(
   registry: ToolRegistry,
   toolCall: ToolCallBlock,
@@ -46,7 +29,7 @@ export async function executeTool(
     } catch (err) {
       return {
         output: `Error: Invalid arguments for "${toolCall.name}":\n${err instanceof Error ? err.message : String(err)}`,
-        metadata: { error: true, ...invalidArgsMetadataFromError(err) },
+        metadata: { error: true },
       };
     }
   } else {
@@ -54,7 +37,7 @@ export async function executeTool(
     if (!parsed.success) {
       return {
         output: `Error: Invalid arguments for "${toolCall.name}":\n${parsed.error.issues.map((i: ZodIssue) => `  [${i.path.join(".")}] ${i.message}`).join("\n")}`,
-        metadata: { error: true, ...invalidArgsMetadataFromZodIssues(parsed.error.issues) },
+        metadata: { error: true },
       };
     }
     args = parsed.data;
@@ -102,31 +85,4 @@ export async function executeTool(
   }
 
   return result;
-}
-
-function invalidArgsMetadataFromError(err: unknown): InvalidArgsMetadata {
-  const fallback: InvalidArgsMetadata = { status: { kind: "invalid_args" }, code: "invalid_args" };
-  if (!(err instanceof Error)) return fallback;
-
-  const invalidArgs = (err as ErrorWithInvalidArgs).invalidArgs;
-  if (!invalidArgs || typeof invalidArgs !== "object") return fallback;
-
-  return {
-    ...fallback,
-    ...invalidArgs,
-    status: { kind: "invalid_args" },
-    code: "invalid_args",
-  };
-}
-
-function invalidArgsMetadataFromZodIssues(issues: ZodIssue[]): InvalidArgsMetadata {
-  return {
-    status: { kind: "invalid_args" },
-    code: "invalid_args",
-    issues: issues.map((issue) => ({
-      path: issue.path.join("."),
-      message: issue.message,
-      code: issue.code,
-    })),
-  };
 }

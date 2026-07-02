@@ -63,64 +63,6 @@ describe("executeTool", () => {
     const result = await executeTool(registry, toolCall, makeCtx());
     expect(result.output).toContain("Invalid arguments");
     expect(result.metadata?.error).toBe(true);
-    expect(result.metadata?.status).toEqual({ kind: "invalid_args" });
-    expect(result.metadata?.code).toBe("invalid_args");
-    expect(result.metadata?.issues).toEqual([
-      {
-        path: "message",
-        message: "Expected string, received number",
-        code: "invalid_type",
-      },
-    ]);
-  });
-
-  test("invalid args from custom parser preserve structured correction metadata", async () => {
-    const badArgsTool: Tool = {
-      name: "bad_args",
-      description: "Throws structured arg errors",
-      parameters: z.object({}),
-      parseArgs() {
-        const err = new Error("  [items[0].properties.Color] (class=ParticleEmitter) Expected array");
-        (
-          err as Error & {
-            invalidArgs?: {
-              issues: Array<{ path: string; message: string; code: string; suggestedFix: string }>;
-            };
-          }
-        ).invalidArgs = {
-          issues: [
-            {
-              path: "items[0].properties.Color",
-              message: "(class=ParticleEmitter) Expected array",
-              code: "invalid_type",
-              suggestedFix:
-                "Color must be a ColorSequence array, e.g. Color: [{ Time: 0, Color: { R: 255, G: 255, B: 255 } }].",
-            },
-          ],
-        };
-        throw err;
-      },
-      async execute() {
-        return { output: "unreachable" };
-      },
-    };
-    const registry = new ToolRegistryBuilder().register(badArgsTool).build();
-    const toolCall: ToolCallBlock = { type: "tool_call", id: "tc_1", name: "bad_args", input: {} };
-
-    const result = await executeTool(registry, toolCall, makeCtx());
-    expect(result.output).toContain("Invalid arguments");
-    expect(result.metadata?.error).toBe(true);
-    expect(result.metadata?.status).toEqual({ kind: "invalid_args" });
-    expect(result.metadata?.code).toBe("invalid_args");
-    expect(result.metadata?.issues).toEqual([
-      {
-        path: "items[0].properties.Color",
-        message: "(class=ParticleEmitter) Expected array",
-        code: "invalid_type",
-        suggestedFix:
-          "Color must be a ColorSequence array, e.g. Color: [{ Time: 0, Color: { R: 255, G: 255, B: 255 } }].",
-      },
-    ]);
   });
 
   test("duplicate tool name throws in builder", () => {
