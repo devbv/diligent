@@ -157,6 +157,7 @@ export function renderAssistantStructuredItems(
   }
 
   const items: ThreadItem[] = [];
+  const textCitations: TextCitation[] = [];
   for (const block of message.content) {
     switch (block.type) {
       case "provider_tool_use": {
@@ -207,10 +208,7 @@ export function renderAssistantStructuredItems(
         break;
       }
       case "text": {
-        const citations = renderTextCitations(block);
-        if (citations.length > 0) {
-          items.push({ kind: "plain", lines: citations });
-        }
+        textCitations.push(...(block.citations ?? []));
         break;
       }
       default:
@@ -218,13 +216,35 @@ export function renderAssistantStructuredItems(
     }
   }
 
+  const citationLines = renderTextCitations(dedupeTextCitations(textCitations));
+  if (citationLines.length > 0) {
+    items.push({ kind: "plain", lines: citationLines });
+  }
+
   return items;
 }
 
-function renderTextCitations(block: TextBlock): string[] {
-  if (!block.citations || block.citations.length === 0) return [];
+type TextCitation = NonNullable<TextBlock["citations"]>[number];
+
+export function dedupeTextCitations(citations: TextCitation[]): TextCitation[] {
+  const seen = new Set<string>();
+  const deduped: TextCitation[] = [];
+  for (const citation of citations) {
+    const key =
+      citation.type === "web_search_result_location"
+        ? `web:${citation.url}`
+        : `doc:${citation.documentIndex}:${citation.startCharIndex}-${citation.endCharIndex}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(citation);
+  }
+  return deduped;
+}
+
+function renderTextCitations(citations: TextCitation[]): string[] {
+  if (citations.length === 0) return [];
   const lines: string[] = [];
-  for (const citation of block.citations.slice(0, 5)) {
+  for (const citation of citations.slice(0, 5)) {
     if (citation.type === "web_search_result_location") {
       const label = citation.title?.trim() || citation.url;
       lines.push(`${t.dim}[source] ${label}${citation.url !== label ? ` — ${citation.url}` : ""}${t.reset}`);
@@ -233,8 +253,8 @@ function renderTextCitations(block: TextBlock): string[] {
     const title = citation.documentTitle?.trim() || `document ${citation.documentIndex}`;
     lines.push(`${t.dim}[source] ${title} chars ${citation.startCharIndex}-${citation.endCharIndex}${t.reset}`);
   }
-  if (block.citations.length > 5) {
-    lines.push(`${t.dim}[source] … +${block.citations.length - 5} more citations${t.reset}`);
+  if (citations.length > 5) {
+    lines.push(`${t.dim}[source] … +${citations.length - 5} more citations${t.reset}`);
   }
   return lines;
 }
@@ -245,6 +265,7 @@ export function renderAssistantMessageBlocks(
   const thinkingParts: string[] = [];
   const textParts: string[] = [];
   const extras: string[] = [];
+  const textCitations: TextCitation[] = [];
 
   if (!Array.isArray(message.content)) {
     return { thinking: "", text: "", extras };
@@ -257,12 +278,14 @@ export function renderAssistantMessageBlocks(
         break;
       case "text":
         textParts.push(block.text);
-        extras.push(...renderTextCitations(block));
+        textCitations.push(...(block.citations ?? []));
         break;
       default:
         break;
     }
   }
+
+  extras.push(...renderTextCitations(dedupeTextCitations(textCitations)));
 
   return {
     thinking: thinkingParts.join(""),
