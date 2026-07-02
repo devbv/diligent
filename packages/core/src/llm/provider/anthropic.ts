@@ -410,7 +410,49 @@ function toAnthropicFetchDocument(document: WebFetchResultBlock["document"]): An
   };
 }
 
-function convertTools(tools: ToolDefinition[]): Anthropic.MessageCreateParams["tools"] {
+/**
+ * Anthropic rejects `anyOf`/`oneOf`/`allOf` at the top level of a tool `input_schema` — it requires
+ * a single object schema. Tool schemas reach us from two runtime sources (zod-to-json-schema output
+ * and MCP servers' advertised schemas), either of which can put a union/intersection at the root.
+ * Collapse it into one object schema by merging the branches' `properties`. Arguments are validated
+ * elsewhere (Zod `parameters` for built-ins, passthrough for MCP), so this only relaxes the
+ * model-facing guidance, never the actual call contract. Recurses so nested unions in a branch are
+ * flattened too. Anthropic only forbids these keywords at the top level, so we stop after the root.
+ */
+function flattenTopLevelSchema(schema: Record<string, unknown>): Record<string, unknown> {
+  const unionKey = (["allOf", "anyOf", "oneOf"] as const).find((k) => Array.isArray(schema[k]));
+  if (!unionKey) return schema;
+
+  const { allOf: _a, anyOf: _b, oneOf: _c, ...rest } = schema;
+  const branches = (schema[unionKey] as unknown[])
+    .filter((b): b is Record<string, unknown> => typeof b === "object" && b !== null)
+    .map((b) => flattenTopLevelSchema(b));
+
+  const properties: Record<string, unknown> = { ...((rest.properties as Record<string, unknown>) ?? {}) };
+  const requiredPerBranch: string[][] = [];
+  for (const branch of branches) {
+    Object.assign(properties, (branch.properties as Record<string, unknown>) ?? {});
+    if (Array.isArray(branch.required)) requiredPerBranch.push(branch.required as string[]);
+  }
+
+  // `allOf` must satisfy every branch → a key required by any branch stays required.
+  // `anyOf`/`oneOf` satisfies just one → require only keys required by all branches.
+  const required =
+    unionKey === "allOf"
+      ? [...new Set(requiredPerBranch.flat())]
+      : requiredPerBranch.length > 0
+        ? requiredPerBranch.reduce((acc, set) => acc.filter((k) => set.includes(k)))
+        : [];
+
+  return {
+    ...rest,
+    type: "object",
+    properties,
+    ...(required.length > 0 ? { required } : {}),
+  };
+}
+
+export function convertTools(tools: ToolDefinition[]): Anthropic.MessageCreateParams["tools"] {
   return tools.flatMap((tool) => {
     if (tool.kind === "provider_builtin" && tool.capability === "web") {
       return [createAnthropicWebTool(tool)];
@@ -423,7 +465,7 @@ function convertTools(tools: ToolDefinition[]): Anthropic.MessageCreateParams["t
         description: t.description,
         input_schema: {
           type: "object" as const,
-          ...t.inputSchema,
+          ...flattenTopLevelSchema(t.inputSchema ?? {}),
         },
       },
     ];
