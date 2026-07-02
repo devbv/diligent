@@ -10,7 +10,11 @@ function clip(value: string, max = 80): string {
   return value.length > max ? `${value.slice(0, max - 1).trimEnd()}…` : value;
 }
 
-export function buildValidateLuaRender(filePath: string, output: string): ToolRenderPayload {
+export function buildValidateLuaRender(
+  filePath: string,
+  output: string,
+  options?: { issueCount?: number },
+): ToolRenderPayload {
   const lines = output
     .split("\n")
     .map((line) => line.trim())
@@ -35,8 +39,9 @@ export function buildValidateLuaRender(filePath: string, output: string): ToolRe
   }
 
   const statusItems = lines.filter((line) => line.startsWith("[OK]") || /^\[\d+ issue\(s\)\]/.test(line)).slice(0, 20);
-  const issueMatch = output.match(/---\s+\d+ file\(s\) checked,\s+(\d+) issue\(s\) found\s+---/);
-  const issueCount = issueMatch?.[1] ?? String(lines.length);
+  const issueMatch = output.match(/---\s+\d+ (?:file|script)\(s\) checked,\s+(\d+) issue\(s\) found\s+---/);
+  const resolvedIssueCount = options?.issueCount ?? (issueMatch ? Number(issueMatch[1]) : lines.length);
+  const issueCount = String(resolvedIssueCount);
   return {
     inputSummary: clip(filePath),
     outputSummary: `${issueCount} issue${issueCount === "1" ? "" : "s"}`,
