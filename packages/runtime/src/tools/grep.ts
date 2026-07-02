@@ -4,6 +4,7 @@ import type { Tool, ToolResult } from "@diligent/core/tool/types";
 import { z } from "zod";
 import { isAbsolute, stripExtendedLengthPrefix } from "../util/path";
 import { spawnCollect } from "../util/process";
+import { resolveRgBinary } from "../util/ripgrep";
 import { createGrepRenderPayload, createTextRenderPayload } from "./render-payload";
 
 const GrepParams = z.object({
@@ -39,7 +40,7 @@ export function createGrepTool(cwd: string): Tool<typeof GrepParams> {
         return { output, render: createTextRenderPayload(undefined, output, true), metadata: { error: true } };
       }
 
-      const rgBin = process.env.DILIGENT_RG_PATH ?? "rg";
+      const rgBin = resolveRgBinary();
       const rgArgs: string[] = [rgBin, "-n"];
 
       if (args.ignore_case) rgArgs.push("--ignore-case");

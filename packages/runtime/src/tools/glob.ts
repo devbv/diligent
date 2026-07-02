@@ -5,6 +5,7 @@ import type { Tool, ToolResult } from "@diligent/core/tool/types";
 import { z } from "zod";
 import { isAbsolute, stripExtendedLengthPrefix } from "../util/path";
 import { spawnCollect } from "../util/process";
+import { resolveRgBinary } from "../util/ripgrep";
 import { createGlobRenderPayload, createTextRenderPayload } from "./render-payload";
 
 const GlobParams = z.object({
@@ -49,7 +50,7 @@ export function createGlobTool(cwd: string): Tool<typeof GlobParams> {
       }
 
       try {
-        const rgBin = process.env.DILIGENT_RG_PATH ?? "rg";
+        const rgBin = resolveRgBinary();
         const command = [rgBin, "--files", "--no-ignore", "--hidden", "--glob", args.pattern, searchPath];
         const [stdout, , exitCode] = await spawnCollect(command, { signal: ctx.signal });
 

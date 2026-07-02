@@ -26,6 +26,7 @@ import { buildKnowledgeSection, readKnowledge } from "../knowledge/index";
 import { buildBaseSystemPrompt } from "../prompt/index";
 import type { SkillMetadata } from "../skills/index";
 import { discoverSkills, renderSkillsSection } from "../skills/index";
+import type { BundledToolProvider } from "../tools/bundled-provider";
 import { buildDefaultTools } from "../tools/defaults";
 import { buildSystemPromptWithKnowledge, discoverInstructions } from "./instructions";
 import { loadDiligentConfig } from "./loader";
@@ -54,7 +55,11 @@ export interface RuntimeConfig {
   authStore: AuthStoreOptions;
 }
 
-export async function loadRuntimeConfig(cwd: string, paths: DiligentPaths): Promise<RuntimeConfig> {
+export async function loadRuntimeConfig(
+  cwd: string,
+  paths: DiligentPaths,
+  options?: { bundledToolProviders?: BundledToolProvider[] },
+): Promise<RuntimeConfig> {
   const { config, sources } = await loadDiligentConfig(cwd);
   const resolvedUserId = await resolveConfiguredUserId(config.userId);
   const instructions = await discoverInstructions(cwd);
@@ -143,6 +148,10 @@ export async function loadRuntimeConfig(cwd: string, paths: DiligentPaths): Prom
       skills,
       enableCollabTools: false,
       mcpServers: config.mcpServers,
+      // Include product-owned bundled tools (e.g. OVERDARE studio RPC tools) so agent frontmatter
+      // referencing them validates against the real runtime tool set instead of only the generic
+      // built-ins — otherwise shipped agents like studio-explorer emit false "unknown tool" warnings.
+      bundledToolProviders: options?.bundledToolProviders,
     });
     const result = await discoverAgents({
       cwd,

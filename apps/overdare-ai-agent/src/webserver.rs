@@ -156,7 +156,9 @@ fn dist_dir_path(runtime_dir: &Path) -> PathBuf {
 
 fn rg_bin_path(runtime_dir: &Path) -> Option<PathBuf> {
     let bin_name = if cfg!(windows) { "rg.exe" } else { "rg" };
-    let path = runtime_dir.join(bin_name);
+    // Bundled next to the other runtime assets (matches luau-lsp at
+    // assets/bin/); the sidecar falls back to a PATH `rg` when this is absent.
+    let path = runtime_dir.join("assets").join("bin").join(bin_name);
     path.exists().then_some(path)
 }
 
@@ -338,7 +340,7 @@ pub async fn start_foreground(options: WebServerOptions) -> Result<RunningWebSer
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_args, resolve_installed_runtime_version};
+    use super::{parse_args, resolve_installed_runtime_version, rg_bin_path};
     use crate::env::{Env, EnvSelection};
     use crate::storage::storage_namespace;
     use crate::testutil::with_temp_home;
@@ -395,6 +397,23 @@ mod tests {
     fn packaged_webserver_uses_packaged_namespace() {
         assert_eq!(storage_namespace(Env::Prod), "overdare");
         assert_eq!(storage_namespace(Env::Dev), "overdare-dev");
+    }
+
+    #[test]
+    fn rg_bin_path_resolves_under_assets_bin() {
+        with_temp_home("webserver-rg-bin", |home| {
+            let runtime_dir = home.join("runtime");
+            let bin_name = if cfg!(windows) { "rg.exe" } else { "rg" };
+            let expected = runtime_dir.join("assets").join("bin").join(bin_name);
+
+            // Absent by default: fall back to a PATH `rg` (env stays unset).
+            assert_eq!(rg_bin_path(&runtime_dir), None);
+
+            fs::create_dir_all(expected.parent().unwrap()).expect("create assets/bin");
+            fs::write(&expected, b"#!/bin/sh\n").expect("write rg");
+
+            assert_eq!(rg_bin_path(&runtime_dir).as_deref(), Some(expected.as_path()));
+        });
     }
 
     #[test]
