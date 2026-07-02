@@ -142,6 +142,32 @@ export const parameters = z.object({
 
 type Params = z.infer<typeof parameters>;
 
+// Assets that skip the picker and auto-select the top-scored match, like the
+// pre-picker behavior. assetType and categoryId are orthogonal axes in the RAG
+// data (values verified against the live /api/chat/rag response), and AUDIO /
+// ANIMATION appear on BOTH axes, so each is checked on both to catch every case:
+//   - assetType=MODEL, categoryId=ANIMATION (e.g. BasicWalkAnimations)
+//   - assetType=ANIMATION, categoryId=GAMEPLAY (e.g. flip jump)
+//   - ACTION_SEQUENCE is an assetType that spans categories (EFFECTS, WEAPON, …).
+// Compared case-insensitively.
+const AUTO_SELECT_TYPES = new Set(["AUDIO", "ANIMATION", "ACTION_SEQUENCE"]);
+const AUTO_SELECT_CATEGORIES = new Set(["AUDIO", "ANIMATION", "EFFECTS", "UI_ELEMENTS"]);
+
+function shouldAutoSelect(asset: Partial<AssetResult>): boolean {
+  return (
+    AUTO_SELECT_TYPES.has((asset.assetType ?? "").trim().toUpperCase()) ||
+    AUTO_SELECT_CATEGORIES.has((asset.categoryId ?? "").trim().toUpperCase())
+  );
+}
+
+function autoSelectResult(raw: Partial<AssetResult>, resultCount: number): ToolResult {
+  const only = normalizeAssetForRender(raw);
+  return {
+    output: `Selected asset: ${only.title} (assetId: ${only.assetId})`,
+    metadata: { resultCount, assetId: only.assetId },
+  };
+}
+
 async function selectAsset(
   host: RuntimeToolHost | undefined,
   query: string,
@@ -240,11 +266,12 @@ export async function execute(args: Params, _ctx: ToolContext, host?: RuntimeToo
           return { output: "No results found.", metadata: { resultCount: 0 } };
         }
         if (rawAssets.length === 1) {
-          const only = normalizeAssetForRender(rawAssets[0]);
-          return {
-            output: `Selected asset: ${only.title} (assetId: ${only.assetId})`,
-            metadata: { resultCount: 1, assetId: only.assetId },
-          };
+          return autoSelectResult(rawAssets[0], 1);
+        }
+        // Audio/Animation/Effects/UI and Action-Sequence assets skip the picker
+        // and auto-select the top-scored match.
+        if (shouldAutoSelect(rawAssets[0])) {
+          return autoSelectResult(rawAssets[0], rawAssets.length);
         }
         const output = await selectAsset(host, args.query, rawAssets);
         return { output, metadata: { resultCount: rawAssets.length } };

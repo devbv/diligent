@@ -101,6 +101,36 @@ describe("overdaresearch selectable", () => {
     expect(result.output).toContain("333");
   });
 
+  test("auto-select types/categories: skip picker even with 2+ results", async () => {
+    // categoryId AUDIO/ANIMATION/EFFECTS/UI_ELEMENTS, or assetType ACTION_SEQUENCE.
+    // Note: animation assets often have assetType=MODEL, so categoryId is the reliable axis.
+    for (const override of [
+      { categoryId: "AUDIO" },
+      { assetType: "MODEL", categoryId: "ANIMATION" }, // animation labeled only on categoryId
+      { assetType: "ANIMATION", categoryId: "GAMEPLAY" }, // animation labeled only on assetType
+      { categoryId: "UI_Elements" },
+      { assetType: "ACTION_SEQUENCE", categoryId: "EFFECTS" },
+    ]) {
+      mockRagFetch([
+        { ...asset("aaa", "Top"), ...override },
+        { ...asset("bbb", "Second"), ...override },
+      ]);
+      let asked = false;
+      const tool = await searchTool({
+        approve: async () => "once",
+        ask: async () => {
+          asked = true;
+          return { answers: {} };
+        },
+      });
+
+      const result = await tool.execute({ query: "boom", source: "assets", topK: 8, selectable: true }, ctx);
+
+      expect(asked).toBe(false);
+      expect(result.output).toContain("aaa");
+    }
+  });
+
   test("no results: returns not-found without asking", async () => {
     mockRagFetch([]);
     let asked = false;
