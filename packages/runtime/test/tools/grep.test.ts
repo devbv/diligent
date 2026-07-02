@@ -116,6 +116,15 @@ describe("grep tool", () => {
     const result = await tool.execute({ pattern: "marker", path: "/" }, makeCtx());
     expect(result.render?.blocks[0]).toMatchObject({ type: "text", title: "Output" });
     expect(result.output).toContain("refusing to grep the filesystem root");
-    expect(result.metadata?.error).toBe(true);
+    expect(result.metadata).toMatchObject({
+      error: true,
+      status: {
+        kind: "invalid_scope",
+        code: "filesystem_root",
+        path: "/",
+        retryable: false,
+        actionable: true,
+      },
+    });
   });
 });

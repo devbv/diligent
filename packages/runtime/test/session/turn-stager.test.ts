@@ -44,6 +44,15 @@ describe("TurnStager", () => {
       output: "ok",
       isError: false,
       timestamp: Date.now(),
+      metadata: {
+        status: {
+          kind: "invalid_scope",
+          code: "filesystem_root",
+          path: "/",
+          retryable: false,
+          actionable: true,
+        },
+      },
     };
 
     stager.handleEvent(messageEnd, 20_000);
@@ -55,6 +64,9 @@ describe("TurnStager", () => {
     if (snapshot.entries[1]?.type === "message" && snapshot.entries[2]?.type === "message") {
       expect(snapshot.entries[1].message.role).toBe("assistant");
       expect(snapshot.entries[2].message.role).toBe("tool_result");
+      expect(snapshot.entries[2].message.metadata).toMatchObject({
+        status: { kind: "invalid_scope", code: "filesystem_root", path: "/" },
+      });
     }
   });
 

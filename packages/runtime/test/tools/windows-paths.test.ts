@@ -130,8 +130,35 @@ describe("glob - Windows path normalization", () => {
 
     const result = await tool.execute({ pattern: "**/*.ts", path: "relative/path" }, mockCtx);
 
-    expect(result.metadata?.error).toBe(true);
+    expect(result.metadata).toMatchObject({
+      error: true,
+      status: {
+        kind: "invalid_scope",
+        code: "relative_path",
+        path: "relative/path",
+        retryable: false,
+        actionable: true,
+      },
+    });
     expect(result.output).toContain("must be absolute");
+  });
+
+  it("rejects Windows filesystem root path with structured status", async () => {
+    const tool = createGlobTool(UNIX_CWD);
+
+    const result = await tool.execute({ pattern: "**/*.ts", path: "C:/" }, mockCtx);
+
+    expect(result.output).toContain("refusing to glob the filesystem root");
+    expect(result.metadata).toMatchObject({
+      error: true,
+      status: {
+        kind: "invalid_scope",
+        code: "filesystem_root",
+        path: "C:/",
+        retryable: false,
+        actionable: true,
+      },
+    });
   });
 });
 
@@ -201,6 +228,24 @@ describe("grep - Windows path normalization", () => {
     await tool.execute({ pattern: "foo", path: "\\\\?\\C:\\Users\\alice\\git\\diligent" }, mockCtx);
 
     expect(capturedSearchPath(spy)).toBe(WIN_CWD_FORWARD);
+  });
+
+  it("rejects Windows filesystem root path with structured status", async () => {
+    const tool = createGrepTool(UNIX_CWD);
+
+    const result = await tool.execute({ pattern: "foo", path: "C:/" }, mockCtx);
+
+    expect(result.output).toContain("refusing to grep the filesystem root");
+    expect(result.metadata).toMatchObject({
+      error: true,
+      status: {
+        kind: "invalid_scope",
+        code: "filesystem_root",
+        path: "C:/",
+        retryable: false,
+        actionable: true,
+      },
+    });
   });
 });
 

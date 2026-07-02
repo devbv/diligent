@@ -93,13 +93,20 @@ describe("glob tool", () => {
   });
 
   test("returns error for relative path", async () => {
-    if (!rgAvailable) return;
-
     const tool = createGlobTool(tmpDir);
     const result = await tool.execute({ pattern: "*.ts", path: "." }, makeCtx());
     expect(result.render?.blocks[0]).toMatchObject({ type: "text", title: "Output" });
     expect(result.output).toContain("path must be absolute");
-    expect(result.metadata?.error).toBe(true);
+    expect(result.metadata).toMatchObject({
+      error: true,
+      status: {
+        kind: "invalid_scope",
+        code: "relative_path",
+        path: ".",
+        retryable: false,
+        actionable: true,
+      },
+    });
   });
 
   test("returns error for absolute filesystem patterns", async () => {
@@ -108,7 +115,17 @@ describe("glob tool", () => {
 
     expect(result.output).toContain("pattern must be relative to the search path");
     expect(result.output).toContain("Use a relative pattern like");
-    expect(result.metadata?.error).toBe(true);
+    expect(result.metadata).toMatchObject({
+      error: true,
+      status: {
+        kind: "invalid_scope",
+        code: "absolute_pattern",
+        pattern: `${tmpDir}/src/**/*.ts`,
+        path: tmpDir,
+        retryable: false,
+        actionable: true,
+      },
+    });
   });
 
   test("returns error for Windows absolute filesystem patterns", async () => {
@@ -116,7 +133,17 @@ describe("glob tool", () => {
     const result = await tool.execute({ pattern: "C:/Users/alice/project/src/**/*.ts" }, makeCtx());
 
     expect(result.output).toContain("pattern must be relative to the search path");
-    expect(result.metadata?.error).toBe(true);
+    expect(result.metadata).toMatchObject({
+      error: true,
+      status: {
+        kind: "invalid_scope",
+        code: "absolute_pattern",
+        pattern: "C:/Users/alice/project/src/**/*.ts",
+        path: tmpDir,
+        retryable: false,
+        actionable: true,
+      },
+    });
   });
 
   test("allows root-anchored glob patterns", async () => {
@@ -133,11 +160,18 @@ describe("glob tool", () => {
   });
 
   test("returns error for filesystem root path", async () => {
-    if (!rgAvailable) return;
-
     const tool = createGlobTool(tmpDir);
     const result = await tool.execute({ pattern: "**/*shim*", path: "/" }, makeCtx());
     expect(result.output).toContain("refusing to glob the filesystem root");
-    expect(result.metadata?.error).toBe(true);
+    expect(result.metadata).toMatchObject({
+      error: true,
+      status: {
+        kind: "invalid_scope",
+        code: "filesystem_root",
+        path: "/",
+        retryable: false,
+        actionable: true,
+      },
+    });
   });
 });

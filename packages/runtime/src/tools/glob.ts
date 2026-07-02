@@ -6,6 +6,7 @@ import { z } from "zod";
 import { isAbsolute, stripExtendedLengthPrefix } from "../util/path";
 import { spawnCollect } from "../util/process";
 import { createGlobRenderPayload, createTextRenderPayload } from "./render-payload";
+import { createSearchScopeErrorResult } from "./search-status";
 
 const GlobParams = z.object({
   pattern: z.string().describe("Glob pattern to match files (e.g., '**/*.ts', 'src/**/*.test.ts')"),
@@ -32,12 +33,24 @@ export function createGlobTool(cwd: string): Tool<typeof GlobParams> {
         .replace(/\/{2,}/g, "/");
       if (!isAbsolute(searchPath)) {
         const output = `Error: path must be absolute: ${searchPath}`;
-        return { output, render: createTextRenderPayload(undefined, output, true), metadata: { error: true } };
+        return createSearchScopeErrorResult(output, {
+          kind: "invalid_scope",
+          code: "relative_path",
+          path: args.path ?? searchPath,
+          retryable: false,
+          actionable: true,
+        });
       }
 
       if (isFilesystemRoot(searchPath)) {
         const output = `Error: refusing to glob the filesystem root: ${searchPath}. Provide a narrower absolute directory.`;
-        return { output, render: createTextRenderPayload(undefined, output, true), metadata: { error: true } };
+        return createSearchScopeErrorResult(output, {
+          kind: "invalid_scope",
+          code: "filesystem_root",
+          path: searchPath,
+          retryable: false,
+          actionable: true,
+        });
       }
 
       if (isAbsoluteFilesystemPattern(args.pattern)) {
@@ -45,7 +58,15 @@ export function createGlobTool(cwd: string): Tool<typeof GlobParams> {
         const output =
           `Error: glob pattern must be relative to the search path, not an absolute filesystem path: ${args.pattern}\n` +
           `Use a relative pattern like "${relativeSuggestion}" or pass the absolute directory via the path parameter.`;
-        return { output, render: createTextRenderPayload(undefined, output, true), metadata: { error: true } };
+        return createSearchScopeErrorResult(output, {
+          kind: "invalid_scope",
+          code: "absolute_pattern",
+          pattern: args.pattern,
+          path: searchPath,
+          suggestion: relativeSuggestion,
+          retryable: false,
+          actionable: true,
+        });
       }
 
       try {

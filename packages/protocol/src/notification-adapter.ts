@@ -304,6 +304,7 @@ export class ProtocolNotificationAdapter {
           ...(item.outputImages ? { outputImages: item.outputImages } : {}),
           isError: item.isError ?? false,
           render: mergeToolRenderPayload(started?.render, item.render),
+          ...(item.metadata ? { metadata: item.metadata } : {}),
           ...(typeof item.timestamp === "number" ? { timestamp: item.timestamp } : {}),
           ...(typeof item.durationMs === "number" ? { durationMs: item.durationMs } : {}),
           ...(childThreadId ? { childThreadId, nickname } : {}),

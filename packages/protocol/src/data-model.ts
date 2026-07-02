@@ -54,6 +54,7 @@ export const ToolResultMessageSchema = z.object({
   isError: z.boolean(),
   timestamp: z.number().int(),
   render: ToolRenderPayloadSchema.optional(),
+  metadata: z.record(z.unknown()).optional(),
 });
 export type ToolResultMessage = z.infer<typeof ToolResultMessageSchema>;
 
@@ -180,6 +181,7 @@ export const AgentEventSchema = z.union([
     outputImages: z.array(ImageBlockSchema).optional(),
     isError: z.boolean(),
     render: ToolRenderPayloadSchema.optional(),
+    metadata: z.record(z.unknown()).optional(),
     timestamp: z.number().int().optional(),
     durationMs: z.number().int().nonnegative().optional(),
     childThreadId: z.string().optional(),
@@ -300,6 +302,7 @@ export const ThreadItemSchema = z.union([
     outputImages: z.array(ImageBlockSchema).optional(),
     isError: z.boolean().optional(),
     render: ToolRenderPayloadSchema.optional(),
+    metadata: z.record(z.unknown()).optional(),
   }),
   z.object({
     type: z.literal("compaction"),
