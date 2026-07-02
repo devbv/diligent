@@ -111,9 +111,13 @@ export function ProviderSettingsModal({
   }, [onOAuthCancel]);
 
   const isConnected = (p: ProviderAuthStatus) => p.configured || p.oauthConnected;
+  // Vertex needs project/location/endpoint config that this token-only UI can't express, so it's
+  // hidden here for now — configure it via provider.vertex in config.jsonc instead. (Config-file
+  // Vertex still works and its models still appear in the picker.)
+  const visibleProviders = providers.filter((provider) => provider.provider !== "vertex");
   const orderedProviders = [
-    ...providers.filter((provider) => provider.provider === "chatgpt"),
-    ...providers.filter((provider) => provider.provider !== "chatgpt"),
+    ...visibleProviders.filter((provider) => provider.provider === "chatgpt"),
+    ...visibleProviders.filter((provider) => provider.provider !== "chatgpt"),
   ];
 
   // Display combined error from local state or OAuth notification

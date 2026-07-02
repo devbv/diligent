@@ -28,6 +28,7 @@ export type InitializeParams = z.infer<typeof InitializeParamsSchema>;
 
 export const ModelInfoSchema = z.object({
   id: z.string(),
+  display: z.string().optional(),
   provider: z.string(),
   contextWindow: z.number().int().positive(),
   maxOutputTokens: z.number().int().positive(),

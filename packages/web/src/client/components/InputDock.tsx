@@ -159,7 +159,7 @@ function formatUsageTooltip(usage: UsageState): string {
 function modelOptions(models: ModelInfo[]): SelectOption[] {
   return models.map((model) => ({
     value: model.id,
-    label: model.id,
+    label: model.display ?? model.id,
     group: model.provider,
   }));
 }

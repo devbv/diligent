@@ -13,6 +13,7 @@ export interface ModelDefinition extends Model {
   aliases?: string[];
   modelClass?: ModelClass;
   accessLevel?: string; // OpenAI tier requirement: "standard" | "tier3+" | "enterprise"
+  display?: string; // Human-facing label for the picker; falls back to `id` when unset.
 }
 
 const GEMINI_THINKING_BUDGETS = { low: 2_048, medium: 8_192, high: 16_384, max: 24_576 } as const;
@@ -25,6 +26,7 @@ export const KNOWN_MODELS: ModelDefinition[] = [
   // Anthropic — opus/sonnet/fable use adaptive thinking (model decides budget within cap)
   {
     id: "claude-opus-4-8",
+    display: "Claude Opus 4.8",
     provider: "anthropic",
     contextWindow: 1_000_000,
     maxOutputTokens: 128_000,
@@ -42,6 +44,7 @@ export const KNOWN_MODELS: ModelDefinition[] = [
   },
   {
     id: "claude-fable-5",
+    display: "Claude Fable 5",
     provider: "anthropic",
     contextWindow: 1_000_000,
     maxOutputTokens: 128_000,
@@ -58,6 +61,7 @@ export const KNOWN_MODELS: ModelDefinition[] = [
   },
   {
     id: "claude-sonnet-5",
+    display: "Claude Sonnet 5",
     provider: "anthropic",
     contextWindow: 1_000_000,
     maxOutputTokens: 128_000,
@@ -75,9 +79,10 @@ export const KNOWN_MODELS: ModelDefinition[] = [
   },
   {
     id: DEFAULT_ANTHROPIC_MODEL_ID,
+    display: "Claude Sonnet 4.6",
     provider: "anthropic",
     contextWindow: 1_000_000,
-    maxOutputTokens: 64_000,
+    maxOutputTokens: 128_000,
     inputCostPer1M: 3.0,
     outputCostPer1M: 15.0,
     cacheReadCostPer1M: 0.3,
@@ -92,6 +97,7 @@ export const KNOWN_MODELS: ModelDefinition[] = [
   },
   {
     id: "claude-haiku-4-5-20251001",
+    display: "Claude Haiku 4.5",
     provider: "anthropic",
     contextWindow: 200_000,
     maxOutputTokens: 64_000,
@@ -109,11 +115,12 @@ export const KNOWN_MODELS: ModelDefinition[] = [
   // Gemini
   {
     id: "gemini-3.1-pro-preview",
+    display: "Gemini 3.1 Pro",
     provider: "gemini",
     contextWindow: 300_000,
     maxOutputTokens: 65_536,
-    inputCostPer1M: 1.25,
-    outputCostPer1M: 10.0,
+    inputCostPer1M: 2.0,
+    outputCostPer1M: 12.0,
     supportsThinking: true,
     supportedEfforts: THINKING_EFFORTS_WITH_NONE,
     supportsVision: true,
@@ -123,6 +130,7 @@ export const KNOWN_MODELS: ModelDefinition[] = [
   },
   {
     id: "gemini-3.5-flash",
+    display: "Gemini 3.5 Flash",
     provider: "gemini",
     contextWindow: 1_048_576,
     maxOutputTokens: 65_536,
@@ -137,6 +145,7 @@ export const KNOWN_MODELS: ModelDefinition[] = [
   },
   {
     id: "gemini-3.1-flash-lite",
+    display: "Gemini 3.1 Flash Lite",
     provider: "gemini",
     contextWindow: 1_048_576,
     maxOutputTokens: 65_536,
@@ -151,6 +160,7 @@ export const KNOWN_MODELS: ModelDefinition[] = [
   },
   {
     id: "vertex-gemma-4-26b-it",
+    display: "Gemma 4 26B (Vertex)",
     provider: "vertex",
     contextWindow: 256_000,
     maxOutputTokens: 8_192,
@@ -160,6 +170,7 @@ export const KNOWN_MODELS: ModelDefinition[] = [
   },
   {
     id: "glm-5.2",
+    display: "GLM 5.2",
     provider: "zai-coding-plan",
     contextWindow: 1_000_000,
     maxOutputTokens: 128_000,
@@ -171,6 +182,7 @@ export const KNOWN_MODELS: ModelDefinition[] = [
   },
   {
     id: "glm-5.1",
+    display: "GLM 5.1",
     provider: "zai-coding-plan",
     contextWindow: 200_000,
     maxOutputTokens: 128_000,
@@ -182,11 +194,12 @@ export const KNOWN_MODELS: ModelDefinition[] = [
   // OpenAI — reasoning models: effort mapped to OpenAI's low/medium/high
   {
     id: "gpt-5.5",
+    display: "GPT-5.5",
     provider: "openai",
     contextWindow: 1_000_000,
     maxOutputTokens: 128_000,
     inputCostPer1M: 5.0,
-    outputCostPer1M: 20.0,
+    outputCostPer1M: 30.0,
     cacheReadCostPer1M: 0.5,
     cacheWriteCostPer1M: 0,
     supportsThinking: true,
@@ -197,6 +210,7 @@ export const KNOWN_MODELS: ModelDefinition[] = [
   },
   {
     id: "gpt-5.4",
+    display: "GPT-5.4",
     provider: "openai",
     contextWindow: 1_000_000,
     maxOutputTokens: 128_000,
@@ -213,6 +227,7 @@ export const KNOWN_MODELS: ModelDefinition[] = [
   },
   {
     id: "gpt-5.4-mini",
+    display: "GPT-5.4 mini",
     provider: "openai",
     contextWindow: 400_000,
     maxOutputTokens: 128_000,
@@ -229,6 +244,7 @@ export const KNOWN_MODELS: ModelDefinition[] = [
   // in Diligent so provider identity stays separate from auth strategy.
   {
     id: "chatgpt-5.5",
+    display: "ChatGPT 5.5",
     provider: "chatgpt",
     contextWindow: 300_000,
     maxOutputTokens: 128_000,
@@ -240,6 +256,7 @@ export const KNOWN_MODELS: ModelDefinition[] = [
   },
   {
     id: "chatgpt-5.4",
+    display: "ChatGPT 5.4",
     provider: "chatgpt",
     contextWindow: 300_000,
     maxOutputTokens: 128_000,
@@ -253,6 +270,7 @@ export const KNOWN_MODELS: ModelDefinition[] = [
   },
   {
     id: "chatgpt-5.4-mini",
+    display: "ChatGPT 5.4 mini",
     provider: "chatgpt",
     contextWindow: 300_000,
     maxOutputTokens: 128_000,
@@ -319,6 +337,7 @@ export function getDefaultEffortForClass(modelClass: ModelClass): ThinkingEffort
 export function getModelInfoList(): ModelInfo[] {
   return KNOWN_MODELS.map((m) => ({
     id: m.id,
+    display: m.display,
     provider: m.provider,
     contextWindow: m.contextWindow,
     maxOutputTokens: m.maxOutputTokens,

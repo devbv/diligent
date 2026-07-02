@@ -872,7 +872,9 @@ test("empty state renders connect CTA when provider is not configured", () => {
   expect(html).toContain("Connect ChatGPT");
 });
 
-test("provider settings modal renders vertex guidance", () => {
+test("provider settings modal hides vertex from the connect list", () => {
+  // Vertex needs project/location/endpoint config the token-only UI can't express, so it is
+  // hidden here and configured via provider.vertex in config.jsonc instead.
   const html = renderToStaticMarkup(
     <ProviderSettingsModal
       providers={[{ provider: "vertex", configured: false }]}
@@ -885,9 +887,7 @@ test("provider settings modal renders vertex guidance", () => {
     />,
   );
 
-  expect(html).toContain("Vertex AI");
-  expect(html).toContain("Use a Google Cloud access token here, or configure ADC in runtime config.");
-  expect(html).toContain("Connect");
+  expect(html).not.toContain("Vertex AI");
 });
 
 test("empty state is hidden when provider is configured", () => {

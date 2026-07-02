@@ -19,6 +19,8 @@ export type ProviderName = ProtocolProviderName;
 
 export interface ModelInfo {
   id: string;
+  /** Human-facing label for the picker; falls back to `id` when unset. */
+  display?: string;
   provider: string;
   contextWindow: number;
   maxOutputTokens: number;
