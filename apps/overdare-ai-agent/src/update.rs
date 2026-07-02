@@ -942,8 +942,11 @@ pub fn run_with_progress(
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        for name in ["diligent-web-server", "rg"] {
-            let bin = staging.join(name);
+        for bin in [
+            staging.join("diligent-web-server"),
+            staging.join("rg"),
+            staging.join("assets").join("bin").join("rg"),
+        ] {
             if bin.exists() {
                 let _ = fs::set_permissions(&bin, fs::Permissions::from_mode(0o755));
             }

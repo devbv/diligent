@@ -101,9 +101,7 @@ function maybeStageRg(platform: PlatformConfig, stageDir: string): void {
   if (!platform.rgBinaryName) return;
   const source = resolve(ROOT, "thirdparty/rg", platform.rgBinaryName);
   if (!existsSync(source)) return;
-  const binDir = join(stageDir, "assets", "bin");
-  mkdirSync(binDir, { recursive: true });
-  const target = join(binDir, `rg${platform.ext}`);
+  const target = join(stageDir, `rg${platform.ext}`);
   cpSync(source, target);
 }
 

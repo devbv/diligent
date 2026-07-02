@@ -156,8 +156,15 @@ fn dist_dir_path(runtime_dir: &Path) -> PathBuf {
 
 fn rg_bin_path(runtime_dir: &Path) -> Option<PathBuf> {
     let bin_name = if cfg!(windows) { "rg.exe" } else { "rg" };
-    let path = runtime_dir.join(bin_name);
-    path.exists().then_some(path)
+    for path in [
+        runtime_dir.join(bin_name),
+        runtime_dir.join("assets").join("bin").join(bin_name),
+    ] {
+        if path.exists() {
+            return Some(path);
+        }
+    }
+    None
 }
 
 fn resolve_installed_runtime_version(runtime_dir: &Path) -> Option<String> {
@@ -395,6 +402,34 @@ mod tests {
     fn packaged_webserver_uses_packaged_namespace() {
         assert_eq!(storage_namespace(Env::Prod), "overdare");
         assert_eq!(storage_namespace(Env::Dev), "overdare-dev");
+    }
+
+    #[test]
+    fn rg_bin_path_prefers_runtime_root() {
+        with_temp_home("webserver-rg-root", |home| {
+            let runtime_dir = home.join("runtime");
+            fs::create_dir_all(runtime_dir.join("assets/bin")).expect("create assets/bin");
+            let bin_name = if cfg!(windows) { "rg.exe" } else { "rg" };
+            let root_rg = runtime_dir.join(bin_name);
+            fs::write(&root_rg, b"root").expect("write root rg");
+            fs::write(runtime_dir.join("assets/bin").join(bin_name), b"assets")
+                .expect("write assets rg");
+
+            assert_eq!(super::rg_bin_path(&runtime_dir), Some(root_rg));
+        });
+    }
+
+    #[test]
+    fn rg_bin_path_falls_back_to_legacy_assets_bin() {
+        with_temp_home("webserver-rg-assets", |home| {
+            let runtime_dir = home.join("runtime");
+            fs::create_dir_all(runtime_dir.join("assets/bin")).expect("create assets/bin");
+            let bin_name = if cfg!(windows) { "rg.exe" } else { "rg" };
+            let legacy_rg = runtime_dir.join("assets/bin").join(bin_name);
+            fs::write(&legacy_rg, b"assets").expect("write assets rg");
+
+            assert_eq!(super::rg_bin_path(&runtime_dir), Some(legacy_rg));
+        });
     }
 
     #[test]
