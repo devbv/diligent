@@ -1,6 +1,12 @@
 // @summary Protocol notification to AgentEvent adapter shared by protocol clients
 
-import type { AgentEvent, AssistantMessage, DiligentServerNotification, ToolRenderPayload } from "./index";
+import type {
+  AgentEvent,
+  AssistantMessage,
+  DiligentServerNotification,
+  ToolRenderPayload,
+  ToolResultStatus,
+} from "./index";
 import { DILIGENT_SERVER_NOTIFICATION_METHODS } from "./index";
 
 function createEmptyAssistantMessage(model = "unknown"): AssistantMessage {
@@ -30,7 +36,14 @@ export class ProtocolNotificationAdapter {
   private agentMessageByItemId = new Map<string, AssistantMessage>();
   private toolCallByItemId = new Map<
     string,
-    { toolCallId: string; toolName: string; input: unknown; render?: ToolRenderPayload }
+    {
+      toolCallId: string;
+      toolName: string;
+      input: unknown;
+      render?: ToolRenderPayload;
+      status?: ToolResultStatus;
+      metadata?: Record<string, unknown>;
+    }
   >();
 
   toAgentEvents(notification: DiligentServerNotification): AgentEvent[] {
@@ -304,6 +317,8 @@ export class ProtocolNotificationAdapter {
           ...(item.outputImages ? { outputImages: item.outputImages } : {}),
           isError: item.isError ?? false,
           render: mergeToolRenderPayload(started?.render, item.render),
+          ...((item.status ?? started?.status) ? { status: item.status ?? started?.status } : {}),
+          ...((item.metadata ?? started?.metadata) ? { metadata: item.metadata ?? started?.metadata } : {}),
           ...(typeof item.timestamp === "number" ? { timestamp: item.timestamp } : {}),
           ...(typeof item.durationMs === "number" ? { durationMs: item.durationMs } : {}),
           ...(childThreadId ? { childThreadId, nickname } : {}),

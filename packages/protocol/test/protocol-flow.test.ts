@@ -521,8 +521,11 @@ describe("protocol/flow", () => {
         outputSummary: "hello",
         blocks: [{ type: "text", title: "Output", text: "hello" }],
       },
+      status: { kind: "warning", code: "validation_issues", requiresReadback: true, details: { issueCount: 2 } },
+      metadata: { requestId: "req-1" },
     });
     expect(msg.success).toBe(true);
+    expect(msg.data?.status).toMatchObject({ code: "validation_issues", requiresReadback: true });
   });
 
   it("accepts mcp/list, mcp/login/start, and mcp/logout request + response payloads", () => {

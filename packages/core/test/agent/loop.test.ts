@@ -92,6 +92,19 @@ const echoTool: Tool = {
   },
 };
 
+const carrierTool: Tool = {
+  name: "carrier",
+  description: "Return structured carrier fields",
+  parameters: z.object({}),
+  async execute() {
+    return {
+      output: "carrier output",
+      status: { kind: "completed", label: "Done", severity: "info" as const },
+      metadata: { requestId: "req-1", count: 2 },
+    };
+  },
+};
+
 /** A read-only tool that supports parallel execution and records timing */
 function createParallelTool(name: string, delayMs = 50): Tool & { calls: number[] } {
   const calls: number[] = [];
@@ -200,6 +213,33 @@ describe("Agent loop", () => {
     expect(tools[0].description).toBe("Echo a message");
     expect(tools[0].inputSchema).toHaveProperty("properties");
     expect((tools[0].inputSchema as Record<string, unknown>).properties).toHaveProperty("message");
+  });
+
+  test("tool result status and metadata are preserved in events and conversation", async () => {
+    const toolCallMsg = makeAssistant([{ type: "tool_call", id: "tc_1", name: "carrier", input: {} }], "tool_use");
+    const responseMsg = makeAssistant([{ type: "text", text: "done" }]);
+    const streamFn = createMockStreamFunction([toolCallMsg, responseMsg]);
+
+    const agent = new Agent(TEST_MODEL, [{ label: "test", content: "test" }], [carrierTool], {
+      effort: "medium",
+      llmMsgStreamFn: streamFn,
+    });
+
+    const { events, result } = await runAgent(agent, { role: "user", content: "run carrier", timestamp: Date.now() });
+
+    const toolEnd = events.find((e) => e.type === "tool_end") as Extract<CoreAgentEvent, { type: "tool_end" }>;
+    expect(toolEnd.status).toEqual({ kind: "completed", label: "Done", severity: "info" });
+    expect(toolEnd.metadata).toEqual({ requestId: "req-1", count: 2 });
+
+    const toolResult = result.find((message) => message.role === "tool_result");
+    expect(toolResult).toMatchObject({
+      role: "tool_result",
+      status: { kind: "completed", label: "Done", severity: "info" },
+      metadata: { requestId: "req-1", count: 2 },
+    });
+
+    const providerToolResult = streamFn.contexts[1].messages.find((message) => message.role === "tool_result");
+    expect(providerToolResult).toMatchObject({ role: "tool_result", output: "carrier output" });
   });
 
   test("tool schemas: Zod types converted to valid JSON Schema in StreamContext", async () => {

@@ -32,11 +32,22 @@ export interface ToolRenderPayloadLike {
   blocks: unknown[];
 }
 
+export interface ToolResultStatus {
+  kind: string;
+  label?: string;
+  message?: string;
+  severity?: "info" | "warning" | "error";
+  details?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
 export interface ToolResult {
   output: string;
   /** Optional image content blocks returned alongside text. Provider support varies — Anthropic embeds them in tool_result content; other providers fall back to text-only. */
   outputImages?: ImageBlock[];
   render?: ToolRenderPayloadLike;
+  /** Structured status for clients/session logs; provider prompts continue to receive only `output`. */
+  status?: ToolResultStatus;
   abortRequested?: boolean; // When true, tool signals the agent loop to stop after this result
   metadata?: Record<string, unknown>;
   truncateDirection?: "head" | "tail" | "head_tail"; // D025: hint for auto-truncation. Default: "tail"

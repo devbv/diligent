@@ -363,6 +363,17 @@ export function createToolResultItem(lines: string[], summaryLine?: string): Too
   };
 }
 
+function attachToolResultCarrier(
+  item: ToolResultThreadItem,
+  event: Extract<AgentEvent, { type: "tool_end" }>,
+): ToolResultThreadItem {
+  return {
+    ...item,
+    resultStatus: event.status,
+    metadata: event.metadata,
+  };
+}
+
 export function buildThinkingItem(text: string, elapsedMs?: number): ThreadItem {
   const icon = `${t.success}⏺${t.reset}`;
   const header =
@@ -515,7 +526,7 @@ export function buildToolEndItem(options: {
       }
       const childThreadId = parseSpawnChildThreadId(event.output);
       const trimmedNickname = (parsed?.nickname as string | undefined)?.trim();
-      const item = createToolResultItem(lines);
+      const item = attachToolResultCarrier(createToolResultItem(lines), event);
       if (childThreadId && trimmedNickname) {
         nextNames[childThreadId] = trimmedNickname;
       }
@@ -535,19 +546,31 @@ export function buildToolEndItem(options: {
       if (parsed?.timed_out) {
         lines.push(`${t.warn}  Timed out${t.reset}`);
       }
-      return { item: createToolResultItem(lines), collabAgentNamesByThreadId: nextNames, planCallCount };
+      return {
+        item: attachToolResultCarrier(createToolResultItem(lines), event),
+        collabAgentNamesByThreadId: nextNames,
+        planCallCount,
+      };
     }
 
     if (toolName === "send_input") {
       const nickname = (parsed?.nickname as string | undefined) ?? "agent";
       lines.push(`${icon} Sent input → ${t.bold}${nickname}${t.reset}${elapsed}`);
-      return { item: createToolResultItem(lines), collabAgentNamesByThreadId: nextNames, planCallCount };
+      return {
+        item: attachToolResultCarrier(createToolResultItem(lines), event),
+        collabAgentNamesByThreadId: nextNames,
+        planCallCount,
+      };
     }
 
     if (toolName === "close_agent") {
       const nickname = (parsed?.nickname as string | undefined) ?? "agent";
       lines.push(`${icon} Closed ${t.bold}${nickname}${t.reset}${elapsed}`);
-      return { item: createToolResultItem(lines), collabAgentNamesByThreadId: nextNames, planCallCount };
+      return {
+        item: attachToolResultCarrier(createToolResultItem(lines), event),
+        collabAgentNamesByThreadId: nextNames,
+        planCallCount,
+      };
     }
   }
 
@@ -559,7 +582,7 @@ export function buildToolEndItem(options: {
       lines.push(...rendered.map((line) => `  ${line}`));
     }
     return {
-      item: createToolResultItem(lines, buildToolSummaryLine(renderPayload)),
+      item: attachToolResultCarrier(createToolResultItem(lines, buildToolSummaryLine(renderPayload)), event),
       collabAgentNamesByThreadId,
       planCallCount,
     };
@@ -574,7 +597,7 @@ export function buildToolEndItem(options: {
       lines.push(`${t.dim}  ${line}${t.reset}`);
     }
     return {
-      item: createToolResultItem(lines),
+      item: attachToolResultCarrier(createToolResultItem(lines), event),
       collabAgentNamesByThreadId,
       planCallCount,
     };

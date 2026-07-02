@@ -1,5 +1,6 @@
 // @summary Shared ThreadStore item primitives and view wrappers for TUI transcript rendering
 
+import type { ToolResultStatus } from "@diligent/protocol";
 import { t } from "../theme";
 
 export class UserMessageView {
@@ -34,6 +35,8 @@ export type ThreadItem =
         lines?: string[];
         error?: string;
       };
+      resultStatus?: ToolResultStatus;
+      metadata?: Record<string, unknown>;
     }
   | {
       kind: "thinking";

@@ -202,6 +202,30 @@ test("tool_end marks item as done with final output", () => {
   expect(item?.kind === "tool" ? item.isError : true).toBe(false);
 });
 
+test("tool_end preserves structured result status and metadata", () => {
+  const start = toolStartEvent({ itemId: "te-carrier", toolCallId: "tc-carrier" });
+  let state = reduceToolEvent(initialThreadState, start);
+
+  const end: ToolAgentEvent = {
+    type: "tool_end",
+    itemId: "te-carrier",
+    toolCallId: "tc-carrier",
+    toolName: "bash",
+    output: "done",
+    isError: false,
+    status: { kind: "warning", code: "validation_issues" },
+    metadata: { requestId: "req-1" },
+  };
+  state = reduceToolEvent(state, end);
+
+  const item = state.items.find((i) => i.kind === "tool");
+  expect(item?.kind === "tool" ? item.resultStatus : undefined).toEqual({
+    kind: "warning",
+    code: "validation_issues",
+  });
+  expect(item?.kind === "tool" ? item.metadata : undefined).toEqual({ requestId: "req-1" });
+});
+
 test("tool_end clears the itemSlot after completion", () => {
   const start = toolStartEvent({ itemId: "te-2", toolCallId: "tc-te-2" });
   let state = reduceToolEvent(initialThreadState, start);
@@ -391,5 +415,42 @@ test("tool_end with childThreadId marks child tool as done", () => {
     expect(collab.childTools[0].status).toBe("done");
     expect(collab.childTools[0].outputText).toBe("result");
     expect(collab.childTimeline?.[0]).toMatchObject({ kind: "tool", status: "done", outputText: "result" });
+  }
+});
+
+test("tool_end with childThreadId preserves structured carriers", () => {
+  let state = stateWithCollabSpawn("child-carrier");
+  const start: ToolAgentEvent = {
+    type: "tool_start",
+    itemId: "ci-carrier",
+    toolCallId: "ctc-carrier",
+    toolName: "bash",
+    input: {},
+    childThreadId: "child-carrier",
+  };
+  state = reduceToolEvent(state, start);
+
+  const end: ToolAgentEvent = {
+    type: "tool_end",
+    itemId: "ci-carrier",
+    toolCallId: "ctc-carrier",
+    toolName: "bash",
+    output: "result",
+    isError: false,
+    childThreadId: "child-carrier",
+    status: { kind: "warning", requiresReadback: true },
+    metadata: { requestId: "req-child" },
+  };
+  state = reduceToolEvent(state, end);
+
+  const collab = state.items[0];
+  if (collab.kind === "collab") {
+    expect(collab.childTools[0].resultStatus).toEqual({ kind: "warning", requiresReadback: true });
+    expect(collab.childTools[0].metadata).toEqual({ requestId: "req-child" });
+    expect(collab.childTimeline?.[0]).toMatchObject({
+      kind: "tool",
+      resultStatus: { kind: "warning", requiresReadback: true },
+      metadata: { requestId: "req-child" },
+    });
   }
 });

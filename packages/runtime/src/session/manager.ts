@@ -101,14 +101,20 @@ export class SessionManager {
 
     for (const id of toolCallIds) {
       const block = toolCalls.find((b) => (b as { id: string }).id === id);
-      this.appendMessageEntry({
-        role: "tool_result",
-        toolCallId: id,
-        toolName: (block as { name: string })?.name ?? "unknown",
-        output: "[Cancelled]",
-        isError: false,
-        timestamp: assistantMsg.timestamp,
-      });
+      this.appendEntries([
+        this.createMessageEntry(
+          {
+            role: "tool_result",
+            toolCallId: id,
+            toolName: (block as { name: string })?.name ?? "unknown",
+            output: "[Cancelled]",
+            isError: false,
+            timestamp: assistantMsg.timestamp,
+            status: { kind: "cancelled", label: "Cancelled", severity: "warning" },
+          },
+          this.state.getCommittedLeafId(),
+        ),
+      ]);
     }
   }
 
@@ -278,12 +284,6 @@ export class SessionManager {
     if (options?.persist) {
       this.appendAndPersist(entry);
     }
-  }
-
-  private appendMessageEntry(message: Message): SessionEntry {
-    const entry = this.createMessageEntry(message, this.state.getCommittedLeafId());
-    this.appendEntries([entry]);
-    return entry;
   }
 
   private createMessageEntry(message: Message, parentId: string | null): SessionEntry {

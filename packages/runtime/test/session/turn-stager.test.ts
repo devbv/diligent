@@ -43,6 +43,8 @@ describe("TurnStager", () => {
       input: {},
       output: "ok",
       isError: false,
+      status: { kind: "completed", label: "Done", severity: "info" },
+      metadata: { requestId: "req-1" },
       timestamp: Date.now(),
     };
 
@@ -55,6 +57,10 @@ describe("TurnStager", () => {
     if (snapshot.entries[1]?.type === "message" && snapshot.entries[2]?.type === "message") {
       expect(snapshot.entries[1].message.role).toBe("assistant");
       expect(snapshot.entries[2].message.role).toBe("tool_result");
+      expect(snapshot.entries[2].message).toMatchObject({
+        status: { kind: "completed", label: "Done", severity: "info" },
+        metadata: { requestId: "req-1" },
+      });
     }
   });
 

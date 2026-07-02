@@ -9,6 +9,7 @@ import type {
   Message,
   ToolRenderPayloadLike,
   ToolResultMessage,
+  ToolResultStatus,
   Usage,
 } from "../types";
 
@@ -76,6 +77,8 @@ export type CoreAgentEvent =
       outputImages?: ImageBlock[];
       isError: boolean;
       render?: ToolRenderPayloadLike;
+      status?: ToolResultStatus;
+      metadata?: Record<string, unknown>;
       childThreadId?: string;
       nickname?: string;
     }

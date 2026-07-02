@@ -12,6 +12,7 @@ import type {
   SessionSummary,
   ThreadStatus,
   ToolRenderPayload,
+  ToolResultStatus,
   UserInputRequest,
 } from "@diligent/protocol";
 import { applyAgentEvents, DILIGENT_SERVER_NOTIFICATION_METHODS } from "@diligent/protocol";
@@ -103,6 +104,8 @@ export type RenderItem =
       durationMs?: number;
       /** P040: optional structured render payload for richer presentation */
       render?: ToolRenderPayload;
+      resultStatus?: ToolResultStatus;
+      metadata?: Record<string, unknown>;
     }
   | {
       id: string;
@@ -125,6 +128,8 @@ export type RenderItem =
         isError: boolean;
         inputText: string;
         outputText: string;
+        resultStatus?: ToolResultStatus;
+        metadata?: Record<string, unknown>;
       }>;
       childMessages?: string[];
       childTimeline?: Array<
@@ -141,6 +146,8 @@ export type RenderItem =
             isError: boolean;
             inputText: string;
             outputText: string;
+            resultStatus?: ToolResultStatus;
+            metadata?: Record<string, unknown>;
           }
       >;
       timestamp: number;

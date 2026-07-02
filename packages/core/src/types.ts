@@ -27,6 +27,15 @@ export interface ToolStartRenderPayloadLike {
   blocks: unknown[];
 }
 
+export interface ToolResultStatus {
+  kind: string;
+  label?: string;
+  message?: string;
+  severity?: "info" | "warning" | "error";
+  details?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
 export interface ToolResultMessage {
   role: "tool_result";
   toolCallId: string;
@@ -36,6 +45,8 @@ export interface ToolResultMessage {
   isError: boolean;
   timestamp: number;
   render?: ToolRenderPayloadLike;
+  status?: ToolResultStatus;
+  metadata?: Record<string, unknown>;
 }
 
 export type Message = UserMessage | AssistantMessage | ToolResultMessage;

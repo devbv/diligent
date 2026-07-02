@@ -136,6 +136,7 @@ function fillAbortedExecutions(
       output: "[Aborted by user]",
       isError: false,
       timestamp: Date.now(),
+      status: { kind: "aborted", label: "Aborted", severity: "warning" },
     };
 
     stream.emit({
@@ -145,6 +146,7 @@ function fillAbortedExecutions(
       toolName: toolCall.name,
       output: toolResult.output,
       isError: false,
+      status: toolResult.status,
     });
 
     executions.push({ toolCall, toolResult });
@@ -169,6 +171,8 @@ function toToolCallExecution(
     isError: !!result.metadata?.error,
     timestamp: Date.now(),
     render: result.render,
+    status: result.status,
+    metadata: result.metadata,
   };
 
   stream.emit({
@@ -180,6 +184,8 @@ function toToolCallExecution(
     outputImages: result.outputImages,
     isError: toolResult.isError,
     render: result.render,
+    status: result.status,
+    metadata: result.metadata,
   });
 
   return { toolCall, toolResult };

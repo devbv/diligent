@@ -38,6 +38,23 @@ describe("convertMessages image detail", () => {
     expect(firstImageDetail(items)).toBe("high");
   });
 
+  test("does not expose tool_result status or metadata as provider-facing output", async () => {
+    const items = await convertMessages([
+      {
+        role: "tool_result",
+        toolCallId: "tc_1",
+        toolName: "validate",
+        output: "visible output",
+        isError: false,
+        timestamp: 1,
+        status: { kind: "warning", code: "validation_issues", requiresReadback: true },
+        metadata: { issueCount: 2 },
+      },
+    ]);
+
+    expect(items).toEqual([{ type: "function_call_output", call_id: "tc_1", output: "visible output" }]);
+  });
+
   test("buildResponsesRequestBody threads imageDetail into the request body", async () => {
     const body = await buildResponsesRequestBody({
       model: "gpt-5.5",

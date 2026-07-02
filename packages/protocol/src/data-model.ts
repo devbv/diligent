@@ -45,6 +45,17 @@ export const AssistantMessageSchema = z.object({
 });
 export type AssistantMessage = z.infer<typeof AssistantMessageSchema>;
 
+export const ToolResultStatusSchema = z
+  .object({
+    kind: z.string(),
+    label: z.string().optional(),
+    message: z.string().optional(),
+    severity: z.enum(["info", "warning", "error"]).optional(),
+    details: z.record(z.unknown()).optional(),
+  })
+  .passthrough();
+export type ToolResultStatus = z.infer<typeof ToolResultStatusSchema>;
+
 export const ToolResultMessageSchema = z.object({
   role: z.literal("tool_result"),
   toolCallId: z.string(),
@@ -54,6 +65,8 @@ export const ToolResultMessageSchema = z.object({
   isError: z.boolean(),
   timestamp: z.number().int(),
   render: ToolRenderPayloadSchema.optional(),
+  status: ToolResultStatusSchema.optional(),
+  metadata: z.record(z.unknown()).optional(),
 });
 export type ToolResultMessage = z.infer<typeof ToolResultMessageSchema>;
 
@@ -180,6 +193,8 @@ export const AgentEventSchema = z.union([
     outputImages: z.array(ImageBlockSchema).optional(),
     isError: z.boolean(),
     render: ToolRenderPayloadSchema.optional(),
+    status: ToolResultStatusSchema.optional(),
+    metadata: z.record(z.unknown()).optional(),
     timestamp: z.number().int().optional(),
     durationMs: z.number().int().nonnegative().optional(),
     childThreadId: z.string().optional(),
@@ -300,6 +315,8 @@ export const ThreadItemSchema = z.union([
     outputImages: z.array(ImageBlockSchema).optional(),
     isError: z.boolean().optional(),
     render: ToolRenderPayloadSchema.optional(),
+    status: ToolResultStatusSchema.optional(),
+    metadata: z.record(z.unknown()).optional(),
   }),
   z.object({
     type: z.literal("compaction"),
