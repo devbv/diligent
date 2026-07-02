@@ -48,6 +48,7 @@ import {
   type ConnectedPeer,
   dispatchClientRequest,
   type ModelConfig,
+  type RuntimeSettingsConfig,
   type ToolConfigManager,
 } from "./request-dispatcher";
 import {
@@ -60,7 +61,7 @@ import { getLatestEffortFromSessions, getLatestModelFromSessions } from "./sessi
 import { resetTurnRuntimeState, type ThreadRuntime } from "./thread-handlers";
 
 export type { ConsentConfigManager } from "./config-handlers";
-export type { ConnectedPeer, ModelConfig, ToolConfigManager } from "./request-dispatcher";
+export type { ConnectedPeer, ModelConfig, RuntimeSettingsConfig, ToolConfigManager } from "./request-dispatcher";
 
 export interface CreateAgentArgs {
   cwd: string;
@@ -95,6 +96,8 @@ export interface DiligentAppServerConfig {
   toolConfig?: ToolConfigManager;
   /** AI-data consent management — required for CONSENT_SET (OVDR-11475 §3.A) */
   consentConfig?: ConsentConfigManager;
+  /** Runtime settings management — required for config/set runtime toggles */
+  runtimeSettingsConfig?: RuntimeSettingsConfig;
   /** Provider manager — required for AUTH_* methods */
   providerManager?: ProviderManager;
   /** Open a URL in the browser — defaults to the built-in openBrowser from @diligent/core */
@@ -742,6 +745,7 @@ export class DiligentAppServer {
       turnInitiators: this.turnInitiators,
       toolConfig: this.config.toolConfig,
       consentConfig: this.config.consentConfig,
+      runtimeSettingsConfig: this.config.runtimeSettingsConfig,
       reloadConfig: this.config.reloadConfig,
       subscribeToThread: (connectionId, threadId) => this.subscribeToThread(connectionId, threadId),
       unsubscribeFromThread: (subscriptionId) => this.unsubscribeFromThread(subscriptionId),

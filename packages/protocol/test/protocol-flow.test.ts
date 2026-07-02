@@ -91,6 +91,23 @@ describe("protocol/flow", () => {
         effort: "medium",
         currentModel: TEST_MODEL_ID,
         availableModels: [],
+        autoProgressMode: true,
+      }).success,
+    ).toBe(true);
+  });
+
+  it("accepts auto progress mode config updates", () => {
+    expect(
+      DiligentClientRequestSchema.safeParse({
+        method: DILIGENT_CLIENT_REQUEST_METHODS.CONFIG_SET,
+        params: { autoProgressMode: true },
+      }).success,
+    ).toBe(true);
+
+    expect(
+      DiligentClientResponseSchema.safeParse({
+        method: DILIGENT_CLIENT_REQUEST_METHODS.CONFIG_SET,
+        result: { autoProgressMode: true },
       }).success,
     ).toBe(true);
   });

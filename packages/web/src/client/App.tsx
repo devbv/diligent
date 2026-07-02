@@ -67,6 +67,8 @@ export function App() {
     oauthError,
     attentionThreadIds,
     runtimeVersion,
+    autoProgressMode,
+    updateAutoProgressMode,
     consent,
     updateConsent,
     desktopNotificationsEnabled,
@@ -289,8 +291,10 @@ export function App() {
               runtimeVersion={runtimeVersion}
               providers={providerMgr.providers}
               desktopNotificationsEnabled={desktopNotificationsEnabled}
+              autoProgressMode={autoProgressMode}
               consent={consent}
               onConsentChange={updateConsent}
+              onAutoProgressModeChange={updateAutoProgressMode}
               onList={listTools}
               onSave={saveTools}
               onDesktopNotificationsEnabledChange={setDesktopNotificationsEnabled}

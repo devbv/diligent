@@ -33,6 +33,51 @@ describe("createRequestUserInputTool", () => {
     expect(result.output).toBe("User input not available in this context.");
   });
 
+  it("auto-resolves to the first option when auto progress mode disables ask", async () => {
+    const tool = createRequestUserInputTool({ autoProgressMode: true });
+    const result = await tool.execute(
+      {
+        questions: [
+          {
+            id: "asset",
+            header: "Asset",
+            question: "Pick one",
+            options: [
+              { label: "Castle", description: "First result", value: "asset-1" },
+              { label: "Tower", description: "Second result", value: "asset-2" },
+            ],
+          },
+        ],
+      },
+      makeCtx(),
+    );
+
+    expect(result.output).toBe("[Asset] Pick one\nAnswer: asset-1");
+  });
+
+  it("auto-resolves multi-select prompts with the first option", async () => {
+    const tool = createRequestUserInputTool({ autoProgressMode: true });
+    const result = await tool.execute(
+      {
+        questions: [
+          {
+            id: "features",
+            header: "Features",
+            question: "Pick features",
+            allow_multiple: true,
+            options: [
+              { label: "Movement", description: "Add movement" },
+              { label: "Combat", description: "Add combat" },
+            ],
+          },
+        ],
+      },
+      makeCtx(),
+    );
+
+    expect(result.output).toBe("[Features] Pick features\nAnswer: Movement");
+  });
+
   it("formats single question answer with header prefix", async () => {
     const tool = createRequestUserInputTool(asyncHost(async () => ({ answers: { q1: "Yes" } })));
     const result = await tool.execute(

@@ -10,6 +10,7 @@ import {
   getGlobalConfigPath,
   getProjectConfigPath,
   normalizeStoredToolsConfig,
+  saveGlobalAutoProgressMode,
   saveGlobalConsent,
   writeGlobalToolsConfig,
   writeProjectToolsConfig,
@@ -311,6 +312,31 @@ describe("saveGlobalConsent", () => {
       expect(text).toContain(`"model": "${DEFAULT_ANTHROPIC_MODEL_ID}"`);
       expect(text).toContain('"consent"');
       expect(text).toContain('"serviceImprovement": false');
+    } finally {
+      if (originalHome !== undefined) process.env.HOME = originalHome;
+      else delete process.env.HOME;
+    }
+  });
+});
+
+describe("saveGlobalAutoProgressMode", () => {
+  it("writes the account-scoped auto progress toggle to ~/.diligent/config.jsonc and preserves existing keys/comments", async () => {
+    const cwd = await makeTempProject();
+    const originalHome = process.env.HOME;
+    process.env.HOME = cwd;
+
+    try {
+      const configPath = getGlobalConfigPath();
+      await Bun.write(configPath, `{\n  // keep me\n  "model": "${DEFAULT_ANTHROPIC_MODEL_ID}"\n}\n`);
+
+      await saveGlobalAutoProgressMode(true, "test-account");
+
+      const text = await Bun.file(configPath).text();
+      expect(text).toContain("// keep me");
+      expect(text).toContain(`"model": "${DEFAULT_ANTHROPIC_MODEL_ID}"`);
+      expect(text).toContain('"accounts"');
+      expect(text).toContain('"test-account"');
+      expect(text).toContain('"autoProgressMode": true');
     } finally {
       if (originalHome !== undefined) process.env.HOME = originalHome;
       else delete process.env.HOME;

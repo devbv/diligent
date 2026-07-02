@@ -23,6 +23,25 @@ describe("DiligentConfigSchema — tools section", () => {
     expect(() => DiligentConfigSchema.parse({ terminalBell: "yes" })).toThrow();
   });
 
+  it("accepts autoProgressMode boolean", () => {
+    expect(DiligentConfigSchema.parse({ autoProgressMode: true }).autoProgressMode).toBe(true);
+    expect(DiligentConfigSchema.parse({ autoProgressMode: false }).autoProgressMode).toBe(false);
+  });
+
+  it("accepts account-scoped autoProgressMode settings", () => {
+    const result = DiligentConfigSchema.parse({
+      accounts: {
+        "account-1": { autoProgressMode: true },
+      },
+    });
+
+    expect(result.accounts?.["account-1"]?.autoProgressMode).toBe(true);
+  });
+
+  it("rejects non-boolean autoProgressMode", () => {
+    expect(() => DiligentConfigSchema.parse({ autoProgressMode: "yes" })).toThrow();
+  });
+
   it("accepts a valid tools section with all fields", () => {
     const result = DiligentConfigSchema.parse({
       tools: {

@@ -213,6 +213,7 @@ export function useAppBootstrap({
   setSkills,
   setRuntimeVersion,
   setConsent,
+  setAutoProgressMode,
   setInitialModel,
   applySessionModel,
   refreshThreadList,
@@ -227,6 +228,7 @@ export function useAppBootstrap({
   setSkills: Dispatch<SetStateAction<SkillInfo[]>>;
   setRuntimeVersion: Dispatch<SetStateAction<string>>;
   setConsent: (consent: ConsentState | null) => void;
+  setAutoProgressMode: Dispatch<SetStateAction<boolean>>;
   setInitialModel: (modelId: string, models?: InitializeResponse["availableModels"]) => void;
   applySessionModel: (sessionModel?: string) => Promise<void>;
   refreshThreadList: (rpc?: WebRpcClient | null) => Promise<void>;
@@ -271,6 +273,7 @@ export function useAppBootstrap({
         setSkills(meta.skills ?? []);
         setRuntimeVersion(meta.serverVersion ?? "");
         setConsent(meta.consent ?? null);
+        setAutoProgressMode(meta.autoProgressMode ?? false);
         setInitialModel(meta.currentModel ?? "", meta.availableModels ?? []);
         rpc.notify(DILIGENT_CLIENT_NOTIFICATION_METHODS.INITIALIZED, { ready: true });
 
@@ -316,6 +319,7 @@ export function useAppBootstrap({
     setSkills,
     setRuntimeVersion,
     setConsent,
+    setAutoProgressMode,
     setInitialModel,
     applySessionModel,
     refreshThreadList,

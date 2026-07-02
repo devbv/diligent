@@ -1,5 +1,6 @@
 // @summary Composition hook: assembles consent, notification, modal, and thread state sub-hooks
 import type { SkillInfo, ThinkingEffort, ThreadReadResponse } from "@diligent/protocol";
+import { DILIGENT_CLIENT_REQUEST_METHODS } from "@diligent/protocol";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { AgentContextItem } from "./agent-native-bridge";
 import { APP_PROJECT_NAME } from "./app-config";
@@ -56,12 +57,23 @@ export function useAppState({
   const [effort, setEffortState] = useState<ThinkingEffort>("medium");
   const [skills, setSkills] = useState<SkillInfo[]>([]);
   const [runtimeVersion, setRuntimeVersion] = useState<string>("");
+  const [autoProgressMode, setAutoProgressMode] = useState(false);
   const childThreadCacheRef = useRef<Map<string, ThreadReadResponse>>(new Map());
   const threadData = useThreadData({ rpcRef, state, childThreadCacheRef });
 
   const consentState = useConsentState({ rpcRef });
   const modalState = useModalState({ providerMgr });
   const notificationState = useNotificationState();
+
+  const updateAutoProgressMode = useCallback(
+    async (enabled: boolean) => {
+      const rpc = rpcRef.current;
+      if (!rpc) return;
+      const next = await rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.CONFIG_SET, { autoProgressMode: enabled });
+      setAutoProgressMode(next.autoProgressMode ?? enabled);
+    },
+    [rpcRef],
+  );
 
   const slashCommands = useMemo(() => buildCommandList(skills), [skills]);
 
@@ -224,6 +236,7 @@ export function useAppState({
     setSkills,
     setRuntimeVersion,
     setConsent: consentState.setConsent,
+    setAutoProgressMode,
     setInitialModel: providerMgr.setInitialModel,
     applySessionModel: providerMgr.applySessionModel,
     refreshThreadList: threadMgr.refreshThreadList,
@@ -314,6 +327,9 @@ export function useAppState({
     setSkills,
     runtimeVersion,
     setRuntimeVersion,
+    autoProgressMode,
+    setAutoProgressMode,
+    updateAutoProgressMode,
     ...consentState,
     desktopNotificationsEnabled: notificationState.desktopNotificationsEnabled,
     setDesktopNotificationsEnabled: notificationState.setDesktopNotificationsEnabled,

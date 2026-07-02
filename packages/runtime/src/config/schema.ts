@@ -197,6 +197,12 @@ export const DiligentConfigSchema = z
     // User identifier included in hook inputs (falls back to OS username if unset)
     userId: z.string().optional(),
 
+    // Account-scoped settings keyed by the resolved connected account/user id.
+    accounts: z.record(z.object({ autoProgressMode: z.boolean().optional() })).optional(),
+
+    // Legacy/global fallback for auto progress mode. New writes use accounts.<userId>.autoProgressMode.
+    autoProgressMode: z.boolean().optional(),
+
     // YOLO mode — auto-approve all permission prompts without asking
     yolo: z.boolean().optional(),
 

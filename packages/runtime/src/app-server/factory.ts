@@ -7,13 +7,36 @@ import { RuntimeAgent } from "../agent/runtime-agent";
 import { openBrowser as defaultOpenBrowser } from "../auth";
 import { applyConsentPatch, refreshPrivacyPolicyUrl, resolveConsentState } from "../config/consent";
 import { loadRuntimeConfig, type RuntimeConfig } from "../config/runtime";
-import { getGlobalConfigPath, saveGlobalConsent, saveGlobalModel } from "../config/writer";
+import { getGlobalConfigPath, saveGlobalAutoProgressMode, saveGlobalConsent, saveGlobalModel } from "../config/writer";
 import { type DiligentPaths, ensureDiligentDir } from "../infrastructure";
 import type { BundledToolProvider } from "../tools/bundled-provider";
 import { buildDefaultTools } from "../tools/defaults";
 import { buildMcpNeedsAuthNote, getMcpManager } from "../tools/mcp";
 import type { ConfigReloadResult, ConsentConfigManager } from "./config-handlers";
 import type { CreateAgentArgs, DiligentAppServerConfig } from "./server";
+
+function resolveAutoProgressMode(config: RuntimeConfig["diligent"]): boolean {
+  const userId = config.userId?.trim();
+  return (userId ? config.accounts?.[userId]?.autoProgressMode : undefined) ?? config.autoProgressMode ?? false;
+}
+
+function updateAutoProgressMode(config: RuntimeConfig["diligent"], enabled: boolean): RuntimeConfig["diligent"] {
+  const userId = config.userId?.trim();
+  if (!userId) {
+    return { ...config, autoProgressMode: enabled };
+  }
+
+  return {
+    ...config,
+    accounts: {
+      ...config.accounts,
+      [userId]: {
+        ...config.accounts?.[userId],
+        autoProgressMode: enabled,
+      },
+    },
+  };
+}
 
 function withSkillGuardrail(runtimeConfig: RuntimeConfig) {
   const hasSkillSection = runtimeConfig.systemPrompt.some((section) => section.label === "skills");
@@ -29,6 +52,26 @@ function withSkillGuardrail(runtimeConfig: RuntimeConfig) {
         "Skills must be loaded through the skill tool.",
         "Do not use read to open SKILL.md directly.",
         "When the user mentions a skill by name or requests a skill-like workflow, call skill first.",
+      ].join("\n"),
+    },
+  ];
+}
+
+function withAutoProgressMode(systemPrompt: RuntimeConfig["systemPrompt"], enabled: boolean) {
+  if (!enabled) {
+    return systemPrompt;
+  }
+
+  return [
+    ...systemPrompt,
+    {
+      tag: "runtime_setting",
+      label: "auto_progress_mode",
+      content: [
+        "Auto progress mode is enabled.",
+        "Do not ask the user for confirmation, clarification, or choices during the task.",
+        "Do not call request_user_input. Make the best reasonable assumption, continue, and present the completed result.",
+        "Normal permission and safety boundaries still apply.",
       ].join("\n"),
     },
   ];
@@ -69,9 +112,11 @@ async function createRuntimeAgent(args: {
 }): Promise<RuntimeAgent> {
   const { request, runtimeConfig, getPaths, bundledToolProviders } = args;
   const { cwd, mode, effort, modelId, approve, ask, getSessionId, existingAgent, onChildStop, userId } = request;
-  const guardedSystemPrompt = withSkillGuardrail(runtimeConfig);
+  const autoProgressMode = resolveAutoProgressMode(runtimeConfig.diligent);
+  const guardedSystemPrompt = withAutoProgressMode(withSkillGuardrail(runtimeConfig), autoProgressMode);
   const paths = await getPaths();
   const model = resolveModel(modelId);
+  const askForRuntime = autoProgressMode ? undefined : ask;
   const toolsResult = await buildDefaultTools({
     cwd,
     paths,
@@ -81,7 +126,7 @@ async function createRuntimeAgent(args: {
       agentDefinitions: runtimeConfig.agentDefinitions,
       getParentSessionId: getSessionId,
       approve,
-      ask,
+      ask: askForRuntime,
       streamFn: runtimeConfig.streamFunction,
       onChildStop,
       userId,
@@ -90,10 +135,11 @@ async function createRuntimeAgent(args: {
     skills: runtimeConfig.skills,
     enableCollabTools: true,
     existingRegistry: existingAgent?.registry,
-    host: { approve, ask },
+    host: { approve, ask: askForRuntime, autoProgressMode },
     bundledToolProviders,
     provider: model.provider as ProviderName,
     mcpServers: runtimeConfig.diligent.mcpServers,
+    autoProgressMode,
     mcpToolLoading: runtimeConfig.diligent.mcp?.toolLoading ?? "auto",
     mcpLazyThreshold: runtimeConfig.diligent.mcp?.lazyThreshold,
     mcpMaxOutputTokens: runtimeConfig.diligent.mcp?.maxOutputTokens,
@@ -203,6 +249,7 @@ export function createAppServerConfig(opts: CreateAppServerConfigOptions): Dilig
         currentModel: runtimeConfig.model?.id,
         availableModels: modelsForConfiguredProviders(),
         consent: consentConfig.get(),
+        autoProgressMode: resolveAutoProgressMode(runtimeConfig.diligent),
       };
     },
     resolvePaths: (requestCwd) => ensureDiligentDir(requestCwd),
@@ -237,6 +284,15 @@ export function createAppServerConfig(opts: CreateAppServerConfigOptions): Dilig
       },
     },
     consentConfig,
+    runtimeSettingsConfig: {
+      getAutoProgressMode: () => resolveAutoProgressMode(runtimeConfig.diligent),
+      setAutoProgressMode: (enabled) => {
+        runtimeConfig.diligent = updateAutoProgressMode(runtimeConfig.diligent, enabled);
+        saveGlobalAutoProgressMode(enabled, runtimeConfig.diligent.userId).catch((err) => {
+          console.warn("[config] Failed to persist auto progress mode:", err);
+        });
+      },
+    },
     providerManager: runtimeConfig.providerManager,
     authStore: runtimeConfig.authStore,
     permissionEngine: runtimeConfig.permissionEngine,

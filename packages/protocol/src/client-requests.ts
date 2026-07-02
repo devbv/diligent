@@ -70,6 +70,7 @@ export const InitializeResponseSchema = z.object({
   availableModels: z.array(ModelInfoSchema).optional(),
   skills: z.array(SkillInfoSchema).optional(),
   consent: ConsentStateSchema.optional(),
+  autoProgressMode: z.boolean().optional(),
 });
 export type InitializeResponse = z.infer<typeof InitializeResponseSchema>;
 
@@ -385,11 +386,13 @@ export type ToolsSetResponse = z.infer<typeof ToolsSetResponseSchema>;
 export const ConfigSetParamsSchema = z.object({
   threadId: z.string().optional(),
   model: z.string().optional(),
+  autoProgressMode: z.boolean().optional(),
 });
 export type ConfigSetParams = z.infer<typeof ConfigSetParamsSchema>;
 
 export const ConfigSetResponseSchema = z.object({
   model: z.string().optional(),
+  autoProgressMode: z.boolean().optional(),
 });
 export type ConfigSetResponse = z.infer<typeof ConfigSetResponseSchema>;
 

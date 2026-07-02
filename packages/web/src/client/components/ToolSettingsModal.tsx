@@ -52,8 +52,10 @@ interface ToolSettingsModalProps {
   initialState?: ToolsListResponse;
   providers?: ProviderAuthStatus[];
   desktopNotificationsEnabled?: boolean;
+  autoProgressMode?: boolean;
   consent?: ConsentState | null;
   onConsentChange?: (patch: ConsentSetParams) => void | Promise<void>;
+  onAutoProgressModeChange?: (enabled: boolean) => void | Promise<void>;
   onList: (threadId?: string) => Promise<ToolsListResponse>;
   onSave: (params: ToolsSetParams) => Promise<ToolsSetResponse>;
   onDesktopNotificationsEnabledChange?: (enabled: boolean) => void;
@@ -154,14 +156,95 @@ function pluginSummary(plugin: ToolsListResponse["plugins"][number]): string {
   return `${plugin.toolCount} tool${plugin.toolCount === 1 ? "" : "s"}`;
 }
 
+function SettingIcon({ kind }: { kind: "auto" | "bell" }) {
+  if (kind === "bell") {
+    return (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+        <path
+          d="M4.5 7.1c0-2.2 1.4-3.8 3.5-3.8s3.5 1.6 3.5 3.8v2.1l1.1 1.8H3.4l1.1-1.8V7.1Z"
+          stroke="currentColor"
+          strokeWidth="1.4"
+          strokeLinejoin="round"
+        />
+        <path d="M6.5 12.2c.3.7.8 1 1.5 1s1.2-.3 1.5-1" stroke="currentColor" strokeWidth="1.4" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M4 3.5v9l7-4.5-7-4.5Z" fill="currentColor" />
+      <path d="M12.5 3.2v9.6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function ToggleSwitch({
+  checked,
+  onChange,
+  ariaLabel,
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void | Promise<void>;
+  ariaLabel: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={ariaLabel}
+      onClick={() => void onChange(!checked)}
+      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition ${
+        checked ? "border-accent/70 bg-accent" : "border-border-strong/80 bg-fill-secondary hover:bg-fill-ghost-hover"
+      } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg`}
+    >
+      <span
+        className={`inline-block h-5 w-5 rounded-full bg-white shadow transition ${
+          checked ? "translate-x-5" : "translate-x-0.5"
+        }`}
+      />
+    </button>
+  );
+}
+
+function SettingsToggleRow({
+  icon,
+  label,
+  description,
+  checked,
+  onChange,
+}: {
+  icon: "auto" | "bell";
+  label: string;
+  description: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void | Promise<void>;
+}) {
+  return (
+    <div className={`${controlRowClasses} items-center`}>
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border/80 bg-fill-secondary text-muted">
+        <SettingIcon kind={icon} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-medium text-text">{label}</div>
+        <p className="mt-0.5 text-xs text-muted">{description}</p>
+      </div>
+      <ToggleSwitch checked={checked} onChange={onChange} ariaLabel={label} />
+    </div>
+  );
+}
+
 export function ToolSettingsModal({
   threadId,
   runtimeVersion,
   initialState,
   providers,
   desktopNotificationsEnabled,
+  autoProgressMode,
   consent,
   onConsentChange,
+  onAutoProgressModeChange,
   onList,
   onSave,
   onDesktopNotificationsEnabledChange,
@@ -401,28 +484,32 @@ export function ToolSettingsModal({
                 </section>
               ) : null}
 
-              {typeof desktopNotificationsEnabled === "boolean" && onDesktopNotificationsEnabledChange ? (
+              {typeof autoProgressMode === "boolean" || typeof desktopNotificationsEnabled === "boolean" ? (
                 <section className={sectionStackClasses}>
                   <div>
-                    <h3 className="text-sm font-semibold text-text">Desktop notifications</h3>
-                    <p className="text-xs text-muted">
-                      Show native OS notifications for background turn completion and pending approval/input requests.
-                    </p>
+                    <h3 className="text-sm font-semibold text-text">Preferences</h3>
+                    <p className="text-xs text-muted">Manage local app behavior while the agent works.</p>
                   </div>
-                  <label className={controlRowClasses}>
-                    <input
-                      type="checkbox"
-                      checked={desktopNotificationsEnabled}
-                      onChange={(event) => onDesktopNotificationsEnabledChange(event.target.checked)}
-                      className="mt-0.5"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm font-medium text-text">Enable desktop notifications</div>
-                      <p className="mt-0.5 text-xs text-muted">
-                        Only notifies while the desktop app is not foregrounded.
-                      </p>
-                    </div>
-                  </label>
+                  <div className={itemStackClasses}>
+                    {typeof autoProgressMode === "boolean" && onAutoProgressModeChange ? (
+                      <SettingsToggleRow
+                        icon="auto"
+                        label="Auto progress mode"
+                        description="Skips confirmation steps and shows only the finished result."
+                        checked={autoProgressMode}
+                        onChange={onAutoProgressModeChange}
+                      />
+                    ) : null}
+                    {typeof desktopNotificationsEnabled === "boolean" && onDesktopNotificationsEnabledChange ? (
+                      <SettingsToggleRow
+                        icon="bell"
+                        label="Enable desktop notifications"
+                        description="Only notifies while the desktop app is not foregrounded."
+                        checked={desktopNotificationsEnabled}
+                        onChange={onDesktopNotificationsEnabledChange}
+                      />
+                    ) : null}
+                  </div>
                 </section>
               ) : null}
 

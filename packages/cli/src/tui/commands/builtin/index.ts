@@ -1,5 +1,6 @@
 import type { SkillMetadata } from "@diligent/runtime";
 import type { CommandRegistry } from "../registry";
+import { autoProgressCommand } from "./auto-progress";
 import { compactCommand } from "./compact";
 import { effortCommand } from "./effort";
 import { helpCommand } from "./help";
@@ -18,6 +19,7 @@ export function registerBuiltinCommands(registry: CommandRegistry, skills: Skill
   registry.register(modelCommand);
   registry.register(providerCommand);
   registry.register(toolsCommand);
+  registry.register(autoProgressCommand);
   registry.register(mcpCommand);
   registry.register(newCommand);
   registry.register(resumeCommand);

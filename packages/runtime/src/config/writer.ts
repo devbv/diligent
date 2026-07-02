@@ -88,6 +88,32 @@ export async function saveGlobalModel(modelId: string): Promise<void> {
 }
 
 /**
+ * Persist the auto progress mode toggle to the global config file (~/.diligent/config.jsonc).
+ * When a userId is available, the value is account-scoped under accounts.<userId>.
+ * Preserves existing comments and formatting via jsonc-parser.
+ */
+export async function saveGlobalAutoProgressMode(enabled: boolean, userId?: string): Promise<void> {
+  const configPath = getGlobalConfigPath();
+  await mkdir(dirname(configPath), { recursive: true });
+
+  let content = "{}\n";
+  const file = Bun.file(configPath);
+  if (await file.exists()) {
+    content = await file.text();
+  }
+
+  const path = userId?.trim() ? ["accounts", userId.trim(), "autoProgressMode"] : ["autoProgressMode"];
+  const edits = modify(content, path, enabled, { formattingOptions: JSONC_FORMAT_OPTIONS });
+  const updated = applyEdits(content, edits);
+  if (content.trim() === "{}" || content.trim() === "") {
+    const formatEdits = format(updated, undefined, JSONC_FORMAT_OPTIONS);
+    await Bun.write(configPath, applyEdits(updated, formatEdits));
+  } else {
+    await Bun.write(configPath, updated);
+  }
+}
+
+/**
  * Persist the AI-data consent subtree to the global config file (~/.diligent/config.jsonc).
  * Writes the whole resolved `consent` object so toggles/acknowledgement stay in one place.
  * Preserves existing comments and formatting via jsonc-parser.

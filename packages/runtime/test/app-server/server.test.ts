@@ -142,6 +142,7 @@ function makeFactoryRuntimeConfig(overrides?: {
   tools?: Record<string, unknown>;
   effort?: "none" | "low" | "medium" | "high" | "max";
   modelId?: string;
+  autoProgressMode?: boolean;
 }) {
   const providerManager = new ProviderManager({});
   providerManager.setApiKey("anthropic", "test-key");
@@ -191,7 +192,9 @@ function makeFactoryRuntimeConfig(overrides?: {
       return stream as never;
     },
     diligent: {
+      userId: "account-1",
       ...(overrides?.tools ? { tools: overrides.tools as never } : {}),
+      ...(overrides?.autoProgressMode !== undefined ? { autoProgressMode: overrides.autoProgressMode } : {}),
     },
     sources: [],
     skills: [],
@@ -705,6 +708,42 @@ describe("DiligentAppServer", () => {
       params: { threadId: newThreadId },
     });
     expect((readResult(newThreadRead) as { currentModel?: string }).currentModel).toBe("gpt-5.4");
+  });
+
+  it("updates auto progress mode through config/set and surfaces it on initialize", async () => {
+    const projectRoot = await mkdtemp(join(process.env.TMPDIR ?? "/tmp", "diligent-app-server-"));
+    const runtimeConfig = makeFactoryRuntimeConfig();
+    const server = new DiligentAppServer(
+      createAppServerConfig({
+        cwd: projectRoot,
+        runtimeConfig,
+      }),
+    );
+
+    connectTestPeer(server);
+
+    const initial = await server.handleRequest(TEST_CONNECTION_ID, {
+      id: 620,
+      method: "initialize",
+      params: { clientName: "test", clientVersion: "0.0.0", protocolVersion: 1 },
+    });
+    expect((readResult(initial) as { autoProgressMode?: boolean }).autoProgressMode).toBe(false);
+
+    const updated = await server.handleRequest(TEST_CONNECTION_ID, {
+      id: 621,
+      method: "config/set",
+      params: { autoProgressMode: true },
+    });
+    expect(readResult(updated)).toMatchObject({ autoProgressMode: true });
+
+    const refreshed = await server.handleRequest(TEST_CONNECTION_ID, {
+      id: 622,
+      method: "initialize",
+      params: { clientName: "test", clientVersion: "0.0.0", protocolVersion: 1 },
+    });
+    expect((readResult(refreshed) as { autoProgressMode?: boolean }).autoProgressMode).toBe(true);
+
+    await rm(projectRoot, { recursive: true, force: true });
   });
 
   it("config/reload re-discovers skills and forces the next turn to rebuild its agent", async () => {

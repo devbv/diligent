@@ -439,6 +439,10 @@ test("tool settings modal renders tool and plugin rows", () => {
           },
         ],
       }}
+      autoProgressMode={true}
+      desktopNotificationsEnabled={false}
+      onAutoProgressModeChange={() => {}}
+      onDesktopNotificationsEnabledChange={() => {}}
       consent={{
         noticeAcknowledged: true,
         serviceImprovement: true,
@@ -465,6 +469,12 @@ test("tool settings modal renders tool and plugin rows", () => {
   expect(html).toContain("min-w-28 shrink-0 whitespace-nowrap");
   expect(html).toContain("focus-visible:ring-inset focus-visible:ring-offset-0");
   expect(html).toContain("jira_comment");
+  expect(html).toContain("Preferences");
+  expect(html).toContain("Auto progress mode");
+  expect(html).toContain("Skips confirmation steps and shows only the finished result.");
+  expect(html).toContain("Enable desktop notifications");
+  expect(html).toContain('role="switch"');
+  expect(html).toContain('aria-checked="true"');
   expect(html).toContain("AI Agent Data Use");
   expect(html).toContain("Improve service with your chats");
   expect(html).toContain("This data is not used to train AI models.");

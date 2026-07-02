@@ -18,6 +18,7 @@ import {
 } from "../auth/index";
 import { resolveProjectDirName } from "../infrastructure/diligent-dir";
 import {
+  type ConfigSetResponse,
   type ConsentSetParams,
   type ConsentState,
   DILIGENT_SERVER_NOTIFICATION_METHODS,
@@ -26,6 +27,7 @@ import {
   type ProviderName,
   type SupportedImageMediaType,
 } from "../protocol/index";
+import type { RuntimeSettingsConfig } from "./request-dispatcher";
 import type { ThreadRuntime } from "./thread-handlers";
 
 type EmitFn = (notification: DiligentServerNotification) => Promise<void>;
@@ -62,15 +64,28 @@ export async function handleConfigSet(
   currentModelId: string | undefined,
   model: string | undefined,
   threadId?: string,
-): Promise<{ model: string | undefined }> {
-  if (!model) return { model: currentModelId };
+  runtimeSettingsConfig?: RuntimeSettingsConfig,
+  autoProgressMode?: boolean,
+): Promise<ConfigSetResponse> {
+  if (autoProgressMode !== undefined) {
+    if (!runtimeSettingsConfig)
+      throw Object.assign(new Error("Runtime settings config not available"), { code: -32601 });
+    runtimeSettingsConfig.setAutoProgressMode(autoProgressMode);
+  }
+
+  if (!model) {
+    return {
+      model: currentModelId,
+      autoProgressMode: runtimeSettingsConfig?.getAutoProgressMode(),
+    };
+  }
   if (!modelConfig) throw Object.assign(new Error("Model config not available"), { code: -32601 });
 
   const valid = modelConfig.getAvailableModels().find((entry) => entry.id === model);
   if (!valid) throw Object.assign(new Error(`Unknown model: ${model}`), { code: -32602 });
 
   modelConfig.onModelChange(model, threadId);
-  return { model };
+  return { model, autoProgressMode: runtimeSettingsConfig?.getAutoProgressMode() };
 }
 
 export interface ConfigReloadResult {

@@ -64,6 +64,14 @@ describe("buildDefaultTools web gating", () => {
     expect(result.toolState.find((entry) => entry.name === "web_action")).toBeUndefined();
   });
 
+  test("omits request_user_input from agent tools in auto progress mode", async () => {
+    const result = await buildDefaultTools({ cwd: "/tmp", autoProgressMode: true });
+    const names = result.tools.map((tool) => tool.name);
+
+    expect(names).not.toContain("request_user_input");
+    expect(result.toolState.find((entry) => entry.name === "request_user_input")).toBeUndefined();
+  });
+
   test("includes bundled provider tools in the default tool catalog", async () => {
     const provider: BundledToolProvider = {
       id: "@product/default-tools",

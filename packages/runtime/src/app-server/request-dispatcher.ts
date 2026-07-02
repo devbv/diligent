@@ -77,6 +77,11 @@ export interface ToolConfigManager {
   setTools: (tools: DiligentConfig["tools"] | undefined) => void;
 }
 
+export interface RuntimeSettingsConfig {
+  getAutoProgressMode: () => boolean;
+  setAutoProgressMode: (enabled: boolean) => void;
+}
+
 /**
  * All dependencies that dispatchClientRequest() needs to route a request.
  * Built by DiligentAppServer.buildRequestDispatchContext() and passed to the
@@ -97,6 +102,7 @@ export interface ClientRequestDispatchContext {
   turnInitiators: Map<string, string>;
   toolConfig: ToolConfigManager | undefined;
   consentConfig: ConsentConfigManager | undefined;
+  runtimeSettingsConfig: RuntimeSettingsConfig | undefined;
   reloadConfig: (() => Promise<ConfigReloadResult>) | undefined;
 
   // Subscription management
@@ -308,7 +314,14 @@ export async function dispatchClientRequest(
     case DILIGENT_CLIENT_REQUEST_METHODS.CONFIG_SET: {
       const connectionThreadId = ctx.getConnection(connectionId)?.currentThreadId ?? undefined;
       const targetThreadId = request.params.threadId ?? connectionThreadId;
-      const result = await handleConfigSet(ctx.modelConfig, ctx.currentModelId, request.params.model, targetThreadId);
+      const result = await handleConfigSet(
+        ctx.modelConfig,
+        ctx.currentModelId,
+        request.params.model,
+        targetThreadId,
+        ctx.runtimeSettingsConfig,
+        request.params.autoProgressMode,
+      );
       if (targetThreadId && result.model) {
         const runtime = await ctx.resolveThreadRuntime(targetThreadId);
         if (runtime.modelId !== result.model) {

@@ -94,6 +94,15 @@ function startParentWatchdog(parentPid?: number): (() => void) | null {
   };
 }
 
+function resolveAutoProgressMode(config: {
+  userId?: string;
+  accounts?: Record<string, { autoProgressMode?: boolean }>;
+  autoProgressMode?: boolean;
+}): boolean {
+  const userId = config.userId?.trim();
+  return (userId ? config.accounts?.[userId]?.autoProgressMode : undefined) ?? config.autoProgressMode ?? false;
+}
+
 export async function createWebServer(options: CreateServerOptions = {}): Promise<{
   server: Bun.Server<WsData>;
   stop: () => void;
@@ -144,6 +153,7 @@ export async function createWebServer(options: CreateServerOptions = {}): Promis
           consent: options.consentBackend
             ? options.consentBackend.get()
             : resolveConsentState(runtimeConfig.diligent.consent),
+          autoProgressMode: resolveAutoProgressMode(runtimeConfig.diligent),
         };
       },
     },
