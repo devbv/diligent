@@ -65,9 +65,10 @@ export async function handleConfigSet(
   model: string | undefined,
   threadId?: string,
   runtimeSettingsConfig?: RuntimeSettingsConfig,
-  autoProgressMode?: boolean,
+  shouldSetAutoProgressMode = false,
+  autoProgressMode = true,
 ): Promise<ConfigSetResponse> {
-  if (autoProgressMode !== undefined) {
+  if (shouldSetAutoProgressMode) {
     if (!runtimeSettingsConfig)
       throw Object.assign(new Error("Runtime settings config not available"), { code: -32601 });
     runtimeSettingsConfig.setAutoProgressMode(autoProgressMode);

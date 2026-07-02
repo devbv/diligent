@@ -314,13 +314,16 @@ export async function dispatchClientRequest(
     case DILIGENT_CLIENT_REQUEST_METHODS.CONFIG_SET: {
       const connectionThreadId = ctx.getConnection(connectionId)?.currentThreadId ?? undefined;
       const targetThreadId = request.params.threadId ?? connectionThreadId;
+      const shouldSetAutoProgressMode = "autoProgressMode" in request.params;
+      const autoProgressMode = request.params.autoProgressMode !== false;
       const result = await handleConfigSet(
         ctx.modelConfig,
         ctx.currentModelId,
         request.params.model,
         targetThreadId,
         ctx.runtimeSettingsConfig,
-        request.params.autoProgressMode,
+        shouldSetAutoProgressMode,
+        autoProgressMode,
       );
       if (targetThreadId && result.model) {
         const runtime = await ctx.resolveThreadRuntime(targetThreadId);

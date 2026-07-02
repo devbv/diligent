@@ -659,6 +659,13 @@ describe("DiligentAppServer", () => {
       params: { threadId: threadA, model: "gpt-5.4" },
     });
 
+    const settingsAfterModelChange = await server.handleRequest(TEST_CONNECTION_ID, {
+      id: 609,
+      method: "config/set",
+      params: {},
+    });
+    expect((readResult(settingsAfterModelChange) as { autoProgressMode?: boolean }).autoProgressMode).toBe(false);
+
     const readA = await server.handleRequest(TEST_CONNECTION_ID, {
       id: 603,
       method: "thread/read",
