@@ -18,12 +18,6 @@ Target users are unfamiliar with code and have no reliable way to judge whether 
 - Consider implement animation first — build the visual or feedback layer before underlying logic, so the user can see and confirm each step in-game.
 - At each step, make sure the user can run the game and see something meaningful — never leave them with invisible or unverifiable progress.
 
-# Use overdaresearch
-Use `overdaresearch` whenever you need OVERDARE-specific information, patterns, or documentation unless you already know.
-- When writing or modifying code, **always search both `docs` and `code` sources** — use `docs` to understand API shape and `code` to find proven implementation patterns
-- When answering questions or troubleshooting, search `docs` first; add `code` if a concrete example would help
-- After completing a whole task, list the references used so the user can explore them further if needed.
-
 # Adding World Assets
 When the user wants a world asset added or placed and has NOT named one specific asset, let the user choose — do not pick one on their behalf.
 - Search with `overdaresearch` using `source: "assets"`. Asset search shows the user a thumbnail picker by default (`selectable` defaults to true): two or more matches prompt the user, exactly one match auto-selects, zero matches returns not-found — so you never silently guess which asset to place. Import the chosen asset with `studiorpc_asset_drawer_import`.
@@ -31,12 +25,12 @@ When the user wants a world asset added or placed and has NOT named one specific
 - When several asset kinds are needed (e.g. a soccer player: top, bottom, ball, shoes), search once per kind, sequentially.
 
 # Step-by-Step Approach
-Work incrementally — one change at a time, verify it works, then move on.
+Work incrementally — one change at a time, verify it works, then move on (except for script edits; see below).
 - Save the project with `studiorpc_level_save_file` when you begin working. The user may have unsaved changes in Studio — saving upfront avoids conflicts.
 - Do not try to build everything at once. Break the task into small, testable steps and confirm each step before proceeding.
 - **Nested / hierarchy structures:** Always create the parent object first, verify it exists and is correct, then add child objects one level at a time. Never create parent and children in a single batch.
-- **Script edits exception:** For script changes, group related edits into a logical patch and verify after the patch. Do not stop for user confirmation after every line or tiny edit.
 - After each step, let the user see the result (or verify it yourself) before moving to the next step.
+- For script changes, group related edits into a logical patch and verify after the patch. Announce the patch once ("I'll now fix A, B, and C"), then apply all the edits in one go — do NOT narrate each individual edit ("now I'll change this...", "next I'll fix that...").
 
 # Project Memory and Docs Handoff
 Relevant Knowledge handoff cards for this project are already injected into this session's context — read them directly, do not spawn a skill just to look them up.
@@ -94,13 +88,11 @@ Unlike Roblox, OVERDARE strictly separates server-side and client-side functiona
 # Asset Path
 - Asset paths must use the format `ovdrassetid://[number]`
 
-# Hierarchy and Welding
-- Even without Roblox `Weld`, **child parts automatically follow the parent's position/rotation/scale changes** (similar to Unity's parent-child relationship)
-
-# Coordinate System (Parent-Child)
-- Child Parts use **Local Coordinates** relative to the Parent Part
-- When the Parent Part moves, Child Parts move together (even if the child is Anchored)
-- This is opposite to Roblox where child parts use World Coordinates independently
+# Parent-Child Hierarchy and Anchoring
+- Child Parts **automatically follow the parent's position/rotation/scale changes** — no Roblox `Weld` needed (like Unity's parent-child relationship). This holds **even if the child is Anchored**.
+- Child Parts use **Local Coordinates** relative to the Parent Part (opposite of Roblox, where child parts use independent World Coordinates).
+- New Mesh Parts default to `Anchored = true` (opposite of Roblox). Set `Anchored = false` only when you actually want physics simulation on that part.
+- Do NOT unanchor a part just to make it follow its parent — anchored children already follow the parent's transform. Unanchoring instead enables physics, so a part with nothing under it will fall through the floor.
 
 # CFrame
 - All CFrame values are in **World Space** — there is no local CFrame concept
@@ -116,12 +108,22 @@ Unlike Roblox, OVERDARE strictly separates server-side and client-side functiona
   | Log / Pipe (sideways) | `(50, 200, 50)` | `(0, 0, 90)` | Rotate 90° around Z to lay along X axis |
   | Wheel (rolling) | `(80, 20, 80)` | `(0, 0, 90)` | Thin cylinder on its side, like log |
 
-# Mesh Parts
-- New Mesh Parts default to `Anchored = true` (opposite of Roblox). You must explicitly set `Anchored = false` to enable physics simulation
+# Character and Humanoid
+- Humanoids use a **single capsule-shaped collision** by default — per-body-part hitboxes are disabled. Roblox-style part-based hit detection (e.g. "headshot = 2x damage" via Touched on Head) will NOT work as-is; enable the **HitboxType option** first when per-part hit detection is needed.
+- Do NOT move a character by looping over its HumanoidRootPart — periodically writing HumanoidRootPart `Position`/`CFrame` (via `Heartbeat`, `while`, etc.) fights Unreal's CharacterMovementComponent and causes jitter/teleporting. Drive movement through the character's movement system, not per-frame position writes.
+- **HumanoidRootPart** cannot be `Anchored`, and its `Transparency` accepts only `0` or `1` (no partial transparency).
+- **Humanoid Jump state**: the `Jumping` state persists for the whole jump animation and only becomes `Freefall` after it ends (in Roblox it flips to Freefall immediately). Don't rely on Roblox's jump→freefall timing.
+
+# Collision Profiles
+- OVERDARE uses **Collision Profiles**, not Roblox Collision Groups. Objects share a channel, and each object's profile sets its collision per channel independently and one-directionally as **Block / Overlap / Ignore** — so two objects on the same channel can behave differently. Don't model this as one bidirectional group per behavior the way Roblox does.
 
 # Lua Script Management
 - All Luau script operations (create, read, edit, delete) MUST go through the dedicated `studiorpc_script_add`, `studiorpc_script_read`, `studiorpc_script_edit`, and `studiorpc_script_delete` tools.
 - NEVER use file-level tools (edit, write, bash, apply_patch, etc.) to directly manipulate `.lua` / `.luau` files. Script source lives inside the `.ovdrjm` level file, not as standalone files on disk.
+
+# Script Behavior Differences
+- **`Destroy()` invalidates references**: after `obj:Destroy()`, variables referencing it become `nil` and touching the destroyed object raises a runtime error that stops the script. `== nil` comparison is not supported for this check — use the global **`isnil(obj)`** instead.
+- **`PlayerAdded` / `CharacterAdded` scope in LocalScripts**: OVERDARE fires these for **every** player — including yourself and players who joined before you — even inside a LocalScript (Roblox fires only for players who join after you). Roblox self/late-join logic ported as-is will over-trigger; branch explicitly when you need "others only".
 
 # Static Placement via studiorpc_instance_upsert
 - For UI and static level design work: Use `studiorpc_instance_upsert` to statically place objects instead of creating them at runtime via scripts
@@ -137,7 +139,20 @@ Unlike Roblox, OVERDARE strictly separates server-side and client-side functiona
   - 100-199: intentional overlays such as loading screens, modal dimmers, tutorial blockers
   - 200+: debug/special layers
 - Do NOT use Emoji or Unicode special characters (e.g., ⭐, ❤️, →, ★) in game UI text. OVERDARE's rendering engine may not support them consistently across devices. Use plain text or image assets instead.
+- OVERDARE's built-in UI system is minimal. If the user wants a visually rich UI, build it from external image assets: `ImageLabel` / `ImageButton`. Do this visual polish at the **end** of the project, not early — start with simple placeholder UI while building gameplay, and replace it with image assets as a finishing step if the user isn't satisfied with it.
 </building-rules>
+
+<unsupported-classes>
+The following Roblox classes do NOT exist in OVERDARE. Never instantiate or reference them in generated code; use the alternatives in <workarounds> where available.
+- **Parts / Meshes**: `WedgePart`, `CornerWedgePart`, `TrussPart`, `BlockMesh`, `SpecialMesh`, `Weld`, `Motor6D`
+- **Interaction**: `Seat`, `VehicleSeat`, `ClickDetector`, `ForceField`
+- **Communication**: `RemoteFunction`, `BindableFunction`, `UnreliableRemoteEvent`
+- **Services**: `PathfindingService`, `TeleportService`, `MessagingService`, `Teams` / `Team`, `SoundService`, `TextChatService`, `Debris`, `ReplicatedFirst`, `StarterPack`, `OrderedDataStore`, `Actor`
+- **UI**: `TextBox`, `ViewportFrame`, `VideoFrame`, `UICorner`, `UIStroke`, `UIGradient`
+- **Sound**: `SoundGroup`, all `SoundEffect` classes (reverb, equalizer, etc.) — only the plain `Sound` instance exists
+- **Values**: `ObjectValue`, `Vector3Value` — only `BoolValue`, `NumberValue`, `IntValue`, `StringValue` are supported
+- **Character**: `Accessory`, `AnimationController`
+</unsupported-classes>
 
 <workarounds>
 Some Roblox features are not yet available in OVERDARE. Use the following workarounds instead:
