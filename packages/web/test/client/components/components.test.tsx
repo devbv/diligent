@@ -782,6 +782,7 @@ test("app header exposes sidebar toggle state and target", () => {
     <AppHeader
       sidebarOpen={true}
       onToggleSidebar={() => {}}
+      onNewThread={() => {}}
       threadStatus="idle"
       isCompacting={false}
       threadTitle="Thread"
@@ -793,6 +794,38 @@ test("app header exposes sidebar toggle state and target", () => {
   expect(html).toContain('aria-label="Close sidebar"');
   expect(html).toContain('aria-controls="app-sidebar"');
   expect(html).toContain('aria-expanded="true"');
+});
+
+test("app header shows new conversation action only when sidebar is closed", () => {
+  const closedHtml = renderToStaticMarkup(
+    <AppHeader
+      sidebarOpen={false}
+      onToggleSidebar={() => {}}
+      onNewThread={() => {}}
+      threadStatus="idle"
+      isCompacting={false}
+      threadTitle="Thread"
+      onOpenKnowledge={() => {}}
+      onOpenConfig={() => {}}
+    />,
+  );
+  const openHtml = renderToStaticMarkup(
+    <AppHeader
+      sidebarOpen={true}
+      onToggleSidebar={() => {}}
+      onNewThread={() => {}}
+      threadStatus="idle"
+      isCompacting={false}
+      threadTitle="Thread"
+      onOpenKnowledge={() => {}}
+      onOpenConfig={() => {}}
+    />,
+  );
+
+  expect(closedHtml).toContain('aria-label="New conversation"');
+  expect(closedHtml).toContain('title="New conversation"');
+  expect(openHtml).not.toContain('aria-label="New conversation"');
+  expect(openHtml).not.toContain('title="New conversation"');
 });
 
 test("responsive sidebar renders a mobile full-screen overlay when open", () => {

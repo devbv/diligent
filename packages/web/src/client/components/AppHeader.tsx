@@ -1,11 +1,12 @@
 // @summary Top navigation bar: sidebar toggle, thread status, title, and tool/knowledge buttons
 
-import { LibraryBig, Menu, Settings } from "lucide-react";
+import { LibraryBig, Menu, Settings, SquarePen } from "lucide-react";
 import { iconButtonClasses } from "./ui-styles";
 
 interface AppHeaderProps {
   sidebarOpen: boolean;
   onToggleSidebar: () => void;
+  onNewThread: () => void;
   threadStatus: string | null;
   isCompacting: boolean;
   threadTitle: string;
@@ -16,6 +17,7 @@ interface AppHeaderProps {
 export function AppHeader({
   sidebarOpen,
   onToggleSidebar,
+  onNewThread,
   threadStatus,
   isCompacting,
   threadTitle,
@@ -35,6 +37,17 @@ export function AppHeader({
       >
         <Menu className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
       </button>
+      {!sidebarOpen ? (
+        <button
+          type="button"
+          onClick={onNewThread}
+          aria-label="New conversation"
+          title="New conversation"
+          className={iconButtonClasses}
+        >
+          <SquarePen className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
+        </button>
+      ) : null}
       <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-icon-success" aria-hidden="true" />
       {(threadStatus !== "idle" || isCompacting) && (
         <span
