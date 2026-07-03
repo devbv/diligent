@@ -112,6 +112,16 @@ export interface QueuedSteeringMessage {
   message: Message;
 }
 
+export interface AgentPromptOptions {
+  signal?: AbortSignal;
+  /**
+   * Per-run messages sent to the model but never committed to agent history.
+   * Runtime clients use this for config-driven behavior that must survive compaction
+   * without changing the stable system prompt or persisted transcript.
+   */
+  transientMessages?: Message[];
+}
+
 export class AgentStream {
   private listeners = new Set<AgentListener>();
 

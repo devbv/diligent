@@ -772,9 +772,18 @@ describe("DiligentAppServer", () => {
         releases.push(resolve);
       });
     let llmCallCount = 0;
+    const directiveSeenByCall: boolean[] = [];
 
-    runtimeConfig.streamFunction = () => {
+    runtimeConfig.streamFunction = (_model, context) => {
       const callNumber = ++llmCallCount;
+      directiveSeenByCall.push(
+        context.messages.some(
+          (message) =>
+            message.role === "user" &&
+            typeof message.content === "string" &&
+            message.content.includes("Auto progress mode is enabled"),
+        ),
+      );
       const stream = new EventStream(
         (event) => event.type === "done",
         (event) => ({ message: (event as { message: unknown }).message }),
@@ -901,6 +910,7 @@ describe("DiligentAppServer", () => {
     );
 
     expect(userInputRequestCount).toBe(1);
+    expect(directiveSeenByCall).toEqual([false, false, true, true]);
 
     await rm(projectRoot, { recursive: true, force: true });
   });

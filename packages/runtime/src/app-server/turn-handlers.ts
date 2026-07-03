@@ -2,6 +2,7 @@
 
 import { resolvePersistedLocalImagePath, toPersistedLocalImagePath } from "@diligent/core/llm/local-image-paths";
 import { resolveModel } from "@diligent/core/llm/models";
+import { buildRuntimeDirectiveMessages } from "../agent/runtime-directives";
 import { runCombinedHooks } from "../hooks/runner";
 import {
   DILIGENT_SERVER_NOTIFICATION_METHODS,
@@ -244,6 +245,9 @@ export async function handleTurnStart(
 
   const runPromise = runtime.manager.run(finalUserMessage, {
     signal: runtime.abortController!.signal,
+    transientMessages: buildRuntimeDirectiveMessages({
+      autoProgressMode: runtime.runningAutoProgressModeSnapshot,
+    }),
   });
   void ctx.consumeTurn(runtime, runPromise, turnId);
   return { accepted: true };

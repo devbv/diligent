@@ -33,8 +33,9 @@ describe("createRequestUserInputTool", () => {
     expect(result.output).toBe("User input not available in this context.");
   });
 
-  it("auto-resolves to the first option when auto progress mode is enabled at execution time", async () => {
-    const tool = createRequestUserInputTool({ getAutoProgressMode: () => true });
+  it("returns a self-answer directive when auto progress mode is enabled", async () => {
+    const ask = mock(async () => ({ answers: { asset: "asset-2" } }));
+    const tool = createRequestUserInputTool({ ask, getAutoProgressMode: () => true });
     const result = await tool.execute(
       {
         questions: [
@@ -52,10 +53,15 @@ describe("createRequestUserInputTool", () => {
       makeCtx(),
     );
 
-    expect(result.output).toBe("[Asset] Pick one\nAnswer: asset-1");
+    expect(result.output).toContain("Auto progress mode is enabled for this turn.");
+    expect(result.output).toContain("Answer the following question(s) yourself");
+    expect(result.output).toContain("[Asset] Pick one");
+    expect(result.output).toContain("- Castle (value: asset-1): First result");
+    expect(result.output).toContain("- Tower (value: asset-2): Second result");
+    expect(ask).not.toHaveBeenCalled();
   });
 
-  it("auto-resolves multi-select prompts with the first option", async () => {
+  it("self-answer directive preserves multi-select prompts", async () => {
     const tool = createRequestUserInputTool({ getAutoProgressMode: () => true });
     const result = await tool.execute(
       {
@@ -75,7 +81,10 @@ describe("createRequestUserInputTool", () => {
       makeCtx(),
     );
 
-    expect(result.output).toBe("[Features] Pick features\nAnswer: Movement");
+    expect(result.output).toContain("[Features] Pick features");
+    expect(result.output).toContain("Select one or more options if appropriate.");
+    expect(result.output).toContain("- Movement: Add movement");
+    expect(result.output).toContain("- Combat: Add combat");
   });
 
   it("reads auto progress mode dynamically from an existing tool host", async () => {
@@ -92,7 +101,9 @@ describe("createRequestUserInputTool", () => {
       output: "[confirm] Continue?\nAnswer: Manual",
     });
     autoProgressMode = true;
-    await expect(tool.execute(args, makeCtx())).resolves.toMatchObject({ output: "[confirm] Continue?\nAnswer: Yes" });
+    const result = await tool.execute(args, makeCtx());
+    expect(result.output).toContain("Auto progress mode is enabled for this turn.");
+    expect(result.output).toContain("[confirm] Continue?");
     expect(ask).toHaveBeenCalledTimes(1);
   });
 

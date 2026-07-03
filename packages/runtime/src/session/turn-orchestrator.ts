@@ -60,13 +60,13 @@ export class TurnOrchestrator {
    * Run the agent loop with the current session context.
    * Persists user message and agent response to session.
    */
-  async run(userMessage: Message, opts?: { signal?: AbortSignal }): Promise<void> {
+  async run(userMessage: Message, opts?: { signal?: AbortSignal; transientMessages?: Message[] }): Promise<void> {
     await this.runInternal(userMessage, opts, false);
   }
 
   private async runInternal(
     userMessage: Message,
-    opts: { signal?: AbortSignal } | undefined,
+    opts: { signal?: AbortSignal; transientMessages?: Message[] } | undefined,
     isRerun: boolean,
   ): Promise<void> {
     this.emitBusyStatus();
@@ -76,7 +76,7 @@ export class TurnOrchestrator {
 
     let normalCompletion = false;
     try {
-      await this.executeRun(prepared.agent, userMessage, opts?.signal);
+      await this.executeRun(prepared.agent, userMessage, opts);
       this.commitRun(prepared.turnStager);
       normalCompletion = true;
     } catch (err) {
@@ -300,8 +300,12 @@ export class TurnOrchestrator {
     };
   }
 
-  private async executeRun(agent: Agent, userMessage: Message, signal?: AbortSignal): Promise<void> {
-    await agent.prompt(userMessage, signal);
+  private async executeRun(
+    agent: Agent,
+    userMessage: Message,
+    opts?: { signal?: AbortSignal; transientMessages?: Message[] },
+  ): Promise<void> {
+    await agent.prompt(userMessage, opts);
   }
 
   private commitRun(turnStager: TurnStager): void {
