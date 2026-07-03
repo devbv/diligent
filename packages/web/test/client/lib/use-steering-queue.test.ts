@@ -70,6 +70,40 @@ describe("executeSteer", () => {
     expect(dispatched[0]).toMatchObject({ type: "local_steer", payload: { content: "test" } });
   });
 
+  test("uses a UUID v4 fallback when crypto.randomUUID is unavailable", async () => {
+    const originalCrypto = Object.getOwnPropertyDescriptor(globalThis, "crypto");
+    Object.defineProperty(globalThis, "crypto", {
+      configurable: true,
+      value: {
+        getRandomValues(bytes: Uint8Array) {
+          for (let index = 0; index < bytes.length; index += 1) bytes[index] = index;
+          return bytes;
+        },
+      },
+    });
+
+    try {
+      const rpc = makeRpc(async () => ({ steerId: "s1" }));
+
+      await executeSteer({
+        rpc,
+        threadId: "thread-1",
+        content: "legacy browser",
+        images: [],
+        dispatch: mock(() => {}),
+        clearThreadInput: mock(() => {}),
+        clearPendingImages: mock(() => {}),
+      });
+
+      const [method, params] = (rpc.request as ReturnType<typeof mock>).mock.calls[0] as [string, { steerId: string }];
+      expect(method).toBe("turn/steer");
+      expect(params.steerId).toBe("steer-00010203-0405-4607-8809-0a0b0c0d0e0f");
+    } finally {
+      if (originalCrypto) Object.defineProperty(globalThis, "crypto", originalCrypto);
+      else Reflect.deleteProperty(globalThis, "crypto");
+    }
+  });
+
   test("includes image attachments in turn/steer request", async () => {
     const rpc = makeRpc(async () => ({ steerId: "s1" }));
 
