@@ -110,6 +110,7 @@ export class AgentRegistry {
       getParentSessionId: next.getParentSessionId,
       approve: next.approve,
       ask: next.ask,
+      getAutoProgressMode: next.getAutoProgressMode,
       onCollabEvent: next.onCollabEvent,
     };
     // Sync the collab event handler if it was updated
@@ -247,6 +248,7 @@ export class AgentRegistry {
           host: {
             approve: this.deps.approve,
             ask: childAsk,
+            getAutoProgressMode: this.deps.getAutoProgressMode,
           },
         });
 

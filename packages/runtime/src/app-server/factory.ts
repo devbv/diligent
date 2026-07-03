@@ -92,7 +92,7 @@ async function createRuntimeAgent(args: {
 }): Promise<RuntimeAgent> {
   const { request, runtimeConfig, getPaths, bundledToolProviders } = args;
   const { cwd, mode, effort, modelId, approve, ask, getSessionId, existingAgent, onChildStop, userId } = request;
-  const getAutoProgressMode = () => resolveAutoProgressMode(runtimeConfig.diligent);
+  const getAutoProgressMode = request.getAutoProgressMode ?? (() => resolveAutoProgressMode(runtimeConfig.diligent));
   const guardedSystemPrompt = withSkillGuardrail(runtimeConfig);
   const paths = await getPaths();
   const model = resolveModel(modelId);
@@ -106,6 +106,7 @@ async function createRuntimeAgent(args: {
       getParentSessionId: getSessionId,
       approve,
       ask,
+      getAutoProgressMode,
       streamFn: runtimeConfig.streamFunction,
       onChildStop,
       userId,

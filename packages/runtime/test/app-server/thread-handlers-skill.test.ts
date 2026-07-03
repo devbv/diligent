@@ -46,6 +46,7 @@ describe("handleTurnStart slash skill rewriting", () => {
         createThreadRuntime: async () => runtime,
         resolveThreadRuntime: async () => runtime,
         getLatestEffortForCwd: async () => "medium",
+        getAutoProgressMode: () => false,
         emit: async (notification) => {
           notifications.push(notification);
         },
@@ -111,6 +112,7 @@ describe("handleTurnStart slash skill rewriting", () => {
         createThreadRuntime: async () => runtime,
         resolveThreadRuntime: async () => runtime,
         getLatestEffortForCwd: async () => "medium",
+        getAutoProgressMode: () => false,
         emit: async () => {},
         consumeTurn: async () => {},
         resolveToolsContext: async () => ({ cwd: "/tmp/project", tools: undefined }),

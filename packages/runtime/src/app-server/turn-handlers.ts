@@ -79,6 +79,7 @@ async function initializeTurnRuntime(
   runtime.isRunning = true;
   runtime.runningEffortSnapshot = runtime.effort;
   runtime.runningModelIdSnapshot = params.model ?? runtime.modelId;
+  runtime.runningAutoProgressModeSnapshot = ctx.getAutoProgressMode();
   runtime.currentTurnUserId = ctx.getUserId(connectionId);
 
   const effectiveModelId = runtime.runningModelIdSnapshot;

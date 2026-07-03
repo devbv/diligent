@@ -75,6 +75,8 @@ export interface CollabToolDeps {
   onCollabEvent?: (event: CollabAgentEvent) => void;
   /** Routes sub-agent user input requests up to the parent session's ask handler. */
   ask?: (request: UserInputRequest) => Promise<UserInputResponse>;
+  /** Returns the auto-progress setting captured for the current parent turn. */
+  getAutoProgressMode?: () => boolean;
   /** Routes sub-agent approval requests up to the parent session's approval handler. */
   approve?: (request: ApprovalRequest) => Promise<ApprovalResponse>;
   /** Stream function for child agents — when omitted, falls back to the global stream resolver. */
