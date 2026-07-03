@@ -1,6 +1,6 @@
 ---
 name: ui-generator
-description: "Use for OVERDARE Studio screen-space 2D UI work — the flat interface overlaid on the player's screen. When adding new UI, check overdare-ui-templates first — if it matches an official template (HUD, popup/modal, loading, leaderboard, boss HP, character select, result/rank), use that skill; if not, or when editing existing UI (move/align/rename/recolor/show-hide/retext), handle it here directly. Covers menus, action buttons, health/stamina/cooldown bars, scoreboards, quick slots, popups, toasts, overlays, and UI_ELEMENTS/worldAsset UI import. Not for decorating the 3D world (BillboardGui/SurfaceGui, nameplates, signs, surface images/decals), non-UI gameplay, physics, backend, 3D/model placement, or ActionSequencer/PvP TPA unless the task clearly includes screen UI."
+description: "Use for OVERDARE Studio screen-space 2D UI work — the flat interface overlaid on the player's screen. When adding new UI, check overdare-ui-templates first — if it matches an official template (HUD, popup/modal, loading, leaderboard, boss HP, character select, result/rank, or an RPG screen: RPGIngameHUD, inventory, shop, equipment, enhancement, skill-tree, quest, attendance, reward-toast), use that skill; if not, or when editing existing UI (move/align/rename/recolor/show-hide/retext), handle it here directly. Covers menus, action buttons, health/stamina/cooldown bars, scoreboards, quick slots, popups, toasts, overlays, and UI_ELEMENTS/worldAsset UI import. Not for decorating the 3D world (BillboardGui/SurfaceGui, nameplates, signs, surface images/decals), non-UI gameplay, physics, backend, 3D/model placement, or ActionSequencer/PvP TPA unless the task clearly includes screen UI."
 ---
 
 # ui-generator
@@ -22,7 +22,7 @@ Rebuild judgment for an existing screen: keep the current skeleton and adjust it
 
 This skill overlaps `overdare-ui-templates`. That skill owns template selection, the `request_user_input` confirmation flow, and `user_confirmed_spec`; it calls back into `ui-generator` for the actual GUI work. So before adding new UI, resolve this gate — building a template-covered UI directly here skips the confirmation flow and is a failure.
 
-Classify the request against the official templates: `IngameHUD` (persistent HP/currency/action/menu HUD), `PopupGui` (text modal), `IconPopupGui` (icon confirm: purchase/reward/item/skill), `LoadingScreenGui`, `LeaderboardHUD`, `BossHPHUD`, `CharacterSelectGui`, `GameOverGui`, `GameDefeatGui`, `GameVictoryGui`, `GameScoreResultGui`, `GameRankResultGui`.
+Classify the request against the official templates. Base: `IngameHUD` (persistent HP/currency/action/menu HUD), `PopupGui` (text modal), `IconPopupGui` (icon confirm: purchase/reward/item/skill), `LoadingScreenGui`, `LeaderboardHUD`, `BossHPHUD`, `CharacterSelectGui`, `GameOverGui`, `GameDefeatGui`, `GameVictoryGui`, `GameScoreResultGui`, `GameRankResultGui`. RPG: `RPGIngameHUD` (persistent RPG HUD: HP/energy/XP/level/currency/skills/quickslots/dash), `RewardToastHUD` (in-game reward toast), `DailyAttendanceGui` (daily attendance/reward), `EquipmentGui`, `InventoryGui`, `EnhancementGui`, `ShopGui`, `SkillTreeGui`, `QuestProgressionHUD` (persistent quest tracker), `QuestGui` (quest detail).
 
 Then branch:
 
