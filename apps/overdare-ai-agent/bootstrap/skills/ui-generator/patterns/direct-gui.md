@@ -50,6 +50,16 @@ Avoid persistent gameplay UI in the exact center of the screen because the chara
 - `UIGridLayout`
 - `UIAspectRatioConstraint`
 
+## Binding Provided Assets
+
+When the user supplies asset resources — a name, an `ovdrassetid://`, atlas cell coordinates, or an expected image size/ratio — wire them into the actual properties, not just the layout:
+
+- Full image → `Image`.
+- Atlas / sprite sheet cell → `Image` plus `ImageRectOffset` (cell position) and `ImageRectSize` (cell size).
+- Button art → the `ImageButton`'s image properties.
+
+Creating the frames but leaving the provided assets unbound is one of the most common immediately-reported failures ("none of the assets I gave you are used"). Record the asset IDs you bound in the final report.
+
 ## Parent-First Rule
 
 Always create parent containers first, then child objects one level at a time.
@@ -78,7 +88,8 @@ After creation:
 
 - Read back the hierarchy.
 - Confirm all major UI objects are visible.
-- Confirm safe areas are respected.
+- Confirm safe areas are respected, and that nothing collides with the reserved joystick/jump/action regions.
+- Scan for the defects users report most: text overlapping other text, labels overflowing their frame, and elements hidden behind the wrong `DisplayOrder`/ZIndex.
 - Check any warnings or suggestions returned by Studio tools.
 - Confirm normal HUD stays in the `0-99` ZIndex band and intentional overlays use `100+`.
 - Save the level.

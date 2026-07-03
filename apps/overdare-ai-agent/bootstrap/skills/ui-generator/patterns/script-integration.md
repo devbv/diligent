@@ -10,6 +10,10 @@ Server gameplay validation should run in a server `Script`.
 
 Do not design UI interactions around keyboard input. For mobile-first games, gameplay actions should be available through on-screen touch buttons.
 
+## Attach to the Existing Owner First
+
+Before adding a script, find the controller/server script that already owns the screen or flow you are touching (browse the hierarchy and read the relevant `LocalScript`/`Script`). Add or update UI under the existing screen root and let that owner drive it — extend the owner rather than dropping in a second script that competes for the same state. This keeps one source of truth for a HUD or panel and avoids the "two scripts fighting over the same label" failures. Preserve the owner's existing responsibilities; only add what the request needs.
+
 ## Common Locations
 
 Good locations for UI `LocalScript`:

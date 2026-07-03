@@ -1,6 +1,6 @@
 ---
 name: ui-generator
-description: "Use for OVERDARE Studio screen-space 2D UI work — the flat interface overlaid on the player's screen — but check overdare-ui-templates FIRST — if the request matches an official template (HUD, popup/modal, loading, leaderboard, boss HP, character select, result screens), use that skill first; use ui-generator only for non-template UI or what it cannot solve. Covers menus, action buttons, health/stamina/cooldown bars, scoreboards, quick slots, popups, toasts, overlays, and UI_ELEMENTS/worldAsset UI import. Not for decorating the 3D world (BillboardGui/SurfaceGui, nameplates, signs, surface images/decals), non-UI gameplay, physics, backend, 3D/model placement, or ActionSequencer/PvP TPA unless the task clearly includes screen UI."
+description: "Use for OVERDARE Studio screen-space 2D UI work — the flat interface overlaid on the player's screen. When adding new UI, check overdare-ui-templates first — if it matches an official template (HUD, popup/modal, loading, leaderboard, boss HP, character select, result/rank), use that skill; if not, or when editing existing UI (move/align/rename/recolor/show-hide/retext), handle it here directly. Covers menus, action buttons, health/stamina/cooldown bars, scoreboards, quick slots, popups, toasts, overlays, and UI_ELEMENTS/worldAsset UI import. Not for decorating the 3D world (BillboardGui/SurfaceGui, nameplates, signs, surface images/decals), non-UI gameplay, physics, backend, 3D/model placement, or ActionSequencer/PvP TPA unless the task clearly includes screen UI."
 ---
 
 # ui-generator
@@ -16,7 +16,11 @@ Two creation approaches, one per reference file — see [Reference Files](#refer
 
 ## Gate: Check `overdare-ui-templates` First
 
-This skill overlaps `overdare-ui-templates`. That skill owns template selection, the `request_user_input` confirmation flow, and `user_confirmed_spec`; it calls back into `ui-generator` for the actual GUI work. So before creating, importing, or editing any GUI instance, resolve this gate — building a template-covered UI directly here skips the confirmation flow and is a failure.
+**Run this gate when adding new UI.** If the request only edits already-built UI — changing text, icon, color, position, size, or show/hide of existing instances — skip the gate and proceed directly (read the instance, then `studiorpc_instance_upsert`). When you add UI that doesn't exist yet, run the gate first, because an official template may already cover it.
+
+Rebuild judgment for an existing screen: keep the current skeleton and adjust it → EDIT (skip the gate, handle directly); discard the skeleton and build it from scratch → NEW (run the gate).
+
+This skill overlaps `overdare-ui-templates`. That skill owns template selection, the `request_user_input` confirmation flow, and `user_confirmed_spec`; it calls back into `ui-generator` for the actual GUI work. So before adding new UI, resolve this gate — building a template-covered UI directly here skips the confirmation flow and is a failure.
 
 Classify the request against the official templates: `IngameHUD` (persistent HP/currency/action/menu HUD), `PopupGui` (text modal), `IconPopupGui` (icon confirm: purchase/reward/item/skill), `LoadingScreenGui`, `LeaderboardHUD`, `BossHPHUD`, `CharacterSelectGui`, `GameOverGui`, `GameDefeatGui`, `GameVictoryGui`, `GameScoreResultGui`, `GameRankResultGui`.
 
@@ -80,6 +84,8 @@ OVERDARE Studio UI is designed mobile-landscape first. Cross-cutting assumptions
 - `UI_ELEMENTS` is the main worldAsset category for 2D UI.
 - Create static layout with Studio instance tools, not runtime code. Create parents first, then children one level at a time.
 - Preserve existing UI unless the user explicitly asks to replace or delete it.
+- Attach new UI to the screen root and script that already own that flow. Read the owning controller/server script first, hang the UI off the existing screen root, and let that script drive it — do not spin up a competing script or a stray new `ScreenGui`. Reusing the current owner is the most reliable outcome; a new floating root is the least.
+- When the user gives asset names, IDs, atlas cell offsets, or image sizes, bind them to the real properties — `Image`, `ImageRectOffset`, `ImageRectSize`, button images. Building the layout but leaving these unbound is a common, immediately-reported failure.
 - Imported assets often land under `Workspace` — move them to `StarterGui` (or the right UI parent) with `studiorpc_instance_move`.
 - GUI input and camera behavior run in a `LocalScript`.
 - Read and act on warnings from Studio tool results — they catch runtime layout conflicts (safe-area overlap, ZIndex band misuse) not visible in the instance tree.
@@ -119,6 +125,8 @@ Use this when the target UI already exists and the change is: fix alignment/size
 10. Save the level, then tell the user what was created and how to test it.
 
 ## Output
+
+Before reporting done, scan the result for the defects users actually catch: text overlap, labels overflowing their frame, elements hidden behind the wrong `DisplayOrder`/ZIndex, and collisions with the reserved joystick/jump/action regions. Most "it's broken" follow-ups are visual, not functional — a quick read-back of positions and sizes catches them. If you couldn't fully verify a visual detail, say so in the report.
 
 When finishing, report:
 
