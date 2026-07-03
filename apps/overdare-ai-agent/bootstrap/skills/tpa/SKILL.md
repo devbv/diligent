@@ -16,7 +16,7 @@ If the current request is not explicitly PvP action game scope, do not ask about
 - **Yes** → Download the template, record in Knowledge Tool, then proceed.
 - **No** → Do not invoke this skill again.
 
-**Download:** import TPA_Test0403(`ovdrassetid://28928100`) from AssetDrawer
+**Download:** import TPA System Template(`ovdrassetid://36891100`) from AssetDrawer
 
 **Record in Knowledge Tool (upsert):**
 
