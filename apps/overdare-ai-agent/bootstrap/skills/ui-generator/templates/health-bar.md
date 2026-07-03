@@ -1,5 +1,7 @@
 # Template: Health / Stamina Bar
 
+> **Gate first.** A player HUD HP/energy bar belongs to the official `IngameHUD` / `RPGIngameHUD`, and a boss HP bar is `BossHPHUD` — route those through `overdare-ui-templates`. Use this file only for bespoke bars no official template covers: standalone stamina, mana, shield, cooldown, or charge bars.
+
 Use for health, stamina, mana, shield, energy, cooldown, or charge bars.
 
 ## Recommended Approach

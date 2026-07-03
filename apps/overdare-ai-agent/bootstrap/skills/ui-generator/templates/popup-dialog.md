@@ -1,5 +1,7 @@
 # Template: Popup Dialog
 
+> **Gate first.** A standard alert/confirm/notice modal is the official `PopupGui`, and an icon confirm (purchase/reward/item/skill) is `IconPopupGui` — route those through `overdare-ui-templates`. Use this file only for bespoke popups no official template covers (custom tutorial overlays, pause panels, ad-hoc modal choices).
+
 Use for confirmation dialogs, alerts, rewards, tutorial messages, pause menus, or modal choices.
 
 ## Recommended Approach

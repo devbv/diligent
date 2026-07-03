@@ -113,7 +113,7 @@ Deletion rules:
 
 ## Common GUI Classes
 
-Screen-space UI:
+Screen-space UI (this skill is screen-space 2D UI only):
 
 - `ScreenGui`
 - `Frame`
@@ -125,11 +125,6 @@ Screen-space UI:
 - `UIListLayout`
 - `UIGridLayout`
 - `UIAspectRatioConstraint`
-
-World-space GUI:
-
-- `BillboardGui`
-- `SurfaceGui`
 
 ---
 
