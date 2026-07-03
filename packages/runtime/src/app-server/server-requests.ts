@@ -16,6 +16,12 @@ export interface PendingServerRequest {
   resolve: (response: DiligentServerRequestResponse | null) => void;
   timeoutId: ReturnType<typeof setTimeout> | null;
   sentTo: Set<string>;
+  // Durable requests (no timeout, e.g. user input) survive a client disconnect so a
+  // reconnecting/reloading client can still deliver the answer. They also carry the
+  // original params + threadId so the server can re-deliver the prompt on (re)subscribe.
+  durable: boolean;
+  threadId?: string;
+  params: unknown;
 }
 
 export interface ServerRequestPeer {
@@ -68,6 +74,7 @@ interface BroadcastServerRequestArgs {
   pendingServerRequests: Map<number, PendingServerRequest>;
   allocateServerRequestId: () => number;
   timeoutMs?: number | null;
+  threadId?: string;
 }
 
 export async function broadcastServerRequest(
@@ -77,7 +84,10 @@ export async function broadcastServerRequest(
 
   const id = args.allocateServerRequestId();
   const sentTo = new Set<string>();
-  const timeoutMs = args.timeoutMs ?? 5 * 60 * 1000;
+  // Distinguish an explicit `null` (no timeout — wait indefinitely) from `undefined`
+  // (use the default). Using `??` here would incorrectly coerce `null` to the default.
+  const timeoutMs = args.timeoutMs === undefined ? 5 * 60 * 1000 : args.timeoutMs;
+  const durable = timeoutMs === null;
 
   return new Promise<DiligentServerRequestResponse | null>((resolve) => {
     const timeoutId =
@@ -101,6 +111,9 @@ export async function broadcastServerRequest(
       resolve,
       timeoutId,
       sentTo,
+      durable,
+      threadId: args.threadId,
+      params: args.params,
     });
 
     for (const conn of args.connections.values()) {
@@ -127,6 +140,7 @@ export async function requestApprovalFromConnections(args: RequestApprovalArgs):
     connections: args.connections,
     pendingServerRequests: args.pendingServerRequests,
     allocateServerRequestId: args.allocateServerRequestId,
+    threadId: args.threadId,
   });
   if (!response) return "once";
 
@@ -153,6 +167,7 @@ export async function requestUserInputFromConnections(args: RequestUserInputArgs
     pendingServerRequests: args.pendingServerRequests,
     allocateServerRequestId: args.allocateServerRequestId,
     timeoutMs: null,
+    threadId: args.threadId,
   });
   if (!response) return { answers: {} };
 

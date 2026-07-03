@@ -19,6 +19,10 @@ import {
 export type ConnectionState = "connecting" | "connected" | "reconnecting" | "disconnected";
 export const RECONNECT_DELAYS_MS = [1000, 2000, 5000, 5000, 5000] as const;
 const SERVER_RESPONSE_RETRY_MS = 1000;
+// Application-level keepalive: send a lightweight notification well within the server's
+// WebSocket idle timeout so an open tab awaiting a long user-input prompt is not dropped.
+const HEARTBEAT_MS = 25_000;
+export const HEARTBEAT_METHOD = "ping";
 
 type RequestMethod = DiligentClientRequest["method"];
 type RequestParams<M extends RequestMethod> = Extract<DiligentClientRequest, { method: M }>["params"];
@@ -63,6 +67,7 @@ export class WebRpcClient {
   private readonly activeSubscriptions = new Map<string, string>(); // subscriptionId → threadId
   private readonly pendingServerRequests = new Map<number, PendingServerRequest>();
   private serverResponseRetryId: ReturnType<typeof setInterval> | null = null;
+  private heartbeatId: ReturnType<typeof setInterval> | null = null;
 
   private connectionListener: ((state: ConnectionState) => void) | null = null;
   private notificationListener: ((notification: DiligentServerNotification) => void) | null = null;
@@ -98,6 +103,7 @@ export class WebRpcClient {
 
   disconnect(): void {
     this.stopped = true;
+    this.stopHeartbeat();
     this.ws?.close();
     this.ws = null;
     this.activeSubscriptions.clear();
@@ -199,6 +205,7 @@ export class WebRpcClient {
         if (settled) return;
         settled = true;
         this.reconnectAttempts = 0;
+        this.startHeartbeat();
         this.emitConnection("connected");
         resolve();
       };
@@ -213,6 +220,7 @@ export class WebRpcClient {
 
       ws.onclose = () => {
         this.ws = null;
+        this.stopHeartbeat();
         if (!settled) {
           settled = true;
           reject(new Error("WebSocket open failed"));
@@ -294,6 +302,19 @@ export class WebRpcClient {
     this.serverResponseRetryId = null;
   }
 
+  private startHeartbeat(): void {
+    this.stopHeartbeat();
+    this.heartbeatId = setInterval(() => {
+      if (this.ws?.readyState === WebSocket.OPEN) this.notify(HEARTBEAT_METHOD);
+    }, HEARTBEAT_MS);
+  }
+
+  private stopHeartbeat(): void {
+    if (!this.heartbeatId) return;
+    clearInterval(this.heartbeatId);
+    this.heartbeatId = null;
+  }
+
   private handleMessage(raw: unknown): void {
     let message: JSONRPCMessage;
     try {
@@ -325,6 +346,16 @@ export class WebRpcClient {
       method: message.method,
       params: message.params,
     } as DiligentServerRequest;
+
+    // The server may re-deliver a durable request (e.g. an unanswered user-input prompt) after
+    // a reconnect/reload. If we already captured the user's answer for this id, just re-send it
+    // instead of re-prompting; otherwise (re)show the prompt.
+    const existing = this.pendingServerRequests.get(requestId);
+    if (existing?.response) {
+      this.ensureServerResponseRetry();
+      this.sendServerResponse(requestId, existing.response);
+      return;
+    }
 
     this.pendingServerRequests.set(requestId, { method: request.method });
     this.serverRequestListener?.(requestId, request);

@@ -228,16 +228,18 @@ export class DiligentAppServer {
       }
     }
 
-    // Resolve pending server requests where this was the only remaining responder
+    // Resolve pending server requests where this was the only remaining responder.
+    // Durable requests (user input, no timeout) are kept alive across the disconnect so a
+    // reconnecting or reloading client can still deliver the answer; they are re-delivered
+    // when a connection (re)subscribes to the thread.
     for (const [reqId, pending] of this.pendingServerRequests) {
-      if (pending.sentTo.has(connectionId)) {
-        pending.sentTo.delete(connectionId);
-        if (pending.sentTo.size === 0) {
-          if (pending.timeoutId !== null) clearTimeout(pending.timeoutId);
-          this.pendingServerRequests.delete(reqId);
-          pending.resolve(null);
-        }
-      }
+      if (!pending.sentTo.has(connectionId)) continue;
+      pending.sentTo.delete(connectionId);
+      if (pending.sentTo.size > 0) continue;
+      if (pending.durable) continue;
+      if (pending.timeoutId !== null) clearTimeout(pending.timeoutId);
+      this.pendingServerRequests.delete(reqId);
+      pending.resolve(null);
     }
 
     this.connections.delete(connectionId);
@@ -249,7 +251,24 @@ export class DiligentAppServer {
     const subscriptionId = `sub-${crypto.randomUUID().slice(0, 8)}`;
     conn.subscriptions.add(threadId);
     this.subscriptionMap.set(subscriptionId, { connectionId, threadId });
+    this.redeliverDurableRequests(connectionId, threadId);
     return subscriptionId;
+  }
+
+  // Re-send any durable pending server requests (e.g. an unanswered user-input prompt) for
+  // this thread to a connection that just (re)subscribed. This restores the prompt after a
+  // page reload or reconnect that arrives with a fresh connection id. Delivery is idempotent
+  // per connection via `sentTo`, and the client suppresses re-prompting if it already answered.
+  private redeliverDurableRequests(connectionId: string, threadId: string): void {
+    const conn = this.connections.get(connectionId);
+    if (!conn) return;
+    for (const [reqId, pending] of this.pendingServerRequests) {
+      if (!pending.durable) continue;
+      if (pending.threadId !== threadId) continue;
+      if (pending.sentTo.has(connectionId)) continue;
+      pending.sentTo.add(connectionId);
+      void conn.peer.send({ id: reqId, method: pending.method, params: pending.params });
+    }
   }
 
   unsubscribeFromThread(subscriptionId: string): boolean {
