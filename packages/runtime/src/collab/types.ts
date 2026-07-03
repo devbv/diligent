@@ -75,7 +75,7 @@ export interface CollabToolDeps {
   onCollabEvent?: (event: CollabAgentEvent) => void;
   /** Routes sub-agent user input requests up to the parent session's ask handler. */
   ask?: (request: UserInputRequest) => Promise<UserInputResponse>;
-  /** Returns the auto-progress setting captured for the current parent turn. */
+  /** Returns the current auto-progress setting for request_user_input tool handling. */
   getAutoProgressMode?: () => boolean;
   /** Routes sub-agent approval requests up to the parent session's approval handler. */
   approve?: (request: ApprovalRequest) => Promise<ApprovalResponse>;

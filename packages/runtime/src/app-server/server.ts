@@ -525,7 +525,6 @@ export class DiligentAppServer {
       modelId: modelId ?? this.currentModelId ?? KNOWN_MODELS[0].id,
       runningEffortSnapshot: undefined,
       runningModelIdSnapshot: undefined,
-      runningAutoProgressModeSnapshot: undefined,
       manager: null as unknown as SessionManager,
       abortController: null,
       currentTurnId: null,
@@ -545,10 +544,7 @@ export class DiligentAppServer {
             modelId: runtime.runningModelIdSnapshot ?? runtime.modelId,
             approve: (request) => this.requestApproval(runtime.id, request),
             ask: (request) => this.requestUserInput(runtime.id, request),
-            getAutoProgressMode: () =>
-              runtime.runningAutoProgressModeSnapshot ??
-              this.config.runtimeSettingsConfig?.getAutoProgressMode() ??
-              false,
+            getAutoProgressMode: () => this.config.runtimeSettingsConfig?.getAutoProgressMode() ?? false,
             getSessionId: () => runtime.manager.sessionId,
             existingAgent: runtime.agent,
             onChildStop: (info) => this.runStopHooksFor(info),
@@ -815,7 +811,6 @@ export class DiligentAppServer {
       resolveThreadRuntime: (threadId?: string) => this.resolveThreadRuntime(threadId),
       getLatestEffortForCwd: (cwd: string) => this.getLatestEffortForCwd(cwd),
       getLatestModelForCwd: (cwd: string) => this.getLatestModelForCwd(cwd),
-      getAutoProgressMode: () => this.config.runtimeSettingsConfig?.getAutoProgressMode() ?? false,
       emit: (notification: DiligentServerNotification) => this.emit(notification),
       consumeTurn: (runtime: ThreadRuntime, runPromise: Promise<void>, turnId: string) =>
         this.consumeTurn(runtime, runPromise, turnId),

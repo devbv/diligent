@@ -42,10 +42,10 @@ export function formatAutoProgressUserInputDirective(request: UserInputRequest):
     .join("\n\n");
 
   return [
-    "Auto progress mode is enabled for this turn.",
+    "Auto progress mode is currently enabled.",
     "Do not ask the user or wait for a user answer.",
     "Answer the following question(s) yourself using the current task context, choose the best option(s) or a reasonable assumption, and continue.",
-    "Do not call request_user_input again for these question(s).",
+    "You may call request_user_input again later for a different question; the current setting will be checked again then.",
     "",
     questions,
   ].join("\n");

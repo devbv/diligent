@@ -53,8 +53,9 @@ describe("createRequestUserInputTool", () => {
       makeCtx(),
     );
 
-    expect(result.output).toContain("Auto progress mode is enabled for this turn.");
+    expect(result.output).toContain("Auto progress mode is currently enabled.");
     expect(result.output).toContain("Answer the following question(s) yourself");
+    expect(result.output).toContain("You may call request_user_input again later for a different question");
     expect(result.output).toContain("[Asset] Pick one");
     expect(result.output).toContain("- Castle (value: asset-1): First result");
     expect(result.output).toContain("- Tower (value: asset-2): Second result");
@@ -102,7 +103,7 @@ describe("createRequestUserInputTool", () => {
     });
     autoProgressMode = true;
     const result = await tool.execute(args, makeCtx());
-    expect(result.output).toContain("Auto progress mode is enabled for this turn.");
+    expect(result.output).toContain("Auto progress mode is currently enabled.");
     expect(result.output).toContain("[confirm] Continue?");
     expect(ask).toHaveBeenCalledTimes(1);
   });

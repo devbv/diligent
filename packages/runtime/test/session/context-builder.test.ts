@@ -1,7 +1,7 @@
 // @summary Tests for building context from session entries
 import { describe, expect, it } from "bun:test";
 import type { Message } from "@diligent/core/types";
-import type { AutoProgressModeChangeEntry, CompactionEntry, SessionEntry } from "@diligent/runtime/session";
+import type { CompactionEntry, SessionEntry } from "@diligent/runtime/session";
 import { buildSessionContext, buildSessionTranscript } from "@diligent/runtime/session";
 
 function msgContent(msg: Message): string {
@@ -36,21 +36,6 @@ function makeMsg(id: string, parentId: string | null, role: "user" | "assistant"
       stopReason: "end_turn",
       timestamp: 1708900000000,
     },
-  };
-}
-
-function makeAutoProgressModeChange(
-  id: string,
-  parentId: string | null,
-  enabled: boolean,
-): AutoProgressModeChangeEntry {
-  return {
-    type: "auto_progress_mode_change",
-    id,
-    parentId,
-    timestamp: "2026-02-25T10:00:01.000Z",
-    enabled,
-    changedBy: "config",
   };
 }
 
@@ -127,26 +112,6 @@ describe("buildSessionContext", () => {
     expect(ctx.currentModel?.modelId).toBe("claude-opus-4-20250514");
     expect(ctx.currentEffort).toBe("medium");
     expect(ctx.messages).toHaveLength(2); // non-message changes don't produce messages
-  });
-
-  it("adds auto progress mode changes to provider context only", () => {
-    const entries: SessionEntry[] = [
-      makeMsg("a1", null, "user", "hi"),
-      makeAutoProgressModeChange("a2", "a1", true),
-      makeMsg("a3", "a2", "assistant", "hello"),
-    ];
-
-    const ctx = buildSessionContext(entries);
-    expect(ctx.currentAutoProgressMode).toBe(true);
-    expect(ctx.messages.map(msgContent)).toEqual(["hi", "hello"]);
-    expect(ctx.providerMessages.map(msgContent)).toEqual([
-      "hi",
-      expect.stringContaining("Auto progress mode is enabled"),
-      "hello",
-    ]);
-
-    const transcript = buildSessionTranscript(entries);
-    expect(transcript).toHaveLength(2);
   });
 
   it("returns empty for unknown leafId", () => {
@@ -231,32 +196,6 @@ describe("buildSessionContext", () => {
     expect(summaryContent).toContain("Second summary");
     expect(summaryContent).not.toContain("First summary");
     expect(ctx.messages[2].role).toBe("user");
-  });
-
-  it("preserves latest auto progress mode change across compaction", () => {
-    const compaction: CompactionEntry = {
-      type: "compaction",
-      id: "c1",
-      parentId: "a3",
-      timestamp: "2026-02-25T10:01:00.000Z",
-      summary: "Summary",
-      recentUserMessages: [],
-      tokensBefore: 50000,
-      tokensAfter: 5000,
-    };
-
-    const entries: SessionEntry[] = [
-      makeMsg("a1", null, "user", "old"),
-      makeAutoProgressModeChange("a2", "a1", true),
-      makeMsg("a3", "a2", "assistant", "old response"),
-      compaction,
-      makeMsg("a4", "c1", "user", "new"),
-    ];
-
-    const ctx = buildSessionContext(entries);
-    expect(ctx.currentAutoProgressMode).toBe(true);
-    expect(ctx.providerMessages.map(msgContent)[0]).toContain("Auto progress mode is enabled");
-    expect(ctx.messages.some((message) => msgContent(message).includes("Auto progress mode"))).toBe(false);
   });
 
   it("returns compaction summary separately for native compaction entries", () => {

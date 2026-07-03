@@ -31,7 +31,6 @@ export interface ThreadRuntime {
   modelId: string;
   runningEffortSnapshot?: ThinkingEffort;
   runningModelIdSnapshot?: string;
-  runningAutoProgressModeSnapshot?: boolean;
   /** User ID of the connection that started the current turn (set at turn start, cleared on end). */
   currentTurnUserId?: string;
   manager: SessionManager;
@@ -53,7 +52,6 @@ export function resetTurnRuntimeState(runtime: ThreadRuntime): void {
   runtime.currentTurnUserId = undefined;
   runtime.runningEffortSnapshot = undefined;
   runtime.runningModelIdSnapshot = undefined;
-  runtime.runningAutoProgressModeSnapshot = undefined;
   runtime.isRunning = false;
 }
 
@@ -78,7 +76,6 @@ export interface ThreadHandlersContext {
   resolveThreadRuntime: (threadId?: string) => Promise<ThreadRuntime>;
   getLatestEffortForCwd: (cwd: string) => Promise<ThinkingEffort>;
   getLatestModelForCwd: (cwd: string) => Promise<string | undefined>;
-  getAutoProgressMode: () => boolean;
   emit: (notification: DiligentServerNotification) => Promise<void>;
   consumeTurn: (runtime: ThreadRuntime, runPromise: Promise<void>, turnId: string) => Promise<void>;
   resolveToolsContext: (threadId?: string) => Promise<{ cwd: string; tools: DiligentConfig["tools"] | undefined }>;

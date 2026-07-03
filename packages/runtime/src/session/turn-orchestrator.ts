@@ -19,13 +19,7 @@ import type { SessionPersistence } from "./persistence";
 import type { SessionCache } from "./session-cache";
 import type { SessionStateStore } from "./state-store";
 import { TurnStager } from "./turn-stager";
-import type {
-  AutoProgressModeChangeEntry,
-  CompactionEntry,
-  ErrorEntry,
-  SessionEntry,
-  SessionManagerConfig,
-} from "./types";
+import type { CompactionEntry, ErrorEntry, SessionEntry, SessionManagerConfig } from "./types";
 import { generateEntryId } from "./types";
 
 export interface TurnOrchestratorContext {
@@ -66,23 +60,23 @@ export class TurnOrchestrator {
    * Run the agent loop with the current session context.
    * Persists user message and agent response to session.
    */
-  async run(userMessage: Message, opts?: { signal?: AbortSignal; autoProgressMode?: boolean }): Promise<void> {
+  async run(userMessage: Message, opts?: { signal?: AbortSignal }): Promise<void> {
     await this.runInternal(userMessage, opts, false);
   }
 
   private async runInternal(
     userMessage: Message,
-    opts: { signal?: AbortSignal; autoProgressMode?: boolean } | undefined,
+    opts: { signal?: AbortSignal } | undefined,
     isRerun: boolean,
   ): Promise<void> {
     this.emitBusyStatus();
 
-    const prepared = await this.prepareRun(userMessage, opts);
+    const prepared = await this.prepareRun(userMessage);
     const { unsubscribe, getCurrentTurnId, getLastAgentError } = this.subscribeRunEvents(prepared);
 
     let normalCompletion = false;
     try {
-      await this.executeRun(prepared.agent, userMessage, opts);
+      await this.executeRun(prepared.agent, userMessage, opts?.signal);
       this.commitRun(prepared.turnStager);
       normalCompletion = true;
     } catch (err) {
@@ -230,13 +224,9 @@ export class TurnOrchestrator {
     this.ctx.emit({ type: "status_change", status: "busy" });
   }
 
-  private async prepareRun(
-    userMessage: Message,
-    opts?: { autoProgressMode?: boolean },
-  ): Promise<{ agent: Agent; turnStager: TurnStager }> {
+  private async prepareRun(userMessage: Message): Promise<{ agent: Agent; turnStager: TurnStager }> {
     this.ctx.repairEntries();
 
-    const runtimeContextChanged = this.syncAutoProgressMode(opts?.autoProgressMode);
     const context = buildSessionContext(this.ctx.state.getCommittedEntries(), this.ctx.state.getCommittedLeafId(), {});
     const turnStager = new TurnStager(this.ctx.state.getCommittedLeafId(), context.messages, userMessage);
     const snapshot = turnStager.getSnapshot();
@@ -262,30 +252,12 @@ export class TurnOrchestrator {
       });
     }
 
-    if (runtimeContextChanged || agent !== this._initializedAgent) {
+    if (agent !== this._initializedAgent) {
       agent.restoreCompactionState(context.providerMessages, context.compactionSummary);
       this._initializedAgent = agent;
     }
 
     return { agent, turnStager };
-  }
-
-  private syncAutoProgressMode(enabled: boolean | undefined): boolean {
-    if (enabled === undefined) return false;
-    const context = buildSessionContext(this.ctx.state.getCommittedEntries(), this.ctx.state.getCommittedLeafId(), {});
-    if (context.currentAutoProgressMode === enabled || (context.currentAutoProgressMode === undefined && !enabled)) {
-      return false;
-    }
-    const entry: AutoProgressModeChangeEntry = {
-      type: "auto_progress_mode_change",
-      id: generateEntryId(),
-      parentId: this.ctx.state.getCommittedLeafId(),
-      timestamp: new Date().toISOString(),
-      enabled,
-      changedBy: "config",
-    };
-    this.ctx.appendAndPersist(entry);
-    return true;
   }
 
   private subscribeRunEvents(prepared: { agent: Agent; turnStager: TurnStager }): {
@@ -328,8 +300,8 @@ export class TurnOrchestrator {
     };
   }
 
-  private async executeRun(agent: Agent, userMessage: Message, opts?: { signal?: AbortSignal }): Promise<void> {
-    await agent.prompt(userMessage, opts?.signal);
+  private async executeRun(agent: Agent, userMessage: Message, signal?: AbortSignal): Promise<void> {
+    await agent.prompt(userMessage, signal);
   }
 
   private commitRun(turnStager: TurnStager): void {

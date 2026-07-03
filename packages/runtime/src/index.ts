@@ -129,7 +129,6 @@ export {
 } from "./rpc";
 export type {
   AppendedEntryInfo,
-  AutoProgressModeChangeEntry,
   CompactionEntry,
   ModeChangeEntry,
   ModelChangeEntry,

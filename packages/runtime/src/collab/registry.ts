@@ -362,7 +362,6 @@ export class AgentRegistry {
       try {
         await childManager.run(userMessage, {
           signal: abortController.signal,
-          autoProgressMode: this.deps.getAutoProgressMode?.(),
         });
       } catch (err) {
         fatalError = err instanceof Error ? err.message : String(err);

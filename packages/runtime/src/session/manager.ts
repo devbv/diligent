@@ -165,11 +165,6 @@ export class SessionManager {
     return buildSessionContext(this.state.getCommittedEntries(), this.state.getCommittedLeafId(), {}).currentEffort;
   }
 
-  getCurrentAutoProgressMode(): boolean | undefined {
-    return buildSessionContext(this.state.getCommittedEntries(), this.state.getCommittedLeafId(), {})
-      .currentAutoProgressMode;
-  }
-
   async compactNow(): Promise<{
     compacted: boolean;
     entryCount: number;
@@ -206,7 +201,7 @@ export class SessionManager {
    * Persists user message and agent response to session.
    * Compaction is handled by the Agent internally.
    */
-  async run(userMessage: Message, opts?: { signal?: AbortSignal; autoProgressMode?: boolean }): Promise<void> {
+  async run(userMessage: Message, opts?: { signal?: AbortSignal }): Promise<void> {
     await this.orchestrator.run(userMessage, opts);
   }
 
@@ -264,18 +259,6 @@ export class SessionManager {
       parentId: this.state.getCommittedLeafId(),
       timestamp: new Date().toISOString(),
       effort,
-      changedBy,
-    };
-    this.appendAndPersist(entry);
-  }
-
-  appendAutoProgressModeChange(enabled: boolean, changedBy: "config" = "config"): void {
-    const entry = {
-      type: "auto_progress_mode_change" as const,
-      id: generateEntryId(),
-      parentId: this.state.getCommittedLeafId(),
-      timestamp: new Date().toISOString(),
-      enabled,
       changedBy,
     };
     this.appendAndPersist(entry);

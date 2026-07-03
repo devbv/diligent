@@ -314,8 +314,7 @@ export async function dispatchClientRequest(
     case DILIGENT_CLIENT_REQUEST_METHODS.CONFIG_SET: {
       const connectionThreadId = ctx.getConnection(connectionId)?.currentThreadId ?? undefined;
       const targetThreadId = request.params.threadId ?? connectionThreadId;
-      const autoProgressMode =
-        "autoProgressMode" in request.params ? request.params.autoProgressMode !== false : undefined;
+      const autoProgressMode = request.params.autoProgressMode;
       const runtimeSettingsConfig = ctx.runtimeSettingsConfig;
       if (autoProgressMode !== undefined && !runtimeSettingsConfig)
         throw Object.assign(new Error("Runtime settings config not available"), { code: -32601 });
