@@ -137,6 +137,7 @@ export const ThreadReadResponseSchema = z.object({
   pendingSteers: z.array(PendingSteerSchema).optional(),
   entryCount: z.number().int().nonnegative(),
   isRunning: z.boolean(),
+  currentMode: ModeSchema.optional(),
   currentEffort: ThinkingEffortSchema,
   currentModel: z.string().optional(),
   totalCost: z.number().nonnegative().optional(),

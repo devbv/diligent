@@ -2,7 +2,7 @@
 import { buildMessagesFromCompaction } from "@diligent/core/agent/compaction";
 import { resolveModel } from "@diligent/core/llm/models";
 import type { Message } from "@diligent/core/types";
-import type { AssistantMessage } from "@diligent/protocol";
+import type { AssistantMessage, Mode } from "@diligent/protocol";
 import type { CompactionEntry, SessionEntry } from "./types";
 
 export interface SessionContext {
@@ -11,6 +11,7 @@ export interface SessionContext {
   compactionSummary?: Record<string, unknown>;
   currentModel?: { provider: string; modelId: string };
   currentEffort?: "none" | "low" | "medium" | "high" | "max";
+  currentMode?: Mode;
 }
 
 export type BuildSessionContextOptions = {
@@ -92,6 +93,7 @@ export function buildSessionContext(
   const providerMessages: Message[] = [];
   let currentModel: { provider: string; modelId: string } | undefined;
   let currentEffort: "none" | "low" | "medium" | "high" | "max" | undefined;
+  let currentMode = latestModeInPath(path);
   let lastAssistantModelId: string | undefined;
 
   if (lastCompaction && includeCompactionSummary) {
@@ -131,6 +133,9 @@ export function buildSessionContext(
         case "effort_change":
           currentEffort = entry.effort;
           break;
+        case "mode_change":
+          currentMode = entry.mode;
+          break;
       }
     }
   } else {
@@ -149,6 +154,9 @@ export function buildSessionContext(
         case "effort_change":
           currentEffort = entry.effort;
           break;
+        case "mode_change":
+          currentMode = entry.mode;
+          break;
       }
     }
   }
@@ -159,6 +167,7 @@ export function buildSessionContext(
     compactionSummary: lastCompaction?.compactionSummary,
     currentModel: currentModel ?? resolveModelFromId(lastAssistantModelId),
     currentEffort,
+    currentMode,
   };
 }
 
@@ -170,6 +179,14 @@ function resolveModelFromId(modelId: string | undefined): { provider: string; mo
   } catch {
     return undefined;
   }
+}
+
+function latestModeInPath(path: SessionEntry[]): Mode | undefined {
+  for (let index = path.length - 1; index >= 0; index -= 1) {
+    const entry = path[index];
+    if (entry.type === "mode_change") return entry.mode;
+  }
+  return undefined;
 }
 
 /**

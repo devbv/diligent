@@ -50,7 +50,7 @@ const builtinExploreMarkdown = parseBuiltinAgentMarkdown(explorePrompt, "builtin
 /**
  * Built-in agent types (D063).
  * "general" — full tool access, task tool excluded to prevent infinite nesting (D064).
- * "explore" — read-only tools only (PLAN_MODE_ALLOWED_TOOLS).
+ * "explore" — parent-visible tools minus plan/read-only disallowed tools.
  */
 export const BUILTIN_AGENT_TYPES: Record<BuiltinAgentTypeName, AgentTypeDef> = {
   general: {

@@ -45,6 +45,36 @@ describe("spawn_agent tool", () => {
     expect(typeof parsed.thread_id).toBe("string");
   });
 
+  it("treats empty allowed_tools as inherit-all", async () => {
+    const warned: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (message?: unknown) => warned.push(String(message));
+    try {
+      const { tools } = createCollabTools(
+        makeCollabDeps({
+          parentTools: [
+            {
+              name: "read",
+              description: "read",
+              parameters: {} as never,
+              execute: async () => ({ output: "read" }),
+            },
+          ],
+          sessionManagerFactory: makeMockSessionManagerFactory(makeAssistant("ok")),
+        }),
+      );
+      const spawnTool = tools.find((t) => t.name === "spawn_agent")!;
+
+      const result = await spawnTool.execute({ message: "task", agent_type: "explore", allowed_tools: [] }, makeCtx());
+      const parsed = JSON.parse(result.output);
+
+      expect(typeof parsed.thread_id).toBe("string");
+      expect(warned.join("\n")).not.toContain("zero tools after filtering");
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+
   it("passes resume_id when provided", async () => {
     const { tools } = createCollabTools(
       makeCollabDeps({
@@ -116,6 +146,7 @@ describe("spawn_agent tool", () => {
     expect(shape.agent_type.description).toBe(formatAgentTypeParameterDescription(agentDefinitions));
     expect(shape.agent_type.description).toContain("code-reviewer");
     expect(shape.allowed_tools.description).toContain("allow-list");
+    expect(shape.allowed_tools.description).toContain("empty list is treated the same as omitted");
     expect(shape.allowed_tools.description).toContain("allow_nested_agents=true");
   });
 });

@@ -98,7 +98,6 @@ export function useThreadManager({
   rpcRef,
   dispatch,
   activeThreadIdRef,
-  modeRef,
   applySessionModel,
   resetDraftModel,
   setEffortState,
@@ -109,7 +108,6 @@ export function useThreadManager({
   rpcRef: RefObject<WebRpcClient | null>;
   dispatch: ThreadDispatch;
   activeThreadIdRef: RefObject<string | null>;
-  modeRef: RefObject<Mode>;
   applySessionModel: (sessionModel?: string) => Promise<void>;
   resetDraftModel: () => void;
   setEffortState: (effort: ThinkingEffort) => void;
@@ -200,27 +198,25 @@ export function useThreadManager({
   const startNewThread = useCallback(async (): Promise<void> => {
     closeModals();
     await deactivateServerThread();
-    const mode = modeRef.current;
-    dispatch({ type: "reset_draft", payload: { mode } });
+    dispatch({ type: "reset_draft", payload: { mode: "default" } });
     resetDraftModel();
     if (typeof window !== "undefined") {
       replaceDraftUrl();
     }
-  }, [deactivateServerThread, dispatch, modeRef, resetDraftModel, closeModals]);
+  }, [deactivateServerThread, dispatch, resetDraftModel, closeModals]);
 
   const openThread = useCallback(
     async (threadId: string): Promise<void> => {
       const rpc = rpcRef.current;
       if (!rpc) return;
       closeModals();
-      const mode = modeRef.current;
       try {
         const resumed = await rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.THREAD_RESUME, { threadId });
         if (!resumed.found || !resumed.threadId) return;
         const resumedId = resumed.threadId;
         const history = await activateServerThread(resumedId);
 
-        dispatch({ type: "hydrate", payload: { threadId: resumedId, mode, history } });
+        dispatch({ type: "hydrate", payload: { threadId: resumedId, mode: "default", history } });
         setEffortState(history.currentEffort);
         if (typeof window !== "undefined") {
           replaceThreadUrl(resumedId);
@@ -234,7 +230,6 @@ export function useThreadManager({
     },
     [
       rpcRef,
-      modeRef,
       dispatch,
       setEffortState,
       refreshThreadList,
@@ -251,7 +246,6 @@ export function useThreadManager({
     if (!threadId) return;
     const rpc = rpcRef.current;
     if (!rpc) return;
-    const mode = modeRef.current;
     const activeThreadId = activeThreadIdRef.current;
     try {
       await rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.THREAD_DELETE, { threadId });
@@ -259,14 +253,14 @@ export function useThreadManager({
         const resumed = await rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.THREAD_RESUME, { mostRecent: true });
         if (resumed.found && resumed.threadId) {
           const history = await activateServerThread(resumed.threadId);
-          dispatch({ type: "hydrate", payload: { threadId: resumed.threadId, mode, history } });
+          dispatch({ type: "hydrate", payload: { threadId: resumed.threadId, mode: "default", history } });
           setEffortState(history.currentEffort);
           if (typeof window !== "undefined") {
             replaceThreadUrl(resumed.threadId);
           }
         } else {
           await deactivateServerThread();
-          dispatch({ type: "reset_draft", payload: { mode } });
+          dispatch({ type: "reset_draft", payload: { mode: "default" } });
           resetDraftModel();
           if (typeof window !== "undefined") {
             replaceDraftUrl();
@@ -280,7 +274,6 @@ export function useThreadManager({
   }, [
     pendingDeleteThreadId,
     rpcRef,
-    modeRef,
     activeThreadIdRef,
     dispatch,
     resetDraftModel,

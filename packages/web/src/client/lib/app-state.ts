@@ -48,12 +48,13 @@ export function appReducer(state: ThreadState, action: AppAction): ThreadState {
   if (action.type === "notification")
     return reduceServerNotification(state, action.payload.notification, action.payload.events);
   if (action.type === "hydrate") {
+    const mode = action.payload.history.currentMode ?? action.payload.mode;
     return hydrateFromThreadRead(
       {
         ...state,
         activeThreadId: action.payload.threadId,
         activeThreadCwd: action.payload.history.cwd,
-        mode: action.payload.mode,
+        mode,
       },
       action.payload.history,
     );

@@ -1,5 +1,5 @@
 // @summary Tests for AgentRegistry: spawn, maxAgents, status tracking, shutdownAll
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, spyOn } from "bun:test";
 import type { Tool } from "@diligent/core/tool/types";
 import type { RuntimeAgent } from "@diligent/runtime/agent/runtime-agent";
 import { AgentRegistry, isFinal } from "@diligent/runtime/collab";
@@ -519,6 +519,67 @@ describe("AgentRegistry", () => {
     expect(childToolNames).not.toContain("spawn_agent");
     expect(childToolNames).not.toContain("wait");
     expect(childCwd).toBe("/tmp/collab-test");
+  });
+
+  it("treats an empty per-spawn allowedTools list as inherit-all", async () => {
+    const warnSpy = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      let childToolNames: string[] = [];
+      const registry = new AgentRegistry(
+        makeCollabDeps({
+          parentTools: [makeTool("read"), makeTool("grep"), makeTool("spawn_agent")],
+          sessionManagerFactory: makeInspectingSessionManagerFactory((agent) => {
+            childToolNames = agent.tools.map((tool) => tool.name);
+          }),
+        }),
+      );
+
+      const { threadId } = registry.spawn({
+        prompt: "task",
+        description: "",
+        agentType: "explore",
+        allowedTools: [],
+      });
+      await registry.wait([threadId], 5000);
+
+      const warning = warnSpy.mock.calls.map((call) => call.join(" ")).join("\n");
+      expect(warning).not.toContain("zero tools after filtering");
+      expect(childToolNames).toContain("read");
+      expect(childToolNames).toContain("grep");
+      expect(childToolNames).not.toContain("spawn_agent");
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it("logs zero-tool diagnostics with each filtering step", async () => {
+    const warnSpy = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const registry = new AgentRegistry(
+        makeCollabDeps({
+          parentTools: [makeTool("read"), makeTool("grep"), makeTool("spawn_agent")],
+          sessionManagerFactory: makeInspectingSessionManagerFactory(() => {}),
+        }),
+      );
+
+      const { threadId } = registry.spawn({
+        prompt: "task",
+        description: "",
+        agentType: "explore",
+        allowedTools: ["missing_tool"],
+      });
+      await registry.wait([threadId], 5000);
+
+      const warning = warnSpy.mock.calls.map((call) => call.join(" ")).join("\n");
+      expect(warning).toContain("with zero tools after filtering");
+      expect(warning).toContain("Parent tools: [read, grep, spawn_agent]");
+      expect(warning).toContain("Agent definition: name=explore, readonly=true, allowedTools=[(inherit all)]");
+      expect(warning).toContain("Spawn params: allowNestedAgents=false, allowedTools=[missing_tool]");
+      expect(warning).toContain("after nested-collab exclusion: kept [read, grep], removed [spawn_agent]");
+      expect(warning).toContain("after spawn allowedTools allow-list: kept [(none)], removed [read, grep]");
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 
   it("allows collab tools only when nested agents are explicitly enabled", async () => {

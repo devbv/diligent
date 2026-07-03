@@ -8,9 +8,11 @@ import { ProviderManager } from "@diligent/core/llm/provider-manager";
 import type { Model } from "@diligent/core/llm/types";
 import { createAppServerConfig } from "@diligent/runtime/app-server";
 import { z } from "zod";
+import { getBuiltinAgentDefinitions } from "../../src/agent/agent-types";
 import type { PermissionEngine } from "../../src/approval";
 import type { RuntimeConfig } from "../../src/config/runtime";
 import type { BundledToolProvider } from "../../src/tools/bundled-provider";
+import { makeAssistant, makeStreamFn } from "../helpers/collab";
 
 function makeRuntimeConfig(overrides?: Partial<RuntimeConfig>): RuntimeConfig {
   const providerManager = new ProviderManager({});
@@ -237,6 +239,69 @@ describe("createAppServerConfig", () => {
     });
 
     expect(agent.tools.map((tool) => tool.name)).toContain("factory_bundled_tool");
+  });
+
+  it("keeps collab registry parent tools aligned with execute mode filtering", async () => {
+    const runtimeConfig = makeRuntimeConfig({
+      agentDefinitions: getBuiltinAgentDefinitions(),
+      streamFunction: makeStreamFn([makeAssistant("child done")]),
+    });
+    const config = createAppServerConfig({ cwd: "/tmp/test", runtimeConfig });
+
+    const agent = await config.createAgent({
+      cwd: "/tmp/test",
+      mode: "execute",
+      effort: "medium",
+      modelId: DEFAULT_ANTHROPIC_MODEL_ID,
+      approve: async () => "once",
+      ask: async () => null,
+    });
+
+    expect(agent.tools.map((tool) => tool.name)).not.toContain("request_user_input");
+
+    const warned: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (message?: unknown) => warned.push(String(message));
+    try {
+      agent.registry?.spawn({ prompt: "inspect", description: "inspect", agentType: "explore" });
+    } finally {
+      console.warn = originalWarn;
+    }
+
+    expect(warned.join("\n")).not.toContain("zero tools after filtering");
+  });
+
+  it("keeps nested collab tools available when explicitly enabled after mode filtering", async () => {
+    const runtimeConfig = makeRuntimeConfig({
+      agentDefinitions: getBuiltinAgentDefinitions(),
+      streamFunction: makeStreamFn([makeAssistant("child done")]),
+    });
+    const config = createAppServerConfig({ cwd: "/tmp/test", runtimeConfig });
+    const agent = await config.createAgent({
+      cwd: "/tmp/test",
+      mode: "execute",
+      effort: "medium",
+      modelId: DEFAULT_ANTHROPIC_MODEL_ID,
+      approve: async () => "once",
+      ask: async () => null,
+    });
+
+    const warned: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (message?: unknown) => warned.push(String(message));
+    try {
+      agent.registry?.spawn({
+        prompt: "inspect",
+        description: "inspect",
+        agentType: "general",
+        allowNestedAgents: true,
+        allowedTools: ["spawn_agent", "wait"],
+      });
+    } finally {
+      console.warn = originalWarn;
+    }
+
+    expect(warned.join("\n")).not.toContain("zero tools after filtering");
   });
 });
 

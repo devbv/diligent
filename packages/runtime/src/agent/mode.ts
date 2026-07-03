@@ -1,6 +1,6 @@
-// @summary Diligent collaboration mode definitions: Mode, tool allow-list, prompt suffixes
+// @summary Diligent collaboration mode definitions: Mode, tool block-lists, prompt suffixes
 import type { Mode as ProtocolMode } from "@diligent/protocol";
-import { PLAN_MODE_ALLOWED_TOOLS } from "../tools/tool-metadata";
+import { EXECUTE_MODE_DISALLOWED_TOOLS, PLAN_MODE_DISALLOWED_TOOLS } from "../tools/tool-metadata";
 import executePrompt from "./default/execute.md" with { type: "text" };
 import planPrompt from "./default/plan.md" with { type: "text" };
 
@@ -8,12 +8,17 @@ import planPrompt from "./default/plan.md" with { type: "text" };
 export type Mode = ProtocolMode;
 
 /**
- * Tools available in plan mode (read-only exploration only).
+ * Tools explicitly unavailable in plan/read-only mode. External tools are allowed by default.
  * Bash, write, apply_patch, edit, multi_edit, update_knowledge are excluded.
- * D088: request_user_input is allowed in all modes.
  * Source of truth: TOOL_CAPABILITIES in tools/tool-metadata.ts.
  */
-export { PLAN_MODE_ALLOWED_TOOLS };
+export { PLAN_MODE_DISALLOWED_TOOLS };
+
+/**
+ * Tools explicitly unavailable in execute mode. Execute mode should not pause to ask the user.
+ * Source of truth: TOOL_CAPABILITIES in tools/tool-metadata.ts.
+ */
+export { EXECUTE_MODE_DISALLOWED_TOOLS };
 
 /**
  * System prompt suffixes injected per mode.

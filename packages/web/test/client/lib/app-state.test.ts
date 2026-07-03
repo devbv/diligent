@@ -226,6 +226,66 @@ test("reset_draft clears active thread and items but preserves thread list", () 
   expect(next.threadList).toEqual(seeded.threadList);
 });
 
+test("hydrate prefers restored thread mode from thread/read history", () => {
+  const next = appReducer(
+    {
+      ...initialThreadState,
+      mode: "default",
+    },
+    {
+      type: "hydrate",
+      payload: {
+        threadId: "thread-1",
+        mode: "default",
+        history: {
+          cwd: "/repo",
+          items: [],
+          hasFollowUp: false,
+          entryCount: 1,
+          isRunning: false,
+          currentMode: "plan",
+          currentEffort: "medium",
+          currentModel: "gpt-5",
+        },
+      },
+    },
+  );
+
+  expect(next.activeThreadId).toBe("thread-1");
+  expect(next.mode).toBe("plan");
+});
+
+test("hydrate resets mode when switching from a plan thread to a default thread", () => {
+  const next = appReducer(
+    {
+      ...initialThreadState,
+      activeThreadId: "plan-thread",
+      activeThreadCwd: "/repo",
+      mode: "plan",
+    },
+    {
+      type: "hydrate",
+      payload: {
+        threadId: "default-thread",
+        mode: "default",
+        history: {
+          cwd: "/repo",
+          items: [],
+          hasFollowUp: false,
+          entryCount: 1,
+          isRunning: false,
+          currentMode: "default",
+          currentEffort: "medium",
+          currentModel: "gpt-5",
+        },
+      },
+    },
+  );
+
+  expect(next.activeThreadId).toBe("default-thread");
+  expect(next.mode).toBe("default");
+});
+
 test("consume_first_pending_steer removes head entry only", () => {
   const seeded = {
     ...initialThreadState,

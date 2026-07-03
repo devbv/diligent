@@ -168,12 +168,13 @@ export async function buildDefaultTools(options: BuildDefaultToolsOptions): Prom
 
   // 2. Add collab tools (always enabled, not user-configurable)
   if (enableCollabTools && paths && collabDeps) {
+    const parentTools = [...catalog.tools];
     const { tools: collabTools, registry } = createCollabTools(
       {
         ...collabDeps,
         cwd,
         paths,
-        parentTools: catalog.tools,
+        parentTools,
       },
       existingRegistry,
     );

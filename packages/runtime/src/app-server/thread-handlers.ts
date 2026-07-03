@@ -116,6 +116,7 @@ export async function handleThreadRead(
   pendingSteers: Array<{ id: string; content: string }>;
   entryCount: number;
   isRunning: boolean;
+  currentMode: Mode;
   currentEffort: ThinkingEffort;
   currentModel?: string;
   totalCost?: number;
@@ -155,6 +156,7 @@ export async function handleThreadRead(
     pendingSteers: runtime.manager.getPendingSteers(),
     entryCount: runtime.manager.entryCount,
     isRunning: runtime.isRunning,
+    currentMode: runtime.manager.getCurrentMode() ?? runtime.mode,
     currentEffort: runtime.manager.getCurrentEffort() ?? runtime.effort,
     currentModel: runtime.manager.getCurrentModel()?.modelId ?? runtime.modelId,
     totalCost,

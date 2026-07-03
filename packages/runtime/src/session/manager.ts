@@ -165,6 +165,10 @@ export class SessionManager {
     return buildSessionContext(this.state.getCommittedEntries(), this.state.getCommittedLeafId(), {}).currentEffort;
   }
 
+  getCurrentMode(): Mode | undefined {
+    return buildSessionContext(this.state.getCommittedEntries(), this.state.getCommittedLeafId(), {}).currentMode;
+  }
+
   async compactNow(): Promise<{
     compacted: boolean;
     entryCount: number;
