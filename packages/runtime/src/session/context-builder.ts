@@ -3,7 +3,8 @@ import { buildMessagesFromCompaction } from "@diligent/core/agent/compaction";
 import { resolveModel } from "@diligent/core/llm/models";
 import type { Message } from "@diligent/core/types";
 import type { AssistantMessage } from "@diligent/protocol";
-import type { CompactionEntry, SessionEntry } from "./types";
+import { buildAutoProgressModeMessage } from "../agent/runtime-directives";
+import type { AutoProgressModeChangeEntry, CompactionEntry, SessionEntry } from "./types";
 
 export interface SessionContext {
   messages: Message[];
@@ -11,6 +12,7 @@ export interface SessionContext {
   compactionSummary?: Record<string, unknown>;
   currentModel?: { provider: string; modelId: string };
   currentEffort?: "none" | "low" | "medium" | "high" | "max";
+  currentAutoProgressMode?: boolean;
 }
 
 export type BuildSessionContextOptions = {
@@ -92,9 +94,18 @@ export function buildSessionContext(
   const providerMessages: Message[] = [];
   let currentModel: { provider: string; modelId: string } | undefined;
   let currentEffort: "none" | "low" | "medium" | "high" | "max" | undefined;
+  let currentAutoProgressMode: boolean | undefined;
   let lastAssistantModelId: string | undefined;
 
   if (lastCompaction && includeCompactionSummary) {
+    const autoProgressModeChange = findLatestAutoProgressModeChange(path.slice(0, compactionIndex + 1));
+    if (autoProgressModeChange) {
+      providerMessages.push(
+        buildAutoProgressModeMessage(autoProgressModeChange.enabled, Date.parse(autoProgressModeChange.timestamp)),
+      );
+      currentAutoProgressMode = autoProgressModeChange.enabled;
+    }
+
     if (lastCompaction.compactionSummary) {
       if (lastCompaction.displaySummary?.trim()) {
         messages.push({
@@ -131,6 +142,10 @@ export function buildSessionContext(
         case "effort_change":
           currentEffort = entry.effort;
           break;
+        case "auto_progress_mode_change":
+          providerMessages.push(buildAutoProgressModeMessage(entry.enabled, Date.parse(entry.timestamp)));
+          currentAutoProgressMode = entry.enabled;
+          break;
       }
     }
   } else {
@@ -149,6 +164,10 @@ export function buildSessionContext(
         case "effort_change":
           currentEffort = entry.effort;
           break;
+        case "auto_progress_mode_change":
+          providerMessages.push(buildAutoProgressModeMessage(entry.enabled, Date.parse(entry.timestamp)));
+          currentAutoProgressMode = entry.enabled;
+          break;
       }
     }
   }
@@ -159,7 +178,18 @@ export function buildSessionContext(
     compactionSummary: lastCompaction?.compactionSummary,
     currentModel: currentModel ?? resolveModelFromId(lastAssistantModelId),
     currentEffort,
+    currentAutoProgressMode,
   };
+}
+
+function findLatestAutoProgressModeChange(entries: SessionEntry[]): AutoProgressModeChangeEntry | undefined {
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const entry = entries[i];
+    if (entry.type === "auto_progress_mode_change") {
+      return entry;
+    }
+  }
+  return undefined;
 }
 
 function resolveModelFromId(modelId: string | undefined): { provider: string; modelId: string } | undefined {

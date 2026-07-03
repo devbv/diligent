@@ -5,7 +5,7 @@ import { Agent } from "@diligent/core/agent";
 import { EventStream } from "@diligent/core/event-stream";
 import type { Model, ProviderEvent, ProviderResult, ToolDefinition } from "@diligent/core/llm/types";
 import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError } from "@diligent/core/llm/types";
-import type { AssistantMessage, Message } from "@diligent/core/types";
+import type { AssistantMessage } from "@diligent/core/types";
 import { z } from "zod";
 
 const TEST_MODEL: Model = {
@@ -83,33 +83,6 @@ describe("Agent", () => {
     expect(messages.length).toBeGreaterThanOrEqual(2); // user + assistant
     const last = messages[messages.length - 1];
     expect(last.role).toBe("assistant");
-  });
-
-  test("prompt() sends transient messages without committing them to agent history", async () => {
-    let capturedMessages: Message[] = [];
-    const response = makeAssistant("done");
-    const agent = new Agent(TEST_MODEL, BASE_CONFIG.systemPrompt, BASE_CONFIG.tools, {
-      effort: BASE_CONFIG.effort,
-      compaction: BASE_CONFIG.compaction,
-      llmMsgStreamFn: (_model, context) => {
-        capturedMessages = context.messages;
-        return makeStreamFn(response)();
-      },
-    });
-
-    const transientMessage: Message = {
-      role: "user",
-      content: "Runtime directive: do not ask the user.",
-      timestamp: 0,
-    };
-
-    const messages = await agent.prompt({ role: "user", content: "build it", timestamp: Date.now() }, undefined, [
-      transientMessage,
-    ]);
-
-    expect(capturedMessages.map((message) => message.content)).toEqual(["build it", transientMessage.content]);
-    expect(messages.map((message) => message.content)).not.toContain(transientMessage.content);
-    expect(agent.getMessages().map((message) => message.content)).not.toContain(transientMessage.content);
   });
 
   test("prompt() does not commit user message when the loop fails", async () => {

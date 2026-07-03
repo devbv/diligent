@@ -4,7 +4,6 @@ import { getModelInfoList, resolveModel } from "@diligent/core/llm/models";
 import type { ProviderName } from "@diligent/core/llm/types";
 import { MODE_SYSTEM_PROMPT_SUFFIXES, type Mode, PLAN_MODE_ALLOWED_TOOLS } from "../agent/mode";
 import { RuntimeAgent } from "../agent/runtime-agent";
-import { buildRuntimeDirectiveMessages } from "../agent/runtime-directives";
 import { openBrowser as defaultOpenBrowser } from "../auth";
 import { applyConsentPatch, refreshPrivacyPolicyUrl, resolveConsentState } from "../config/consent";
 import { loadRuntimeConfig, type RuntimeConfig } from "../config/runtime";
@@ -94,7 +93,6 @@ async function createRuntimeAgent(args: {
   const { request, runtimeConfig, getPaths, bundledToolProviders } = args;
   const { cwd, mode, effort, modelId, approve, ask, getSessionId, existingAgent, onChildStop, userId } = request;
   const getAutoProgressMode = request.getAutoProgressMode ?? (() => resolveAutoProgressMode(runtimeConfig.diligent));
-  const getTransientMessages = () => buildRuntimeDirectiveMessages({ autoProgressMode: getAutoProgressMode() });
   const guardedSystemPrompt = withSkillGuardrail(runtimeConfig);
   const paths = await getPaths();
   const model = resolveModel(modelId);
@@ -109,7 +107,6 @@ async function createRuntimeAgent(args: {
       approve,
       ask,
       getAutoProgressMode,
-      getTransientMessages,
       streamFn: runtimeConfig.streamFunction,
       onChildStop,
       userId,

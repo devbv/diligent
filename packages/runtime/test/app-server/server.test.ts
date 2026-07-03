@@ -764,7 +764,7 @@ describe("DiligentAppServer", () => {
   });
 
   for (const scenario of [
-    { name: "off -> on", initial: false, updated: true, expectedDirectives: [false, false, true, true] },
+    { name: "off -> on", initial: false, updated: true, expectedDirectives: [undefined, undefined, true, true] },
     { name: "on -> off", initial: true, updated: false, expectedDirectives: [true, true, false, false] },
   ] as const) {
     it(`applies auto progress mode changes after the currently running turn (${scenario.name})`, async () => {
@@ -776,17 +776,25 @@ describe("DiligentAppServer", () => {
           releases.push(resolve);
         });
       let llmCallCount = 0;
-      const directiveSeenByCall: boolean[] = [];
+      const directiveSeenByCall: Array<boolean | undefined> = [];
 
       runtimeConfig.streamFunction = (_model, context) => {
         const callNumber = ++llmCallCount;
-        directiveSeenByCall.push(
-          context.messages.some(
+        const autoProgressDirective = context.messages
+          .filter(
             (message) =>
               message.role === "user" &&
               typeof message.content === "string" &&
-              message.content.includes("Auto progress mode is enabled"),
-          ),
+              message.content.includes("Runtime directive: Auto progress mode is"),
+          )
+          .at(-1);
+        const directiveText = autoProgressDirective?.role === "user" ? autoProgressDirective.content : undefined;
+        directiveSeenByCall.push(
+          typeof directiveText === "string" && directiveText.includes("enabled")
+            ? true
+            : typeof directiveText === "string" && directiveText.includes("disabled")
+              ? false
+              : undefined,
         );
         const stream = new EventStream(
           (event) => event.type === "done",

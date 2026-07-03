@@ -89,12 +89,12 @@ export class Agent {
    * Agent runs against a staged history and commits it only if the loop succeeds.
    * Resolves with the final message array when the loop ends.
    */
-  async prompt(userMessage: Message, signal?: AbortSignal, transientMessages?: Message[]): Promise<Message[]> {
+  async prompt(userMessage: Message, signal?: AbortSignal): Promise<Message[]> {
     if (this._running) throw new Error("Agent is already running a prompt");
     this._running = true;
     try {
       const nextMessages = [...this.messages, userMessage];
-      const result = await runAgentLoop(nextMessages, this.createLoopRuntime(transientMessages), signal);
+      const result = await runAgentLoop(nextMessages, this.createLoopRuntime(), signal);
       this.messages = result.messages;
       if (result.compactionSummary !== undefined) {
         this.compactionSummary = result.compactionSummary;
@@ -106,7 +106,7 @@ export class Agent {
     }
   }
 
-  private createLoopRuntime(transientMessages?: Message[]): LoopRuntime {
+  private createLoopRuntime(): LoopRuntime {
     return {
       config: {
         cwd: this.cwd,
@@ -118,7 +118,6 @@ export class Agent {
       },
       streamFunction: this.llmMsgStreamFn,
       llmCompactionFn: this.llmCompactionFn,
-      transientMessages,
       stream: this.agentStream,
       sessionId: this.sessionId,
       compactionSummary: this.compactionSummary,

@@ -5,7 +5,7 @@ import type { Mode } from "../agent/mode";
 import type { DiligentPaths } from "../infrastructure";
 
 /** Session file format version. Increment when entry schema changes. */
-export const SESSION_VERSION = 9;
+export const SESSION_VERSION = 10;
 
 /** Unique entry ID — 8-char hex */
 export function generateEntryId(): string {
@@ -106,6 +106,16 @@ export interface EffortChangeEntry {
   changedBy: "cli" | "command" | "config";
 }
 
+export interface AutoProgressModeChangeEntry {
+  type: "auto_progress_mode_change";
+  id: string;
+  parentId: string | null;
+  timestamp: string;
+  enabled: boolean;
+  /** Who triggered the change */
+  changedBy: "config";
+}
+
 export interface ErrorEntry {
   type: "error";
   id: string;
@@ -123,7 +133,8 @@ export type SessionEntry =
   | SessionInfoEntry
   | CompactionEntry
   | ModeChangeEntry
-  | EffortChangeEntry;
+  | EffortChangeEntry
+  | AutoProgressModeChangeEntry;
 
 /** Any line in a session file */
 export type SessionFileLine = SessionHeader | SessionEntry;

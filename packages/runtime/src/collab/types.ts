@@ -77,8 +77,6 @@ export interface CollabToolDeps {
   ask?: (request: UserInputRequest) => Promise<UserInputResponse>;
   /** Returns the auto-progress setting captured for the current parent turn. */
   getAutoProgressMode?: () => boolean;
-  /** Returns transient model messages derived from the current parent turn's runtime settings. */
-  getTransientMessages?: () => Message[];
   /** Routes sub-agent approval requests up to the parent session's approval handler. */
   approve?: (request: ApprovalRequest) => Promise<ApprovalResponse>;
   /** Stream function for child agents — when omitted, falls back to the global stream resolver. */

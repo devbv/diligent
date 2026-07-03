@@ -627,6 +627,24 @@ describe("SessionManager", () => {
     }
   });
 
+  test("appendAutoProgressModeChange() persists hidden provider setting state", async () => {
+    const dir = await setupDir();
+    const mgr = new SessionManager(makeManagerConfig(dir, createMockStreamFn([])));
+    await mgr.create();
+
+    mgr.appendAutoProgressModeChange(true);
+    await mgr.waitForWrites();
+
+    const { entries } = await readSessionFile(mgr.sessionPath!);
+    const entry = entries.find((candidate) => candidate.type === "auto_progress_mode_change");
+    expect(entry).toBeDefined();
+    if (entry && entry.type === "auto_progress_mode_change") {
+      expect(entry.enabled).toBe(true);
+      expect(entry.changedBy).toBe("config");
+    }
+    expect(mgr.getCurrentAutoProgressMode()).toBe(true);
+  });
+
   test("compactNow() appends compaction entry", async () => {
     const dir = await setupDir();
     const mgr = new SessionManager(

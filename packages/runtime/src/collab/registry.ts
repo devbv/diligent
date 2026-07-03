@@ -111,7 +111,6 @@ export class AgentRegistry {
       approve: next.approve,
       ask: next.ask,
       getAutoProgressMode: next.getAutoProgressMode,
-      getTransientMessages: next.getTransientMessages,
       onCollabEvent: next.onCollabEvent,
     };
     // Sync the collab event handler if it was updated
@@ -363,7 +362,7 @@ export class AgentRegistry {
       try {
         await childManager.run(userMessage, {
           signal: abortController.signal,
-          transientMessages: this.deps.getTransientMessages?.(),
+          autoProgressMode: this.deps.getAutoProgressMode?.(),
         });
       } catch (err) {
         fatalError = err instanceof Error ? err.message : String(err);

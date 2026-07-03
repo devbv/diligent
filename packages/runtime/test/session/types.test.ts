@@ -84,6 +84,14 @@ describe("Session entry serialization roundtrip", () => {
         effort: "medium",
         changedBy: "command",
       },
+      {
+        type: "auto_progress_mode_change",
+        id: "a5",
+        parentId: "a4",
+        timestamp: "2026-02-25T10:00:04.000Z",
+        enabled: true,
+        changedBy: "config",
+      },
     ];
     for (const entry of entries) {
       expect(JSON.parse(JSON.stringify(entry))).toEqual(entry);

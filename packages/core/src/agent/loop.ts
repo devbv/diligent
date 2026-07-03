@@ -26,7 +26,6 @@ export interface LoopRuntime {
   config: LoopConfig;
   streamFunction: StreamFunction;
   llmCompactionFn?: NativeCompactFn;
-  transientMessages?: Message[];
   stream: AgentStream;
   sessionId?: string;
   compactionSummary?: Record<string, unknown>;
@@ -99,12 +98,8 @@ export async function runAgentLoop(
       let assistantMessage: AssistantMessage | undefined;
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
-          const requestMessages =
-            runtime.transientMessages && runtime.transientMessages.length > 0
-              ? [...conversation, ...runtime.transientMessages]
-              : conversation;
           assistantMessage = await streamAssistantMessage(
-            requestMessages,
+            conversation,
             loopRequest,
             { tools: config.tools, systemPrompt: config.systemPrompt, providerStream },
             stream,
