@@ -1,5 +1,5 @@
 // @summary Tests for request_user_input tool — ctx.ask wiring and answer formatting
-import { describe, expect, it, setDefaultTimeout } from "bun:test";
+import { describe, expect, it, mock, setDefaultTimeout } from "bun:test";
 import type { ToolContext } from "@diligent/core/tool/types";
 import { createRequestUserInputTool } from "../../src/tools/request-user-input";
 import type { UserInputRequest, UserInputResponse } from "../../src/tools/user-input-types";
@@ -33,8 +33,8 @@ describe("createRequestUserInputTool", () => {
     expect(result.output).toBe("User input not available in this context.");
   });
 
-  it("auto-resolves to the first option when auto progress mode disables ask", async () => {
-    const tool = createRequestUserInputTool({ autoProgressMode: true });
+  it("auto-resolves to the first option when auto progress mode is enabled at execution time", async () => {
+    const tool = createRequestUserInputTool({ getAutoProgressMode: () => true });
     const result = await tool.execute(
       {
         questions: [
@@ -56,7 +56,7 @@ describe("createRequestUserInputTool", () => {
   });
 
   it("auto-resolves multi-select prompts with the first option", async () => {
-    const tool = createRequestUserInputTool({ autoProgressMode: true });
+    const tool = createRequestUserInputTool({ getAutoProgressMode: () => true });
     const result = await tool.execute(
       {
         questions: [
@@ -76,6 +76,24 @@ describe("createRequestUserInputTool", () => {
     );
 
     expect(result.output).toBe("[Features] Pick features\nAnswer: Movement");
+  });
+
+  it("reads auto progress mode dynamically from an existing tool host", async () => {
+    let autoProgressMode = false;
+    const ask = mock(async () => ({ answers: { q1: "Manual" } }));
+    const tool = createRequestUserInputTool({
+      ask,
+      getAutoProgressMode: () => autoProgressMode,
+    });
+
+    const args = { questions: [{ id: "q1", header: "confirm", question: "Continue?", options: YES_NO_OPTIONS }] };
+
+    await expect(tool.execute(args, makeCtx())).resolves.toMatchObject({
+      output: "[confirm] Continue?\nAnswer: Manual",
+    });
+    autoProgressMode = true;
+    await expect(tool.execute(args, makeCtx())).resolves.toMatchObject({ output: "[confirm] Continue?\nAnswer: Yes" });
+    expect(ask).toHaveBeenCalledTimes(1);
   });
 
   it("formats single question answer with header prefix", async () => {

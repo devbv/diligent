@@ -73,8 +73,6 @@ export interface BuildDefaultToolsOptions {
   mcpResources?: boolean;
   /** Expose MCP prompt proxy tools when supported (default true). */
   mcpPrompts?: boolean;
-  /** Hide request_user_input from the model and auto-resolve host ask calls. */
-  autoProgressMode?: boolean;
 }
 
 function createProviderEditTools(
@@ -111,7 +109,6 @@ export async function buildDefaultTools(options: BuildDefaultToolsOptions): Prom
     mcpWarnOutputTokens,
     mcpResources,
     mcpPrompts,
-    autoProgressMode = false,
   } = options;
   const providers = [...(bundledToolProviders ?? [])];
   if (mcpServers && Object.keys(mcpServers).length > 0) {
@@ -156,9 +153,7 @@ export async function buildDefaultTools(options: BuildDefaultToolsOptions): Prom
           createPlanTool(),
         ];
 
-        if (!autoProgressMode) {
-          builtinTools.push(createRequestUserInputTool(host));
-        }
+        builtinTools.push(createRequestUserInputTool(host));
 
         if (webEnabled) {
           builtinTools.push(createWebTool());

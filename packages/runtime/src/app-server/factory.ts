@@ -57,26 +57,6 @@ function withSkillGuardrail(runtimeConfig: RuntimeConfig) {
   ];
 }
 
-function withAutoProgressMode(systemPrompt: RuntimeConfig["systemPrompt"], enabled: boolean) {
-  if (!enabled) {
-    return systemPrompt;
-  }
-
-  return [
-    ...systemPrompt,
-    {
-      tag: "runtime_setting",
-      label: "auto_progress_mode",
-      content: [
-        "Auto progress mode is enabled.",
-        "Do not ask the user for confirmation, clarification, or choices during the task.",
-        "Do not call request_user_input. Make the best reasonable assumption, continue, and present the completed result.",
-        "Normal permission and safety boundaries still apply.",
-      ].join("\n"),
-    },
-  ];
-}
-
 function applyModeToPrompt(mode: Mode, systemPrompt: RuntimeConfig["systemPrompt"]) {
   if (mode === "default") {
     return systemPrompt;
@@ -112,11 +92,10 @@ async function createRuntimeAgent(args: {
 }): Promise<RuntimeAgent> {
   const { request, runtimeConfig, getPaths, bundledToolProviders } = args;
   const { cwd, mode, effort, modelId, approve, ask, getSessionId, existingAgent, onChildStop, userId } = request;
-  const autoProgressMode = resolveAutoProgressMode(runtimeConfig.diligent);
-  const guardedSystemPrompt = withAutoProgressMode(withSkillGuardrail(runtimeConfig), autoProgressMode);
+  const getAutoProgressMode = () => resolveAutoProgressMode(runtimeConfig.diligent);
+  const guardedSystemPrompt = withSkillGuardrail(runtimeConfig);
   const paths = await getPaths();
   const model = resolveModel(modelId);
-  const askForRuntime = autoProgressMode ? undefined : ask;
   const toolsResult = await buildDefaultTools({
     cwd,
     paths,
@@ -126,7 +105,7 @@ async function createRuntimeAgent(args: {
       agentDefinitions: runtimeConfig.agentDefinitions,
       getParentSessionId: getSessionId,
       approve,
-      ask: askForRuntime,
+      ask,
       streamFn: runtimeConfig.streamFunction,
       onChildStop,
       userId,
@@ -135,11 +114,10 @@ async function createRuntimeAgent(args: {
     skills: runtimeConfig.skills,
     enableCollabTools: true,
     existingRegistry: existingAgent?.registry,
-    host: { approve, ask: askForRuntime, autoProgressMode },
+    host: { approve, ask, getAutoProgressMode },
     bundledToolProviders,
     provider: model.provider as ProviderName,
     mcpServers: runtimeConfig.diligent.mcpServers,
-    autoProgressMode,
     mcpToolLoading: runtimeConfig.diligent.mcp?.toolLoading ?? "auto",
     mcpLazyThreshold: runtimeConfig.diligent.mcp?.lazyThreshold,
     mcpMaxOutputTokens: runtimeConfig.diligent.mcp?.maxOutputTokens,
