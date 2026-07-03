@@ -111,7 +111,7 @@ export function ToolActivityRow({
           compact ? "gap-2 py-0.5" : "gap-2 py-1",
           expandable ? `hover:text-text ${focusRingClasses}` : "cursor-default",
           isBusy && "tool-activity-running text-info/85",
-          isError && "text-danger/90",
+          isError && "text-muted/85",
         )}
       >
         <span
@@ -119,7 +119,7 @@ export function ToolActivityRow({
             "flex h-5 w-5 shrink-0 items-center justify-center text-muted/75",
             category === "context" && "text-muted/85",
             isBusy && "tool-activity-icon-running text-info",
-            isError && "text-danger",
+            isError && "text-muted/70",
           )}
         >
           <ToolIcon name={icon} className={compact ? "h-3.5 w-3.5" : undefined} />
@@ -146,7 +146,7 @@ export function ToolActivityRow({
         ) : null}
 
         {statusLabel ? (
-          <span className={cn("shrink-0 text-xs font-medium leading-5", isError ? "text-danger" : "text-info")}>
+          <span className={cn("shrink-0 text-xs font-medium leading-5", isError ? "text-muted/65" : "text-info")}>
             {statusLabel}
           </span>
         ) : null}
