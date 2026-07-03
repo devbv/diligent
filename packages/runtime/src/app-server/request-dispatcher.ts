@@ -314,24 +314,30 @@ export async function dispatchClientRequest(
     case DILIGENT_CLIENT_REQUEST_METHODS.CONFIG_SET: {
       const connectionThreadId = ctx.getConnection(connectionId)?.currentThreadId ?? undefined;
       const targetThreadId = request.params.threadId ?? connectionThreadId;
-      const autoProgressModeUpdate =
-        "autoProgressMode" in request.params ? { enabled: request.params.autoProgressMode !== false } : undefined;
-      const result = await handleConfigSet(
-        ctx.modelConfig,
-        ctx.currentModelId,
-        request.params.model,
-        targetThreadId,
-        ctx.runtimeSettingsConfig,
-        autoProgressModeUpdate,
-      );
-      if (targetThreadId && result.model) {
+      const autoProgressMode =
+        "autoProgressMode" in request.params ? request.params.autoProgressMode !== false : undefined;
+      const runtimeSettingsConfig = ctx.runtimeSettingsConfig;
+      if (autoProgressMode !== undefined && !runtimeSettingsConfig)
+        throw Object.assign(new Error("Runtime settings config not available"), { code: -32601 });
+
+      const result = await handleConfigSet(ctx.modelConfig, ctx.currentModelId, request.params.model, targetThreadId);
+      if (autoProgressMode !== undefined) {
+        runtimeSettingsConfig?.setAutoProgressMode(autoProgressMode);
+      }
+
+      const response = {
+        ...result,
+        autoProgressMode: runtimeSettingsConfig?.getAutoProgressMode(),
+      };
+
+      if (targetThreadId && response.model) {
         const runtime = await ctx.resolveThreadRuntime(targetThreadId);
-        if (runtime.modelId !== result.model) {
-          runtime.modelId = result.model;
-          const model = resolveModel(result.model);
+        if (runtime.modelId !== response.model) {
+          runtime.modelId = response.model;
+          const model = resolveModel(response.model);
           const llmCompactionFn = ctx.createNativeCompaction?.(model.provider as ProviderName);
           const llmMsgStreamFn = ctx.streamFunction;
-          runtime.agent?.setModel(result.model, llmMsgStreamFn, llmCompactionFn);
+          runtime.agent?.setModel(response.model, llmMsgStreamFn, llmCompactionFn);
           if (runtime.effort === "none" && !supportsThinkingNone(model)) {
             runtime.effort = "medium";
             runtime.agent?.setEffort("medium");
@@ -339,12 +345,12 @@ export async function dispatchClientRequest(
             ctx.lastUsedEffortByCwd.set(runtime.cwd, "medium");
           }
           runtime.manager.appendModelChange(model.provider, model.id);
-          ctx.lastUsedModelByCwd.set(runtime.cwd, result.model);
+          ctx.lastUsedModelByCwd.set(runtime.cwd, response.model);
         }
       } else {
-        ctx.setCurrentModelId(result.model);
+        ctx.setCurrentModelId(response.model);
       }
-      return result;
+      return response;
     }
 
     case DILIGENT_CLIENT_REQUEST_METHODS.CONFIG_RELOAD:

@@ -27,14 +27,9 @@ import {
   type ProviderName,
   type SupportedImageMediaType,
 } from "../protocol/index";
-import type { RuntimeSettingsConfig } from "./request-dispatcher";
 import type { ThreadRuntime } from "./thread-handlers";
 
 type EmitFn = (notification: DiligentServerNotification) => Promise<void>;
-
-interface AutoProgressModeUpdate {
-  enabled: boolean;
-}
 
 /**
  * Reads/writes the resolved AI-data consent state (OVDR-11475 §3.A).
@@ -68,20 +63,9 @@ export async function handleConfigSet(
   currentModelId: string | undefined,
   model: string | undefined,
   threadId?: string,
-  runtimeSettingsConfig?: RuntimeSettingsConfig,
-  autoProgressModeUpdate?: AutoProgressModeUpdate,
 ): Promise<ConfigSetResponse> {
-  if (autoProgressModeUpdate) {
-    if (!runtimeSettingsConfig)
-      throw Object.assign(new Error("Runtime settings config not available"), { code: -32601 });
-    runtimeSettingsConfig.setAutoProgressMode(autoProgressModeUpdate.enabled);
-  }
-
   if (!model) {
-    return {
-      model: currentModelId,
-      autoProgressMode: runtimeSettingsConfig?.getAutoProgressMode(),
-    };
+    return { model: currentModelId };
   }
   if (!modelConfig) throw Object.assign(new Error("Model config not available"), { code: -32601 });
 
@@ -89,7 +73,7 @@ export async function handleConfigSet(
   if (!valid) throw Object.assign(new Error(`Unknown model: ${model}`), { code: -32602 });
 
   modelConfig.onModelChange(model, threadId);
-  return { model, autoProgressMode: runtimeSettingsConfig?.getAutoProgressMode() };
+  return { model };
 }
 
 export interface ConfigReloadResult {
