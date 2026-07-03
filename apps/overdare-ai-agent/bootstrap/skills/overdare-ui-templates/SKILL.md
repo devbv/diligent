@@ -1,15 +1,26 @@
 ---
 name: overdare-ui-templates
-description: When generating UI, first determine template fit. Structure confirmation requires request_user_input (choice UI); do not prompt free-text input. Element add/remove forbidden until user_confirmed_spec is finalized. If fit, edit via ui-generator; if not, switch to ui-generator.
+description: Use when creating a NEW UI screen matching an official OVERDARE template (HUD, popup/modal, loading, leaderboard, boss HP, character select, result/rank, or RPG inventory/shop/equipment/skill-tree/quest/attendance). Determine template fit first; structure confirmation via request_user_input (choice UI, no free-text); no element add/remove until user_confirmed_spec is finalized. NOT for editing an already-built UI (move/align/rename/recolor/show-hide/retext), world-surface decoration, gameplay/state logic, or one-off status tweaks.
 ---
 
 # OVERDARE UI Template Guide
 
+## Not for existing-UI edits (early exit)
+
+Run this check first. This skill is only for building a **new** UI screen from an official template. If the request is any of the following, this skill does not apply — **stop here and handle it directly, without the template procedure below** (no RAG, no confirmation flow, no self-check):
+
+- Editing an already-built UI: text, icon, color, position, size, show/hide, or adding a single element to an existing screen
+- World-surface decoration (images/signs on walls, ceilings, floors)
+- Gameplay/state logic (combat, movement, spawns, timers, data store)
+- A one-off status check, handoff/plan continuation, or an empty/acknowledgment message
+
+Proceed below only when the request is to create a new template-shaped screen.
+
 ## Core Principles
 
 1. **Before judgment**, do not create or edit UI instances. Complete `Required procedure for UI generation requests` in full (do not skip for speed or completeness).
-2. Use official templates first only when they are **similar** to the request. If they do not fit, switch to **`ui-generator`** without forcing a match (this skill alone must not produce UI on a blank canvas).
-3. Template path: preserve **skeleton, layout, and frames**; GUI work **requires `ui-generator`**.
+2. Use official templates first only when they are **similar** to the request. Do not force a match when they do not fit.
+3. Template path: preserve **skeleton, layout, and frames**.
 4. **Structural changes** (delete, add, button count, slot removal) are allowed only for items **explicitly listed in `user_confirmed_spec`**. Before that and outside that scope, **no inference** (e.g., “notification → one button”, “RPG → remove currency”).
 5. Before confirmation or explicit specification: keep **all default template elements**, and change only **L2** (text, numbers, icons, GUI names, data, script bindings).
 6. **Position / Size / Anchor / appearance / colors**: do not change unless present in the prompt or spec. Do not encroach on **reserved areas** for joystick, jump, or mobile dashboard.
@@ -62,7 +73,7 @@ description: When generating UI, first determine template fit. Structure confirm
 | `hud_regions` | Regions to include | HP / resources (gold · crystal ×2) / actions (5 attacks) / menu · settings | true |
 | `hud_layout` | Layout | use as-is / tweak later / custom layout | false |
 
-- For IngameHUD, **do not skip the 2 request_user_input calls above** even if the request partially specifies regions (exception: L2-only change requests). **No 2 sequential calls**.
+- For IngameHUD, **do not skip the request_user_input call above** (both questions in one call) even if the request partially specifies regions (exception: L2-only change requests). **No 2 sequential calls**.
 
 **RPGIngameHUD** — mandatory `request_user_input` procedure (fixed labels, **2 question panels shown together**; **separate from IngameHUD**):
 
@@ -75,7 +86,7 @@ description: When generating UI, first determine template fit. Structure confirm
 | `hud_regions` | Regions to include | HP / energy (energy bar) / XP · level / resources (gold · crystal ×2) / skills (3) / quickslots (2) / dash | true |
 | `hud_layout` | Layout | use as-is / tweak later / custom layout | false |
 
-- For RPGIngameHUD, **do not skip the 2 request_user_input calls above** even if the request partially specifies regions (exception: L2-only change requests). **No 2 sequential calls**.
+- For RPGIngameHUD, **do not skip the request_user_input call above** (both questions in one call) even if the request partially specifies regions (exception: L2-only change requests). **No 2 sequential calls**.
 - Do **not** offer menu · settings in RPGIngameHUD `hud_regions`. Do **not** offer energy · XP · level · quickslots · dash in IngameHUD `hud_regions`.
 
 **PopupGui** — `request_user_input` example (**one `request_user_input` call**, 2 questions **shown together**):
@@ -111,7 +122,7 @@ description: When generating UI, first determine template fit. Structure confirm
 
 **DailyAttendanceGui — “Attendance / daily reward”**
 
-- The template default is **days 1–31** slots, but if the request differs only in **day count** while the purpose is attendance · reward claim (Claimed/Claim/Locked), **prefer DailyAttendanceGui**. Do **not** exclude the template or build anew with `ui-generator` solely because day count differs.
+- The template default is **days 1–31** slots, but if the request differs only in **day count** while the purpose is attendance · reward claim (Claimed/Claim/Locked), **prefer DailyAttendanceGui**. Do **not** exclude the template solely because day count differs.
 - If day count is **not** in the prompt, confirm with `request_user_input`.
 
 | Question id | prompt (summary) | options | allow_multiple |
@@ -139,8 +150,8 @@ description: When generating UI, first determine template fit. Structure confirm
 1. Read this skill · **template table · exclusion criteria · conflict priority** below
 2. Lock candidate template with **4 similarity questions** (asset add only after step 4)
 3. If **structural add/remove needed** → **`request_user_input`** → receive `user_confirmed_spec` (**no Destroy · structural add until then**)
-4. If **exclusion criteria** apply, reselect or use `ui-generator`
-5. Asset add → GUI names → add/remove within **spec scope** → L2 → **`ui-generator`**
+4. If **exclusion criteria** apply, reselect a suitable template
+5. Asset add → GUI names → add/remove within **spec scope** → L2
 6. Verify reserved areas · frames · overflow → **self-check** → respond (include spec · judgment)
 
 ### 4 Similarity Questions
@@ -197,7 +208,7 @@ description: When generating UI, first determine template fit. Structure confirm
 
 1. Context mismatch (forcing persistent↔modal) 2. Interaction model mismatch (browse · equip vs. confirm only) 3. Information overload · readability · touch degradation 4. Must change group · slot meaning to accept 5. Repeated elements impossible even with scroll · split 6. Requires reserved-area · boundary overflow · ClipsDescendants dependency 7. Request’s main feature replaces template purpose at scale
 
-→ Reselect, switch to `ui-generator`, or split · prioritize via **`request_user_input`** (do not infer deletions).
+→ Reselect or split · prioritize via **`request_user_input`** (do not infer deletions).
 
 **DailyAttendanceGui exception:** When the request is attendance · daily reward claim and **only day (slot) count** differs from the template default (31), the exclusion criteria above **do not apply**. Vary via slot Destroy · Duplicate and keep the template.
 
@@ -233,9 +244,8 @@ Common: structural add/remove **only after spec**. Before spec, keep default str
 - **Sequential `request_user_input` calls when 2+ questions are needed** (second call after first response). **Must be one call · all in `questions` array · shown together**
 - Destroy · structural add · button count change · hiding unconfirmed elements without spec · explicit statement
 - New blank-canvas or equivalent UI without template when similarity · fit judgment · spec are missing
-- GUI placement · edits without `ui-generator`
 - Not using official templates when a fitting one exists
-- Not using **DailyAttendanceGui** when it fits **only because day count differs** · building anew with `ui-generator`
+- Not using **DailyAttendanceGui** when it fits **only because day count differs**
 - Arbitrary coordinates · anchors · appearance without explicit spec, reserved-area encroachment, ClipsDescendants concealment
 
 ## Pre-Response Self-Check · Response Format
@@ -248,7 +258,7 @@ Common: structural add/remove **only after spec**. Before spec, keep default str
 - [ ] Actual add/remove ⊆ `remove_elements` ∪ `add_elements` (everything else kept)
 - [ ] No coordinate · anchor · appearance changes without spec · explicit statement
 - [ ] Frames · reserved areas · ClipsDescendants respected
-- [ ] Template · exclusion · `ui-generator` · spec (or “already stated in prompt”) recorded
+- [ ] Template · exclusion · spec (or “already stated in prompt”) recorded
 - [ ] For attendance requests with **only different day count** → used `DailyAttendanceGui` · varied slots (not new UI · not template exclusion)
 
 **A. Confirmation turn (before build):** Template candidate (1–2 sentences in chat) + **fixed choices via `request_user_input`** → apply responses to spec, then build (do not list choices only in chat and collect typed input)

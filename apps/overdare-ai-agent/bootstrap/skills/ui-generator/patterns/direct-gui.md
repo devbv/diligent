@@ -50,8 +50,6 @@ Avoid persistent gameplay UI in the exact center of the screen because the chara
 - `UIGridLayout`
 - `UIAspectRatioConstraint`
 
-For `BillboardGui` or `SurfaceGui`, use `patterns/world-space-gui.md` instead.
-
 ## Parent-First Rule
 
 Always create parent containers first, then child objects one level at a time.
