@@ -8,6 +8,7 @@ import type {
   ToolsSetParams,
   ToolsSetResponse,
 } from "@diligent/protocol";
+import { Bell, FastForward } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "./Button";
 import { Input } from "./Input";
@@ -157,26 +158,8 @@ function pluginSummary(plugin: ToolsListResponse["plugins"][number]): string {
 }
 
 function SettingIcon({ kind }: { kind: "auto" | "bell" }) {
-  if (kind === "bell") {
-    return (
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-        <path
-          d="M4.5 7.1c0-2.2 1.4-3.8 3.5-3.8s3.5 1.6 3.5 3.8v2.1l1.1 1.8H3.4l1.1-1.8V7.1Z"
-          stroke="currentColor"
-          strokeWidth="1.4"
-          strokeLinejoin="round"
-        />
-        <path d="M6.5 12.2c.3.7.8 1 1.5 1s1.2-.3 1.5-1" stroke="currentColor" strokeWidth="1.4" />
-      </svg>
-    );
-  }
-
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path d="M4 3.5v9l7-4.5-7-4.5Z" fill="currentColor" />
-      <path d="M12.5 3.2v9.6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-    </svg>
-  );
+  const Icon = kind === "bell" ? Bell : FastForward;
+  return <Icon className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />;
 }
 
 function ToggleSwitch({
