@@ -1,6 +1,6 @@
 // @summary Top navigation bar: sidebar toggle, thread status, title, and tool/knowledge buttons
 
-import { BookMarked, Menu, Settings } from "lucide-react";
+import { Landmark, Menu, Settings } from "lucide-react";
 import { iconButtonClasses } from "./ui-styles";
 
 interface AppHeaderProps {
@@ -51,7 +51,7 @@ export function AppHeader({
         title="Knowledge"
         className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-knowledge-backlog/35 bg-knowledge-backlog/12 text-sm text-knowledge-backlog/90 transition hover:border-knowledge-backlog/55 hover:bg-knowledge-backlog/18 hover:text-knowledge-backlog"
       >
-        <BookMarked className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
+        <Landmark className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
       </button>
       <button
         type="button"
