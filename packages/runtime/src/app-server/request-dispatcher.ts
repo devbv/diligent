@@ -79,7 +79,7 @@ export interface ToolConfigManager {
 
 export interface RuntimeSettingsConfig {
   getAutoProgressMode: () => boolean;
-  setAutoProgressMode: (enabled: boolean) => void;
+  setAutoProgressMode: (enabled: boolean) => void | Promise<void>;
 }
 
 /**
@@ -321,7 +321,7 @@ export async function dispatchClientRequest(
 
       const result = await handleConfigSet(ctx.modelConfig, ctx.currentModelId, request.params.model, targetThreadId);
       if (autoProgressMode !== undefined) {
-        runtimeSettingsConfig?.setAutoProgressMode(autoProgressMode);
+        await runtimeSettingsConfig?.setAutoProgressMode(autoProgressMode);
       }
 
       const response = {

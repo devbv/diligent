@@ -97,6 +97,7 @@ export async function handleConfigReload(
   const result = await reloadConfig();
   for (const runtime of threads.values()) {
     runtime.agent = undefined;
+    runtime.manager.resetAgentState();
   }
   return result;
 }

@@ -94,6 +94,7 @@ describe("/auto-progress command", () => {
       { method: DILIGENT_CLIENT_REQUEST_METHODS.CONFIG_SET, params: { autoProgressMode: true } },
     ]);
     expect(lines.join("\n")).toContain("enabled");
+    expect(lines.join("\n")).toContain("Run /reload or open a new session to apply this change.");
     expect(requestRender).toHaveBeenCalledTimes(1);
   });
 

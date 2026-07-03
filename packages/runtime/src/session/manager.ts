@@ -139,6 +139,10 @@ export class SessionManager {
     return this.memoryErrors;
   }
 
+  resetAgentState(): void {
+    this.orchestrator.resetAgentState();
+  }
+
   getCurrentModel(): { provider: string; modelId: string } | undefined {
     return buildSessionContext(this.state.getCommittedEntries(), this.state.getCommittedLeafId(), {}).currentModel;
   }

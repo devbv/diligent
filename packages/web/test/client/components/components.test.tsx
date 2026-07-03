@@ -463,7 +463,8 @@ test("tool settings modal renders tool and plugin rows", () => {
   expect(html).toContain("Runtime version");
   expect(html).toContain("1.2.3");
   expect(html).toContain("bash");
-  expect(html).toContain("Locked");
+  expect(html).not.toContain("Locked");
+  expect(html).not.toContain("plan");
   expect(html).toContain("@acme/diligent-tools");
   expect(html).toContain("Add Package");
   expect(html).toContain("min-w-28 shrink-0 whitespace-nowrap");

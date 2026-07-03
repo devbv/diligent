@@ -102,9 +102,16 @@ export async function saveGlobalAutoProgressMode(enabled: boolean, userId?: stri
     content = await file.text();
   }
 
-  const path = userId?.trim() ? ["accounts", userId.trim(), "autoProgressMode"] : ["autoProgressMode"];
-  const edits = modify(content, path, enabled, { formattingOptions: JSONC_FORMAT_OPTIONS });
-  const updated = applyEdits(content, edits);
+  const normalizedUserId = userId?.trim();
+  let updated = content;
+  if (normalizedUserId) {
+    const userIdEdits = modify(updated, ["userId"], normalizedUserId, { formattingOptions: JSONC_FORMAT_OPTIONS });
+    updated = applyEdits(updated, userIdEdits);
+  }
+
+  const path = normalizedUserId ? ["accounts", normalizedUserId, "autoProgressMode"] : ["autoProgressMode"];
+  const edits = modify(updated, path, enabled, { formattingOptions: JSONC_FORMAT_OPTIONS });
+  updated = applyEdits(updated, edits);
   if (content.trim() === "{}" || content.trim() === "") {
     const formatEdits = format(updated, undefined, JSONC_FORMAT_OPTIONS);
     await Bun.write(configPath, applyEdits(updated, formatEdits));

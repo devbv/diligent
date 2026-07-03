@@ -6,6 +6,10 @@ import type { PluginDescriptor, ToolConflictPolicy, ToolDescriptor } from "../pr
 import { buildDefaultTools } from "../tools/defaults";
 import type { ThreadHandlersContext } from "./thread-handlers";
 
+function visibleToolState(tools: ToolDescriptor[]): ToolDescriptor[] {
+  return tools.filter((tool) => !(tool.source === "builtin" && tool.immutable));
+}
+
 export async function handleToolsList(
   ctx: ThreadHandlersContext,
   threadId: string | undefined,
@@ -25,6 +29,7 @@ export async function handleToolsList(
     toolsConfig: tools,
     bundledToolProviders: ctx.getBundledToolProviders(),
     mcpServers: ctx.getMcpServers(),
+    autoProgressMode: ctx.getAutoProgressMode(),
   });
 
   return {
@@ -32,7 +37,7 @@ export async function handleToolsList(
     appliesOnNextTurn: true,
     trustMode: "full_trust",
     conflictPolicy: (tools?.conflictPolicy ?? "error") as ToolConflictPolicy,
-    tools: result.toolState,
+    tools: visibleToolState(result.toolState),
     plugins: result.pluginState.map((plugin) => ({ ...plugin, loadError: plugin.loadError })),
   };
 }
@@ -75,6 +80,7 @@ export async function handleToolsSet(
     toolsConfig: writeResult.config.tools,
     bundledToolProviders: ctx.getBundledToolProviders(),
     mcpServers: ctx.getMcpServers(),
+    autoProgressMode: ctx.getAutoProgressMode(),
   });
 
   return {
@@ -82,7 +88,7 @@ export async function handleToolsSet(
     appliesOnNextTurn: true,
     trustMode: "full_trust",
     conflictPolicy: (writeResult.config.tools?.conflictPolicy ?? "error") as ToolConflictPolicy,
-    tools: result.toolState,
+    tools: visibleToolState(result.toolState),
     plugins: result.pluginState.map((plugin) => ({ ...plugin, loadError: plugin.loadError })),
   };
 }

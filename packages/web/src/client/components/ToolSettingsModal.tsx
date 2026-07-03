@@ -12,6 +12,7 @@ import { Bell, FastForward } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "./Button";
 import { Input } from "./Input";
+import { Modal } from "./Modal";
 import {
   badgeClasses,
   cardPaddingClasses,
@@ -244,10 +245,16 @@ export function ToolSettingsModal({
   const [error, setError] = useState<string | null>(null);
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
   const [newPackageName, setNewPackageName] = useState("");
+  const [autoProgressDraft, setAutoProgressDraft] = useState(autoProgressMode);
+  const [showSaveConfirm, setShowSaveConfirm] = useState(false);
 
   useEffect(() => {
     dialogRef.current?.focus();
   }, []);
+
+  useEffect(() => {
+    setAutoProgressDraft(autoProgressMode);
+  }, [autoProgressMode]);
 
   useEffect(() => {
     if (initialState) {
@@ -370,19 +377,34 @@ export function ToolSettingsModal({
     setSavedMessage(null);
   };
 
-  const handleSave = async () => {
+  const performSave = async () => {
     if (!draft) return;
     setSaving(true);
     setError(null);
     setSavedMessage(null);
     try {
+      if (
+        typeof autoProgressDraft === "boolean" &&
+        autoProgressDraft !== autoProgressMode &&
+        onAutoProgressModeChange
+      ) {
+        await onAutoProgressModeChange(autoProgressDraft);
+      }
       await onSave(buildSetParams(threadId, draft));
       onClose();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Failed to save tool settings");
+      setShowSaveConfirm(false);
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleSave = () => {
+    if (!draft) return;
+    setError(null);
+    setSavedMessage(null);
+    setShowSaveConfirm(true);
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -394,7 +416,11 @@ export function ToolSettingsModal({
   };
 
   return (
-    <div className={className ?? "fixed inset-0 z-50 bg-overlay/35"} role="presentation" onClick={onClose}>
+    <div
+      className={className ?? "fixed inset-0 z-50 bg-overlay/35"}
+      role="presentation"
+      onClick={showSaveConfirm ? undefined : onClose}
+    >
       <div
         ref={dialogRef}
         role="dialog"
@@ -479,8 +505,8 @@ export function ToolSettingsModal({
                         icon="auto"
                         label="Auto progress mode"
                         description="Skips confirmation steps and shows only the finished result."
-                        checked={autoProgressMode}
-                        onChange={onAutoProgressModeChange}
+                        checked={autoProgressDraft ?? autoProgressMode}
+                        onChange={setAutoProgressDraft}
                       />
                     ) : null}
                     {typeof desktopNotificationsEnabled === "boolean" && onDesktopNotificationsEnabledChange ? (
@@ -544,34 +570,23 @@ export function ToolSettingsModal({
               <section className={sectionStackClasses}>
                 <div>
                   <h3 className="text-sm font-semibold text-text">Built-in tools</h3>
-                  <p className="text-xs text-muted">
-                    Immutable tools stay enabled even if config tries to turn them off.
-                  </p>
+                  <p className="text-xs text-muted">Configure optional built-in tools exposed to the agent.</p>
                 </div>
                 <div className={itemStackClasses}>
                   {state.tools
-                    .filter((tool) => tool.source === "builtin")
+                    .filter((tool) => tool.source === "builtin" && !tool.immutable)
                     .map((tool) => {
-                      const checked = tool.configurable ? (draft.builtin[tool.name] ?? tool.enabled) : true;
-                      const disabled = !tool.configurable || tool.immutable;
+                      const checked = draft.builtin[tool.name] ?? tool.enabled;
                       return (
                         <label key={tool.name} className={controlRowClasses}>
                           <input
                             type="checkbox"
                             checked={checked}
-                            disabled={disabled}
                             onChange={(event) => handleBuiltinToggle(tool.name, event.target.checked)}
                             className="mt-0.5"
                           />
                           <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-medium text-text">{tool.name}</span>
-                              {tool.immutable ? (
-                                <span className={`${badgeClasses} border-border/100 bg-surface-light text-muted`}>
-                                  Locked
-                                </span>
-                              ) : null}
-                            </div>
+                            <div className="text-sm font-medium text-text">{tool.name}</div>
                             <p className="mt-0.5 text-xs text-muted">{describeToolReason(tool)}</p>
                             {tool.error ? <p className="mt-1 text-xs text-danger">{tool.error}</p> : null}
                           </div>
@@ -706,6 +721,23 @@ export function ToolSettingsModal({
           </Button>
         </div>
       </div>
+      {showSaveConfirm ? (
+        <Modal
+          title="Apply config changes?"
+          description="Tool and auto progress changes apply after /reload or when you open a new session."
+          onCancel={() => setShowSaveConfirm(false)}
+          onConfirm={() => void performSave()}
+        >
+          <div className="flex justify-end gap-2">
+            <Button intent="ghost" size="sm" disabled={saving} onClick={() => setShowSaveConfirm(false)}>
+              Cancel
+            </Button>
+            <Button size="sm" disabled={saving} onClick={() => void performSave()}>
+              {saving ? "Saving…" : "Save"}
+            </Button>
+          </div>
+        </Modal>
+      ) : null}
     </div>
   );
 }

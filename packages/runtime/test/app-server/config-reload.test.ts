@@ -5,7 +5,7 @@ import { handleConfigReload } from "../../src/app-server/config-handlers";
 import type { ThreadRuntime } from "../../src/app-server/thread-handlers";
 
 function fakeRuntime(agent: unknown): ThreadRuntime {
-  return { agent } as unknown as ThreadRuntime;
+  return { agent, manager: { resetAgentState: () => {} } } as unknown as ThreadRuntime;
 }
 
 describe("handleConfigReload", () => {

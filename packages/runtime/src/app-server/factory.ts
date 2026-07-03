@@ -2,9 +2,11 @@
 import { dirname, join } from "node:path";
 import { getModelInfoList, resolveModel } from "@diligent/core/llm/models";
 import type { ProviderName } from "@diligent/core/llm/types";
+import { applyAutoProgressPrompt } from "../agent/auto-progress";
 import { MODE_SYSTEM_PROMPT_SUFFIXES, type Mode, PLAN_MODE_ALLOWED_TOOLS } from "../agent/mode";
 import { RuntimeAgent } from "../agent/runtime-agent";
 import { openBrowser as defaultOpenBrowser } from "../auth";
+import { resolveAutoProgressMode } from "../config/auto-progress";
 import { applyConsentPatch, refreshPrivacyPolicyUrl, resolveConsentState } from "../config/consent";
 import { loadRuntimeConfig, type RuntimeConfig } from "../config/runtime";
 import { getGlobalConfigPath, saveGlobalAutoProgressMode, saveGlobalConsent, saveGlobalModel } from "../config/writer";
@@ -14,11 +16,6 @@ import { buildDefaultTools } from "../tools/defaults";
 import { buildMcpNeedsAuthNote, getMcpManager } from "../tools/mcp";
 import type { ConfigReloadResult, ConsentConfigManager } from "./config-handlers";
 import type { CreateAgentArgs, DiligentAppServerConfig } from "./server";
-
-function resolveAutoProgressMode(config: RuntimeConfig["diligent"]): boolean {
-  const userId = config.userId?.trim();
-  return (userId ? config.accounts?.[userId]?.autoProgressMode : undefined) ?? config.autoProgressMode ?? false;
-}
 
 function updateAutoProgressMode(config: RuntimeConfig["diligent"], enabled: boolean): RuntimeConfig["diligent"] {
   const userId = config.userId?.trim();
@@ -93,6 +90,7 @@ async function createRuntimeAgent(args: {
   const { request, runtimeConfig, getPaths, bundledToolProviders } = args;
   const { cwd, mode, effort, modelId, approve, ask, getSessionId, existingAgent, onChildStop, userId } = request;
   const getAutoProgressMode = request.getAutoProgressMode ?? (() => resolveAutoProgressMode(runtimeConfig.diligent));
+  const autoProgressMode = getAutoProgressMode();
   const guardedSystemPrompt = withSkillGuardrail(runtimeConfig);
   const paths = await getPaths();
   const model = resolveModel(modelId);
@@ -115,7 +113,7 @@ async function createRuntimeAgent(args: {
     skills: runtimeConfig.skills,
     enableCollabTools: true,
     existingRegistry: existingAgent?.registry,
-    host: { approve, ask, getAutoProgressMode },
+    host: { approve, ask },
     bundledToolProviders,
     provider: model.provider as ProviderName,
     mcpServers: runtimeConfig.diligent.mcpServers,
@@ -125,6 +123,7 @@ async function createRuntimeAgent(args: {
     mcpWarnOutputTokens: runtimeConfig.diligent.mcp?.warnOutputTokens,
     mcpResources: runtimeConfig.diligent.mcp?.resources,
     mcpPrompts: runtimeConfig.diligent.mcp?.prompts,
+    autoProgressMode,
   });
 
   // Surface unauthenticated MCP servers to the agent. `buildDefaultTools` above already ran the MCP
@@ -138,7 +137,7 @@ async function createRuntimeAgent(args: {
   );
   return new RuntimeAgent(
     model,
-    applyModeToPrompt(activeMode, promptSections),
+    applyAutoProgressPrompt(applyModeToPrompt(activeMode, promptSections), autoProgressMode),
     filterToolsByMode(activeMode, toolsResult.tools),
     {
       cwd,
@@ -265,11 +264,9 @@ export function createAppServerConfig(opts: CreateAppServerConfigOptions): Dilig
     consentConfig,
     runtimeSettingsConfig: {
       getAutoProgressMode: () => resolveAutoProgressMode(runtimeConfig.diligent),
-      setAutoProgressMode: (enabled) => {
+      setAutoProgressMode: async (enabled) => {
         runtimeConfig.diligent = updateAutoProgressMode(runtimeConfig.diligent, enabled);
-        saveGlobalAutoProgressMode(enabled, runtimeConfig.diligent.userId).catch((err) => {
-          console.warn("[config] Failed to persist auto progress mode:", err);
-        });
+        await saveGlobalAutoProgressMode(enabled, runtimeConfig.diligent.userId);
       },
     },
     providerManager: runtimeConfig.providerManager,

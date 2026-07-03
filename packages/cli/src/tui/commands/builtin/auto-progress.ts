@@ -34,7 +34,10 @@ export const autoProgressCommand: Command = {
 
     const response = await rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.CONFIG_SET, { autoProgressMode: enabled });
     const applied = response.autoProgressMode ?? enabled;
-    ctx.displayLines([`  Auto progress mode ${t.bold}${applied ? "enabled" : "disabled"}${t.reset}`]);
+    ctx.displayLines([
+      `  Auto progress mode ${t.bold}${applied ? "enabled" : "disabled"}${t.reset}`,
+      `  ${t.dim}Run /reload or open a new session to apply this change.${t.reset}`,
+    ]);
     ctx.requestRender();
   },
 };

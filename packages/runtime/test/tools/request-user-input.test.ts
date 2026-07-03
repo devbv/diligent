@@ -1,5 +1,5 @@
 // @summary Tests for request_user_input tool — ctx.ask wiring and answer formatting
-import { describe, expect, it, mock, setDefaultTimeout } from "bun:test";
+import { describe, expect, it, setDefaultTimeout } from "bun:test";
 import type { ToolContext } from "@diligent/core/tool/types";
 import { createRequestUserInputTool } from "../../src/tools/request-user-input";
 import type { UserInputRequest, UserInputResponse } from "../../src/tools/user-input-types";
@@ -31,81 +31,6 @@ describe("createRequestUserInputTool", () => {
       makeCtx(),
     );
     expect(result.output).toBe("User input not available in this context.");
-  });
-
-  it("returns a self-answer directive when auto progress mode is enabled", async () => {
-    const ask = mock(async () => ({ answers: { asset: "asset-2" } }));
-    const tool = createRequestUserInputTool({ ask, getAutoProgressMode: () => true });
-    const result = await tool.execute(
-      {
-        questions: [
-          {
-            id: "asset",
-            header: "Asset",
-            question: "Pick one",
-            options: [
-              { label: "Castle", description: "First result", value: "asset-1" },
-              { label: "Tower", description: "Second result", value: "asset-2" },
-            ],
-          },
-        ],
-      },
-      makeCtx(),
-    );
-
-    expect(result.output).toContain("Auto progress mode is currently enabled.");
-    expect(result.output).toContain("Answer the following question(s) yourself");
-    expect(result.output).toContain("You may call request_user_input again later for a different question");
-    expect(result.output).toContain("[Asset] Pick one");
-    expect(result.output).toContain("- Castle (value: asset-1): First result");
-    expect(result.output).toContain("- Tower (value: asset-2): Second result");
-    expect(ask).not.toHaveBeenCalled();
-  });
-
-  it("self-answer directive preserves multi-select prompts", async () => {
-    const tool = createRequestUserInputTool({ getAutoProgressMode: () => true });
-    const result = await tool.execute(
-      {
-        questions: [
-          {
-            id: "features",
-            header: "Features",
-            question: "Pick features",
-            allow_multiple: true,
-            options: [
-              { label: "Movement", description: "Add movement" },
-              { label: "Combat", description: "Add combat" },
-            ],
-          },
-        ],
-      },
-      makeCtx(),
-    );
-
-    expect(result.output).toContain("[Features] Pick features");
-    expect(result.output).toContain("Select one or more options if appropriate.");
-    expect(result.output).toContain("- Movement: Add movement");
-    expect(result.output).toContain("- Combat: Add combat");
-  });
-
-  it("reads auto progress mode dynamically from an existing tool host", async () => {
-    let autoProgressMode = false;
-    const ask = mock(async () => ({ answers: { q1: "Manual" } }));
-    const tool = createRequestUserInputTool({
-      ask,
-      getAutoProgressMode: () => autoProgressMode,
-    });
-
-    const args = { questions: [{ id: "q1", header: "confirm", question: "Continue?", options: YES_NO_OPTIONS }] };
-
-    await expect(tool.execute(args, makeCtx())).resolves.toMatchObject({
-      output: "[confirm] Continue?\nAnswer: Manual",
-    });
-    autoProgressMode = true;
-    const result = await tool.execute(args, makeCtx());
-    expect(result.output).toContain("Auto progress mode is currently enabled.");
-    expect(result.output).toContain("[confirm] Continue?");
-    expect(ask).toHaveBeenCalledTimes(1);
   });
 
   it("formats single question answer with header prefix", async () => {

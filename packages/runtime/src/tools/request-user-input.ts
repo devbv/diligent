@@ -2,7 +2,7 @@
 
 import type { Tool } from "@diligent/core/tool/types";
 import { z } from "zod";
-import { formatAutoProgressUserInputDirective, type RuntimeToolHost, requestToolUserInput } from "./capabilities";
+import { type RuntimeToolHost, requestToolUserInput } from "./capabilities";
 import type { UserInputRequest } from "./user-input-types";
 
 const OptionSchema = z.object({
@@ -42,9 +42,6 @@ export function createRequestUserInputTool(host?: RuntimeToolHost): Tool<typeof 
       const request = {
         questions: args.questions,
       } satisfies UserInputRequest;
-      if (host?.getAutoProgressMode?.()) {
-        return { output: formatAutoProgressUserInputDirective(request) };
-      }
 
       const response = await requestToolUserInput(host, request);
       if (!response) {

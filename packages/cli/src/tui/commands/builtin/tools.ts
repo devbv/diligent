@@ -116,10 +116,10 @@ function promptPackageName(ctx: CommandContext): Promise<string | null> {
 
 async function editBuiltins(ctx: CommandContext, state: ToolsListResponse, draft: ToolSettingsDraft): Promise<void> {
   while (true) {
-    const builtinTools = state.tools.filter((tool) => tool.source === "builtin");
+    const builtinTools = state.tools.filter((tool) => tool.source === "builtin" && !tool.immutable);
     const items: ListPickerItem[] = [
       ...builtinTools.map((tool) => ({
-        label: `${tool.immutable ? "🔒" : (draft.builtin[tool.name] ?? tool.enabled) ? "✓" : "✗"} ${tool.name}`,
+        label: `${(draft.builtin[tool.name] ?? tool.enabled) ? "✓" : "✗"} ${tool.name}`,
         description: describeTool(tool),
         value: tool.name,
       })),
@@ -131,8 +131,8 @@ async function editBuiltins(ctx: CommandContext, state: ToolsListResponse, draft
 
     const tool = builtinTools.find((entry) => entry.name === choice);
     if (!tool) continue;
-    if (!tool.configurable || tool.immutable) {
-      ctx.displayLines([`  ${t.warn}${tool.name} is locked and always enabled.${t.reset}`]);
+    if (!tool.configurable) {
+      ctx.displayLines([`  ${t.warn}${tool.name} is not configurable.${t.reset}`]);
       continue;
     }
 
@@ -283,7 +283,7 @@ export const toolsCommand: Command = {
       const items: ListPickerItem[] = [
         {
           label: "Built-in tools",
-          description: `${state.tools.filter((tool) => tool.source === "builtin").length} entries`,
+          description: `${state.tools.filter((tool) => tool.source === "builtin" && !tool.immutable).length} entries`,
           value: "__builtins",
         },
         {
@@ -308,9 +308,22 @@ export const toolsCommand: Command = {
         continue;
       }
       if (choice === "__save") {
+        const confirmed = await ctx.app.confirm({
+          title: "Apply config changes?",
+          message: "Tool and auto progress changes apply after /reload or when you open a new session.",
+          confirmLabel: "Save",
+          cancelLabel: "Cancel",
+        });
+        if (!confirmed) {
+          continue;
+        }
         state = await saveTools(ctx, draft);
         draft = createDraft(state);
-        ctx.displayLines([`  ${t.success}Saved tool settings.${t.reset}`, `  ${t.dim}${state.configPath}${t.reset}`]);
+        ctx.displayLines([
+          `  ${t.success}Saved tool settings.${t.reset}`,
+          `  ${t.dim}${state.configPath}${t.reset}`,
+          `  ${t.dim}Run /reload or open a new session to apply these changes.${t.reset}`,
+        ]);
       }
     }
   },

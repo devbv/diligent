@@ -5,6 +5,7 @@ import { agentTypeToModelClass, resolveModel, resolveModelForClass } from "@dili
 import type { ThinkingEffort } from "@diligent/core/llm/types";
 import type { Tool } from "@diligent/core/tool/types";
 import type { TextBlock } from "@diligent/core/types";
+import { applyAutoProgressPrompt } from "../agent/auto-progress";
 import { PLAN_MODE_ALLOWED_TOOLS } from "../agent/mode";
 import type { ResolvedAgentDefinition } from "../agent/resolved-agent";
 import { resolveAgentDefinition } from "../agent/resolved-agent";
@@ -182,19 +183,23 @@ export class AgentRegistry {
     const nestedAgentPolicy = params.allowNestedAgents
       ? "Nested sub-agent tools were explicitly enabled for this run. Use them only if the parent instruction clearly requires further delegation; otherwise do the work yourself."
       : "Nested sub-agent delegation is disabled for this run. Do not call spawn_agent, wait, send_input, or close_agent, and do not attempt to coordinate additional sub-agents.";
-    const childSystemPrompt = [
-      ...(agentDefinition.systemPromptPrefix
-        ? [{ label: "agent_role", content: agentDefinition.systemPromptPrefix }]
-        : []),
-      {
-        label: "runtime_context",
-        content: `Current working directory: ${this.deps.cwd}`,
-      },
-      {
-        label: "nested_subagent_policy",
-        content: nestedAgentPolicy,
-      },
-    ];
+    const autoProgressMode = this.deps.getAutoProgressMode?.() ?? false;
+    const childSystemPrompt = applyAutoProgressPrompt(
+      [
+        ...(agentDefinition.systemPromptPrefix
+          ? [{ label: "agent_role", content: agentDefinition.systemPromptPrefix }]
+          : []),
+        {
+          label: "runtime_context",
+          content: `Current working directory: ${this.deps.cwd}`,
+        },
+        {
+          label: "nested_subagent_policy",
+          content: nestedAgentPolicy,
+        },
+      ],
+      autoProgressMode,
+    );
 
     // Resolve model class: explicit override > agent_type-based default
     const parentModel = resolveModel(this.deps.modelId);
@@ -248,8 +253,8 @@ export class AgentRegistry {
           host: {
             approve: this.deps.approve,
             ask: childAsk,
-            getAutoProgressMode: this.deps.getAutoProgressMode,
           },
+          autoProgressMode,
         });
 
         const filteredTools = result.tools.filter((tool) => allowedChildToolNames.has(tool.name));

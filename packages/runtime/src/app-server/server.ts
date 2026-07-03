@@ -811,6 +811,7 @@ export class DiligentAppServer {
       resolveThreadRuntime: (threadId?: string) => this.resolveThreadRuntime(threadId),
       getLatestEffortForCwd: (cwd: string) => this.getLatestEffortForCwd(cwd),
       getLatestModelForCwd: (cwd: string) => this.getLatestModelForCwd(cwd),
+      getAutoProgressMode: () => this.config.runtimeSettingsConfig?.getAutoProgressMode() ?? false,
       emit: (notification: DiligentServerNotification) => this.emit(notification),
       consumeTurn: (runtime: ThreadRuntime, runPromise: Promise<void>, turnId: string) =>
         this.consumeTurn(runtime, runPromise, turnId),

@@ -10,7 +10,7 @@ export type Mode = ProtocolMode;
 /**
  * Tools available in plan mode (read-only exploration only).
  * Bash, write, apply_patch, edit, multi_edit, update_knowledge are excluded.
- * D088: request_user_input is allowed in all modes.
+ * D088: request_user_input is mode-allowed, but runtime settings may omit it from the catalog.
  * Source of truth: TOOL_CAPABILITIES in tools/tool-metadata.ts.
  */
 export { PLAN_MODE_ALLOWED_TOOLS };

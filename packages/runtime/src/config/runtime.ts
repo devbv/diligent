@@ -27,6 +27,7 @@ import { buildBaseSystemPrompt } from "../prompt/index";
 import type { SkillMetadata } from "../skills/index";
 import { discoverSkills, renderSkillsSection } from "../skills/index";
 import { buildDefaultTools } from "../tools/defaults";
+import { resolveAutoProgressMode } from "./auto-progress";
 import { buildSystemPromptWithKnowledge, discoverInstructions } from "./instructions";
 import { loadDiligentConfig } from "./loader";
 import type { DiligentConfig } from "./schema";
@@ -57,6 +58,10 @@ export interface RuntimeConfig {
 export async function loadRuntimeConfig(cwd: string, paths: DiligentPaths): Promise<RuntimeConfig> {
   const { config, sources } = await loadDiligentConfig(cwd);
   const resolvedUserId = await resolveConfiguredUserId(config.userId);
+  const diligentConfig = {
+    ...config,
+    userId: resolvedUserId,
+  };
   const instructions = await discoverInstructions(cwd);
   const authStore: AuthStoreOptions = {
     mode: (config.provider?.auth?.credentialsStore ?? "auto") as AuthCredentialsStoreMode,
@@ -143,6 +148,7 @@ export async function loadRuntimeConfig(cwd: string, paths: DiligentPaths): Prom
       skills,
       enableCollabTools: false,
       mcpServers: config.mcpServers,
+      autoProgressMode: resolveAutoProgressMode(diligentConfig),
     });
     const result = await discoverAgents({
       cwd,
@@ -195,10 +201,7 @@ export async function loadRuntimeConfig(cwd: string, paths: DiligentPaths): Prom
     effort: (config.effort ?? "medium") as ThinkingEffort,
     systemPrompt,
     streamFunction,
-    diligent: {
-      ...config,
-      userId: resolvedUserId,
-    },
+    diligent: diligentConfig,
     sources,
     skills,
     agents,

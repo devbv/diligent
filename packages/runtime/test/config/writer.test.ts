@@ -334,6 +334,7 @@ describe("saveGlobalAutoProgressMode", () => {
       const text = await Bun.file(configPath).text();
       expect(text).toContain("// keep me");
       expect(text).toContain(`"model": "${DEFAULT_ANTHROPIC_MODEL_ID}"`);
+      expect(text).toContain('"userId": "test-account"');
       expect(text).toContain('"accounts"');
       expect(text).toContain('"test-account"');
       expect(text).toContain('"autoProgressMode": true');

@@ -5,7 +5,6 @@ import type { UserInputRequest, UserInputResponse } from "./user-input-types";
 export interface RuntimeToolHost {
   approve?: (request: ApprovalRequest) => Promise<ApprovalResponse>;
   ask?: (request: UserInputRequest) => Promise<UserInputResponse>;
-  getAutoProgressMode?: () => boolean;
 }
 
 export async function requestToolApproval(
@@ -22,31 +21,4 @@ export async function requestToolUserInput(
 ): Promise<UserInputResponse | null> {
   if (!host?.ask) return null;
   return host.ask(request);
-}
-
-export function formatAutoProgressUserInputDirective(request: UserInputRequest): string {
-  const questions = request.questions
-    .map((question) => {
-      const options = question.options
-        .map((option) => {
-          const value = option.value ? ` (value: ${option.value})` : "";
-          return `- ${option.label}${value}: ${option.description}`;
-        })
-        .join("\n");
-      const selection = question.allow_multiple ? "Select one or more options if appropriate." : "Select one option.";
-      const secret = question.is_secret
-        ? "\nThis question is marked secret; do not invent credentials or secrets that are unavailable."
-        : "";
-      return [`[${question.header}] ${question.question}`, selection, "Options:", options, secret].join("\n");
-    })
-    .join("\n\n");
-
-  return [
-    "Auto progress mode is currently enabled.",
-    "Do not ask the user or wait for a user answer.",
-    "Answer the following question(s) yourself using the current task context, choose the best option(s) or a reasonable assumption, and continue.",
-    "You may call request_user_input again later for a different question; the current setting will be checked again then.",
-    "",
-    questions,
-  ].join("\n");
 }

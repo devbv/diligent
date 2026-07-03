@@ -14,7 +14,7 @@ import { createApplyPatchTool } from "./apply-patch";
 import { createBashTool } from "./bash";
 import type { BundledToolProvider } from "./bundled-provider";
 import type { RuntimeToolHost } from "./capabilities";
-import type { PluginLoadError, PluginStateEntry, ToolStateEntry } from "./catalog";
+import type { PluginLoadError, PluginStateEntry, ToolCatalogResult, ToolStateEntry } from "./catalog";
 import { buildToolCatalog } from "./catalog";
 import { createEditTool, createMultiEditTool } from "./edit";
 import { createGlobTool } from "./glob";
@@ -73,6 +73,24 @@ export interface BuildDefaultToolsOptions {
   mcpResources?: boolean;
   /** Expose MCP prompt proxy tools when supported (default true). */
   mcpPrompts?: boolean;
+  /** Hide user-input request tools from the model for auto progress mode. */
+  autoProgressMode?: boolean;
+}
+
+function filterRequestUserInputTool<T extends { tools: Tool[] }>(result: T, enabled: boolean): T {
+  if (!enabled) return result;
+  return {
+    ...result,
+    tools: result.tools.filter((tool) => tool.name !== "request_user_input"),
+  };
+}
+
+function filterRequestUserInputCatalog(result: ToolCatalogResult, enabled: boolean): ToolCatalogResult {
+  if (!enabled) return result;
+  return {
+    ...filterRequestUserInputTool(result, enabled),
+    state: result.state.filter((tool) => tool.name !== "request_user_input"),
+  };
 }
 
 function createProviderEditTools(
@@ -109,6 +127,7 @@ export async function buildDefaultTools(options: BuildDefaultToolsOptions): Prom
     mcpWarnOutputTokens,
     mcpResources,
     mcpPrompts,
+    autoProgressMode = false,
   } = options;
   const providers = [...(bundledToolProviders ?? [])];
   if (mcpServers && Object.keys(mcpServers).length > 0) {
@@ -131,41 +150,44 @@ export async function buildDefaultTools(options: BuildDefaultToolsOptions): Prom
       }),
     );
   }
-  const catalog = parentToolOverride
-    ? {
-        tools: [...parentToolOverride],
-        state: [],
-        plugins: [],
-        pluginErrors: [],
-      }
-    : await (async () => {
-        const webEnabled = toolsConfig?.web_action !== false;
-
-        const builtinTools: Tool[] = [
-          createBashTool(cwd, host),
-          createSkillTool(skills),
-          createReadTool(),
-          createReadImageTool(),
-          ...createProviderEditTools(provider, cwd, host),
-          createLsTool(),
-          createGlobTool(cwd),
-          createGrepTool(cwd),
-          createPlanTool(),
-        ];
-
-        builtinTools.push(createRequestUserInputTool(host));
-
-        if (webEnabled) {
-          builtinTools.push(createWebTool());
+  const catalog = filterRequestUserInputCatalog(
+    parentToolOverride
+      ? {
+          tools: [...parentToolOverride],
+          state: [],
+          plugins: [],
+          pluginErrors: [],
         }
+      : await (async () => {
+          const webEnabled = toolsConfig?.web_action !== false;
 
-        if (paths) {
-          builtinTools.push(createSearchKnowledgeTool(paths.knowledge));
-          builtinTools.push(createUpdateKnowledgeTool(paths.knowledge));
-        }
+          const builtinTools: Tool[] = [
+            createBashTool(cwd, host),
+            createSkillTool(skills),
+            createReadTool(),
+            createReadImageTool(),
+            ...createProviderEditTools(provider, cwd, host),
+            createLsTool(),
+            createGlobTool(cwd),
+            createGrepTool(cwd),
+            createPlanTool(),
+          ];
 
-        return buildToolCatalog(builtinTools, toolsConfig, cwd, host, { bundledProviders: providers });
-      })();
+          builtinTools.push(createRequestUserInputTool(host));
+
+          if (webEnabled) {
+            builtinTools.push(createWebTool());
+          }
+
+          if (paths) {
+            builtinTools.push(createSearchKnowledgeTool(paths.knowledge));
+            builtinTools.push(createUpdateKnowledgeTool(paths.knowledge));
+          }
+
+          return buildToolCatalog(builtinTools, toolsConfig, cwd, host, { bundledProviders: providers });
+        })(),
+    autoProgressMode,
+  );
 
   // 2. Add collab tools (always enabled, not user-configurable)
   if (enableCollabTools && paths && collabDeps) {
