@@ -1,5 +1,6 @@
 // @summary Top navigation bar: sidebar toggle, thread status, title, and tool/knowledge buttons
 
+import { LibraryBig, Menu, Settings } from "lucide-react";
 import { iconButtonClasses } from "./ui-styles";
 
 interface AppHeaderProps {
@@ -32,18 +33,7 @@ export function AppHeader({
         title={sidebarOpen ? "Close sidebar" : "Open sidebar"}
         className={iconButtonClasses}
       >
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 16 16"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-          aria-hidden="true"
-        >
-          <rect x="1" y="3.5" width="14" height="1.2" rx="0.6" fill="currentColor" />
-          <rect x="1" y="7.4" width="14" height="1.2" rx="0.6" fill="currentColor" />
-          <rect x="1" y="11.3" width="14" height="1.2" rx="0.6" fill="currentColor" />
-        </svg>
+        <Menu className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
       </button>
       <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-icon-success" aria-hidden="true" />
       {(threadStatus !== "idle" || isCompacting) && (
@@ -61,7 +51,7 @@ export function AppHeader({
         title="Knowledge"
         className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-knowledge-backlog/35 bg-knowledge-backlog/12 text-sm text-knowledge-backlog/90 transition hover:border-knowledge-backlog/55 hover:bg-knowledge-backlog/18 hover:text-knowledge-backlog"
       >
-        <span className="block leading-none">✦</span>
+        <LibraryBig className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
       </button>
       <button
         type="button"
@@ -70,7 +60,7 @@ export function AppHeader({
         title="Config"
         className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border/100 bg-surface-light text-sm text-muted transition hover:border-border-strong/100 hover:bg-surface-strong hover:text-text"
       >
-        <span className="block leading-none">⚙</span>
+        <Settings className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
       </button>
     </div>
   );

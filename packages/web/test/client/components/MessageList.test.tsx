@@ -148,6 +148,8 @@ test("MessageList groups failed tool activity rows", () => {
   expect(html).toContain('data-message-list-row="tool-group:tool-glob-1+tool-glob-2"');
   expect(html).toContain("2 matches failed");
   expect(html).toContain("Failed");
+  expect(html).toContain("text-muted/65");
+  expect(html).not.toContain("text-danger");
   expect(html).not.toContain("**/*.lua");
 });
 

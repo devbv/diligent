@@ -1,6 +1,7 @@
 // @summary Collapsible sidebar with thread list, new thread button, and relative timestamps
 
 import type { SessionSummary } from "@diligent/protocol";
+import { Plus, Trash2, X } from "lucide-react";
 import { memo } from "react";
 import { formatRelativeTime } from "../lib/format-time";
 import { Panel } from "./Panel";
@@ -38,16 +39,7 @@ function SidebarImpl({
             onClick={onClose}
             className={iconButtonClasses}
           >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 16 16"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-              aria-hidden="true"
-            >
-              <path d="M4 4L12 12M12 4L4 12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-            </svg>
+            <X className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
           </button>
         ) : null}
       </div>
@@ -58,7 +50,7 @@ function SidebarImpl({
           onClick={onNewThread}
           className={`${sidebarItemClasses} flex items-center gap-2 border border-border/100 bg-surface-light text-sm font-medium text-text hover:bg-surface-strong`}
         >
-          <span className="text-lg leading-none">+</span>
+          <Plus className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
           <span>New conversation</span>
         </button>
 
@@ -103,7 +95,7 @@ function SidebarImpl({
                   }}
                   className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-0.5 text-muted opacity-0 transition hover:text-danger focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent group-hover:opacity-100"
                 >
-                  ×
+                  <Trash2 className="h-3.5 w-3.5" strokeWidth={1.8} aria-hidden="true" />
                 </button>
               ) : null}
             </div>

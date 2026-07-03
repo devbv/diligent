@@ -469,7 +469,8 @@ test("tool settings modal renders tool and plugin rows", () => {
   expect(html).toContain("Improve service with your chats");
   expect(html).toContain("This data is not used to train AI models.");
   expect(html).toContain("Default On · Turning off stops improvement use");
-  expect(html).toContain("View Privacy Policy ›");
+  expect(html).toContain("View Privacy Policy");
+  expect(html).toContain("lucide-external-link");
   expect(html).toContain('href="https://example.com/privacy"');
 });
 
@@ -1490,9 +1491,9 @@ test("tool block uses a neutral fallback icon instead of the target glyph", () =
     />,
   );
 
-  expect(html).toContain('cx="11"');
-  expect(html).not.toContain("M12 8.5a3.5");
-  expect(html).not.toContain("M3.5 12h2");
+  expect(html).toContain("lucide-sliders-horizontal");
+  expect(html).not.toContain("lucide-bot");
+  expect(html).not.toContain("lucide-crosshair");
 });
 
 test("tool block hides duration while tool is still running", () => {

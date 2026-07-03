@@ -1,6 +1,7 @@
 // @summary Modal listing configured MCP servers with OAuth login/logout via shared RPC methods (P070)
 
 import type { McpListResponse, McpLoginStartResponse, McpLogoutResponse, McpServerStatus } from "@diligent/protocol";
+import { X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "./Button";
 import { StatusDot } from "./StatusDot";
@@ -175,7 +176,7 @@ export function McpServersModal({
             onClick={onClose}
             className={panelCloseButtonClasses}
           >
-            ✕
+            <X className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
           </button>
         </div>
 

@@ -1,5 +1,6 @@
 // @summary Removable composer chips for host-injected AgentNativeBridge context items
 
+import { X } from "lucide-react";
 import { type AgentContextItem, formatAgentContextItemLabel, getAgentContextItemKey } from "../lib/agent-native-bridge";
 
 interface ComposerContextChipsProps {
@@ -27,9 +28,7 @@ export function ComposerContextChips({ items, onRemove, onClear }: ComposerConte
             title={formatAgentContextItemLabel(item)}
           >
             <span className="truncate">{formatAgentContextItemLabel(item)}</span>
-            <span aria-hidden="true" className="text-muted/80">
-              ×
-            </span>
+            <X aria-hidden="true" className="h-3 w-3 text-muted/80" strokeWidth={2} />
           </button>
         );
       })}

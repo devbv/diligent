@@ -8,6 +8,7 @@ import type {
   ToolsSetParams,
   ToolsSetResponse,
 } from "@diligent/protocol";
+import { ExternalLink, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "./Button";
 import { Input } from "./Input";
@@ -345,7 +346,7 @@ export function ToolSettingsModal({
             <p className="mt-1 text-sm text-muted">Manage built-in tools and trusted JavaScript plugin packages.</p>
           </div>
           <button type="button" aria-label="Close tools panel" onClick={onClose} className={panelCloseButtonClasses}>
-            ✕
+            <X className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
           </button>
         </div>
 
@@ -435,9 +436,10 @@ export function ToolSettingsModal({
                       href={consent.privacyPolicyUrl}
                       target="_blank"
                       rel="noreferrer noopener"
-                      className="mt-1 inline-flex text-sm text-text-soft underline underline-offset-2 hover:text-text"
+                      className="mt-1 inline-flex items-center gap-1 text-sm text-text-soft underline underline-offset-2 hover:text-text"
                     >
-                      View Privacy Policy ›
+                      <span>View Privacy Policy</span>
+                      <ExternalLink className="h-3.5 w-3.5" strokeWidth={1.8} aria-hidden="true" />
                     </a>
                   </div>
                   <label className={controlRowClasses}>

@@ -1,6 +1,7 @@
 // @summary Pending steering panel rendering queued messages as stacked single lines above InputDock
 
 import type { PendingSteer } from "@diligent/protocol";
+import { Flag, Pencil, X } from "lucide-react";
 import { memo, useState } from "react";
 
 interface SteeringQueuePanelProps {
@@ -32,7 +33,7 @@ function SteeringQueuePanelImpl({ pendingSteers, onCancelSteer, onUpdateSteer }:
                     setEditing(null);
                   }}
                 >
-                  <span className="shrink-0">⚑</span>
+                  <Flag className="h-3.5 w-3.5 shrink-0" strokeWidth={1.8} aria-hidden="true" />
                   <input
                     value={currentEdit.text}
                     onChange={(event) => setEditing({ steerId: steer.id, text: event.target.value })}
@@ -46,16 +47,19 @@ function SteeringQueuePanelImpl({ pendingSteers, onCancelSteer, onUpdateSteer }:
                   </button>
                 </form>
               ) : (
-                <div className="truncate">⚑ {text}</div>
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <Flag className="h-3.5 w-3.5 shrink-0" strokeWidth={1.8} aria-hidden="true" />
+                  <span className="truncate">{text}</span>
+                </div>
               )}
               <button
                 type="button"
                 aria-label={`Edit queued steer ${i + 1}`}
                 title="Edit queued steer"
                 onClick={() => setEditing(currentEdit ? null : { steerId: steer.id, text })}
-                className="ml-auto inline-flex h-5 w-8 shrink-0 items-center justify-center rounded border border-border/40 text-[11px] text-muted transition hover:border-border-strong hover:text-text"
+                className="ml-auto inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border border-border/40 text-muted transition hover:border-border-strong hover:text-text"
               >
-                edit
+                <Pencil className="h-3 w-3" strokeWidth={1.8} aria-hidden="true" />
               </button>
               <button
                 type="button"
@@ -67,7 +71,7 @@ function SteeringQueuePanelImpl({ pendingSteers, onCancelSteer, onUpdateSteer }:
                 }}
                 className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border border-border/40 text-[11px] text-muted transition hover:border-border-strong hover:text-text"
               >
-                x
+                <X className="h-3 w-3" strokeWidth={1.8} aria-hidden="true" />
               </button>
             </div>
           );
