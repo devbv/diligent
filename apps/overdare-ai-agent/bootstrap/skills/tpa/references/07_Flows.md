@@ -108,13 +108,13 @@ LoadingScreen (Client LocalScript, under StarterGui/LoadingScreen)
   → Wait for localPlayer.Character (or CharacterAdded:Wait)
   → character:WaitForChild("Humanoid")
   → AssetLoaderUtil.PreloadAnimations(humanoid, AssetDB.Resource, options)
-    → Batch-create 41 temp Animation instances (set ovdrassetid)
-    → Animator:LoadAnimation(anim) × 41 (parallel download starts)
+    → Batch-create one temp Animation instance per AssetDB.Resource entry (set ovdrassetid)
+    → Animator:LoadAnimation(anim) for each entry (parallel download starts)
     → Wait for each track.Length > 0 (timeout 0.2s)
       → onProgress(i/total, i, total)
         → Bar.Size = UDim2.new(ratio, 0, 1, 0)
         → LoadingText.Text = "N %"
-    → Destroy temp Animation × 41
+    → Destroy all temp Animation instances
     → onComplete()
       → task.wait(0.3)
       → screenGui.Enabled = false
