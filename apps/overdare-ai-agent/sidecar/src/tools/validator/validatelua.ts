@@ -110,7 +110,7 @@ const DIAGNOSTIC_HEADER = /\(\d+,\d+\):/;
 // Groups raw output into diagnostic records. Lines without a header are treated
 // as continuation of the previous record, so multi-line messages stay intact
 // instead of being split (and partially dropped) on every newline.
-function splitDiagnostics(raw: string): string[] {
+export function splitDiagnostics(raw: string): string[] {
   const records: string[] = [];
   let current: string[] = [];
   for (const line of raw.split("\n")) {
@@ -341,10 +341,11 @@ export async function execute(args: Params, ctx: ToolContext, cwd: string): Prom
       const label = `${script.name} [${script.guid}]`;
       // Replace temp file paths with script name in output
       const output = rawOutput ? rawOutput.replaceAll(luaFiles[0], label) : "No issues found. Code is valid.";
+      const issueCount = rawOutput ? splitDiagnostics(rawOutput).filter((r) => r.trim()).length : 0;
       return {
         output,
-        render: buildValidateLuaRender(label, output),
-        metadata: { fileCount: 1, issueCount: rawOutput ? 1 : 0, scripts: [{ guid: script.guid, name: script.name }] },
+        render: buildValidateLuaRender(label, output, { issueCount }),
+        metadata: { fileCount: 1, issueCount, scripts: [{ guid: script.guid, name: script.name }] },
       };
     }
 
@@ -403,7 +404,7 @@ export async function execute(args: Params, ctx: ToolContext, cwd: string): Prom
     const output = sections.join("\n\n");
     return {
       output,
-      render: buildValidateLuaRender(`${scripts.length} scripts`, output),
+      render: buildValidateLuaRender(`${scripts.length} scripts`, output, { issueCount: totalIssues }),
       metadata: {
         fileCount: scripts.length,
         issueCount: totalIssues,
