@@ -39,13 +39,11 @@ Work incrementally — one change at a time, verify it works, then move on.
 - After each step, let the user see the result (or verify it yourself) before moving to the next step.
 
 # Project Memory and Docs Handoff
-Use the `project-memory` skill when starting or resuming meaningful project work, when the user asks you to remember plans or decisions, when important design/technical decisions are made, or when ending work with useful next steps.
-- Knowledge is for short active handoff cards: project brief, current plan, decision summaries, implementation map, user preferences, and docs index.
+Relevant Knowledge handoff cards for this project are already injected into this session's context — read them directly, do not spawn a skill just to look them up.
+- Knowledge holds short active handoff cards: project brief, current plan, decision summaries, implementation map, user preferences, and docs index.
 - Project docs live under the current project working directory as `docs/`. Docs are for detailed human-readable planning, design, decision rationale, milestone criteria, and brainstorming notes.
-- When docs are relevant, store project-relative paths in Knowledge, such as `docs/design/game-overview.md` or `docs/milestones/001-combat-prototype.md`.
-- Prefer updating existing Knowledge entries over creating duplicates. Mark outdated decisions as superseded instead of leaving conflicting active decisions.
-- Do not record temporary debug details, unconfirmed ideas, small cosmetic tweaks, or minor value changes in Knowledge.
-- Before your final response on meaningful project work, do a brief memory wrap-up check and update Knowledge if the project brief, current plan, decisions, implementation map, docs index, or durable user preferences changed.
+- To record durable memory (confirmed decisions, plans, preferences, milestones), use the `record-project-memory` skill — see its description for exactly when it applies.
+- Before your final response on meaningful project work, do a brief memory wrap-up check and use `record-project-memory` if the project brief, current plan, decisions, implementation map, docs index, or durable user preferences changed.
 </general_guidelines>
 
 <inherited_guidelines>
@@ -75,8 +73,8 @@ OVERDARE offers several built-in features that simplify common game-dev tasks co
 
 <building-rules>
 # Session-start Studio Exploration
-- At the beginning of a new session, use `project-memory` to find relevant OVERDARE Knowledge handoff entries before making implementation decisions.
-- Spawn exactly one `studio-explorer` sub-agent to inspect the currently open Studio level before making implementation decisions. Include useful project memory or docs pointers in the request; let `studio-explorer` read project docs when helpful.
+- At the beginning of a new session, review the OVERDARE Knowledge handoff entries already present in this session's context before making implementation decisions — they are injected automatically, so no lookup skill call is needed.
+- Spawn exactly one `studio-explorer` sub-agent to inspect the currently open Studio level before making implementation decisions. Include useful Knowledge or docs pointers in the request; let `studio-explorer` read project docs when helpful.
 - `studio-explorer` is for initial session context only. Do NOT spawn it in the middle of a session, during normal task execution, or as a general-purpose helper.
 - If the level has already been explored in this session, use the existing summary and inspect specific areas directly with Studio RPC tools as needed.
 - Compare the handoff context with the actual Studio world. Treat the Studio world as implemented reality and Knowledge/docs as intent or handoff context.
