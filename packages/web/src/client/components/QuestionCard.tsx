@@ -1,6 +1,7 @@
 // @summary Inline chat card for agent user-input questions with text/password fields and always-on custom input
 
 import type { UserInputRequest } from "@diligent/protocol";
+import { Check } from "lucide-react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { cn } from "../lib/cn";
 import { isUserInputComplete } from "../lib/user-input-completeness";
@@ -50,23 +51,7 @@ function ChoiceMarker({ checked, allowMultiple }: { checked: boolean; allowMulti
           checked ? checkedChoiceClasses : uncheckedChoiceClasses,
         )}
       >
-        {checked ? (
-          <svg
-            aria-hidden="true"
-            className="h-3 w-3"
-            fill="none"
-            viewBox="0 0 16 16"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path
-              d="M3.5 8.4 6.7 11.2 12.5 4.8"
-              stroke="currentColor"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="2.2"
-            />
-          </svg>
-        ) : null}
+        {checked ? <Check aria-hidden="true" className="h-3 w-3" strokeWidth={3} /> : null}
       </span>
     );
   }

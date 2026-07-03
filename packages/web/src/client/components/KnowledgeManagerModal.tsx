@@ -1,6 +1,7 @@
 // @summary Modal for direct user CRUD management of knowledge entries over RPC
 
 import type { KnowledgeEntry, KnowledgeType, KnowledgeUpdateParams } from "@diligent/protocol";
+import { X } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Button } from "./Button";
 import { Input } from "./Input";
@@ -238,7 +239,7 @@ export function KnowledgeManagerModal({ threadId, onList, onUpdate, onClose, cla
             onClick={onClose}
             className={panelCloseButtonClasses}
           >
-            ✕
+            <X className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
           </button>
         </div>
 

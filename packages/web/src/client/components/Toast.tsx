@@ -1,5 +1,6 @@
 // @summary Fixed-position toast notification with bounded wrapping for long messages
 
+import { X } from "lucide-react";
 import type { ToastState } from "../lib/thread-store";
 
 interface ToastProps {
@@ -24,7 +25,7 @@ export function Toast({ toast, onDismiss }: ToastProps) {
     >
       <div className="max-h-toast overflow-y-auto whitespace-pre-wrap break-words">
         {toast.message}
-        {toast.fatal && <span className="ml-2 opacity-50">×</span>}
+        {toast.fatal && <X className="ml-2 inline h-3.5 w-3.5 opacity-50" strokeWidth={2} aria-hidden="true" />}
       </div>
     </div>
   );

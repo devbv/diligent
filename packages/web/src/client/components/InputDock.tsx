@@ -1,6 +1,7 @@
 // @summary Input dock with auto-resize textarea, slash command autocomplete, model/effort controls, and usage tray
 
 import type { Mode, ModelInfo, ThinkingEffort, ThreadStatus } from "@diligent/protocol";
+import { ChevronRight, Plus, X } from "lucide-react";
 import type { ClipboardEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useCallback, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -120,7 +121,7 @@ function PendingImagePreview({
         disabled={isUploadingImages || composerDisabled}
         className="absolute right-1 top-1 rounded-full bg-bg/80 px-1.5 py-0.5 text-2xs text-text opacity-90 transition hover:bg-bg-elevated disabled:cursor-not-allowed disabled:opacity-50"
       >
-        ×
+        <X className="h-3 w-3" strokeWidth={2} aria-hidden="true" />
       </button>
     </div>
   );
@@ -464,7 +465,7 @@ export function InputDock({
                     : "border-transparent bg-surface-light text-muted/80 hover:border-border/100 hover:bg-fill-ghost-hover hover:text-text"
                 } disabled:cursor-not-allowed disabled:opacity-40`}
               >
-                +
+                <Plus className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
               </button>
             </div>
 
@@ -583,7 +584,7 @@ export function InputDock({
                     className={topLevelMenuItemClass("mode")}
                   >
                     <span>Mode</span>
-                    <span className="text-2xs opacity-60">›</span>
+                    <ChevronRight className="h-3 w-3 opacity-60" strokeWidth={1.8} aria-hidden="true" />
                   </button>
 
                   {activeSubmenu === "mode" ? (
@@ -620,7 +621,7 @@ export function InputDock({
                     className={topLevelMenuItemClass("compaction")}
                   >
                     <span>Compaction</span>
-                    <span className="text-2xs opacity-60">›</span>
+                    <ChevronRight className="h-3 w-3 opacity-60" strokeWidth={1.8} aria-hidden="true" />
                   </button>
 
                   {activeSubmenu === "compaction" ? (
