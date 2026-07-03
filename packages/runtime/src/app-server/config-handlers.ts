@@ -32,6 +32,10 @@ import type { ThreadRuntime } from "./thread-handlers";
 
 type EmitFn = (notification: DiligentServerNotification) => Promise<void>;
 
+interface AutoProgressModeUpdate {
+  enabled: boolean;
+}
+
 /**
  * Reads/writes the resolved AI-data consent state (OVDR-11475 §3.A).
  *
@@ -65,13 +69,12 @@ export async function handleConfigSet(
   model: string | undefined,
   threadId?: string,
   runtimeSettingsConfig?: RuntimeSettingsConfig,
-  shouldSetAutoProgressMode = false,
-  autoProgressMode = true,
+  autoProgressModeUpdate?: AutoProgressModeUpdate,
 ): Promise<ConfigSetResponse> {
-  if (shouldSetAutoProgressMode) {
+  if (autoProgressModeUpdate) {
     if (!runtimeSettingsConfig)
       throw Object.assign(new Error("Runtime settings config not available"), { code: -32601 });
-    runtimeSettingsConfig.setAutoProgressMode(autoProgressMode);
+    runtimeSettingsConfig.setAutoProgressMode(autoProgressModeUpdate.enabled);
   }
 
   if (!model) {
