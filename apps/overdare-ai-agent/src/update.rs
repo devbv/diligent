@@ -58,6 +58,18 @@ struct FetchedUpdate {
     bytes: Vec<u8>,
 }
 
+/// What an update check resolved to, before any destructive filesystem work.
+enum UpdateOutcome {
+    /// The active runtime already matches the manifest — nothing to do.
+    UpToDate,
+    /// The manifest version is already installed on disk in its versioned dir,
+    /// just not the active pointer. Reuse it: no download, no delete — only
+    /// switch the pointer.
+    ReuseInstalled { version: String, sha256: String },
+    /// A fresh bundle was downloaded and must be installed.
+    Fetched(FetchedUpdate),
+}
+
 fn updates_dir(env: Env) -> Option<PathBuf> {
     global_storage_dir(env).map(|g| g.join("updates"))
 }
@@ -91,6 +103,15 @@ fn sidecar_bin_name() -> &'static str {
 /// binary and the bundled web client.
 fn runtime_layout_exists(dir: &Path) -> bool {
     dir.join(sidecar_bin_name()).exists() && dir.join("dist/client").exists()
+}
+
+/// A directory is a *complete* install of `version` when it has the runtime
+/// layout AND its version.json records that exact version. This separates a
+/// genuine installed runtime — which a running agent may hold open and must
+/// never be deleted — from a broken/mislabeled leftover of an interrupted
+/// update, which is safe to clear.
+fn is_complete_install(dir: &Path, version: &str) -> bool {
+    runtime_layout_exists(dir) && installed_version_at(dir).is_some_and(|v| v.version == version)
 }
 
 /// Active-version pointer. Holds exactly one version — the one the next
@@ -171,12 +192,6 @@ pub fn current_runtime_dir(env: Env) -> Option<PathBuf> {
     runtime_layout_exists(&legacy).then_some(legacy)
 }
 
-/// True when `dir` is the directory the active pointer currently resolves to.
-/// Used to avoid deleting a runtime that may still be in use.
-fn is_current_runtime(env: Env, dir: &Path) -> bool {
-    current_runtime_dir(env).is_some_and(|c| c.as_path() == dir)
-}
-
 /// A freshly extracted bundle must contain the sidecar and web client before we
 /// promote it to a versioned runtime directory.
 fn validate_runtime_layout(dir: &Path) -> Result<(), String> {
@@ -204,13 +219,16 @@ fn finalize_runtime_install(
     let target = updates.join(&target_name);
 
     if target.exists() {
-        if is_current_runtime(env, &target) {
-            // Re-publish of the active version. The directory may be in use by a
-            // running sidecar, so never delete it; drop staging and just refresh
-            // the pointer below.
+        if is_complete_install(&target, version) {
+            // An already-complete install of this same version (the active
+            // runtime is one such case). It may be in use by a running sidecar
+            // — that is exactly what a complete on-disk runtime is — so never
+            // delete it: drop the redundant staging and just (re)point below.
             let _ = fs::remove_dir_all(staging);
         } else {
-            // Stale or incomplete leftover from a previously interrupted update.
+            // A broken/incomplete leftover from a previously interrupted update.
+            // It has no valid layout, so nothing can be running from it — safe
+            // to clear and replace.
             retry_fs_op("remove previous incomplete target runtime", || {
                 fs::remove_dir_all(&target)
             })?;
@@ -760,13 +778,29 @@ fn fetch_update(
     effective_version: String,
     bootstrap_required: bool,
     progress: &mut Option<&mut dyn FnMut(UpdateProgress)>,
-) -> Result<Option<FetchedUpdate>, String> {
+) -> Result<UpdateOutcome, String> {
     let manifest = fetch_manifest(manifest_url)?;
     validate_manifest_env(&manifest, selection.env)?;
     validate_pinned_version(&manifest, selection)?;
     if !should_download_update(&manifest.version, &effective_version, bootstrap_required) {
-        report_progress(progress, UpdateProgress::UpToDate);
-        return Ok(None);
+        return Ok(UpdateOutcome::UpToDate);
+    }
+    // Disk-aware reuse: the target version may already be installed in a
+    // versioned dir that simply is not the active pointer — e.g. a rollback, a
+    // re-served version, or a version a second agent is currently running.
+    // Reuse it instead of re-downloading and overwriting the on-disk copy;
+    // that overwrite is exactly what makes an update fail (or corrupt a
+    // runtime) while a sidecar still holds it.
+    if let Some(dir) = runtime_version_dir(selection.env, &manifest.version) {
+        if is_complete_install(&dir, &manifest.version) {
+            let sha256 = installed_version_at(&dir)
+                .map(|v| v.sha256)
+                .unwrap_or_default();
+            return Ok(UpdateOutcome::ReuseInstalled {
+                version: manifest.version,
+                sha256,
+            });
+        }
     }
     let bundle = manifest
         .platforms
@@ -794,7 +828,7 @@ fn fetch_update(
     let bytes = response
         .bytes()
         .map_err(|e| format!("read bundle bytes: {e}"))?;
-    Ok(Some(FetchedUpdate {
+    Ok(UpdateOutcome::Fetched(FetchedUpdate {
         version: manifest.version,
         sha256: bundle.sha256,
         bytes: bytes.to_vec(),
@@ -902,12 +936,35 @@ pub fn run_with_progress(
         bootstrap_required,
         &mut progress,
     )? {
-        Some(item) => item,
-        None => {
+        UpdateOutcome::UpToDate => {
             let _ = writeln!(log, "[update] Already up-to-date");
             report_progress(&mut progress, UpdateProgress::UpToDate);
             return Ok(false);
         }
+        UpdateOutcome::ReuseInstalled { version, sha256 } => {
+            // The version is already installed on disk — make it active by
+            // switching the pointer only. No download, no delete, so a running
+            // agent holding another version is never disturbed.
+            write_runtime_current_atomic(
+                selection.env,
+                &RuntimeCurrent {
+                    version: version.clone(),
+                    dir: format!("runtime-v{version}"),
+                    sha256,
+                    updated_at: chrono::Local::now().to_rfc3339(),
+                },
+            )?;
+            cleanup_old_runtimes(selection.env, log);
+            let _ = writeln!(log, "[update] Reusing already-installed runtime v{version}");
+            report_progress(
+                &mut progress,
+                UpdateProgress::Updated {
+                    target_version: version,
+                },
+            );
+            return Ok(true);
+        }
+        UpdateOutcome::Fetched(item) => item,
     };
 
     let updates = updates_dir(selection.env).ok_or("cannot resolve updates dir")?;
@@ -1525,6 +1582,83 @@ mod tests {
                 "active dir must not be wiped when the same version is re-published"
             );
             assert!(!staging.exists(), "staging must be consumed");
+        });
+    }
+
+    #[test]
+    fn finalize_install_reuses_existing_valid_noncurrent_version() {
+        // Regression: installing a version whose complete dir already exists but
+        // is NOT the active pointer (rollback / a version another agent runs)
+        // must NOT delete that dir — only switch the pointer to it.
+        with_temp_home("finalize-reuse-valid", |home| {
+            let updates = home.join(".overdare/updates");
+            let v1 = updates.join("runtime-v1.0.0");
+            write_runtime_layout(&v1, "1.0.0");
+            write_runtime_current_atomic(Env::Prod, &pointer("1.0.0")).expect("pointer v1");
+
+            // v2 is a complete install already present, just not active.
+            let v2 = updates.join("runtime-v2.0.0");
+            write_runtime_layout(&v2, "2.0.0");
+            fs::write(v2.join("sentinel"), b"x").expect("write sentinel");
+
+            let staging = updates.join("runtime_staging_2.0.0");
+            write_runtime_layout(&staging, "2.0.0");
+            super::finalize_runtime_install(Env::Prod, "2.0.0", "deadbeef", &staging)
+                .expect("finalize reuse");
+
+            assert!(
+                v2.join("sentinel").exists(),
+                "an existing complete install must never be wiped by finalize"
+            );
+            assert!(!staging.exists(), "staging must be consumed");
+            assert_eq!(current_runtime_dir(Env::Prod), Some(v2));
+        });
+    }
+
+    #[test]
+    fn finalize_install_replaces_incomplete_leftover() {
+        // The other side of the guard: a broken leftover (invalid layout, so
+        // nothing can be running from it) IS replaced by the fresh staging.
+        with_temp_home("finalize-leftover", |home| {
+            let updates = home.join(".overdare/updates");
+            write_runtime_layout(&updates.join("runtime-v1.0.0"), "1.0.0");
+            write_runtime_current_atomic(Env::Prod, &pointer("1.0.0")).expect("pointer v1");
+
+            // Broken v2 leftover: sidecar present but no dist/client -> invalid.
+            let broken = updates.join("runtime-v2.0.0");
+            fs::create_dir_all(&broken).expect("create broken");
+            fs::write(broken.join(sidecar_bin_name()), b"x").expect("partial bin");
+            assert!(!super::runtime_layout_exists(&broken));
+
+            let staging = updates.join("runtime_staging_2.0.0");
+            write_runtime_layout(&staging, "2.0.0");
+            super::finalize_runtime_install(Env::Prod, "2.0.0", "deadbeef", &staging)
+                .expect("finalize replace");
+
+            assert!(
+                super::runtime_layout_exists(&updates.join("runtime-v2.0.0")),
+                "broken leftover must be replaced by the valid staging"
+            );
+            assert!(!staging.exists(), "staging must be consumed");
+            assert_eq!(
+                current_runtime_dir(Env::Prod),
+                Some(updates.join("runtime-v2.0.0"))
+            );
+        });
+    }
+
+    #[test]
+    fn is_complete_install_requires_layout_and_matching_version() {
+        with_temp_home("complete-install", |home| {
+            let dir = home.join(".overdare/updates/runtime-v2.0.0");
+            // Missing layout -> not complete.
+            assert!(!super::is_complete_install(&dir, "2.0.0"));
+            // Valid layout + matching version.json -> complete.
+            write_runtime_layout(&dir, "2.0.0");
+            assert!(super::is_complete_install(&dir, "2.0.0"));
+            // Layout valid but version.json disagrees -> not a complete install
+            // of the requested version (mislabeled dir).
+            assert!(!super::is_complete_install(&dir, "9.9.9"));
         });
     }
 }
