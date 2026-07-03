@@ -114,6 +114,33 @@ describe("buildSessionContext", () => {
     expect(ctx.messages).toHaveLength(2); // non-message changes don't produce messages
   });
 
+  it("tracks latest mode change without adding transcript messages", () => {
+    const entries: SessionEntry[] = [
+      makeMsg("a1", null, "user", "hi"),
+      {
+        type: "mode_change",
+        id: "a2",
+        parentId: "a1",
+        timestamp: "2026-02-25T10:00:01.000Z",
+        mode: "plan",
+        changedBy: "command",
+      },
+      {
+        type: "mode_change",
+        id: "a3",
+        parentId: "a2",
+        timestamp: "2026-02-25T10:00:02.000Z",
+        mode: "execute",
+        changedBy: "command",
+      },
+      makeMsg("a4", "a3", "assistant", "hello"),
+    ];
+
+    const ctx = buildSessionContext(entries);
+    expect(ctx.currentMode).toBe("execute");
+    expect(ctx.messages).toHaveLength(2);
+  });
+
   it("returns empty for unknown leafId", () => {
     const entries: SessionEntry[] = [makeMsg("a1", null, "user", "hi")];
     const ctx = buildSessionContext(entries, "nonexistent");
@@ -153,6 +180,36 @@ describe("buildSessionContext", () => {
     // Third + Fourth: new turns
     expect(ctx.messages[2].role).toBe("user");
     expect(ctx.messages[3].role).toBe("assistant");
+  });
+
+  it("preserves mode changes that happened before the latest compaction", () => {
+    const compaction: CompactionEntry = {
+      type: "compaction",
+      id: "c1",
+      parentId: "a2",
+      timestamp: "2026-02-25T10:01:00.000Z",
+      summary: "## Summary",
+      recentUserMessages: [],
+      tokensBefore: 50000,
+      tokensAfter: 5000,
+    };
+
+    const entries: SessionEntry[] = [
+      makeMsg("a1", null, "user", "old message"),
+      {
+        type: "mode_change",
+        id: "a2",
+        parentId: "a1",
+        timestamp: "2026-02-25T10:00:01.000Z",
+        mode: "plan",
+        changedBy: "command",
+      },
+      compaction,
+      makeMsg("a3", "c1", "user", "new message"),
+    ];
+
+    const ctx = buildSessionContext(entries);
+    expect(ctx.currentMode).toBe("plan");
   });
 
   it("uses latest CompactionEntry when multiple exist", () => {

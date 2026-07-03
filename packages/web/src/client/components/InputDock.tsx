@@ -90,6 +90,28 @@ const MODE_LABELS: Record<Mode, string> = {
   execute: "execute",
 };
 
+const MODE_BADGE_LABELS: Record<Exclude<Mode, "default">, string> = {
+  plan: "Plan",
+  execute: "Execute",
+};
+
+const MODE_BADGE_CLASSES: Record<Exclude<Mode, "default">, string> = {
+  plan: "border-emerald-400/30 bg-emerald-400/10 text-emerald-300",
+  execute: "border-accent/30 bg-accent/10 text-accent",
+};
+
+export function getModeLabel(mode: Mode): string {
+  return MODE_LABELS[mode];
+}
+
+export function getModeBadgeLabel(mode: Mode): string | null {
+  return mode === "default" ? null : MODE_BADGE_LABELS[mode];
+}
+
+export function getModeBadgeClasses(mode: Mode): string | null {
+  return mode === "default" ? null : MODE_BADGE_CLASSES[mode];
+}
+
 function PendingImagePreview({
   image,
   isUploadingImages,
@@ -168,7 +190,7 @@ function modelOptions(models: ModelInfo[]): SelectOption[] {
 function modeOptions(): SelectOption[] {
   return (Object.keys(MODE_LABELS) as Mode[]).map((m) => ({
     value: m,
-    label: MODE_LABELS[m],
+    label: getModeLabel(m),
   }));
 }
 
@@ -384,12 +406,23 @@ export function InputDock({
   const sendDisabled = !canSend || composerDisabled || hasBlockingPrompt;
   const canRenderPlusMenuPortal = isPlusMenuOpen && plusMenuPosition && typeof document !== "undefined";
   const canRenderSlashMenuPortal = slashMenuOpen && slashMenuPosition && typeof document !== "undefined";
+  const modeBadgeLabel = getModeBadgeLabel(mode);
+  const modeBadgeClasses = getModeBadgeClasses(mode);
 
   return (
     <div className="relative z-20 bg-surface-dark px-2 pb-4 pt-2">
       <div
         className={`${composerFrameClasses} ${hasProvider ? "border-white/10" : "border-danger/30"}${isBusy ? " input-dock-glow" : ""}`}
       >
+        {modeBadgeLabel && modeBadgeClasses ? (
+          <div
+            className={`pointer-events-none absolute right-3 top-2 rounded-full border px-2 py-0.5 text-2xs font-medium uppercase tracking-wide ${modeBadgeClasses}`}
+            title={`Current mode: ${modeBadgeLabel}`}
+          >
+            {modeBadgeLabel}
+          </div>
+        ) : null}
+
         {pendingImages.length > 0 || showImageUploadIndicator ? (
           <div className="mb-3 flex flex-wrap gap-2">
             {pendingImages.map((image) => (

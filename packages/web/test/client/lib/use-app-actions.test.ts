@@ -5,6 +5,7 @@ import type { Mode } from "@diligent/protocol";
 import { prependContextToMessage } from "../../../src/client/lib/agent-native-bridge";
 import type { PendingImage } from "../../../src/client/lib/app-state";
 import {
+  applyModeChange,
   clearComposerInputAfterSend,
   getModelChangeThreadId,
   normalizeUploadedImageAttachment,
@@ -74,6 +75,38 @@ test("prependContextToMessage serializes mixed context items before typed text",
 test("getModelChangeThreadId scopes model changes to the active thread when present", () => {
   expect(getModelChangeThreadId("thread-1")).toBe("thread-1");
   expect(getModelChangeThreadId(null)).toBeUndefined();
+});
+
+test("applyModeChange updates draft mode locally without a server thread", async () => {
+  const request = mock(async () => {
+    throw new Error("unexpected request");
+  });
+  const dispatch = mock(() => {});
+
+  await applyModeChange({
+    rpc: { request } as never,
+    activeThreadId: null,
+    mode: "plan",
+    dispatch,
+  });
+
+  expect(dispatch.mock.calls).toEqual([[{ type: "set_mode", payload: "plan" }]]);
+  expect(request).not.toHaveBeenCalled();
+});
+
+test("applyModeChange persists active thread mode after updating local state", async () => {
+  const request = mock(async () => ({ mode: "execute" }));
+  const dispatch = mock(() => {});
+
+  await applyModeChange({
+    rpc: { request } as never,
+    activeThreadId: "thread-1",
+    mode: "execute",
+    dispatch,
+  });
+
+  expect(dispatch.mock.calls).toEqual([[{ type: "set_mode", payload: "execute" }]]);
+  expect(request).toHaveBeenCalledWith("mode/set", { threadId: "thread-1", mode: "execute" });
 });
 
 test("normalizeUploadedImageAttachment keeps canonical webUrl from image/upload", () => {

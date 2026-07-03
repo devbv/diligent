@@ -95,6 +95,24 @@ describe("protocol/flow", () => {
     ).toBe(true);
   });
 
+  it("accepts thread read response with restored current mode", () => {
+    expect(
+      DiligentClientResponseSchema.safeParse({
+        method: DILIGENT_CLIENT_REQUEST_METHODS.THREAD_READ,
+        result: {
+          cwd: "/repo",
+          items: [],
+          hasFollowUp: false,
+          entryCount: 1,
+          isRunning: false,
+          currentMode: "plan",
+          currentEffort: "medium",
+          currentModel: TEST_MODEL_ID,
+        },
+      }).success,
+    ).toBe(true);
+  });
+
   it("accepts web image upload responses with canonical webUrl", () => {
     expect(
       DiligentClientResponseSchema.safeParse({

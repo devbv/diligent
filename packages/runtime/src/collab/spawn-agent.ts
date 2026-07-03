@@ -33,9 +33,13 @@ const SpawnAgentParams = z.object({
     .array(z.string())
     .optional()
     .describe(
-      "Optional per-spawn child-tool allow-list. Can only narrow the selected agent's default tool access and may intentionally narrow to zero tools. Collab tools remain excluded unless allow_nested_agents=true.",
+      "Optional per-spawn child-tool allow-list. Can only narrow the selected agent's default tool access. Omit this field to inherit all permitted tools; an empty list is treated the same as omitted. Collab tools remain excluded unless allow_nested_agents=true.",
     ),
 });
+
+function normalizeAllowedTools(toolNames: string[] | undefined): string[] | undefined {
+  return toolNames && toolNames.length > 0 ? toolNames : undefined;
+}
 
 export function createSpawnAgentTool(
   registry: AgentRegistry,
@@ -51,14 +55,15 @@ export function createSpawnAgentTool(
     parameters,
     execute: async (args, _ctx: ToolContext): Promise<ToolResult> => {
       const prompt = args.message;
+      const agentType = args.agent_type ?? "general";
       const { threadId, nickname } = registry.spawn({
         prompt,
         description: args.description ?? "",
-        agentType: args.agent_type,
+        agentType,
         resumeId: args.resume_id,
         allowNestedAgents: args.allow_nested_agents === true,
         modelClass: args.model_class,
-        allowedTools: args.allowed_tools,
+        allowedTools: normalizeAllowedTools(args.allowed_tools),
       });
       return { output: JSON.stringify({ thread_id: threadId, nickname }) };
     },

@@ -18,6 +18,8 @@ Separately, `update_plan` is a checklist/progress/TODOs tool; it does not enter 
 
 You may explore and execute **non-mutating** actions that improve the plan. You must not perform **mutating** actions.
 
+Tool availability is **not** permission to mutate. Some visible tools may be capable of changing files, external systems, project state, or user data. In Plan Mode, do not use any visible tool in a way that causes mutation; only use it for read-only discovery, inspection, dry-run validation, or planning context.
+
 ### Allowed (non-mutating, plan-improving)
 
 Actions that gather truth, reduce ambiguity, or validate feasibility without changing repo-tracked state. Examples:

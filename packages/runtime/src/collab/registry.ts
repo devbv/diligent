@@ -5,7 +5,7 @@ import { agentTypeToModelClass, resolveModel, resolveModelForClass } from "@dili
 import type { ThinkingEffort } from "@diligent/core/llm/types";
 import type { Tool } from "@diligent/core/tool/types";
 import type { TextBlock } from "@diligent/core/types";
-import { PLAN_MODE_ALLOWED_TOOLS } from "../agent/mode";
+import { PLAN_MODE_DISALLOWED_TOOLS } from "../agent/mode";
 import type { ResolvedAgentDefinition } from "../agent/resolved-agent";
 import { resolveAgentDefinition } from "../agent/resolved-agent";
 import { RuntimeAgent } from "../agent/runtime-agent";
@@ -50,21 +50,23 @@ export function resolveChildToolAccess(
   agentDefinition: ResolvedAgentDefinition,
 ): { childTools: Tool[]; nestedCollabEnabled: boolean; allowedChildToolNames: Set<string> } {
   let allowedChildToolNames = new Set(parentTools.map((tool) => tool.name));
+  const agentAllowedTools = agentDefinition.allowedTools?.length ? agentDefinition.allowedTools : undefined;
+  const spawnAllowedTools = params.allowedTools?.length ? params.allowedTools : undefined;
 
   if (!params.allowNestedAgents) {
     allowedChildToolNames = new Set([...allowedChildToolNames].filter((toolName) => !COLLAB_TOOL_NAMES.has(toolName)));
   }
   if (agentDefinition.readonly) {
     allowedChildToolNames = new Set(
-      [...allowedChildToolNames].filter((toolName) => PLAN_MODE_ALLOWED_TOOLS.has(toolName)),
+      [...allowedChildToolNames].filter((toolName) => !PLAN_MODE_DISALLOWED_TOOLS.has(toolName)),
     );
   }
-  if (agentDefinition.allowedTools) {
-    const allowedSet = new Set(agentDefinition.allowedTools);
+  if (agentAllowedTools) {
+    const allowedSet = new Set(agentAllowedTools);
     allowedChildToolNames = new Set([...allowedChildToolNames].filter((toolName) => allowedSet.has(toolName)));
   }
-  if (params.allowedTools) {
-    const allowedSet = new Set(params.allowedTools);
+  if (spawnAllowedTools) {
+    const allowedSet = new Set(spawnAllowedTools);
     allowedChildToolNames = new Set([...allowedChildToolNames].filter((toolName) => allowedSet.has(toolName)));
   }
 
@@ -78,11 +80,72 @@ export function resolveChildToolAccess(
   return { childTools, nestedCollabEnabled, allowedChildToolNames };
 }
 
+function formatToolList(toolNames: Iterable<string>): string {
+  const names = [...toolNames];
+  return names.length > 0 ? names.join(", ") : "(none)";
+}
+
+function formatMaybeAllowList(toolNames: string[] | undefined): string {
+  if (!toolNames || toolNames.length === 0) return "(inherit all)";
+  return toolNames.join(", ");
+}
+
+function buildZeroToolDiagnostics(
+  parentTools: Tool[],
+  params: { allowNestedAgents?: boolean; allowedTools?: string[] },
+  agentDefinition: ResolvedAgentDefinition,
+): string {
+  const lines = [
+    `Parent tools: [${formatToolList(parentTools.map((tool) => tool.name))}].`,
+    `Agent definition: name=${agentDefinition.name}, readonly=${agentDefinition.readonly}, allowedTools=[${formatMaybeAllowList(agentDefinition.allowedTools)}].`,
+    `Spawn params: allowNestedAgents=${params.allowNestedAgents === true}, allowedTools=[${formatMaybeAllowList(params.allowedTools)}].`,
+  ];
+  const agentAllowedTools = agentDefinition.allowedTools?.length ? agentDefinition.allowedTools : undefined;
+  const spawnAllowedTools = params.allowedTools?.length ? params.allowedTools : undefined;
+
+  let current = new Set(parentTools.map((tool) => tool.name));
+  const recordStep = (label: string, next: Set<string>) => {
+    const removed = [...current].filter((toolName) => !next.has(toolName));
+    lines.push(`${label}: kept [${formatToolList(next)}], removed [${formatToolList(removed)}].`);
+    current = next;
+  };
+
+  if (!params.allowNestedAgents) {
+    recordStep(
+      "after nested-collab exclusion",
+      new Set([...current].filter((toolName) => !COLLAB_TOOL_NAMES.has(toolName))),
+    );
+  }
+  if (agentDefinition.readonly) {
+    recordStep(
+      "after readonly/plan disallowed exclusion",
+      new Set([...current].filter((toolName) => !PLAN_MODE_DISALLOWED_TOOLS.has(toolName))),
+    );
+  }
+  if (agentAllowedTools) {
+    const allowedSet = new Set(agentAllowedTools);
+    recordStep(
+      "after agent allowedTools allow-list",
+      new Set([...current].filter((toolName) => allowedSet.has(toolName))),
+    );
+  }
+  if (spawnAllowedTools) {
+    const allowedSet = new Set(spawnAllowedTools);
+    recordStep(
+      "after spawn allowedTools allow-list",
+      new Set([...current].filter((toolName) => allowedSet.has(toolName))),
+    );
+  }
+
+  const finalChildTools = parentTools
+    .map((tool) => tool.name)
+    .filter((toolName) => !COLLAB_TOOL_NAMES.has(toolName) && current.has(toolName));
+  lines.push(`final childTools after collab inheritance exclusion: [${formatToolList(finalChildTools)}].`);
+  return lines.join(" ");
+}
+
 /** Subset of CollabToolDeps that can safely be mutated between turns (excludes structural fields). */
-export type MutableCollabDeps = Omit<
-  CollabToolDeps,
-  "cwd" | "paths" | "parentTools" | "maxAgents" | "depth" | "sessionManagerFactory"
->;
+export type MutableCollabDeps = Omit<CollabToolDeps, "cwd" | "paths" | "maxAgents" | "depth" | "sessionManagerFactory">;
 
 export class AgentRegistry {
   private agents = new Map<string, AgentEntry>();
@@ -100,17 +163,22 @@ export class AgentRegistry {
   /**
    * Update the mutable fields of CollabToolDeps in-place.
    * Called at the start of each turn when the registry is reused across turns.
-   * Does NOT touch structural fields (cwd, paths, parentTools, maxAgents, sessionManagerFactory).
+   * Does NOT touch structural fields (cwd, paths, maxAgents, sessionManagerFactory).
    */
   updateDeps(next: MutableCollabDeps): void {
     this.deps = {
       ...this.deps,
       modelId: next.modelId,
       effort: next.effort,
+      agentDefinitions: next.agentDefinitions,
+      parentTools: next.parentTools,
       getParentSessionId: next.getParentSessionId,
       approve: next.approve,
       ask: next.ask,
+      streamFn: next.streamFn,
       onCollabEvent: next.onCollabEvent,
+      onChildStop: next.onChildStop,
+      userId: next.userId,
     };
     // Sync the collab event handler if it was updated
     if (next.onCollabEvent !== undefined) {
@@ -168,13 +236,10 @@ export class AgentRegistry {
       agentDefinition,
     );
 
-    if (childTools.length === 0) {
-      const parentToolNames = this.deps.parentTools.map((t) => t.name).join(", ");
-      const requestedNames = [...(agentDefinition.allowedTools ?? []), ...(params.allowedTools ?? [])];
-      const requested = requestedNames.length > 0 ? requestedNames.join(", ") : "(inherit all)";
+    if (childTools.length === 0 && !nestedCollabEnabled) {
       console.warn(
         `[collab] Spawning agent '${params.agentType}' with zero tools after filtering. ` +
-          `Parent tools: [${parentToolNames}]. Requested: [${requested}].`,
+          buildZeroToolDiagnostics(this.deps.parentTools, params, agentDefinition),
       );
     }
 

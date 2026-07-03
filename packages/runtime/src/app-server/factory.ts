@@ -2,7 +2,12 @@
 import { dirname, join } from "node:path";
 import { getModelInfoList, resolveModel } from "@diligent/core/llm/models";
 import type { ProviderName } from "@diligent/core/llm/types";
-import { MODE_SYSTEM_PROMPT_SUFFIXES, type Mode, PLAN_MODE_ALLOWED_TOOLS } from "../agent/mode";
+import {
+  EXECUTE_MODE_DISALLOWED_TOOLS,
+  MODE_SYSTEM_PROMPT_SUFFIXES,
+  type Mode,
+  PLAN_MODE_DISALLOWED_TOOLS,
+} from "../agent/mode";
 import { RuntimeAgent } from "../agent/runtime-agent";
 import { openBrowser as defaultOpenBrowser } from "../auth";
 import { applyConsentPatch, refreshPrivacyPolicyUrl, resolveConsentState } from "../config/consent";
@@ -41,8 +46,14 @@ function applyModeToPrompt(mode: Mode, systemPrompt: RuntimeConfig["systemPrompt
   return [...systemPrompt, { tag: "collaboration_mode", label: "mode", content: MODE_SYSTEM_PROMPT_SUFFIXES[mode] }];
 }
 
-function filterToolsByMode(mode: Mode, tools: Awaited<ReturnType<typeof buildDefaultTools>>["tools"]) {
-  return mode === "plan" ? tools.filter((tool) => PLAN_MODE_ALLOWED_TOOLS.has(tool.name)) : tools;
+export function filterToolsByMode(mode: Mode, tools: Awaited<ReturnType<typeof buildDefaultTools>>["tools"]) {
+  if (mode === "plan") {
+    return tools.filter((tool) => !PLAN_MODE_DISALLOWED_TOOLS.has(tool.name));
+  }
+  if (mode === "execute") {
+    return tools.filter((tool) => !EXECUTE_MODE_DISALLOWED_TOOLS.has(tool.name));
+  }
+  return tools;
 }
 
 /**
@@ -111,10 +122,25 @@ async function createRuntimeAgent(args: {
   const llmCompactionFn = runtimeConfig.providerManager.createNativeCompactionForProvider(
     model.provider as ProviderName,
   );
+  const filteredTools = filterToolsByMode(activeMode, toolsResult.tools);
+  if (toolsResult.registry) {
+    toolsResult.registry.updateDeps({
+      modelId,
+      effort,
+      agentDefinitions: runtimeConfig.agentDefinitions,
+      parentTools: filteredTools,
+      getParentSessionId: getSessionId,
+      approve,
+      ask,
+      streamFn: runtimeConfig.streamFunction,
+      onChildStop,
+      userId,
+    });
+  }
   return new RuntimeAgent(
     model,
     applyModeToPrompt(activeMode, promptSections),
-    filterToolsByMode(activeMode, toolsResult.tools),
+    filteredTools,
     {
       cwd,
       effort,

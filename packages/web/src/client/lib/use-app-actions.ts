@@ -117,6 +117,22 @@ export function getModelChangeThreadId(activeThreadId: string | null): string | 
   return activeThreadId ?? undefined;
 }
 
+export async function applyModeChange({
+  rpc,
+  activeThreadId,
+  mode,
+  dispatch,
+}: {
+  rpc: WebRpcClient | null;
+  activeThreadId: string | null;
+  mode: Mode;
+  dispatch: Dispatch<AppAction>;
+}): Promise<void> {
+  dispatch({ type: "set_mode", payload: mode });
+  if (!rpc || !activeThreadId) return;
+  await rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.MODE_SET, { threadId: activeThreadId, mode });
+}
+
 export function normalizeUploadedImageAttachment(attachment: ImageUploadAttachment): PendingImage {
   const webUrl = attachment.webUrl ?? toWebImageUrl(attachment.path);
   if (!attachment.webUrl && webUrl === attachment.path) {
@@ -320,10 +336,7 @@ export function useAppActions({
 
   const setMode = useCallback(
     async (mode: Mode): Promise<void> => {
-      const rpc = rpcRef.current;
-      if (!rpc || !state.activeThreadId) return;
-      await rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.MODE_SET, { threadId: state.activeThreadId, mode });
-      dispatch({ type: "set_mode", payload: mode });
+      await applyModeChange({ rpc: rpcRef.current, activeThreadId: state.activeThreadId, mode, dispatch });
     },
     [rpcRef, state.activeThreadId, dispatch],
   );

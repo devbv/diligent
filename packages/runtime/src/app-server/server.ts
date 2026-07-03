@@ -610,6 +610,7 @@ export class DiligentAppServer {
       const resumed = await runtime.manager.resume({ sessionId: id });
       if (!resumed) continue;
 
+      runtime.mode = runtime.manager.getCurrentMode() ?? runtime.mode;
       runtime.effort = runtime.manager.getCurrentEffort() ?? runtime.effort;
       runtime.modelId = runtime.manager.getCurrentModel()?.modelId ?? runtime.modelId;
       this.threads.set(id, runtime);

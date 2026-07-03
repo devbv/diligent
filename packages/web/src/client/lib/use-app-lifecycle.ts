@@ -274,23 +274,27 @@ export function useAppBootstrap({
         setInitialModel(meta.currentModel ?? "", meta.availableModels ?? []);
         rpc.notify(DILIGENT_CLIENT_NOTIFICATION_METHODS.INITIALIZED, { ready: true });
 
-        const mode = meta.mode ?? "default";
         const previousThreadId = activeThreadIdRef.current;
-        if (previousThreadId && (await hydrateThread(previousThreadId, mode))) {
+        if (previousThreadId && (await hydrateThread(previousThreadId, "default"))) {
           return;
         }
 
         const urlThreadId = getThreadIdFromUrl();
-        if (urlThreadId && (await hydrateThread(urlThreadId, mode))) {
+        if (urlThreadId && (await hydrateThread(urlThreadId, "default"))) {
           return;
         }
 
         const mostRecent = await rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.THREAD_RESUME, { mostRecent: true });
-        if (!cancelled && mostRecent.found && mostRecent.threadId && (await hydrateThread(mostRecent.threadId, mode))) {
+        if (
+          !cancelled &&
+          mostRecent.found &&
+          mostRecent.threadId &&
+          (await hydrateThread(mostRecent.threadId, "default"))
+        ) {
           return;
         }
 
-        dispatch({ type: "reset_draft", payload: { mode } });
+        dispatch({ type: "reset_draft", payload: { mode: "default" } });
         setEffortState(meta.effort ?? "medium");
         replaceDraftUrl();
         await refreshThreadList(rpc);

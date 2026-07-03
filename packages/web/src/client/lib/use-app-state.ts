@@ -79,7 +79,6 @@ export function useAppState({
     rpcRef,
     dispatch,
     activeThreadIdRef,
-    modeRef,
     applySessionModel: providerMgr.applySessionModel,
     resetDraftModel: providerMgr.resetDraftModel,
     setEffortState,

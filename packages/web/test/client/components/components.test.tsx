@@ -18,7 +18,13 @@ import { ContextMessage } from "../../../src/client/components/ContextMessage";
 import { EmptyState } from "../../../src/client/components/EmptyState";
 import { ErrorBanner } from "../../../src/client/components/ErrorBanner";
 import { Input } from "../../../src/client/components/Input";
-import { extractPastedImageFiles, InputDock } from "../../../src/client/components/InputDock";
+import {
+  extractPastedImageFiles,
+  getModeBadgeClasses,
+  getModeBadgeLabel,
+  getModeLabel,
+  InputDock,
+} from "../../../src/client/components/InputDock";
 import { KnowledgeManagerModal } from "../../../src/client/components/KnowledgeManagerModal";
 import { MarkdownContent } from "../../../src/client/components/MarkdownContent";
 import { McpServersModal } from "../../../src/client/components/McpServersModal";
@@ -594,6 +600,94 @@ test("input dock renders attached context chips", () => {
   expect(html).toContain("Spawn_A (Part)");
   expect(html).toContain("mock.ts (typescript)");
   expect(html).toContain("Clear all");
+});
+
+test("input dock shows a compact non-default mode badge", () => {
+  expect(getModeLabel("default")).toBe("default");
+  expect(getModeBadgeLabel("default")).toBeNull();
+  expect(getModeBadgeLabel("plan")).toBe("Plan");
+  expect(getModeBadgeLabel("execute")).toBe("Execute");
+  expect(getModeBadgeClasses("plan")).toContain("emerald");
+  expect(getModeBadgeClasses("execute")).toContain("accent");
+
+  const defaultHtml = renderToStaticMarkup(
+    <InputDock
+      input=""
+      onInputChange={() => {}}
+      onSend={() => {}}
+      onSteer={() => {}}
+      onInterrupt={() => {}}
+      onCompactionClick={() => {}}
+      isCompacting={false}
+      canSend={true}
+      canSteer={false}
+      threadStatus="idle"
+      mode="default"
+      onModeChange={() => {}}
+      effort="medium"
+      onEffortChange={() => {}}
+      currentModel="gpt-5"
+      availableModels={[]}
+      onModelChange={() => {}}
+      usage={{ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalCost: 0 }}
+      currentContextTokens={0}
+      contextWindow={0}
+      hasProvider={true}
+      supportsVision={false}
+      supportsThinking={false}
+      pendingImages={[]}
+      contextItems={[]}
+      isUploadingImages={false}
+      onAddImages={() => {}}
+      onRemoveImage={() => {}}
+      onRemoveContextItem={() => {}}
+      onClearContextItems={() => {}}
+      slashCommands={[]}
+    />,
+  );
+
+  expect(defaultHtml).not.toContain('title="Current mode: default"');
+
+  const planHtml = renderToStaticMarkup(
+    <InputDock
+      input=""
+      onInputChange={() => {}}
+      onSend={() => {}}
+      onSteer={() => {}}
+      onInterrupt={() => {}}
+      onCompactionClick={() => {}}
+      isCompacting={false}
+      canSend={true}
+      canSteer={false}
+      threadStatus="idle"
+      mode="plan"
+      onModeChange={() => {}}
+      effort="medium"
+      onEffortChange={() => {}}
+      currentModel="gpt-5"
+      availableModels={[]}
+      onModelChange={() => {}}
+      usage={{ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalCost: 0 }}
+      currentContextTokens={0}
+      contextWindow={0}
+      hasProvider={true}
+      supportsVision={false}
+      supportsThinking={false}
+      pendingImages={[]}
+      contextItems={[]}
+      isUploadingImages={false}
+      onAddImages={() => {}}
+      onRemoveImage={() => {}}
+      onRemoveContextItem={() => {}}
+      onClearContextItems={() => {}}
+      slashCommands={[]}
+    />,
+  );
+
+  expect(planHtml).toContain('title="Current mode: Plan"');
+  expect(planHtml).toContain("border-emerald-400/30");
+  expect(planHtml).toContain("text-emerald-300");
+  expect(planHtml).toContain(">Plan</div>");
 });
 
 test("input dock only blocks submission while a prompt is pending", () => {
