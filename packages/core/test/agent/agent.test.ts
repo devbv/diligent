@@ -103,10 +103,9 @@ describe("Agent", () => {
       timestamp: 0,
     };
 
-    const messages = await agent.prompt(
-      { role: "user", content: "build it", timestamp: Date.now() },
-      { transientMessages: [transientMessage] },
-    );
+    const messages = await agent.prompt({ role: "user", content: "build it", timestamp: Date.now() }, undefined, [
+      transientMessage,
+    ]);
 
     expect(capturedMessages.map((message) => message.content)).toEqual(["build it", transientMessage.content]);
     expect(messages.map((message) => message.content)).not.toContain(transientMessage.content);

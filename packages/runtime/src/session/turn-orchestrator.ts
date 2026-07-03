@@ -305,7 +305,7 @@ export class TurnOrchestrator {
     userMessage: Message,
     opts?: { signal?: AbortSignal; transientMessages?: Message[] },
   ): Promise<void> {
-    await agent.prompt(userMessage, opts);
+    await agent.prompt(userMessage, opts?.signal, opts?.transientMessages);
   }
 
   private commitRun(turnStager: TurnStager): void {

@@ -12,7 +12,7 @@ import { runCompaction } from "./compaction";
 import type { LoopRuntime } from "./loop";
 import { runAgentLoop } from "./loop";
 import { updateUserMessageContent } from "./message-content";
-import type { AgentOptions, AgentPromptOptions, CompactionConfig, QueuedSteeringMessage } from "./types";
+import type { AgentOptions, CompactionConfig, QueuedSteeringMessage } from "./types";
 import { AgentStream, type LLMRetryConfig } from "./types";
 
 export class Agent {
@@ -89,19 +89,12 @@ export class Agent {
    * Agent runs against a staged history and commits it only if the loop succeeds.
    * Resolves with the final message array when the loop ends.
    */
-  async prompt(userMessage: Message, signal?: AbortSignal): Promise<Message[]>;
-  async prompt(userMessage: Message, options?: AgentPromptOptions): Promise<Message[]>;
-  async prompt(userMessage: Message, signalOrOptions?: AbortSignal | AgentPromptOptions): Promise<Message[]> {
+  async prompt(userMessage: Message, signal?: AbortSignal, transientMessages?: Message[]): Promise<Message[]> {
     if (this._running) throw new Error("Agent is already running a prompt");
     this._running = true;
-    const options = normalizePromptOptions(signalOrOptions);
     try {
       const nextMessages = [...this.messages, userMessage];
-      const result = await runAgentLoop(
-        nextMessages,
-        this.createLoopRuntime(options.transientMessages),
-        options.signal,
-      );
+      const result = await runAgentLoop(nextMessages, this.createLoopRuntime(transientMessages), signal);
       this.messages = result.messages;
       if (result.compactionSummary !== undefined) {
         this.compactionSummary = result.compactionSummary;
@@ -213,16 +206,4 @@ export class Agent {
     this.messages = result.messages;
     this.compactionSummary = result.compactionSummary;
   }
-}
-
-function normalizePromptOptions(signalOrOptions?: AbortSignal | AgentPromptOptions): AgentPromptOptions {
-  if (!signalOrOptions) return {};
-  if (isAbortSignal(signalOrOptions)) return { signal: signalOrOptions };
-  return signalOrOptions;
-}
-
-function isAbortSignal(value: AbortSignal | AgentPromptOptions): value is AbortSignal {
-  return (
-    typeof (value as AbortSignal).aborted === "boolean" && typeof (value as AbortSignal).addEventListener === "function"
-  );
 }

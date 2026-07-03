@@ -763,157 +763,162 @@ describe("DiligentAppServer", () => {
     await rm(projectRoot, { recursive: true, force: true });
   });
 
-  it("applies auto progress mode changes after the currently running turn", async () => {
-    const projectRoot = await mkdtemp(join(process.env.TMPDIR ?? "/tmp", "diligent-app-server-"));
-    const runtimeConfig = makeFactoryRuntimeConfig({ autoProgressMode: false });
-    const releases: Array<() => void> = [];
-    const releaseNextToolCall = () =>
-      new Promise<void>((resolve) => {
-        releases.push(resolve);
-      });
-    let llmCallCount = 0;
-    const directiveSeenByCall: boolean[] = [];
+  for (const scenario of [
+    { name: "off -> on", initial: false, updated: true, expectedDirectives: [false, false, true, true] },
+    { name: "on -> off", initial: true, updated: false, expectedDirectives: [true, true, false, false] },
+  ] as const) {
+    it(`applies auto progress mode changes after the currently running turn (${scenario.name})`, async () => {
+      const projectRoot = await mkdtemp(join(process.env.TMPDIR ?? "/tmp", "diligent-app-server-"));
+      const runtimeConfig = makeFactoryRuntimeConfig({ autoProgressMode: scenario.initial });
+      const releases: Array<() => void> = [];
+      const releaseNextToolCall = () =>
+        new Promise<void>((resolve) => {
+          releases.push(resolve);
+        });
+      let llmCallCount = 0;
+      const directiveSeenByCall: boolean[] = [];
 
-    runtimeConfig.streamFunction = (_model, context) => {
-      const callNumber = ++llmCallCount;
-      directiveSeenByCall.push(
-        context.messages.some(
-          (message) =>
-            message.role === "user" &&
-            typeof message.content === "string" &&
-            message.content.includes("Auto progress mode is enabled"),
-        ),
-      );
-      const stream = new EventStream(
-        (event) => event.type === "done",
-        (event) => ({ message: (event as { message: unknown }).message }),
-      );
-      const usage = { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 };
+      runtimeConfig.streamFunction = (_model, context) => {
+        const callNumber = ++llmCallCount;
+        directiveSeenByCall.push(
+          context.messages.some(
+            (message) =>
+              message.role === "user" &&
+              typeof message.content === "string" &&
+              message.content.includes("Auto progress mode is enabled"),
+          ),
+        );
+        const stream = new EventStream(
+          (event) => event.type === "done",
+          (event) => ({ message: (event as { message: unknown }).message }),
+        );
+        const usage = { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 };
 
-      queueMicrotask(async () => {
-        if (callNumber % 2 === 1) {
-          await releaseNextToolCall();
+        queueMicrotask(async () => {
+          if (callNumber % 2 === 1) {
+            await releaseNextToolCall();
+            stream.push({ type: "start" });
+            stream.push({
+              type: "done",
+              stopReason: "tool_use",
+              message: {
+                role: "assistant" as const,
+                content: [
+                  {
+                    type: "tool_call" as const,
+                    id: `tc-user-input-${callNumber}`,
+                    name: "request_user_input",
+                    input: {
+                      questions: [
+                        {
+                          id: "q1",
+                          header: "scope",
+                          question: "Pick one",
+                          options: [
+                            { label: "Manual", description: "Ask the user" },
+                            { label: "Auto", description: "Proceed automatically" },
+                          ],
+                        },
+                      ],
+                    },
+                  },
+                ],
+                model: runtimeConfig.model.id,
+                usage,
+                stopReason: "tool_use" as const,
+                timestamp: Date.now(),
+              },
+            });
+            return;
+          }
+
           stream.push({ type: "start" });
           stream.push({
             type: "done",
-            stopReason: "tool_use",
+            stopReason: "end_turn",
             message: {
               role: "assistant" as const,
-              content: [
-                {
-                  type: "tool_call" as const,
-                  id: `tc-user-input-${callNumber}`,
-                  name: "request_user_input",
-                  input: {
-                    questions: [
-                      {
-                        id: "q1",
-                        header: "scope",
-                        question: "Pick one",
-                        options: [
-                          { label: "Manual", description: "Ask the user" },
-                          { label: "Auto", description: "Proceed automatically" },
-                        ],
-                      },
-                    ],
-                  },
-                },
-              ],
+              content: [{ type: "text" as const, text: "done" }],
               model: runtimeConfig.model.id,
               usage,
-              stopReason: "tool_use" as const,
+              stopReason: "end_turn" as const,
               timestamp: Date.now(),
             },
           });
-          return;
-        }
-
-        stream.push({ type: "start" });
-        stream.push({
-          type: "done",
-          stopReason: "end_turn",
-          message: {
-            role: "assistant" as const,
-            content: [{ type: "text" as const, text: "done" }],
-            model: runtimeConfig.model.id,
-            usage,
-            stopReason: "end_turn" as const,
-            timestamp: Date.now(),
-          },
         });
+
+        return stream as never;
+      };
+
+      const server = new DiligentAppServer(
+        createAppServerConfig({
+          cwd: projectRoot,
+          runtimeConfig,
+        }),
+      );
+      const connection = connectTestPeer(server);
+      let userInputRequestCount = 0;
+      connection.setServerRequestHandler(async (request) => {
+        if (request.method === DILIGENT_SERVER_REQUEST_METHODS.USER_INPUT_REQUEST) {
+          userInputRequestCount += 1;
+          return {
+            method: DILIGENT_SERVER_REQUEST_METHODS.USER_INPUT_REQUEST,
+            result: { answers: { q1: "Manual" } },
+          };
+        }
+        return {
+          method: DILIGENT_SERVER_REQUEST_METHODS.APPROVAL_REQUEST,
+          result: { decision: "once" },
+        };
       });
 
-      return stream as never;
-    };
+      const started = await server.handleRequest(TEST_CONNECTION_ID, {
+        id: 623,
+        method: "thread/start",
+        params: { cwd: projectRoot },
+      });
+      const threadId = (readResult(started) as { threadId: string }).threadId;
 
-    const server = new DiligentAppServer(
-      createAppServerConfig({
-        cwd: projectRoot,
-        runtimeConfig,
-      }),
-    );
-    const connection = connectTestPeer(server);
-    let userInputRequestCount = 0;
-    connection.setServerRequestHandler(async (request) => {
-      if (request.method === DILIGENT_SERVER_REQUEST_METHODS.USER_INPUT_REQUEST) {
-        userInputRequestCount += 1;
-        return {
-          method: DILIGENT_SERVER_REQUEST_METHODS.USER_INPUT_REQUEST,
-          result: { answers: { q1: "Manual" } },
-        };
-      }
-      return {
-        method: DILIGENT_SERVER_REQUEST_METHODS.APPROVAL_REQUEST,
-        result: { decision: "once" },
-      };
+      await server.handleRequest(TEST_CONNECTION_ID, {
+        id: 624,
+        method: "turn/start",
+        params: { threadId, message: "first" },
+      });
+      await waitForCondition(() => releases.length === 1);
+
+      await server.handleRequest(TEST_CONNECTION_ID, {
+        id: 625,
+        method: "config/set",
+        params: { autoProgressMode: scenario.updated },
+      });
+      releases[0]?.();
+      await waitForCondition(
+        () =>
+          connection.notifications.filter((n) => n.method === DILIGENT_SERVER_NOTIFICATION_METHODS.TURN_COMPLETED)
+            .length >= 1,
+      );
+
+      expect(userInputRequestCount).toBe(scenario.initial ? 0 : 1);
+
+      await server.handleRequest(TEST_CONNECTION_ID, {
+        id: 626,
+        method: "turn/start",
+        params: { threadId, message: "second" },
+      });
+      await waitForCondition(() => releases.length === 2);
+      releases[1]?.();
+      await waitForCondition(
+        () =>
+          connection.notifications.filter((n) => n.method === DILIGENT_SERVER_NOTIFICATION_METHODS.TURN_COMPLETED)
+            .length >= 2,
+      );
+
+      expect(userInputRequestCount).toBe(1);
+      expect(directiveSeenByCall).toEqual(scenario.expectedDirectives);
+
+      await rm(projectRoot, { recursive: true, force: true });
     });
-
-    const started = await server.handleRequest(TEST_CONNECTION_ID, {
-      id: 623,
-      method: "thread/start",
-      params: { cwd: projectRoot },
-    });
-    const threadId = (readResult(started) as { threadId: string }).threadId;
-
-    await server.handleRequest(TEST_CONNECTION_ID, {
-      id: 624,
-      method: "turn/start",
-      params: { threadId, message: "first" },
-    });
-    await waitForCondition(() => releases.length === 1);
-
-    await server.handleRequest(TEST_CONNECTION_ID, {
-      id: 625,
-      method: "config/set",
-      params: { autoProgressMode: true },
-    });
-    releases[0]?.();
-    await waitForCondition(
-      () =>
-        connection.notifications.filter((n) => n.method === DILIGENT_SERVER_NOTIFICATION_METHODS.TURN_COMPLETED)
-          .length >= 1,
-    );
-
-    expect(userInputRequestCount).toBe(1);
-
-    await server.handleRequest(TEST_CONNECTION_ID, {
-      id: 626,
-      method: "turn/start",
-      params: { threadId, message: "second" },
-    });
-    await waitForCondition(() => releases.length === 2);
-    releases[1]?.();
-    await waitForCondition(
-      () =>
-        connection.notifications.filter((n) => n.method === DILIGENT_SERVER_NOTIFICATION_METHODS.TURN_COMPLETED)
-          .length >= 2,
-    );
-
-    expect(userInputRequestCount).toBe(1);
-    expect(directiveSeenByCall).toEqual([false, false, true, true]);
-
-    await rm(projectRoot, { recursive: true, force: true });
-  });
+  }
 
   it("config/reload re-discovers skills and forces the next turn to rebuild its agent", async () => {
     const originalHome = process.env.HOME;
