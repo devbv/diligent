@@ -196,6 +196,7 @@ export function App() {
           <AppHeader
             sidebarOpen={sidebarOpen}
             onToggleSidebar={() => setSidebarOpen((v) => !v)}
+            onNewThread={handleSidebarNewThread}
             threadStatus={state.threadStatus}
             isCompacting={state.isCompacting}
             threadTitle={threadTitle}

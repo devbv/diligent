@@ -157,11 +157,12 @@ Some Roblox features are not yet available in OVERDARE. Use the following workar
 # Game Play and Lua Logs
 - After calling `studiorpc_game_play`, Lua logs from the play session are written to `./Play.log`
 - After studiorpc_game_stop, read `./Play.log` to check for any runtime errors or output
-- There may be no logs at all — `./Play.log` may be empty or absent
+- Log successes, not just errors: print a clear confirmation line when a step actually runs (e.g. `print("[OK] spawned enemy at", pos)`), so you can positively confirm behavior instead of inferring it.
+- An empty or missing `./Play.log` is inconclusive — it is not proof of success, but not proof of failure either (there may simply be nothing to log, or the code path may not have run). Don't over-read it in either direction: confirm the outcome from your expected success logs or by checking the actual result, not from the mere presence or absence of the file.
 </lua-files>
 
 <code-generation-workflow>
-1. **Search** — Actively use `overdaresearch` whenever you need OVERDARE-specific patterns unless you already know. Search both `docs` and `code` sources when generating code.
+1. **Search** — Use `overdaresearch` when you need OVERDARE-specific patterns unless you already know. Search both `docs` and `code` sources when generating code.
 2. **Analyze** — Review the documentation returned by the documentation agent carefully.
 3. **Apply or Fallback**
    - If OVERDARE-specific patterns are found → follow them exactly as documented
@@ -169,10 +170,10 @@ Some Roblox features are not yet available in OVERDARE. Use the following workar
    - **Never silently assume patterns** — always verify against OVERDARE's documentation first, and be transparent about fallback approaches.
 4. **Validate and Verify**
    1. Run the `validatelua` tool on all modified scripts to catch syntax and type errors
-   2. Add temporary `print()` logs to verify intended behavior during runtime
+   2. Add temporary `print()` logs at key checkpoints to verify intended behavior during runtime — log successes and expected values (e.g. `print("[OK] step done", value)`), not just errors, so a passing run is positively confirmed rather than assumed.
    3. Start the game with `studiorpc_game_play`
       - If user interaction is required (e.g., button click, skill use): clearly tell the user what action to perform, and ask them to confirm when done
-   4. Stop the game, then read `./Play.log` to check for errors or unexpected output
+   4. Stop the game, then read `./Play.log` — check for errors and confirm your expected success logs are present.
    5. Remove all temporary logs once the user is satisfied
 </code-generation-workflow>
 

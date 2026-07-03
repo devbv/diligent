@@ -1,6 +1,6 @@
 --#METADATA#{"CREATABLE_INSTANCES": ["ActionRunner", "ActionSequence", "ActionSequenceService", "AngularVelocity", "Animation", "AnimationTrack", "Animator", "Atmosphere", "Attachment", "Backpack", "BackpackItem", "BasePart", "BaseScript", "Beam", "BillboardGui", "BindableEvent", "Bone", "BoolValue", "Camera", "CharacterMesh", "CollectionService", "Constraint", "ContextActionService", "CoreGui", "DataModel", "DataStore", "DataStoreGetOptions", "DataStoreIncrementOptions", "DataStoreInfo", "DataStoreKeyInfo", "DataStoreKeyPages", "DataStoreListingPages", "DataStoreService", "DataStoreSetOptions", "Fill", "Folder", "FormFactorPart", "Frame", "GenericSettings", "GlobalDataStore", "GuiBase2d", "GuiButton", "GuiObject", "HttpService", "Humanoid", "HumanoidDescription", "ImageButton", "ImageLabel", "InputObject", "Instance", "IntValue", "LayerCollector", "Light", "Lighting", "LinearVelocity", "LocalScript", "LocalizationService", "LuaSourceContainer", "MarketplaceService", "MaterialService", "MaterialVariant", "MeshPart", "Model", "ModuleScript", "Mouse", "NumberValue", "OrderedDataStore", "Outline", "OverlayBase", "PVInstance", "Pages", "Part", "ParticleEmitter", "PhysicsService", "Player", "PlayerGui", "PlayerScripts", "Players", "PointLight", "ProximityPrompt", "ProximityPromptService", "RemoteEvent", "ReplicatedStorage", "RunService", "ScreenGui", "Script", "ScrollingFrame", "ServerScriptService", "ServerStorage", "ServiceProvider", "SimulationBall", "Skeleton", "Sound", "SoundGroup", "SoundService", "SpawnLocation", "SpotLight", "StarterCharacterScripts", "StarterGui", "StarterPack", "StarterPlayer", "StarterPlayerScripts", "StringValue", "SurfaceGui", "SurfaceGuiBase", "Team", "Teams", "TeleportAsyncResult", "TeleportOptions", "TeleportService", "TextButton", "TextLabel", "Tool", "Trail", "Translator", "Tween", "TweenBase", "TweenService", "UIAspectRatioConstraint", "UIGridLayout", "UIGridStyleLayout", "UIListLayout", "UserGameSettings", "UserInputService", "UserSettings", "VFXPreset", "ValueBase", "VectorForce", "Workspace", "WorldRankService", "WorldRoot", "WrapLayer", "WrapTarget"], "SERVICES": ["ActionSequenceService", "CollectionService", "ContextActionService", "DataStoreService", "HttpService", "Lighting", "LocalizationService", "MarketplaceService", "MaterialService", "PhysicsService", "Players", "ProximityPromptService", "ReplicatedStorage", "RunService", "ServerScriptService", "ServerStorage", "SoundService", "TeleportService", "TweenService", "UserInputService", "Workspace", "WorldRankService"]}
 -- Overdare API Type Definitions
--- Auto-generated on 2026-06-11 19:23:55
+-- Auto-generated on 2026-07-03 13:16:47
 -- DO NOT EDIT MANUALLY
 
 -- Event Types
@@ -452,6 +452,57 @@ declare class ActionRunnerState_INTERNAL extends Enum
 	Playing: ActionRunnerState
 	Cancelled: ActionRunnerState
 	Completed: ActionRunnerState
+end
+
+declare class ActionSequenceCameraShakeType extends EnumItem
+end
+
+declare class ActionSequenceCameraShakeType_INTERNAL extends Enum
+	Impact: ActionSequenceCameraShakeType
+	Recoil: ActionSequenceCameraShakeType
+	HorizontalShake: ActionSequenceCameraShakeType
+	VerticalShake: ActionSequenceCameraShakeType
+	Light: ActionSequenceCameraShakeType
+	Heavy: ActionSequenceCameraShakeType
+	Stab: ActionSequenceCameraShakeType
+	Ultimate: ActionSequenceCameraShakeType
+	Dizzy: ActionSequenceCameraShakeType
+end
+
+declare class ActionSequenceColliderType extends EnumItem
+end
+
+declare class ActionSequenceColliderType_INTERNAL extends Enum
+	Box: ActionSequenceColliderType
+	Sphere: ActionSequenceColliderType
+	Capsule: ActionSequenceColliderType
+	Frustum: ActionSequenceColliderType
+	Raycast: ActionSequenceColliderType
+end
+
+declare class ActionSequenceSlotType extends EnumItem
+end
+
+declare class ActionSequenceSlotType_INTERNAL extends Enum
+	FullBody: ActionSequenceSlotType
+	UpperBody: ActionSequenceSlotType
+	LowerBody: ActionSequenceSlotType
+end
+
+declare class ActionSequenceTrackType extends EnumItem
+end
+
+declare class ActionSequenceTrackType_INTERNAL extends Enum
+	AnimationTrack: ActionSequenceTrackType
+	SoundTrack: ActionSequenceTrackType
+	CameraShakeTrack: ActionSequenceTrackType
+	CameraFOVTrack: ActionSequenceTrackType
+	CameraZoomInOutTrack: ActionSequenceTrackType
+	ControlTrack: ActionSequenceTrackType
+	CollisionTrack: ActionSequenceTrackType
+	EventTrack: ActionSequenceTrackType
+	TriggerTrack: ActionSequenceTrackType
+	None: ActionSequenceTrackType
 end
 
 declare class ActuatorRelativeTo extends EnumItem
@@ -1383,6 +1434,10 @@ end
 
 declare class EnumContainer
 	ActionRunnerState: ActionRunnerState_INTERNAL
+	ActionSequenceCameraShakeType: ActionSequenceCameraShakeType_INTERNAL
+	ActionSequenceColliderType: ActionSequenceColliderType_INTERNAL
+	ActionSequenceSlotType: ActionSequenceSlotType_INTERNAL
+	ActionSequenceTrackType: ActionSequenceTrackType_INTERNAL
 	ActuatorRelativeTo: ActuatorRelativeTo_INTERNAL
 	AnimationPriority: AnimationPriority_INTERNAL
 	AspectType: AspectType_INTERNAL
@@ -1494,8 +1549,9 @@ declare class Instance extends Object
 end
 
 declare class ActionRunner extends Instance
+	function ChangeSpeedRate(self, InActionSequenceID: string, InSpeedRate: number): ()
 	function GetActionSequences(self): any
-	function Play(self, InActionSequenceID: string, TransitionTime: number): ()
+	function Play(self, InActionSequenceID: string, TransitionTime: number, SpeedRate: number): ()
 	function Stop(self, InActionSequenceID: string): ()
 	function StopAll(self): ()
 	Ended: ScriptSignal
@@ -1503,7 +1559,9 @@ declare class ActionRunner extends Instance
 end
 
 declare class ActionSequence extends Instance
+	function GetAllTrackInfos(self): any
 	function GetMarkerReachedSignal(self, MarkerName: string): ScriptSignal
+	function GetTrackInfo(self, TrackName: string, TrackType: ActionSequenceTrackType): any
 	function Hit(self, InCollisionEventName: string): ScriptSignal
 	function TriggerEnded(self, TriggerName: string): ScriptSignal
 	function TriggerStarted(self, TriggerName: string): ScriptSignal
