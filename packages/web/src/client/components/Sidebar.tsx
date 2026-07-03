@@ -1,7 +1,7 @@
 // @summary Collapsible sidebar with thread list, new thread button, and relative timestamps
 
 import type { SessionSummary } from "@diligent/protocol";
-import { Plus, Trash2, X } from "lucide-react";
+import { SquarePen, Trash2, X } from "lucide-react";
 import { memo } from "react";
 import { formatRelativeTime } from "../lib/format-time";
 import { Panel } from "./Panel";
@@ -50,7 +50,7 @@ function SidebarImpl({
           onClick={onNewThread}
           className={`${sidebarItemClasses} flex items-center gap-2 border border-border/100 bg-surface-light text-sm font-medium text-text hover:bg-surface-strong`}
         >
-          <Plus className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
+          <SquarePen className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
           <span>New conversation</span>
         </button>
 
