@@ -215,6 +215,11 @@ export async function createWebServer(options: CreateServerOptions = {}): Promis
       return new Response("Not found", { status: 404 });
     },
     websocket: {
+      // Raise the idle timeout well above the client heartbeat interval (25s) so a tab left
+      // open on a long-running user-input prompt is not dropped. Durable server requests also
+      // survive a disconnect and are re-delivered on resubscribe, but keeping the socket alive
+      // avoids the churn entirely. 240s is within Bun's allowed maximum (255s).
+      idleTimeout: 240,
       open(ws) {
         const { peer, receive } = createWsPeer(ws);
         peerReceivers.set(ws.data.connectionId, receive);
