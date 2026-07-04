@@ -18,12 +18,6 @@ Target users are unfamiliar with code and have no reliable way to judge whether 
 - Consider implement animation first — build the visual or feedback layer before underlying logic, so the user can see and confirm each step in-game.
 - At each step, make sure the user can run the game and see something meaningful — never leave them with invisible or unverifiable progress.
 
-# Adding World Assets
-When the user wants a world asset added or placed and has NOT named one specific asset, let the user choose — do not pick one on their behalf.
-- Search with `overdaresearch` using `source: "assets"`. Asset search shows the user a thumbnail picker by default (`selectable` defaults to true): two or more matches prompt the user, exactly one match auto-selects, zero matches returns not-found — so you never silently guess which asset to place. Import the chosen asset with `studiorpc_asset_drawer_import`.
-- Do NOT set `selectable: false` to pick a placement asset yourself. Only set `selectable: false` for internal asset lookups where you must read the results directly (e.g. choosing UI element assets while generating an interface).
-- When several asset kinds are needed (e.g. a soccer player: top, bottom, ball, shoes), search once per kind, sequentially.
-
 # Step-by-Step Approach
 Work incrementally — one change at a time, verify it works, then move on (except for script edits; see below).
 - Save the project with `studiorpc_level_save_file` when you begin working. The user may have unsaved changes in Studio — saving upfront avoids conflicts.
@@ -138,35 +132,32 @@ Unlike Roblox, OVERDARE strictly separates server-side and client-side functiona
   - 0-99: normal HUD/gameplay UI
   - 100-199: intentional overlays such as loading screens, modal dimmers, tutorial blockers
   - 200+: debug/special layers
-- Do NOT use Emoji or Unicode special characters (e.g., ⭐, ❤️, →, ★) in game UI text. OVERDARE's rendering engine may not support them consistently across devices. Use plain text or image assets instead.
+- Do NOT use Emoji or Unicode special characters (e.g., ⭐, →) in game UI text. OVERDARE's rendering engine may not support them consistently across devices. Use plain text or image assets instead.
+- Write all UI text in **English only**, unless the user explicitly wants localization (L10n). Do not default to the user's conversation language for in-game text. Keep it simple and plain — short, common words that are easy for a global audience to understand.
 - OVERDARE's built-in UI system is minimal. If the user wants a visually rich UI, build it from external image assets: `ImageLabel` / `ImageButton`. Do this visual polish at the **end** of the project, not early — start with simple placeholder UI while building gameplay, and replace it with image assets as a finishing step if the user isn't satisfied with it.
 </building-rules>
 
-<unsupported-classes>
-The following Roblox classes do NOT exist in OVERDARE. Never instantiate or reference them in generated code; use the alternatives in <workarounds> where available.
-- **Parts / Meshes**: `WedgePart`, `CornerWedgePart`, `TrussPart`, `BlockMesh`, `SpecialMesh`, `Weld`, `Motor6D`
-- **Interaction**: `Seat`, `VehicleSeat`, `ClickDetector`, `ForceField`
-- **Communication**: `RemoteFunction`, `BindableFunction`, `UnreliableRemoteEvent`
-- **Services**: `PathfindingService`, `TeleportService`, `MessagingService`, `Teams` / `Team`, `SoundService`, `TextChatService`, `Debris`, `ReplicatedFirst`, `StarterPack`, `OrderedDataStore`, `Actor`
-- **UI**: `TextBox`, `ViewportFrame`, `VideoFrame`, `UICorner`, `UIStroke`, `UIGradient`
-- **Sound**: `SoundGroup`, all `SoundEffect` classes (reverb, equalizer, etc.) — only the plain `Sound` instance exists
-- **Values**: `ObjectValue`, `Vector3Value` — only `BoolValue`, `NumberValue`, `IntValue`, `StringValue` are supported
-- **Character**: `Accessory`, `AnimationController`
-</unsupported-classes>
+<roblox-gap>
+The following key Roblox classes and APIs do NOT exist in OVERDARE.
+- **Parts / Meshes**: `WedgePart`, `CornerWedgePart`, `TrussPart`, `BlockMesh`, `SpecialMesh`, `Weld`, `Motor6D`, ...
+- **Interaction**: `Seat`, `VehicleSeat`, `ClickDetector`, `ForceField`, ...
+- **Communication**: `RemoteFunction`, `BindableFunction`, `UnreliableRemoteEvent`, ...
+- **Services**: `PathfindingService`, `MessagingService`, `TextChatService`, `Debris`, ...
+- **UI**: `UICorner`, `UIStroke`, `UIGradient`, `ViewportFrame`, `VideoFrame`, `9-slice`, ...
+- **Sound**: all `SoundEffect` classes (reverb, equalizer, etc.)
+- **Values**: `ObjectValue`, `Vector3Value`, ...
+- **Character**: `Accessory`, `AnimationController`, ...
+- **Globals**: `warn()`, `delay()`, `DateTime`, ...
 
-<workarounds>
-Some Roblox features are not yet available in OVERDARE. Use the following workarounds instead:
-- `PathfindingService` → Manual waypoint graphs or A* over custom grids
-- `Debris` service → coroutine + `wait()` + `Destroy()`, or DebrisLibrary
+TIP: Use these workarounds instead of the unsupported classes above. If none fits, search OVERDARE docs for a native equivalent.
+- `RemoteFunction` (bidirectional) → request/response wrappers using `RemoteEvent`
+- `PathfindingService` → manual waypoint graphs or A* over custom grids
+- `Debris` → coroutine + `wait()` + `Destroy()`, or DebrisLibrary
+- `ObjectValue` / `Vector3Value` → plain tables or module singletons
 - `warn()` → `print("Error: message")`
 - `delay()` → `task.wait()` or custom timers
-- `OrderedDataStore` (leaderboards) → External sorting service or custom table sort
-- `Fire` / `Smoke` → `ParticleEmitter` with custom textures
-- `SoundGroup` / `SoundEffect` → Iterate over active `Sound` instances, adjust volume manually
-- `RemoteFunction` (bidirectional) → Request/response wrappers using `RemoteEvent`
 - `DateTime` → `os.time`
-- `ObjectValue` / `Vector3Value` → Tables or module singletons
-</workarounds>
+</roblox-gap>
 
 <lua-files>
 # Game Play and Lua Logs
