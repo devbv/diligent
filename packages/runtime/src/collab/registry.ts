@@ -2,7 +2,7 @@
 
 import type { ModelClass } from "@diligent/core/llm/models";
 import { agentTypeToModelClass, resolveModel, resolveModelForClass } from "@diligent/core/llm/models";
-import type { ThinkingEffort } from "@diligent/core/llm/types";
+import type { SystemSection, ThinkingEffort } from "@diligent/core/llm/types";
 import type { Tool } from "@diligent/core/tool/types";
 import type { TextBlock } from "@diligent/core/types";
 import { PLAN_MODE_DISALLOWED_TOOLS } from "../agent/mode";
@@ -144,6 +144,236 @@ function buildZeroToolDiagnostics(
   return lines.join(" ");
 }
 
+/** Parameters accepted by AgentRegistry.spawn(). */
+export type SpawnParams = {
+  prompt: string;
+  description: string;
+  agentType: string;
+  resumeId?: string;
+  allowNestedAgents?: boolean;
+  modelClass?: ModelClass;
+  allowedTools?: string[];
+};
+
+/** Build the system-prompt sections injected into every child agent. */
+export function buildChildSystemPrompt(
+  params: Pick<SpawnParams, "allowNestedAgents">,
+  agentDefinition: ResolvedAgentDefinition,
+  cwd: string,
+): SystemSection[] {
+  const nestedAgentPolicy = params.allowNestedAgents
+    ? "Nested sub-agent tools were explicitly enabled for this run. Use them only if the parent instruction clearly requires further delegation; otherwise do the work yourself."
+    : "Nested sub-agent delegation is disabled for this run. Do not call spawn_agent, wait, send_input, or close_agent, and do not attempt to coordinate additional sub-agents.";
+  return [
+    ...(agentDefinition.systemPromptPrefix
+      ? [{ label: "agent_role", content: agentDefinition.systemPromptPrefix }]
+      : []),
+    { label: "runtime_context", content: `Current working directory: ${cwd}` },
+    { label: "nested_subagent_policy", content: nestedAgentPolicy },
+  ];
+}
+
+/** Resolved model and effort for a spawned child agent. */
+export type ResolvedSpawnModel = {
+  childModel: ReturnType<typeof resolveModelForClass>;
+  childEffort: ThinkingEffort;
+  targetClass: ModelClass;
+};
+
+/** Resolve the effective model and effort for a spawned child agent. */
+export function resolveSpawnModel(
+  deps: Pick<CollabToolDeps, "modelId" | "effort">,
+  params: Pick<SpawnParams, "modelClass" | "agentType">,
+  agentDefinition: ResolvedAgentDefinition,
+): ResolvedSpawnModel {
+  const parentModel = resolveModel(deps.modelId);
+  const targetClass: ModelClass =
+    params.modelClass ?? agentDefinition.defaultModelClass ?? agentTypeToModelClass(params.agentType, parentModel);
+  const childModel = resolveModelForClass(parentModel, targetClass);
+  const useClassDefaultEffort = params.modelClass !== undefined || agentDefinition.defaultModelClass !== undefined;
+  const childEffort = resolveChildEffort(deps.effort, targetClass, childModel, useClassDefaultEffort);
+  return { childModel, childEffort, targetClass };
+}
+
+type SpawnedManagerArgs = {
+  deps: CollabToolDeps;
+  description: string;
+  childTools: Tool[];
+  nestedCollabEnabled: boolean;
+  allowedChildToolNames: Set<string>;
+  childModel: ResolvedSpawnModel["childModel"];
+  childEffort: ThinkingEffort;
+  childSystemPrompt: SystemSection[];
+  nickname: string;
+  depth: number;
+};
+
+/**
+ * Create the SessionManager for a spawned child agent.
+ * Handles the internal forward-reference between onStop/agent() callbacks and the manager instance.
+ */
+function createSpawnedSessionManager(args: SpawnedManagerArgs): { childManager: SessionManager; threadId: string } {
+  const {
+    deps,
+    description,
+    childTools,
+    nestedCollabEnabled,
+    allowedChildToolNames,
+    childModel,
+    childEffort,
+    childSystemPrompt,
+    nickname,
+    depth,
+  } = args;
+  const factory = deps.sessionManagerFactory ?? ((cfg) => new SessionManager(cfg));
+  const onChildStop = deps.onChildStop;
+  // `childManager` is set immediately after factory() returns, before any async callbacks fire.
+  let childManager: SessionManager;
+  const config: Parameters<typeof factory>[0] = {
+    cwd: deps.cwd,
+    paths: deps.paths,
+    onStop: onChildStop
+      ? (context, isRerun) =>
+          onChildStop({
+            sessionId: childManager.sessionId,
+            sessionPath: childManager.sessionPath ?? "",
+            cwd: deps.cwd,
+            model: childModel.id,
+            provider: childModel.provider,
+            effort: childEffort,
+            userId: deps.userId,
+            context,
+            isRerun,
+          })
+      : undefined,
+    agent: async (): Promise<RuntimeAgent> => {
+      const childAsk = deps.ask
+        ? (request: import("../tools/user-input-types").UserInputRequest) =>
+            deps.ask!({ ...request, source: { threadId: childManager.sessionId, nickname } })
+        : undefined;
+      const childDeps = { ...deps, parentTools: childTools, ask: childAsk, depth: depth - 1 };
+      const result = await buildDefaultTools({
+        cwd: deps.cwd,
+        paths: deps.paths,
+        collabDeps: nestedCollabEnabled ? childDeps : undefined,
+        parentToolOverride: childTools,
+        enableCollabTools: nestedCollabEnabled,
+        host: { approve: deps.approve, ask: childAsk },
+      });
+      const filteredTools = result.tools.filter((tool) => allowedChildToolNames.has(tool.name));
+      return new RuntimeAgent(
+        childModel.id,
+        childSystemPrompt,
+        filteredTools,
+        { cwd: deps.cwd, effort: childEffort, llmMsgStreamFn: deps.streamFn },
+        result.registry,
+      );
+    },
+    parentSession: deps.getParentSessionId?.(),
+    collabMeta: { nickname, description: description || undefined },
+  };
+  childManager = factory(config);
+  return { childManager, threadId: childManager.sessionId };
+}
+
+type RunChildBackgroundArgs = {
+  entry: AgentEntry;
+  childManager: SessionManager;
+  resumeId?: string;
+  prompt: string;
+  abortController: AbortController;
+  emitSpawnEnd: (status: CollabStatusString, message?: string) => void;
+  emit: (event: CollabAgentEvent) => void;
+  threadId: string;
+  nickname: string;
+};
+
+/** Run the child agent session in the background. Always resolves — never rejects. */
+function runChildBackground(args: RunChildBackgroundArgs): Promise<AgentStatus> {
+  const { entry, childManager, resumeId, prompt, abortController, emitSpawnEnd, emit, threadId, nickname } = args;
+  return (async (): Promise<AgentStatus> => {
+    entry.status = { kind: "running" };
+    if (resumeId) {
+      const resumed = await childManager.resume({ sessionId: resumeId });
+      if (!resumed) await childManager.create();
+    } else {
+      await childManager.create();
+    }
+    const userMessage = { role: "user" as const, content: prompt, timestamp: Date.now() };
+    let output: string | null = null;
+    let turnNumber = 0;
+    let fatalError: string | null = null;
+    const unsub = childManager.subscribe((event) => {
+      if (event.type === "turn_start") {
+        turnNumber++;
+        emit({ type: "turn_start", turnId: event.turnId, childThreadId: threadId, nickname, turnNumber });
+      } else if (event.type === "message_start") {
+        emit({ ...event, childThreadId: threadId, nickname });
+      } else if (event.type === "message_delta") {
+        emit({ ...event, childThreadId: threadId, nickname });
+      } else if (event.type === "tool_start") {
+        emit({ ...event, childThreadId: threadId, nickname });
+      } else if (event.type === "tool_update") {
+        emit({ ...event, childThreadId: threadId, nickname });
+      } else if (event.type === "tool_end") {
+        emit({ ...event, childThreadId: threadId, nickname });
+      } else if (event.type === "message_end") {
+        emit({ ...event, childThreadId: threadId, nickname });
+        const textBlocks = event.message.content.filter((b): b is TextBlock => b.type === "text");
+        output = textBlocks.map((b) => b.text).join("\n") || null;
+      } else if (event.type === "error" && event.fatal) {
+        fatalError = event.error.message;
+      }
+    });
+    try {
+      await childManager.run(userMessage, { signal: abortController.signal });
+    } catch (err) {
+      fatalError = err instanceof Error ? err.message : String(err);
+    } finally {
+      unsub();
+    }
+    if (fatalError !== null) {
+      await childManager.waitForWrites();
+      const status: AgentStatus = { kind: "errored", error: fatalError };
+      entry.status = status;
+      emitSpawnEnd("errored", fatalError);
+      return status;
+    }
+    await childManager.waitForWrites();
+    const status: AgentStatus = { kind: "completed", output };
+    entry.status = status;
+    emitSpawnEnd("completed", statusMessage(status));
+    return status;
+  })().catch((err: unknown): AgentStatus => {
+    const message = String(err);
+    const status: AgentStatus = { kind: "errored", error: message };
+    entry.status = status;
+    emitSpawnEnd("errored", message);
+    return status;
+  });
+}
+
+/** Build the initial AgentEntry for a freshly spawned agent. */
+function buildSpawnEntry(
+  threadId: string,
+  nickname: string,
+  params: SpawnParams,
+  childManager: SessionManager,
+  abortController: AbortController,
+): AgentEntry {
+  return {
+    threadId,
+    nickname,
+    agentType: params.agentType,
+    description: params.description,
+    sessionManager: childManager,
+    promise: Promise.resolve({ kind: "pending" as const }),
+    status: { kind: "pending" },
+    abortController,
+    createdAt: Date.now(),
+  };
+}
+
 /** Subset of CollabToolDeps that can safely be mutated between turns (excludes structural fields). */
 export type MutableCollabDeps = Omit<CollabToolDeps, "cwd" | "paths" | "maxAgents" | "depth" | "sessionManagerFactory">;
 
@@ -199,22 +429,10 @@ export class AgentRegistry {
    * Spawn a new sub-agent in the background.
    * Synchronous — returns immediately with {threadId, nickname}.
    */
-  spawn(params: {
-    prompt: string;
-    description: string;
-    agentType: string;
-    resumeId?: string;
-    allowNestedAgents?: boolean;
-    modelClass?: ModelClass;
-    allowedTools?: string[];
-  }): {
-    threadId: string;
-    nickname: string;
-  } {
+  spawn(params: SpawnParams): { threadId: string; nickname: string } {
     if (this.depth <= 0) {
       throw new Error("Max agent nesting depth reached. Cannot spawn further child agents.");
     }
-
     const activeCount = [...this.agents.values()].filter((e) => !isFinal(e.status)).length;
     if (activeCount >= this.maxAgents) {
       throw new Error(`Max active agents reached (${this.maxAgents}). Close some agents first.`);
@@ -229,13 +447,11 @@ export class AgentRegistry {
     const nickname = this.pool.reserve();
     const abortController = new AbortController();
 
-    // Build child tool list
     const { childTools, nestedCollabEnabled, allowedChildToolNames } = resolveChildToolAccess(
       this.deps.parentTools,
       params,
       agentDefinition,
     );
-
     if (childTools.length === 0 && !nestedCollabEnabled) {
       console.warn(
         `[collab] Spawning agent '${params.agentType}' with zero tools after filtering. ` +
@@ -243,121 +459,26 @@ export class AgentRegistry {
       );
     }
 
-    const nestedAgentPolicy = params.allowNestedAgents
-      ? "Nested sub-agent tools were explicitly enabled for this run. Use them only if the parent instruction clearly requires further delegation; otherwise do the work yourself."
-      : "Nested sub-agent delegation is disabled for this run. Do not call spawn_agent, wait, send_input, or close_agent, and do not attempt to coordinate additional sub-agents.";
-    const childSystemPrompt = [
-      ...(agentDefinition.systemPromptPrefix
-        ? [{ label: "agent_role", content: agentDefinition.systemPromptPrefix }]
-        : []),
-      {
-        label: "runtime_context",
-        content: `Current working directory: ${this.deps.cwd}`,
-      },
-      {
-        label: "nested_subagent_policy",
-        content: nestedAgentPolicy,
-      },
-    ];
-
-    // Resolve model class: explicit override > agent_type-based default
-    const parentModel = resolveModel(this.deps.modelId);
-    const targetClass: ModelClass =
-      params.modelClass ?? agentDefinition.defaultModelClass ?? agentTypeToModelClass(params.agentType, parentModel);
-    const childModel = resolveModelForClass(parentModel, targetClass);
-    const useClassDefaultEffort = params.modelClass !== undefined || agentDefinition.defaultModelClass !== undefined;
-    const childEffort = resolveChildEffort(this.deps.effort, targetClass, childModel, useClassDefaultEffort);
-
-    const factory = this.deps.sessionManagerFactory ?? ((cfg) => new SessionManager(cfg));
-
-    // Wire onChildStop as onStop for the child manager.
-    // The `let childManager` binding is valid because onStop is only called
-    // after the manager has been fully constructed and run() completes.
-    const onChildStop = this.deps.onChildStop;
-    let childManager: SessionManager;
-
-    const childManagerConfig: Parameters<typeof factory>[0] = {
-      cwd: this.deps.cwd,
-      paths: this.deps.paths,
-      onStop: onChildStop
-        ? (context, isRerun) =>
-            onChildStop({
-              sessionId: childManager.sessionId,
-              sessionPath: childManager.sessionPath ?? "",
-              cwd: this.deps.cwd,
-              model: childModel.id,
-              provider: childModel.provider,
-              effort: childEffort,
-              userId: this.deps.userId,
-              context,
-              isRerun,
-            })
-        : undefined,
-      agent: async (): Promise<RuntimeAgent> => {
-        const childAsk = this.deps.ask
-          ? (request: import("../tools/user-input-types").UserInputRequest) =>
-              this.deps.ask!({
-                ...request,
-                source: { threadId: childManager.sessionId, nickname },
-              })
-          : undefined;
-
-        const childDeps = { ...this.deps, parentTools: childTools, ask: childAsk, depth: this.depth - 1 };
-        const result = await buildDefaultTools({
-          cwd: this.deps.cwd,
-          paths: this.deps.paths,
-          collabDeps: nestedCollabEnabled ? childDeps : undefined,
-          parentToolOverride: childTools,
-          enableCollabTools: nestedCollabEnabled,
-          host: {
-            approve: this.deps.approve,
-            ask: childAsk,
-          },
-        });
-
-        const filteredTools = result.tools.filter((tool) => allowedChildToolNames.has(tool.name));
-
-        return new RuntimeAgent(
-          childModel.id,
-          childSystemPrompt,
-          filteredTools,
-          { cwd: this.deps.cwd, effort: childEffort, llmMsgStreamFn: this.deps.streamFn },
-          result.registry,
-        );
-      },
-      parentSession: this.deps.getParentSessionId?.(),
-      collabMeta: {
-        nickname,
-        description: params.description || undefined,
-      },
-    };
-
-    childManager = factory(childManagerConfig);
-
-    // Use child sessionId as the canonical threadId
-    const threadId = childManager.sessionId;
-    const callId = threadId;
-
-    this.emit({
-      type: "collab_spawn_begin",
-      callId,
-      prompt: params.prompt,
-      agentType: params.agentType,
+    const childSystemPrompt = buildChildSystemPrompt(params, agentDefinition, this.deps.cwd);
+    const { childModel, childEffort } = resolveSpawnModel(this.deps, params, agentDefinition);
+    const { childManager, threadId } = createSpawnedSessionManager({
+      deps: this.deps,
+      description: params.description,
+      childTools,
+      nestedCollabEnabled,
+      allowedChildToolNames,
+      childModel,
+      childEffort,
+      childSystemPrompt,
+      nickname,
+      depth: this.depth,
     });
 
-    const entry: AgentEntry = {
-      threadId,
-      nickname,
-      agentType: params.agentType,
-      description: params.description,
-      sessionManager: childManager,
-      promise: Promise.resolve({ kind: "pending" as const }), // replaced below
-      status: { kind: "pending" },
-      abortController,
-      createdAt: Date.now(),
-    };
+    const callId = threadId;
+    this.emit({ type: "collab_spawn_begin", callId, prompt: params.prompt, agentType: params.agentType });
 
-    // Background promise — always resolves, never rejects
+    const entry = buildSpawnEntry(threadId, nickname, params, childManager, abortController);
+
     const emitSpawnEnd = (status: CollabStatusString, message?: string): void => {
       this.emit({
         type: "collab_spawn_end",
@@ -372,90 +493,19 @@ export class AgentRegistry {
       });
     };
 
-    const promise = (async (): Promise<AgentStatus> => {
-      entry.status = { kind: "running" };
-
-      // Create or resume session
-      if (params.resumeId) {
-        const resumed = await childManager.resume({ sessionId: params.resumeId });
-        if (!resumed) await childManager.create();
-      } else {
-        await childManager.create();
-      }
-
-      const userMessage = {
-        role: "user" as const,
-        content: params.prompt,
-        timestamp: Date.now(),
-      };
-
-      let output: string | null = null;
-      let turnNumber = 0;
-      let fatalError: string | null = null;
-
-      const unsub = childManager.subscribe((event) => {
-        if (event.type === "turn_start") {
-          turnNumber++;
-          this.emit({
-            type: "turn_start",
-            turnId: event.turnId,
-            childThreadId: threadId,
-            nickname,
-            turnNumber,
-          });
-        } else if (event.type === "message_start") {
-          this.emit({ ...event, childThreadId: threadId, nickname });
-        } else if (event.type === "message_delta") {
-          this.emit({ ...event, childThreadId: threadId, nickname });
-        } else if (event.type === "tool_start") {
-          this.emit({ ...event, childThreadId: threadId, nickname });
-        } else if (event.type === "tool_update") {
-          this.emit({ ...event, childThreadId: threadId, nickname });
-        } else if (event.type === "tool_end") {
-          this.emit({ ...event, childThreadId: threadId, nickname });
-        } else if (event.type === "message_end") {
-          this.emit({ ...event, childThreadId: threadId, nickname });
-          const textBlocks = event.message.content.filter((b): b is TextBlock => b.type === "text");
-          output = textBlocks.map((b) => b.text).join("\n") || null;
-        } else if (event.type === "error" && event.fatal) {
-          fatalError = event.error.message;
-        }
-      });
-
-      try {
-        await childManager.run(userMessage, { signal: abortController.signal });
-      } catch (err) {
-        fatalError = err instanceof Error ? err.message : String(err);
-      } finally {
-        unsub();
-      }
-
-      if (fatalError !== null) {
-        await childManager.waitForWrites();
-        const status: AgentStatus = { kind: "errored", error: fatalError };
-        entry.status = status;
-        emitSpawnEnd("errored", fatalError);
-        return status;
-      }
-
-      await childManager.waitForWrites();
-      const status: AgentStatus = { kind: "completed", output };
-      entry.status = status;
-      emitSpawnEnd("completed", statusMessage(status));
-      return status;
-    })().catch((err: unknown): AgentStatus => {
-      const message = String(err);
-      const status: AgentStatus = { kind: "errored", error: message };
-      entry.status = status;
-      emitSpawnEnd("errored", message);
-      return status;
+    entry.promise = runChildBackground({
+      entry,
+      childManager,
+      resumeId: params.resumeId,
+      prompt: params.prompt,
+      abortController,
+      emitSpawnEnd,
+      emit: this.emit.bind(this),
+      threadId,
+      nickname,
     });
-
-    entry.promise = promise;
     this.agents.set(threadId, entry);
-
     emitSpawnEnd("running");
-
     return { threadId, nickname };
   }
 
