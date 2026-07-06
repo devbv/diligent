@@ -9,7 +9,7 @@ import {
   type TurnStartParams,
   type UserMessage,
 } from "../protocol/index";
-import { resetTurnRuntimeState, type ThreadHandlersContext, type ThreadRuntime } from "./thread-handlers";
+import { resetTurnRuntimeState, type ThreadHandlersContext, type ThreadRuntime } from "./handler-context";
 
 const BUILTIN_COMMAND_NAMES = new Set([
   "help",

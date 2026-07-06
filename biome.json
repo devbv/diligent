@@ -51,5 +51,27 @@
   },
   "files": {
     "includes": ["**", "!**/node_modules", "!**/dist", "!**/*.d.ts", "!research"]
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["packages/runtime/src/app-server/*-handlers.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["./*-handlers"],
+                    "message": "Handler files must not import other handler files. Shared types belong in handler-context.ts."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
 }

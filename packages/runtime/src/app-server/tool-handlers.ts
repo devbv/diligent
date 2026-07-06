@@ -4,7 +4,7 @@ import type { DiligentConfig } from "../config/schema";
 import { getGlobalConfigPath, writeGlobalToolsConfig } from "../config/writer";
 import type { PluginDescriptor, ToolConflictPolicy, ToolDescriptor } from "../protocol/index";
 import { buildDefaultTools } from "../tools/defaults";
-import type { ThreadHandlersContext } from "./thread-handlers";
+import type { ThreadHandlersContext } from "./handler-context";
 
 export async function handleToolsList(
   ctx: ThreadHandlersContext,

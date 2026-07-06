@@ -26,7 +26,7 @@ import {
   type ProviderName,
   type SupportedImageMediaType,
 } from "../protocol/index";
-import type { ThreadRuntime } from "./thread-handlers";
+import type { ThreadRuntime } from "./handler-context";
 
 type EmitFn = (notification: DiligentServerNotification) => Promise<void>;
 
