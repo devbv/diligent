@@ -1,5 +1,5 @@
 // @summary Manages .diligent directory structure with paths and gitignore setup
-import { mkdir } from "node:fs/promises";
+import { mkdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 export const DEFAULT_STORAGE_NAMESPACE = "diligent";
@@ -44,15 +44,29 @@ images/
 logs/
 `;
 
+async function ensureDirectory(path: string): Promise<void> {
+  const existing = await stat(path).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  });
+
+  if (existing) {
+    if (existing.isDirectory()) return;
+    throw new Error(`Expected directory but found a file: ${path}`);
+  }
+
+  await mkdir(path, { recursive: true });
+}
+
 export async function ensureDiligentDir(
   projectRoot: string,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<DiligentPaths> {
   const paths = resolvePaths(projectRoot, env);
-  await mkdir(paths.sessions, { recursive: true });
-  await mkdir(paths.knowledge, { recursive: true });
-  await mkdir(paths.skills, { recursive: true });
-  await mkdir(paths.images, { recursive: true });
+  await ensureDirectory(paths.sessions);
+  await ensureDirectory(paths.knowledge);
+  await ensureDirectory(paths.skills);
+  await ensureDirectory(paths.images);
 
   const gitignorePath = join(paths.root, ".gitignore");
   const file = Bun.file(gitignorePath);
