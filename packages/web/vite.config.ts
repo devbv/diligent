@@ -2,6 +2,7 @@
 import legacy from "@vitejs/plugin-legacy";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
+import svgr from "vite-plugin-svgr";
 import { WEB_IMAGE_ROUTE_PREFIX } from "./src/shared/image-routes";
 
 const DEFAULT_PROJECT_NAME = "Diligent";
@@ -10,6 +11,7 @@ const BACKEND_WS_TARGET = "ws://localhost:7433";
 
 export default defineConfig(({ mode }) => ({
   plugins: [
+    svgr(),
     {
       name: "raw-md",
       transform(code, id) {

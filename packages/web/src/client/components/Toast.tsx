@@ -1,7 +1,7 @@
 // @summary Fixed-position toast notification with bounded wrapping for long messages
 
-import { X } from "lucide-react";
 import type { ToastState } from "../lib/thread-store";
+import { X } from "./icons";
 
 interface ToastProps {
   toast: ToastState;

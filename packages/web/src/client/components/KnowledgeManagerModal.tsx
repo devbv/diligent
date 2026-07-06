@@ -1,10 +1,10 @@
 // @summary Modal for direct user CRUD management of knowledge entries over RPC
 
 import type { KnowledgeEntry, KnowledgeType, KnowledgeUpdateParams } from "@diligent/protocol";
-import { X } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Button } from "./Button";
 import { Input } from "./Input";
+import { X } from "./icons";
 import { Modal } from "./Modal";
 import { TextArea } from "./TextArea";
 import {

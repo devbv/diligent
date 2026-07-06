@@ -1,7 +1,7 @@
 // @summary Subtle divider-style compaction marker for visible transcript context resets
 
-import { AlignJustify, ChevronDown } from "lucide-react";
 import { useState } from "react";
+import { AlignJustify, ChevronDown } from "./icons";
 import { MarkdownContent } from "./MarkdownContent";
 import { detailPanelClasses, focusRingClasses } from "./ui-styles";
 

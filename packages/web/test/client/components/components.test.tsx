@@ -279,7 +279,7 @@ test("question card renders multi-select options as clear checkboxes", () => {
   expect(html).toContain('checked=""');
   expect(html).toContain("rounded-sm");
   expect(html).toContain("bg-control-choice");
-  expect(html).toContain('stroke="currentColor"');
+  expect(html).toContain('data-icon="check"');
   expect(html).not.toContain("[x]");
   expect(html).not.toContain("[ ]");
   expect(html).not.toContain("✓");
@@ -476,7 +476,7 @@ test("tool settings modal renders tool and plugin rows", () => {
   expect(html).toContain("This data is not used to train AI models.");
   expect(html).toContain("Default On · Turning off stops improvement use");
   expect(html).toContain("View Privacy Policy");
-  expect(html).toContain("lucide-external-link");
+  expect(html).toContain('data-icon="external-link"');
   expect(html).toContain('href="https://example.com/privacy"');
 });
 
@@ -1636,9 +1636,9 @@ test("tool block uses a neutral fallback icon instead of the target glyph", () =
     />,
   );
 
-  expect(html).toContain("lucide-sliders-horizontal");
-  expect(html).not.toContain("lucide-bot");
-  expect(html).not.toContain("lucide-crosshair");
+  expect(html).toContain('data-icon="sliders-horizontal"');
+  expect(html).not.toContain('data-icon="bot"');
+  expect(html).not.toContain('data-icon="crosshair"');
 });
 
 test("tool block hides duration while tool is still running", () => {
