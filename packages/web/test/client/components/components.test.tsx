@@ -1018,6 +1018,24 @@ test("provider settings modal hides vertex from the connect list", () => {
   expect(html).not.toContain("Vertex AI");
 });
 
+test("provider settings modal shows a single OAuth label for connected ChatGPT", () => {
+  const html = renderToStaticMarkup(
+    <ProviderSettingsModal
+      providers={[{ provider: "chatgpt", configured: true, maskedKey: "ChatGPT OAuth", oauthConnected: true }]}
+      oauthPending={false}
+      oauthError={null}
+      onSet={async () => {}}
+      onRemove={async () => {}}
+      onOAuthStart={async () => ({ authUrl: "https://example.com" })}
+      onClose={() => {}}
+    />,
+  );
+
+  expect(html).toContain(">OAuth<");
+  expect(html).not.toContain("ChatGPT OAuth");
+  expect(html.match(/OAuth/g)?.length).toBe(1);
+});
+
 test("empty state is hidden when provider is configured", () => {
   const html = renderToStaticMarkup(
     <EmptyState hasProvider={true} oauthPending={false} onOpenProviders={() => {}} onQuickConnectChatGPT={() => {}} />,

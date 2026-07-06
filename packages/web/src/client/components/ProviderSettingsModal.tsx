@@ -133,6 +133,7 @@ export function ProviderSettingsModal({
         {orderedProviders.map((p) => {
           const isSaving = savingProvider === p.provider;
           const isFocused = focusProvider === p.provider;
+          const authLabel = p.oauthConnected ? "OAuth" : p.maskedKey;
           return (
             <div
               key={p.provider}
@@ -145,8 +146,7 @@ export function ProviderSettingsModal({
                 <span className="flex-1 text-sm font-medium text-text">
                   {PROVIDER_LABELS[p.provider] ?? p.provider}
                 </span>
-                {p.maskedKey ? <span className="font-mono text-xs text-muted">{p.maskedKey}</span> : null}
-                {p.oauthConnected ? <span className="font-mono text-xs text-muted">OAuth</span> : null}
+                {authLabel ? <span className="font-mono text-xs text-muted">{authLabel}</span> : null}
                 {editingProvider !== p.provider && !oauthPending ? (
                   isConnected(p) || isSaving ? (
                     <Button
