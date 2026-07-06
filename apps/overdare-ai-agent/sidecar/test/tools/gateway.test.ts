@@ -8,6 +8,7 @@ const realFetch = globalThis.fetch;
 const realUrl = process.env.DILIGENT_GATEWAY_URL;
 const realToken = process.env.DILIGENT_GATEWAY_TOKEN;
 const realHubDomain = process.env.HUB_DOMAIN;
+const realDiligentEnv = process.env.DILIGENT_ENV;
 
 interface FetchCall {
   url: string;
@@ -56,6 +57,8 @@ afterEach(() => {
   else process.env.DILIGENT_GATEWAY_TOKEN = realToken;
   if (realHubDomain === undefined) delete process.env.HUB_DOMAIN;
   else process.env.HUB_DOMAIN = realHubDomain;
+  if (realDiligentEnv === undefined) delete process.env.DILIGENT_ENV;
+  else process.env.DILIGENT_ENV = realDiligentEnv;
 });
 
 describe("createGatewayToolProvider", () => {
@@ -110,7 +113,19 @@ describe("createGatewayToolProvider", () => {
 
     await provider.onEntryAppended?.(makeInput());
 
-    expect(calls[0].url).toBe("https://diligent-gateway-prod.ovdr.io/v1/records");
+    expect(calls[0].url).toBe("http://diligent-gateway-prod.ovdr.io/v1/records");
+  });
+
+  test("defaults to the prod gateway when DILIGENT_ENV is prod", async () => {
+    delete process.env.DILIGENT_GATEWAY_URL;
+    process.env.DILIGENT_ENV = "prod";
+    process.env.HUB_DOMAIN = "https://release-qa.overdare.com";
+    const calls = installFetchSpy();
+    const provider = createGatewayToolProvider({ cwd: "/tmp", projectId: "proj-1" });
+
+    await provider.onEntryAppended?.(makeInput());
+
+    expect(calls[0].url).toBe("http://diligent-gateway-prod.ovdr.io/v1/records");
   });
 
   test("defaults to the dev gateway for any non-prod HUB_DOMAIN", async () => {

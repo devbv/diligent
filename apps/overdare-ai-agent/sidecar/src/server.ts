@@ -4,6 +4,7 @@ import { createWebServer, enableProcessLogFile, parseArgs } from "@diligent/web/
 import { runMcpServerMain } from "./mcp-server";
 import { createStudioBundledToolProviders } from "./tools";
 import { createGatewayConsentBackend } from "./tools/gateway/consent";
+import { installConsoleSystemErrorForwarder } from "./tools/gateway/system-errors";
 
 function parseEnvPort(value: string | undefined): number | undefined {
   if (!value) return undefined;
@@ -100,6 +101,13 @@ if (import.meta.main) {
   if (process.argv.slice(1).includes("mcp-serve")) {
     await runMcpServerMain();
   } else {
+    installConsoleSystemErrorForwarder({
+      source: "overdare-ai-agent",
+      component: "sidecar/server",
+      version: process.env.OVERDARE_AI_AGENT_VERSION,
+      projectId: process.env.OVERDARE_PROJECT_ID,
+    });
+
     process.on("uncaughtException", (err) => {
       console.error("[Studio Server] Uncaught exception (swallowed to keep server alive):", err?.message ?? err);
     });
