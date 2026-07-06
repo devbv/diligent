@@ -122,6 +122,62 @@ test("merges item started/delta/completed into single assistant item", () => {
   expect(assistant && assistant.kind === "assistant" ? assistant.text : "").toBe("hello");
 });
 
+test("message_discarded removes visible assistant draft for retry", () => {
+  resetAdapter();
+  const started: DiligentServerNotification = {
+    method: "item/started",
+    params: {
+      threadId: "t1",
+      turnId: "turn1",
+      item: {
+        type: "agentMessage",
+        itemId: "item1",
+        message: {
+          role: "assistant",
+          content: [],
+          model: "x",
+          usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+          stopReason: "end_turn",
+          timestamp: 1,
+        },
+      },
+    },
+  };
+  const delta: DiligentServerNotification = {
+    method: "item/delta",
+    params: {
+      threadId: "t1",
+      turnId: "turn1",
+      itemId: "item1",
+      delta: { type: "messageText", itemId: "item1", delta: "partial" },
+    },
+  };
+  const discarded: DiligentServerNotification = {
+    method: DILIGENT_SERVER_NOTIFICATION_METHODS.AGENT_EVENT,
+    params: {
+      threadId: "t1",
+      turnId: "turn1",
+      event: {
+        type: "message_discarded",
+        itemId: "item1",
+        error: { name: "ProviderError", message: "stream failed", providerErrorType: "server_error" },
+        nextAttempt: 2,
+        maxAttempts: 5,
+        delayMs: 1,
+      },
+    },
+  };
+
+  const baseState = { ...initialThreadState, activeThreadId: "t1" };
+  const withDraft = reduce(reduce(baseState, started), delta);
+  expect(withDraft.items.some((item) => item.kind === "assistant")).toBe(true);
+
+  const next = reduceServerNotification(withDraft, discarded, [discarded.params.event]);
+  expect(next.items.some((item) => item.kind === "assistant")).toBe(false);
+  expect(next.liveText).toBe("");
+  expect(next.overlayStatus).toBe("Reconnecting… 2/5");
+});
+
 test("assistant message appends provider-native web blocks during message_delta", () => {
   const startedEvent = {
     type: "message_start",

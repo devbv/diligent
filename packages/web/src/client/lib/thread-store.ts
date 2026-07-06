@@ -311,6 +311,22 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent, turnId?: string
       };
     }
 
+    case "message_discarded": {
+      if ("childThreadId" in event && typeof event.childThreadId === "string") {
+        return merged;
+      }
+      const renderId = merged.itemSlots[event.itemId];
+      if (!renderId) return merged;
+      const { [event.itemId]: _, ...remainingSlots } = merged.itemSlots;
+      return {
+        ...merged,
+        itemSlots: remainingSlots,
+        items: merged.items.filter((item) => item.id !== renderId),
+        activeReasoningStartedAt: null,
+        activeReasoningDurationMs: 0,
+      };
+    }
+
     case "message_delta": {
       if ("childThreadId" in event && typeof event.childThreadId === "string") {
         if (event.delta.type === "text_delta") {

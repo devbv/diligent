@@ -88,6 +88,9 @@ export function classifyOpenAIError(err: unknown): ProviderError {
     if (status === 401 || status === 403) {
       return new ProviderError(err.message, "auth", false, undefined, status, err);
     }
+    if (isTransientOpenAIError(err)) {
+      return new ProviderError(err.message, "server_error", true, undefined, status, err);
+    }
     return new ProviderError(err.message, "unknown", false, undefined, status, err);
   }
   if (isNetworkError(err)) {
@@ -236,11 +239,8 @@ function isTransientOpenAIError(err: unknown): boolean {
     message.includes("temporarily unavailable") ||
     message.includes("timeout") ||
     message.includes("timed out") ||
-    message.includes("an error occurred while processing your request") ||
-    message.includes("request id") ||
-    message.includes("help.openai.com") ||
+    message.includes("can retry your request") ||
     message.includes("service unavailable") ||
-    message.includes("server had an error") ||
     message.includes("internal server error")
   );
 }

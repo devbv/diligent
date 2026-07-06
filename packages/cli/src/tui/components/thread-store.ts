@@ -275,6 +275,10 @@ export class ThreadStore {
           this.activeMarkdown?.finalize();
           this.activeMarkdown = null;
           break;
+        case "markdown_reset":
+          this.activeMarkdown?.reset();
+          this.activeMarkdown = null;
+          break;
         case "start_status_timers":
           this.ensureStatusTimers();
           break;

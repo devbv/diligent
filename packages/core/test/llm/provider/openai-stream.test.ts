@@ -178,7 +178,7 @@ describe("createChatGPTStream retry classification", () => {
     expect(events.some((event) => event.type === "error")).toBe(false);
   });
 
-  test("does not retry ChatGPT stream EOF after visible delta", async () => {
+  test("retries ChatGPT stream EOF after visible delta and emits retry signal", async () => {
     let fetchCount = 0;
     globalThis.fetch = (async () => {
       fetchCount++;
@@ -193,10 +193,10 @@ describe("createChatGPTStream retry classification", () => {
 
     const events = await collectEvents(createRetriedChatGPTStream());
 
-    expect(fetchCount).toBe(1);
+    expect(fetchCount).toBe(2);
     expect(events.some((event) => event.type === "text_delta")).toBe(true);
-    const error = events.find((event): event is Extract<ProviderEvent, { type: "error" }> => event.type === "error");
-    expect(error?.error.errorType).toBe("network");
-    expect(events.some((event) => event.type === "done")).toBe(false);
+    expect(events.some((event) => event.type === "retry")).toBe(true);
+    expect(events.some((event) => event.type === "error")).toBe(false);
+    expect(events.some((event) => event.type === "done")).toBe(true);
   });
 });

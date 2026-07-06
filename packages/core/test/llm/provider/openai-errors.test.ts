@@ -10,6 +10,10 @@ function makeOpenAIAPIError(status: number, message: string, headers?: Record<st
   return new OpenAI.APIError(status, { message }, message, sdkHeaders);
 }
 
+function makeOpenAIAPIErrorWithCode(status: number | undefined, code: string, message: string): OpenAI.APIError {
+  return new OpenAI.APIError(status, { code, message }, message, new Headers());
+}
+
 describe("classifyOpenAIError", () => {
   test("classifies 429 as non-retryable rate_limit", () => {
     const result = classifyOpenAIError(makeOpenAIAPIError(429, "Rate limit exceeded"));
@@ -54,15 +58,44 @@ describe("classifyOpenAIError", () => {
     expect(result.isRetryable).toBe(true);
   });
 
-  test("classifies transient OpenAI processing errors as retryable server_error", () => {
+  test("classifies OpenAI retry guidance as retryable server_error", () => {
     const result = classifyOpenAIError(
-      new Error(
-        "An error occurred while processing your request. You can retry your request. Please include the request ID 95226c1b-7063-4299-9d94-8d091ed07716.",
+      new Error("You can retry your request. Please include the request ID 95226c1b-7063-4299-9d94-8d091ed07716."),
+    );
+
+    expect(result.errorType).toBe("server_error");
+    expect(result.isRetryable).toBe(true);
+  });
+
+  test("does not classify OpenAI processing errors without retry guidance as retryable", () => {
+    const result = classifyOpenAIError(new Error("An error occurred while processing your request."));
+
+    expect(result.errorType).toBe("unknown");
+    expect(result.isRetryable).toBe(false);
+  });
+
+  test("classifies OpenAI SDK server_error code without status as retryable server_error", () => {
+    const result = classifyOpenAIError(
+      makeOpenAIAPIErrorWithCode(
+        undefined,
+        "server_error",
+        "An error occurred while processing your request. You can retry your request, or contact us through our help center at help.openai.com if the error persists. Please include the request ID 4b3a6d59-2858-47a4-8ead-663f7327eaaf in your message.",
       ),
     );
 
     expect(result.errorType).toBe("server_error");
     expect(result.isRetryable).toBe(true);
+    expect(result.statusCode).toBeUndefined();
+  });
+
+  test("does not classify OpenAI SDK server_error code alone as retryable", () => {
+    const result = classifyOpenAIError(
+      makeOpenAIAPIErrorWithCode(undefined, "server_error", "The request could not be completed."),
+    );
+
+    expect(result.errorType).toBe("unknown");
+    expect(result.isRetryable).toBe(false);
+    expect(result.statusCode).toBeUndefined();
   });
 
   test("classifies 500 as retryable server_error", () => {

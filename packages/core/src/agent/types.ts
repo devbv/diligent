@@ -40,6 +40,16 @@ export type CoreAgentEvent =
   // Message streaming (3) — D086: itemId groups related events
   | { type: "message_start"; itemId: string; message: AssistantMessage; childThreadId?: string; nickname?: string }
   | {
+      type: "message_discarded";
+      itemId: string;
+      error: SerializableError;
+      nextAttempt: number;
+      maxAttempts: number;
+      delayMs: number;
+      childThreadId?: string;
+      nickname?: string;
+    }
+  | {
       type: "message_delta";
       itemId: string;
       message: AssistantMessage;

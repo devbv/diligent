@@ -297,6 +297,7 @@ export function renderAssistantMessageBlocks(
 export function isChildScopedStreamEvent(event: AgentEvent): boolean {
   switch (event.type) {
     case "message_start":
+    case "message_discarded":
     case "message_delta":
     case "message_end":
     case "tool_start":

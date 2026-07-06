@@ -79,7 +79,9 @@ export const SerializableErrorSchema = z.object({
   name: z.string(),
   stack: z.string().optional(),
   code: z.string().optional(),
-  providerErrorType: z.enum(["rate_limit", "overloaded", "context_overflow", "auth", "network", "unknown"]).optional(),
+  providerErrorType: z
+    .enum(["rate_limit", "server_error", "context_overflow", "auth", "network", "unknown"])
+    .optional(),
   isRetryable: z.boolean().optional(),
   retryAfterMs: z.number().int().nonnegative().optional(),
   statusCode: z.number().int().optional(),
@@ -125,6 +127,16 @@ export const AgentEventSchema = z.union([
     itemId: z.string(),
     message: AssistantMessageSchema,
     timestamp: z.number().int().optional(),
+    childThreadId: z.string().optional(),
+    nickname: z.string().optional(),
+  }),
+  z.object({
+    type: z.literal("message_discarded"),
+    itemId: z.string(),
+    error: SerializableErrorSchema,
+    nextAttempt: z.number().int().positive(),
+    maxAttempts: z.number().int().positive(),
+    delayMs: z.number().int().nonnegative(),
     childThreadId: z.string().optional(),
     nickname: z.string().optional(),
   }),

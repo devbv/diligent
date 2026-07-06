@@ -1,5 +1,5 @@
 // @summary Tests for provider stream retry wrapper behavior
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { EventStream } from "../../../src/event-stream";
 import { withRetry } from "../../../src/llm/retry";
 import type {
@@ -73,6 +73,12 @@ const testOptions: StreamOptions = {
   apiKey: "test-key",
 };
 
+afterEach(() => {
+  console.log = originalConsoleLog;
+});
+
+const originalConsoleLog = console.log;
+
 describe("withRetry", () => {
   test("succeeds on first attempt without retrying", async () => {
     const { streamFn, callCount } = createFailingStreamFn([]);
@@ -116,6 +122,25 @@ describe("withRetry", () => {
     expect(callCount()).toBe(3); // 2 failures + 1 success
     expect(retryCallbacks.length).toBe(2);
     expect(events.some((e) => e.type === "done")).toBe(true);
+  });
+
+  test("logs provider error status and message before retry handling", async () => {
+    const failures = [new ProviderError("server unavailable", "server_error", true, undefined, 503)];
+    const { streamFn } = createFailingStreamFn(failures);
+    const logs: string[] = [];
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+
+    const retried = withRetry(streamFn, { maxAttempts: 2, baseDelayMs: 1, maxDelayMs: 10 });
+
+    const stream = retried(testModel, testContext, testOptions);
+    for await (const _event of stream) {
+      /* consume */
+    }
+    await stream.result().catch(() => {});
+
+    expect(logs).toContain("[llm:provider-error] status=503 message=server unavailable");
   });
 
   test("stops on non-retryable error", async () => {
@@ -210,9 +235,8 @@ describe("withRetry", () => {
     expect(callCount()).toBeLessThanOrEqual(2);
   });
 
-  test("does not retry after streaming has started (delta sent)", async () => {
+  test("retries after visible streaming by emitting retry discard signal", async () => {
     // Simulates a retryable error that occurs mid-stream, after a text_delta was already emitted.
-    // Retry must be suppressed to avoid duplicate deltas reaching the consumer.
     let callCount = 0;
     const streamFn: StreamFunction = (_model, _context, _options) => {
       const stream = new EventStream<ProviderEvent, ProviderResult>(
@@ -223,14 +247,18 @@ describe("withRetry", () => {
         },
       );
 
-      callCount++;
+      const currentCall = callCount++;
       queueMicrotask(() => {
-        // Always: emit a delta first, then a retryable error
-        stream.push({ type: "text_delta", delta: "partial" });
-        stream.push({
-          type: "error",
-          error: new ProviderError("overloaded mid-stream", "server_error", true, undefined, 529),
-        });
+        if (currentCall === 0) {
+          stream.push({ type: "text_delta", delta: "partial" });
+          stream.push({
+            type: "error",
+            error: new ProviderError("overloaded mid-stream", "server_error", true, undefined, 529),
+          });
+          return;
+        }
+        stream.push({ type: "text_delta", delta: "recovered" });
+        stream.push({ type: "done", stopReason: "end_turn", message: makeAssistantMessage() });
       });
 
       return stream;
@@ -245,8 +273,50 @@ describe("withRetry", () => {
     }
     await stream.result().catch(() => {});
 
-    // Must not retry — only 1 attempt despite retryable error
+    expect(callCount).toBe(2);
+    expect(events.find((e) => e.type === "retry")).toMatchObject({
+      type: "retry",
+      attempt: 2,
+      maxAttempts: 5,
+    });
+    expect(events.some((e) => e.type === "done")).toBe(true);
+  });
+
+  test("does not retry after a tool call completed", async () => {
+    let callCount = 0;
+    const streamFn: StreamFunction = (_model, _context, _options) => {
+      const stream = new EventStream<ProviderEvent, ProviderResult>(
+        (event) => event.type === "done" || event.type === "error",
+        (event) => {
+          if (event.type === "done") return { message: event.message };
+          throw (event as { type: "error"; error: Error }).error;
+        },
+      );
+
+      callCount++;
+      queueMicrotask(() => {
+        stream.push({ type: "tool_call_start", id: "tool-1", name: "read" });
+        stream.push({ type: "tool_call_end", id: "tool-1", name: "read", input: {} });
+        stream.push({
+          type: "error",
+          error: new ProviderError("server error after tool", "server_error", true, undefined, 503),
+        });
+      });
+
+      return stream;
+    };
+
+    const retried = withRetry(streamFn, { maxAttempts: 3, baseDelayMs: 1, maxDelayMs: 10 });
+
+    const stream = retried(testModel, testContext, testOptions);
+    const events: ProviderEvent[] = [];
+    for await (const event of stream) {
+      events.push(event);
+    }
+    await stream.result().catch(() => {});
+
     expect(callCount).toBe(1);
+    expect(events.find((e) => e.type === "retry")).toBeUndefined();
     expect(events.find((e) => e.type === "error")).toBeDefined();
   });
 

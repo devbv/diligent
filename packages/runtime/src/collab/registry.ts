@@ -405,6 +405,8 @@ export class AgentRegistry {
           });
         } else if (event.type === "message_start") {
           this.emit({ ...event, childThreadId: threadId, nickname });
+        } else if (event.type === "message_discarded") {
+          this.emit({ ...event, childThreadId: threadId, nickname });
         } else if (event.type === "message_delta") {
           this.emit({ ...event, childThreadId: threadId, nickname });
         } else if (event.type === "tool_start") {
