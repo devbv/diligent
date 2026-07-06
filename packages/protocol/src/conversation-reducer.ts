@@ -34,6 +34,14 @@ export function applyAgentEvents<T extends ConversationLiveState>(state: T, even
       case "message_start":
         nextState = { ...nextState, liveText: "", liveThinking: "", overlayStatus: "Thinking…" };
         break;
+      case "message_discarded":
+        nextState = {
+          ...nextState,
+          liveText: "",
+          liveThinking: "",
+          overlayStatus: `Reconnecting… ${event.nextAttempt}/${event.maxAttempts}`,
+        };
+        break;
       case "message_delta":
         if (event.delta.type === "text_delta") {
           nextState = {

@@ -154,6 +154,7 @@ export type ProviderEvent =
   | { type: "tool_call_delta"; id: string; delta: string }
   | { type: "tool_call_end"; id: string; name: string; input: Record<string, unknown> }
   | { type: "usage"; usage: Usage }
+  | { type: "retry"; attempt: number; maxAttempts: number; delayMs: number; error: ProviderError }
   | { type: "done"; stopReason: StopReason; message: AssistantMessage }
   | { type: "error"; error: Error };
 

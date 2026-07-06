@@ -310,6 +310,50 @@ describe("Agent", () => {
     expect(calls).toBe(2);
   });
 
+  test("retry after streamed delta discards previous assistant draft", async () => {
+    let calls = 0;
+    const agent = new Agent(TEST_MODEL, BASE_CONFIG.systemPrompt, BASE_CONFIG.tools, {
+      effort: BASE_CONFIG.effort,
+      compaction: BASE_CONFIG.compaction,
+      retry: { maxRetries: 2, baseDelayMs: 1, maxDelayMs: 1 },
+      llmMsgStreamFn: () => {
+        const currentCall = calls++;
+        const stream = new EventStream<ProviderEvent, ProviderResult>(
+          (event) => event.type === "done" || event.type === "error",
+          (event) => {
+            if (event.type === "done") return { message: event.message };
+            throw (event as { type: "error"; error: Error }).error;
+          },
+        );
+
+        queueMicrotask(() => {
+          if (currentCall === 0) {
+            stream.push({ type: "text_delta", delta: "partial" });
+            stream.push({
+              type: "error",
+              error: new ProviderError("server error", "server_error", true, undefined, 503),
+            });
+            return;
+          }
+          stream.push({ type: "text_delta", delta: "recovered" });
+          stream.push({ type: "done", stopReason: "end_turn", message: makeAssistant("recovered") });
+        });
+        return stream;
+      },
+    });
+
+    const events: CoreAgentEvent[] = [];
+    const unsub = agent.subscribe((event) => events.push(event));
+
+    await agent.prompt({ role: "user", content: "hi", timestamp: Date.now() });
+    unsub();
+
+    expect(calls).toBe(2);
+    expect(events.some((event) => event.type === "message_discarded")).toBe(true);
+    expect(events.filter((event) => event.type === "message_start")).toHaveLength(2);
+    expect(events.some((event) => event.type === "message_end")).toBe(true);
+  });
+
   test("provider errors retain classification in fatal error events", async () => {
     const agent = new Agent(TEST_MODEL, BASE_CONFIG.systemPrompt, BASE_CONFIG.tools, {
       effort: BASE_CONFIG.effort,

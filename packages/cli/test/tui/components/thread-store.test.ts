@@ -61,6 +61,27 @@ describe("ThreadStore", () => {
     });
   });
 
+  test("discarded streamed message clears active markdown before retry", () => {
+    const store = new ThreadStore({ requestRender: () => {} });
+
+    store.handleEvent({ type: "message_start" });
+    store.handleEvent({ type: "message_delta", delta: { type: "text_delta", delta: "partial\n" } });
+    expect(renderTranscript(store, 80).map(stripAnsi).join("\n")).toContain("partial");
+
+    store.handleEvent({
+      type: "message_discarded",
+      itemId: "item-1",
+      error: { name: "ProviderError", message: "stream failed", providerErrorType: "server_error" },
+      nextAttempt: 2,
+      maxAttempts: 5,
+      delayMs: 1,
+    });
+
+    const rendered = renderTranscript(store, 80).map(stripAnsi).join("\n");
+    expect(rendered).not.toContain("partial");
+    expect(rendered).toContain("Reconnecting… 2/5");
+  });
+
   test("tracks active question independently from transcript items", () => {
     const store = new ThreadStore({ requestRender: () => {} });
     const question = {

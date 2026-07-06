@@ -12,13 +12,27 @@ export interface RetryConfig {
 }
 
 function isVisibleProviderEvent(event: ProviderEvent): boolean {
-  return event.type !== "start" && event.type !== "usage" && event.type !== "text_end" && event.type !== "thinking_end";
+  return (
+    event.type !== "start" &&
+    event.type !== "usage" &&
+    event.type !== "retry" &&
+    event.type !== "text_end" &&
+    event.type !== "thinking_end"
+  );
 }
 
 function toProviderError(err: unknown): ProviderError {
   return err instanceof ProviderError
     ? err
     : new ProviderError(err instanceof Error ? err.message : String(err), "unknown", false);
+}
+
+function logProviderError(error: ProviderError): void {
+  console.log(`[llm:provider-error] status=${error.statusCode ?? "n/a"} message=${error.message}`);
+}
+
+function logIfProviderError(error: unknown): void {
+  if (error instanceof ProviderError) logProviderError(error);
 }
 
 /**
@@ -53,6 +67,7 @@ export function withRetry(
 
         let errorEvent: ProviderError | undefined;
         let hasSentDelta = false;
+        let sawToolCallEnd = false;
         let inner: ReturnType<StreamFunction> | undefined;
 
         try {
@@ -62,6 +77,7 @@ export function withRetry(
           for await (const event of inner) {
             if (event.type === "error") {
               // Capture the error, don't forward yet
+              logIfProviderError(event.error);
               errorEvent = toProviderError(event.error);
               console.log(
                 `[llm:retry] stream error attempt=${attempt}/${config.maxAttempts} ${formatSerializableErrorForLog(toSerializableError(errorEvent))}`,
@@ -83,10 +99,12 @@ export function withRetry(
             // streaming starts, retry is unsafe because the consumer already
             // received partial output. Provider bookkeeping events like `start`
             // and `usage` do not make retry unsafe.
+            if (event.type === "tool_call_end") sawToolCallEnd = true;
             if (isVisibleProviderEvent(event)) hasSentDelta = true;
             stream.push(event);
           }
         } catch (err) {
+          logIfProviderError(err);
           errorEvent = toProviderError(err);
           console.log(
             `[llm:retry] stream exception attempt=${attempt}/${config.maxAttempts} ${formatSerializableErrorForLog(toSerializableError(errorEvent))}`,
@@ -102,12 +120,12 @@ export function withRetry(
           errorEvent = new ProviderError("Provider stream ended without producing a terminal event", "network", true);
         }
 
-        // We have an error — decide whether to retry.
-        // Never retry after streaming has started: the consumer already received
-        // partial deltas and a retry would produce duplicate/corrupted output.
-        if (hasSentDelta || !errorEvent.isRetryable || attempt >= config.maxAttempts) {
-          const reason = hasSentDelta
-            ? "delta_already_sent"
+        // We have an error — decide whether to retry. After visible streaming
+        // starts, retry is allowed only while no complete tool call was emitted;
+        // consumers receive a retry event so they can discard the visible draft.
+        if (sawToolCallEnd || !errorEvent.isRetryable || attempt >= config.maxAttempts) {
+          const reason = sawToolCallEnd
+            ? "tool_call_already_completed"
             : !errorEvent.isRetryable
               ? "not_retryable"
               : "max_attempts_reached";
@@ -126,6 +144,15 @@ export function withRetry(
           `[llm:retry] retrying nextAttempt=${attempt + 1}/${config.maxAttempts} delayMs=${delayMs} type=${errorEvent.errorType}`,
         );
         onRetry?.(attempt, delayMs, errorEvent);
+        if (hasSentDelta) {
+          stream.push({
+            type: "retry",
+            attempt: attempt + 1,
+            maxAttempts: config.maxAttempts,
+            delayMs,
+            error: errorEvent,
+          });
+        }
 
         // Wait with abort support
         await new Promise<void>((resolve) => {

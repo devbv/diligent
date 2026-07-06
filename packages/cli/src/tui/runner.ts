@@ -161,6 +161,11 @@ export class NonInteractiveRunner {
         this.isThinking = false;
         return hasText;
 
+      case "message_discarded":
+        this.isThinking = false;
+        this.writeStderr(`[stream] Reconnecting... ${event.nextAttempt}/${event.maxAttempts}`, isTTY);
+        return hasText;
+
       case "tool_start":
         this.writeStderr(`[tool:${event.toolName}] Running...`, isTTY);
         return hasText;

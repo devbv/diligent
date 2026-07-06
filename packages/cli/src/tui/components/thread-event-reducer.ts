@@ -62,6 +62,7 @@ export type ThreadEventReducerEffect =
   | { kind: "markdown_open" }
   | { kind: "markdown_push"; delta: string }
   | { kind: "markdown_finalize" }
+  | { kind: "markdown_reset" }
   | { kind: "start_status_timers" }
   | { kind: "cleanup_status_timers_if_idle" };
 
@@ -148,6 +149,25 @@ export function reduceThreadEvent<TItem>(
           thinkingStartTime: null,
           thinkingText: "",
           hasCommittedAssistantChunkInMessage: false,
+        },
+      };
+
+    case "message_discarded":
+      return {
+        handled: true,
+        requestRender: true,
+        effects: [{ kind: "markdown_reset" }, { kind: "start_status_timers" }],
+        state: {
+          ...base,
+          thinkingStartTime: null,
+          thinkingText: "",
+          hasCommittedAssistantChunkInMessage: false,
+          overlayStatus: setOverlayStatus(
+            state.overlayStatus,
+            `Reconnecting… ${event.nextAttempt}/${event.maxAttempts}`,
+            "default",
+            deps.nowMs,
+          ),
         },
       };
 

@@ -15,6 +15,7 @@ import { resolveMaxTokens } from "../llm/types";
 import type { Tool } from "../tool/types";
 import type { AssistantMessage, Message } from "../types";
 import type { AgentStream } from "./types";
+import { toSerializableError } from "./util/errors";
 
 function toFunctionToolDefinition(
   tool: Pick<Tool, "name" | "description" | "parameters" | "inputSchema">,
@@ -129,6 +130,19 @@ export async function streamAssistantMessage(
       case "error":
         providerStream.result().catch(() => {});
         throw event.error;
+      case "retry":
+        if (currentMessage) {
+          stream.emit({
+            type: "message_discarded",
+            itemId: messageItemId,
+            error: toSerializableError(event.error),
+            nextAttempt: event.attempt,
+            maxAttempts: event.maxAttempts,
+            delayMs: event.delayMs,
+          });
+          currentMessage = undefined;
+        }
+        break;
       case "text_delta":
       case "thinking_delta": {
         currentMessage = ensureCurrentMessage(currentMessage, request.config.model.id, stream, messageItemId);
