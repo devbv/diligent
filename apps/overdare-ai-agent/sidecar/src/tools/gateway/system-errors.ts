@@ -76,18 +76,19 @@ export async function postSystemErrorFromConsole(
   const event = buildSystemErrorEvent(args, options, severity);
   if (!event.message) return;
 
+  const url = `${resolveEndpoint()}/v1/system-errors`;
   try {
-    const res = await fetch(`${resolveEndpoint()}/v1/system-errors`, {
+    const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(withoutNullish(event)),
     });
     if (DEBUG) {
       const body = await res.text().catch(() => "");
-      originalConsole.error?.(`[gateway] system-error → ${res.status} ${body}`.trim());
+      originalConsole.error?.(`[gateway] system-error POST ${url} → ${res.status} ${body}`.trim());
     }
   } catch (err) {
-    if (DEBUG) originalConsole.error?.("[gateway] system-error failed:", err);
+    if (DEBUG) originalConsole.error?.(`[gateway] system-error POST ${url} failed:`, err);
   }
 }
 
