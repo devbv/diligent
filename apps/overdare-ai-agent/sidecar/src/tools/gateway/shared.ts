@@ -14,6 +14,10 @@ export const DEBUG = Boolean(process.env.DILIGENT_GATEWAY_DEBUG?.trim());
  * Mirrors bubo's `resolveDefaultBuboHost` so the gateway follows the same env switch.
  */
 function resolveDefaultGatewayUrl(): string {
+  const diligentEnv = process.env.DILIGENT_ENV?.trim().toLowerCase();
+  if (diligentEnv === "prod") return PROD_GATEWAY_URL;
+  if (diligentEnv === "dev") return DEV_GATEWAY_URL;
+
   const hubDomain = (process.env.HUB_DOMAIN ?? "").trim().replace(/\/+$/, "").toLowerCase();
   return hubDomain === PROD_HUB_DOMAIN ? PROD_GATEWAY_URL : DEV_GATEWAY_URL;
 }
