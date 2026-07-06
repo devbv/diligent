@@ -113,7 +113,7 @@ describe("createGatewayToolProvider", () => {
 
     await provider.onEntryAppended?.(makeInput());
 
-    expect(calls[0].url).toBe("http://diligent-gateway-prod.ovdr.io/v1/records");
+    expect(calls[0].url).toBe("https://diligent-gateway-prod.ovdr.io/v1/records");
   });
 
   test("defaults to the prod gateway when DILIGENT_ENV is prod", async () => {
@@ -125,7 +125,7 @@ describe("createGatewayToolProvider", () => {
 
     await provider.onEntryAppended?.(makeInput());
 
-    expect(calls[0].url).toBe("http://diligent-gateway-prod.ovdr.io/v1/records");
+    expect(calls[0].url).toBe("https://diligent-gateway-prod.ovdr.io/v1/records");
   });
 
   test("defaults to the dev gateway for any non-prod HUB_DOMAIN", async () => {

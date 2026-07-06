@@ -2,7 +2,7 @@
 
 import { loadOverdareConfig, readHubToken } from "../analytics";
 
-const PROD_GATEWAY_URL = "http://diligent-gateway-prod.ovdr.io";
+const PROD_GATEWAY_URL = "https://diligent-gateway-prod.ovdr.io";
 const DEV_GATEWAY_URL = "https://diligent-gateway-dev.ovdr.io";
 /** Hub domain that identifies the production environment (mirrors bubo's analytics host selection). */
 const PROD_HUB_DOMAIN = "https://create.overdare.com";

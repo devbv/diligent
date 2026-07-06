@@ -89,7 +89,7 @@ describe("postSystemErrorFromConsole", () => {
 
     await postSystemErrorFromConsole(["boom"], { source: "overdare-ai-agent" });
 
-    expect(calls[0].url).toBe("http://diligent-gateway-prod.ovdr.io/v1/system-errors");
+    expect(calls[0].url).toBe("https://diligent-gateway-prod.ovdr.io/v1/system-errors");
   });
 
   test("uses the provided severity", async () => {
