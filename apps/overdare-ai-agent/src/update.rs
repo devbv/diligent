@@ -74,6 +74,24 @@ fn updates_dir(env: Env) -> Option<PathBuf> {
     global_storage_dir(env).map(|g| g.join("updates"))
 }
 
+/// Per-process staging dir. Keyed by `token` (the process id) so two concurrent
+/// updates of the same version never share — and clobber — one extract dir.
+fn staging_dir(updates: &Path, version: &str, token: u32) -> PathBuf {
+    updates.join(format!("runtime_staging_{version}_{token}"))
+}
+
+/// Per-process bundle zip path, isolated by `token` for the same reason as
+/// `staging_dir`: concurrent downloads of the same version must not write the
+/// same file.
+fn bundle_zip_path(updates: &Path, version: &str, platform: &str, token: u32) -> PathBuf {
+    updates.join(format!("runtime-bundle-{version}-{platform}-{token}.zip"))
+}
+
+fn discard_transient_install(staging: &Path, zip: &Path) {
+    let _ = fs::remove_dir_all(staging);
+    let _ = fs::remove_file(zip);
+}
+
 /// Legacy flat runtime directory (`updates/runtime`). Kept as a fallback for
 /// installs that predate the versioned layout.
 fn legacy_runtime_dir(env: Env) -> Option<PathBuf> {
@@ -969,76 +987,84 @@ pub fn run_with_progress(
 
     let updates = updates_dir(selection.env).ok_or("cannot resolve updates dir")?;
     fs::create_dir_all(&updates).map_err(|e| format!("create updates dir: {e}"))?;
-    let zip_path = updates.join(format!(
-        "runtime-bundle-{}-{}.zip",
-        fetched.version,
-        current_platform()
-    ));
-    fs::write(&zip_path, &fetched.bytes).map_err(|e| format!("write bundle: {e}"))?;
 
-    report_progress(
-        &mut progress,
-        UpdateProgress::Verifying {
-            target_version: fetched.version.clone(),
-        },
-    );
-    if !verify_sha256(&zip_path, &fetched.sha256)? {
-        let _ = fs::remove_file(&zip_path);
-        return Err("Downloaded bundle failed SHA256 verification".into());
-    }
+    // Isolate the download/extract scratch by process id so two concurrent
+    // updates of the same version (e.g. two Studio launchers started at once
+    // when a fresh release drops) never share — and clobber — one another's zip
+    // or staging dir. The final `runtime-v<version>` target is still shared, but
+    // finalize's is_complete_install guard makes the second finalize converge
+    // (discard its staging, keep the winner) rather than corrupt it.
+    let token = std::process::id();
+    let zip_path = bundle_zip_path(&updates, &fetched.version, current_platform(), token);
+    let staging = staging_dir(&updates, &fetched.version, token);
 
-    let staging = updates.join(format!("runtime_staging_{}", fetched.version));
-    report_progress(
-        &mut progress,
-        UpdateProgress::Extracting {
-            target_version: fetched.version.clone(),
-        },
-    );
-    extract_zip(&zip_path, &staging)?;
+    // Any failure between here and finalize leaves this process's own zip /
+    // staging behind. Isolated (per-process) names no longer self-heal via a
+    // later run reusing a shared path, so reclaim them explicitly on the way
+    // out. ponytail: a hard crash mid-install still orphans one staging dir;
+    // sweep stale runtime_staging_*/runtime-bundle-* by age if that accrues.
+    let install = (|| -> Result<(), String> {
+        fs::write(&zip_path, &fetched.bytes).map_err(|e| format!("write bundle: {e}"))?;
 
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        for name in ["diligent-web-server", "rg"] {
-            let bin = staging.join(name);
-            if bin.exists() {
-                let _ = fs::set_permissions(&bin, fs::Permissions::from_mode(0o755));
+        report_progress(
+            &mut progress,
+            UpdateProgress::Verifying {
+                target_version: fetched.version.clone(),
+            },
+        );
+        if !verify_sha256(&zip_path, &fetched.sha256)? {
+            return Err("Downloaded bundle failed SHA256 verification".into());
+        }
+
+        report_progress(
+            &mut progress,
+            UpdateProgress::Extracting {
+                target_version: fetched.version.clone(),
+            },
+        );
+        extract_zip(&zip_path, &staging)?;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            for name in ["diligent-web-server", "rg"] {
+                let bin = staging.join(name);
+                if bin.exists() {
+                    let _ = fs::set_permissions(&bin, fs::Permissions::from_mode(0o755));
+                }
             }
         }
+
+        validate_runtime_layout(&staging)?;
+
+        report_progress(
+            &mut progress,
+            UpdateProgress::Applying {
+                target_version: fetched.version.clone(),
+            },
+        );
+        let version_info = InstalledVersion {
+            version: fetched.version.clone(),
+            applied_at: chrono::Local::now().to_rfc3339(),
+            sha256: fetched.sha256.clone(),
+        };
+        fs::write(
+            staging.join("version.json"),
+            serde_json::to_string_pretty(&version_info)
+                .map(|json| format!("{json}\n"))
+                .map_err(|e| format!("serialize version info: {e}"))?,
+        )
+        .map_err(|e| format!("write staging version.json: {e}"))?;
+
+        // Install beside the active runtime and atomically switch the pointer.
+        // The previously active runtime directory is intentionally left in place
+        // so a running sidecar is never deleted mid-update.
+        finalize_runtime_install(selection.env, &fetched.version, &fetched.sha256, &staging)
+    })();
+    if install.is_err() {
+        discard_transient_install(&staging, &zip_path);
     }
-
-    validate_runtime_layout(&staging).inspect_err(|_| {
-        let _ = fs::remove_dir_all(&staging);
-    })?;
-
-    report_progress(
-        &mut progress,
-        UpdateProgress::Applying {
-            target_version: fetched.version.clone(),
-        },
-    );
-    let version_info = InstalledVersion {
-        version: fetched.version.clone(),
-        applied_at: chrono::Local::now().to_rfc3339(),
-        sha256: fetched.sha256.clone(),
-    };
-    fs::write(
-        staging.join("version.json"),
-        serde_json::to_string_pretty(&version_info)
-            .map(|json| format!("{json}\n"))
-            .map_err(|e| format!("serialize version info: {e}"))?,
-    )
-    .map_err(|e| format!("write staging version.json: {e}"))?;
-
-    // Install beside the active runtime and atomically switch the pointer. The
-    // previously active runtime directory is intentionally left in place so a
-    // running sidecar is never deleted mid-update.
-    finalize_runtime_install(
-        selection.env,
-        &fetched.version,
-        &fetched.sha256,
-        &staging,
-    )?;
+    install?;
     let _ = fs::remove_file(&zip_path);
 
     // Best-effort, runs after the pointer switch so it can never fail the
@@ -1644,6 +1670,80 @@ mod tests {
                 current_runtime_dir(Env::Prod),
                 Some(updates.join("runtime-v2.0.0"))
             );
+        });
+    }
+
+    #[test]
+    fn staging_and_bundle_paths_are_isolated_per_process() {
+        // Two concurrent updates to the SAME new version (e.g. two Studio
+        // launchers started at once when a fresh release drops) must NOT share
+        // the staging dir or the bundle zip — a shared path lets one process's
+        // extract/download clobber the other's in-flight files, aborting the
+        // update. Isolation is keyed by a per-process token.
+        with_temp_home("staging-isolation", |home| {
+            let updates = home.join(".overdare/updates");
+            assert_ne!(
+                super::staging_dir(&updates, "3.0.0", 111),
+                super::staging_dir(&updates, "3.0.0", 222),
+                "same-version concurrent updates must not share a staging dir"
+            );
+            assert_ne!(
+                super::bundle_zip_path(&updates, "3.0.0", "darwin-arm64", 111),
+                super::bundle_zip_path(&updates, "3.0.0", "darwin-arm64", 222),
+                "same-version concurrent updates must not share a bundle zip path"
+            );
+        });
+    }
+
+    #[test]
+    fn concurrent_same_version_finalize_converges_without_data_loss() {
+        // Safety lock: with isolated staging, two processes installing the same
+        // new version finalize in sequence. The first becomes the install; the
+        // second sees a complete install and discards its own staging without
+        // wiping the winner. No file loss either way.
+        with_temp_home("concurrent-converge", |home| {
+            let updates = home.join(".overdare/updates");
+            fs::create_dir_all(&updates).expect("create updates");
+            let s1 = super::staging_dir(&updates, "3.0.0", 111);
+            let s2 = super::staging_dir(&updates, "3.0.0", 222);
+            // Both extracts land on disk at once (as two live processes would).
+            write_runtime_layout(&s1, "3.0.0");
+            write_runtime_layout(&s2, "3.0.0");
+            assert!(s1.exists() && s2.exists(), "isolated stagings coexist");
+
+            super::finalize_runtime_install(Env::Prod, "3.0.0", "deadbeef", &s1)
+                .expect("finalize p1");
+            let target = updates.join("runtime-v3.0.0");
+            fs::write(target.join("sentinel"), b"x").expect("mark winner");
+            super::finalize_runtime_install(Env::Prod, "3.0.0", "deadbeef", &s2)
+                .expect("finalize p2");
+
+            assert!(
+                target.join("sentinel").exists(),
+                "the already-installed winner must never be wiped by a second concurrent finalize"
+            );
+            assert!(!s1.exists() && !s2.exists(), "both stagings consumed");
+            assert_eq!(current_runtime_dir(Env::Prod), Some(target));
+        });
+    }
+
+    #[test]
+    fn discard_transient_install_removes_own_staging_and_zip() {
+        // A failed install must reclaim its own (now per-process) staging + zip;
+        // isolated names no longer self-heal via the next run's reuse of a
+        // shared path, so the error path cleans up explicitly.
+        with_temp_home("discard-transient", |home| {
+            let updates = home.join(".overdare/updates");
+            let staging = super::staging_dir(&updates, "3.0.0", 111);
+            let zip = super::bundle_zip_path(&updates, "3.0.0", "darwin-arm64", 111);
+            write_runtime_layout(&staging, "3.0.0");
+            fs::create_dir_all(zip.parent().unwrap()).expect("create updates");
+            fs::write(&zip, b"zip").expect("write zip");
+
+            super::discard_transient_install(&staging, &zip);
+
+            assert!(!staging.exists(), "failed-install staging must be removed");
+            assert!(!zip.exists(), "failed-install bundle zip must be removed");
         });
     }
 
