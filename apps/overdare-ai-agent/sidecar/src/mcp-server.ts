@@ -308,9 +308,12 @@ export async function runMcpServerMain(): Promise<void> {
   // exactly what the studio RPC tracing in tools/studiorpc/rpc.ts (console.log `[RPC →]`/`[RPC ←]`)
   // would do on every tool call. Route all would-be-stdout diagnostics to stderr so nothing but the
   // transport can write to stdout. Bind first, before any tool code can run.
-  console.log = (...args: unknown[]) => console.error(...args);
-  console.info = (...args: unknown[]) => console.error(...args);
-  console.debug = (...args: unknown[]) => console.error(...args);
+  const stderr = console.error.bind(console);
+  const routeToStderr = (...args: unknown[]) => stderr(...args);
+  console.log = routeToStderr as typeof console.log;
+  console.info = routeToStderr as typeof console.info;
+  console.debug = routeToStderr as typeof console.debug;
+  console.warn = routeToStderr as typeof console.warn;
 
   // Keep the server alive across stray async faults (e.g. a Studio socket 'error' with no listener)
   // rather than letting an uncaught error kill the process and drop the client. Mirrors the
@@ -326,7 +329,7 @@ export async function runMcpServerMain(): Promise<void> {
   const bootstrapDir = resolveBootstrapDir();
   try {
     await startMcpServer({ cwd, bootstrapDir });
-    console.error("OVERDARE MCP server ready on stdio");
+    console.info("OVERDARE MCP server ready on stdio");
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`Failed to start OVERDARE MCP server: ${message}`);

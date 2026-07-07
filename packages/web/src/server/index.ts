@@ -527,9 +527,9 @@ if (isDirect) {
           process.exit(0);
         });
 
-        console.log(`DILIGENT_PORT=${server.port}`);
-        console.log(`Diligent Web CLI server running at http://localhost:${server.port}`);
-        console.log(`RPC endpoint: ws://localhost:${server.port}/rpc`);
+        console.info(`DILIGENT_PORT=${server.port}`);
+        console.info(`Diligent Web CLI server running at http://localhost:${server.port}`);
+        console.info(`RPC endpoint: ws://localhost:${server.port}/rpc`);
       })
       .catch((error) => {
         cleanupParentWatchdog?.();

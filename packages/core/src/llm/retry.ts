@@ -28,7 +28,7 @@ function toProviderError(err: unknown): ProviderError {
 }
 
 function logProviderError(error: ProviderError): void {
-  console.log(`[llm:provider-error] status=${error.statusCode ?? "n/a"} message=${error.message}`);
+  console.warn(`[llm:provider-error] status=${error.statusCode ?? "n/a"} message=${error.message}`);
 }
 
 function logIfProviderError(error: unknown): void {
@@ -57,7 +57,7 @@ export function withRetry(
     (async () => {
       for (let attempt = 1; attempt <= config.maxAttempts; attempt++) {
         if (signal?.aborted) {
-          console.log(`[llm:retry] aborted before attempt=${attempt}/${config.maxAttempts}`);
+          console.info(`[llm:retry] aborted before attempt=${attempt}/${config.maxAttempts}`);
           stream.push({
             type: "error",
             error: new ProviderError("Aborted", "unknown", false),
@@ -79,7 +79,7 @@ export function withRetry(
               // Capture the error, don't forward yet
               logIfProviderError(event.error);
               errorEvent = toProviderError(event.error);
-              console.log(
+              console.warn(
                 `[llm:retry] stream error attempt=${attempt}/${config.maxAttempts} ${formatSerializableErrorForLog(toSerializableError(errorEvent))}`,
               );
               break;
@@ -88,7 +88,7 @@ export function withRetry(
             if (event.type === "done") {
               // Success — forward the done event and return
               if (attempt > 1) {
-                console.log(`[llm:retry] recovered on attempt=${attempt}/${config.maxAttempts}`);
+                console.info(`[llm:retry] recovered on attempt=${attempt}/${config.maxAttempts}`);
               }
               stream.push(event);
               return;
@@ -106,7 +106,7 @@ export function withRetry(
         } catch (err) {
           logIfProviderError(err);
           errorEvent = toProviderError(err);
-          console.log(
+          console.warn(
             `[llm:retry] stream exception attempt=${attempt}/${config.maxAttempts} ${formatSerializableErrorForLog(toSerializableError(errorEvent))}`,
           );
         }
@@ -116,7 +116,7 @@ export function withRetry(
 
         // If no error captured from events, check if stream completed normally
         if (!errorEvent) {
-          console.log(`[llm:retry] stream ended without terminal event attempt=${attempt}/${config.maxAttempts}`);
+          console.warn(`[llm:retry] stream ended without terminal event attempt=${attempt}/${config.maxAttempts}`);
           errorEvent = new ProviderError("Provider stream ended without producing a terminal event", "network", true);
         }
 
@@ -129,7 +129,7 @@ export function withRetry(
             : !errorEvent.isRetryable
               ? "not_retryable"
               : "max_attempts_reached";
-          console.log(
+          console.error(
             `[llm:retry] giving up attempt=${attempt}/${config.maxAttempts} reason=${reason} ${formatSerializableErrorForLog(toSerializableError(errorEvent))}`,
           );
           stream.push({ type: "error", error: errorEvent });
@@ -140,7 +140,7 @@ export function withRetry(
         const exponentialDelay = config.baseDelayMs * 2 ** (attempt - 1);
         const delayMs = Math.min(Math.max(exponentialDelay, errorEvent.retryAfterMs ?? 0), config.maxDelayMs);
 
-        console.log(
+        console.info(
           `[llm:retry] retrying nextAttempt=${attempt + 1}/${config.maxAttempts} delayMs=${delayMs} type=${errorEvent.errorType}`,
         );
         onRetry?.(attempt, delayMs, errorEvent);
@@ -168,7 +168,7 @@ export function withRetry(
       }
     })().catch((err) => {
       const providerErr = toProviderError(err);
-      console.log(`[llm:retry] wrapper exception ${formatSerializableErrorForLog(toSerializableError(providerErr))}`);
+      console.error(`[llm:retry] wrapper exception ${formatSerializableErrorForLog(toSerializableError(providerErr))}`);
       stream.push({ type: "error", error: providerErr });
     });
 

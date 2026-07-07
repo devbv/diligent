@@ -1,12 +1,13 @@
-// @summary Unauthenticated OVERDARE gateway system-error forwarding for sidecar console output.
+// @summary Unauthenticated OVERDARE gateway system-log forwarding for sidecar console output.
 
 import { DEBUG, resolveEndpoint } from "./shared";
 
-interface SystemErrorEvent {
+interface SystemLogEvent {
   source: string;
   event_ts: string;
   message: string;
   severity?: string;
+  user_id?: string;
   component?: string;
   version?: string;
   error_type?: string;
@@ -19,6 +20,7 @@ interface SystemErrorEvent {
 
 interface ConsoleSystemErrorForwarderOptions {
   source: string;
+  userId?: string;
   component?: string;
   version?: string;
   projectId?: string;
@@ -27,8 +29,8 @@ interface ConsoleSystemErrorForwarderOptions {
 
 type ConsoleLevel = "debug" | "error" | "info" | "log" | "warn";
 
-const CONSOLE_SEVERITY: Record<ConsoleLevel, string> = {
-  debug: "debug",
+const CONSOLE_SEVERITY: Record<ConsoleLevel, string | undefined> = {
+  debug: undefined,
   error: "error",
   info: "info",
   log: "info",
@@ -52,7 +54,8 @@ export function installConsoleSystemErrorForwarder(options: ConsoleSystemErrorFo
   for (const level of Object.keys(CONSOLE_SEVERITY) as ConsoleLevel[]) {
     console[level] = (...args: unknown[]) => {
       originalConsole[level]?.(...args);
-      enqueueSystemErrorFromConsole(args, options, CONSOLE_SEVERITY[level]);
+      const severity = CONSOLE_SEVERITY[level];
+      if (severity) enqueueSystemErrorFromConsole(args, options, severity);
     };
   }
 }
@@ -73,10 +76,10 @@ export async function postSystemErrorFromConsole(
   options: ConsoleSystemErrorForwarderOptions,
   severity = "error",
 ): Promise<void> {
-  const event = buildSystemErrorEvent(args, options, severity);
+  const event = buildSystemLogEvent(args, options, severity);
   if (!event.message) return;
 
-  const url = `${resolveEndpoint()}/v1/system-errors`;
+  const url = `${resolveEndpoint()}/v1/system-logs`;
   try {
     const res = await fetch(url, {
       method: "POST",
@@ -85,18 +88,18 @@ export async function postSystemErrorFromConsole(
     });
     if (DEBUG && !res.ok) {
       const body = await res.text().catch(() => "");
-      originalConsole.error?.(`[gateway] system-error POST ${url} → ${res.status} ${body}`.trim());
+      originalConsole.error?.(`[gateway] system-log POST ${url} → ${res.status} ${body}`.trim());
     }
   } catch (err) {
-    if (DEBUG) originalConsole.error?.(`[gateway] system-error POST ${url} failed:`, err);
+    if (DEBUG) originalConsole.error?.(`[gateway] system-log POST ${url} failed:`, err);
   }
 }
 
-function buildSystemErrorEvent(
+function buildSystemLogEvent(
   args: unknown[],
   options: ConsoleSystemErrorForwarderOptions,
   severity: string,
-): SystemErrorEvent {
+): SystemLogEvent {
   const firstError = args.find((arg): arg is Error => arg instanceof Error);
   const message = formatConsoleArgs(args).slice(0, 4096);
   const stack = firstError?.stack?.slice(0, 65536);
@@ -107,6 +110,7 @@ function buildSystemErrorEvent(
     event_ts: new Date().toISOString(),
     severity,
     message,
+    user_id: options.userId?.slice(0, 256),
     component: options.component?.slice(0, 128),
     version: options.version?.slice(0, 64),
     error_type: errorType,
@@ -139,8 +143,8 @@ function buildFingerprint(args: unknown[], error: Error | undefined): string | u
   return firstString ? firstString.slice(0, 256) : undefined;
 }
 
-function withoutNullish(event: SystemErrorEvent): SystemErrorEvent {
+function withoutNullish(event: SystemLogEvent): SystemLogEvent {
   return Object.fromEntries(
     Object.entries(event).filter(([, value]) => value !== undefined && value !== null),
-  ) as SystemErrorEvent;
+  ) as SystemLogEvent;
 }

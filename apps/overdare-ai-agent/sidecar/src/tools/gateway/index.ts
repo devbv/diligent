@@ -81,11 +81,13 @@ async function postRecord(input: HookInput, projectId: string, userId: string, t
     });
     if (DEBUG) {
       const body = await res.text().catch(() => "");
-      console.error(`[gateway] ${envelope.session_id}#${envelope.seq} → ${res.status} ${body}`.trim());
+      const message = `[gateway] ${envelope.session_id}#${envelope.seq} → ${res.status} ${body}`.trim();
+      if (res.ok) console.debug(message);
+      else console.warn(message);
     }
   } catch (err) {
     if (DEBUG) {
-      console.error(`[gateway] ${envelope.session_id}#${envelope.seq} failed:`, err);
+      console.warn(`[gateway] ${envelope.session_id}#${envelope.seq} failed:`, err);
     }
   }
 }

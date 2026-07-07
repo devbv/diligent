@@ -74,10 +74,10 @@ const testOptions: StreamOptions = {
 };
 
 afterEach(() => {
-  console.log = originalConsoleLog;
+  console.warn = originalConsoleWarn;
 });
 
-const originalConsoleLog = console.log;
+const originalConsoleWarn = console.warn;
 
 describe("withRetry", () => {
   test("succeeds on first attempt without retrying", async () => {
@@ -128,7 +128,7 @@ describe("withRetry", () => {
     const failures = [new ProviderError("server unavailable", "server_error", true, undefined, 503)];
     const { streamFn } = createFailingStreamFn(failures);
     const logs: string[] = [];
-    console.log = (...args: unknown[]) => {
+    console.warn = (...args: unknown[]) => {
       logs.push(args.map(String).join(" "));
     };
 

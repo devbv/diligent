@@ -138,10 +138,10 @@ export async function handleAuthSet(
   // Verify the key against the provider before persisting, so an invalid key is reported at save
   // time instead of turning the status green and only failing on the first chat. This call is made
   // by the server (not the browser), so it won't appear in the browser DevTools network tab.
-  console.log(`[auth] verifying ${params.provider} API key with provider...`);
+  console.info(`[auth] verifying ${params.provider} API key with provider...`);
   try {
     await providerManager.validateApiKey(params.provider, params.apiKey);
-    console.log(`[auth] ${params.provider} API key verified`);
+    console.info(`[auth] ${params.provider} API key verified`);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Invalid API key";
     console.warn(`[auth] ${params.provider} API key verification failed: ${message}`);

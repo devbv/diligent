@@ -413,7 +413,7 @@ function debugWebSearchPayload(
     actionKeys: getWebAction(item ?? {}) ? Object.keys(getWebAction(item ?? {})!).slice(0, 20) : [],
     sourcesLen: normalizeSources(item ?? {}).length,
   };
-  console.log(`[llm:web-tools] ${JSON.stringify(summary)}`);
+  console.debug(`[llm:web-tools] ${JSON.stringify(summary)}`);
 }
 
 function collectCompletedWebSearchCalls(response: Record<string, unknown> | undefined): Record<string, unknown>[] {

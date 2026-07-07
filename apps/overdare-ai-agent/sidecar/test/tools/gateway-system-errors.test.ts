@@ -63,17 +63,19 @@ describe("postSystemErrorFromConsole", () => {
 
     await postSystemErrorFromConsole(["[Studio Server]", error], {
       source: "overdare-ai-agent",
+      userId: "user-abc-123",
       component: "sidecar/server",
       version: "1.4.2",
       projectId: "proj-1",
     });
 
     expect(calls).toHaveLength(1);
-    expect(calls[0].url).toBe("http://127.0.0.1:8000/v1/system-errors");
+    expect(calls[0].url).toBe("http://127.0.0.1:8000/v1/system-logs");
     expect(calls[0].authorization).toBeUndefined();
     expect(calls[0].body.source).toBe("overdare-ai-agent");
     expect(calls[0].body.severity).toBe("error");
     expect(calls[0].body.message).toBe("[Studio Server] failed to connect upstream");
+    expect(calls[0].body.user_id).toBe("user-abc-123");
     expect(calls[0].body.component).toBe("sidecar/server");
     expect(calls[0].body.version).toBe("1.4.2");
     expect(calls[0].body.project_id).toBe("proj-1");
@@ -89,7 +91,7 @@ describe("postSystemErrorFromConsole", () => {
 
     await postSystemErrorFromConsole(["boom"], { source: "overdare-ai-agent" });
 
-    expect(calls[0].url).toBe("https://diligent-gateway-prod.ovdr.io/v1/system-errors");
+    expect(calls[0].url).toBe("https://diligent-gateway-prod.ovdr.io/v1/system-logs");
   });
 
   test("uses the provided severity", async () => {
@@ -98,6 +100,14 @@ describe("postSystemErrorFromConsole", () => {
     await postSystemErrorFromConsole(["heads up"], { source: "overdare-ai-agent" }, "warning");
 
     expect(calls[0].body.severity).toBe("warning");
+  });
+
+  test("omits user_id from the body when it is not provided", async () => {
+    const calls = installFetchSpy();
+
+    await postSystemErrorFromConsole(["boom"], { source: "overdare-ai-agent" });
+
+    expect(calls[0].body).not.toHaveProperty("user_id");
   });
 });
 
@@ -112,7 +122,7 @@ describe("enqueueSystemErrorFromConsole", () => {
     await new Promise((resolve) => setTimeout(resolve, 1));
 
     expect(calls).toHaveLength(1);
-    expect(calls[0].url).toBe("http://127.0.0.1:8000/v1/system-errors");
+    expect(calls[0].url).toBe("http://127.0.0.1:8000/v1/system-logs");
   });
 });
 
@@ -121,17 +131,23 @@ describe("installConsoleSystemErrorForwarder", () => {
     const calls = installFetchSpy();
     const printed: Array<[string, unknown[]]> = [];
     console.log = (...args: unknown[]) => printed.push(["log", args]);
+    console.info = (...args: unknown[]) => printed.push(["info", args]);
+    console.debug = (...args: unknown[]) => printed.push(["debug", args]);
     console.warn = (...args: unknown[]) => printed.push(["warn", args]);
     console.error = (...args: unknown[]) => printed.push(["error", args]);
 
     installConsoleSystemErrorForwarder({ source: "overdare-ai-agent" });
 
     console.log("ready");
+    console.info("started");
+    console.debug("trace");
     console.warn("careful");
     console.error("boom");
 
     expect(printed).toEqual([
       ["log", ["ready"]],
+      ["info", ["started"]],
+      ["debug", ["trace"]],
       ["warn", ["careful"]],
       ["error", ["boom"]],
     ]);
@@ -139,7 +155,7 @@ describe("installConsoleSystemErrorForwarder", () => {
 
     await new Promise((resolve) => setTimeout(resolve, 1));
 
-    expect(calls.map((call) => call.body.severity)).toEqual(["info", "warning", "error"]);
-    expect(calls.map((call) => call.body.message)).toEqual(["ready", "careful", "boom"]);
+    expect(calls.map((call) => call.body.severity)).toEqual(["info", "info", "warning", "error"]);
+    expect(calls.map((call) => call.body.message)).toEqual(["ready", "started", "careful", "boom"]);
   });
 });

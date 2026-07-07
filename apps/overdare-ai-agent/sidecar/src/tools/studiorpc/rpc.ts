@@ -85,7 +85,7 @@ export async function call(method: string, params?: Record<string, unknown>): Pr
     // connection attempt so our error handler is reliably invoked.
     const connectHost = host === "localhost" ? "127.0.0.1" : host;
     const rawRequest = JSON.stringify(request);
-    console.log(`[RPC →] ${rawRequest}`);
+    console.debug(`[RPC →] ${rawRequest}`);
     const socket = net.createConnection({ host: connectHost, port }, () => {
       socket.write(`${rawRequest}\n`);
     });
@@ -115,7 +115,7 @@ export async function call(method: string, params?: Record<string, unknown>): Pr
         cleanup();
         try {
           const response = JSON.parse(line) as JsonRpcResponse;
-          console.log(`[RPC ←] ${line}`);
+          console.debug(`[RPC ←] ${line}`);
           if (response.error) {
             let errorMsg = `Studio RPC error [${response.error.code}]: ${response.error.message}`;
             errorMsg += `\n\nRequest was:\n${rawRequest}`;

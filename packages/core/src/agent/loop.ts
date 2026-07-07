@@ -177,7 +177,7 @@ async function compactIfNeeded(messages: Message[], request: LoopRequest, stream
   const decision = getCompactionDecision(messages, request.config.model.contextWindow, config.reservePercent);
   if (!decision.shouldCompact) return;
 
-  console.log(
+  console.info(
     `[agent:compaction] triggered source=${decision.source} estimatedTokens=${decision.estimatedTokens} thresholdTokens=${decision.thresholdTokens} reserveTokens=${decision.reserveTokens}`,
   );
 
@@ -190,7 +190,7 @@ async function compactAfterContextOverflow(
   stream: AgentStream,
 ): Promise<boolean> {
   if (!request.config.compaction) return false;
-  console.log("[agent:compaction] forced after context_overflow");
+  console.warn("[agent:compaction] forced after context_overflow");
   await applyCompaction(messages, request, stream);
   return true;
 }

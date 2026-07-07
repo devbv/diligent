@@ -89,7 +89,7 @@ export function createGatewayConsentBackend(): ConsentConfigManager {
       try {
         status = await fetchConsentStatus(token);
       } catch (err) {
-        if (DEBUG) console.error("[gateway] consent refresh failed:", err);
+        if (DEBUG) console.warn("[gateway] consent refresh failed:", err);
       }
     },
     set: async (params) => {
@@ -99,9 +99,9 @@ export function createGatewayConsentBackend(): ConsentConfigManager {
       try {
         const result = await postConsent(token, granted);
         status = granted ? "granted" : "withdrawn";
-        if (DEBUG) console.error(`[gateway] consent set granted=${granted}`, result);
+        if (DEBUG) console.debug(`[gateway] consent set granted=${granted}`, result);
       } catch (err) {
-        if (DEBUG) console.error("[gateway] consent set failed:", err);
+        if (DEBUG) console.warn("[gateway] consent set failed:", err);
       }
       return statusToState(status);
     },

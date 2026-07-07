@@ -279,7 +279,7 @@ export class DesktopNotificationController {
   }
 
   private log(event: string, context: NotifyContext, details?: Record<string, unknown>): void {
-    console.log("[desktop-notification]", event, {
+    console.debug("[desktop-notification]", event, {
       source: context.source,
       enabled: this.enabled,
       ...details,

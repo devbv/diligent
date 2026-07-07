@@ -48,7 +48,7 @@ export function reduceToolEvent(state: ThreadState, event: ToolAgentEvent): Thre
       if (event.childThreadId) {
         const spawnItem = findCollabSpawnItem(state, event.childThreadId);
         if (!spawnItem) {
-          console.log(
+          console.debug(
             "[ThreadStore][collab-debug] child tool_start dropped: spawn item not found",
             event.childThreadId,
             event.toolName,
@@ -115,7 +115,7 @@ export function reduceToolEvent(state: ThreadState, event: ToolAgentEvent): Thre
       if (event.childThreadId) {
         const spawnItem = findCollabSpawnItem(state, event.childThreadId);
         if (!spawnItem) {
-          console.log(
+          console.debug(
             "[ThreadStore][collab-debug] child tool_update dropped: spawn item not found",
             event.childThreadId,
             event.toolName,
@@ -151,7 +151,7 @@ export function reduceToolEvent(state: ThreadState, event: ToolAgentEvent): Thre
       if (event.childThreadId) {
         const spawnItem = findCollabSpawnItem(state, event.childThreadId);
         if (!spawnItem) {
-          console.log(
+          console.debug(
             "[ThreadStore][collab-debug] child tool_end dropped: spawn item not found",
             event.childThreadId,
             event.toolName,
