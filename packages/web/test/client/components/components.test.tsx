@@ -918,6 +918,7 @@ test("app header shows new conversation action only when sidebar is closed", () 
 
   expect(closedHtml).toContain('aria-label="New conversation"');
   expect(closedHtml).toContain('title="New conversation"');
+  expect(closedHtml).toContain('class="flex items-center gap-0"');
   expect(openHtml).not.toContain('aria-label="New conversation"');
   expect(openHtml).not.toContain('title="New conversation"');
 });

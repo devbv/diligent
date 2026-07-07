@@ -26,28 +26,30 @@ export function AppHeader({
 }: AppHeaderProps) {
   return (
     <div className="flex h-16 shrink-0 items-center gap-2 border-b border-border/100 bg-surface-dark px-3">
-      <button
-        type="button"
-        onClick={onToggleSidebar}
-        aria-label={sidebarOpen ? "Close sidebar" : "Open sidebar"}
-        aria-controls="app-sidebar"
-        aria-expanded={sidebarOpen}
-        title={sidebarOpen ? "Close sidebar" : "Open sidebar"}
-        className={iconButtonClasses}
-      >
-        <Menu className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
-      </button>
-      {!sidebarOpen ? (
+      <div className="flex items-center gap-0">
         <button
           type="button"
-          onClick={onNewThread}
-          aria-label="New conversation"
-          title="New conversation"
+          onClick={onToggleSidebar}
+          aria-label={sidebarOpen ? "Close sidebar" : "Open sidebar"}
+          aria-controls="app-sidebar"
+          aria-expanded={sidebarOpen}
+          title={sidebarOpen ? "Close sidebar" : "Open sidebar"}
           className={iconButtonClasses}
         >
-          <SquarePen className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
+          <Menu className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
         </button>
-      ) : null}
+        {!sidebarOpen ? (
+          <button
+            type="button"
+            onClick={onNewThread}
+            aria-label="New conversation"
+            title="New conversation"
+            className={iconButtonClasses}
+          >
+            <SquarePen className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
+          </button>
+        ) : null}
+      </div>
       <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-icon-success" aria-hidden="true" />
       {(threadStatus !== "idle" || isCompacting) && (
         <span
