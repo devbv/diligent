@@ -80,35 +80,53 @@ export class SessionManager {
     return true;
   }
 
-  /** Repair orphaned tool_calls on resume — inject synthetic "interrupted" tool_results. */
+  /** Repair orphaned tool_calls on resume/run — inject synthetic "interrupted" tool_results. */
   private repairEntries(): void {
     const path = this.state.getPathEntries();
     if (path.length === 0) return;
 
-    const last = path[path.length - 1];
-    if (last.type !== "message" || last.message.role !== "assistant") return;
+    for (let index = 0; index < path.length; index++) {
+      const entry = path[index];
+      if (entry.type !== "message" || entry.message.role !== "assistant") continue;
 
-    const assistantMsg = last.message;
-    const toolCalls = assistantMsg.content.filter((b) => b.type === "tool_call");
-    if (toolCalls.length === 0) return;
+      const toolCalls = entry.message.content.filter((block) => block.type === "tool_call");
+      if (toolCalls.length === 0) continue;
 
-    const toolCallIds = new Set(toolCalls.map((b) => (b as { id: string }).id));
-    for (const entry of path) {
-      if (entry.type === "message" && entry.message.role === "tool_result") {
-        toolCallIds.delete((entry.message as { toolCallId: string }).toolCallId);
+      const expectedIds = new Set(toolCalls.map((block) => block.id));
+      const seenIds = new Set<string>();
+      let parentId = entry.id;
+      for (let nextIndex = index + 1; nextIndex < path.length; nextIndex++) {
+        const nextEntry = path[nextIndex];
+        if (nextEntry.type !== "message" || nextEntry.message.role !== "tool_result") break;
+        parentId = nextEntry.id;
+        if (expectedIds.has(nextEntry.message.toolCallId)) {
+          seenIds.add(nextEntry.message.toolCallId);
+        }
       }
-    }
 
-    for (const id of toolCallIds) {
-      const block = toolCalls.find((b) => (b as { id: string }).id === id);
-      this.appendMessageEntry({
-        role: "tool_result",
-        toolCallId: id,
-        toolName: (block as { name: string })?.name ?? "unknown",
-        output: "[Cancelled]",
-        isError: false,
-        timestamp: assistantMsg.timestamp,
-      });
+      const repairEntries: SessionEntry[] = [];
+      for (const toolCall of toolCalls) {
+        if (seenIds.has(toolCall.id)) continue;
+
+        const repairEntry = this.createMessageEntry(
+          {
+            role: "tool_result",
+            toolCallId: toolCall.id,
+            toolName: toolCall.name,
+            output: "[Cancelled]",
+            isError: false,
+            timestamp: entry.message.timestamp,
+          },
+          parentId,
+        );
+        repairEntries.push(repairEntry);
+        parentId = repairEntry.id;
+      }
+
+      if (repairEntries.length > 0) {
+        this.appendEntries(repairEntries);
+        return;
+      }
     }
   }
 
@@ -282,12 +300,6 @@ export class SessionManager {
     if (options?.persist) {
       this.appendAndPersist(entry);
     }
-  }
-
-  private appendMessageEntry(message: Message): SessionEntry {
-    const entry = this.createMessageEntry(message, this.state.getCommittedLeafId());
-    this.appendEntries([entry]);
-    return entry;
   }
 
   private createMessageEntry(message: Message, parentId: string | null): SessionEntry {
