@@ -37,6 +37,7 @@ type MethodModule = {
   method: string;
   description: string;
   params: z.ZodType;
+  timeoutMs?: number;
   resolveMethod?: (args: Record<string, unknown>) => string;
   normalizeArgs?: (args: Record<string, unknown>) => Record<string, unknown>;
   postProcess?: (result: unknown, args: Record<string, unknown>) => unknown;

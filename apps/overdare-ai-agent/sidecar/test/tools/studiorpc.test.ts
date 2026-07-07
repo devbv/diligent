@@ -44,11 +44,11 @@ function makeStudioProject(): string {
 
 async function loadStudioTools(
   cwd: string,
-  rpcCalls: Array<{ method: string; params?: Record<string, unknown> }> = [],
+  rpcCalls: Array<{ method: string; params?: Record<string, unknown>; timeoutMs?: number }> = [],
 ): Promise<Map<string, Tool>> {
   const provider = createStudioRpcToolProvider({
-    callRpc: async (method, params) => {
-      rpcCalls.push({ method, params });
+    callRpc: async (method, params, options) => {
+      rpcCalls.push({ method, params, timeoutMs: options?.timeoutMs });
       return { ok: true };
     },
   });
@@ -219,10 +219,10 @@ describe("createStudioRpcToolProvider", () => {
   });
 
   test("does not save after individual mutating Studio RPC tool calls", async () => {
-    const calls: Array<{ method: string; params?: Record<string, unknown> }> = [];
+    const calls: Array<{ method: string; params?: Record<string, unknown>; timeoutMs?: number }> = [];
     const provider = createStudioRpcToolProvider({
-      callRpc: async (method, params) => {
-        calls.push({ method, params });
+      callRpc: async (method, params, options) => {
+        calls.push({ method, params, timeoutMs: options?.timeoutMs });
         return "imported";
       },
     });
@@ -241,6 +241,25 @@ describe("createStudioRpcToolProvider", () => {
       {
         method: "asset_drawer.import",
         params: { assetid: "ovdrassetid://123", assetName: "Tree", assetType: "MODEL" },
+        timeoutMs: undefined,
+      },
+    ]);
+  });
+
+  test("uses an extended timeout and guidance for level publish", async () => {
+    const calls: Array<{ method: string; params?: Record<string, unknown>; timeoutMs?: number }> = [];
+    const tools = await loadStudioTools("/tmp/project", calls);
+    const publishTool = tools.get("studiorpc_level_publish")!;
+
+    expect(publishTool.description).toContain("click confirmation buttons");
+
+    await publishTool.execute({ worldName: "My World" }, toolContext());
+
+    expect(calls).toEqual([
+      {
+        method: "level.publish",
+        params: { worldName: "My World" },
+        timeoutMs: 300_000,
       },
     ]);
   });

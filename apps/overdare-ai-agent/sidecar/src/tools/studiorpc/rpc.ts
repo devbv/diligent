@@ -4,7 +4,11 @@ import { loadOverdareConfig } from "./config";
 
 const DEFAULT_HOST = "localhost";
 const DEFAULT_PORT = 13377;
-const TIMEOUT_MS = 10_000;
+const DEFAULT_TIMEOUT_MS = 10_000;
+
+export interface StudioRpcCallOptions {
+  timeoutMs?: number;
+}
 
 interface JsonRpcResponse {
   jsonrpc: string;
@@ -55,9 +59,14 @@ export async function applyLevelChanges(): Promise<unknown> {
   return call("level.apply", {});
 }
 
-export async function call(method: string, params?: Record<string, unknown>): Promise<unknown> {
+export async function call(
+  method: string,
+  params?: Record<string, unknown>,
+  options: StudioRpcCallOptions = {},
+): Promise<unknown> {
   const host = resolveHost();
   const port = resolvePort();
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
   return new Promise((resolve, reject) => {
     const id = nextId++;
@@ -102,7 +111,7 @@ export async function call(method: string, params?: Record<string, unknown>): Pr
           ),
         );
       });
-    }, TIMEOUT_MS);
+    }, timeoutMs);
 
     function cleanup() {
       clearTimeout(timer);
