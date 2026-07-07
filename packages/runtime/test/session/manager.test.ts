@@ -743,7 +743,7 @@ describe("SessionManager", () => {
 
   test("logs usage prefix compare on second turn when cacheReadTokens is zero", async () => {
     const dir = await setupDir();
-    const errorSpy = spyOn(console, "error").mockImplementation(() => {});
+    const warnSpy = spyOn(console, "warn").mockImplementation(() => {});
 
     try {
       const response1 = makeAssistantMessage([{ type: "text", text: "turn one" }]);
@@ -758,7 +758,7 @@ describe("SessionManager", () => {
       await mgr.run({ role: "user", content: "first", timestamp: Date.now() });
       await mgr.run({ role: "user", content: "second", timestamp: Date.now() });
 
-      const logs = errorSpy.mock.calls.map((call) => call.join(" "));
+      const logs = warnSpy.mock.calls.map((call) => call.join(" "));
       const prefixLogs = logs.filter((log) => log.includes("[usage:prefix-compare]"));
 
       expect(prefixLogs.some((log) => log.includes("reason=turn_ge_2_cache_read_zero"))).toBe(true);
@@ -766,7 +766,33 @@ describe("SessionManager", () => {
       expect(prefixLogs.some((log) => log.includes("turn=2"))).toBe(true);
       expect(prefixLogs.some((log) => log.includes("currCacheRead=0"))).toBe(true);
     } finally {
-      errorSpy.mockRestore();
+      warnSpy.mockRestore();
+    }
+  });
+
+  test("does not log usage prefix compare when cacheReadTokens stays zero", async () => {
+    const dir = await setupDir();
+    const warnSpy = spyOn(console, "warn").mockImplementation(() => {});
+
+    try {
+      const response1 = makeAssistantMessage([{ type: "text", text: "turn one" }]);
+      response1.usage.cacheReadTokens = 0;
+
+      const response2 = makeAssistantMessage([{ type: "text", text: "turn two" }]);
+      response2.usage.cacheReadTokens = 0;
+
+      const mgr = new SessionManager(makeManagerConfig(dir, createMockStreamFn([response1, response2])));
+      await mgr.create();
+
+      await mgr.run({ role: "user", content: "first", timestamp: Date.now() });
+      await mgr.run({ role: "user", content: "second", timestamp: Date.now() });
+
+      const logs = warnSpy.mock.calls.map((call) => call.join(" "));
+      const prefixLogs = logs.filter((log) => log.includes("[usage:prefix-compare]"));
+
+      expect(prefixLogs).toHaveLength(0);
+    } finally {
+      warnSpy.mockRestore();
     }
   });
 });

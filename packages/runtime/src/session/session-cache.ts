@@ -21,18 +21,16 @@ export class SessionCache {
         prevCacheRead,
         currCacheRead,
         commonPrefix,
-        currPromptHashes,
         reason: "cache_read_decreased",
       });
     }
-    if (turn >= 2 && currCacheRead === 0) {
+    if (turn >= 2 && prevCacheRead > 0 && currCacheRead === 0) {
       this.emitPrefixCompareLog({
         sessionId,
         turn,
         prevCacheRead,
         currCacheRead,
         commonPrefix,
-        currPromptHashes,
         reason: "turn_ge_2_cache_read_zero",
       });
     }
@@ -62,11 +60,10 @@ export class SessionCache {
     prevCacheRead: number;
     currCacheRead: number;
     commonPrefix: number;
-    currPromptHashes: string[];
     reason: "cache_read_decreased" | "turn_ge_2_cache_read_zero";
   }): void {
-    console.error(
-      `[usage:prefix-compare] session=${payload.sessionId} turn=${payload.turn} prevCacheRead=${payload.prevCacheRead} currCacheRead=${payload.currCacheRead} commonPrefix=${payload.commonPrefix} currHashes=${JSON.stringify(payload.currPromptHashes)} reason=${payload.reason}`,
+    console.warn(
+      `[usage:prefix-compare] session=${payload.sessionId} turn=${payload.turn} prevCacheRead=${payload.prevCacheRead} currCacheRead=${payload.currCacheRead} commonPrefix=${payload.commonPrefix} reason=${payload.reason}`,
     );
   }
 }
