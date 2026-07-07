@@ -45,8 +45,8 @@ function MessageListImpl({
   const groupedRows = useMemo(() => buildGroupedRows(items), [items]);
   const messageRows = useMemo(() => applyCompactingVisibility(groupedRows, isCompacting), [groupedRows, isCompacting]);
   const statusRows = useMemo(
-    () => buildTrailingRows({ threadStatus, isCompacting, approvalPrompt, questionPrompt }),
-    [threadStatus, isCompacting, approvalPrompt, questionPrompt],
+    () => buildTrailingRows({ items, threadStatus, isCompacting, approvalPrompt, questionPrompt }),
+    [items, threadStatus, isCompacting, approvalPrompt, questionPrompt],
   );
   const rows = useMemo(
     () => (showEmptyState ? [] : [...messageRows, ...statusRows]),

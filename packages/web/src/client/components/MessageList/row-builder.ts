@@ -126,17 +126,31 @@ export function applyCompactingVisibility(
 }
 
 export function buildTrailingRows({
+  items,
   threadStatus,
   isCompacting,
   approvalPrompt,
   questionPrompt,
-}: Pick<MessageListProps, "threadStatus" | "isCompacting" | "approvalPrompt" | "questionPrompt">): VirtualMessageRow[] {
+}: Pick<
+  MessageListProps,
+  "items" | "threadStatus" | "isCompacting" | "approvalPrompt" | "questionPrompt"
+>): VirtualMessageRow[] {
   const rows: VirtualMessageRow[] = [];
 
   if (threadStatus === "busy" && !isCompacting && !approvalPrompt && !questionPrompt) {
     rows.push({
       kind: "streaming",
       key: "status:streaming",
+      estimatedSize: 44,
+    });
+  }
+
+  const lastItem = items[items.length - 1];
+  const hasCompletedResponse = lastItem?.kind === "assistant" && shouldRenderAssistantRow(lastItem);
+  if (threadStatus === "idle" && hasCompletedResponse && !isCompacting && !approvalPrompt && !questionPrompt) {
+    rows.push({
+      kind: "responseComplete",
+      key: "status:response-complete",
       estimatedSize: 44,
     });
   }

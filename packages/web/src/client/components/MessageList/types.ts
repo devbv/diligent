@@ -52,6 +52,7 @@ export type VirtualMessageRow =
   | ToolGroupRow
   | MessageRow
   | (MessageListRow & { kind: "streaming" })
+  | (MessageListRow & { kind: "responseComplete" })
   | (MessageListRow & { kind: "compacting" })
   | (MessageListRow & { kind: "approval"; prompt: ApprovalPrompt })
   | (MessageListRow & { kind: "question"; prompt: QuestionPrompt })

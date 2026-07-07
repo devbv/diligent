@@ -728,9 +728,62 @@ test("input dock only blocks submission while a prompt is pending", () => {
     />,
   );
 
-  expect(html).toContain('aria-label="Steering input"');
-  expect(html).toContain('placeholder="Steer the agent…"');
-  expect(html).toContain('<button type="button" aria-label="Steer agent" disabled=""');
+  expect(html).toContain('aria-label="Queue input"');
+  expect(html).not.toContain("Queue a message…");
+  expect(html).toContain('<button type="button" aria-label="Queue message" disabled=""');
+});
+
+test("input dock shows the agent-logo queue placeholder while busy with empty input", () => {
+  const render = (input: string, threadStatus: "idle" | "busy") =>
+    renderToStaticMarkup(
+      <InputDock
+        input={input}
+        onInputChange={() => {}}
+        onSend={() => {}}
+        onSteer={() => {}}
+        onInterrupt={() => {}}
+        onCompactionClick={() => {}}
+        isCompacting={false}
+        canSend={false}
+        canSteer={false}
+        threadStatus={threadStatus}
+        mode="default"
+        onModeChange={() => {}}
+        effort="medium"
+        onEffortChange={() => {}}
+        currentModel="gpt-5"
+        availableModels={[]}
+        onModelChange={() => {}}
+        usage={{ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalCost: 0 }}
+        currentContextTokens={0}
+        contextWindow={0}
+        hasProvider={true}
+        supportsVision={false}
+        supportsThinking={false}
+        pendingImages={[]}
+        contextItems={[]}
+        isUploadingImages={false}
+        onAddImages={() => {}}
+        onRemoveImage={() => {}}
+        onRemoveContextItem={() => {}}
+        onClearContextItems={() => {}}
+        slashCommands={[]}
+      />,
+    );
+
+  const busyHtml = render("", "busy");
+  expect(busyHtml).toContain("Queue a message…");
+  expect(busyHtml).toContain('data-icon="agent-logo"');
+  expect(busyHtml).not.toContain("placeholder=");
+
+  const typingHtml = render("draft", "busy");
+  expect(typingHtml).not.toContain("Queue a message…");
+
+  const idleHtml = render("", "idle");
+  expect(idleHtml).not.toContain("Queue a message…");
+  expect(idleHtml).toContain("Ask anything…");
+  expect(idleHtml).toContain('data-icon="agent-logo"');
+  expect(idleHtml).not.toContain("placeholder=");
 });
 
 test("input dock composer textarea does not inherit field border styles", () => {
@@ -770,7 +823,7 @@ test("input dock composer textarea does not inherit field border styles", () => 
     />,
   );
 
-  const textarea = html.match(/<textarea[^>]*aria-label="Steering input"[^>]*>/)?.[0] ?? "";
+  const textarea = html.match(/<textarea[^>]*aria-label="Queue input"[^>]*>/)?.[0] ?? "";
   expect(html).toContain("relative rounded-sm border bg-surface-composer px-4 py-3");
   expect(textarea).toContain("min-h-[52px]");
   expect(textarea).toContain("rounded-md");
@@ -1331,7 +1384,8 @@ test("input dock renders pending image preview and add-images action", () => {
 
   expect(html).toContain('src="blob:shot"');
   expect(html).toContain('accept="image/png,image/jpeg,image/webp,image/gif"');
-  expect(html).toContain('placeholder="Ask anything or attach images…"');
+  expect(html).toContain("Ask anything or attach images…");
+  expect(html).toContain('data-icon="agent-logo"');
   expect(html).toContain('class="relative z-20 bg-surface-dark');
   expect(html).toContain("minimal");
   expect(html).toContain("minimal");

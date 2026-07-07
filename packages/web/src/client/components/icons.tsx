@@ -1,6 +1,7 @@
 // @summary SVG icon React components imported through SVGR
 
 import type { ComponentType, SVGProps } from "react";
+import AgentLogoIcon from "../icons/agent-logo.svg?react";
 import AlignJustifyIcon from "../icons/align-justify.svg?react";
 import BookOpenIcon from "../icons/book-open.svg?react";
 import BotIcon from "../icons/bot.svg?react";
@@ -41,6 +42,7 @@ function createIcon(component: unknown, name: string): IconComponent {
   };
 }
 
+export const AgentLogo = createIcon(AgentLogoIcon, "agent-logo");
 export const AlignJustify = createIcon(AlignJustifyIcon, "align-justify");
 export const BookOpen = createIcon(BookOpenIcon, "book-open");
 export const Bot = createIcon(BotIcon, "bot");
