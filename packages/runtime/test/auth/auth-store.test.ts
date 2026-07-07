@@ -217,16 +217,23 @@ describe("keyring storage", () => {
 });
 
 describe("auto storage fallback", () => {
-  test("prefers keyring over file when both exist", async () => {
+  test("merges file and keyring with keyring taking per-key precedence", async () => {
     const path = join(TEST_ROOT, "auth.jsonc");
-    await Bun.write(path, JSON.stringify({ anthropic: "file-key" }));
+    await Bun.write(
+      path,
+      JSON.stringify({ anthropic: "file-key", openai: "file-openai-key", chatgpt_oauth: TEST_OAUTH_TOKENS }),
+    );
     const service = getAuthKeyringServiceName();
     const account = getAuthKeyringAccount(path);
     const fake = createFakeKeytar({ [`${service}:${account}`]: JSON.stringify({ anthropic: "keyring-key" }) });
     __setKeytarForTests(fake.adapter);
 
     const result = await loadAuthStore(authOptions(path, "auto"));
-    expect(result.anthropic).toBe("keyring-key");
+    expect(result).toEqual({
+      anthropic: "keyring-key",
+      openai: "file-openai-key",
+      chatgpt_oauth: TEST_OAUTH_TOKENS,
+    });
   });
 
   test("falls back to file when keyring is empty", async () => {
@@ -258,6 +265,38 @@ describe("auto storage fallback", () => {
 
     const content = JSON.parse(await Bun.file(path).text());
     expect(content.anthropic).toBe("file-fallback-key");
+  });
+
+  test("removing one key from merged auto storage does not resurrect stale file values", async () => {
+    const path = join(TEST_ROOT, "auth.jsonc");
+    await Bun.write(path, JSON.stringify({ anthropic: "file-key", openai: "file-openai-key" }));
+    const service = getAuthKeyringServiceName();
+    const account = getAuthKeyringAccount(path);
+    const fake = createFakeKeytar({ [`${service}:${account}`]: JSON.stringify({ anthropic: "keyring-key" }) });
+    __setKeytarForTests(fake.adapter);
+
+    await removeAuthKey("anthropic", authOptions(path, "auto"));
+
+    const result = await loadAuthStore(authOptions(path, "auto"));
+    expect(result).toEqual({ openai: "file-openai-key" });
+    expect(await Bun.file(path).exists()).toBe(false);
+  });
+
+  test("removing the last merged auto key deletes both keyring and file stores", async () => {
+    const path = join(TEST_ROOT, "auth.jsonc");
+    await Bun.write(path, JSON.stringify({ openai: "file-openai-key" }));
+    const service = getAuthKeyringServiceName();
+    const account = getAuthKeyringAccount(path);
+    const keyringEntry = `${service}:${account}`;
+    const fake = createFakeKeytar({ [keyringEntry]: JSON.stringify({ anthropic: "keyring-key" }) });
+    __setKeytarForTests(fake.adapter);
+
+    await removeAuthKey("anthropic", authOptions(path, "auto"));
+    await removeAuthKey("openai", authOptions(path, "auto"));
+
+    expect(await loadAuthStore(authOptions(path, "auto"))).toEqual({});
+    expect(await Bun.file(path).exists()).toBe(false);
+    expect(fake.store.has(keyringEntry)).toBe(false);
   });
 });
 

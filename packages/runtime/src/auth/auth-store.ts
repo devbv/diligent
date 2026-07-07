@@ -274,8 +274,9 @@ class AutoAuthStorage implements AuthStorageBackend {
   async load(): Promise<AuthKeys> {
     try {
       const keyring = await this.getKeyringStorage();
+      const fromFile = await this.fileStorage.load();
       const fromKeyring = await keyring.load();
-      if (Object.keys(fromKeyring).length > 0) return fromKeyring;
+      return { ...fromFile, ...fromKeyring };
     } catch (error) {
       console.warn(
         `[auth] Keyring load failed, falling back to file: ${error instanceof Error ? error.message : String(error)}`,
@@ -300,7 +301,9 @@ class AutoAuthStorage implements AuthStorageBackend {
   async delete(): Promise<boolean> {
     try {
       const keyring = await this.getKeyringStorage();
-      return await keyring.delete();
+      const deletedKeyring = await keyring.delete();
+      const deletedFile = await this.fileStorage.delete();
+      return deletedKeyring || deletedFile;
     } catch {
       return this.fileStorage.delete();
     }
