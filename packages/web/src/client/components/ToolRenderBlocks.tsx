@@ -200,7 +200,7 @@ function RenderAssetGallery({ block }: { block: AssetGalleryBlock }) {
         </span>
       </div>
 
-      <div className="-mx-1 overflow-x-auto pb-1">
+      <div className="hscroll-persistent -mx-1 overflow-x-auto pb-1">
         <div className="grid auto-cols-[8.75rem] grid-flow-col gap-3 px-1">
           {block.items.map((item, index) => {
             const key = assetGalleryKey(item, index);
