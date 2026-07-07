@@ -21,7 +21,6 @@ export class SessionCache {
         prevCacheRead,
         currCacheRead,
         commonPrefix,
-        prevPromptHashes,
         currPromptHashes,
         reason: "cache_read_decreased",
       });
@@ -33,7 +32,6 @@ export class SessionCache {
         prevCacheRead,
         currCacheRead,
         commonPrefix,
-        prevPromptHashes,
         currPromptHashes,
         reason: "turn_ge_2_cache_read_zero",
       });
@@ -64,12 +62,11 @@ export class SessionCache {
     prevCacheRead: number;
     currCacheRead: number;
     commonPrefix: number;
-    prevPromptHashes: string[];
     currPromptHashes: string[];
     reason: "cache_read_decreased" | "turn_ge_2_cache_read_zero";
   }): void {
     console.error(
-      `[usage:prefix-compare] session=${payload.sessionId} turn=${payload.turn} prevCacheRead=${payload.prevCacheRead} currCacheRead=${payload.currCacheRead} commonPrefix=${payload.commonPrefix} prevHashes=${JSON.stringify(payload.prevPromptHashes)} currHashes=${JSON.stringify(payload.currPromptHashes)} reason=${payload.reason}`,
+      `[usage:prefix-compare] session=${payload.sessionId} turn=${payload.turn} prevCacheRead=${payload.prevCacheRead} currCacheRead=${payload.currCacheRead} commonPrefix=${payload.commonPrefix} currHashes=${JSON.stringify(payload.currPromptHashes)} reason=${payload.reason}`,
     );
   }
 }
