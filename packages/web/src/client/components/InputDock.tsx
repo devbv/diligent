@@ -10,7 +10,7 @@ import type { SlashCommand } from "../lib/slash-commands";
 import { BUILTIN_COMMANDS, filterCommands, isSlashPrefix } from "../lib/slash-commands";
 import type { UsageState } from "../lib/thread-store";
 import { ComposerContextChips } from "./ComposerContextChips";
-import { ChevronRight, Plus, X } from "./icons";
+import { AgentLogo, ChevronRight, Plus, X } from "./icons";
 import { Select, type SelectOption } from "./Select";
 import { SlashMenu } from "./SlashMenu";
 import { TextArea } from "./TextArea";
@@ -445,13 +445,21 @@ export function InputDock({
         <ComposerContextChips items={contextItems} onRemove={onRemoveContextItem} onClear={onClearContextItems} />
 
         <div ref={slashMenuRef} className="relative flex items-start gap-2">
-          <div className="min-w-0 flex-1">
+          <div className="relative min-w-0 flex-1">
+            {input.length === 0 ? (
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute left-1 top-2 flex h-5 items-center gap-0.5 text-text-subtle"
+              >
+                <AgentLogo className="h-5 w-5" />
+                <span className="text-sm leading-5">
+                  {isBusy ? "Queue a message…" : supportsVision ? "Ask anything or attach images…" : "Ask anything…"}
+                </span>
+              </div>
+            ) : null}
             <TextArea
               variant="composer"
-              aria-label={isBusy ? "Steering input" : "Message input"}
-              placeholder={
-                isBusy ? "Steer the agent…" : supportsVision ? "Ask anything or attach images…" : "Ask anything…"
-              }
+              aria-label={isBusy ? "Queue input" : "Message input"}
               value={input}
               onChange={(e) => handleInputChange(e.target.value)}
               onCompositionStart={() => {
@@ -540,7 +548,7 @@ export function InputDock({
               <>
                 <button
                   type="button"
-                  aria-label="Steer agent"
+                  aria-label="Queue message"
                   onClick={() => {
                     if (hasBlockingPrompt) return;
                     if (!canSteer) return;
@@ -549,7 +557,7 @@ export function InputDock({
                   disabled={!canSteer || hasBlockingPrompt}
                   className={`${composerActionButtonClasses} bg-fill-secondary text-text hover:bg-fill-ghost-hover`}
                 >
-                  Steer
+                  Queue
                 </button>
                 <button
                   type="button"

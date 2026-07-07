@@ -54,8 +54,8 @@ function SteeringQueuePanelImpl({ pendingSteers, onCancelSteer, onUpdateSteer }:
               )}
               <button
                 type="button"
-                aria-label={`Edit queued steer ${i + 1}`}
-                title="Edit queued steer"
+                aria-label={`Edit queued message ${i + 1}`}
+                title="Edit queued message"
                 onClick={() => setEditing(currentEdit ? null : { steerId: steer.id, text })}
                 className="ml-auto inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border border-border/40 text-muted transition hover:border-border-strong hover:text-text"
               >
@@ -63,8 +63,8 @@ function SteeringQueuePanelImpl({ pendingSteers, onCancelSteer, onUpdateSteer }:
               </button>
               <button
                 type="button"
-                aria-label={`Cancel queued steer ${i + 1}`}
-                title="Cancel queued steer"
+                aria-label={`Cancel queued message ${i + 1}`}
+                title="Cancel queued message"
                 onClick={() => {
                   if (editing?.steerId === steer.id) setEditing(null);
                   onCancelSteer(steer.id);
