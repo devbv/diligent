@@ -13,7 +13,7 @@ const STAGING_BUBO_HOST = "https://bubo-staging.overdare.com";
 const STUDIO_LOG_ENDPOINT = "/studio-log";
 const DEFAULT_STUDIO_RPC_HOST = "localhost";
 const DEFAULT_STUDIO_RPC_PORT = 13377;
-const STUDIO_RPC_TIMEOUT_MS = 10_000;
+const STUDIO_RPC_TIMEOUT_MS = 5_000;
 const DEFAULT_STORAGE_NAMESPACE = "diligent";
 const PACKAGED_STORAGE_NAMESPACE = "overdare";
 

@@ -17,6 +17,8 @@ import {
 } from "@diligent/runtime";
 import { DEBUG, resolveEndpoint, resolveToken } from "./shared";
 
+const GATEWAY_CONSENT_TIMEOUT_MS = 5_000;
+
 type ConsentStatus = "granted" | "withdrawn" | "none";
 
 interface ConsentGetResponse {
@@ -34,23 +36,34 @@ function normalizeStatus(value: unknown): ConsentStatus {
   return value === "granted" || value === "withdrawn" || value === "none" ? value : "none";
 }
 
-/** GET /v1/consent → own consent status. Returns "none" on any non-OK response. */
+async function fetchWithTimeout(input: string, init?: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), GATEWAY_CONSENT_TIMEOUT_MS);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** GET /v1/consent → own consent status. Non-OK responses preserve the cached state. */
 async function fetchConsentStatus(token: string): Promise<ConsentStatus> {
-  const res = await fetch(`${resolveEndpoint()}/v1/consent`, {
+  const res = await fetchWithTimeout(`${resolveEndpoint()}/v1/consent`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok) return "none";
+  if (!res.ok) throw new Error(`Gateway consent GET failed: HTTP ${res.status}`);
   const body = (await res.json().catch(() => ({}))) as ConsentGetResponse;
   return normalizeStatus(body.status);
 }
 
 /** POST /v1/consent {granted}. Withdrawal triggers full server-side deletion; returns its counts. */
 async function postConsent(token: string, granted: boolean): Promise<ConsentDeletionResult> {
-  const res = await fetch(`${resolveEndpoint()}/v1/consent`, {
+  const res = await fetchWithTimeout(`${resolveEndpoint()}/v1/consent`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify({ granted }),
   });
+  if (!res.ok) throw new Error(`Gateway consent POST failed: HTTP ${res.status}`);
   return (await res.json().catch(() => ({}))) as ConsentDeletionResult;
 }
 
@@ -73,7 +86,7 @@ function patchToGranted(params: ConsentSetParams, current: ConsentStatus): boole
 /**
  * Consent manager backed by the gateway. The server owns the truth; `status` is an in-memory cache
  * refreshed at `initialize` (via `refresh`) and after each `set`. Without a resolvable Hub token the
- * gateway is unreachable, so we stay at "none" — i.e. transmission off until consent is confirmed.
+ * gateway is unreachable, so the last-known status is preserved.
  */
 export function createGatewayConsentBackend(): ConsentConfigManager {
   let status: ConsentStatus = "none";
@@ -82,10 +95,7 @@ export function createGatewayConsentBackend(): ConsentConfigManager {
     get: () => statusToState(status),
     refresh: async () => {
       const token = await resolveToken();
-      if (!token) {
-        status = "none";
-        return;
-      }
+      if (!token) return;
       try {
         status = await fetchConsentStatus(token);
       } catch (err) {

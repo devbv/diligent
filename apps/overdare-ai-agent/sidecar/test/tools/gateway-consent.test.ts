@@ -12,6 +12,7 @@ interface FetchCall {
   method: string;
   body?: Record<string, unknown>;
   authorization?: string;
+  signal?: AbortSignal;
 }
 
 /** Spy that replies to GET /v1/consent with `status` and echoes POST bodies. */
@@ -25,6 +26,7 @@ function installConsentSpy(getStatus: string): FetchCall[] {
       method,
       body: init?.body ? JSON.parse(String(init.body)) : undefined,
       authorization: headers.get("authorization") ?? undefined,
+      signal: init?.signal ?? undefined,
     });
     if (method === "GET") {
       return new Response(JSON.stringify({ status: getStatus }), { status: 200 });
@@ -65,6 +67,7 @@ describe("createGatewayConsentBackend", () => {
     expect(calls[0].url).toBe("http://127.0.0.1:8000/v1/consent");
     expect(calls[0].method).toBe("GET");
     expect(calls[0].authorization).toBe("Bearer test-token");
+    expect(calls[0].signal).toBeInstanceOf(AbortSignal);
     expect(backend.get().serviceImprovement).toBe(true);
     expect(backend.get().noticeAcknowledged).toBe(true);
   });
@@ -78,6 +81,7 @@ describe("createGatewayConsentBackend", () => {
     const post = calls.find((c) => c.method === "POST");
     expect(post?.url).toBe("http://127.0.0.1:8000/v1/consent");
     expect(post?.body).toEqual({ granted: true });
+    expect(post?.signal).toBeInstanceOf(AbortSignal);
     expect(state.serviceImprovement).toBe(true);
   });
 
@@ -91,5 +95,31 @@ describe("createGatewayConsentBackend", () => {
     expect(post?.body).toEqual({ granted: false });
     expect(state.serviceImprovement).toBe(false);
     expect(state.noticeAcknowledged).toBe(true); // withdrawn, but notice still acknowledged
+  });
+
+  test("refresh() preserves current state when gateway fails", async () => {
+    installConsentSpy("granted");
+    const backend = createGatewayConsentBackend();
+    await backend.refresh?.();
+    expect(backend.get().serviceImprovement).toBe(true);
+
+    globalThis.fetch = mock(async () => new Response("unavailable", { status: 503 })) as unknown as typeof fetch;
+    await backend.refresh?.();
+
+    expect(backend.get().serviceImprovement).toBe(true);
+    expect(backend.get().noticeAcknowledged).toBe(true);
+  });
+
+  test("set() preserves current state when gateway fails", async () => {
+    installConsentSpy("granted");
+    const backend = createGatewayConsentBackend();
+    await backend.refresh?.();
+    expect(backend.get().serviceImprovement).toBe(true);
+
+    globalThis.fetch = mock(async () => new Response("unavailable", { status: 503 })) as unknown as typeof fetch;
+    const state = await backend.set({ serviceImprovement: false });
+
+    expect(state.serviceImprovement).toBe(true);
+    expect(state.noticeAcknowledged).toBe(true);
   });
 });
