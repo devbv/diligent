@@ -1,6 +1,6 @@
 // @summary Public surface of the MCP client module
 
-export { getMcpManager, McpConnectionManager } from "./client";
+export { getMcpManager, McpCapabilityManager, McpConnectionManager } from "./client";
 export { buildMcpNeedsAuthNote } from "./needs-auth-note";
 export type { McpOAuthDeps, McpOAuthHandle } from "./oauth";
 export { resolveAuthHeaders, shouldUseOAuth } from "./oauth";
