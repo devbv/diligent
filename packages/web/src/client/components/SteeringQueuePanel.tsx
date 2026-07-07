@@ -2,6 +2,7 @@
 
 import type { PendingSteer } from "@diligent/protocol";
 import { memo, useState } from "react";
+import { formatAgentContextItemLabel, parseContextFromText, prependContextToMessage } from "../lib/agent-native-bridge";
 import { Flag, Pencil, X } from "./icons";
 
 interface SteeringQueuePanelProps {
@@ -18,7 +19,8 @@ function SteeringQueuePanelImpl({ pendingSteers, onCancelSteer, onUpdateSteer }:
     <div className="shrink-0 border-t border-border/10 pl-6 pr-4 py-2">
       <div className="space-y-1 font-mono text-xs text-accent/90">
         {pendingSteers.map((steer, i) => {
-          const text = steer.content;
+          const { contextItems, remainingText } = parseContextFromText(steer.content);
+          const text = remainingText;
           const currentEdit = editing?.steerId === steer.id ? editing : null;
           return (
             <div key={steer.id} className="flex min-w-0 items-center gap-2">
@@ -29,7 +31,7 @@ function SteeringQueuePanelImpl({ pendingSteers, onCancelSteer, onUpdateSteer }:
                     event.preventDefault();
                     const next = currentEdit.text.trim();
                     if (!next) return;
-                    onUpdateSteer(steer.id, next);
+                    onUpdateSteer(steer.id, prependContextToMessage(next, contextItems));
                     setEditing(null);
                   }}
                 >
@@ -49,6 +51,14 @@ function SteeringQueuePanelImpl({ pendingSteers, onCancelSteer, onUpdateSteer }:
               ) : (
                 <div className="flex min-w-0 items-center gap-1.5">
                   <Flag className="h-3.5 w-3.5 shrink-0" strokeWidth={1.8} aria-hidden="true" />
+                  {contextItems.length > 0 ? (
+                    <span
+                      className="shrink-0 rounded border border-border/40 px-1 py-px text-[10px] text-muted"
+                      title={contextItems.map(formatAgentContextItemLabel).join("\n")}
+                    >
+                      @{contextItems.length}
+                    </span>
+                  ) : null}
                   <span className="truncate">{text}</span>
                 </div>
               )}

@@ -4,6 +4,7 @@ import type { PendingSteer } from "@diligent/protocol";
 import { DILIGENT_CLIENT_REQUEST_METHODS } from "@diligent/protocol";
 import type { RefObject } from "react";
 import { useCallback, useRef } from "react";
+import { type AgentContextItem, parseContextFromText, prependContextToMessage } from "./agent-native-bridge";
 import type { PendingImage } from "./app-state";
 import type { WebRpcClient } from "./rpc-client";
 import type { ThreadState } from "./thread-store";
@@ -13,35 +14,41 @@ type SteeringAction =
   | { type: "cancel_pending_steer"; payload: { steerId: string } }
   | { type: "update_pending_steer"; payload: { steerId: string; content: string } }
   | { type: "consume_first_pending_steer" }
-  | { type: "local_user"; payload: { text: string; images: PendingImage[] } }
+  | { type: "local_user"; payload: { text: string; images: PendingImage[]; contextItems?: AgentContextItem[] } }
   | { type: "optimistic_thread"; payload: { threadId: string; message: string } };
 
 export async function executeSteer({
   rpc,
   threadId,
   content,
+  contextItems,
   images,
   dispatch,
   clearThreadInput,
   clearPendingImages,
+  clearContextItems,
 }: {
   rpc: WebRpcClient;
   threadId: string;
   content: string;
+  contextItems: AgentContextItem[];
   images: PendingImage[];
   dispatch: (action: SteeringAction) => void;
   clearThreadInput: (threadId: string) => void;
   clearPendingImages: () => void;
+  clearContextItems: () => void;
 }): Promise<void> {
   const steerId = createClientSteerId();
+  const message = prependContextToMessage(content, contextItems);
   clearThreadInput(threadId);
   clearPendingImages();
-  dispatch({ type: "local_steer", payload: { id: steerId, content } });
+  clearContextItems();
+  dispatch({ type: "local_steer", payload: { id: steerId, content: message } });
   try {
     await rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.TURN_STEER, {
       threadId,
       steerId,
-      content,
+      content: message,
       attachments: images.map((image) => ({
         type: "local_image" as const,
         path: image.path,
@@ -110,10 +117,11 @@ export async function executeRestartFromAbort({
   model: string | undefined;
   dispatch: (action: SteeringAction) => void;
 }): Promise<void> {
+  const { contextItems, remainingText } = parseContextFromText(restartMessage);
   dispatch({ type: "consume_first_pending_steer" });
-  dispatch({ type: "local_user", payload: { text: restartMessage, images: [] } });
+  dispatch({ type: "local_user", payload: { text: remainingText, images: [], contextItems } });
   if (!hadItemsBeforeRestart) {
-    dispatch({ type: "optimistic_thread", payload: { threadId, message: restartMessage } });
+    dispatch({ type: "optimistic_thread", payload: { threadId, message: remainingText } });
   }
   await rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.TURN_START, {
     threadId,
@@ -130,10 +138,12 @@ export function useSteeringQueue({
   activeThreadId,
   currentModelRef,
   activeInput,
+  activeContextItems,
   pendingImages,
   isBusy,
   clearThreadInput,
   clearPendingImages,
+  clearContextItems,
 }: {
   rpcRef: RefObject<WebRpcClient | null>;
   stateRef: RefObject<ThreadState>;
@@ -141,10 +151,12 @@ export function useSteeringQueue({
   activeThreadId: string | null;
   currentModelRef: RefObject<string>;
   activeInput: string;
+  activeContextItems: AgentContextItem[];
   pendingImages: PendingImage[];
   isBusy: boolean;
   clearThreadInput: (threadId: string) => void;
   clearPendingImages: () => void;
+  clearContextItems: () => void;
 }) {
   const pendingAbortRestartMessageRef = useRef<string | null>(null);
   const suppressNextSteeringInjectedRef = useRef(false);
@@ -182,12 +194,25 @@ export function useSteeringQueue({
       rpc,
       threadId,
       content,
+      contextItems: activeContextItems,
       images,
       dispatch,
       clearThreadInput,
       clearPendingImages,
+      clearContextItems,
     });
-  }, [rpcRef, activeThreadId, canSteer, activeInput, pendingImages, clearThreadInput, clearPendingImages, dispatch]);
+  }, [
+    rpcRef,
+    activeThreadId,
+    canSteer,
+    activeInput,
+    activeContextItems,
+    pendingImages,
+    clearThreadInput,
+    clearPendingImages,
+    clearContextItems,
+    dispatch,
+  ]);
 
   const handleSteer = useCallback(() => {
     void steerMessage();

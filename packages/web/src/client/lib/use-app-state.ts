@@ -185,10 +185,12 @@ export function useAppState({
     activeThreadId: state.activeThreadId,
     currentModelRef: providerMgr.currentModelRef,
     activeInput,
+    activeContextItems,
     pendingImages,
     isBusy,
     clearThreadInput,
     clearPendingImages,
+    clearContextItems: clearActiveContextItems,
   });
 
   useAppRpcBindings({

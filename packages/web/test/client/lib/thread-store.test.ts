@@ -995,6 +995,40 @@ test("steering_injected falls back to event text when local queue is empty", () 
   );
 });
 
+test("steering_injected parses attached context into context items", () => {
+  resetAdapter();
+  const content = [
+    "<AttachedContext>",
+    "- Instance: Name=Cube; ClassType=Part; GUID=guid-1",
+    "</AttachedContext>",
+    "move it up",
+  ].join("\n");
+  const startState = {
+    ...initialThreadState,
+    pendingSteers: [{ id: "s1", content }],
+  };
+  const notification: DiligentServerNotification = {
+    method: "steering/injected",
+    params: {
+      threadId: "t1",
+      messageCount: 1,
+      steerIds: ["s1"],
+      messages: [{ role: "user", content, timestamp: 2 }],
+    },
+  };
+
+  const next = reduce(startState, notification);
+
+  expect(next.pendingSteers).toEqual([]);
+  const injectedUsers = next.items.filter((item) => item.kind === "user");
+  expect(injectedUsers).toHaveLength(1);
+  const injected = injectedUsers[0];
+  expect(injected && injected.kind === "user" ? injected.text : "").toBe("move it up");
+  expect(injected && injected.kind === "user" ? injected.contextItems : []).toEqual([
+    { kind: "instance", source: "studiorpc", GUID: "guid-1", ClassType: "Part", Name: "Cube" },
+  ]);
+});
+
 test("steering_injected applies accepted local edit when event has previous text", () => {
   resetAdapter();
   const startState = {

@@ -26,10 +26,12 @@ describe("executeSteer", () => {
       rpc,
       threadId: "thread-1",
       content: "hello world",
+      contextItems: [],
       images: [],
       dispatch: (action) => dispatched.push(action),
       clearThreadInput: mock(() => {}),
       clearPendingImages: mock(() => {}),
+      clearContextItems: mock(() => {}),
     });
 
     expect(dispatched).toHaveLength(1);
@@ -49,9 +51,10 @@ describe("executeSteer", () => {
     await pending;
   });
 
-  test("clears thread input and pending images before dispatching", async () => {
+  test("clears thread input, pending images, and context items before dispatching", async () => {
     const clearThreadInput = mock((_threadId: string) => {});
     const clearPendingImages = mock(() => {});
+    const clearContextItems = mock(() => {});
     const dispatched: unknown[] = [];
     const rpc = makeRpc(async () => ({ steerId: "s1" }));
 
@@ -59,15 +62,47 @@ describe("executeSteer", () => {
       rpc,
       threadId: "thread-abc",
       content: "test",
+      contextItems: [],
       images: [],
       dispatch: (action) => dispatched.push(action),
       clearThreadInput,
       clearPendingImages,
+      clearContextItems,
     });
 
     expect(clearThreadInput).toHaveBeenCalledWith("thread-abc");
     expect(clearPendingImages).toHaveBeenCalledTimes(1);
+    expect(clearContextItems).toHaveBeenCalledTimes(1);
     expect(dispatched[0]).toMatchObject({ type: "local_steer", payload: { content: "test" } });
+  });
+
+  test("prepends attached context items to steer content and clears them", async () => {
+    const clearContextItems = mock(() => {});
+    const dispatched: unknown[] = [];
+    const rpc = makeRpc(async () => ({ steerId: "s1" }));
+
+    await executeSteer({
+      rpc,
+      threadId: "thread-1",
+      content: "move it up",
+      contextItems: [{ kind: "instance", source: "studiorpc", GUID: "guid-1", ClassType: "Part", Name: "Cube" }],
+      images: [],
+      dispatch: (action) => dispatched.push(action),
+      clearThreadInput: mock(() => {}),
+      clearPendingImages: mock(() => {}),
+      clearContextItems,
+    });
+
+    const expectedContent = [
+      "<AttachedContext>",
+      "- Instance: Name=Cube; ClassType=Part; GUID=guid-1",
+      "</AttachedContext>",
+      "move it up",
+    ].join("\n");
+    const [, params] = (rpc.request as ReturnType<typeof mock>).mock.calls[0] as [string, { content: string }];
+    expect(params.content).toBe(expectedContent);
+    expect(dispatched[0]).toMatchObject({ type: "local_steer", payload: { content: expectedContent } });
+    expect(clearContextItems).toHaveBeenCalledTimes(1);
   });
 
   test("uses a UUID v4 fallback when crypto.randomUUID is unavailable", async () => {
@@ -89,10 +124,12 @@ describe("executeSteer", () => {
         rpc,
         threadId: "thread-1",
         content: "legacy browser",
+        contextItems: [],
         images: [],
         dispatch: mock(() => {}),
         clearThreadInput: mock(() => {}),
         clearPendingImages: mock(() => {}),
+        clearContextItems: mock(() => {}),
       });
 
       const [method, params] = (rpc.request as ReturnType<typeof mock>).mock.calls[0] as [string, { steerId: string }];
@@ -111,6 +148,7 @@ describe("executeSteer", () => {
       rpc,
       threadId: "thread-1",
       content: "check this",
+      contextItems: [],
       images: [
         { type: "local_image", path: "/tmp/a.png", mediaType: "image/png", fileName: "a.png", webUrl: "blob:a" },
         { type: "local_image", path: "/tmp/b.jpg", mediaType: "image/jpeg", fileName: "b.jpg", webUrl: "blob:b" },
@@ -118,6 +156,7 @@ describe("executeSteer", () => {
       dispatch: mock(() => {}),
       clearThreadInput: mock(() => {}),
       clearPendingImages: mock(() => {}),
+      clearContextItems: mock(() => {}),
     });
 
     const [, params] = (rpc.request as ReturnType<typeof mock>).mock.calls[0] as [string, { attachments: unknown[] }];
@@ -137,10 +176,12 @@ describe("executeSteer", () => {
         rpc,
         threadId: "thread-1",
         content: "hello",
+        contextItems: [],
         images: [],
         dispatch: mock(() => {}),
         clearThreadInput: mock(() => {}),
         clearPendingImages: mock(() => {}),
+        clearContextItems: mock(() => {}),
       }),
     ).resolves.toBeUndefined();
   });
@@ -233,7 +274,7 @@ describe("executeRestartFromAbort", () => {
 
     expect(dispatched).toEqual([
       { type: "consume_first_pending_steer" },
-      { type: "local_user", payload: { text: "retry this", images: [] } },
+      { type: "local_user", payload: { text: "retry this", images: [], contextItems: [] } },
     ]);
     expect(rpc.request).toHaveBeenCalledTimes(1);
     const [method, params] = (rpc.request as ReturnType<typeof mock>).mock.calls[0] as [
@@ -297,5 +338,40 @@ describe("executeRestartFromAbort", () => {
       { content: { type: string; text: string }[] },
     ];
     expect(params.content).toEqual([{ type: "text", text: "restart message" }]);
+  });
+
+  test("keeps attached context in turn/start request but strips it from the local user item", async () => {
+    const dispatched: unknown[] = [];
+    const rpc = makeRpc(async () => ({}));
+    const restartMessage = [
+      "<AttachedContext>",
+      "- Instance: Name=Cube; ClassType=Part; GUID=guid-1",
+      "</AttachedContext>",
+      "retry this",
+    ].join("\n");
+
+    await executeRestartFromAbort({
+      rpc,
+      threadId: "thread-1",
+      restartMessage,
+      hadItemsBeforeRestart: false,
+      model: undefined,
+      dispatch: (action) => dispatched.push(action),
+    });
+
+    expect(dispatched).toContainEqual({
+      type: "local_user",
+      payload: {
+        text: "retry this",
+        images: [],
+        contextItems: [{ kind: "instance", source: "studiorpc", GUID: "guid-1", ClassType: "Part", Name: "Cube" }],
+      },
+    });
+    expect(dispatched).toContainEqual({
+      type: "optimistic_thread",
+      payload: { threadId: "thread-1", message: "retry this" },
+    });
+    const [, params] = (rpc.request as ReturnType<typeof mock>).mock.calls[0] as [string, { message: string }];
+    expect(params.message).toBe(restartMessage);
   });
 });
