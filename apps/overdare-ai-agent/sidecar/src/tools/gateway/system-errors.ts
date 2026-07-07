@@ -83,7 +83,7 @@ export async function postSystemErrorFromConsole(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(withoutNullish(event)),
     });
-    if (DEBUG) {
+    if (DEBUG && !res.ok) {
       const body = await res.text().catch(() => "");
       originalConsole.error?.(`[gateway] system-error POST ${url} → ${res.status} ${body}`.trim());
     }
