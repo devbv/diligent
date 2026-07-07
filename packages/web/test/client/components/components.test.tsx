@@ -35,6 +35,7 @@ import { isUserInputComplete, QuestionCard } from "../../../src/client/component
 import { ResponsiveSidebar } from "../../../src/client/components/ResponsiveSidebar";
 import { Sidebar } from "../../../src/client/components/Sidebar";
 import { SlashMenu } from "../../../src/client/components/SlashMenu";
+import { SteeringQueuePanel } from "../../../src/client/components/SteeringQueuePanel";
 import { ThinkingBlock } from "../../../src/client/components/ThinkingBlock";
 import { Toast } from "../../../src/client/components/Toast";
 import { ToolActivityGroup } from "../../../src/client/components/ToolActivityGroup";
@@ -2329,4 +2330,20 @@ test("ErrorBanner keeps provider error details for non-auth errors without turn 
   expect(html).toContain("ProviderError: Anthropic thinking blocks require signature");
   expect(html).not.toContain("Turn:");
   expect(html).not.toContain("turn-c9b7d446");
+});
+
+test("SteeringQueuePanel renders attached context as chips instead of raw serialized text", () => {
+  const content = [
+    "<AttachedContext>",
+    "- Instance: Name=Part1; ClassType=Part; GUID=guid-1",
+    "</AttachedContext>",
+    "move it up",
+  ].join("\n");
+  const html = renderToStaticMarkup(
+    <SteeringQueuePanel pendingSteers={[{ id: "s1", content }]} onCancelSteer={() => {}} onUpdateSteer={() => {}} />,
+  );
+
+  expect(html).not.toContain("AttachedContext");
+  expect(html).toContain("Part1");
+  expect(html).toContain("move it up");
 });

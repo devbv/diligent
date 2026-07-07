@@ -27,9 +27,11 @@ describe("executeSteer", () => {
       threadId: "thread-1",
       content: "hello world",
       images: [],
+      contextItems: [],
       dispatch: (action) => dispatched.push(action),
       clearThreadInput: mock(() => {}),
       clearPendingImages: mock(() => {}),
+      clearContextItems: mock(() => {}),
     });
 
     expect(dispatched).toHaveLength(1);
@@ -60,9 +62,11 @@ describe("executeSteer", () => {
       threadId: "thread-abc",
       content: "test",
       images: [],
+      contextItems: [],
       dispatch: (action) => dispatched.push(action),
       clearThreadInput,
       clearPendingImages,
+      clearContextItems: mock(() => {}),
     });
 
     expect(clearThreadInput).toHaveBeenCalledWith("thread-abc");
@@ -90,9 +94,11 @@ describe("executeSteer", () => {
         threadId: "thread-1",
         content: "legacy browser",
         images: [],
+        contextItems: [],
         dispatch: mock(() => {}),
         clearThreadInput: mock(() => {}),
         clearPendingImages: mock(() => {}),
+        clearContextItems: mock(() => {}),
       });
 
       const [method, params] = (rpc.request as ReturnType<typeof mock>).mock.calls[0] as [string, { steerId: string }];
@@ -115,9 +121,11 @@ describe("executeSteer", () => {
         { type: "local_image", path: "/tmp/a.png", mediaType: "image/png", fileName: "a.png", webUrl: "blob:a" },
         { type: "local_image", path: "/tmp/b.jpg", mediaType: "image/jpeg", fileName: "b.jpg", webUrl: "blob:b" },
       ],
+      contextItems: [],
       dispatch: mock(() => {}),
       clearThreadInput: mock(() => {}),
       clearPendingImages: mock(() => {}),
+      clearContextItems: mock(() => {}),
     });
 
     const [, params] = (rpc.request as ReturnType<typeof mock>).mock.calls[0] as [string, { attachments: unknown[] }];
@@ -125,6 +133,31 @@ describe("executeSteer", () => {
       { type: "local_image", path: "/tmp/a.png", mediaType: "image/png", fileName: "a.png" },
       { type: "local_image", path: "/tmp/b.jpg", mediaType: "image/jpeg", fileName: "b.jpg" },
     ]);
+  });
+
+  test("prepends attached context items to steer content and clears them", async () => {
+    const rpc = makeRpc(async () => ({ steerId: "s1" }));
+    const clearContextItems = mock(() => {});
+    const dispatched: unknown[] = [];
+
+    await executeSteer({
+      rpc,
+      threadId: "thread-1",
+      content: "move it up",
+      images: [],
+      contextItems: [{ kind: "instance", source: "studiorpc", Name: "Part1", ClassType: "Part", GUID: "guid-1" }],
+      dispatch: (action) => dispatched.push(action),
+      clearThreadInput: mock(() => {}),
+      clearPendingImages: mock(() => {}),
+      clearContextItems,
+    });
+
+    const [, params] = (rpc.request as ReturnType<typeof mock>).mock.calls[0] as [string, { content: string }];
+    expect(params.content).toContain("<AttachedContext>");
+    expect(params.content).toContain("- Instance: Name=Part1; ClassType=Part; GUID=guid-1");
+    expect(params.content.endsWith("move it up")).toBe(true);
+    expect(clearContextItems).toHaveBeenCalledTimes(1);
+    expect(dispatched[0]).toMatchObject({ type: "local_steer", payload: { content: params.content } });
   });
 
   test("swallows RPC errors without re-throwing", async () => {
@@ -138,9 +171,11 @@ describe("executeSteer", () => {
         threadId: "thread-1",
         content: "hello",
         images: [],
+        contextItems: [],
         dispatch: mock(() => {}),
         clearThreadInput: mock(() => {}),
         clearPendingImages: mock(() => {}),
+        clearContextItems: mock(() => {}),
       }),
     ).resolves.toBeUndefined();
   });

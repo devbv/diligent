@@ -186,9 +186,11 @@ export function useAppState({
     currentModelRef: providerMgr.currentModelRef,
     activeInput,
     pendingImages,
+    contextItems: activeContextItems,
     isBusy,
     clearThreadInput,
     clearPendingImages,
+    clearContextItems: clearActiveContextItems,
   });
 
   useAppRpcBindings({
