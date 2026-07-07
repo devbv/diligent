@@ -243,3 +243,79 @@ test("MessageList keeps following rows stable when compacting after hidden assis
   expect(html).toContain('data-message-list-row="status:compacting"');
   expect((html.match(/data-message-list-row="/g) ?? []).length).toBe(3);
 });
+
+test("MessageList marks the completed assistant response with the agent logo when idle", () => {
+  const items: RenderItem[] = [
+    {
+      id: "user-1",
+      kind: "user",
+      text: "make it shiny",
+      images: [],
+      timestamp: 1,
+    },
+    {
+      id: "assistant-1",
+      kind: "assistant",
+      text: "Understood. I have completed the update.",
+      thinking: "",
+      contentBlocks: [],
+      thinkingDone: true,
+      timestamp: 2,
+    },
+  ];
+
+  const html = renderToStaticMarkup(
+    <MessageList items={items} threadStatus="idle" hasProvider={true} onOpenProviders={() => {}} />,
+  );
+
+  expect(html).toContain('data-message-list-row="status:response-complete"');
+  expect(html).toContain('aria-label="Response complete"');
+});
+
+test("MessageList hides the response-complete logo while the agent is busy", () => {
+  const items: RenderItem[] = [
+    {
+      id: "assistant-1",
+      kind: "assistant",
+      text: "previous completed answer",
+      thinking: "",
+      contentBlocks: [],
+      thinkingDone: true,
+      timestamp: 1,
+    },
+  ];
+
+  const html = renderToStaticMarkup(
+    <MessageList items={items} threadStatus="busy" hasProvider={true} onOpenProviders={() => {}} />,
+  );
+
+  expect(html).not.toContain('data-message-list-row="status:response-complete"');
+  expect(html).toContain('data-message-list-row="status:streaming"');
+});
+
+test("MessageList hides the response-complete logo when the turn did not end with an assistant response", () => {
+  const items: RenderItem[] = [
+    {
+      id: "assistant-1",
+      kind: "assistant",
+      text: "answered earlier",
+      thinking: "",
+      contentBlocks: [],
+      thinkingDone: true,
+      timestamp: 1,
+    },
+    {
+      id: "user-1",
+      kind: "user",
+      text: "interrupted follow-up",
+      images: [],
+      timestamp: 2,
+    },
+  ];
+
+  const html = renderToStaticMarkup(
+    <MessageList items={items} threadStatus="idle" hasProvider={true} onOpenProviders={() => {}} />,
+  );
+
+  expect(html).not.toContain('data-message-list-row="status:response-complete"');
+});

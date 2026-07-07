@@ -6,6 +6,7 @@ import { AssistantMessage } from "../AssistantMessage";
 import { CollabGroup } from "../CollabGroup";
 import { CompactingIndicator } from "../CompactingIndicator";
 import { ContextMessage } from "../ContextMessage";
+import { AgentLogo } from "../icons";
 import { QuestionCard } from "../QuestionCard";
 import { StreamingIndicator } from "../StreamingIndicator";
 import { ToolActivityGroup } from "../ToolActivityGroup";
@@ -44,6 +45,14 @@ export function MessageListRowContent({
         <div className="py-1">
           <div className="flex items-center pt-1">
             <StreamingIndicator />
+          </div>
+        </div>
+      );
+    case "responseComplete":
+      return (
+        <div className="py-1">
+          <div className="flex items-center pt-1" role="img" aria-label="Response complete">
+            <AgentLogo className="h-8 w-8 text-text" aria-hidden="true" />
           </div>
         </div>
       );
