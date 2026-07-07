@@ -995,6 +995,41 @@ test("steering_injected falls back to event text when local queue is empty", () 
   );
 });
 
+test("steering_injected parses attached context into chips instead of raw text", () => {
+  resetAdapter();
+  const serialized =
+    "<AttachedContext>\n- Instance: Name=StartSignBoard; ClassType=Part; GUID=2EF07F527BF3518D948E0847B049D9D8\n</AttachedContext>\nmove it up";
+  const startState = {
+    ...initialThreadState,
+    pendingSteers: [{ id: "s1", content: serialized }],
+  };
+
+  const notification: DiligentServerNotification = {
+    method: "steering/injected",
+    params: {
+      threadId: "t1",
+      messageCount: 1,
+      messages: [{ role: "user", content: serialized, timestamp: 1 }],
+    },
+  };
+
+  const next = reduce(startState, notification);
+  const injectedUsers = next.items.filter((item) => item.kind === "user");
+  expect(injectedUsers).toHaveLength(1);
+  const injected = injectedUsers[0];
+  if (!injected || injected.kind !== "user") throw new Error("expected user item");
+  expect(injected.text).toBe("move it up");
+  expect(injected.contextItems).toEqual([
+    {
+      kind: "instance",
+      source: "studiorpc",
+      Name: "StartSignBoard",
+      ClassType: "Part",
+      GUID: "2EF07F527BF3518D948E0847B049D9D8",
+    },
+  ]);
+});
+
 test("steering_injected applies accepted local edit when event has previous text", () => {
   resetAdapter();
   const startState = {

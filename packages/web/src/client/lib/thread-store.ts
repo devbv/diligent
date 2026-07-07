@@ -532,13 +532,17 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent, turnId?: string
               images: fallbackFromEvent[index]?.images ?? [],
             }))
           : fallbackFromEvent.slice(0, event.messageCount);
-      const newItems: RenderItem[] = drained.map(({ text, images }, i) => ({
-        id: `steer-injected-${Date.now()}-${i}`,
-        kind: "user" as const,
-        text,
-        images,
-        timestamp: Date.now(),
-      }));
+      const newItems: RenderItem[] = drained.map(({ text, images }, i) => {
+        const { contextItems, remainingText } = parseContextFromText(text);
+        return {
+          id: `steer-injected-${Date.now()}-${i}`,
+          kind: "user" as const,
+          text: remainingText,
+          contextItems,
+          images,
+          timestamp: Date.now(),
+        };
+      });
       return {
         ...merged,
         pendingSteers: remaining,
