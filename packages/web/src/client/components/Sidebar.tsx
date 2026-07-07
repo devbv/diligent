@@ -1,9 +1,9 @@
 // @summary Collapsible sidebar with thread list, new thread button, and relative timestamps
 
 import type { SessionSummary } from "@diligent/protocol";
-import { SquarePen, Trash2, X } from "lucide-react";
 import { memo } from "react";
 import { formatRelativeTime } from "../lib/format-time";
+import { SquarePen, Trash2, X } from "./icons";
 import { Panel } from "./Panel";
 import { iconButtonClasses, sidebarItemClasses, sidebarListClasses } from "./ui-styles";
 

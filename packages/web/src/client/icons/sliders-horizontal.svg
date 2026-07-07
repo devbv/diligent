@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="264 1605 24 24" fill="none" focusable="false" aria-hidden="true" data-icon="sliders-horizontal">
+  <path d="M278 1612V1614H280V1608H278V1610H267V1612H278Z" fill="currentColor"/>
+  <path d="M285 1612L282 1612V1610L285 1610V1612Z" fill="currentColor"/>
+  <path d="M267 1618H270V1620H272V1614H270V1616H267V1618Z" fill="currentColor"/>
+  <path d="M285 1618H274V1616H285V1618Z" fill="currentColor"/>
+  <path d="M267 1624L278 1624V1626H280V1620H278V1622L267 1622L267 1624Z" fill="currentColor"/>
+  <path d="M285 1624H282V1622H285V1624Z" fill="currentColor"/>
+</svg>

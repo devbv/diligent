@@ -1,9 +1,9 @@
 // @summary Modal listing configured MCP servers with OAuth login/logout via shared RPC methods (P070)
 
 import type { McpListResponse, McpLoginStartResponse, McpLogoutResponse, McpServerStatus } from "@diligent/protocol";
-import { X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "./Button";
+import { X } from "./icons";
 import { StatusDot } from "./StatusDot";
 import {
   cardPaddingClasses,

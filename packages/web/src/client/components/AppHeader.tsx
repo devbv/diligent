@@ -1,6 +1,6 @@
 // @summary Top navigation bar: sidebar toggle, thread status, title, and tool/knowledge buttons
 
-import { Landmark, Menu, Settings, SquarePen } from "lucide-react";
+import { Landmark, Menu, Settings, SquarePen } from "./icons";
 import { iconButtonClasses } from "./ui-styles";
 
 interface AppHeaderProps {

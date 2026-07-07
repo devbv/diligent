@@ -1,7 +1,6 @@
 // @summary Input dock with auto-resize textarea, slash command autocomplete, model/effort controls, and usage tray
 
 import type { Mode, ModelInfo, ThinkingEffort, ThreadStatus } from "@diligent/protocol";
-import { ChevronRight, Plus, X } from "lucide-react";
 import type { ClipboardEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useCallback, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -11,6 +10,7 @@ import type { SlashCommand } from "../lib/slash-commands";
 import { BUILTIN_COMMANDS, filterCommands, isSlashPrefix } from "../lib/slash-commands";
 import type { UsageState } from "../lib/thread-store";
 import { ComposerContextChips } from "./ComposerContextChips";
+import { ChevronRight, Plus, X } from "./icons";
 import { Select, type SelectOption } from "./Select";
 import { SlashMenu } from "./SlashMenu";
 import { TextArea } from "./TextArea";

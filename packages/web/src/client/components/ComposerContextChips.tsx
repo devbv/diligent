@@ -1,7 +1,7 @@
 // @summary Removable composer chips for host-injected AgentNativeBridge context items
 
-import { X } from "lucide-react";
 import { type AgentContextItem, formatAgentContextItemLabel, getAgentContextItemKey } from "../lib/agent-native-bridge";
+import { X } from "./icons";
 
 interface ComposerContextChipsProps {
   items: AgentContextItem[];

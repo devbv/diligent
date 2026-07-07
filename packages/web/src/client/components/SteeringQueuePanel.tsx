@@ -1,8 +1,8 @@
 // @summary Pending steering panel rendering queued messages as stacked single lines above InputDock
 
 import type { PendingSteer } from "@diligent/protocol";
-import { Flag, Pencil, X } from "lucide-react";
 import { memo, useState } from "react";
+import { Flag, Pencil, X } from "./icons";
 
 interface SteeringQueuePanelProps {
   pendingSteers: PendingSteer[];

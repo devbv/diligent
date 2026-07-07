@@ -1,6 +1,7 @@
 // @summary Shared polished activity row for tool execution state, summaries, and expansion affordance
 
-import type { LucideIcon } from "lucide-react";
+import { cn } from "../lib/cn";
+import type { ToolIconName, ToolInfo } from "../lib/tool-info";
 import {
   BookOpen,
   Bot,
@@ -10,6 +11,7 @@ import {
   Database,
   FileText,
   Globe,
+  type IconComponent,
   List,
   ListChecks,
   Pencil,
@@ -19,9 +21,7 @@ import {
   Sparkles,
   SquareTerminal,
   TextCursorInput,
-} from "lucide-react";
-import { cn } from "../lib/cn";
-import type { ToolIconName, ToolInfo } from "../lib/tool-info";
+} from "./icons";
 import { focusRingClasses } from "./ui-styles";
 
 interface ToolActivityRowProps {
@@ -42,7 +42,7 @@ interface ToolActivityRowProps {
   onToggle: () => void;
 }
 
-const TOOL_ICONS: Record<ToolIconName, LucideIcon> = {
+const TOOL_ICONS: Record<ToolIconName, IconComponent> = {
   agent: Bot,
   book: BookOpen,
   checklist: ListChecks,

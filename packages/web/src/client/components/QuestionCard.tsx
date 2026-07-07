@@ -1,12 +1,12 @@
 // @summary Inline chat card for agent user-input questions with text/password fields and always-on custom input
 
 import type { UserInputRequest } from "@diligent/protocol";
-import { Check } from "lucide-react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { cn } from "../lib/cn";
 import { isUserInputComplete } from "../lib/user-input-completeness";
 import { AssetThumbnail } from "./AssetThumbnail";
 import { Button } from "./Button";
+import { Check } from "./icons";
 import { SectionLabel } from "./SectionLabel";
 import { SystemCard } from "./SystemCard";
 import { actionRowClasses, cardPaddingLooseClasses, formStackClasses, surfaceCardClasses } from "./ui-styles";
