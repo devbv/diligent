@@ -606,6 +606,8 @@ export function InputDock({
                       setIsPlusMenuOpen(false);
                       setActiveSubmenu(null);
                     }}
+                    onMouseEnter={() => setActiveSubmenu(null)}
+                    onFocus={() => setActiveSubmenu(null)}
                     disabled={!supportsVision || isUploadingImages}
                     className={`${menuItemClasses} ${
                       supportsVision && !isUploadingImages ? "" : "cursor-not-allowed text-muted/40"
