@@ -1,4 +1,24 @@
-// @summary Shared OpenAI compaction utilities: payload description, summary extraction, and summary item identification
+// @summary Shared OpenAI utilities: transient-error classification and compaction payload/summary extraction
+
+/**
+ * Whether an OpenAI error message indicates a transient failure worth retrying.
+ * Shared by all OpenAI-shaped paths (SDK exceptions, raw ChatGPT fetch, and
+ * mid-stream `response.failed` SSE events) so the pattern list can't diverge.
+ */
+export function isTransientOpenAIErrorMessage(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("overloaded") ||
+    normalized.includes("temporarily unavailable") ||
+    normalized.includes("timeout") ||
+    normalized.includes("timed out") ||
+    normalized.includes("can retry your request") ||
+    normalized.includes("service unavailable") ||
+    normalized.includes("server had an error") ||
+    normalized.includes("internal server error")
+  );
+}
+
 function pushText(chunks: string[], value: unknown): void {
   if (typeof value !== "string") return;
   const trimmed = value.trim();

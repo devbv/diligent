@@ -4,6 +4,7 @@ import type { AssistantMessage, ContentBlock, StopReason, Usage } from "../../ty
 import type { Model, ProviderEvent, ProviderResult } from "../types";
 import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError } from "../types";
 import { isContextOverflow, mapStopReason, mapUsage } from "./openai-responses";
+import { isTransientOpenAIErrorMessage } from "./openai-shared";
 
 type ResponseToolBuffer = { id: string; name: string; args: string };
 
@@ -47,7 +48,7 @@ type ResponsesAPIDecodedEvent =
       };
       status?: string;
     }
-  | { kind: "response_failed"; message: string };
+  | { kind: "response_failed"; message: string; code?: string };
 
 function createResponsesAPIState(): ResponsesAPIState {
   return {
@@ -63,19 +64,6 @@ function createResponsesAPIState(): ResponsesAPIState {
     usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
     toolBuffers: new Map<string, ResponseToolBuffer>(),
   };
-}
-
-function isTransientResponseFailure(message: string): boolean {
-  const normalized = message.toLowerCase();
-  return (
-    normalized.includes("overloaded") ||
-    normalized.includes("temporarily unavailable") ||
-    normalized.includes("timeout") ||
-    normalized.includes("timed out") ||
-    normalized.includes("service unavailable") ||
-    normalized.includes("server had an error") ||
-    normalized.includes("internal server error")
-  );
 }
 
 function decodeResponsesAPIEvent(event: Record<string, unknown>): ResponsesAPIDecodedEvent | undefined {
@@ -146,7 +134,12 @@ function decodeResponsesAPIEvent(event: Record<string, unknown>): ResponsesAPIDe
     case "response.failed": {
       const response = event.response as Record<string, unknown> | undefined;
       const responseError = response?.error as Record<string, unknown> | undefined;
-      return { kind: "response_failed", message: (responseError?.message as string) ?? "Response failed" };
+      const code = responseError?.code;
+      return {
+        kind: "response_failed",
+        message: (responseError?.message as string) ?? "Response failed",
+        code: typeof code === "string" ? code : undefined,
+      };
     }
     default:
       return undefined;
@@ -259,13 +252,31 @@ function reduceResponsesAPIEvent(
       return [];
 
     case "response_failed": {
+      // Carry the provider's error code via cause so error logs show code=... (D086)
+      const cause = Object.assign(new Error(event.message), { code: event.code });
       if (isContextOverflow(event.message)) {
-        return [{ type: "error", error: new ProviderError(CONTEXT_OVERFLOW_ERROR_MESSAGE, "context_overflow", false) }];
+        return [
+          {
+            type: "error",
+            error: new ProviderError(
+              CONTEXT_OVERFLOW_ERROR_MESSAGE,
+              "context_overflow",
+              false,
+              undefined,
+              undefined,
+              cause,
+            ),
+          },
+        ];
       }
-      if (isTransientResponseFailure(event.message)) {
-        return [{ type: "error", error: new ProviderError(event.message, "server_error", true) }];
+      if (isTransientOpenAIErrorMessage(event.message)) {
+        return [
+          { type: "error", error: new ProviderError(event.message, "server_error", true, undefined, undefined, cause) },
+        ];
       }
-      return [{ type: "error", error: new ProviderError(event.message, "unknown", false) }];
+      return [
+        { type: "error", error: new ProviderError(event.message, "unknown", false, undefined, undefined, cause) },
+      ];
     }
   }
 }
