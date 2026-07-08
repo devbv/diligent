@@ -1,13 +1,18 @@
 ---
 name: world-publish
-description: "Use when the user wants to make the current OVERDARE Studio world public, live, released, deployed, or published, even if they call it a project, game, map, experience, content, or build; examples include '월드 배포해줘', '프로젝트 배포해줘', '게임 퍼블리시 해줘', '라이브에 띄워줘', 'publish this world', or 'deploy this game'. Determines whether the backend world already exists using CommandletArgs.json and the hub_world_lookup tool; sends metadata params only when the world does not exist, then calls studiorpc_level_publish and opens the Studio publish webview."
+description: "Use when the user wants to make the current OVERDARE Studio world public, live, released, deployed, or published, even if they call it a project, game, map, experience, content, or build; examples include '월드 배포해줘', '프로젝트 배포해줘', '게임 퍼블리시 해줘', '라이브에 띄워줘', 'publish this world', or 'deploy this game'."
 ---
 
 # World Publish Skill
 
 This document defines the workflow for publishing the current OVERDARE Studio world. The official term is **world**, but users may call it a project, game, map, experience, content, or build.
 
-The key decision is **whether the backend world already exists**, not whether it has already been published before.
+The key decision is **whether this world has already been published**, tracked via the `overdare.publish_state` Knowledge card.
+
+<!-- ponytail: publish state is a single Knowledge boolean for now. The previous
+     backend-existence check (CommandletArgs.json + hub_world_lookup) is temporarily
+     disabled but preserved in comment blocks below — restore it if we need real
+     backend state again. -->
 
 ## Required Tools
 
@@ -17,21 +22,35 @@ This skill expects the agent runtime to provide these tools. All of them are fir
   - Saves the current project to disk before publishing so the publish reflects the latest edits.
 - `studiorpc_level_publish`
   - Sends a publish request to OVERDARE Studio.
-  - If the backend world does not exist, call it with metadata inside `params`.
-  - If the backend world already exists, call it without metadata params.
+  - If the world was not published before, call it with metadata inside `params`.
+  - If the world was already published, call it without metadata params.
   - Studio opens the publish webview after this call.
   - Error code `-32009` means the user canceled the publish in the Studio UI. Treat it as a final outcome and do not retry automatically — just tell the user it was canceled.
-- `hub_world_lookup`
-  - Checks whether a `worldId` exists on the OVERDARE Hub backend. Returns `{ exists: true, world: {...} }` or `{ exists: false }`. HUB_DOMAIN and the Hub auth token are resolved internally by the tool, so the agent does not need to read environment variables or manage tokens.
+- `update_knowledge`
+  - Records the publish state after a successful publish (see Step 8). Use the stable id `overdare.publish_state` so updates replace the same entry.
 - `hub_world_categories_list`
   - Returns `{ categories: string[] }` with the valid category labels accepted by the backend at the moment of the call. Use the returned values exactly as-is (preserve case).
 
+<!-- DISABLED (backend-existence flow, may be restored later):
+- `hub_world_lookup`
+  - Checks whether a `worldId` exists on the OVERDARE Hub backend. Returns `{ exists: true, world: {...} }` or `{ exists: false }`. HUB_DOMAIN and the Hub auth token are resolved internally by the tool, so the agent does not need to read environment variables or manage tokens.
+-->
+
 If `studiorpc_level_publish` is unavailable, stop and tell the user that publishing is not possible in this runtime. Do not pretend the publish succeeded.
 
-If `hub_world_lookup` or `hub_world_categories_list` is unavailable or fails for an authentication or network reason, follow the fallbacks defined per step below — never guess that the world exists when the lookup itself failed.
+If `hub_world_categories_list` is unavailable or fails for an authentication or network reason, follow the fallbacks defined per step below.
 
 ## High-Level Workflow
 
+1. Confirm the user wants to publish or make the current world live.
+2. Save the current project by calling `studiorpc_level_save_file`. If this tool is not available in the current toolset, skip saving and warn the user that the publish may use a stale state.
+3. Check the Knowledge cards already injected into this session's context for the `overdare.publish_state` card.
+4. If the card is missing or does not say `published: true`, treat the world as **not yet published**: prepare metadata and call `studiorpc_level_publish` with `params`.
+5. If the card says `published: true`, treat the world as **already published**: call `studiorpc_level_publish` without metadata params.
+6. If the publish call returns `{ success: true }`, record `published: true` to Knowledge via `update_knowledge` (stable id `overdare.publish_state`).
+7. Report the result and tell the user to review/confirm in the Studio publish webview if needed.
+
+<!-- DISABLED (backend-existence flow, may be restored later):
 1. Confirm the user wants to publish or make the current world live.
 2. Save the current project by calling `studiorpc_level_save_file`. If this tool is not available in the current toolset, skip saving and warn the user that the publish may use a stale state.
 3. Check whether `CommandletArgs.json` exists in the current project folder.
@@ -42,6 +61,7 @@ If `hub_world_lookup` or `hub_world_categories_list` is unavailable or fails for
 8. If the backend world is not created, prepare metadata and call `studiorpc_level_publish` with `params`.
 9. If the backend world already exists, call `studiorpc_level_publish` without metadata params.
 10. Report the result and tell the user to review/confirm in the Studio publish webview if needed.
+-->
 
 ## Step 1: Detect Whether This Skill Applies
 
@@ -93,13 +113,28 @@ Example trigger phrases:
 
 Do not use this skill for unrelated exporting, saving, testing, or packaging unless the user specifically means publishing the world to OVERDARE.
 
-## Step 2: Determine Whether the Backend World Exists
+## Step 2: Determine Whether the World Was Already Published
 
 The important question is:
 
 ```text
-Does the backend world already exist?
+Has this world already been published successfully from this project?
 ```
+
+Check the Knowledge handoff cards already injected into this session's context (no lookup tool call is needed) for a card with the stable id:
+
+```text
+overdare.publish_state
+```
+
+Interpret it:
+
+- Card missing, or its content does not contain `published: true` → treat the world as **not yet published**. Prepare metadata and call `studiorpc_level_publish` with metadata params.
+- Card present with `published: true` → treat the world as **already published**. Call `studiorpc_level_publish` without metadata params.
+
+Do not read `CommandletArgs.json` and do not call `hub_world_lookup` — that flow is currently disabled.
+
+<!-- DISABLED (backend-existence flow, may be restored later):
 
 ### 2.1 Check `CommandletArgs.json`
 
@@ -164,14 +199,11 @@ Interpret the response:
 If the tool throws because the Hub auth token is missing or rejected, stop and ask the user to log in to OVERDARE Studio and try again.
 
 If the tool throws for a different network or server reason, explain the failure and ask whether the user wants to retry later. Do not guess the world existence state when the lookup itself failed.
+-->
 
-## Step 3: Publish When the Backend World Already Exists
+## Step 3: Publish When the World Was Already Published
 
-The backend world exists when:
-
-- `CommandletArgs.json` exists.
-- A valid numeric `worldId` was extracted.
-- `hub_world_lookup` returned `{ exists: true, world: {...} }`.
+The world counts as already published when the `overdare.publish_state` Knowledge card is present with `published: true`.
 
 In this case, call:
 
@@ -185,13 +217,9 @@ Do not generate or overwrite metadata unless the user explicitly requested a met
 
 After calling `studiorpc_level_publish`, Studio should open the publish webview.
 
-## Step 4: Publish When the Backend World Does Not Exist
+## Step 4: Publish When the World Was Not Published Before
 
-The backend world does not exist when:
-
-- `CommandletArgs.json` is missing.
-- `CommandletArgs.json` exists, but `ContentId` / `worldId` cannot be found or does not parse to a positive integer.
-- `CommandletArgs.json` exists, a valid `worldId` was extracted, and `hub_world_lookup` returned `{ exists: false }`.
+The world counts as not yet published when the `overdare.publish_state` Knowledge card is missing or does not contain `published: true`.
 
 In this case, prepare metadata and call `studiorpc_level_publish` with metadata inside `params`.
 
@@ -219,9 +247,9 @@ Use exactly these field names inside `params`:
 
 Do not use `name`, `categories`, or `keywords` in the `studiorpc_level_publish` params payload.
 
-## Step 5: Prepare Metadata for a New Backend World
+## Step 5: Prepare Metadata for a First Publish
 
-Metadata is only needed when the backend world does not exist.
+Metadata is only needed when the world was not published before.
 
 Metadata fields inside `params`:
 
@@ -272,7 +300,7 @@ Do not spend excessive time reading every script. Use a quick overview unless th
 
 ### 5.3 Get Valid Categories
 
-Before choosing `category` for first world creation, call:
+Before choosing `category` for a first publish, call:
 
 ```text
 hub_world_categories_list({})
@@ -435,9 +463,9 @@ Ask at most 1 to 3 questions, for example:
 2. What title should players see?
 3. Do you want to use this generated description?
 
-## Step 8: Call `studiorpc_level_publish`
+## Step 8: Call `studiorpc_level_publish` and Record the Result
 
-### Backend World Already Exists
+### World Already Published
 
 Call:
 
@@ -447,7 +475,7 @@ studiorpc_level_publish
 
 without metadata params.
 
-### Backend World Does Not Exist
+### World Not Published Before
 
 Call:
 
@@ -472,6 +500,20 @@ The `description` in the payload sent to the tool must already be URL-encoded pe
 
 After calling `studiorpc_level_publish`, Studio should open the publish webview.
 
+### Record the Publish State
+
+Only when `studiorpc_level_publish` returns `{ success: true }`, record the state so future sessions know this world was published:
+
+```text
+update_knowledge({
+	id: "overdare.publish_state",
+	type: "discovery",
+	content: "OVERDARE_PUBLISH_STATE\npublished: true"
+})
+```
+
+Do not record anything when the call fails or returns error `-32009` (user canceled) — a canceled or failed publish means the world may still not exist on the backend, so the next attempt must send metadata params again.
+
 ### Handling `studiorpc_level_publish` Errors
 
 - Error code `-32009`: the user canceled the publish in the Studio UI. Treat this as a final outcome. Do not retry automatically. Tell the user the publish was canceled and ask whether they want to try again.
@@ -482,7 +524,7 @@ After calling `studiorpc_level_publish`, Studio should open the publish webview.
 
 After a successful `studiorpc_level_publish` call, tell the user:
 
-- Whether the backend world was treated as newly created or already existing.
+- Whether the world was treated as a first publish or an update to an already-published world.
 - That the Studio publish webview should now be open.
 - Whether they need to review and confirm anything in the webview.
 - The metadata used, if metadata params were sent (show the raw, human-readable form — do not show the URL-encoded `description`).
@@ -494,9 +536,25 @@ Keep the message short and non-technical.
 Stop and explain the issue when:
 
 - `studiorpc_level_publish` is unavailable.
-- `hub_world_lookup` is required (`CommandletArgs.json` exists with a valid `worldId`) and throws for an authentication or network reason other than "world not found".
 - `studiorpc_level_publish` returns error `-32009` (user canceled) — final outcome, do not retry automatically.
 - `studiorpc_level_publish` returns any other error.
+
+Treat the world as **not yet published** and call `studiorpc_level_publish` with metadata params when:
+
+- The `overdare.publish_state` Knowledge card is missing from this session's context.
+- The card exists but does not contain `published: true`.
+
+Treat the world as **already published** and call `studiorpc_level_publish` without metadata params when:
+
+- The `overdare.publish_state` Knowledge card is present with `published: true`.
+
+Record `published: true` to Knowledge (stable id `overdare.publish_state`) only after `studiorpc_level_publish` returns `{ success: true }` — never on cancel or error.
+
+<!-- DISABLED (backend-existence flow, may be restored later):
+
+Stop and explain the issue when:
+
+- `hub_world_lookup` is required (`CommandletArgs.json` exists with a valid `worldId`) and throws for an authentication or network reason other than "world not found".
 
 Treat the backend world as **not created** and call `studiorpc_level_publish` with metadata params when:
 
@@ -509,14 +567,13 @@ Treat the backend world as **already created** and call `studiorpc_level_publish
 - `CommandletArgs.json` exists.
 - A valid numeric `worldId` was extracted.
 - `hub_world_lookup` returns `{ exists: true, world: {...} }`.
+-->
 
 ## Notes for Future Maintainers
 
-- This skill is based on backend world creation state.
-- HUB_DOMAIN and the Hub auth token are handled inside `hub_world_lookup` and `hub_world_categories_list` — the agent never reads them directly.
-- Missing `CommandletArgs.json` means there is no reliable local world ID, so send metadata params.
-- `hub_world_lookup` returning `{ exists: false }` means the backend world does not exist, so send metadata params.
-- `hub_world_lookup` returning `{ exists: true, ... }` means the backend world already exists, so do not send metadata params.
+- This skill currently tracks publish state with the `overdare.publish_state` Knowledge card (a simple `published: true` flag written after a successful publish). It does NOT verify real backend existence.
+- The previous backend-existence flow (`CommandletArgs.json` → `ContentId` → `hub_world_lookup`) is preserved in `<!-- DISABLED -->` comment blocks throughout this file. Restore those blocks if backend-state verification is needed again.
+- Known ceiling of the Knowledge flag: it can drift from backend reality (e.g. the world is deleted on the web admin page, or the project is published from another machine). The backend-existence flow fixes that when restored.
 - `description` supports line breaks, but Studio passes values directly into the webview URL query without encoding. Validate description length on the **raw** value (max 500), then encode immediately before calling `studiorpc_level_publish`; at minimum, line breaks must become `%0A`.
 - `category` and `keyword` are arrays, not comma-separated strings.
 - Use `worldName`, `description`, `category`, and `keyword` inside `params` for metadata.
