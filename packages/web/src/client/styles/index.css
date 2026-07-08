@@ -96,6 +96,27 @@
 .prose-content pre::-webkit-scrollbar-thumb:hover {
   background: color-mix(in srgb, var(--color-text) 36%, transparent);
 }
+/* Same rationale as above, as an opt-in class for horizontal thumbnail
+   strips (e.g. asset gallery): without it the overflow is unreachable
+   for mouse users and invisible on macOS overlay scrollbars. */
+.hscroll-persistent {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--color-text) 16%, transparent) transparent;
+}
+.hscroll-persistent::-webkit-scrollbar {
+  height: 10px;
+}
+.hscroll-persistent::-webkit-scrollbar-track {
+  background: color-mix(in srgb, var(--color-text) 6%, transparent);
+  border-radius: 5px;
+}
+.hscroll-persistent::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--color-text) 24%, transparent);
+  border-radius: 5px;
+}
+.hscroll-persistent::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--color-text) 36%, transparent);
+}
 .prose-content code {
   background: color-mix(in srgb, var(--color-text) 5%, transparent);
   border: 1px solid color-mix(in srgb, var(--color-text) 8%, transparent);
