@@ -1,5 +1,5 @@
 /* Semantic design tokens — single source of truth for web colors. */
-/* Tuned to match the reference agent UI capture (dark neutrals, red/pink CTA, green success, multi-hue code). */
+/* Tuned to match the reference agent UI capture (dark neutrals, blue accent/CTA, green success, multi-hue code). */
 /* Main shell + thread list + chat feed use studio panel #181B1F when embedded. */
 
 :root {
@@ -22,8 +22,8 @@
   --color-bg-surface-error: color-mix(in srgb, var(--color-text-error) 18%, var(--color-bg-sunken));
   --color-bg-surface-dimd-strong: rgb(0 0 0 / 0.72);
   --color-bg-surface-dimd-weak: rgb(0 0 0 / 0.4);
-  --color-bg-fill-primary: #ff2d5c;
-  --color-bg-fill-primary-hover: #bb002f;
+  --color-bg-fill-primary: #3b82f6;
+  --color-bg-fill-primary-hover: #60a5fa;
   --color-bg-fill-primary-dark: color-mix(in srgb, var(--color-bg-fill-primary) 45%, var(--color-bg-sunken));
   --color-bg-fill-primary-dark-hover: color-mix(in srgb, var(--color-bg-fill-primary) 58%, var(--color-bg-sunken));
   --color-bg-fill-info: #2563eb;
@@ -43,7 +43,7 @@
   --color-fill-strong: #ffffff;
   --color-fill-dark: #040405;
   --color-fill-dark-hover: rgb(4 4 5 / 0.82);
-  --color-selection: #ff2d5c;
+  --color-selection: #3b82f6;
   --color-control-choice: #2b8cff;
   --color-control-choice-border: #8d96a3;
   --color-control-choice-border-hover: #c7d0dc;
@@ -81,7 +81,7 @@
   --color-border-super: #ffffff;
   --color-border-weak: #1a1a1e;
   --color-border-transparent: rgb(255 255 255 / 0.12);
-  --color-border-focus: #ff2d5c;
+  --color-border-focus: #3b82f6;
   --color-border-focus-danger: #f87171;
   --color-border-hover: #3d3d44;
   --color-border-info: #38bdf8;
@@ -90,10 +90,10 @@
   --color-border-error: #f87171;
   --color-gizmo-x: #f87171;
   --color-gizmo-y: #22c55e;
-  --color-gizmo-z: #ff2d5c;
+  --color-gizmo-z: #3b82f6;
 
-  --color-accent: #ff2d5c;
-  --color-accent-hover: #ff4d6e;
+  --color-accent: #3b82f6;
+  --color-accent-hover: #60a5fa;
   --color-success: #22c55e;
   --color-info: #38bdf8;
   --color-warning: #fbbf24;
@@ -143,8 +143,8 @@
   --color-bg-surface-success-rgb: 16 32 24;
   --color-bg-surface-warning-rgb: 48 40 16;
   --color-bg-surface-error-rgb: 48 24 28;
-  --color-bg-fill-primary-rgb: 255 45 92;
-  --color-bg-fill-primary-hover-rgb: 187 0 47;
+  --color-bg-fill-primary-rgb: 59 130 246;
+  --color-bg-fill-primary-hover-rgb: 96 165 250;
   --color-bg-fill-info-rgb: 37 99 235;
   --color-bg-fill-info-hover-rgb: 29 78 216;
   --color-bg-fill-secondary-rgb: 42 42 46;
@@ -158,7 +158,7 @@
   --color-fill-tertiary-hover-rgb: 35 35 40;
   --color-fill-strong-rgb: 255 255 255;
   --color-fill-dark-rgb: 4 4 5;
-  --color-selection-rgb: 255 45 92;
+  --color-selection-rgb: 59 130 246;
   --color-control-choice-rgb: 43 140 255;
   --color-control-choice-border-rgb: 141 150 163;
   --color-control-choice-border-hover-rgb: 199 208 220;
@@ -195,7 +195,7 @@
   --color-border-strong-rgb: 61 61 68;
   --color-border-super-rgb: 255 255 255;
   --color-border-weak-rgb: 26 26 30;
-  --color-border-focus-rgb: 255 45 92;
+  --color-border-focus-rgb: 59 130 246;
   --color-border-focus-danger-rgb: 248 113 113;
   --color-border-hover-rgb: 61 61 68;
   --color-border-info-rgb: 56 189 248;
@@ -204,10 +204,10 @@
   --color-border-error-rgb: 248 113 113;
   --color-gizmo-x-rgb: 248 113 113;
   --color-gizmo-y-rgb: 34 197 94;
-  --color-gizmo-z-rgb: 255 45 92;
+  --color-gizmo-z-rgb: 59 130 246;
 
-  --color-accent-rgb: 255 45 92;
-  --color-accent-hover-rgb: 255 77 110;
+  --color-accent-rgb: 59 130 246;
+  --color-accent-hover-rgb: 96 165 250;
   --color-success-rgb: 34 197 94;
   --color-info-rgb: 56 189 248;
   --color-warning-rgb: 251 191 36;
