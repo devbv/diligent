@@ -216,6 +216,11 @@ Usage:
             outputText: output,
             actionSummary: `${count} edit${count === 1 ? "" : "s"} applied`,
           }),
+          metadata: {
+            replacements: count,
+            oldStringCountAfter: countOccurrences(result, old_string),
+            newStringCountAfter: countOccurrences(result, new_string),
+          },
         };
       } catch (err) {
         return {
@@ -311,6 +316,13 @@ When making edits:
       try {
         await Bun.write(file_path, current);
         const output = `Edited ${file_path}: applied ${edits.length} edit(s), replaced ${totalCount} occurrence(s) total`;
+        // Compute per-edit readback counts from the final in-memory content.
+        const editsAfter = edits.map((edit) => ({
+          old_string: edit.old_string,
+          new_string: edit.new_string,
+          oldStringCountAfter: countOccurrences(current, edit.old_string),
+          newStringCountAfter: countOccurrences(current, edit.new_string),
+        }));
         return {
           output,
           render: createMultiEditDiffRenderPayload({
@@ -319,6 +331,10 @@ When making edits:
             outputText: output,
             actionSummary: `${edits.length} edit${edits.length === 1 ? "" : "s"} applied`,
           }),
+          metadata: {
+            replacements: totalCount,
+            editsAfter,
+          },
         };
       } catch (err) {
         return {

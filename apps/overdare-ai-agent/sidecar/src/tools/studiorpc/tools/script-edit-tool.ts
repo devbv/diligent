@@ -147,6 +147,18 @@ function applyEdit(content: string, edit: SingleEdit): { result: string; count: 
   return { result, count: targets.length };
 }
 
+/** Count non-overlapping occurrences of `needle` in `haystack`. */
+function countOccurrences(haystack: string, needle: string): number {
+  if (needle.length === 0) return 0;
+  let count = 0;
+  let pos = 0;
+  while ((pos = haystack.indexOf(needle, pos)) !== -1) {
+    count++;
+    pos += needle.length;
+  }
+  return count;
+}
+
 // ---------------------------------------------------------------------------
 // Script class guard
 // ---------------------------------------------------------------------------
@@ -193,6 +205,7 @@ async function executeScriptEdit(
     let tabCount = 0;
     let eolCount = 0;
     let scriptName: string | undefined;
+    let finalSource = "";
 
     readAndWriteOvdrjm(cwd, (rootDoc) => {
       const root = rootDoc.Root;
@@ -225,6 +238,7 @@ async function executeScriptEdit(
       tabCount = normalized.converted;
       eolCount = eolNormalized.converted;
       count = editCount;
+      finalSource = eolNormalized.result;
     });
 
     await applyLevelChanges();
@@ -234,10 +248,13 @@ async function executeScriptEdit(
     if (tabCount > 0) normalizations.push(`${tabCount} leading 4-space group(s) → tabs`);
     if (eolCount > 0) normalizations.push(`${eolCount} line ending(s) normalized`);
     if (normalizations.length > 0) output += ` (${normalizations.join(", ")})`;
+    // Count old/new string occurrences in the final written source for semantic verification.
+    const oldStringCountAfter = countOccurrences(finalSource, old_string);
+    const newStringCountAfter = countOccurrences(finalSource, new_string);
     return {
       output,
       render: buildScriptEditRender({ targetGuid, scriptName, old_string, new_string, replace_all }, output, count),
-      metadata: { method: "script.edit", targetGuid, count },
+      metadata: { method: "script.edit", targetGuid, count, oldStringCountAfter, newStringCountAfter },
     };
   } catch (err) {
     return {

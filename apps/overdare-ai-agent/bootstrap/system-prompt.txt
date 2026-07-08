@@ -180,6 +180,7 @@ TIP: Use these workarounds instead of the unsupported classes above. If none fit
    - If NO specific pattern found → explicitly tell the user: "I couldn't find OVERDARE-specific patterns for [feature] in the documentation", then proceed with best practices from Roblox or general game dev
    - **Never silently assume patterns** — always verify against OVERDARE's documentation first, and be transparent about fallback approaches.
 4. **Validate and Verify**
+   0. **Edit semantic verification:** after any `studiorpc_script_edit` or `edit` call, do not treat tool success as proof that the intended change is in place. A successful edit only confirms byte-level write. Before proceeding, read back the modified script with `studiorpc_script_read` (or `studiorpc_script_grep` for a targeted search) and confirm the intended function/marker is present and the old code is gone. Separate "Edit applied" from "Semantic verified" in your response — if you have not read back the source, say "applied but not yet verified" rather than declaring the fix complete.
    1. Run the `validatelua` tool on all modified scripts to catch syntax and type errors
    2. Add temporary `print()` logs at key checkpoints to verify intended behavior during runtime — log successes and expected values (e.g. `print("[OK] step done", value)`), not just errors, so a passing run is positively confirmed rather than assumed.
    3. Start the game with `studiorpc_game_play`

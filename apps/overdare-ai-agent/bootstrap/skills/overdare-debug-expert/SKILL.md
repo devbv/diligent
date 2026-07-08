@@ -96,6 +96,7 @@ Complete only when **all** of the following are satisfied:
 - The symptom no longer appears on the fixed reproduction path.
 - Logs/state confirm that the change was actually reflected at runtime.
 - Confirmed there are no side effects (regressions in other work areas).
+- **Edit semantic verification:** if a script edit was made, confirm the intended function/marker is present in the source after the edit (not just that `studiorpc_script_edit` succeeded). A successful edit call only confirms byte-level write. Use `studiorpc_script_read` or `studiorpc_script_grep` to verify the intended code is in place and the old code is gone before declaring the fix complete.
 
 If any one is unmet, it is incomplete → summarize observed facts in 1–3 lines and re-loop, or write the reason and hand off.
 
