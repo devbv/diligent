@@ -74,6 +74,100 @@ fn updates_dir(env: Env) -> Option<PathBuf> {
     global_storage_dir(env).map(|g| g.join("updates"))
 }
 
+/// Per-process staging dir. Keyed by `token` (the process id) so two concurrent
+/// updates of the same version never share — and clobber — one extract dir.
+fn staging_dir(updates: &Path, version: &str, token: u32) -> PathBuf {
+    updates.join(format!("runtime_staging_{version}_{token}"))
+}
+
+/// Per-process bundle zip path, isolated by `token` for the same reason as
+/// `staging_dir`: concurrent downloads of the same version must not write the
+/// same file.
+fn bundle_zip_path(updates: &Path, version: &str, platform: &str, token: u32) -> PathBuf {
+    updates.join(format!("runtime-bundle-{version}-{platform}-{token}.zip"))
+}
+
+/// Crash-orphaned update scratch older than this is reclaimed at update start.
+const SCRATCH_MAX_AGE: Duration = Duration::from_secs(24 * 60 * 60);
+
+/// Freshly modified runtime-v* dirs are exempt from cleanup: a concurrent
+/// process may have renamed its staging in but not yet written its pointer,
+/// so the dir is neither "current" nor probe-detectably in use.
+#[cfg_attr(not(any(windows, test)), allow(dead_code))]
+const CLEANUP_GRACE: Duration = Duration::from_secs(10 * 60);
+
+/// Best-effort reclaim of this process's scratch after a failed install. The
+/// install error that brought us here must surface unchanged, but a removal
+/// failure (e.g. an AV lock on a freshly extracted file) is logged so an
+/// orphaned multi-hundred-MB dir stays diagnosable.
+fn discard_transient_install(staging: &Path, zip: &Path, log: &mut String) {
+    for (label, result) in [
+        ("staging", fs::remove_dir_all(staging)),
+        ("bundle zip", fs::remove_file(zip)),
+    ] {
+        if let Err(e) = result {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                let _ = writeln!(
+                    log,
+                    "[update] Failed to discard {label} after failed install: {e}"
+                );
+            }
+        }
+    }
+}
+
+/// Best-effort reclaim of crash-orphaned update scratch: staging dirs, bundle
+/// zips, and pointer temp files older than `max_age`. Per-process (pid-keyed)
+/// names never self-heal via a later run reusing the path — a SIGKILL
+/// mid-install would otherwise leak a full extracted runtime forever. Also
+/// reclaims pre-isolation shared-name leftovers from older launcher versions.
+/// The age guard protects the scratch of live concurrent updates (minutes old
+/// at most). Never touches `runtime-v*`, the legacy `runtime` dir, or the
+/// pointer itself.
+fn sweep_stale_scratch(env: Env, max_age: Duration, log: &mut String) {
+    let Some(updates) = updates_dir(env) else {
+        return;
+    };
+    let Ok(entries) = fs::read_dir(&updates) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else { continue };
+        let is_scratch = name.starts_with("runtime_staging_")
+            || (name.starts_with("runtime-bundle-") && name.ends_with(".zip"))
+            || (name.starts_with("runtime-current.json.") && name.ends_with(".tmp"));
+        if !is_scratch {
+            continue;
+        }
+        let path = entry.path();
+        // Only reclaim when the age is known to exceed max_age — unknown
+        // mtimes are kept (conservative for a destructive sweep).
+        let old_enough = path
+            .metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.elapsed().ok())
+            .is_some_and(|age| age >= max_age);
+        if !old_enough {
+            continue;
+        }
+        let result = if path.is_dir() {
+            fs::remove_dir_all(&path)
+        } else {
+            fs::remove_file(&path)
+        };
+        match result {
+            Ok(()) => {
+                let _ = writeln!(log, "[update] Swept stale update scratch {name}");
+            }
+            Err(e) => {
+                let _ = writeln!(log, "[update] Failed to sweep stale scratch {name}: {e}");
+            }
+        }
+    }
+}
+
 /// Legacy flat runtime directory (`updates/runtime`). Kept as a fallback for
 /// installs that predate the versioned layout.
 fn legacy_runtime_dir(env: Env) -> Option<PathBuf> {
@@ -163,11 +257,19 @@ fn read_runtime_current(env: Env) -> Result<Option<RuntimeCurrent>, String> {
 }
 
 /// Atomically write the active pointer via temp-file + rename so a crash
-/// mid-write never leaves a half-written pointer.
+/// mid-write never leaves a half-written pointer. The temp name is unique per
+/// writer (pid + in-process counter): with one shared temp, two concurrent
+/// writers race — the loser's rename fails ENOENT, or the winner publishes the
+/// other writer's (possibly still-being-written) bytes.
 fn write_runtime_current_atomic(env: Env, current: &RuntimeCurrent) -> Result<(), String> {
+    static WRITE_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let path =
         runtime_current_metadata_path(env).ok_or("cannot resolve runtime-current.json path")?;
-    let tmp = path.with_file_name("runtime-current.json.tmp");
+    let tmp = path.with_file_name(format!(
+        "runtime-current.json.{}-{}.tmp",
+        std::process::id(),
+        WRITE_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ));
     let json = serde_json::to_string_pretty(current)
         .map(|json| format!("{json}\n"))
         .map_err(|e| format!("serialize runtime-current.json: {e}"))?;
@@ -208,6 +310,12 @@ fn validate_runtime_layout(dir: &Path) -> Result<(), String> {
 /// Promote a validated staging directory to `runtime-v<version>` beside the
 /// active runtime, then atomically switch the pointer. The previously active
 /// version is never removed here — only stale, non-active leftovers are.
+///
+/// Rename-first: apart from a fast-path shortcut, the target is only ever
+/// inspected AFTER a failed rename — i.e. after any concurrent winner's rename
+/// has landed — so the inspection always sees the truth. A check-then-act
+/// order here let a concurrent same-version install make the loser error out,
+/// or worse, remove_dir_all a target the winner had just completed.
 fn finalize_runtime_install(
     env: Env,
     version: &str,
@@ -218,28 +326,50 @@ fn finalize_runtime_install(
     let target_name = format!("runtime-v{version}");
     let target = updates.join(&target_name);
 
-    if target.exists() {
-        if is_complete_install(&target, version) {
-            // An already-complete install of this same version (the active
-            // runtime is one such case). It may be in use by a running sidecar
-            // — that is exactly what a complete on-disk runtime is — so never
-            // delete it: drop the redundant staging and just (re)point below.
-            let _ = fs::remove_dir_all(staging);
-        } else {
-            // A broken/incomplete leftover from a previously interrupted update.
-            // It has no valid layout, so nothing can be running from it — safe
-            // to clear and replace.
-            retry_fs_op("remove previous incomplete target runtime", || {
-                fs::remove_dir_all(&target)
-            })?;
-            retry_fs_op("move staging to versioned runtime", || {
-                fs::rename(staging, &target)
-            })?;
-        }
+    if is_complete_install(&target, version) {
+        // Fast path: an already-complete install of this same version (a
+        // re-publish, a rollback re-serve, or a concurrent install that
+        // finished first). It may be in use by a running sidecar — that is
+        // exactly what a complete on-disk runtime is — so never delete it:
+        // drop the redundant staging and just (re)point below.
+        let _ = fs::remove_dir_all(staging);
     } else {
-        retry_fs_op("move staging to versioned runtime", || {
-            fs::rename(staging, &target)
-        })?;
+        const ATTEMPTS: usize = 3;
+        for attempt in 1..=ATTEMPTS {
+            match retry_fs_op("move staging to versioned runtime", || {
+                fs::rename(staging, &target)
+            }) {
+                Ok(()) => break,
+                // Lost a same-version race: a concurrent install completed
+                // the target between our check and our rename. Converge —
+                // keep the winner, drop our identical staging.
+                Err(_) if is_complete_install(&target, version) => {
+                    let _ = fs::remove_dir_all(staging);
+                    break;
+                }
+                Err(e) => {
+                    if !target.exists() || attempt == ATTEMPTS {
+                        return Err(e);
+                    }
+                    // A broken/incomplete leftover blocks the rename (nothing
+                    // can be running from it). Claim it ASIDE atomically
+                    // instead of deleting in place: only one concurrent
+                    // process wins this rename, so a completed install that
+                    // lands in the same window is never destroyed. The trash
+                    // name matches the scratch sweep pattern, so a crash here
+                    // is reclaimed later.
+                    let trash = updates.join(format!(
+                        "runtime_staging_stale-{version}-{}",
+                        std::process::id()
+                    ));
+                    if fs::rename(&target, &trash).is_ok() {
+                        let _ = fs::remove_dir_all(&trash);
+                    }
+                    // Target is now free (or a concurrent winner renamed in —
+                    // the next attempt converges above).
+                }
+            }
+        }
     }
 
     write_runtime_current_atomic(
@@ -336,7 +466,7 @@ fn migrate_flat_runtime_if_needed(env: Env, log: &mut String) {
 /// filtering is applied separately and is platform-specific. The legacy flat
 /// `runtime` directory is never a candidate.
 #[cfg_attr(not(any(windows, test)), allow(dead_code))]
-fn cleanup_candidate_dirs(env: Env) -> Vec<PathBuf> {
+fn cleanup_candidate_dirs(env: Env, grace: Duration) -> Vec<PathBuf> {
     let mut out = Vec::new();
     let updates = match updates_dir(env) {
         Some(u) => u,
@@ -361,6 +491,21 @@ fn cleanup_candidate_dirs(env: Env) -> Vec<PathBuf> {
             continue;
         }
         if current.as_deref() == Some(path.as_path()) {
+            continue;
+        }
+        // Skip dirs modified within the grace window: a concurrent process may
+        // have just renamed its staging here and not yet written its pointer —
+        // the dir is neither "current" nor probe-detectably in use in that
+        // window. ponytail: mtime grace instead of a cross-process lock; an
+        // old idle pinned version outside the window still needs the lock-file
+        // design if that ever matters.
+        let fresh = path
+            .metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.elapsed().ok())
+            .is_some_and(|age| age < grace);
+        if fresh {
             continue;
         }
         out.push(path);
@@ -403,7 +548,7 @@ fn cleanup_old_runtimes(env: Env, log: &mut String) {
     }
     #[cfg(windows)]
     {
-        for path in cleanup_candidate_dirs(env) {
+        for path in cleanup_candidate_dirs(env, CLEANUP_GRACE) {
             let name = path
                 .file_name()
                 .and_then(|n| n.to_str())
@@ -835,12 +980,6 @@ fn fetch_update(
     }))
 }
 
-fn verify_sha256(path: &Path, expected_sha256: &str) -> Result<bool, String> {
-    let bytes = fs::read(path).map_err(|e| format!("read zip for sha256: {e}"))?;
-    let actual = format!("{:x}", Sha256::digest(&bytes));
-    Ok(actual == expected_sha256)
-}
-
 fn extract_zip(zip_path: &Path, out_dir: &Path) -> Result<(), String> {
     if out_dir.exists() {
         retry_fs_op("clean extract dir", || fs::remove_dir_all(out_dir))?;
@@ -902,6 +1041,10 @@ pub fn run_with_progress(
     // deciding anything else, so an already-up-to-date install still gains a
     // pointer and a runtime-v<version> directory (needed for pinned `start`).
     migrate_flat_runtime_if_needed(selection.env, log);
+
+    // Reclaim scratch orphaned by crashed/killed earlier updates before
+    // starting new work — per-process names never self-heal on their own.
+    sweep_stale_scratch(selection.env, SCRATCH_MAX_AGE, log);
 
     let bootstrap_required = runtime_bootstrap_required(selection.env);
     if bootstrap_required {
@@ -969,76 +1112,87 @@ pub fn run_with_progress(
 
     let updates = updates_dir(selection.env).ok_or("cannot resolve updates dir")?;
     fs::create_dir_all(&updates).map_err(|e| format!("create updates dir: {e}"))?;
-    let zip_path = updates.join(format!(
-        "runtime-bundle-{}-{}.zip",
-        fetched.version,
-        current_platform()
-    ));
-    fs::write(&zip_path, &fetched.bytes).map_err(|e| format!("write bundle: {e}"))?;
 
-    report_progress(
-        &mut progress,
-        UpdateProgress::Verifying {
-            target_version: fetched.version.clone(),
-        },
-    );
-    if !verify_sha256(&zip_path, &fetched.sha256)? {
-        let _ = fs::remove_file(&zip_path);
-        return Err("Downloaded bundle failed SHA256 verification".into());
-    }
+    // Isolate the download/extract scratch by process id so two concurrent
+    // updates of the same version (e.g. two Studio launchers started at once
+    // when a fresh release drops) never share — and clobber — one another's zip
+    // or staging dir. The final `runtime-v<version>` target is still shared, but
+    // finalize's is_complete_install guard makes the second finalize converge
+    // (discard its staging, keep the winner) rather than corrupt it.
+    let token = std::process::id();
+    let zip_path = bundle_zip_path(&updates, &fetched.version, current_platform(), token);
+    let staging = staging_dir(&updates, &fetched.version, token);
 
-    let staging = updates.join(format!("runtime_staging_{}", fetched.version));
-    report_progress(
-        &mut progress,
-        UpdateProgress::Extracting {
-            target_version: fetched.version.clone(),
-        },
-    );
-    extract_zip(&zip_path, &staging)?;
+    // Any failure between here and finalize leaves this process's own zip /
+    // staging behind. Isolated (per-process) names no longer self-heal via a
+    // later run reusing a shared path, so reclaim them explicitly on the way
+    // out. ponytail: a hard crash mid-install still orphans one staging dir;
+    // sweep stale runtime_staging_*/runtime-bundle-* by age if that accrues.
+    let install = (|| -> Result<(), String> {
+        report_progress(
+            &mut progress,
+            UpdateProgress::Verifying {
+                target_version: fetched.version.clone(),
+            },
+        );
+        // Verify the in-memory bytes before anything touches disk: no
+        // redundant full re-read of the bundle, and a corrupt download is
+        // never persisted.
+        let actual = format!("{:x}", Sha256::digest(&fetched.bytes));
+        if actual != fetched.sha256 {
+            return Err("Downloaded bundle failed SHA256 verification".into());
+        }
+        fs::write(&zip_path, &fetched.bytes).map_err(|e| format!("write bundle: {e}"))?;
 
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        for name in ["diligent-web-server", "rg"] {
-            let bin = staging.join(name);
-            if bin.exists() {
-                let _ = fs::set_permissions(&bin, fs::Permissions::from_mode(0o755));
+        report_progress(
+            &mut progress,
+            UpdateProgress::Extracting {
+                target_version: fetched.version.clone(),
+            },
+        );
+        extract_zip(&zip_path, &staging)?;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            for name in ["diligent-web-server", "rg"] {
+                let bin = staging.join(name);
+                if bin.exists() {
+                    let _ = fs::set_permissions(&bin, fs::Permissions::from_mode(0o755));
+                }
             }
         }
+
+        validate_runtime_layout(&staging)?;
+
+        report_progress(
+            &mut progress,
+            UpdateProgress::Applying {
+                target_version: fetched.version.clone(),
+            },
+        );
+        let version_info = InstalledVersion {
+            version: fetched.version.clone(),
+            applied_at: chrono::Local::now().to_rfc3339(),
+            sha256: fetched.sha256.clone(),
+        };
+        fs::write(
+            staging.join("version.json"),
+            serde_json::to_string_pretty(&version_info)
+                .map(|json| format!("{json}\n"))
+                .map_err(|e| format!("serialize version info: {e}"))?,
+        )
+        .map_err(|e| format!("write staging version.json: {e}"))?;
+
+        // Install beside the active runtime and atomically switch the pointer.
+        // The previously active runtime directory is intentionally left in place
+        // so a running sidecar is never deleted mid-update.
+        finalize_runtime_install(selection.env, &fetched.version, &fetched.sha256, &staging)
+    })();
+    if install.is_err() {
+        discard_transient_install(&staging, &zip_path, log);
     }
-
-    validate_runtime_layout(&staging).inspect_err(|_| {
-        let _ = fs::remove_dir_all(&staging);
-    })?;
-
-    report_progress(
-        &mut progress,
-        UpdateProgress::Applying {
-            target_version: fetched.version.clone(),
-        },
-    );
-    let version_info = InstalledVersion {
-        version: fetched.version.clone(),
-        applied_at: chrono::Local::now().to_rfc3339(),
-        sha256: fetched.sha256.clone(),
-    };
-    fs::write(
-        staging.join("version.json"),
-        serde_json::to_string_pretty(&version_info)
-            .map(|json| format!("{json}\n"))
-            .map_err(|e| format!("serialize version info: {e}"))?,
-    )
-    .map_err(|e| format!("write staging version.json: {e}"))?;
-
-    // Install beside the active runtime and atomically switch the pointer. The
-    // previously active runtime directory is intentionally left in place so a
-    // running sidecar is never deleted mid-update.
-    finalize_runtime_install(
-        selection.env,
-        &fetched.version,
-        &fetched.sha256,
-        &staging,
-    )?;
+    install?;
     let _ = fs::remove_file(&zip_path);
 
     // Best-effort, runs after the pointer switch so it can never fail the
@@ -1533,7 +1687,7 @@ mod tests {
             write_runtime_layout(&updates.join("runtime"), "0.9.0");
             write_runtime_current_atomic(Env::Prod, &pointer("2.0.0")).expect("pointer v2");
 
-            let mut names: Vec<String> = super::cleanup_candidate_dirs(Env::Prod)
+            let mut names: Vec<String> = super::cleanup_candidate_dirs(Env::Prod, std::time::Duration::ZERO)
                 .iter()
                 .filter_map(|p| p.file_name()?.to_str().map(str::to_string))
                 .collect();
@@ -1644,6 +1798,296 @@ mod tests {
                 current_runtime_dir(Env::Prod),
                 Some(updates.join("runtime-v2.0.0"))
             );
+        });
+    }
+
+    #[test]
+    fn staging_and_bundle_paths_are_isolated_per_process() {
+        // Two concurrent updates to the SAME new version (e.g. two Studio
+        // launchers started at once when a fresh release drops) must NOT share
+        // the staging dir or the bundle zip — a shared path lets one process's
+        // extract/download clobber the other's in-flight files, aborting the
+        // update. Isolation is keyed by a per-process token. (Pure path math —
+        // no temp home / global HOME lock needed.)
+        let updates = std::path::PathBuf::from("updates");
+        assert_ne!(
+            super::staging_dir(&updates, "3.0.0", 111),
+            super::staging_dir(&updates, "3.0.0", 222),
+            "same-version concurrent updates must not share a staging dir"
+        );
+        assert_ne!(
+            super::bundle_zip_path(&updates, "3.0.0", "darwin-arm64", 111),
+            super::bundle_zip_path(&updates, "3.0.0", "darwin-arm64", 222),
+            "same-version concurrent updates must not share a bundle zip path"
+        );
+    }
+
+    #[test]
+    fn concurrent_same_version_finalize_converges_without_data_loss() {
+        // Safety lock: with isolated staging, two processes installing the same
+        // new version finalize in sequence. The first becomes the install; the
+        // second sees a complete install and discards its own staging without
+        // wiping the winner. No file loss either way.
+        with_temp_home("concurrent-converge", |home| {
+            let updates = home.join(".overdare/updates");
+            fs::create_dir_all(&updates).expect("create updates");
+            let s1 = super::staging_dir(&updates, "3.0.0", 111);
+            let s2 = super::staging_dir(&updates, "3.0.0", 222);
+            // Both extracts land on disk at once (as two live processes would).
+            write_runtime_layout(&s1, "3.0.0");
+            write_runtime_layout(&s2, "3.0.0");
+            assert!(s1.exists() && s2.exists(), "isolated stagings coexist");
+
+            super::finalize_runtime_install(Env::Prod, "3.0.0", "deadbeef", &s1)
+                .expect("finalize p1");
+            assert!(
+                super::runtime_layout_exists(&s2),
+                "p1's finalize must not disturb p2's in-flight staging"
+            );
+            let target = updates.join("runtime-v3.0.0");
+            fs::write(target.join("sentinel"), b"x").expect("mark winner");
+            super::finalize_runtime_install(Env::Prod, "3.0.0", "deadbeef", &s2)
+                .expect("finalize p2");
+
+            assert!(
+                target.join("sentinel").exists(),
+                "the already-installed winner must never be wiped by a second concurrent finalize"
+            );
+            assert!(!s1.exists() && !s2.exists(), "both stagings consumed");
+            assert_eq!(current_runtime_dir(Env::Prod), Some(target));
+        });
+    }
+
+    #[test]
+    fn discard_transient_install_removes_own_scratch_and_nothing_else() {
+        // A failed install must reclaim its own (now per-process) staging + zip
+        // — and must never disturb the active pointer or an installed runtime.
+        with_temp_home("discard-transient", |home| {
+            let updates = home.join(".overdare/updates");
+            let v1 = updates.join("runtime-v1.0.0");
+            write_runtime_layout(&v1, "1.0.0");
+            write_runtime_current_atomic(Env::Prod, &pointer("1.0.0")).expect("pointer v1");
+
+            let staging = super::staging_dir(&updates, "3.0.0", 111);
+            let zip = super::bundle_zip_path(&updates, "3.0.0", "darwin-arm64", 111);
+            write_runtime_layout(&staging, "3.0.0");
+            fs::write(&zip, b"zip").expect("write zip");
+
+            let mut log = String::new();
+            super::discard_transient_install(&staging, &zip, &mut log);
+
+            assert!(!staging.exists(), "failed-install staging must be removed");
+            assert!(!zip.exists(), "failed-install bundle zip must be removed");
+            assert!(
+                super::runtime_layout_exists(&v1),
+                "a failed install must not touch the installed runtime"
+            );
+            assert_eq!(
+                current_runtime_dir(Env::Prod),
+                Some(v1),
+                "a failed install must not move or clear the active pointer"
+            );
+        });
+    }
+
+    #[test]
+    fn concurrent_same_version_finalizes_all_converge() {
+        // True concurrency: both processes pass any pre-rename check before
+        // either rename lands. The loser must converge on the winner's
+        // complete install (drop its own identical staging), never report
+        // failure — a check-then-act finalize fails here.
+        with_temp_home("concurrent-finalize-race", |home| {
+            let updates = home.join(".overdare/updates");
+            fs::create_dir_all(&updates).expect("create updates");
+            for i in 0..50 {
+                let version = format!("9.{i}.0");
+                let stagings: Vec<_> = [111u32, 222]
+                    .iter()
+                    .map(|&t| {
+                        let s = super::staging_dir(&updates, &version, t);
+                        write_runtime_layout(&s, &version);
+                        s
+                    })
+                    .collect();
+                let barrier = std::sync::Barrier::new(stagings.len());
+                let results: Vec<Result<(), String>> = std::thread::scope(|scope| {
+                    let handles: Vec<_> = stagings
+                        .iter()
+                        .map(|s| {
+                            let (b, v) = (&barrier, &version);
+                            scope.spawn(move || {
+                                b.wait();
+                                super::finalize_runtime_install(Env::Prod, v, "deadbeef", s)
+                            })
+                        })
+                        .collect();
+                    handles.into_iter().map(|h| h.join().expect("join")).collect()
+                });
+                let target = updates.join(format!("runtime-v{version}"));
+                assert!(
+                    super::is_complete_install(&target, &version),
+                    "iter {i}: target must be a complete install"
+                );
+                for r in &results {
+                    assert!(r.is_ok(), "iter {i}: concurrent finalize must converge, got {r:?}");
+                }
+                for s in &stagings {
+                    assert!(!s.exists(), "iter {i}: staging must be consumed");
+                }
+            }
+        });
+    }
+
+    #[test]
+    fn concurrent_finalizes_over_broken_leftover_converge() {
+        // The other entry state: a broken leftover blocks the target name.
+        // Both processes must still converge without ever leaving the target
+        // missing or incomplete at the end.
+        with_temp_home("concurrent-leftover-race", |home| {
+            let updates = home.join(".overdare/updates");
+            fs::create_dir_all(&updates).expect("create updates");
+            for i in 0..50 {
+                let version = format!("8.{i}.0");
+                let target = updates.join(format!("runtime-v{version}"));
+                // Broken leftover: partial binary, no dist/client.
+                fs::create_dir_all(&target).expect("create broken");
+                fs::write(target.join(sidecar_bin_name()), b"x").expect("partial bin");
+                let stagings: Vec<_> = [111u32, 222]
+                    .iter()
+                    .map(|&t| {
+                        let s = super::staging_dir(&updates, &version, t);
+                        write_runtime_layout(&s, &version);
+                        s
+                    })
+                    .collect();
+                let barrier = std::sync::Barrier::new(stagings.len());
+                let results: Vec<Result<(), String>> = std::thread::scope(|scope| {
+                    let handles: Vec<_> = stagings
+                        .iter()
+                        .map(|s| {
+                            let (b, v) = (&barrier, &version);
+                            scope.spawn(move || {
+                                b.wait();
+                                super::finalize_runtime_install(Env::Prod, v, "deadbeef", s)
+                            })
+                        })
+                        .collect();
+                    handles.into_iter().map(|h| h.join().expect("join")).collect()
+                });
+                assert!(
+                    super::is_complete_install(&target, &version),
+                    "iter {i}: broken leftover must end as a complete install"
+                );
+                for r in &results {
+                    assert!(r.is_ok(), "iter {i}: finalize over leftover must converge, got {r:?}");
+                }
+            }
+        });
+    }
+
+    #[test]
+    fn concurrent_pointer_writes_all_succeed_and_stay_parseable() {
+        // The pointer tmp must be per-process: with one shared tmp a writer's
+        // rename consumes the other's file (spurious ENOENT) or publishes
+        // another process's bytes mid-write.
+        with_temp_home("concurrent-pointer-race", |home| {
+            fs::create_dir_all(home.join(".overdare/updates")).expect("create updates");
+            for i in 0..50 {
+                let barrier = std::sync::Barrier::new(2);
+                let results: Vec<Result<(), String>> = std::thread::scope(|scope| {
+                    let handles: Vec<_> = ["1.0.0", "2.0.0"]
+                        .iter()
+                        .map(|v| {
+                            let b = &barrier;
+                            scope.spawn(move || {
+                                b.wait();
+                                write_runtime_current_atomic(Env::Prod, &pointer(v))
+                            })
+                        })
+                        .collect();
+                    handles.into_iter().map(|h| h.join().expect("join")).collect()
+                });
+                for r in &results {
+                    assert!(r.is_ok(), "iter {i}: concurrent pointer writes must succeed, got {r:?}");
+                }
+                let current = super::read_runtime_current(Env::Prod)
+                    .expect("pointer must stay parseable")
+                    .expect("pointer must exist");
+                assert!(
+                    ["1.0.0", "2.0.0"].contains(&current.version.as_str()),
+                    "iter {i}: pointer must hold one writer's intact content"
+                );
+            }
+        });
+    }
+
+    #[test]
+    fn sweep_reclaims_stale_scratch_but_never_installs() {
+        with_temp_home("sweep-scratch", |home| {
+            let updates = home.join(".overdare/updates");
+            // Scratch in both pid-keyed (new) and shared (old launcher) forms.
+            let pid_staging = updates.join("runtime_staging_1.0.0_999");
+            let old_staging = updates.join("runtime_staging_1.0.0");
+            write_runtime_layout(&pid_staging, "1.0.0");
+            write_runtime_layout(&old_staging, "1.0.0");
+            let pid_zip = updates.join("runtime-bundle-1.0.0-darwin-arm64-999.zip");
+            let old_zip = updates.join("runtime-bundle-1.0.0-darwin-arm64.zip");
+            fs::write(&pid_zip, b"z").expect("write pid zip");
+            fs::write(&old_zip, b"z").expect("write old zip");
+            let ptr_tmp = updates.join("runtime-current.json.999.tmp");
+            fs::write(&ptr_tmp, b"{}").expect("write ptr tmp");
+            // Installs and the pointer must survive any sweep.
+            let v1 = updates.join("runtime-v1.0.0");
+            let legacy = updates.join("runtime");
+            write_runtime_layout(&v1, "1.0.0");
+            write_runtime_layout(&legacy, "0.9.0");
+            write_runtime_current_atomic(Env::Prod, &pointer("1.0.0")).expect("pointer");
+
+            let mut log = String::new();
+            // Zero max-age: everything is old enough — all scratch reclaimed.
+            super::sweep_stale_scratch(Env::Prod, std::time::Duration::ZERO, &mut log);
+            for gone in [&pid_staging, &old_staging] {
+                assert!(!gone.exists(), "stale staging must be swept: {}", gone.display());
+            }
+            for gone in [&pid_zip, &old_zip, &ptr_tmp] {
+                assert!(!gone.exists(), "stale file must be swept: {}", gone.display());
+            }
+            assert!(super::runtime_layout_exists(&v1), "installed runtime must survive sweep");
+            assert!(super::runtime_layout_exists(&legacy), "legacy runtime must survive sweep");
+            assert_eq!(current_runtime_dir(Env::Prod), Some(v1), "pointer must survive sweep");
+
+            // Real threshold: freshly created scratch (a live concurrent
+            // update) must be kept.
+            let fresh = updates.join("runtime_staging_2.0.0_1");
+            write_runtime_layout(&fresh, "2.0.0");
+            super::sweep_stale_scratch(Env::Prod, super::SCRATCH_MAX_AGE, &mut log);
+            assert!(fresh.exists(), "fresh scratch must not be swept");
+        });
+    }
+
+    #[test]
+    fn cleanup_candidates_skip_just_installed_dirs() {
+        // A dir modified within the grace window may be a concurrent
+        // process's install between its rename and its pointer write — it is
+        // neither "current" nor probe-detectably in use, so age is the only
+        // available signal.
+        with_temp_home("cleanup-grace", |home| {
+            let updates = home.join(".overdare/updates");
+            write_runtime_layout(&updates.join("runtime-v1.0.0"), "1.0.0");
+            write_runtime_layout(&updates.join("runtime-v2.0.0"), "2.0.0");
+            write_runtime_current_atomic(Env::Prod, &pointer("2.0.0")).expect("pointer v2");
+
+            // Freshly created v1 is inside the grace window -> not a candidate.
+            assert!(
+                super::cleanup_candidate_dirs(Env::Prod, super::CLEANUP_GRACE).is_empty(),
+                "just-modified dirs must be exempt from cleanup"
+            );
+            // Zero grace restores the plain non-current filter.
+            let names: Vec<String> = super::cleanup_candidate_dirs(Env::Prod, std::time::Duration::ZERO)
+                .iter()
+                .filter_map(|p| p.file_name()?.to_str().map(str::to_string))
+                .collect();
+            assert_eq!(names, vec!["runtime-v1.0.0".to_string()]);
         });
     }
 
