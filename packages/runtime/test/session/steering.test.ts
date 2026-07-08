@@ -18,6 +18,7 @@ import {
   readSessionFile,
   SessionManager,
 } from "@diligent/runtime/session";
+import { createPlanTool } from "@diligent/runtime/tools";
 import { z } from "zod";
 import type { AgentEvent } from "../../src/agent-event";
 
@@ -194,6 +195,174 @@ describe("SessionManager.steer() — unified queue", () => {
     // Should have multiple turn_start events (at least 2: one per loop iteration)
     const turnStarts = events.filter((e) => e.type === "turn_start");
     expect(turnStarts.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe("PlanCompletionGuard integration — premature completion regression", () => {
+  type PlanStepInput = { text: string; status: string };
+
+  function planCall(steps: PlanStepInput[]): AssistantMessage {
+    return makeToolCallAssistant(`plan_${Math.random().toString(36).slice(2, 6)}`, "plan", { steps });
+  }
+
+  test("nudges the model back to work when it yields with pending plan steps", async () => {
+    const dir = await setupDir();
+    const responses: AssistantMessage[] = [
+      // (a) create a plan: one done, two pending
+      planCall([
+        { text: "spawn the boss mob", status: "done" },
+        { text: "make the boss fill the screen", status: "pending" },
+        { text: "add the basic mobs alongside the boss", status: "pending" },
+      ]),
+      // (b) prematurely declare completion with no tool call → guard should nudge
+      makeAssistant("All done! Everything is complete."),
+      // (c) after the nudge, resume and finish the plan
+      planCall([
+        { text: "spawn the boss mob", status: "done" },
+        { text: "make the boss fill the screen", status: "done" },
+        { text: "add the basic mobs alongside the boss", status: "done" },
+      ]),
+      // (d) final summary — plan resolved, no nudge
+      makeAssistant("Boss encounter is ready."),
+    ];
+    const mgr = new SessionManager(makeManagerConfig(dir, createMockStreamFn(responses), [createPlanTool()]));
+    await mgr.create();
+
+    const events: AgentEvent[] = [];
+    const unsub = mgr.subscribe((e) => events.push(e));
+    await mgr.run({ role: "user", content: "build the boss stage", timestamp: Date.now() });
+    unsub();
+    await mgr.waitForWrites();
+
+    // The loop did NOT end at (b): all four model responses were consumed (4 turns).
+    const turnStarts = events.filter((e) => e.type === "turn_start");
+    expect(turnStarts.length).toBe(4);
+
+    // Exactly one plan-reminder steering injection, listing the two unfinished steps.
+    const steeringEvents = events.filter((e) => e.type === "steering_injected");
+    const planReminders = steeringEvents.filter((e) =>
+      (e as { messages: Array<{ content: unknown }> }).messages.some(
+        (m) => typeof m.content === "string" && m.content.includes("[Plan reminder]"),
+      ),
+    );
+    expect(planReminders).toHaveLength(1);
+    const reminderText = (planReminders[0] as { messages: Array<{ content: string }> }).messages[0].content;
+    expect(reminderText).toContain("make the boss fill the screen");
+    expect(reminderText).toContain("add the basic mobs alongside the boss");
+    expect(reminderText).not.toContain("spawn the boss mob");
+
+    // The nudge is persisted as a normal user message entry.
+    const { entries } = await readSessionFile(mgr.sessionPath!);
+    const hasNudgeEntry = entries.some(
+      (e) =>
+        e.type === "message" &&
+        e.message.role === "user" &&
+        typeof (e.message as UserMessage).content === "string" &&
+        ((e.message as UserMessage).content as string).includes("[Plan reminder]"),
+    );
+    expect(hasNudgeEntry).toBe(true);
+  });
+
+  test("respects a deliberate re-yield: no second nudge without intervening progress", async () => {
+    const dir = await setupDir();
+    const responses: AssistantMessage[] = [
+      planCall([{ text: "ask the user which theme", status: "pending" }]),
+      makeAssistant("First yield with no tools."),
+      makeAssistant("Second yield — I really need the user here."),
+    ];
+    const mgr = new SessionManager(makeManagerConfig(dir, createMockStreamFn(responses), [createPlanTool()]));
+    await mgr.create();
+
+    const events: AgentEvent[] = [];
+    const unsub = mgr.subscribe((e) => events.push(e));
+    await mgr.run({ role: "user", content: "start", timestamp: Date.now() });
+    unsub();
+
+    // Nudged once at the first yield; the immediate re-yield is respected → run ends (3 turns).
+    const turnStarts = events.filter((e) => e.type === "turn_start");
+    expect(turnStarts.length).toBe(3);
+    const planReminders = events.filter(
+      (e) =>
+        e.type === "steering_injected" &&
+        (e as { messages: Array<{ content: unknown }> }).messages.some(
+          (m) => typeof m.content === "string" && m.content.includes("[Plan reminder]"),
+        ),
+    );
+    expect(planReminders).toHaveLength(1);
+  });
+
+  test("stops nudging after the per-run cap even when progress continues", async () => {
+    const dir = await setupDir();
+    const stillPending: PlanStepInput[] = [{ text: "unfinished step", status: "pending" }];
+    const responses: AssistantMessage[] = [
+      planCall(stillPending), // (1) plan
+      makeAssistant("yield 1"), // (2) → nudge 1
+      planCall(stillPending), // (3) progress (re-arm), still pending
+      makeAssistant("yield 2"), // (4) → nudge 2
+      planCall(stillPending), // (5) progress (re-arm), still pending
+      makeAssistant("yield 3"), // (6) → cap reached, no nudge → end
+    ];
+    const mgr = new SessionManager(makeManagerConfig(dir, createMockStreamFn(responses), [createPlanTool()]));
+    await mgr.create();
+
+    const events: AgentEvent[] = [];
+    const unsub = mgr.subscribe((e) => events.push(e));
+    await mgr.run({ role: "user", content: "start", timestamp: Date.now() });
+    unsub();
+
+    const turnStarts = events.filter((e) => e.type === "turn_start");
+    expect(turnStarts.length).toBe(6);
+    const planReminders = events.filter(
+      (e) =>
+        e.type === "steering_injected" &&
+        (e as { messages: Array<{ content: unknown }> }).messages.some(
+          (m) => typeof m.content === "string" && m.content.includes("[Plan reminder]"),
+        ),
+    );
+    expect(planReminders).toHaveLength(2);
+  });
+
+  test("a queued user steer takes priority over the plan nudge", async () => {
+    const dir = await setupDir();
+    const responses: AssistantMessage[] = [
+      planCall([{ text: "pending work", status: "pending" }]),
+      makeAssistant("premature done"), // turn 2 — user steers before its turn_end
+      planCall([{ text: "pending work", status: "done" }]), // turn 3 — resolves the plan
+      makeAssistant("finished after the user's input"), // turn 4 — clean end
+    ];
+    const mgr = new SessionManager(makeManagerConfig(dir, createMockStreamFn(responses), [createPlanTool()]));
+    await mgr.create();
+
+    const events: AgentEvent[] = [];
+    let messageEndCount = 0;
+    const unsub = mgr.subscribe((e) => {
+      events.push(e);
+      // Queue a user steer on the second response's message_end (the premature "done"),
+      // before its turn_end → guard sees hasPendingMessages() and skips its nudge.
+      if (e.type === "message_end" && ++messageEndCount === 2) {
+        mgr.steer("actually, use a red theme");
+      }
+    });
+    await mgr.run({ role: "user", content: "start", timestamp: Date.now() });
+    unsub();
+
+    const planReminders = events.filter(
+      (e) =>
+        e.type === "steering_injected" &&
+        (e as { messages: Array<{ content: unknown }> }).messages.some(
+          (m) => typeof m.content === "string" && m.content.includes("[Plan reminder]"),
+        ),
+    );
+    expect(planReminders).toHaveLength(0);
+    // The user's steer was still delivered.
+    const userSteer = events.filter(
+      (e) =>
+        e.type === "steering_injected" &&
+        (e as { messages: Array<{ content: unknown }> }).messages.some(
+          (m) => typeof m.content === "string" && m.content.includes("red theme"),
+        ),
+    );
+    expect(userSteer).toHaveLength(1);
   });
 });
 

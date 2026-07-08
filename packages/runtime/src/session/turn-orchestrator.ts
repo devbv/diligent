@@ -16,6 +16,7 @@ import { calculateUsageCost } from "../cost";
 import { createToolStartRenderPayload } from "../tools/render-strategies";
 import { buildSessionContext } from "./context-builder";
 import type { SessionPersistence } from "./persistence";
+import { PlanCompletionGuard } from "./plan-guard";
 import type { SessionCache } from "./session-cache";
 import type { SessionStateStore } from "./state-store";
 import { TurnStager } from "./turn-stager";
@@ -268,11 +269,28 @@ export class TurnOrchestrator {
     const { agent, turnStager } = prepared;
     let currentTurnId: string | undefined;
     let lastAgentError: { error: ErrorEntry["error"]; fatal: boolean } | undefined;
+    const planGuard = new PlanCompletionGuard();
 
     const unsubscribe = agent.subscribe((event: CoreAgentEvent) => {
       if (event.type === "turn_start") currentTurnId = event.turnId;
       if (event.type === "error") {
         lastAgentError = { error: event.error, fatal: event.fatal };
+      }
+
+      // Premature-yield guard: steer the model back to its unfinished plan.
+      // emit() runs subscribers synchronously before the loop's break check, so
+      // a steer queued here keeps the loop going. A guard bug must never kill
+      // the run — subscriber exceptions propagate into the loop's emit.
+      try {
+        if (event.type === "tool_end" && event.childThreadId == null) {
+          planGuard.observeToolEnd(event.toolName, event.output, event.isError);
+        }
+        if (event.type === "turn_end" && !agent.hasPendingMessages()) {
+          const nudge = planGuard.maybeNudge(event.message);
+          if (nudge) agent.steer({ role: "user", content: nudge, timestamp: Date.now() });
+        }
+      } catch (err) {
+        console.warn("[PlanCompletionGuard] skipped:", err);
       }
       if (event.type === "usage") {
         this.ctx.sessionCache.handleUsage(this.ctx.persistence.sessionId, event.usage);

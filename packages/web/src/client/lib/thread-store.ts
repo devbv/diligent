@@ -31,6 +31,13 @@ import { getUserFacingErrorMessage } from "./user-facing-errors";
 
 export { hydrateFromThreadRead } from "./thread-hydration";
 
+/** Prefixes the runtime PlanCompletionGuard uses for its injected steering messages. */
+const INJECTED_STEER_PREFIXES = ["[Plan reminder]", "[Continue]"];
+
+function isInjectedSteerText(text: string): boolean {
+  return INJECTED_STEER_PREFIXES.some((prefix) => text.startsWith(prefix));
+}
+
 export interface PlanState {
   title: string;
   steps: Array<{ text: string; status: "pending" | "in_progress" | "done" | "cancelled" }>;
@@ -77,6 +84,8 @@ export type RenderItem =
       contextItems?: AgentContextItem[];
       images: Array<{ url: string; fileName?: string; mediaType?: string }>;
       timestamp: number;
+      /** Runtime-injected steering (e.g. plan-completion nudge) — not typed by the user. */
+      injected?: boolean;
     }
   | {
       id: string;
@@ -440,6 +449,9 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent, turnId?: string
         contextItems,
         images,
         timestamp: event.message.timestamp,
+        // Persisted runtime nudges rehydrate as plain user messages; detect them
+        // by prefix so a reloaded session renders them as notices, not user bubbles.
+        injected: isInjectedSteerText(remainingText),
       });
     }
 
@@ -525,19 +537,26 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent, turnId?: string
         steerIds.length > 0
           ? merged.pendingSteers.filter((steer) => !steerIdSet.has(steer.id))
           : merged.pendingSteers.slice(event.messageCount);
-      const drained =
+      // Steers the client had queued locally are user-typed; a pure fallback to
+      // the event payload means the runtime injected them (e.g. a plan-completion
+      // nudge the user never wrote).
+      const drained: Array<{ text: string; images: (typeof fallbackFromEvent)[number]["images"]; injected: boolean }> =
         drainedFromQueue.length > 0
           ? drainedFromQueue.map((steer, index) => ({
               text: fallbackFromEvent[index]?.text || steer.content,
               images: fallbackFromEvent[index]?.images ?? [],
+              injected: false,
             }))
-          : fallbackFromEvent.slice(0, event.messageCount);
-      const newItems: RenderItem[] = drained.map(({ text, images }, i) => ({
+          : fallbackFromEvent
+              .slice(0, event.messageCount)
+              .map(({ text, images }) => ({ text, images, injected: true }));
+      const newItems: RenderItem[] = drained.map(({ text, images, injected }, i) => ({
         id: `steer-injected-${Date.now()}-${i}`,
         kind: "user" as const,
         text,
         images,
         timestamp: Date.now(),
+        injected,
       }));
       return {
         ...merged,
