@@ -1,5 +1,6 @@
 // @summary Tests for OpenAI Responses event handling edge cases like aborts
 import { afterEach, describe, expect, test } from "bun:test";
+import { toSerializableError } from "../../../src/agent/util/errors";
 import type { EventStream } from "../../../src/event-stream";
 import { createChatGPTStream } from "../../../src/llm/provider/chatgpt";
 import { handleResponsesAPIEvents } from "../../../src/llm/provider/openai-sse";
@@ -100,6 +101,29 @@ describe("handleResponsesAPIEvents", () => {
     expect(events.some((event) => event.type === "usage")).toBe(false);
     expect(events.some((event) => event.type === "done")).toBe(false);
   });
+
+  test("surfaces response.failed error code via cause for log serialization", async () => {
+    const events: ProviderEvent[] = [];
+    const stream = {
+      push(event: ProviderEvent) {
+        events.push(event);
+      },
+    } as unknown as EventStream<ProviderEvent, ProviderResult>;
+
+    async function* iter(): AsyncIterable<Record<string, unknown>> {
+      yield {
+        type: "response.failed",
+        response: { error: { code: "server_error", message: "Something went wrong" } },
+      };
+    }
+
+    await handleResponsesAPIEvents(iter(), stream, TEST_MODEL);
+
+    const error = events.find((event): event is Extract<ProviderEvent, { type: "error" }> => event.type === "error");
+    expect(error).toBeDefined();
+    const serialized = toSerializableError(error?.error);
+    expect(serialized.code).toBe("server_error");
+  });
 });
 
 describe("createChatGPTStream retry classification", () => {
@@ -146,6 +170,29 @@ describe("createChatGPTStream retry classification", () => {
         return new Response(
           [
             'data: {"type":"response.failed","response":{"error":{"message":"ChatGPT is temporarily unavailable. Please try again."}}}',
+            "",
+          ].join("\n"),
+          { status: 200, headers: { "content-type": "text/event-stream" } },
+        );
+      }
+      return chatGPTSuccessResponse();
+    }) as typeof fetch;
+
+    const events = await collectEvents(createRetriedChatGPTStream());
+
+    expect(fetchCount).toBe(2);
+    expect(events.some((event) => event.type === "done")).toBe(true);
+    expect(events.some((event) => event.type === "error")).toBe(false);
+  });
+
+  test("retries generic OpenAI 'you can retry your request' response.failed", async () => {
+    let fetchCount = 0;
+    globalThis.fetch = (async () => {
+      fetchCount++;
+      if (fetchCount === 1) {
+        return new Response(
+          [
+            'data: {"type":"response.failed","response":{"error":{"message":"An error occurred while processing your request. You can retry your request, or contact us through our help center at help.openai.com if the error persists."}}}',
             "",
           ].join("\n"),
           { status: 200, headers: { "content-type": "text/event-stream" } },

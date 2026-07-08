@@ -12,7 +12,12 @@ import {
   type OpenAIImageDetail,
   toResponseInputItems,
 } from "./openai-responses";
-import { describeCompactionPayload, extractCompactionSummary, extractCompactionSummaryItem } from "./openai-shared";
+import {
+  describeCompactionPayload,
+  extractCompactionSummary,
+  extractCompactionSummaryItem,
+  isTransientOpenAIErrorMessage,
+} from "./openai-shared";
 import { handleResponsesAPIEvents } from "./openai-sse";
 
 export function createOpenAIStream(apiKey?: string, baseUrl?: string, imageDetail?: OpenAIImageDetail): StreamFunction {
@@ -232,15 +237,5 @@ function parseRetryAfterFromHeaders(headers: Headers | undefined): number | unde
 }
 
 function isTransientOpenAIError(err: unknown): boolean {
-  if (!(err instanceof Error)) return false;
-  const message = err.message.toLowerCase();
-  return (
-    message.includes("overloaded") ||
-    message.includes("temporarily unavailable") ||
-    message.includes("timeout") ||
-    message.includes("timed out") ||
-    message.includes("can retry your request") ||
-    message.includes("service unavailable") ||
-    message.includes("internal server error")
-  );
+  return err instanceof Error && isTransientOpenAIErrorMessage(err.message);
 }

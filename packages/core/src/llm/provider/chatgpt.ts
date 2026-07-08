@@ -8,7 +8,12 @@ import type { Model, ProviderEvent, ProviderResult, StreamContext, StreamFunctio
 import { ProviderError } from "../types";
 import type { NativeCompactFn } from "./native-compaction";
 import { buildResponsesRequestBody, toResponseInputItems } from "./openai-responses";
-import { describeCompactionPayload, extractCompactionSummary, extractCompactionSummaryItem } from "./openai-shared";
+import {
+  describeCompactionPayload,
+  extractCompactionSummary,
+  extractCompactionSummaryItem,
+  isTransientOpenAIErrorMessage,
+} from "./openai-shared";
 import { handleResponsesAPIEvents } from "./openai-sse";
 
 const CHATGPT_CODEX_URL = "https://chatgpt.com/backend-api/codex/responses";
@@ -17,19 +22,6 @@ const USER_AGENT = `diligent (${platform()} ${release()}; ${arch()})`;
 
 function resolveChatGPTModelId(modelId: string): string {
   return modelId.startsWith("chatgpt-") ? `gpt-${modelId.slice("chatgpt-".length)}` : modelId;
-}
-
-function isTransientChatGPTErrorMessage(message: string): boolean {
-  const normalized = message.toLowerCase();
-  return (
-    normalized.includes("overloaded") ||
-    normalized.includes("temporarily unavailable") ||
-    normalized.includes("timeout") ||
-    normalized.includes("timed out") ||
-    normalized.includes("service unavailable") ||
-    normalized.includes("server had an error") ||
-    normalized.includes("internal server error")
-  );
 }
 
 /**
@@ -121,7 +113,7 @@ export function createChatGPTStream(getTokens: () => OpenAIOAuthTokens): StreamF
                   : response.status === 401 || response.status === 403
                     ? "auth"
                     : "unknown",
-            !is429 && (response.status >= 500 || isTransientChatGPTErrorMessage(message)),
+            !is429 && (response.status >= 500 || isTransientOpenAIErrorMessage(message)),
             undefined,
             response.status,
           );
@@ -179,7 +171,7 @@ export function createChatGPTStream(getTokens: () => OpenAIOAuthTokens): StreamF
           stream.push({ type: "error", error: err });
         } else if (isNetworkError(err)) {
           stream.push({ type: "error", error: new ProviderError(String(err), "network", true) });
-        } else if (err instanceof Error && isTransientChatGPTErrorMessage(err.message)) {
+        } else if (err instanceof Error && isTransientOpenAIErrorMessage(err.message)) {
           stream.push({
             type: "error",
             error: new ProviderError(err.message, "server_error", true, undefined, undefined, err),
