@@ -3,6 +3,11 @@
   "effort": "high",
   "systemPromptFile": "system-prompt.txt",
   "yolo": true,
+  // Re-inject unfinished plan steps after this many agent turns without a plan update, so
+  // long/steered sessions don't forget remaining work and stop early. Tune in real sessions:
+  // lower toward 1 (Manus-style, near every turn) if early premature-stops persist, raise
+  // toward 6 (Cline-style) if it's too noisy. 0 disables.
+  "planReminderIntervalTurns": 3,
   "tools": {
     "builtin": {
       "bash": false

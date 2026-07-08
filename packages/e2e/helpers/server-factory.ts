@@ -45,6 +45,7 @@ export function createTestServer(opts: {
     model: { id: "fake", provider: "fake", contextWindow: 8192, maxOutputTokens: 4096, supportsThinking: false },
     effort: "medium",
     mode: "default",
+    planReminderIntervalTurns: 0,
     systemPrompt: [],
     streamFunction: streamFn,
     diligent: { tools: opts.runtimeToolsConfig },

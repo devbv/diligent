@@ -31,6 +31,7 @@ function makeRuntimeConfig(overrides?: Partial<RuntimeConfig>): RuntimeConfig {
     model,
     mode: "default",
     effort: "medium",
+    planReminderIntervalTurns: 0,
     systemPrompt: [{ label: "base", content: "test" }],
     streamFunction: () => {
       throw new Error("not implemented");

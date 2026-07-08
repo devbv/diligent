@@ -151,6 +151,7 @@ async function createRuntimeAgent(args: {
         keepRecentTokens: runtimeConfig.compaction.keepRecentTokens,
         timeoutMs: runtimeConfig.compaction.timeoutMs,
       },
+      planReminderIntervalTurns: runtimeConfig.planReminderIntervalTurns,
     },
     toolsResult.registry,
   );

@@ -11,6 +11,14 @@ import { runToolCalls } from "./tool";
 import type { AgentStream, CompactionConfig, QueuedSteeringMessage } from "./types";
 import { DoomLoopDetector } from "./util/doom-loop";
 import { toSerializableError } from "./util/errors";
+import {
+  buildPlanReminderMessage,
+  findLatestPlanSteps,
+  PLAN_TOOL_NAME,
+  type PlanStepLike,
+  parsePlanSteps,
+  remainingPlanSteps,
+} from "./util/plan-reminder";
 
 // Internal fully-resolved config for one loop run
 interface LoopConfig {
@@ -20,6 +28,8 @@ interface LoopConfig {
   tools: Tool[];
   effort: ThinkingEffort;
   compaction?: CompactionConfig;
+  /** Soft plan reminder cadence in agent turns; 0/undefined disables. See AgentOptions. */
+  planReminderIntervalTurns?: number;
 }
 
 export interface LoopRuntime {
@@ -29,6 +39,8 @@ export interface LoopRuntime {
   stream: AgentStream;
   sessionId?: string;
   compactionSummary?: Record<string, unknown>;
+  /** Session plan state seeded by the Agent (survives compaction/re-prompts). */
+  planState?: PlanStepLike[];
   hooks: {
     drainSteeringMessages: () => QueuedSteeringMessage[];
     pendingSteeringCount: () => number;
@@ -48,7 +60,7 @@ export async function runAgentLoop(
   messages: Message[],
   runtime: LoopRuntime,
   userSignal?: AbortSignal,
-): Promise<{ messages: Message[]; compactionSummary?: Record<string, unknown> }> {
+): Promise<{ messages: Message[]; compactionSummary?: Record<string, unknown>; planState?: PlanStepLike[] }> {
   const { config, streamFunction, stream, hooks } = runtime;
   const toolAbortController = new AbortController();
   const signal = AbortSignal.any([toolAbortController.signal, userSignal].filter((s): s is AbortSignal => s != null));
@@ -69,6 +81,12 @@ export async function runAgentLoop(
   let turnNumber = 0;
   const nextItemId = () => `item-${++itemCounter}`;
 
+  // Soft plan reminder (recitation): re-inject unfinished plan steps into the tail after
+  // `planReminderIntervalTurns` turns without the plan being surfaced, so the model does
+  // not drift off and stop early. Plan state is loop-local so it survives compaction.
+  let currentPlan = runtime.planState ?? findLatestPlanSteps(conversation);
+  let turnsSincePlanSurfaced = 0;
+
   stream.emit({ type: "agent_start" });
 
   try {
@@ -80,7 +98,7 @@ export async function runAgentLoop(
       const turnId = `turn-${++turnNumber}`;
       stream.emit({ type: "turn_start", turnId });
 
-      await compactIfNeeded(conversation, loopRequest, stream);
+      const justCompacted = await compactIfNeeded(conversation, loopRequest, stream);
 
       const steering = hooks.drainSteeringMessages();
       if (steering.length > 0) {
@@ -92,6 +110,24 @@ export async function runAgentLoop(
           messages: steeringMessages,
           steerIds: steering.map((entry) => entry.id),
         });
+      }
+
+      // Plan reminder: recite unfinished steps when the plan has drifted out of the tail
+      // (N turns without a plan update) or was just dropped by compaction. Skipped on
+      // turns the model itself updated the plan (turnsSincePlanSurfaced === 0).
+      if (config.planReminderIntervalTurns && currentPlan) {
+        const remaining = remainingPlanSteps(currentPlan);
+        if (remaining.length > 0 && (justCompacted || turnsSincePlanSurfaced >= config.planReminderIntervalTurns)) {
+          conversation.push({
+            role: "user",
+            content: buildPlanReminderMessage(remaining),
+            timestamp: Date.now(),
+          });
+          console.info(
+            `[agent:plan-reminder] injected remaining=${remaining.length} compacted=${justCompacted} turnsSince=${turnsSincePlanSurfaced}`,
+          );
+          turnsSincePlanSurfaced = 0;
+        }
       }
 
       let retriedAfterContextOverflow = false;
@@ -129,9 +165,18 @@ export async function runAgentLoop(
       // tool_use must be paired with its tool_result, otherwise the next request
       // sends an orphaned tool_use and the provider rejects the whole conversation
       // (e.g. Anthropic 400 "tool_use ids were found without tool_result blocks").
+      let planSurfacedThisTurn = false;
       for (const execution of executions) {
         conversation.push(execution.toolResult);
         doomLoopTracker.record(execution.toolCall.name, execution.toolCall.input);
+        if (execution.toolCall.name === PLAN_TOOL_NAME && !execution.toolResult.isError) {
+          // A plan tool_result is itself a recite at the tail — track it and reset cadence.
+          const steps = parsePlanSteps(execution.toolResult.output);
+          if (steps) {
+            currentPlan = steps;
+            planSurfacedThisTurn = true;
+          }
+        }
       }
 
       const doomLoop = doomLoopTracker.check();
@@ -142,6 +187,11 @@ export async function runAgentLoop(
           timestamp: Date.now(),
         });
       }
+
+      // Reset the reminder cadence when the model surfaced the plan this turn; otherwise
+      // advance it so a reminder fires once the plan has been buried for enough turns.
+      if (planSurfacedThisTurn) turnsSincePlanSurfaced = 0;
+      else turnsSincePlanSurfaced++;
 
       stream.emit({
         type: "turn_end",
@@ -161,27 +211,28 @@ export async function runAgentLoop(
     stream.emit({ type: "agent_end", messages: conversation });
   }
 
-  return { messages: conversation, compactionSummary: loopRequest.compactionSummary };
+  return { messages: conversation, compactionSummary: loopRequest.compactionSummary, planState: currentPlan };
 }
 
 function isContextOverflowError(err: unknown): err is ProviderError {
   return err instanceof ProviderError && err.errorType === "context_overflow";
 }
 
-async function compactIfNeeded(messages: Message[], request: LoopRequest, stream: AgentStream): Promise<void> {
+async function compactIfNeeded(messages: Message[], request: LoopRequest, stream: AgentStream): Promise<boolean> {
   const config = request.config.compaction;
   if (!config) {
-    return;
+    return false;
   }
 
   const decision = getCompactionDecision(messages, request.config.model.contextWindow, config.reservePercent);
-  if (!decision.shouldCompact) return;
+  if (!decision.shouldCompact) return false;
 
   console.info(
     `[agent:compaction] triggered source=${decision.source} estimatedTokens=${decision.estimatedTokens} thresholdTokens=${decision.thresholdTokens} reserveTokens=${decision.reserveTokens}`,
   );
 
   await applyCompaction(messages, request, stream);
+  return true;
 }
 
 async function compactAfterContextOverflow(

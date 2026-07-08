@@ -158,4 +158,11 @@ export interface AgentOptions {
   llmMsgStreamFn?: StreamFunction;
   /** Explicit native compaction function — overrides the global compaction resolver. */
   llmCompactionFn?: NativeCompactFn;
+  /**
+   * Soft plan reminder: re-inject the unfinished plan steps into the conversation tail
+   * after this many agent loop iterations ("turns") without the plan being surfaced.
+   * Resets whenever the model calls the `plan` tool (its update is itself a recite) or a
+   * reminder fires. 0/undefined disables the feature (no behavior change).
+   */
+  planReminderIntervalTurns?: number;
 }
