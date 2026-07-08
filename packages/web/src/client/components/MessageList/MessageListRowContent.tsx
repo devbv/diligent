@@ -1,7 +1,6 @@
 // @summary Renders colocated MessageList virtual row descriptors into concrete row UI
 
 import type { ThreadReadResponse } from "@diligent/protocol";
-import { AgentReminderNotice } from "../AgentReminderNotice";
 import { ApprovalCard } from "../ApprovalCard";
 import { AssistantMessage } from "../AssistantMessage";
 import { CollabGroup } from "../CollabGroup";
@@ -36,11 +35,7 @@ export function MessageListRowContent({
         case "tool":
           return <ToolBlock item={row.item} threadCwd={threadCwd} />;
         case "user":
-          return row.item.injected ? (
-            <AgentReminderNotice text={row.item.text} />
-          ) : (
-            <UserMessage text={row.item.text} images={row.item.images} contextItems={row.item.contextItems} />
-          );
+          return <UserMessage text={row.item.text} images={row.item.images} contextItems={row.item.contextItems} />;
         case "assistant":
           return <AssistantMessage item={row.item} suppressThinking={row.suppressThinking ?? false} />;
       }

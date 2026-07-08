@@ -84,8 +84,6 @@ export type RenderItem =
       contextItems?: AgentContextItem[];
       images: Array<{ url: string; fileName?: string; mediaType?: string }>;
       timestamp: number;
-      /** Runtime-injected steering (e.g. plan-completion nudge) — not typed by the user. */
-      injected?: boolean;
     }
   | {
       id: string;
@@ -442,6 +440,12 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent, turnId?: string
           nextState = { ...nextState, pendingSteers: [] };
         }
       }
+      // Runtime-injected nudges (plan-completion reminders) are persisted as plain
+      // user messages for transcript validity, but they are an internal mechanism
+      // and must not be rendered — skip them on resume/hydration too.
+      if (isInjectedSteerText(remainingText)) {
+        return nextState;
+      }
       return withItem(nextState, `remote-user-${event.itemId}`, {
         id: `remote-user-${event.itemId}`,
         kind: "user",
@@ -449,9 +453,6 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent, turnId?: string
         contextItems,
         images,
         timestamp: event.message.timestamp,
-        // Persisted runtime nudges rehydrate as plain user messages; detect them
-        // by prefix so a reloaded session renders them as notices, not user bubbles.
-        injected: isInjectedSteerText(remainingText),
       });
     }
 
@@ -537,26 +538,24 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent, turnId?: string
         steerIds.length > 0
           ? merged.pendingSteers.filter((steer) => !steerIdSet.has(steer.id))
           : merged.pendingSteers.slice(event.messageCount);
-      // Steers the client had queued locally are user-typed; a pure fallback to
-      // the event payload means the runtime injected them (e.g. a plan-completion
-      // nudge the user never wrote).
-      const drained: Array<{ text: string; images: (typeof fallbackFromEvent)[number]["images"]; injected: boolean }> =
+      // Steers the client had queued locally are user-typed and shown as-is. On
+      // the fallback path (not in the local queue) we drop runtime-injected
+      // nudges (e.g. plan-completion reminders) — they are an internal mechanism
+      // to keep the model working and are not shown in the chat — while still
+      // rendering genuine user steers that arrived from elsewhere.
+      const drained =
         drainedFromQueue.length > 0
           ? drainedFromQueue.map((steer, index) => ({
               text: fallbackFromEvent[index]?.text || steer.content,
               images: fallbackFromEvent[index]?.images ?? [],
-              injected: false,
             }))
-          : fallbackFromEvent
-              .slice(0, event.messageCount)
-              .map(({ text, images }) => ({ text, images, injected: true }));
-      const newItems: RenderItem[] = drained.map(({ text, images, injected }, i) => ({
+          : fallbackFromEvent.slice(0, event.messageCount).filter(({ text }) => !isInjectedSteerText(text));
+      const newItems: RenderItem[] = drained.map(({ text, images }, i) => ({
         id: `steer-injected-${Date.now()}-${i}`,
         kind: "user" as const,
         text,
         images,
         timestamp: Date.now(),
-        injected,
       }));
       return {
         ...merged,
