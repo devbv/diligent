@@ -24,6 +24,7 @@ Do NOT use for single trivial tasks, purely conversational requests, or tasks co
 - Cancel steps that become irrelevant instead of deleting them.
 - Before yielding, ensure no deferred or abandoned plan still has active pending or in_progress steps.
 - IMPORTANT: Before summarizing results to the user, call this tool to mark the last step done.
+- NEVER tell the user the work is complete while any step is still pending or in_progress. Finish the step, or mark it cancelled with a brief reason, before you end your turn. If a step genuinely needs the user (a decision, confirmation, or testing), keep it pending and ask them directly instead of declaring the whole task done.
 
 Anti-patterns:
 - Keeping an old plan active after the user says "later", "not now", "stop", or changes direction.

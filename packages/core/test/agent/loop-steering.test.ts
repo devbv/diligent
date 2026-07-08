@@ -275,6 +275,40 @@ describe("agent steering", () => {
     expect(hasSteer).toBe(true);
   });
 
+  test("steering during turn_end event continues the loop (PlanCompletionGuard invariant)", async () => {
+    // Invariant the runtime PlanCompletionGuard depends on: turn_end is emitted
+    // synchronously BEFORE the loop's break check, so a steer queued from a
+    // turn_end subscriber increments pendingSteeringCount() and keeps the loop
+    // going. Mirrors the message_end test above but for the turn_end hook point.
+    const firstMsg = makeAssistant([{ type: "text", text: "premature done" }]);
+    const secondMsg = makeAssistant([{ type: "text", text: "kept going" }]);
+    const streamFn = createMockStreamFunction([firstMsg, secondMsg]);
+
+    const agent = makeAgent(streamFn);
+
+    const events: CoreAgentEvent[] = [];
+    const unsub = agent.subscribe((e) => {
+      events.push(e);
+      // Steer on the first turn_end — fires BEFORE the break check at loop.ts:153
+      if (e.type === "turn_end" && streamFn.contexts.length === 1) {
+        agent.steer({ role: "user", content: "keep working on the plan", timestamp: Date.now() });
+      }
+    });
+    await agent.prompt({ role: "user", content: "start", timestamp: Date.now() });
+    unsub();
+
+    // The loop continued — 2 LLM calls, one steering injection.
+    expect(streamFn.contexts.length).toBe(2);
+    const steeringEvents = events.filter((e) => e.type === "steering_injected");
+    expect(steeringEvents.length).toBe(1);
+    const secondCallMsgs = streamFn.contexts[1].messages;
+    expect(
+      secondCallMsgs.some(
+        (m) => m.role === "user" && typeof m.content === "string" && m.content === "keep working on the plan",
+      ),
+    ).toBe(true);
+  });
+
   test("steering during thinking with no tool calls continues loop (codex-rs pattern)", async () => {
     const toolCallMsg = makeAssistant(
       [{ type: "tool_call", id: "tc_1", name: "echo", input: { message: "working" } }],

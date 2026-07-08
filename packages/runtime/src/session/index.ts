@@ -12,6 +12,7 @@ export {
   SessionPersistence,
   SessionWriter,
 } from "./persistence";
+export { PlanCompletionGuard } from "./plan-guard";
 export { SessionStateStore } from "./state-store";
 export { TurnStager } from "./turn-stager";
 export type {
