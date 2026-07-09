@@ -65,10 +65,10 @@ export interface UsageState {
 
 /**
  * The runtime injects plan reminders as plain user messages (persisted for transcript/audit
- * fidelity and accurate resume), prefixed with this marker. They are an internal mechanism to
+ * fidelity and accurate resume), wrapped in this marker tag. They are an internal mechanism to
  * keep the model working and must never render in the chat.
  */
-const INJECTED_REMINDER_PREFIX = "[Plan reminder]";
+const INJECTED_REMINDER_PREFIX = "<system-reminder>";
 function isInjectedReminderText(text: string): boolean {
   return text.startsWith(INJECTED_REMINDER_PREFIX);
 }

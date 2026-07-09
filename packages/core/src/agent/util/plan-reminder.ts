@@ -17,6 +17,16 @@ export interface PlanStepLike {
   status: PlanStepStatus;
 }
 
+/**
+ * The reminder's persistent state — plan steps AND the drift counter — carried across
+ * prompts by the Agent so the cadence survives user inputs (and compaction/resume), not
+ * just the plan steps.
+ */
+export interface PlanReminderState {
+  plan?: PlanStepLike[];
+  turnsSinceSurfaced: number;
+}
+
 const PLAN_STATUSES: readonly PlanStepStatus[] = ["pending", "in_progress", "done", "cancelled"];
 
 /**
@@ -80,26 +90,17 @@ export function latestUserGoal(messages: Message[], maxChars = 200): string | un
 }
 
 /**
- * Build the self-contained recitation message pushed into the conversation tail. Lists the
- * remaining step texts inline (survives compaction), re-anchors the original goal, and nudges
- * the model to keep the plan itself current — all soft, no forced continuation.
+ * Build the reminder injected into the conversation tail — wrapped in a `<system-reminder>`
+ * tag so the model reads it as a system directive, and kept short. Lists the remaining steps
+ * inline (survives compaction) and re-anchors the goal. Soft: no forced continuation.
  */
-export function buildPlanReminderMessage(
-  remaining: PlanStepLike[],
-  opts?: { goal?: string; turnsSinceUpdate?: number },
-): string {
-  const turnsAgo = opts?.turnsSinceUpdate ?? 0;
-  const staleNote = turnsAgo > 0 ? ` (last plan update: ${turnsAgo} turn${turnsAgo === 1 ? "" : "s"} ago)` : "";
-
-  const lines: string[] = ["[Plan reminder]"];
-  if (opts?.goal) lines.push(`You are still working on this task: "${opts.goal}".`);
-  lines.push(
-    "Your active plan still has unfinished steps — do not tell the user the work is done until each is finished or cancelled.",
-    "Remaining steps:",
-    ...remaining.map((step) => `- (${step.status}) ${step.text}`),
-    `Keep the plan current: mark each step done as you finish it, cancel steps that no longer apply, and revise the plan if the approach changed.${staleNote}`,
-    "Continue working now. If a step genuinely needs the user's decision, confirmation, or testing, ask with the request_user_input tool instead of stopping silently.",
-  );
+export function buildPlanReminderMessage(remaining: PlanStepLike[], opts?: { goal?: string }): string {
+  const lines = [
+    "<system-reminder>",
+    "The plan still has unfinished steps. Keep working through them and update the plan as each is done — do not tell the user the work is complete while steps remain.",
+  ];
+  if (opts?.goal) lines.push(`Goal: ${opts.goal}`);
+  lines.push("Remaining:", ...remaining.map((step) => `- (${step.status}) ${step.text}`), "</system-reminder>");
   return lines.join("\n");
 }
 
@@ -121,14 +122,15 @@ export class PlanReminder {
 
   constructor(
     private readonly intervalTurns: number,
-    seedPlan?: PlanStepLike[],
+    seed?: PlanReminderState,
   ) {
-    this.plan = seedPlan;
+    this.plan = seed?.plan;
+    this.turnsSinceSurfaced = seed?.turnsSinceSurfaced ?? 0;
   }
 
-  /** The latest plan seen — returned by the loop so it survives compaction and re-prompts. */
-  get currentPlan(): PlanStepLike[] | undefined {
-    return this.plan;
+  /** Persistent state to hand back to the Agent so the plan AND cadence survive the next prompt. */
+  snapshot(): PlanReminderState {
+    return { plan: this.plan, turnsSinceSurfaced: this.turnsSinceSurfaced };
   }
 
   /** Feed every tool result of the turn; only the `plan` tool is relevant. */
@@ -151,7 +153,7 @@ export class PlanReminder {
     console.info(
       `[agent:plan-reminder] injected remaining=${remaining.length} compacted=${opts.compactedThisTurn} turnsSince=${this.turnsSinceSurfaced}`,
     );
-    const message = buildPlanReminderMessage(remaining, { goal: opts.goal, turnsSinceUpdate: this.turnsSinceSurfaced });
+    const message = buildPlanReminderMessage(remaining, { goal: opts.goal });
     this.turnsSinceSurfaced = 0;
     return message;
   }
