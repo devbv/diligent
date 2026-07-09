@@ -110,7 +110,18 @@ export async function runAgentLoop(
 
       const planReminderMessage = planReminder.reminderForTurn({ compactedThisTurn: justCompacted, goal: runGoal });
       if (planReminderMessage) {
-        conversation.push({ role: "user", content: planReminderMessage, timestamp: Date.now() });
+        const reminderEntry: Message = { role: "user", content: planReminderMessage, timestamp: Date.now() };
+        conversation.push(reminderEntry);
+        // Emit steering_injected so the reminder is staged to the session tree — external
+        // session logs can then audit whether it fires, and resume restores an accurate
+        // transcript. Unlike real steering it is NOT enqueued, so it never forces another
+        // turn (stays soft). The web client hides it by its "[Plan reminder]" prefix.
+        stream.emit({
+          type: "steering_injected",
+          messageCount: 1,
+          messages: [reminderEntry],
+          steerIds: [`plan-reminder-${turnId}`],
+        });
       }
 
       let retriedAfterContextOverflow = false;

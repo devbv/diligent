@@ -2,6 +2,7 @@
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
 import { Agent } from "../../src/agent/agent";
+import type { CoreAgentEvent } from "../../src/agent/types";
 import { EventStream } from "../../src/event-stream";
 import type { NativeCompactFn } from "../../src/llm/provider/native-compaction";
 import type { Model, ProviderEvent, ProviderResult, StreamContext, StreamFunction } from "../../src/llm/types";
@@ -218,5 +219,29 @@ describe("plan reminder (recitation)", () => {
     const streamFn = createMockStreamFunction([noopCall(), noopCall(), noopCall(), finalText()]);
     await makeAgent(streamFn, 1).prompt(userMsg());
     expect(streamFn.contexts.some(hasReminder)).toBe(false);
+  });
+
+  test("persists each reminder as a steering_injected event (for audit + resume)", async () => {
+    const streamFn = createMockStreamFunction([
+      planCall([{ text: "step A", status: "pending" }]),
+      noopCall(),
+      noopCall(),
+      finalText(),
+    ]);
+    const agent = makeAgent(streamFn, 2);
+    const events: CoreAgentEvent[] = [];
+    const unsub = agent.subscribe((e) => events.push(e));
+    await agent.prompt(userMsg());
+    unsub();
+
+    const reminderEvents = events.filter(
+      (e): e is Extract<CoreAgentEvent, { type: "steering_injected" }> =>
+        e.type === "steering_injected" &&
+        e.messages.some(
+          (m) => m.role === "user" && typeof m.content === "string" && m.content.includes("[Plan reminder]"),
+        ),
+    );
+    expect(reminderEvents).toHaveLength(1);
+    expect(reminderEvents[0].messageCount).toBe(1);
   });
 });
