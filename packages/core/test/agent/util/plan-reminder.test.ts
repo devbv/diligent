@@ -63,29 +63,26 @@ describe("remainingPlanSteps", () => {
 });
 
 describe("buildPlanReminderMessage", () => {
-  test("lists remaining steps, re-anchors the goal, and nudges plan maintenance", () => {
+  test("wraps in a system-reminder tag, lists steps, and re-anchors the goal", () => {
     const msg = buildPlanReminderMessage(
       [
         { text: "wire config", status: "in_progress" },
         { text: "add tests", status: "pending" },
       ],
-      { goal: "build the feature", turnsSinceUpdate: 3 },
+      { goal: "build the feature" },
     );
-    expect(msg).toContain("[Plan reminder]");
-    expect(msg).toContain('You are still working on this task: "build the feature"');
+    expect(msg.startsWith("<system-reminder>")).toBe(true);
+    expect(msg.trimEnd().endsWith("</system-reminder>")).toBe(true);
+    expect(msg).toContain("Goal: build the feature");
     expect(msg).toContain("(in_progress) wire config");
     expect(msg).toContain("(pending) add tests");
-    expect(msg).toContain("Keep the plan current");
-    expect(msg).toContain("last plan update: 3 turns ago");
-    expect(msg).toContain("request_user_input");
-    expect(msg).toContain("do not tell the user the work is done");
+    expect(msg).toContain("do not tell the user the work is complete");
   });
 
-  test("omits the goal line and stale suffix when not provided", () => {
+  test("omits the goal line when no goal is provided", () => {
     const msg = buildPlanReminderMessage([{ text: "x", status: "pending" }]);
-    expect(msg).toContain("[Plan reminder]");
-    expect(msg).not.toContain("You are still working on this task");
-    expect(msg).not.toContain("last plan update");
+    expect(msg.startsWith("<system-reminder>")).toBe(true);
+    expect(msg).not.toContain("Goal:");
   });
 });
 
@@ -146,7 +143,7 @@ describe("PlanReminder", () => {
     reminder.endTurn();
     // turn 4: cadence elapsed → reminder fires with goal + step
     const msg = reminder.reminderForTurn({ compactedThisTurn: false, goal: "build X" });
-    expect(msg).toContain("[Plan reminder]");
+    expect(msg).toContain("<system-reminder>");
     expect(msg).toContain("(pending) step A");
     expect(msg).toContain("build X");
   });
@@ -176,9 +173,9 @@ describe("PlanReminder", () => {
   });
 
   test("fires immediately after compaction, regardless of cadence", () => {
-    const reminder = new PlanReminder(5, [{ text: "step A", status: "pending" }]);
+    const reminder = new PlanReminder(5, { plan: [{ text: "step A", status: "pending" }], turnsSinceSurfaced: 0 });
     const msg = reminder.reminderForTurn({ compactedThisTurn: true });
-    expect(msg).toContain("[Plan reminder]");
+    expect(msg).toContain("<system-reminder>");
     expect(msg).toContain("(pending) step A");
   });
 
@@ -187,23 +184,37 @@ describe("PlanReminder", () => {
     for (let i = 0; i < 3; i++) noPlan.endTurn();
     expect(noPlan.reminderForTurn({ compactedThisTurn: false })).toBeNull();
 
-    const resolved = new PlanReminder(1, [
-      { text: "a", status: "done" },
-      { text: "b", status: "cancelled" },
-    ]);
+    const resolved = new PlanReminder(1, {
+      plan: [
+        { text: "a", status: "done" },
+        { text: "b", status: "cancelled" },
+      ],
+      turnsSinceSurfaced: 0,
+    });
     resolved.endTurn();
     expect(resolved.reminderForTurn({ compactedThisTurn: false })).toBeNull();
     expect(resolved.reminderForTurn({ compactedThisTurn: true })).toBeNull();
   });
 
-  test("exposes the latest plan (seed, then updates) for the loop to persist", () => {
-    const reminder = new PlanReminder(3, [{ text: "seed", status: "pending" }]);
-    expect(reminder.currentPlan).toEqual([{ text: "seed", status: "pending" }]);
+  test("snapshot exposes plan + counter (seed, then updates) for the loop to persist", () => {
+    const reminder = new PlanReminder(3, { plan: [{ text: "seed", status: "pending" }], turnsSinceSurfaced: 0 });
+    expect(reminder.snapshot().plan).toEqual([{ text: "seed", status: "pending" }]);
     reminder.recordToolResult(PLAN_TOOL_NAME, planOutput([{ text: "updated", status: "in_progress" }]), false);
-    expect(reminder.currentPlan).toEqual([{ text: "updated", status: "in_progress" }]);
+    expect(reminder.snapshot().plan).toEqual([{ text: "updated", status: "in_progress" }]);
     // non-plan and errored tool results leave the plan untouched
     reminder.recordToolResult("other", "whatever", false);
     reminder.recordToolResult(PLAN_TOOL_NAME, pendingPlan(), true);
-    expect(reminder.currentPlan).toEqual([{ text: "updated", status: "in_progress" }]);
+    expect(reminder.snapshot().plan).toEqual([{ text: "updated", status: "in_progress" }]);
+  });
+
+  test("seeds the cadence counter so it survives across prompts", () => {
+    // A fresh PlanReminder seeded near the threshold fires sooner — this is what carries the
+    // drift count across user inputs (the loop hands snapshot() back to the Agent each prompt).
+    const reminder = new PlanReminder(3, { plan: [{ text: "step A", status: "pending" }], turnsSinceSurfaced: 2 });
+    expect(reminder.reminderForTurn({ compactedThisTurn: false })).toBeNull(); // 2 < 3
+    reminder.endTurn();
+    expect(reminder.reminderForTurn({ compactedThisTurn: false })).not.toBeNull(); // 3 >= 3
+    // after firing, the counter restarts and the snapshot reflects it
+    expect(reminder.snapshot().turnsSinceSurfaced).toBe(0);
   });
 });

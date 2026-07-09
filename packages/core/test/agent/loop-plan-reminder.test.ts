@@ -96,20 +96,22 @@ const noopCall = () =>
 const finalText = () => makeAssistant([{ type: "text", text: "완료했습니다" }]);
 
 const hasReminder = (ctx: StreamContext): boolean =>
-  ctx.messages.some((m) => m.role === "user" && typeof m.content === "string" && m.content.includes("[Plan reminder]"));
+  ctx.messages.some(
+    (m) => m.role === "user" && typeof m.content === "string" && m.content.includes("<system-reminder>"),
+  );
 const reminderMentions = (ctx: StreamContext, text: string): boolean =>
   ctx.messages.some(
     (m) =>
       m.role === "user" &&
       typeof m.content === "string" &&
-      m.content.includes("[Plan reminder]") &&
+      m.content.includes("<system-reminder>") &&
       m.content.includes(text),
   );
 // The injected reminder is a real message that persists in the conversation, so counting
 // them (rather than checking presence) tells us how many times it actually fired.
 const countReminders = (ctx: StreamContext): number =>
   ctx.messages.filter(
-    (m) => m.role === "user" && typeof m.content === "string" && m.content.includes("[Plan reminder]"),
+    (m) => m.role === "user" && typeof m.content === "string" && m.content.includes("<system-reminder>"),
   ).length;
 
 function makeAgent(streamFn: StreamFunction, planReminderIntervalTurns?: number): Agent {
@@ -209,7 +211,7 @@ describe("plan reminder (recitation)", () => {
         (m) =>
           m.role === "user" &&
           typeof m.content === "string" &&
-          m.content.includes("[Plan reminder]") &&
+          m.content.includes("<system-reminder>") &&
           m.content.includes("step A"),
       ),
     ).toBe(true);
@@ -219,6 +221,24 @@ describe("plan reminder (recitation)", () => {
     const streamFn = createMockStreamFunction([noopCall(), noopCall(), noopCall(), finalText()]);
     await makeAgent(streamFn, 1).prompt(userMsg());
     expect(streamFn.contexts.some(hasReminder)).toBe(false);
+  });
+
+  test("cadence counter persists across prompts (N-turn-burst + user-input pattern)", async () => {
+    // N=3. Prompt 1 drifts 2 turns (plan, noop, end) → counter carries as 2. On the next user
+    // input, prompt 2 continues from 2, reaches 3, and fires — which a per-prompt counter never would.
+    const streamFn = createMockStreamFunction([
+      planCall([{ text: "step A", status: "pending" }]), // p1 t1: plan (counter → 0)
+      noopCall(), // p1 t2: (counter → 1)
+      finalText(), // p1 t3: end (counter → 2)
+      noopCall(), // p2 t1: (counter → 3)
+      finalText(), // p2 t2: reminder fires at top
+    ]);
+    const agent = makeAgent(streamFn, 3);
+    await agent.prompt(userMsg()); // prompt 1
+    await agent.prompt(userMsg()); // prompt 2 (a fresh user input)
+
+    expect(hasReminder(streamFn.contexts[4])).toBe(true); // fired in prompt 2 thanks to carried-over counter
+    expect(streamFn.contexts.slice(0, 4).some(hasReminder)).toBe(false); // never in prompt 1 (only reached 2)
   });
 
   test("persists each reminder as a steering_injected event (for audit + resume)", async () => {
@@ -238,7 +258,7 @@ describe("plan reminder (recitation)", () => {
       (e): e is Extract<CoreAgentEvent, { type: "steering_injected" }> =>
         e.type === "steering_injected" &&
         e.messages.some(
-          (m) => m.role === "user" && typeof m.content === "string" && m.content.includes("[Plan reminder]"),
+          (m) => m.role === "user" && typeof m.content === "string" && m.content.includes("<system-reminder>"),
         ),
     );
     expect(reminderEvents).toHaveLength(1);
