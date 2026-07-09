@@ -37,6 +37,8 @@ export interface RuntimeConfig {
   model: Model | undefined;
   effort: ThinkingEffort;
   mode: Mode;
+  /** Soft plan reminder cadence in agent turns; 0 disables. See DiligentConfig. */
+  planReminderIntervalTurns: number;
   systemPrompt: SystemSection[];
   streamFunction: StreamFunction;
   diligent: DiligentConfig;
@@ -202,6 +204,7 @@ export async function loadRuntimeConfig(
     model,
     mode: (config.mode ?? "default") as Mode,
     effort: (config.effort ?? "medium") as ThinkingEffort,
+    planReminderIntervalTurns: config.planReminderIntervalTurns ?? 0,
     systemPrompt,
     streamFunction,
     diligent: {

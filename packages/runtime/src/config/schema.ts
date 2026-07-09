@@ -183,6 +183,10 @@ export const DiligentConfigSchema = z
     mode: z.enum(["default", "plan", "execute"]).optional(),
     effort: ThinkingEffortSchema.optional(),
 
+    // Soft plan reminder cadence: re-inject unfinished plan steps into context after this
+    // many agent turns without the plan being surfaced. 0/undefined disables the feature.
+    planReminderIntervalTurns: z.number().int().nonnegative().optional(),
+
     // Permission rules
     permissions: z
       .array(

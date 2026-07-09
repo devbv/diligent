@@ -11,6 +11,7 @@ import { runToolCalls } from "./tool";
 import type { AgentStream, CompactionConfig, QueuedSteeringMessage } from "./types";
 import { DoomLoopDetector } from "./util/doom-loop";
 import { toSerializableError } from "./util/errors";
+import { findLatestPlanSteps, latestUserGoal, PlanReminder, type PlanStepLike } from "./util/plan-reminder";
 
 // Internal fully-resolved config for one loop run
 interface LoopConfig {
@@ -20,6 +21,8 @@ interface LoopConfig {
   tools: Tool[];
   effort: ThinkingEffort;
   compaction?: CompactionConfig;
+  /** Soft plan reminder cadence in agent turns; 0/undefined disables. See AgentOptions. */
+  planReminderIntervalTurns?: number;
 }
 
 export interface LoopRuntime {
@@ -29,6 +32,8 @@ export interface LoopRuntime {
   stream: AgentStream;
   sessionId?: string;
   compactionSummary?: Record<string, unknown>;
+  /** Session plan state seeded by the Agent (survives compaction/re-prompts). */
+  planState?: PlanStepLike[];
   hooks: {
     drainSteeringMessages: () => QueuedSteeringMessage[];
     pendingSteeringCount: () => number;
@@ -48,7 +53,7 @@ export async function runAgentLoop(
   messages: Message[],
   runtime: LoopRuntime,
   userSignal?: AbortSignal,
-): Promise<{ messages: Message[]; compactionSummary?: Record<string, unknown> }> {
+): Promise<{ messages: Message[]; compactionSummary?: Record<string, unknown>; planState?: PlanStepLike[] }> {
   const { config, streamFunction, stream, hooks } = runtime;
   const toolAbortController = new AbortController();
   const signal = AbortSignal.any([toolAbortController.signal, userSignal].filter((s): s is AbortSignal => s != null));
@@ -69,6 +74,15 @@ export async function runAgentLoop(
   let turnNumber = 0;
   const nextItemId = () => `item-${++itemCounter}`;
 
+  // Soft plan reminder (recitation): re-inject unfinished plan steps into the tail once the
+  // plan drifts out of context, so the model does not forget and stop early. Seeded from
+  // session plan state so it survives compaction and re-prompts. See PlanReminder.
+  const planReminder = new PlanReminder(
+    config.planReminderIntervalTurns ?? 0,
+    runtime.planState ?? findLatestPlanSteps(conversation),
+  );
+  const runGoal = latestUserGoal(conversation);
+
   stream.emit({ type: "agent_start" });
 
   try {
@@ -80,7 +94,7 @@ export async function runAgentLoop(
       const turnId = `turn-${++turnNumber}`;
       stream.emit({ type: "turn_start", turnId });
 
-      await compactIfNeeded(conversation, loopRequest, stream);
+      const justCompacted = await compactIfNeeded(conversation, loopRequest, stream);
 
       const steering = hooks.drainSteeringMessages();
       if (steering.length > 0) {
@@ -91,6 +105,22 @@ export async function runAgentLoop(
           messageCount: steering.length,
           messages: steeringMessages,
           steerIds: steering.map((entry) => entry.id),
+        });
+      }
+
+      const planReminderMessage = planReminder.reminderForTurn({ compactedThisTurn: justCompacted, goal: runGoal });
+      if (planReminderMessage) {
+        const reminderEntry: Message = { role: "user", content: planReminderMessage, timestamp: Date.now() };
+        conversation.push(reminderEntry);
+        // Emit steering_injected so the reminder is staged to the session tree — external
+        // session logs can then audit whether it fires, and resume restores an accurate
+        // transcript. Unlike real steering it is NOT enqueued, so it never forces another
+        // turn (stays soft). The web client hides it by its "[Plan reminder]" prefix.
+        stream.emit({
+          type: "steering_injected",
+          messageCount: 1,
+          messages: [reminderEntry],
+          steerIds: [`plan-reminder-${turnId}`],
         });
       }
 
@@ -132,6 +162,11 @@ export async function runAgentLoop(
       for (const execution of executions) {
         conversation.push(execution.toolResult);
         doomLoopTracker.record(execution.toolCall.name, execution.toolCall.input);
+        planReminder.recordToolResult(
+          execution.toolResult.toolName,
+          execution.toolResult.output,
+          execution.toolResult.isError,
+        );
       }
 
       const doomLoop = doomLoopTracker.check();
@@ -142,6 +177,8 @@ export async function runAgentLoop(
           timestamp: Date.now(),
         });
       }
+
+      planReminder.endTurn();
 
       stream.emit({
         type: "turn_end",
@@ -161,27 +198,32 @@ export async function runAgentLoop(
     stream.emit({ type: "agent_end", messages: conversation });
   }
 
-  return { messages: conversation, compactionSummary: loopRequest.compactionSummary };
+  return {
+    messages: conversation,
+    compactionSummary: loopRequest.compactionSummary,
+    planState: planReminder.currentPlan,
+  };
 }
 
 function isContextOverflowError(err: unknown): err is ProviderError {
   return err instanceof ProviderError && err.errorType === "context_overflow";
 }
 
-async function compactIfNeeded(messages: Message[], request: LoopRequest, stream: AgentStream): Promise<void> {
+async function compactIfNeeded(messages: Message[], request: LoopRequest, stream: AgentStream): Promise<boolean> {
   const config = request.config.compaction;
   if (!config) {
-    return;
+    return false;
   }
 
   const decision = getCompactionDecision(messages, request.config.model.contextWindow, config.reservePercent);
-  if (!decision.shouldCompact) return;
+  if (!decision.shouldCompact) return false;
 
   console.info(
     `[agent:compaction] triggered source=${decision.source} estimatedTokens=${decision.estimatedTokens} thresholdTokens=${decision.thresholdTokens} reserveTokens=${decision.reserveTokens}`,
   );
 
   await applyCompaction(messages, request, stream);
+  return true;
 }
 
 async function compactAfterContextOverflow(

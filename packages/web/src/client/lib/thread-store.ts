@@ -63,6 +63,16 @@ export interface UsageState {
   totalCost: number;
 }
 
+/**
+ * The runtime injects plan reminders as plain user messages (persisted for transcript/audit
+ * fidelity and accurate resume), prefixed with this marker. They are an internal mechanism to
+ * keep the model working and must never render in the chat.
+ */
+const INJECTED_REMINDER_PREFIX = "[Plan reminder]";
+function isInjectedReminderText(text: string): boolean {
+  return text.startsWith(INJECTED_REMINDER_PREFIX);
+}
+
 export type RenderItem =
   | {
       id: string;
@@ -426,6 +436,8 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent, turnId?: string
     case "user_message": {
       const { text, images } = extractUserTextAndImages(event.message.content);
       const { contextItems, remainingText } = parseContextFromText(text);
+      // Persisted plan reminders rehydrate as user messages; keep them out of the transcript.
+      if (isInjectedReminderText(remainingText)) return merged;
       let nextState = merged;
       if (nextState.pendingSteers.length > 0) {
         const joinedSteers = nextState.pendingSteers.map((steer) => steer.content).join("\n");
@@ -514,7 +526,10 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent, turnId?: string
       const fallbackFromEvent = event.messages
         .filter((message) => message.role === "user")
         .map((message) => extractUserTextAndImages(message.content))
-        .filter(({ text, images }) => text.length > 0 || images.length > 0);
+        .filter(({ text, images }) => text.length > 0 || images.length > 0)
+        // Runtime-injected plan reminders ride the steering event for persistence but are an
+        // internal mechanism — never render them as user messages.
+        .filter(({ text }) => !isInjectedReminderText(text));
       const steerIds = event.steerIds ?? [];
       const steerIdSet = new Set(steerIds);
       const drainedFromQueue =
