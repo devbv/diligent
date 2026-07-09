@@ -4,10 +4,13 @@
   "systemPromptFile": "system-prompt.txt",
   "yolo": true,
   // Re-inject unfinished plan steps after this many agent turns without a plan update, so
-  // long/steered sessions don't forget remaining work and stop early. Tune in real sessions:
-  // lower toward 1 (Manus-style, near every turn) if early premature-stops persist, raise
-  // toward 6 (Cline-style) if it's too noisy. 0 disables.
-  "planReminderIntervalTurns": 3,
+  // long/steered sessions don't forget remaining work and drift. This cadence is the anti-DRIFT
+  // layer (immediate "plan then stop" is covered by the plan-tool hint, system prompt, and
+  // plan-description gating), so it should only fire on genuine abandonment — 6 matches the
+  // industry floor (Codex "6 steps / 10 tool calls", Cline "6 messages"). A normal multi-turn
+  // step resets the counter before 6, so good behavior almost never triggers it. Tune per
+  // session: lower (3-4) if drift still slips through, raise (8) if noisy. 0 disables.
+  "planReminderIntervalTurns": 6,
   "tools": {
     "builtin": {
       "bash": false
