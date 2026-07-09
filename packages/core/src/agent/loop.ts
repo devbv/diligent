@@ -11,15 +11,7 @@ import { runToolCalls } from "./tool";
 import type { AgentStream, CompactionConfig, QueuedSteeringMessage } from "./types";
 import { DoomLoopDetector } from "./util/doom-loop";
 import { toSerializableError } from "./util/errors";
-import {
-  buildPlanReminderMessage,
-  findLatestPlanSteps,
-  latestUserGoal,
-  PLAN_TOOL_NAME,
-  type PlanStepLike,
-  parsePlanSteps,
-  remainingPlanSteps,
-} from "./util/plan-reminder";
+import { findLatestPlanSteps, latestUserGoal, PlanReminder, type PlanStepLike } from "./util/plan-reminder";
 
 // Internal fully-resolved config for one loop run
 interface LoopConfig {
@@ -82,11 +74,13 @@ export async function runAgentLoop(
   let turnNumber = 0;
   const nextItemId = () => `item-${++itemCounter}`;
 
-  // Soft plan reminder (recitation): re-inject unfinished plan steps into the tail after
-  // `planReminderIntervalTurns` turns without the plan being surfaced, so the model does
-  // not drift off and stop early. Plan state is loop-local so it survives compaction.
-  let currentPlan = runtime.planState ?? findLatestPlanSteps(conversation);
-  let turnsSincePlanSurfaced = 0;
+  // Soft plan reminder (recitation): re-inject unfinished plan steps into the tail once the
+  // plan drifts out of context, so the model does not forget and stop early. Seeded from
+  // session plan state so it survives compaction and re-prompts. See PlanReminder.
+  const planReminder = new PlanReminder(
+    config.planReminderIntervalTurns ?? 0,
+    runtime.planState ?? findLatestPlanSteps(conversation),
+  );
   const runGoal = latestUserGoal(conversation);
 
   stream.emit({ type: "agent_start" });
@@ -114,22 +108,9 @@ export async function runAgentLoop(
         });
       }
 
-      // Plan reminder: recite unfinished steps when the plan has drifted out of the tail
-      // (N turns without a plan update) or was just dropped by compaction. Skipped on
-      // turns the model itself updated the plan (turnsSincePlanSurfaced === 0).
-      if (config.planReminderIntervalTurns && currentPlan) {
-        const remaining = remainingPlanSteps(currentPlan);
-        if (remaining.length > 0 && (justCompacted || turnsSincePlanSurfaced >= config.planReminderIntervalTurns)) {
-          conversation.push({
-            role: "user",
-            content: buildPlanReminderMessage(remaining, { goal: runGoal, turnsSinceUpdate: turnsSincePlanSurfaced }),
-            timestamp: Date.now(),
-          });
-          console.info(
-            `[agent:plan-reminder] injected remaining=${remaining.length} compacted=${justCompacted} turnsSince=${turnsSincePlanSurfaced}`,
-          );
-          turnsSincePlanSurfaced = 0;
-        }
+      const planReminderMessage = planReminder.reminderForTurn({ compactedThisTurn: justCompacted, goal: runGoal });
+      if (planReminderMessage) {
+        conversation.push({ role: "user", content: planReminderMessage, timestamp: Date.now() });
       }
 
       let retriedAfterContextOverflow = false;
@@ -167,18 +148,14 @@ export async function runAgentLoop(
       // tool_use must be paired with its tool_result, otherwise the next request
       // sends an orphaned tool_use and the provider rejects the whole conversation
       // (e.g. Anthropic 400 "tool_use ids were found without tool_result blocks").
-      let planSurfacedThisTurn = false;
       for (const execution of executions) {
         conversation.push(execution.toolResult);
         doomLoopTracker.record(execution.toolCall.name, execution.toolCall.input);
-        if (execution.toolCall.name === PLAN_TOOL_NAME && !execution.toolResult.isError) {
-          // A plan tool_result is itself a recite at the tail — track it and reset cadence.
-          const steps = parsePlanSteps(execution.toolResult.output);
-          if (steps) {
-            currentPlan = steps;
-            planSurfacedThisTurn = true;
-          }
-        }
+        planReminder.recordToolResult(
+          execution.toolResult.toolName,
+          execution.toolResult.output,
+          execution.toolResult.isError,
+        );
       }
 
       const doomLoop = doomLoopTracker.check();
@@ -190,10 +167,7 @@ export async function runAgentLoop(
         });
       }
 
-      // Reset the reminder cadence when the model surfaced the plan this turn; otherwise
-      // advance it so a reminder fires once the plan has been buried for enough turns.
-      if (planSurfacedThisTurn) turnsSincePlanSurfaced = 0;
-      else turnsSincePlanSurfaced++;
+      planReminder.endTurn();
 
       stream.emit({
         type: "turn_end",
@@ -213,7 +187,11 @@ export async function runAgentLoop(
     stream.emit({ type: "agent_end", messages: conversation });
   }
 
-  return { messages: conversation, compactionSummary: loopRequest.compactionSummary, planState: currentPlan };
+  return {
+    messages: conversation,
+    compactionSummary: loopRequest.compactionSummary,
+    planState: planReminder.currentPlan,
+  };
 }
 
 function isContextOverflowError(err: unknown): err is ProviderError {

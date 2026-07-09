@@ -88,17 +88,85 @@ export function buildPlanReminderMessage(
   remaining: PlanStepLike[],
   opts?: { goal?: string; turnsSinceUpdate?: number },
 ): string {
-  const lines = remaining.map((s) => `- (${s.status}) ${s.text}`).join("\n");
-  const turns = opts?.turnsSinceUpdate ?? 0;
-  const stale = turns > 0 ? ` (last plan update: ${turns} turn${turns === 1 ? "" : "s"} ago)` : "";
-  const parts = [
-    "[Plan reminder]",
-    opts?.goal ? `You are still working on this task: "${opts.goal}".` : undefined,
+  const turnsAgo = opts?.turnsSinceUpdate ?? 0;
+  const staleNote = turnsAgo > 0 ? ` (last plan update: ${turnsAgo} turn${turnsAgo === 1 ? "" : "s"} ago)` : "";
+
+  const lines: string[] = ["[Plan reminder]"];
+  if (opts?.goal) lines.push(`You are still working on this task: "${opts.goal}".`);
+  lines.push(
     "Your active plan still has unfinished steps — do not tell the user the work is done until each is finished or cancelled.",
     "Remaining steps:",
-    lines,
-    `Keep the plan current: mark each step done as you finish it, cancel steps that no longer apply, and revise the plan if the approach changed.${stale}`,
+    ...remaining.map((step) => `- (${step.status}) ${step.text}`),
+    `Keep the plan current: mark each step done as you finish it, cancel steps that no longer apply, and revise the plan if the approach changed.${staleNote}`,
     "Continue working now. If a step genuinely needs the user's decision, confirmation, or testing, ask with the request_user_input tool instead of stopping silently.",
-  ];
-  return parts.filter((p): p is string => p !== undefined).join("\n");
+  );
+  return lines.join("\n");
+}
+
+/**
+ * Tracks the current run's plan and decides when to re-inject ("recite") the unfinished
+ * steps so the model does not drift off and stop early. Purely advisory — it never forces
+ * another turn. Mirrors {@link DoomLoopDetector}: the loop feeds it turn events and asks it
+ * for a decision, keeping the loop free of scattered counters and inline conditions.
+ *
+ * A reminder fires only on genuine drift: the plan went `intervalTurns` turns without the
+ * model touching it (or compaction just dropped it) while steps remain. Any plan update is
+ * itself a recite (it lands at the tail), so it resets the cadence — an actively maintained
+ * plan almost never triggers a reminder.
+ */
+export class PlanReminder {
+  private plan: PlanStepLike[] | undefined;
+  private turnsSinceSurfaced = 0;
+  private planUpdatedThisTurn = false;
+
+  constructor(
+    private readonly intervalTurns: number,
+    seedPlan?: PlanStepLike[],
+  ) {
+    this.plan = seedPlan;
+  }
+
+  /** The latest plan seen — returned by the loop so it survives compaction and re-prompts. */
+  get currentPlan(): PlanStepLike[] | undefined {
+    return this.plan;
+  }
+
+  /** Feed every tool result of the turn; only the `plan` tool is relevant. */
+  recordToolResult(toolName: string, output: string, isError: boolean): void {
+    if (toolName !== PLAN_TOOL_NAME || isError) return;
+    const steps = parsePlanSteps(output);
+    if (!steps) return;
+    this.plan = steps;
+    this.planUpdatedThisTurn = true;
+  }
+
+  /**
+   * Called at the top of a turn. Returns the reminder message to inject, or `null` to stay
+   * quiet. The injected reminder is itself a recite, so the cadence restarts here (it still
+   * advances by one in {@link endTurn} because the model runs a full turn after this point).
+   */
+  reminderForTurn(opts: { compactedThisTurn: boolean; goal?: string }): string | null {
+    if (!this.shouldRemind(opts.compactedThisTurn)) return null;
+    const remaining = remainingPlanSteps(this.plan ?? []);
+    console.info(
+      `[agent:plan-reminder] injected remaining=${remaining.length} compacted=${opts.compactedThisTurn} turnsSince=${this.turnsSinceSurfaced}`,
+    );
+    const message = buildPlanReminderMessage(remaining, { goal: opts.goal, turnsSinceUpdate: this.turnsSinceSurfaced });
+    this.turnsSinceSurfaced = 0;
+    return message;
+  }
+
+  /** Advance the cadence once per turn. A turn that updated the plan resets it to zero. */
+  endTurn(): void {
+    this.turnsSinceSurfaced = this.planUpdatedThisTurn ? 0 : this.turnsSinceSurfaced + 1;
+    this.planUpdatedThisTurn = false;
+  }
+
+  private shouldRemind(compactedThisTurn: boolean): boolean {
+    if (this.intervalTurns <= 0) return false; // feature disabled
+    if (!this.plan) return false; // no plan set yet
+    if (remainingPlanSteps(this.plan).length === 0) return false; // every step done or cancelled
+    if (compactedThisTurn) return true; // compaction just dropped the plan — re-inject now
+    return this.turnsSinceSurfaced >= this.intervalTurns; // buried out of the tail for N turns
+  }
 }

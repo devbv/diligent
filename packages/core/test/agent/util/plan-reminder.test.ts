@@ -5,6 +5,7 @@ import {
   findLatestPlanSteps,
   latestUserGoal,
   PLAN_TOOL_NAME,
+  PlanReminder,
   type PlanStepLike,
   parsePlanSteps,
   remainingPlanSteps,
@@ -126,5 +127,83 @@ describe("findLatestPlanSteps", () => {
   test("returns undefined when there is no parseable plan tool_result", () => {
     expect(findLatestPlanSteps([toolResult(PLAN_TOOL_NAME, "[Aborted by user]")])).toBeUndefined();
     expect(findLatestPlanSteps([{ role: "user", content: "hi", timestamp: 1 }])).toBeUndefined();
+  });
+});
+
+describe("PlanReminder", () => {
+  const pendingPlan = () => planOutput([{ text: "step A", status: "pending" }]);
+
+  test("fires only after intervalTurns pass without the plan being surfaced", () => {
+    const reminder = new PlanReminder(2);
+    // turn 1: the model creates the plan
+    expect(reminder.reminderForTurn({ compactedThisTurn: false })).toBeNull();
+    reminder.recordToolResult(PLAN_TOOL_NAME, pendingPlan(), false);
+    reminder.endTurn();
+    // turns 2 and 3: no plan update — still within cadence
+    expect(reminder.reminderForTurn({ compactedThisTurn: false })).toBeNull();
+    reminder.endTurn();
+    expect(reminder.reminderForTurn({ compactedThisTurn: false })).toBeNull();
+    reminder.endTurn();
+    // turn 4: cadence elapsed → reminder fires with goal + step
+    const msg = reminder.reminderForTurn({ compactedThisTurn: false, goal: "build X" });
+    expect(msg).toContain("[Plan reminder]");
+    expect(msg).toContain("(pending) step A");
+    expect(msg).toContain("build X");
+  });
+
+  test("a plan update resets the cadence — no re-fire on the next turn", () => {
+    const reminder = new PlanReminder(2);
+    reminder.recordToolResult(PLAN_TOOL_NAME, pendingPlan(), false);
+    reminder.endTurn();
+    reminder.endTurn();
+    reminder.endTurn();
+    // the reminder fires at this turn's top...
+    expect(reminder.reminderForTurn({ compactedThisTurn: false })).not.toBeNull();
+    // ...and the model also re-touches the plan this turn
+    reminder.recordToolResult(PLAN_TOOL_NAME, pendingPlan(), false);
+    reminder.endTurn();
+    // next turn: cadence was reset, so it stays quiet
+    expect(reminder.reminderForTurn({ compactedThisTurn: false })).toBeNull();
+  });
+
+  test("never fires when disabled (interval 0)", () => {
+    const reminder = new PlanReminder(0);
+    reminder.recordToolResult(PLAN_TOOL_NAME, pendingPlan(), false);
+    for (let i = 0; i < 5; i++) {
+      expect(reminder.reminderForTurn({ compactedThisTurn: false })).toBeNull();
+      reminder.endTurn();
+    }
+  });
+
+  test("fires immediately after compaction, regardless of cadence", () => {
+    const reminder = new PlanReminder(5, [{ text: "step A", status: "pending" }]);
+    const msg = reminder.reminderForTurn({ compactedThisTurn: true });
+    expect(msg).toContain("[Plan reminder]");
+    expect(msg).toContain("(pending) step A");
+  });
+
+  test("does not fire without a plan, or when every step is resolved", () => {
+    const noPlan = new PlanReminder(1);
+    for (let i = 0; i < 3; i++) noPlan.endTurn();
+    expect(noPlan.reminderForTurn({ compactedThisTurn: false })).toBeNull();
+
+    const resolved = new PlanReminder(1, [
+      { text: "a", status: "done" },
+      { text: "b", status: "cancelled" },
+    ]);
+    resolved.endTurn();
+    expect(resolved.reminderForTurn({ compactedThisTurn: false })).toBeNull();
+    expect(resolved.reminderForTurn({ compactedThisTurn: true })).toBeNull();
+  });
+
+  test("exposes the latest plan (seed, then updates) for the loop to persist", () => {
+    const reminder = new PlanReminder(3, [{ text: "seed", status: "pending" }]);
+    expect(reminder.currentPlan).toEqual([{ text: "seed", status: "pending" }]);
+    reminder.recordToolResult(PLAN_TOOL_NAME, planOutput([{ text: "updated", status: "in_progress" }]), false);
+    expect(reminder.currentPlan).toEqual([{ text: "updated", status: "in_progress" }]);
+    // non-plan and errored tool results leave the plan untouched
+    reminder.recordToolResult("other", "whatever", false);
+    reminder.recordToolResult(PLAN_TOOL_NAME, pendingPlan(), true);
+    expect(reminder.currentPlan).toEqual([{ text: "updated", status: "in_progress" }]);
   });
 });
