@@ -23,6 +23,7 @@ Do NOT use for single trivial tasks, purely conversational requests, or tasks co
 - Add any new follow-up steps discovered during execution.
 - Cancel steps that become irrelevant instead of deleting them.
 - Before yielding, ensure no deferred or abandoned plan still has active pending or in_progress steps.
+- Do NOT tell the user the work is complete while any step is still pending or in_progress; finish or cancel every step first, then mark the last one done.
 - IMPORTANT: Before summarizing results to the user, call this tool to mark the last step done.
 
 Anti-patterns:

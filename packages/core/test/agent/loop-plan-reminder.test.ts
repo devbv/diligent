@@ -95,22 +95,20 @@ const noopCall = () =>
 const finalText = () => makeAssistant([{ type: "text", text: "완료했습니다" }]);
 
 const hasReminder = (ctx: StreamContext): boolean =>
-  ctx.messages.some(
-    (m) => m.role === "user" && typeof m.content === "string" && m.content.includes("do not end your turn until each"),
-  );
+  ctx.messages.some((m) => m.role === "user" && typeof m.content === "string" && m.content.includes("[Plan reminder]"));
 const reminderMentions = (ctx: StreamContext, text: string): boolean =>
   ctx.messages.some(
     (m) =>
       m.role === "user" &&
       typeof m.content === "string" &&
-      m.content.includes("do not end your turn until each") &&
+      m.content.includes("[Plan reminder]") &&
       m.content.includes(text),
   );
 // The injected reminder is a real message that persists in the conversation, so counting
 // them (rather than checking presence) tells us how many times it actually fired.
 const countReminders = (ctx: StreamContext): number =>
   ctx.messages.filter(
-    (m) => m.role === "user" && typeof m.content === "string" && m.content.includes("do not end your turn until each"),
+    (m) => m.role === "user" && typeof m.content === "string" && m.content.includes("[Plan reminder]"),
   ).length;
 
 function makeAgent(streamFn: StreamFunction, planReminderIntervalTurns?: number): Agent {
@@ -210,7 +208,7 @@ describe("plan reminder (recitation)", () => {
         (m) =>
           m.role === "user" &&
           typeof m.content === "string" &&
-          m.content.includes("do not end your turn until each") &&
+          m.content.includes("[Plan reminder]") &&
           m.content.includes("step A"),
       ),
     ).toBe(true);

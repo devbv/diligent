@@ -64,16 +64,41 @@ export function remainingPlanSteps(steps: PlanStepLike[]): PlanStepLike[] {
 }
 
 /**
- * Build the self-contained recitation message pushed into the conversation tail.
- * It lists the remaining step texts inline so it still works after the original plan
- * tool_result has been summarized away by compaction.
+ * The most recent user request in the conversation, truncated — used to re-anchor the
+ * original goal in the reminder (Manus-style objective recitation) so the model does not
+ * drift off the task over a long run.
  */
-export function buildPlanReminderMessage(remaining: PlanStepLike[]): string {
+export function latestUserGoal(messages: Message[], maxChars = 200): string | undefined {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (msg.role !== "user" || typeof msg.content !== "string") continue;
+    const text = msg.content.trim();
+    if (!text) continue;
+    return text.length > maxChars ? `${text.slice(0, maxChars)}…` : text;
+  }
+  return undefined;
+}
+
+/**
+ * Build the self-contained recitation message pushed into the conversation tail. Lists the
+ * remaining step texts inline (survives compaction), re-anchors the original goal, and nudges
+ * the model to keep the plan itself current — all soft, no forced continuation.
+ */
+export function buildPlanReminderMessage(
+  remaining: PlanStepLike[],
+  opts?: { goal?: string; turnsSinceUpdate?: number },
+): string {
   const lines = remaining.map((s) => `- (${s.status}) ${s.text}`).join("\n");
-  return [
-    "[Reminder: your active plan still has unfinished steps — do not end your turn until each is done or cancelled.",
+  const turns = opts?.turnsSinceUpdate ?? 0;
+  const stale = turns > 0 ? ` (last plan update: ${turns} turn${turns === 1 ? "" : "s"} ago)` : "";
+  const parts = [
+    "[Plan reminder]",
+    opts?.goal ? `You are still working on this task: "${opts.goal}".` : undefined,
+    "Your active plan still has unfinished steps — do not tell the user the work is done until each is finished or cancelled.",
     "Remaining steps:",
     lines,
-    "Continue working, or call the `plan` tool to update/cancel steps if the plan has changed.]",
-  ].join("\n");
+    `Keep the plan current: mark each step done as you finish it, cancel steps that no longer apply, and revise the plan if the approach changed.${stale}`,
+    "Continue working now. If a step genuinely needs the user's decision, confirmation, or testing, ask with the request_user_input tool instead of stopping silently.",
+  ];
+  return parts.filter((p): p is string => p !== undefined).join("\n");
 }

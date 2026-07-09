@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import {
   buildPlanReminderMessage,
   findLatestPlanSteps,
+  latestUserGoal,
   PLAN_TOOL_NAME,
   type PlanStepLike,
   parsePlanSteps,
@@ -61,14 +62,45 @@ describe("remainingPlanSteps", () => {
 });
 
 describe("buildPlanReminderMessage", () => {
-  test("lists each remaining step with status and the do-not-end instruction", () => {
-    const msg = buildPlanReminderMessage([
-      { text: "wire config", status: "in_progress" },
-      { text: "add tests", status: "pending" },
-    ]);
-    expect(msg).toContain("do not end your turn");
+  test("lists remaining steps, re-anchors the goal, and nudges plan maintenance", () => {
+    const msg = buildPlanReminderMessage(
+      [
+        { text: "wire config", status: "in_progress" },
+        { text: "add tests", status: "pending" },
+      ],
+      { goal: "build the feature", turnsSinceUpdate: 3 },
+    );
+    expect(msg).toContain("[Plan reminder]");
+    expect(msg).toContain('You are still working on this task: "build the feature"');
     expect(msg).toContain("(in_progress) wire config");
     expect(msg).toContain("(pending) add tests");
+    expect(msg).toContain("Keep the plan current");
+    expect(msg).toContain("last plan update: 3 turns ago");
+    expect(msg).toContain("request_user_input");
+    expect(msg).toContain("do not tell the user the work is done");
+  });
+
+  test("omits the goal line and stale suffix when not provided", () => {
+    const msg = buildPlanReminderMessage([{ text: "x", status: "pending" }]);
+    expect(msg).toContain("[Plan reminder]");
+    expect(msg).not.toContain("You are still working on this task");
+    expect(msg).not.toContain("last plan update");
+  });
+});
+
+describe("latestUserGoal", () => {
+  test("returns the most recent user string message, truncated", () => {
+    const messages: Message[] = [
+      { role: "user", content: "first task", timestamp: 1 },
+      toolResult(PLAN_TOOL_NAME, planOutput([{ text: "s", status: "pending" }])),
+      { role: "user", content: "latest task", timestamp: 2 },
+    ];
+    expect(latestUserGoal(messages)).toBe("latest task");
+    expect(latestUserGoal([{ role: "user", content: "x".repeat(300), timestamp: 1 }], 10)).toBe(`${"x".repeat(10)}…`);
+  });
+
+  test("returns undefined when there is no user string message", () => {
+    expect(latestUserGoal([toolResult(PLAN_TOOL_NAME, "[Aborted by user]")])).toBeUndefined();
   });
 });
 

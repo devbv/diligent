@@ -14,6 +14,7 @@ import { toSerializableError } from "./util/errors";
 import {
   buildPlanReminderMessage,
   findLatestPlanSteps,
+  latestUserGoal,
   PLAN_TOOL_NAME,
   type PlanStepLike,
   parsePlanSteps,
@@ -86,6 +87,7 @@ export async function runAgentLoop(
   // not drift off and stop early. Plan state is loop-local so it survives compaction.
   let currentPlan = runtime.planState ?? findLatestPlanSteps(conversation);
   let turnsSincePlanSurfaced = 0;
+  const runGoal = latestUserGoal(conversation);
 
   stream.emit({ type: "agent_start" });
 
@@ -120,7 +122,7 @@ export async function runAgentLoop(
         if (remaining.length > 0 && (justCompacted || turnsSincePlanSurfaced >= config.planReminderIntervalTurns)) {
           conversation.push({
             role: "user",
-            content: buildPlanReminderMessage(remaining),
+            content: buildPlanReminderMessage(remaining, { goal: runGoal, turnsSinceUpdate: turnsSincePlanSurfaced }),
             timestamp: Date.now(),
           });
           console.info(
