@@ -6,7 +6,12 @@ import { buildInstanceDeleteRender } from "../render";
 import { applyLevelChanges } from "../rpc";
 import type { Tool, ToolContext, ToolResult } from "../types";
 import type { WriteLock } from "../write-lock";
-import { invalidInstanceOperationError, missingGuidError, resultFromInstanceToolStatusError } from "./instance-status";
+import {
+  invalidInstanceOperationError,
+  missingGuidError,
+  normalizeLevelApplyResult,
+  resultFromInstanceToolStatusError,
+} from "./instance-status";
 import {
   findNodeByActorGuid,
   isRecord,
@@ -97,6 +102,7 @@ async function executeInstanceDeleteInner(
   }
 
   const result = await applyLevelChanges();
+  const levelApplyStatus = normalizeLevelApplyResult(result);
   const output = typeof result === "string" ? result : JSON.stringify(result, null, 2);
 
   return {
@@ -109,6 +115,7 @@ async function executeInstanceDeleteInner(
       targetGuids: fileResult.deletedGuids,
       deleteCount: parsedArgs.items.length,
       levelApplyResult: result,
+      levelApplyStatus,
     },
   };
 }

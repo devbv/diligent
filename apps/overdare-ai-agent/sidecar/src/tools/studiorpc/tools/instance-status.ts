@@ -2,6 +2,52 @@
 
 import type { ToolRenderPayload, ToolResult } from "../types";
 
+export type LevelApplyStatus =
+  | { kind: "applied" }
+  | { kind: "applied_with_warnings"; warnings: string[] }
+  | { kind: "failed"; errors: string[] }
+  | { kind: "partial"; warnings?: string[]; errors?: string[]; requiresReadback: true }
+  | { kind: "unknown"; requiresReadback: true };
+
+function toStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string");
+}
+
+export function normalizeLevelApplyResult(result: unknown): LevelApplyStatus {
+  if (result === null || typeof result !== "object" || Array.isArray(result)) {
+    return { kind: "unknown", requiresReadback: true };
+  }
+
+  const rec = result as Record<string, unknown>;
+
+  if (!("success" in rec)) {
+    return { kind: "unknown", requiresReadback: true };
+  }
+
+  const warnings = toStringArray(rec.warnings);
+  const errors = toStringArray(rec.errors);
+
+  if (rec.success === true) {
+    if (warnings.length > 0) {
+      return { kind: "applied_with_warnings", warnings };
+    }
+    return { kind: "applied" };
+  }
+
+  if (rec.success === false) {
+    if (warnings.length > 0) {
+      return { kind: "partial", warnings, ...(errors.length > 0 ? { errors } : {}), requiresReadback: true };
+    }
+    if (errors.length > 0) {
+      return { kind: "failed", errors };
+    }
+    return { kind: "unknown", requiresReadback: true };
+  }
+
+  return { kind: "unknown", requiresReadback: true };
+}
+
 export type InstanceOperation = "instance.read" | "instance.upsert" | "instance.move" | "instance.delete";
 export type InstanceGuidRole = "target" | "parent" | "new_parent";
 export type MissingGuidCode = "missing_target_guid" | "missing_parent_guid" | "missing_new_parent_guid";

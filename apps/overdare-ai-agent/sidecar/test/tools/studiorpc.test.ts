@@ -8,6 +8,7 @@ import type { Tool } from "@diligent/core/tool/types";
 import { createStudioBundledToolProviders } from "../../src/tools";
 import { createStudioRpcToolProvider } from "../../src/tools/studiorpc";
 import * as levelBrowse from "../../src/tools/studiorpc/methods/level.browse";
+import { normalizeLevelApplyResult } from "../../src/tools/studiorpc/tools/instance-status";
 
 const createdDirs: string[] = [];
 
@@ -408,5 +409,62 @@ describe("createStudioRpcToolProvider", () => {
       requiresReadback: false,
     });
     expect(rpcCalls).toEqual([]);
+  });
+});
+
+describe("normalizeLevelApplyResult", () => {
+  test("returns applied for success:true with no warnings or errors", () => {
+    expect(normalizeLevelApplyResult({ success: true })).toEqual({ kind: "applied" });
+    expect(normalizeLevelApplyResult({ success: true, warnings: [], errors: [] })).toEqual({ kind: "applied" });
+  });
+
+  test("returns applied_with_warnings for success:true with warnings", () => {
+    const result = normalizeLevelApplyResult({ success: true, warnings: ["VFXPreset mismatch"] });
+    expect(result).toEqual({ kind: "applied_with_warnings", warnings: ["VFXPreset mismatch"] });
+  });
+
+  test("returns partial for success:false with warnings (applied despite false)", () => {
+    const result = normalizeLevelApplyResult({
+      success: false,
+      warnings: ["VFXPreset could not apply", "Material slot missing"],
+    });
+    expect(result).toEqual({
+      kind: "partial",
+      warnings: ["VFXPreset could not apply", "Material slot missing"],
+      requiresReadback: true,
+    });
+  });
+
+  test("returns partial for success:false with both warnings and errors", () => {
+    const result = normalizeLevelApplyResult({
+      success: false,
+      warnings: ["MinorIssue"],
+      errors: ["HardError"],
+    });
+    expect(result).toEqual({
+      kind: "partial",
+      warnings: ["MinorIssue"],
+      errors: ["HardError"],
+      requiresReadback: true,
+    });
+  });
+
+  test("returns failed for success:false with errors and no warnings", () => {
+    const result = normalizeLevelApplyResult({ success: false, errors: ["Cannot resolve reference"] });
+    expect(result).toEqual({ kind: "failed", errors: ["Cannot resolve reference"] });
+  });
+
+  test("returns unknown for non-record inputs", () => {
+    expect(normalizeLevelApplyResult(null)).toEqual({ kind: "unknown", requiresReadback: true });
+    expect(normalizeLevelApplyResult("string result")).toEqual({ kind: "unknown", requiresReadback: true });
+    expect(normalizeLevelApplyResult([1, 2])).toEqual({ kind: "unknown", requiresReadback: true });
+  });
+
+  test("returns unknown when success field is absent", () => {
+    expect(normalizeLevelApplyResult({ ok: true })).toEqual({ kind: "unknown", requiresReadback: true });
+  });
+
+  test("returns unknown for success:false with neither warnings nor errors", () => {
+    expect(normalizeLevelApplyResult({ success: false })).toEqual({ kind: "unknown", requiresReadback: true });
   });
 });

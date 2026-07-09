@@ -6,7 +6,12 @@ import { buildInstanceMoveRender } from "../render";
 import { applyLevelChanges } from "../rpc";
 import type { Tool, ToolContext, ToolResult } from "../types";
 import type { WriteLock } from "../write-lock";
-import { invalidInstanceOperationError, missingGuidError, resultFromInstanceToolStatusError } from "./instance-status";
+import {
+  invalidInstanceOperationError,
+  missingGuidError,
+  normalizeLevelApplyResult,
+  resultFromInstanceToolStatusError,
+} from "./instance-status";
 import {
   findNodeByActorGuid,
   isRecord,
@@ -107,6 +112,7 @@ async function executeInstanceMoveInner(
   }
 
   const result = await applyLevelChanges();
+  const levelApplyStatus = normalizeLevelApplyResult(result);
   const output = typeof result === "string" ? result : JSON.stringify(result, null, 2);
 
   return {
@@ -119,6 +125,7 @@ async function executeInstanceMoveInner(
       targetGuids: fileResult.added.map((a) => a.guid),
       moveCount: parsedArgs.items.length,
       levelApplyResult: result,
+      levelApplyStatus,
     },
   };
 }

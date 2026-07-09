@@ -6,7 +6,12 @@ import { buildInstanceUpsertRender } from "../render";
 import { applyLevelChanges } from "../rpc";
 import type { Tool, ToolContext, ToolResult } from "../types";
 import type { WriteLock } from "../write-lock";
-import { invalidInstanceOperationError, missingGuidError, resultFromInstanceToolStatusError } from "./instance-status";
+import {
+  invalidInstanceOperationError,
+  missingGuidError,
+  normalizeLevelApplyResult,
+  resultFromInstanceToolStatusError,
+} from "./instance-status";
 import { findNodeByActorGuid, isRecord, type OvdrjmNode, readAndWriteOvdrjm } from "./ovdrjm-utils";
 
 function toToolName(method: string): string {
@@ -140,7 +145,8 @@ async function executeInstanceUpsertInner(
     return fileResult;
   }
 
-  await applyLevelChanges();
+  const applyResult = await applyLevelChanges();
+  const levelApplyStatus = normalizeLevelApplyResult(applyResult);
   const diag = ovdrjmRoot ? collectUiDiagnostics(ovdrjmRoot) : { warnings: [], info: [] };
   const addedGuids = fileResult.added.map((item) => item.guid);
   const updatedGuids = parsedArgs.items.flatMap((item) => (instanceUpsert.isUpdateItem(item) ? [item.guid] : []));
@@ -174,6 +180,8 @@ async function executeInstanceUpsertInner(
       added: fileResult.added,
       ...(diag.warnings.length > 0 && { warnings: diag.warnings }),
       ...(diag.info.length > 0 && { info: diag.info }),
+      levelApplyResult: applyResult,
+      levelApplyStatus,
     },
   };
 }
