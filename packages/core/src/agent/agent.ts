@@ -14,7 +14,7 @@ import { runAgentLoop } from "./loop";
 import { updateUserMessageContent } from "./message-content";
 import type { AgentOptions, CompactionConfig, QueuedSteeringMessage } from "./types";
 import { AgentStream, type LLMRetryConfig } from "./types";
-import { findLatestPlanSteps, type PlanStepLike } from "./util/plan-reminder";
+import { findLatestPlanSteps, type PlanReminderState } from "./util/plan-reminder";
 
 export class Agent {
   cwd?: string;
@@ -28,9 +28,10 @@ export class Agent {
   private compactionConfig: CompactionConfig;
   private messages: Message[] = [];
   private compactionSummary?: Record<string, unknown>;
-  /** Session-level plan state (external to the conversation): survives compaction and
-   *  re-prompts so the plan reminder still knows the unfinished steps. */
-  private currentPlan?: PlanStepLike[];
+  /** Session-level reminder state (plan steps + cadence counter), external to the conversation
+   *  so it survives compaction and re-prompts — the counter must persist across user inputs,
+   *  otherwise a "N-turn burst → user input → …" pattern would reset it and never remind. */
+  private planReminderState?: PlanReminderState;
   private planReminderIntervalTurns?: number;
   private pendingSteeringMessages: QueuedSteeringMessage[] = [];
   private nextSteeringId = 0;
@@ -78,13 +79,13 @@ export class Agent {
   restore(messages: Message[]): void {
     this.messages = [...messages];
     this.compactionSummary = undefined;
-    this.currentPlan = findLatestPlanSteps(this.messages);
+    this.planReminderState = { plan: findLatestPlanSteps(this.messages), turnsSinceSurfaced: 0 };
   }
 
   restoreCompactionState(messages: Message[], compactionSummary?: Record<string, unknown>): void {
     this.messages = [...messages];
     this.compactionSummary = compactionSummary;
-    this.currentPlan = findLatestPlanSteps(this.messages);
+    this.planReminderState = { plan: findLatestPlanSteps(this.messages), turnsSinceSurfaced: 0 };
   }
 
   /** Get the current conversation messages. */
@@ -107,7 +108,7 @@ export class Agent {
       if (result.compactionSummary !== undefined) {
         this.compactionSummary = result.compactionSummary;
       }
-      this.currentPlan = result.planState;
+      this.planReminderState = result.planReminderState;
       return result.messages;
     } finally {
       this._running = false;
@@ -131,7 +132,7 @@ export class Agent {
       stream: this.agentStream,
       sessionId: this.sessionId,
       compactionSummary: this.compactionSummary,
-      planState: this.currentPlan,
+      planReminderState: this.planReminderState,
       hooks: {
         drainSteeringMessages: () => this.drainPendingMessages(),
         pendingSteeringCount: () => this.pendingSteeringMessages.length,

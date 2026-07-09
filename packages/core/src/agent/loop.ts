@@ -11,7 +11,7 @@ import { runToolCalls } from "./tool";
 import type { AgentStream, CompactionConfig, QueuedSteeringMessage } from "./types";
 import { DoomLoopDetector } from "./util/doom-loop";
 import { toSerializableError } from "./util/errors";
-import { findLatestPlanSteps, latestUserGoal, PlanReminder, type PlanStepLike } from "./util/plan-reminder";
+import { findLatestPlanSteps, latestUserGoal, PlanReminder, type PlanReminderState } from "./util/plan-reminder";
 
 // Internal fully-resolved config for one loop run
 interface LoopConfig {
@@ -32,8 +32,8 @@ export interface LoopRuntime {
   stream: AgentStream;
   sessionId?: string;
   compactionSummary?: Record<string, unknown>;
-  /** Session plan state seeded by the Agent (survives compaction/re-prompts). */
-  planState?: PlanStepLike[];
+  /** Reminder state (plan + cadence counter) seeded by the Agent so it survives re-prompts. */
+  planReminderState?: PlanReminderState;
   hooks: {
     drainSteeringMessages: () => QueuedSteeringMessage[];
     pendingSteeringCount: () => number;
@@ -53,7 +53,11 @@ export async function runAgentLoop(
   messages: Message[],
   runtime: LoopRuntime,
   userSignal?: AbortSignal,
-): Promise<{ messages: Message[]; compactionSummary?: Record<string, unknown>; planState?: PlanStepLike[] }> {
+): Promise<{
+  messages: Message[];
+  compactionSummary?: Record<string, unknown>;
+  planReminderState?: PlanReminderState;
+}> {
   const { config, streamFunction, stream, hooks } = runtime;
   const toolAbortController = new AbortController();
   const signal = AbortSignal.any([toolAbortController.signal, userSignal].filter((s): s is AbortSignal => s != null));
@@ -79,7 +83,7 @@ export async function runAgentLoop(
   // session plan state so it survives compaction and re-prompts. See PlanReminder.
   const planReminder = new PlanReminder(
     config.planReminderIntervalTurns ?? 0,
-    runtime.planState ?? findLatestPlanSteps(conversation),
+    runtime.planReminderState ?? { plan: findLatestPlanSteps(conversation), turnsSinceSurfaced: 0 },
   );
   const runGoal = latestUserGoal(conversation);
 
@@ -115,7 +119,7 @@ export async function runAgentLoop(
         // Emit steering_injected so the reminder is staged to the session tree — external
         // session logs can then audit whether it fires, and resume restores an accurate
         // transcript. Unlike real steering it is NOT enqueued, so it never forces another
-        // turn (stays soft). The web client hides it by its "[Plan reminder]" prefix.
+        // turn (stays soft). The web client hides it by its `<system-reminder>` marker.
         stream.emit({
           type: "steering_injected",
           messageCount: 1,
@@ -201,7 +205,7 @@ export async function runAgentLoop(
   return {
     messages: conversation,
     compactionSummary: loopRequest.compactionSummary,
-    planState: planReminder.currentPlan,
+    planReminderState: planReminder.snapshot(),
   };
 }
 
