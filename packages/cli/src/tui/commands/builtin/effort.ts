@@ -6,6 +6,7 @@ import {
   getThinkingEffortOptions,
   getThinkingEffortUsage,
   resolveModel,
+  supportsThinkingEffort,
   supportsThinkingNone,
 } from "@diligent/runtime";
 import type { ListPickerItem } from "../../components/list-picker";
@@ -18,6 +19,7 @@ const EFFORT_ALIASES: Record<string, ThinkingEffort> = {
   low: "low",
   medium: "medium",
   high: "high",
+  xhigh: "xhigh",
   max: "max",
 };
 
@@ -35,8 +37,14 @@ export const effortCommand: Command = {
         ctx.displayError(`Unknown effort: ${args}. Usage: /effort <${getThinkingEffortUsage(model)}>`);
         return;
       }
-      if (normalized === "none" && model.supportsThinking && !supportsThinkingNone(model)) {
-        ctx.displayError("This model does not support minimal thinking.");
+      const unsupportedMinimal = normalized === "none" && model.supportsThinking && !supportsThinkingNone(model);
+      const unsupportedXhigh = normalized === "xhigh" && !supportsThinkingEffort(model, normalized);
+      if (unsupportedMinimal || unsupportedXhigh) {
+        ctx.displayError(
+          normalized === "none"
+            ? "This model does not support minimal thinking."
+            : `Thinking effort "${normalized}" is not supported for this model.`,
+        );
         return;
       }
       await ctx.setEffort(normalized);

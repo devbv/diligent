@@ -80,6 +80,11 @@ describe("ProviderManager", () => {
     }
   });
 
+  test("keeps GPT-5.5 as the default when newer models are registered", () => {
+    expect(DEFAULT_MODELS.openai).toBe("gpt-5.5");
+    expect(DEFAULT_MODELS.chatgpt).toBe("chatgpt-5.5");
+  });
+
   test("setApiKey allows subsequent proxy calls", () => {
     const pm = new ProviderManager({});
     expect(pm.hasKeyFor("openai")).toBe(false);

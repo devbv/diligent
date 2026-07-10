@@ -43,7 +43,7 @@ type ResponsesAPIDecodedEvent =
       usage?: {
         input_tokens: number;
         output_tokens: number;
-        input_tokens_details?: { cached_tokens?: number };
+        input_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number };
         output_tokens_details?: { reasoning_tokens?: number };
       };
       status?: string;
@@ -125,7 +125,7 @@ function decodeResponsesAPIEvent(event: Record<string, unknown>): ResponsesAPIDe
         usage: response.usage as {
           input_tokens: number;
           output_tokens: number;
-          input_tokens_details?: { cached_tokens?: number };
+          input_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number };
           output_tokens_details?: { reasoning_tokens?: number };
         },
         status: response.status as string | undefined,

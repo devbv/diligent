@@ -23,6 +23,13 @@ describe("resolveModel", () => {
     expect(model.contextWindow).toBe(128_000);
   });
 
+  it("resolves the GPT-5.6 family alias to Sol", () => {
+    expect(resolveModel("gpt-5.6").id).toBe("gpt-5.6-sol");
+    expect(KNOWN_MODELS.find((model) => model.id === "gpt-5.6-sol")?.display).toBe("GPT-5.6 Sol");
+    expect(KNOWN_MODELS.find((model) => model.id === "gpt-5.6-terra")?.display).toBe("GPT-5.6 Terra");
+    expect(KNOWN_MODELS.find((model) => model.id === "gpt-5.6-luna")?.display).toBe("GPT-5.6 Luna");
+  });
+
   it("infers openai from o-series prefix", () => {
     expect(resolveModel("o1-preview").provider).toBe("openai");
     expect(resolveModel("o3-mini").provider).toBe("openai");
@@ -66,6 +73,12 @@ describe("resolveModel", () => {
     const model = resolveModel("chatgpt-5.5-pro");
     expect(model.provider).toBe("chatgpt");
     expect(model.id).toBe("chatgpt-5.5");
+  });
+
+  it("resolves the ChatGPT GPT-5.6 family alias to Sol", () => {
+    const model = resolveModel("chatgpt-5.6");
+    expect(model.provider).toBe("chatgpt");
+    expect(model.id).toBe("chatgpt-5.6-sol");
   });
 
   it("infers vertex from vertex- prefix", () => {
@@ -131,9 +144,43 @@ describe("model class annotations", () => {
   });
 
   it("openai classes map correctly", () => {
+    expect(KNOWN_MODELS.find((m) => m.id === "gpt-5.6-sol")?.modelClass).toBe("pro");
+    expect(KNOWN_MODELS.find((m) => m.id === "gpt-5.6-terra")?.modelClass).toBe("general");
+    expect(KNOWN_MODELS.find((m) => m.id === "gpt-5.6-luna")?.modelClass).toBe("lite");
     expect(KNOWN_MODELS.find((m) => m.id === "gpt-5.5")?.modelClass).toBe("pro");
     expect(KNOWN_MODELS.find((m) => m.id === "gpt-5.4")?.modelClass).toBe("general");
     expect(KNOWN_MODELS.find((m) => m.id === "gpt-5.4-mini")?.modelClass).toBe("lite");
+  });
+
+  it("registers official GPT-5.6 metadata and pricing", () => {
+    const expected = {
+      "gpt-5.6-sol": { input: 5, cached: 0.5, write: 6.25, output: 30 },
+      "gpt-5.6-terra": { input: 2.5, cached: 0.25, write: 3.125, output: 15 },
+      "gpt-5.6-luna": { input: 1, cached: 0.1, write: 1.25, output: 6 },
+    } as const;
+
+    for (const [id, pricing] of Object.entries(expected)) {
+      const model = KNOWN_MODELS.find((candidate) => candidate.id === id);
+      expect(model).toBeDefined();
+      expect(model?.contextWindow).toBe(1_050_000);
+      expect(model?.maxOutputTokens).toBe(128_000);
+      expect(model?.inputCostPer1M).toBe(pricing.input);
+      expect(model?.cacheReadCostPer1M).toBe(pricing.cached);
+      expect(model?.cacheWriteCostPer1M).toBe(pricing.write);
+      expect(model?.outputCostPer1M).toBe(pricing.output);
+      expect(model?.supportedEfforts).toEqual(["none", "low", "medium", "high", "xhigh", "max"]);
+    }
+  });
+
+  it("keeps existing OpenAI class routes ahead of the selectable GPT-5.6 family", () => {
+    expect(KNOWN_MODELS.filter((model) => model.provider === "openai").map((model) => model.id)).toEqual([
+      "gpt-5.5",
+      "gpt-5.4",
+      "gpt-5.4-mini",
+      "gpt-5.6-sol",
+      "gpt-5.6-terra",
+      "gpt-5.6-luna",
+    ]);
   });
 
   it("gemini classes map correctly", () => {
@@ -143,17 +190,34 @@ describe("model class annotations", () => {
   });
 
   it("chatgpt classes map correctly", () => {
+    expect(KNOWN_MODELS.find((m) => m.id === "chatgpt-5.6-sol")?.modelClass).toBe("pro");
+    expect(KNOWN_MODELS.find((m) => m.id === "chatgpt-5.6-terra")?.modelClass).toBe("general");
+    expect(KNOWN_MODELS.find((m) => m.id === "chatgpt-5.6-luna")?.modelClass).toBe("lite");
     expect(KNOWN_MODELS.find((m) => m.id === "chatgpt-5.5")?.modelClass).toBe("pro");
     expect(KNOWN_MODELS.find((m) => m.id === "chatgpt-5.4")?.modelClass).toBe("general");
     expect(KNOWN_MODELS.find((m) => m.id === "chatgpt-5.4-mini")?.modelClass).toBe("lite");
   });
 
-  it("orders chatgpt models by preferred display and default priority", () => {
+  it("keeps existing ChatGPT class routes ahead of the selectable GPT-5.6 family", () => {
     expect(KNOWN_MODELS.filter((m) => m.provider === "chatgpt").map((m) => m.id)).toEqual([
       "chatgpt-5.5",
       "chatgpt-5.4",
       "chatgpt-5.4-mini",
+      "chatgpt-5.6-sol",
+      "chatgpt-5.6-terra",
+      "chatgpt-5.6-luna",
     ]);
+  });
+
+  it("registers ChatGPT GPT-5.6 capabilities without API usage pricing", () => {
+    for (const id of ["chatgpt-5.6-sol", "chatgpt-5.6-terra", "chatgpt-5.6-luna"]) {
+      const model = KNOWN_MODELS.find((candidate) => candidate.id === id);
+      expect(model?.contextWindow).toBe(300_000);
+      expect(model?.maxOutputTokens).toBe(128_000);
+      expect(model?.supportedEfforts).toEqual(["none", "low", "medium", "high", "xhigh", "max"]);
+      expect(model?.inputCostPer1M).toBeUndefined();
+      expect(model?.outputCostPer1M).toBeUndefined();
+    }
   });
 
   it("vertex classes map correctly", () => {
@@ -220,9 +284,13 @@ describe("resolveModelForClass", () => {
     expect(lite.provider).toBe("anthropic");
   });
 
-  it("resolves openai general → lite", () => {
+  it("keeps OpenAI class routing on the existing model family", () => {
     const codex = resolveModel("gpt-5.3-codex");
+    const pro = resolveModelForClass(codex, "pro");
+    const general = resolveModelForClass(codex, "general");
     const lite = resolveModelForClass(codex, "lite");
+    expect(pro.id).toBe("gpt-5.5");
+    expect(general.id).toBe("gpt-5.4");
     expect(lite.id).toBe("gpt-5.4-mini");
     expect(lite.provider).toBe("openai");
   });

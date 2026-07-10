@@ -5,7 +5,7 @@ import type { AgentContextItem } from "./agent-native-bridge";
 import { APP_PROJECT_NAME } from "./app-config";
 import { appReducer, type PendingImage } from "./app-state";
 import { getThreadIdFromUrl } from "./app-utils";
-import { supportsThinkingNone } from "./model-thinking-helpers";
+import { normalizeThinkingEffort } from "./model-thinking-helpers";
 import { buildCommandList } from "./slash-commands";
 import { initialThreadState } from "./thread-store";
 import { useAppActions } from "./use-app-actions";
@@ -276,10 +276,9 @@ export function useAppState({
   });
 
   useEffect(() => {
-    if (effort !== "none") return;
     if (!currentModelInfo) return;
-    if (supportsThinkingNone(currentModelInfo)) return;
-    setEffortState("medium");
+    const normalizedEffort = normalizeThinkingEffort(currentModelInfo, effort);
+    if (normalizedEffort !== effort) setEffortState(normalizedEffort);
   }, [effort, currentModelInfo]);
 
   const pendingImagePreviews = useMemo(

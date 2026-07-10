@@ -52,6 +52,8 @@ export {
   getThinkingEffortOptions,
   getThinkingEffortUsage,
   getThinkingEffortUsageValues,
+  normalizeThinkingEffort,
+  supportsThinkingEffort,
   supportsThinkingNone,
 } from "./thinking-effort";
 export type {

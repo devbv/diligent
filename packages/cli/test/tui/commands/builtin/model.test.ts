@@ -149,4 +149,23 @@ describe("modelCommand picker", () => {
     expect(onModelChanged).toHaveBeenCalledWith("claude-haiku-4-5-20251001");
     expect(config.model.id).toBe("claude-haiku-4-5-20251001");
   });
+
+  it("normalizes xhigh to max when switching from GPT-5.6 to GPT-5.5", async () => {
+    const providerManager = {
+      hasKeyFor: mock((_provider: string) => true),
+    };
+    const setEffort = mock(async () => {});
+    const onEffortChanged = mock(() => {});
+    const config = makeConfig("gpt-5.6-sol", providerManager as unknown as AppConfig["providerManager"]);
+    const ctx = makeContext(config, {
+      currentEffort: "xhigh",
+      setEffort,
+      onEffortChanged,
+    });
+
+    await modelCommand.handler("gpt-5.5", ctx);
+
+    expect(setEffort).toHaveBeenCalledWith("max");
+    expect(onEffortChanged).toHaveBeenCalledWith("max", "max");
+  });
 });

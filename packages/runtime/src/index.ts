@@ -29,11 +29,13 @@ export {
   getThinkingEffortUsage,
   getThinkingEffortUsageValues,
   KNOWN_MODELS,
+  normalizeThinkingEffort,
   PROVIDER_DISPLAY_NAMES,
   PROVIDER_HINTS,
   PROVIDER_NAMES,
   ProviderManager,
   resolveModel,
+  supportsThinkingEffort,
   supportsThinkingNone,
 } from "@diligent/core";
 export { getBuiltinAgentDefinitions } from "./agent/agent-types";

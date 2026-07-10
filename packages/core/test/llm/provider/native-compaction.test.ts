@@ -400,9 +400,50 @@ describe("native compaction adapters", () => {
     expect(capturedUrl).toBe("https://chatgpt.com/backend-api/codex/responses/compact");
     expect(capturedHeaders.Authorization).toBe("Bearer access-token");
     expect(capturedHeaders["ChatGPT-Account-ID"]).toBe("acct_1");
+    expect(capturedHeaders.version).toBe("0.144.1");
     expect(capturedHeaders.session_id).toBe("session-1");
     expect(capturedBody.store).toBeUndefined();
     expect(result.status).toBe("ok");
+  });
+
+  test("ChatGPT GPT-5.6 compaction uses the Responses Lite HTTP contract", async () => {
+    let capturedHeaders: Record<string, string> = {};
+    let capturedBody: Record<string, unknown> = {};
+    globalThis.fetch = (async (_input, init) => {
+      capturedHeaders = Object.fromEntries(new Headers(init?.headers).entries());
+      capturedBody = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+      return new Response(JSON.stringify({ summary: "Compacted summary" }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const adapter = createChatGPTNativeCompaction(() => ({
+      access_token: "access-token",
+      refresh_token: "refresh-token",
+      id_token: "id-token",
+      expires_at: Date.now() + 60_000,
+      account_id: "acct_1",
+    }));
+
+    await adapter({
+      model: { ...OPENAI_MODEL, id: "chatgpt-5.6-luna", provider: "chatgpt" },
+      systemPrompt: [{ label: "base", content: "System instructions" }],
+      messages: [{ role: "user", content: "hello", timestamp: Date.now() }],
+      sessionId: "session-1",
+    });
+
+    expect(capturedHeaders["x-openai-internal-codex-responses-lite"]).toBe("true");
+    expect(capturedBody.model).toBe("gpt-5.6-luna");
+    expect(capturedBody.instructions).toBeUndefined();
+    expect(capturedBody.tools).toBeUndefined();
+    expect(capturedBody.parallel_tool_calls).toBe(false);
+    expect((capturedBody.reasoning as { context: string }).context).toBe("all_turns");
+    expect(capturedBody.input).toEqual([
+      { type: "additional_tools", role: "developer", tools: [] },
+      {
+        type: "message",
+        role: "developer",
+        content: [{ type: "input_text", text: "System instructions" }],
+      },
+      { type: "message", role: "user", content: [{ type: "input_text", text: "hello" }] },
+    ]);
   });
 
   test("ChatGPT adapter treats 400 as error (not unsupported)", async () => {

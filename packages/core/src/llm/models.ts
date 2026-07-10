@@ -19,6 +19,7 @@ export interface ModelDefinition extends Model {
 const GEMINI_THINKING_BUDGETS = { low: 2_048, medium: 8_192, high: 16_384, max: 24_576 } as const;
 const THINKING_EFFORTS_WITH_NONE: ThinkingEffort[] = ["none", "low", "medium", "high", "max"];
 const THINKING_EFFORTS_WITHOUT_NONE: ThinkingEffort[] = ["low", "medium", "high", "max"];
+const GPT_56_THINKING_EFFORTS: ThinkingEffort[] = ["none", "low", "medium", "high", "xhigh", "max"];
 
 export const DEFAULT_ANTHROPIC_MODEL_ID = "claude-sonnet-4-6";
 
@@ -191,7 +192,7 @@ export const KNOWN_MODELS: ModelDefinition[] = [
     aliases: ["glm5.1"],
     modelClass: "general",
   },
-  // OpenAI — reasoning models: effort mapped to OpenAI's low/medium/high
+  // Existing OpenAI models remain first so default class routing is unchanged.
   {
     id: "gpt-5.5",
     display: "GPT-5.5",
@@ -240,8 +241,57 @@ export const KNOWN_MODELS: ModelDefinition[] = [
     supportsVision: true,
     modelClass: "lite",
   },
-  // ChatGPT subscription models map to the same upstream family, but remain distinct
-  // in Diligent so provider identity stays separate from auth strategy.
+  // GPT-5.6 is selectable without replacing existing defaults or class routes.
+  {
+    id: "gpt-5.6-sol",
+    display: "GPT-5.6 Sol",
+    provider: "openai",
+    contextWindow: 1_050_000,
+    maxOutputTokens: 128_000,
+    inputCostPer1M: 5.0,
+    outputCostPer1M: 30.0,
+    cacheReadCostPer1M: 0.5,
+    cacheWriteCostPer1M: 6.25,
+    supportsThinking: true,
+    supportedEfforts: GPT_56_THINKING_EFFORTS,
+    supportsVision: true,
+    aliases: ["gpt-5.6"],
+    modelClass: "pro",
+  },
+  {
+    id: "gpt-5.6-terra",
+    display: "GPT-5.6 Terra",
+    provider: "openai",
+    contextWindow: 1_050_000,
+    maxOutputTokens: 128_000,
+    inputCostPer1M: 2.5,
+    outputCostPer1M: 15.0,
+    cacheReadCostPer1M: 0.25,
+    cacheWriteCostPer1M: 3.125,
+    supportsThinking: true,
+    supportedEfforts: GPT_56_THINKING_EFFORTS,
+    supportsVision: true,
+    modelClass: "general",
+  },
+  {
+    id: "gpt-5.6-luna",
+    display: "GPT-5.6 Luna",
+    provider: "openai",
+    contextWindow: 1_050_000,
+    maxOutputTokens: 128_000,
+    inputCostPer1M: 1.0,
+    outputCostPer1M: 6.0,
+    cacheReadCostPer1M: 0.1,
+    cacheWriteCostPer1M: 1.25,
+    supportsThinking: true,
+    supportedEfforts: GPT_56_THINKING_EFFORTS,
+    supportsVision: true,
+    modelClass: "lite",
+  },
+  // ChatGPT subscription models map to upstream GPT slugs, but remain distinct in
+  // Diligent so provider identity stays separate from the OpenAI API auth strategy.
+  // The public Codex catalog does not publish subscription-specific context limits,
+  // so these entries retain the existing conservative 300K ChatGPT runtime budget.
   {
     id: "chatgpt-5.5",
     display: "ChatGPT 5.5",
@@ -279,6 +329,40 @@ export const KNOWN_MODELS: ModelDefinition[] = [
     cacheReadCostPer1M: 0.075,
     supportsThinking: true,
     supportedEfforts: THINKING_EFFORTS_WITH_NONE,
+    supportsVision: true,
+    modelClass: "lite",
+  },
+  {
+    id: "chatgpt-5.6-sol",
+    display: "ChatGPT 5.6 Sol",
+    provider: "chatgpt",
+    contextWindow: 300_000,
+    maxOutputTokens: 128_000,
+    supportsThinking: true,
+    supportedEfforts: GPT_56_THINKING_EFFORTS,
+    supportsVision: true,
+    aliases: ["chatgpt-5.6"],
+    modelClass: "pro",
+  },
+  {
+    id: "chatgpt-5.6-terra",
+    display: "ChatGPT 5.6 Terra",
+    provider: "chatgpt",
+    contextWindow: 300_000,
+    maxOutputTokens: 128_000,
+    supportsThinking: true,
+    supportedEfforts: GPT_56_THINKING_EFFORTS,
+    supportsVision: true,
+    modelClass: "general",
+  },
+  {
+    id: "chatgpt-5.6-luna",
+    display: "ChatGPT 5.6 Luna",
+    provider: "chatgpt",
+    contextWindow: 300_000,
+    maxOutputTokens: 128_000,
+    supportsThinking: true,
+    supportedEfforts: GPT_56_THINKING_EFFORTS,
     supportsVision: true,
     modelClass: "lite",
   },

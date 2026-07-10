@@ -76,6 +76,7 @@ export {
   getThinkingEffortUsage,
   getThinkingEffortUsageValues,
   KNOWN_MODELS,
+  normalizeThinkingEffort,
   PROVIDER_DISPLAY_NAMES,
   PROVIDER_HINTS,
   PROVIDER_NAMES,
@@ -83,6 +84,7 @@ export {
   ProviderManager,
   resolveModel,
   resolveModelForClass,
+  supportsThinkingEffort,
   supportsThinkingNone,
   withRetry,
 } from "./llm/index";

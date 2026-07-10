@@ -3,7 +3,7 @@
 import { resolveModel } from "@diligent/core/llm/models";
 import type { NativeCompactFn } from "@diligent/core/llm/provider/native-compaction";
 import type { ProviderManager } from "@diligent/core/llm/provider-manager";
-import { supportsThinkingNone } from "@diligent/core/llm/thinking-effort";
+import { normalizeThinkingEffort } from "@diligent/core/llm/thinking-effort";
 import type { ProviderName, StreamFunction } from "@diligent/core/llm/types";
 import type { AuthStoreOptions } from "../auth/auth-store";
 import type { DiligentConfig } from "../config/schema";
@@ -317,11 +317,12 @@ export async function dispatchClientRequest(
           const llmCompactionFn = ctx.createNativeCompaction?.(model.provider as ProviderName);
           const llmMsgStreamFn = ctx.streamFunction;
           runtime.agent?.setModel(result.model, llmMsgStreamFn, llmCompactionFn);
-          if (runtime.effort === "none" && !supportsThinkingNone(model)) {
-            runtime.effort = "medium";
-            runtime.agent?.setEffort("medium");
-            runtime.manager.appendEffortChange("medium", "config");
-            ctx.lastUsedEffortByCwd.set(runtime.cwd, "medium");
+          const normalizedEffort = normalizeThinkingEffort(model, runtime.effort);
+          if (normalizedEffort !== runtime.effort) {
+            runtime.effort = normalizedEffort;
+            runtime.agent?.setEffort(normalizedEffort);
+            runtime.manager.appendEffortChange(normalizedEffort, "config");
+            ctx.lastUsedEffortByCwd.set(runtime.cwd, normalizedEffort);
           }
           runtime.manager.appendModelChange(model.provider, model.id);
           ctx.lastUsedModelByCwd.set(runtime.cwd, result.model);

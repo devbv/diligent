@@ -2,9 +2,9 @@
 import type { ResponseInputItem, ResponseInputMessageContentList } from "openai/resources/responses/responses";
 import type { Message, StopReason, Usage } from "../../types";
 import { materializeUserContentBlocks } from "../image-io";
-import type { FunctionToolDefinition, ProviderBuiltinToolDefinition, ToolDefinition } from "../types";
+import type { FunctionToolDefinition, ProviderBuiltinToolDefinition, ThinkingEffort, ToolDefinition } from "../types";
 
-export type ResponsesReasoningEffort = "none" | "low" | "medium" | "high" | "xhigh";
+export type ResponsesReasoningEffort = "none" | "low" | "medium" | "high" | "xhigh" | "max";
 
 // OpenAI vision `detail`: "low" = fixed 512px (~85 tokens), "high" = tiled, "auto" = server picks by size.
 export type OpenAIImageDetail = "auto" | "low" | "high";
@@ -114,10 +114,47 @@ export function mapStopReason(status: string | undefined): StopReason {
   }
 }
 
-export function toResponsesReasoningEffort(
-  effort: "none" | "low" | "medium" | "high" | "max",
-): ResponsesReasoningEffort {
-  if (effort === "max") return "xhigh";
+const GPT_56_MODEL_IDS = new Set(["gpt-5.6", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]);
+
+export function isGpt56Model(modelId: string): boolean {
+  return GPT_56_MODEL_IDS.has(modelId);
+}
+
+/**
+ * Convert a standard Responses request into the ChatGPT Codex Responses Lite shape.
+ * Lite carries tool declarations and developer instructions as leading input items.
+ */
+export function toResponsesLiteRequestBody(body: Record<string, unknown>): Record<string, unknown> {
+  const { input, instructions, tools, reasoning, ...rest } = body;
+  const inputItems = Array.isArray(input) ? input : [];
+  const toolItems = Array.isArray(tools) ? tools : [];
+  const reasoningOptions = reasoning && typeof reasoning === "object" ? (reasoning as Record<string, unknown>) : {};
+  const prefix: Array<Record<string, unknown>> = [
+    {
+      type: "additional_tools",
+      role: "developer",
+      tools: toolItems,
+    },
+  ];
+
+  if (typeof instructions === "string" && instructions.length > 0) {
+    prefix.push({
+      type: "message",
+      role: "developer",
+      content: [{ type: "input_text", text: instructions }],
+    });
+  }
+
+  return {
+    ...rest,
+    input: [...prefix, ...inputItems],
+    reasoning: { ...reasoningOptions, context: "all_turns" },
+    parallel_tool_calls: false,
+  };
+}
+
+export function toResponsesReasoningEffort(effort: ThinkingEffort, modelId: string): ResponsesReasoningEffort {
+  if (effort === "max" && !isGpt56Model(modelId)) return "xhigh";
   return effort;
 }
 
@@ -209,9 +246,9 @@ export async function buildResponsesRequestBody(input: {
   maxTokens?: number;
   temperature?: number;
   useReasoning?: boolean;
-  effort?: "none" | "low" | "medium" | "high" | "max";
+  effort?: ThinkingEffort;
   store?: boolean;
-  promptCacheRetention?: string;
+  enablePromptCaching?: boolean;
   strictTools?: boolean;
   imageDetail?: OpenAIImageDetail;
 }): Promise<Record<string, unknown>> {
@@ -227,7 +264,13 @@ export async function buildResponsesRequestBody(input: {
   };
   if (input.systemInstructions) body.instructions = input.systemInstructions;
   if (input.sessionId) body.prompt_cache_key = input.sessionId;
-  if (input.promptCacheRetention) body.prompt_cache_retention = input.promptCacheRetention;
+  if (input.enablePromptCaching) {
+    if (isGpt56Model(input.model)) {
+      body.prompt_cache_options = { ttl: "30m" };
+    } else {
+      body.prompt_cache_retention = "24h";
+    }
+  }
   if (input.store !== undefined) body.store = input.store;
   if (input.tools && input.tools.length > 0) {
     body.tools = buildTools(input.tools, input.strictTools);
@@ -235,7 +278,7 @@ export async function buildResponsesRequestBody(input: {
   if (input.maxTokens !== undefined) body.max_output_tokens = input.maxTokens;
   if (input.temperature !== undefined) body.temperature = input.temperature;
   if (input.useReasoning && input.effort) {
-    body.reasoning = { effort: toResponsesReasoningEffort(input.effort), summary: "auto" };
+    body.reasoning = { effort: toResponsesReasoningEffort(input.effort, input.model), summary: "auto" };
     body.include = ["reasoning.encrypted_content"];
   }
   if (input.tools?.some((tool) => tool.kind === "provider_builtin")) {
@@ -255,16 +298,17 @@ export function mapUsage(
     | {
         input_tokens: number;
         output_tokens: number;
-        input_tokens_details?: { cached_tokens?: number };
+        input_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number };
         output_tokens_details?: { reasoning_tokens?: number };
       }
     | undefined,
 ): Usage {
   const cachedTokens = usage?.input_tokens_details?.cached_tokens ?? 0;
+  const cacheWriteTokens = usage?.input_tokens_details?.cache_write_tokens ?? 0;
   return {
-    inputTokens: (usage?.input_tokens ?? 0) - cachedTokens,
+    inputTokens: Math.max(0, (usage?.input_tokens ?? 0) - cachedTokens - cacheWriteTokens),
     outputTokens: usage?.output_tokens ?? 0,
     cacheReadTokens: cachedTokens,
-    cacheWriteTokens: 0,
+    cacheWriteTokens,
   };
 }
