@@ -82,6 +82,12 @@ describe("createAnthropicStream", () => {
     expect(request.temperature).toBe(1);
   });
 
+  test("maps xhigh to max for adaptive thinking", async () => {
+    const request = await collectRequest(baseModel({ supportsAdaptiveThinking: true }), { effort: "xhigh" });
+
+    expect(request.output_config).toEqual({ effort: "max" });
+  });
+
   test("uses budget_tokens for non-adaptive thinking models", async () => {
     const request = await collectRequest(
       baseModel({
@@ -95,6 +101,18 @@ describe("createAnthropicStream", () => {
     expect(request.thinking).toEqual({ type: "enabled", budget_tokens: 3_000 });
     expect(request.output_config).toBeUndefined();
     expect(request.temperature).toBe(1);
+  });
+
+  test("uses the max budget when a non-adaptive model receives xhigh", async () => {
+    const request = await collectRequest(
+      baseModel({
+        supportsAdaptiveThinking: false,
+        thinkingBudgets: { low: 1_024, medium: 3_000, high: 8_000, max: 16_000 },
+      }),
+      { effort: "xhigh" },
+    );
+
+    expect(request.thinking).toEqual({ type: "enabled", budget_tokens: 16_000 });
   });
 
   test("uses caller temperature when thinking is disabled", async () => {

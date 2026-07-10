@@ -14,7 +14,13 @@ import { toWebImageUrl } from "../../shared/image-routes";
 import { type AgentContextItem, prependContextToMessage } from "./agent-native-bridge";
 import type { AppAction, PendingImage } from "./app-state";
 import { fileToBase64, normalizeImageFileName, replaceThreadUrl } from "./app-utils";
-import { findModelInfo, getThinkingEffortUsage, supportsThinkingNone } from "./model-thinking-helpers";
+import {
+  findModelInfo,
+  getThinkingEffortUsage,
+  normalizeThinkingEffort,
+  supportsThinkingEffort,
+  supportsThinkingNone,
+} from "./model-thinking-helpers";
 import type { WebRpcClient } from "./rpc-client";
 import { parseSlashCommand, type SlashCommand } from "./slash-commands";
 import type { ThreadState } from "./thread-store";
@@ -344,8 +350,18 @@ export function useAppActions({
   const setEffort = useCallback(
     async (nextEffort: ThinkingEffort): Promise<void> => {
       const modelInfo = findModelInfo(availableModels, currentModel);
-      if (nextEffort === "none" && modelInfo?.supportsThinking && !supportsThinkingNone(modelInfo)) {
-        dispatch({ type: "show_info_toast", payload: "This model does not support minimal thinking." });
+      const unsupportedMinimal =
+        nextEffort === "none" && modelInfo?.supportsThinking === true && !supportsThinkingNone(modelInfo);
+      const unsupportedXhigh =
+        nextEffort === "xhigh" && modelInfo !== undefined && !supportsThinkingEffort(modelInfo, nextEffort);
+      if (unsupportedMinimal || unsupportedXhigh) {
+        dispatch({
+          type: "show_info_toast",
+          payload:
+            nextEffort === "none"
+              ? "This model does not support minimal thinking."
+              : `Thinking effort "${nextEffort}" is not supported for this model.`,
+        });
         return;
       }
       // Always update local state so draft (new conversation) picks up the change.
@@ -508,9 +524,13 @@ export function useAppActions({
 
           void changeModel(arg, getModelChangeThreadId(activeThreadId)).then(() => {
             const modelInfo = availableModels.find((model) => model.id === arg);
-            if (effort === "none" && modelInfo && !supportsThinkingNone(modelInfo)) {
-              setEffortState("medium");
-              dispatch({ type: "show_info_toast", payload: `Model switched to ${arg}. Thinking adjusted to medium.` });
+            const normalizedEffort = normalizeThinkingEffort(modelInfo, effort);
+            if (normalizedEffort !== effort) {
+              setEffortState(normalizedEffort);
+              dispatch({
+                type: "show_info_toast",
+                payload: `Model switched to ${arg}. Thinking adjusted to ${normalizedEffort}.`,
+              });
               return;
             }
             dispatch({ type: "show_info_toast", payload: `Model switched to ${arg}` });
@@ -529,7 +549,7 @@ export function useAppActions({
             return;
           }
           const normalized = arg.toLowerCase() === "minimal" ? "none" : arg.toLowerCase();
-          if (!["none", "low", "medium", "high", "max"].includes(normalized)) {
+          if (!["none", "low", "medium", "high", "xhigh", "max"].includes(normalized)) {
             dispatch({ type: "show_info_toast", payload: `Unknown effort: ${arg}. Usage: ${usage}` });
             return;
           }

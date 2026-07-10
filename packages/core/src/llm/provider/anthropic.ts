@@ -50,11 +50,11 @@ export function createAnthropicStream(apiKey?: string, baseUrl?: string): Stream
         if (effortProvided && model.supportsThinking && model.supportsAdaptiveThinking) {
           thinkingConfig = {
             thinking: { type: "adaptive" } as Anthropic.ThinkingConfigParam,
-            output_config: { effort },
+            output_config: { effort: effort === "xhigh" ? "max" : effort },
             temperature: 1,
           };
         } else if (effortProvided && model.supportsThinking && !model.supportsAdaptiveThinking) {
-          const budgetKey = effort === "none" ? "low" : effort;
+          const budgetKey = effort === "none" ? "low" : effort === "xhigh" ? "max" : effort;
           const budgetTokens = model.thinkingBudgets?.[budgetKey] ?? model.defaultBudgetTokens ?? 8_000;
           thinkingConfig = {
             thinking: { type: "enabled", budget_tokens: budgetTokens } as Anthropic.ThinkingConfigParam,

@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EventStream } from "@diligent/core/event-stream";
-import { DEFAULT_ANTHROPIC_MODEL_ID } from "@diligent/core/llm/models";
+import { DEFAULT_ANTHROPIC_MODEL_ID, resolveModel } from "@diligent/core/llm/models";
 import { ProviderManager } from "@diligent/core/llm/provider-manager";
 import type { Model, StreamFunction } from "@diligent/core/llm/types";
 import type {
@@ -13,6 +13,7 @@ import type {
   DiligentServerRequest,
   DiligentServerRequestResponse,
   JSONRPCMessage,
+  ThinkingEffort,
 } from "@diligent/protocol";
 import {
   DILIGENT_SERVER_NOTIFICATION_METHODS,
@@ -140,28 +141,30 @@ function defaultServerRequestResponse(method: DiligentServerRequest["method"]): 
 
 function makeFactoryRuntimeConfig(overrides?: {
   tools?: Record<string, unknown>;
-  effort?: "none" | "low" | "medium" | "high" | "max";
+  effort?: ThinkingEffort;
   modelId?: string;
 }) {
   const providerManager = new ProviderManager({});
   providerManager.setApiKey("anthropic", "test-key");
   providerManager.setApiKey("openai", "test-key");
   const model: Model =
-    overrides?.modelId === "gpt-5.4"
-      ? {
-          id: "gpt-5.4",
-          provider: "openai",
-          contextWindow: 400_000,
-          maxOutputTokens: 128_000,
-          supportsThinking: true,
-        }
-      : {
-          id: DEFAULT_ANTHROPIC_MODEL_ID,
-          provider: "anthropic",
-          contextWindow: 200_000,
-          maxOutputTokens: 128_000,
-          supportsThinking: true,
-        };
+    overrides?.modelId && overrides.modelId !== "gpt-5.4"
+      ? resolveModel(overrides.modelId)
+      : overrides?.modelId === "gpt-5.4"
+        ? {
+            id: "gpt-5.4",
+            provider: "openai",
+            contextWindow: 400_000,
+            maxOutputTokens: 128_000,
+            supportsThinking: true,
+          }
+        : {
+            id: DEFAULT_ANTHROPIC_MODEL_ID,
+            provider: "anthropic",
+            contextWindow: 200_000,
+            maxOutputTokens: 128_000,
+            supportsThinking: true,
+          };
 
   return {
     model,
@@ -981,6 +984,125 @@ describe("DiligentAppServer", () => {
         params: { threadId, effort: "none" },
       }),
     ).resolves.toMatchObject({ error: { message: "Minimal thinking is not supported for this model." } });
+  });
+
+  it("accepts and restores xhigh effort for GPT-5.6", async () => {
+    const projectRoot = await mkdtemp(join(process.env.TMPDIR ?? "/tmp", "diligent-app-server-"));
+    const server = new DiligentAppServer(
+      createAppServerConfig({
+        cwd: projectRoot,
+        runtimeConfig: makeFactoryRuntimeConfig({ modelId: "gpt-5.6-sol" }),
+      }),
+    );
+
+    connectTestPeer(server);
+    const started = await server.handleRequest(TEST_CONNECTION_ID, {
+      id: 1520,
+      method: "thread/start",
+      params: { cwd: projectRoot },
+    });
+    const threadId = (readResult(started) as { threadId: string }).threadId;
+
+    const changed = await server.handleRequest(TEST_CONNECTION_ID, {
+      id: 1521,
+      method: "effort/set",
+      params: { threadId, effort: "xhigh" },
+    });
+    expect(readResult(changed)).toEqual({ effort: "xhigh" });
+
+    const read = await server.handleRequest(TEST_CONNECTION_ID, {
+      id: 1522,
+      method: "thread/read",
+      params: { threadId },
+    });
+    expect((readResult(read) as { currentEffort: string }).currentEffort).toBe("xhigh");
+  });
+
+  it("rejects xhigh effort for GPT-5.5", async () => {
+    const projectRoot = await mkdtemp(join(process.env.TMPDIR ?? "/tmp", "diligent-app-server-"));
+    const server = new DiligentAppServer(
+      createAppServerConfig({
+        cwd: projectRoot,
+        runtimeConfig: makeFactoryRuntimeConfig({ modelId: "gpt-5.5" }),
+      }),
+    );
+
+    connectTestPeer(server);
+    const started = await server.handleRequest(TEST_CONNECTION_ID, {
+      id: 1530,
+      method: "thread/start",
+      params: { cwd: projectRoot },
+    });
+    const threadId = (readResult(started) as { threadId: string }).threadId;
+
+    await expect(
+      server.handleRequest(TEST_CONNECTION_ID, {
+        id: 1531,
+        method: "effort/set",
+        params: { threadId, effort: "xhigh" },
+      }),
+    ).resolves.toMatchObject({ error: { message: 'Thinking effort "xhigh" is not supported for this model.' } });
+  });
+
+  it("preserves existing effort/set behavior for non-thinking models", async () => {
+    const projectRoot = await mkdtemp(join(process.env.TMPDIR ?? "/tmp", "diligent-app-server-"));
+    const server = new DiligentAppServer(
+      createAppServerConfig({
+        cwd: projectRoot,
+        runtimeConfig: makeFactoryRuntimeConfig({ modelId: "vertex-gemma-4-26b-it" }),
+      }),
+    );
+
+    connectTestPeer(server);
+    const started = await server.handleRequest(TEST_CONNECTION_ID, {
+      id: 1532,
+      method: "thread/start",
+      params: { cwd: projectRoot },
+    });
+    const threadId = (readResult(started) as { threadId: string }).threadId;
+
+    const changed = await server.handleRequest(TEST_CONNECTION_ID, {
+      id: 1533,
+      method: "effort/set",
+      params: { threadId, effort: "high" },
+    });
+
+    expect(readResult(changed)).toEqual({ effort: "high" });
+  });
+
+  it("normalizes GPT-5.6 xhigh to legacy max when switching to GPT-5.5", async () => {
+    const projectRoot = await mkdtemp(join(process.env.TMPDIR ?? "/tmp", "diligent-app-server-"));
+    const server = new DiligentAppServer(
+      createAppServerConfig({
+        cwd: projectRoot,
+        runtimeConfig: makeFactoryRuntimeConfig({ modelId: "gpt-5.6-sol" }),
+      }),
+    );
+
+    connectTestPeer(server);
+    const started = await server.handleRequest(TEST_CONNECTION_ID, {
+      id: 1540,
+      method: "thread/start",
+      params: { cwd: projectRoot },
+    });
+    const threadId = (readResult(started) as { threadId: string }).threadId;
+    await server.handleRequest(TEST_CONNECTION_ID, {
+      id: 1541,
+      method: "effort/set",
+      params: { threadId, effort: "xhigh" },
+    });
+    await server.handleRequest(TEST_CONNECTION_ID, {
+      id: 1542,
+      method: "config/set",
+      params: { threadId, model: "gpt-5.5" },
+    });
+
+    const read = await server.handleRequest(TEST_CONNECTION_ID, {
+      id: 1543,
+      method: "thread/read",
+      params: { threadId },
+    });
+    expect((readResult(read) as { currentEffort: string }).currentEffort).toBe("max");
   });
 
   it("adjusts none effort to medium when switching from openai to anthropic", async () => {

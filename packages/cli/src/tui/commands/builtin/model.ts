@@ -1,5 +1,5 @@
 // @summary Model selection command - allows switching between available LLM models
-import { getThinkingEffortLabel, KNOWN_MODELS, resolveModel, supportsThinkingNone } from "@diligent/runtime";
+import { getThinkingEffortLabel, KNOWN_MODELS, normalizeThinkingEffort, resolveModel } from "@diligent/runtime";
 import { DEFAULT_PROVIDER, PROVIDER_DISPLAY_NAMES, PROVIDER_NAMES, type ProviderName } from "../../../provider-manager";
 import type { ListPickerItem } from "../../components/list-picker";
 import { t } from "../../theme";
@@ -34,9 +34,10 @@ export const modelCommand: Command = {
         ctx.config.model = model;
         await ctx.setModel(model.id);
         ctx.onModelChanged(model.id);
-        if (ctx.currentEffort === "none" && !supportsThinkingNone(model)) {
-          await ctx.setEffort("medium");
-          ctx.onEffortChanged("medium", getThinkingEffortLabel("medium", model));
+        const normalizedEffort = normalizeThinkingEffort(model, ctx.currentEffort);
+        if (normalizedEffort !== ctx.currentEffort) {
+          await ctx.setEffort(normalizedEffort);
+          ctx.onEffortChanged(normalizedEffort, getThinkingEffortLabel(normalizedEffort, model));
         }
         ctx.displayLines([`  Model switched to ${t.bold}${model.id}${t.reset}`]);
       } catch {
@@ -99,9 +100,10 @@ export const modelCommand: Command = {
     ctx.config.model = model;
     await ctx.setModel(model.id);
     ctx.onModelChanged(model.id);
-    if (ctx.currentEffort === "none" && !supportsThinkingNone(model)) {
-      await ctx.setEffort("medium");
-      ctx.onEffortChanged("medium", getThinkingEffortLabel("medium", model));
+    const normalizedEffort = normalizeThinkingEffort(model, ctx.currentEffort);
+    if (normalizedEffort !== ctx.currentEffort) {
+      await ctx.setEffort(normalizedEffort);
+      ctx.onEffortChanged(normalizedEffort, getThinkingEffortLabel(normalizedEffort, model));
     }
     ctx.displayLines([`  Model switched to ${t.bold}${model.id}${t.reset}`]);
   },

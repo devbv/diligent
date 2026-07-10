@@ -1,4 +1,4 @@
-// @summary ChatGPT subscription stream — raw fetch to chatgpt.com/backend-api/codex/responses (no SDK)
+// @summary ChatGPT subscription stream — HTTP/SSE for legacy models and WebSocket Responses Lite for GPT-5.6
 import { arch, platform, release } from "node:os";
 import type { OpenAIOAuthTokens } from "../../auth/types";
 import { EventStream } from "../../event-stream";
@@ -7,7 +7,12 @@ import { flattenSections } from "../system-sections";
 import type { Model, ProviderEvent, ProviderResult, StreamContext, StreamFunction, StreamOptions } from "../types";
 import { ProviderError } from "../types";
 import type { NativeCompactFn } from "./native-compaction";
-import { buildResponsesRequestBody, toResponseInputItems } from "./openai-responses";
+import {
+  buildResponsesRequestBody,
+  isGpt56Model,
+  toResponseInputItems,
+  toResponsesLiteRequestBody,
+} from "./openai-responses";
 import {
   describeCompactionPayload,
   extractCompactionSummary,
@@ -17,8 +22,237 @@ import {
 import { handleResponsesAPIEvents } from "./openai-sse";
 
 const CHATGPT_CODEX_URL = "https://chatgpt.com/backend-api/codex/responses";
+const CHATGPT_CODEX_WEBSOCKET_URL = "wss://chatgpt.com/backend-api/codex/responses";
 const CHATGPT_COMPACT_URL = "https://chatgpt.com/backend-api/codex/responses/compact";
+const RESPONSES_LITE_HEADER = "x-openai-internal-codex-responses-lite";
+// Pinned to the Codex client version used to verify the GPT-5.6 transport contract.
+const CHATGPT_CODEX_CLIENT_VERSION = "0.144.1";
 const USER_AGENT = `diligent (${platform()} ${release()}; ${arch()})`;
+
+export interface ChatGPTStreamOptions {
+  webSocketFactory?: (url: string, headers: Record<string, string>) => WebSocket;
+}
+
+type QueueWaiter<T> = {
+  resolve: (result: IteratorResult<T>) => void;
+  reject: (error: Error) => void;
+};
+
+class AsyncEventQueue<T> implements AsyncIterable<T> {
+  private readonly values: T[] = [];
+  private readonly waiters: Array<QueueWaiter<T>> = [];
+  private done = false;
+  private failure?: Error;
+
+  push(value: T): void {
+    if (this.done) return;
+    const waiter = this.waiters.shift();
+    if (waiter) {
+      waiter.resolve({ value, done: false });
+    } else {
+      this.values.push(value);
+    }
+  }
+
+  end(): void {
+    if (this.done) return;
+    this.done = true;
+    for (const waiter of this.waiters.splice(0)) {
+      waiter.resolve({ value: undefined as T, done: true });
+    }
+  }
+
+  fail(error: Error): void {
+    if (this.done) return;
+    this.done = true;
+    this.failure = error;
+    for (const waiter of this.waiters.splice(0)) {
+      waiter.reject(error);
+    }
+  }
+
+  [Symbol.asyncIterator](): AsyncIterator<T> {
+    return {
+      next: () => {
+        const value = this.values.shift();
+        if (value !== undefined) return Promise.resolve({ value, done: false });
+        if (this.failure) return Promise.reject(this.failure);
+        if (this.done) return Promise.resolve({ value: undefined as T, done: true });
+        return new Promise<IteratorResult<T>>((resolve, reject) => {
+          this.waiters.push({ resolve, reject });
+        });
+      },
+    };
+  }
+}
+
+function createDefaultWebSocket(url: string, headers: Record<string, string>): WebSocket {
+  const BunWebSocket = WebSocket as unknown as new (
+    url: string,
+    options: { headers: Record<string, string> },
+  ) => WebSocket;
+  return new BunWebSocket(url, { headers });
+}
+
+async function webSocketMessageToString(data: unknown): Promise<string> {
+  if (typeof data === "string") return data;
+  if (data instanceof ArrayBuffer) return new TextDecoder().decode(data);
+  if (ArrayBuffer.isView(data)) return new TextDecoder().decode(data);
+  if (typeof Blob !== "undefined" && data instanceof Blob) return data.text();
+  return String(data);
+}
+
+function toChatGPTWebSocketError(payload: Record<string, unknown>): ProviderError {
+  const status = typeof payload.status === "number" ? payload.status : undefined;
+  const rawError = payload.error;
+  const error = rawError && typeof rawError === "object" ? (rawError as Record<string, unknown>) : undefined;
+  const message =
+    (typeof error?.message === "string" && error.message) ||
+    (typeof rawError === "string" && rawError) ||
+    "ChatGPT WebSocket request failed";
+  const errorType = typeof error?.type === "string" ? error.type : "";
+  const isUsageLimit = errorType.includes("usage_limit") || message.includes("usage_limit_reached");
+  const displayMessage =
+    status === 429 && isUsageLimit
+      ? "AI usage limit reached. Please try again later or upgrade your plan."
+      : `ChatGPT API error${status ? ` (${status})` : ""}: ${message}`;
+
+  return new ProviderError(
+    displayMessage,
+    status === 429 && isUsageLimit
+      ? "unknown"
+      : status === 429
+        ? "rate_limit"
+        : status !== undefined && status >= 500
+          ? "server_error"
+          : status === 401 || status === 403
+            ? "auth"
+            : "unknown",
+    status !== 429 && ((status !== undefined && status >= 500) || isTransientOpenAIErrorMessage(displayMessage)),
+    undefined,
+    status,
+  );
+}
+
+function createChatGPTWebSocketEvents(input: {
+  headers: Record<string, string>;
+  request: Record<string, unknown>;
+  signal?: AbortSignal;
+  webSocketFactory: (url: string, headers: Record<string, string>) => WebSocket;
+}): { opened: Promise<void>; events: AsyncIterable<Record<string, unknown>> } {
+  const queue = new AsyncEventQueue<Record<string, unknown>>();
+  const socket = input.webSocketFactory(CHATGPT_CODEX_WEBSOCKET_URL, input.headers);
+  let opened = false;
+  let settled = false;
+  let messageWork = Promise.resolve();
+  let resolveOpened!: () => void;
+  let rejectOpened!: (error: Error) => void;
+  const openedPromise = new Promise<void>((resolve, reject) => {
+    resolveOpened = resolve;
+    rejectOpened = reject;
+  });
+
+  const cleanup = () => {
+    socket.removeEventListener("open", handleOpen);
+    socket.removeEventListener("message", handleMessage);
+    socket.removeEventListener("error", handleError);
+    socket.removeEventListener("close", handleClose);
+    input.signal?.removeEventListener("abort", handleAbort);
+  };
+
+  const terminate = () => {
+    if (socket.readyState === WebSocket.CLOSED) return;
+    const terminatingSocket = socket as WebSocket & { terminate?: () => void };
+    if (typeof terminatingSocket.terminate === "function") {
+      terminatingSocket.terminate();
+    } else {
+      socket.close();
+    }
+  };
+
+  const fail = (error: Error) => {
+    if (!settled) {
+      settled = true;
+      rejectOpened(error);
+    }
+    queue.fail(error);
+    cleanup();
+    terminate();
+  };
+
+  function handleOpen(): void {
+    opened = true;
+    try {
+      socket.send(JSON.stringify(input.request));
+      settled = true;
+      resolveOpened();
+    } catch (error) {
+      fail(error instanceof Error ? error : new Error(String(error)));
+    }
+  }
+
+  function handleMessage(event: MessageEvent): void {
+    messageWork = messageWork
+      .then(async () => {
+        const text = await webSocketMessageToString(event.data);
+        const payload = JSON.parse(text) as Record<string, unknown>;
+        if (payload.type === "error") {
+          fail(toChatGPTWebSocketError(payload));
+          return;
+        }
+
+        queue.push(payload);
+        if (payload.type === "response.completed" || payload.type === "response.failed") {
+          queue.end();
+          cleanup();
+          if (socket.readyState !== WebSocket.CLOSED) socket.close(1000);
+        }
+      })
+      .catch((error) => fail(error instanceof Error ? error : new Error(String(error))));
+  }
+
+  function handleError(): void {
+    fail(new ProviderError("ChatGPT WebSocket connection failed", "network", true));
+  }
+
+  function handleClose(event: CloseEvent): void {
+    if (!opened) {
+      fail(
+        new ProviderError(
+          `ChatGPT WebSocket connection closed before opening (${event.code}${event.reason ? `: ${event.reason}` : ""})`,
+          "network",
+          true,
+        ),
+      );
+      return;
+    }
+    if (!settled) {
+      settled = true;
+      resolveOpened();
+    }
+    queue.end();
+    cleanup();
+  }
+
+  function handleAbort(): void {
+    if (!settled) {
+      settled = true;
+      rejectOpened(new ProviderError("Aborted", "unknown", false));
+    }
+    queue.end();
+    cleanup();
+    terminate();
+  }
+
+  socket.addEventListener("open", handleOpen);
+  socket.addEventListener("message", handleMessage);
+  socket.addEventListener("error", handleError);
+  socket.addEventListener("close", handleClose);
+  input.signal?.addEventListener("abort", handleAbort, { once: true });
+  if (input.signal?.aborted) handleAbort();
+
+  return { opened: openedPromise, events: queue };
+}
 
 function resolveChatGPTModelId(modelId: string): string {
   return modelId.startsWith("chatgpt-") ? `gpt-${modelId.slice("chatgpt-".length)}` : modelId;
@@ -27,9 +261,8 @@ function resolveChatGPTModelId(modelId: string): string {
 /**
  * Create a StreamFunction for ChatGPT subscription (OAuth).
  *
- * Bypasses the OpenAI Node SDK entirely — makes raw fetch calls to
- * chatgpt.com/backend-api/codex/responses using the Responses API format.
- * This avoids SDK-specific headers that the ChatGPT endpoint rejects.
+ * Bypasses the OpenAI Node SDK entirely. Legacy models use raw HTTP/SSE,
+ * while GPT-5.6 models use the ChatGPT Codex WebSocket Responses Lite contract.
  *
  * ChatGPT subscriber endpoint limitations (store: false enforced):
  * - store: true → 400 "Store must be set to false"
@@ -39,7 +272,10 @@ function resolveChatGPTModelId(modelId: string): string {
  *
  * @param getTokens - Called per-request to get the current (possibly refreshed) tokens
  */
-export function createChatGPTStream(getTokens: () => OpenAIOAuthTokens): StreamFunction {
+export function createChatGPTStream(
+  getTokens: () => OpenAIOAuthTokens,
+  providerOptions: ChatGPTStreamOptions = {},
+): StreamFunction {
   return (model: Model, context: StreamContext, options: StreamOptions): EventStream<ProviderEvent, ProviderResult> => {
     const stream = new EventStream<ProviderEvent, ProviderResult>(
       (event) => event.type === "done" || event.type === "error",
@@ -52,14 +288,14 @@ export function createChatGPTStream(getTokens: () => OpenAIOAuthTokens): StreamF
 
     (async () => {
       try {
+        if (options.signal?.aborted) return;
         const tokens = getTokens();
 
         const headers: Record<string, string> = {
-          "Content-Type": "application/json",
-          Accept: "text/event-stream",
           Authorization: `Bearer ${tokens.access_token}`,
           "User-Agent": USER_AGENT,
           originator: "diligent",
+          version: CHATGPT_CODEX_CLIENT_VERSION,
         };
         if (tokens.account_id) {
           headers["ChatGPT-Account-ID"] = tokens.account_id;
@@ -73,9 +309,11 @@ export function createChatGPTStream(getTokens: () => OpenAIOAuthTokens): StreamF
 
         const effort = options.effort;
         const useReasoning = model.supportsThinking;
+        const upstreamModelId = resolveChatGPTModelId(model.id);
+        const useResponsesLite = isGpt56Model(upstreamModelId);
 
-        const body = await buildResponsesRequestBody({
-          model: resolveChatGPTModelId(model.id),
+        const standardBody = await buildResponsesRequestBody({
+          model: upstreamModelId,
           systemInstructions: flattenSections(context.systemPrompt),
           messages: context.messages,
           cwd: context.cwd,
@@ -87,10 +325,36 @@ export function createChatGPTStream(getTokens: () => OpenAIOAuthTokens): StreamF
           store: false,
         });
 
+        if (useResponsesLite) {
+          headers[RESPONSES_LITE_HEADER] = "true";
+          const body = toResponsesLiteRequestBody(standardBody);
+          const connection = createChatGPTWebSocketEvents({
+            headers,
+            request: { type: "response.create", ...body },
+            signal: options.signal,
+            webSocketFactory: providerOptions.webSocketFactory ?? createDefaultWebSocket,
+          });
+          await connection.opened;
+          stream.push({ type: "start" });
+          await handleResponsesAPIEvents(
+            connection.events,
+            stream,
+            model,
+            options.signal,
+            context.messages.length,
+            options.sessionId,
+          );
+          return;
+        }
+
         const response = await fetch(CHATGPT_CODEX_URL, {
           method: "POST",
-          headers,
-          body: JSON.stringify(body),
+          headers: {
+            ...headers,
+            "Content-Type": "application/json",
+            Accept: "text/event-stream",
+          },
+          body: JSON.stringify(standardBody),
           signal: options.signal,
         });
 
@@ -239,26 +503,31 @@ async function readCompactErrorBody(response: Response): Promise<string> {
 export function createChatGPTNativeCompaction(getTokens: () => OpenAIOAuthTokens): NativeCompactFn {
   return async (input) => {
     const tokens = getTokens();
+    const upstreamModelId = resolveChatGPTModelId(input.model.id);
+    const useResponsesLite = isGpt56Model(upstreamModelId);
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       Authorization: `Bearer ${tokens.access_token}`,
       "User-Agent": USER_AGENT,
       originator: "diligent",
+      version: CHATGPT_CODEX_CLIENT_VERSION,
     };
     if (tokens.account_id) headers["ChatGPT-Account-ID"] = tokens.account_id;
     if (input.sessionId) {
       headers.session_id = input.sessionId;
     }
+    if (useResponsesLite) headers[RESPONSES_LITE_HEADER] = "true";
 
-    const body: Record<string, unknown> = {
-      model: resolveChatGPTModelId(input.model.id),
+    const standardBody: Record<string, unknown> = {
+      model: upstreamModelId,
       input: await toResponseInputItems({
         messages: input.messages,
         cwd: input.cwd,
         compactionSummary: input.compactionSummary,
       }),
     };
-    if (input.systemPrompt.length > 0) body.instructions = flattenSections(input.systemPrompt);
+    if (input.systemPrompt.length > 0) standardBody.instructions = flattenSections(input.systemPrompt);
+    const body = useResponsesLite ? toResponsesLiteRequestBody(standardBody) : standardBody;
 
     const response = await fetch(CHATGPT_COMPACT_URL, {
       method: "POST",
