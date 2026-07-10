@@ -79,12 +79,22 @@ L1 applyProceduralOps(ops, {targetGuid, cwd}) -> {added, updated, deleted, rootG
 
 ## 검증 상태
 
-- `tsc --noEmit` clean, `biome check` clean(touched paths), `bun test` **128 pass / 0 fail**(신규 31개).
+- `tsc --noEmit` clean, `biome check` clean(touched paths), `bun test` **125 pass / 0 fail**.
 - 커버: 가드레일(timeout kill·node 한도·input 크기), 순수 diff 7종, applier(delete→update→add·skip-missing),
-  4개 툴(arg 파싱·승인 거절·멱등 재실행), colosseum 대용량 스크립트 round-trip.
+  툴(arg 파싱·승인 거절·멱등 재실행), colosseum 대용량 스크립트 round-trip.
+
+## Luau 인터프리터 패키징 (2026-07-10 완료)
+
+지원 대상 = **windows-x64(amd64) + darwin-arm64** 로 확정.
+
+- 벤더 바이너리(`vendor/luau/0.723/{darwin,win32,linux}/`)는 OS별로 커밋됨. darwin=arm64,
+  win32=x86-64, linux=x86-64. **darwin 은 arm64 전용**(인텔 맥은 미지원 → fallback 필요).
+- `build-overdare-sidecar.ts` 가 타깃별 인터프리터를 `assets/bin/`(`luau` 또는 `luau.exe`)으로 복사
+  (exec bit 보존). `runtime.ts` 의 해석 순서: `OVDR_LUAU_BIN`/`LUAU_BIN` → 패키지 `assets/bin` →
+  소스 `vendor/` → PATH `luau`. darwin-arm64 / windows-x64 빌드로 실제 복사·아키텍처 검증 완료.
 
 ## 추천 후속 작업
 
 - 실 Studio 프로젝트로 `procedural_run`(변형) / `model_run`(멱등 재생성) 라이브 검증.
 - 저장 스크립트 standalone 화(`.luaurc` alias) 검토(선택).
-- `scripts/build-overdare-sidecar.ts` 가 `luau/` 트리 + 벤더 바이너리를 번들에 포함하는지 확인(P068 미해결 항목).
+- (선택) 인텔 맥/ARM 리눅스 지원이 필요하면 darwin universal 또는 추가 벤더 바이너리 도입.
