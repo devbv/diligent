@@ -1392,6 +1392,56 @@ test("input dock renders pending image preview and add-images action", () => {
   expect(html).toContain("minimal");
 });
 
+test("input dock renders GPT-5.6 xhigh as a distinct selected effort", () => {
+  const html = renderToStaticMarkup(
+    <InputDock
+      input=""
+      onInputChange={() => {}}
+      onSend={() => {}}
+      onSteer={() => {}}
+      onInterrupt={() => {}}
+      onCompactionClick={() => {}}
+      canSend={true}
+      canSteer={false}
+      threadStatus="idle"
+      mode="default"
+      onModeChange={() => {}}
+      effort="xhigh"
+      onEffortChange={() => {}}
+      currentModel="gpt-5.6-sol"
+      availableModels={[
+        {
+          id: "gpt-5.6-sol",
+          provider: "openai",
+          contextWindow: 1050000,
+          maxOutputTokens: 128000,
+          supportsVision: true,
+          supportsThinking: true,
+          supportedEfforts: ["none", "low", "medium", "high", "xhigh", "max"],
+        },
+      ]}
+      onModelChange={() => {}}
+      usage={{ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalCost: 0 }}
+      currentContextTokens={0}
+      contextWindow={1050000}
+      hasProvider={true}
+      onOpenProviders={() => {}}
+      supportsVision={true}
+      supportsThinking={true}
+      pendingImages={[]}
+      contextItems={[]}
+      isUploadingImages={false}
+      onAddImages={() => {}}
+      onRemoveImage={() => {}}
+      onRemoveContextItem={() => {}}
+      onClearContextItems={() => {}}
+    />,
+  );
+
+  expect(html).toContain('aria-label="Effort selector"');
+  expect(html).toContain("xhigh");
+});
+
 test("input dock compaction menu does not show compacting label swap", () => {
   const html = renderToStaticMarkup(
     <InputDock

@@ -5,9 +5,10 @@ import {
   convertToGeminiContents,
   convertToGeminiTools,
   extractGeminiWebBlocks,
+  resolveGeminiThinkingBudget,
   toGeminiSchema,
 } from "../../../src/llm/provider/gemini";
-import type { ToolDefinition } from "../../../src/llm/types";
+import type { Model, ToolDefinition } from "../../../src/llm/types";
 
 describe("Gemini content conversion", () => {
   test("converts user image blocks to Gemini inline data parts", async () => {
@@ -68,6 +69,21 @@ describe("Gemini content conversion", () => {
         ],
       },
     ]);
+  });
+});
+
+describe("Gemini thinking budget", () => {
+  const model: Model = {
+    id: "gemini-test",
+    provider: "gemini",
+    contextWindow: 1_000_000,
+    maxOutputTokens: 64_000,
+    supportsThinking: true,
+    thinkingBudgets: { low: 1_024, medium: 4_096, high: 8_192, max: 32_768 },
+  };
+
+  test("maps xhigh to the model max budget", () => {
+    expect(resolveGeminiThinkingBudget(model, "xhigh")).toBe(32_768);
   });
 });
 

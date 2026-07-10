@@ -1,7 +1,7 @@
 // @summary Session manager orchestrating agent loop, persistence, compaction, and steering
 
 import type { Message } from "@diligent/core/types";
-import type { PendingSteer } from "@diligent/protocol";
+import type { PendingSteer, ThinkingEffort } from "@diligent/protocol";
 import type { Mode } from "../agent/mode";
 import type { AgentEvent } from "../agent-event";
 import { CollabSessionHandler } from "./collab-session-handler";
@@ -179,7 +179,7 @@ export class SessionManager {
     return reconciled.result;
   }
 
-  getCurrentEffort(): "none" | "low" | "medium" | "high" | "max" | undefined {
+  getCurrentEffort(): ThinkingEffort | undefined {
     return buildSessionContext(this.state.getCommittedEntries(), this.state.getCommittedLeafId(), {}).currentEffort;
   }
 
@@ -271,10 +271,7 @@ export class SessionManager {
     this.appendAndPersist(entry);
   }
 
-  appendEffortChange(
-    effort: "none" | "low" | "medium" | "high" | "max",
-    changedBy: EffortChangeEntry["changedBy"] = "command",
-  ): void {
+  appendEffortChange(effort: ThinkingEffort, changedBy: EffortChangeEntry["changedBy"] = "command"): void {
     const entry: EffortChangeEntry = {
       type: "effort_change",
       id: generateEntryId(),

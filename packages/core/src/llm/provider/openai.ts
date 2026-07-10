@@ -46,7 +46,7 @@ export function createOpenAIStream(apiKey?: string, baseUrl?: string, imageDetai
           tools: context.tools,
           strictTools: false,
           sessionId: options.sessionId,
-          promptCacheRetention: "24h",
+          enablePromptCaching: true,
           maxTokens: options.maxTokens,
           temperature: options.temperature,
           useReasoning,

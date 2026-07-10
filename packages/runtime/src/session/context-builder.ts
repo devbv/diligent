@@ -2,7 +2,7 @@
 import { buildMessagesFromCompaction } from "@diligent/core/agent/compaction";
 import { resolveModel } from "@diligent/core/llm/models";
 import type { Message } from "@diligent/core/types";
-import type { AssistantMessage, Mode } from "@diligent/protocol";
+import type { AssistantMessage, Mode, ThinkingEffort } from "@diligent/protocol";
 import type { CompactionEntry, SessionEntry } from "./types";
 
 export interface SessionContext {
@@ -10,7 +10,7 @@ export interface SessionContext {
   providerMessages: Message[];
   compactionSummary?: Record<string, unknown>;
   currentModel?: { provider: string; modelId: string };
-  currentEffort?: "none" | "low" | "medium" | "high" | "max";
+  currentEffort?: ThinkingEffort;
   currentMode?: Mode;
 }
 
@@ -92,7 +92,7 @@ export function buildSessionContext(
   const messages: Message[] = [];
   const providerMessages: Message[] = [];
   let currentModel: { provider: string; modelId: string } | undefined;
-  let currentEffort: "none" | "low" | "medium" | "high" | "max" | undefined;
+  let currentEffort: ThinkingEffort | undefined;
   let currentMode = latestModeInPath(path);
   let lastAssistantModelId: string | undefined;
 

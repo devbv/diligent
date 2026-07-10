@@ -31,6 +31,20 @@ describe("protocol/flow", () => {
 
     expect(
       DiligentClientRequestSchema.safeParse({
+        method: DILIGENT_CLIENT_REQUEST_METHODS.EFFORT_SET,
+        params: { threadId: "th-1", effort: "xhigh" },
+      }).success,
+    ).toBe(true);
+
+    expect(
+      DiligentClientResponseSchema.safeParse({
+        method: DILIGENT_CLIENT_REQUEST_METHODS.EFFORT_SET,
+        result: { effort: "xhigh" },
+      }).success,
+    ).toBe(true);
+
+    expect(
+      DiligentClientRequestSchema.safeParse({
         method: DILIGENT_CLIENT_REQUEST_METHODS.TURN_START,
         params: { threadId: "th-1", message: "hello" },
       }).success,

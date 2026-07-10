@@ -29,6 +29,14 @@ import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError } from "../types";
 type ProviderToolUseBlock = Extract<ContentBlock, { type: "provider_tool_use" }>;
 type WebSearchResultBlock = Extract<ContentBlock, { type: "web_search_result" }>;
 
+const DEFAULT_GEMINI_THINKING_BUDGETS = { low: 2_048, medium: 8_192, high: 16_384, max: 24_576 };
+
+export function resolveGeminiThinkingBudget(model: Model, effort: StreamOptions["effort"]): number | undefined {
+  if (effort === undefined || !model.supportsThinking) return undefined;
+  const budgetKey = effort === "none" ? "low" : effort === "xhigh" ? "max" : effort;
+  return model.thinkingBudgets?.[budgetKey] ?? DEFAULT_GEMINI_THINKING_BUDGETS[budgetKey];
+}
+
 export function createGeminiStream(apiKey?: string, baseUrl?: string): StreamFunction {
   const resolvedApiKey = resolveGeminiApiKey(apiKey);
   const client = new GoogleGenAI({
@@ -49,15 +57,7 @@ export function createGeminiStream(apiKey?: string, baseUrl?: string): StreamFun
     (async () => {
       try {
         const effort = options.effort;
-        const effortProvided = effort !== undefined;
-        const defaultBudgets = { low: 2_048, medium: 8_192, high: 16_384, max: 24_576 };
-        const budgetTokens =
-          effortProvided && model.supportsThinking
-            ? (() => {
-                const budgetKey = effort === "none" ? "low" : effort;
-                return model.thinkingBudgets?.[budgetKey] ?? defaultBudgets[budgetKey];
-              })()
-            : undefined;
+        const budgetTokens = resolveGeminiThinkingBudget(model, effort);
         const useThinking = budgetTokens !== undefined;
 
         const responseStream = await client.models.generateContentStream({

@@ -114,6 +114,32 @@ describe("buildSessionContext", () => {
     expect(ctx.messages).toHaveLength(2); // non-message changes don't produce messages
   });
 
+  it("preserves xhigh effort changes for GPT-5.6 sessions", () => {
+    const entries: SessionEntry[] = [
+      makeMsg("a1", null, "user", "hi"),
+      {
+        type: "model_change",
+        id: "a2",
+        parentId: "a1",
+        timestamp: "2026-07-10T10:00:01.000Z",
+        provider: "openai",
+        modelId: "gpt-5.6-sol",
+      },
+      {
+        type: "effort_change",
+        id: "a3",
+        parentId: "a2",
+        timestamp: "2026-07-10T10:00:02.000Z",
+        effort: "xhigh",
+        changedBy: "command",
+      },
+    ];
+
+    const ctx = buildSessionContext(entries);
+    expect(ctx.currentModel?.modelId).toBe("gpt-5.6-sol");
+    expect(ctx.currentEffort).toBe("xhigh");
+  });
+
   it("tracks latest mode change without adding transcript messages", () => {
     const entries: SessionEntry[] = [
       makeMsg("a1", null, "user", "hi"),
