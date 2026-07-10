@@ -1,7 +1,7 @@
 // @summary List persisted procedural models so model_run can discover their ids.
 
 import { z } from "zod";
-import { listManifests } from "../../../procedural-model/manifest";
+import { listManifests } from "../../../procedural/manifest";
 import type { Tool, ToolResult } from "../types";
 
 const TOOL_NAME = "studiorpc_procedural_model_list";

@@ -39,7 +39,7 @@ L1 applyProceduralOps(ops, {targetGuid, cwd}) -> {added, updated, deleted, rootG
   하여 op(add/update/delete)를 도출합니다(스크립트에는 op 개념이 아예 없음).
 
 주요 파일:
-- `sidecar/src/procedural-model/`: `limits.ts`(가드레일), `ops.ts`(end-state diff), `manifest.ts`(영속화),
+- `sidecar/src/procedural/`: `limits.ts`(가드레일), `ops.ts`(end-state diff), `manifest.ts`(영속화),
   `runtime.ts`(`runProceduralScript` 추가), `luau/ovdr-shim.lua`(`Ovdr.injectScene`+guid 직렬화), `luau/runner.lua`(workspace 전역).
 - `sidecar/src/tools/studiorpc/tools/`: `procedural-apply.ts`(`applyProceduralOps`), `procedural-scene.ts`,
   그리고 툴 4개(`procedural-run-tool`, `procedural-model-{save,run,list}-tool`). `index.ts` 에 등록.
@@ -63,10 +63,12 @@ L1 applyProceduralOps(ops, {targetGuid, cwd}) -> {added, updated, deleted, rootG
    승인 거절, 순수 diff, 그리고 RPC 를 mock 한 상태에서 파일단위 apply 전체 — `model_run` 2회 실행 시 서브트리 1개
    유지 확인 포함). **실제 프로젝트 + Studio 로 한 번 돌려보는 게 다음 필수 단계.**
 
-4. **핸드오프 대비 의도적 차이 2가지:**
-   - `studiorpc_procedural_json_apply` 는 **demote(제거) 안 하고 유지**했습니다. 동작·테스트되는 툴을 지우는 건
-     순수 리스크·이득 없음이고, 핸드오프도 "escape hatch 로 남겨도 된다"고 함. 새 툴들은 `applyProceduralOps`(공유 L1) 사용.
-   - 디렉터리 리네임(`procedural-model/` → `procedural/`)은 **안 함**(핸드오프상 optional, churn 회피).
+4. **핸드오프 후속 정리(2026-07-10, 사용자 요청으로 완료):**
+   - `studiorpc_procedural_json_apply` **demote 완료** — 에이전트 툴 등록 제거 + 툴 파일/전용 테스트 삭제.
+     JSON 파일 적용 기능은 신규 툴(`procedural_run`/`model_run`)이 스크립트를 직접 실행·적용하므로 표면에서 뺐고,
+     공유 L1 은 `applyProceduralOps`. 필요하면 git 히스토리에서 복구 가능(escape hatch).
+   - 디렉터리 리네임 **완료**: `src/procedural-model/` → `src/procedural/`, `test/procedural-model/` → `test/procedural/`
+     (임포트 경로 전부 갱신). 단, 툴 파일명 `procedural-model-{save,run,list}-tool.ts` 는 "procedural **model**" 개념이라 유지.
 
 5. **변형(transform) MVP 제약:**
    - 읽기/diff/쓰기 대상 속성 화이트리스트 = `CFrame`, `Size`, `Color`, `Material`, `WorldPivot`. 그 외는 안 건드림.
@@ -84,5 +86,5 @@ L1 applyProceduralOps(ops, {targetGuid, cwd}) -> {added, updated, deleted, rootG
 ## 추천 후속 작업
 
 - 실 Studio 프로젝트로 `procedural_run`(변형) / `model_run`(멱등 재생성) 라이브 검증.
-- 필요 시 `procedural_json_apply` 실제 demote + 저장 스크립트 standalone 화(`.luaurc` alias) 검토.
+- 저장 스크립트 standalone 화(`.luaurc` alias) 검토(선택).
 - `scripts/build-overdare-sidecar.ts` 가 `luau/` 트리 + 벤더 바이너리를 번들에 포함하는지 확인(P068 미해결 항목).

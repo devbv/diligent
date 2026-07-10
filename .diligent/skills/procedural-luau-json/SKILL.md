@@ -36,15 +36,15 @@ Procedural JSON is static level geometry for OVERDARE Studio. When writing or po
 
 | Purpose | Path |
 |---|---|
-| Runtime generator | `apps/overdare-ai-agent/sidecar/src/procedural-model/runtime.ts` |
-| Public exports/types | `apps/overdare-ai-agent/sidecar/src/procedural-model/` |
-| Luau runner | `apps/overdare-ai-agent/sidecar/src/procedural-model/luau/runner.lua` |
-| OVDR shim | `apps/overdare-ai-agent/sidecar/src/procedural-model/luau/ovdr-shim.lua` |
-| OVDR helper libs | `apps/overdare-ai-agent/sidecar/src/procedural-model/luau/dependencies/` |
-| Runtime tests | `apps/overdare-ai-agent/sidecar/test/procedural-model/runtime.test.ts` |
+| Runtime generator | `apps/overdare-ai-agent/sidecar/src/procedural/runtime.ts` |
+| Public exports/types | `apps/overdare-ai-agent/sidecar/src/procedural/` |
+| Luau runner | `apps/overdare-ai-agent/sidecar/src/procedural/luau/runner.lua` |
+| OVDR shim | `apps/overdare-ai-agent/sidecar/src/procedural/luau/ovdr-shim.lua` |
+| OVDR helper libs | `apps/overdare-ai-agent/sidecar/src/procedural/luau/dependencies/` |
+| Runtime tests | `apps/overdare-ai-agent/sidecar/test/procedural/runtime.test.ts` |
 | Roblox helper reference | `roblox-lib/` |
 | Roblox example scripts | `roblox-example/` |
-| Existing OVDR examples | `apps/overdare-ai-agent/sidecar/src/procedural-model/examples/` |
+| Existing OVDR examples | `apps/overdare-ai-agent/sidecar/src/procedural/examples/` |
 | Handoff notes | `docs/plan/feature/P068-procedural-script-dummy-json-runtime-handoff.md` |
 
 ## Supported MVP Output
@@ -313,7 +313,7 @@ if (!scriptPath) {
   throw new Error("Usage: bun /tmp/ovdr-generate-procedural-json.ts <script.lua> [output.json]");
 }
 
-const moduleUrl = pathToFileURL(join(process.cwd(), "apps/overdare-ai-agent/sidecar/src/procedural-model/index.ts")).href;
+const moduleUrl = pathToFileURL(join(process.cwd(), "apps/overdare-ai-agent/sidecar/src/procedural/index.ts")).href;
 const { generateProceduralDummyJson } = await import(moduleUrl);
 const scriptSource = readFileSync(scriptPath, "utf8");
 const result = await generateProceduralDummyJson({
@@ -343,15 +343,15 @@ jq '.children[0].name' /tmp/model.generated.json
 If you add shim/dependency support, update:
 
 ```text
-apps/overdare-ai-agent/sidecar/test/procedural-model/runtime.test.ts
+apps/overdare-ai-agent/sidecar/test/procedural/runtime.test.ts
 ```
 
 Targeted validation:
 
 ```bash
-bun test ./apps/overdare-ai-agent/sidecar/test/procedural-model/runtime.test.ts
+bun test ./apps/overdare-ai-agent/sidecar/test/procedural/runtime.test.ts
 ./apps/overdare-ai-agent/sidecar/node_modules/.bin/tsc --pretty false --noEmit -p apps/overdare-ai-agent/sidecar/tsconfig.json
-bunx biome check apps/overdare-ai-agent/sidecar/test/procedural-model/runtime.test.ts
+bunx biome check apps/overdare-ai-agent/sidecar/test/procedural/runtime.test.ts
 ```
 
 ## Agent Tool Surface

@@ -3,8 +3,8 @@
 import { readFileSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import { z } from "zod";
-import { runProceduralScript } from "../../../procedural-model";
-import type { ProceduralParameters } from "../../../procedural-model/types";
+import { runProceduralScript } from "../../../procedural";
+import type { ProceduralParameters } from "../../../procedural/types";
 import type { Tool, ToolContext, ToolResult } from "../types";
 import type { WriteLock } from "../write-lock";
 import { applyProceduralOps } from "./procedural-apply";

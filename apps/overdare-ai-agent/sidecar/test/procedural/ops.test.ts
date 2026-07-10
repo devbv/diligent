@@ -1,8 +1,8 @@
 // @summary Tests the pure end-state diff that derives procedural ops.
 
 import { describe, expect, test } from "bun:test";
-import { deriveProceduralOps } from "../../src/procedural-model/ops";
-import type { ProceduralSceneNode, ProceduralSerializedNode } from "../../src/procedural-model/types";
+import { deriveProceduralOps } from "../../src/procedural/ops";
+import type { ProceduralSceneNode, ProceduralSerializedNode } from "../../src/procedural/types";
 
 const cframe = (x: number, y: number, z: number) => ({
   Position: { X: x, Y: y, Z: z },

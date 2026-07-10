@@ -9,7 +9,6 @@ import { createInstanceDeleteTool } from "./tools/instance-delete-tool";
 import { createInstanceMoveTool } from "./tools/instance-move-tool";
 import { createInstanceReadTool } from "./tools/instance-read-tool";
 import { createInstanceUpsertTool } from "./tools/instance-upsert-tool";
-import { createProceduralJsonApplyTool } from "./tools/procedural-json-apply-tool";
 import { createProceduralModelListTool } from "./tools/procedural-model-list-tool";
 import { createProceduralModelRunTool } from "./tools/procedural-model-run-tool";
 import { createProceduralModelSaveTool } from "./tools/procedural-model-save-tool";
@@ -123,7 +122,6 @@ export async function createStudioRpcTools(ctx: {
   const tools: Tool[] = [
     wrapTool(createInstanceReadTool(ctx.cwd), ctx.host),
     wrapTool(withSnapshot(createInstanceUpsertTool(ctx.cwd, writeLock)), ctx.host),
-    wrapTool(withSnapshot(createProceduralJsonApplyTool(ctx.cwd, writeLock)), ctx.host),
     wrapTool(withSnapshot(createProceduralRunTool(ctx.cwd, writeLock)), ctx.host),
     wrapTool(createProceduralModelSaveTool(ctx.cwd), ctx.host),
     wrapTool(withSnapshot(createProceduralModelRunTool(ctx.cwd, writeLock)), ctx.host),

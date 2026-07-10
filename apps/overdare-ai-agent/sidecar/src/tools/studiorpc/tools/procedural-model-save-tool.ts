@@ -3,15 +3,15 @@
 import { readFileSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import { z } from "zod";
-import { runProceduralScript } from "../../../procedural-model";
+import { runProceduralScript } from "../../../procedural";
 import {
   type ProceduralModelManifest,
   readManifest,
   writeManifest,
   writeModelScript,
-} from "../../../procedural-model/manifest";
-import { extractProceduralScriptMetadata } from "../../../procedural-model/script-metadata";
-import type { ProceduralParameters } from "../../../procedural-model/types";
+} from "../../../procedural/manifest";
+import { extractProceduralScriptMetadata } from "../../../procedural/script-metadata";
+import type { ProceduralParameters } from "../../../procedural/types";
 import type { Tool, ToolContext, ToolResult } from "../types";
 
 const TOOL_NAME = "studiorpc_procedural_model_save";

@@ -1,6 +1,6 @@
 // @summary Shared L1 applier: applies procedural ops (add/update/delete) to the level.
 
-import type { ProceduralAddNode, ProceduralOp } from "../../../procedural-model/types";
+import type { ProceduralAddNode, ProceduralOp } from "../../../procedural/types";
 import * as instanceUpsert from "../methods/instance.upsert";
 import { applyLevelChanges } from "../rpc";
 import { executeInstanceUpsertInner } from "./instance-upsert-tool";

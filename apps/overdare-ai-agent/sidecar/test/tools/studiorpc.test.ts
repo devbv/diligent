@@ -1,15 +1,13 @@
 // @summary Tests OVERDARE Studio bundled Studio RPC tool provider assembly.
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Tool } from "@diligent/core/tool/types";
 import { createStudioBundledToolProviders } from "../../src/tools";
 import { createStudioRpcToolProvider } from "../../src/tools/studiorpc";
-import * as instanceUpsert from "../../src/tools/studiorpc/methods/instance.upsert";
 import * as levelBrowse from "../../src/tools/studiorpc/methods/level.browse";
-import { PROCEDURAL_JSON_APPLY_BATCH_SIZE } from "../../src/tools/studiorpc/tools/procedural-json-apply-tool";
 
 const createdDirs: string[] = [];
 
@@ -410,113 +408,5 @@ describe("createStudioRpcToolProvider", () => {
       requiresReadback: false,
     });
     expect(rpcCalls).toEqual([]);
-  });
-
-  test("parses procedural JSON apply arguments from jsonPath", async () => {
-    const cwd = mkdtempSync(join(tmpdir(), "procedural-json-apply-"));
-    const generatedPath = join(cwd, "generated.json");
-    writeFileSync(
-      generatedPath,
-      JSON.stringify({
-        version: 1,
-        kind: "overdare.procedural-dummy-json",
-        generationId: "file-generation",
-        scriptName: "FileScript",
-        parameters: { Size: { X: 10, Y: 10, Z: 10 }, Attributes: {} },
-        children: [
-          {
-            class: "Model",
-            name: "RootFromFile",
-            properties: {
-              WorldPivot: { Position: { X: 0, Y: 0, Z: 0 }, Orientation: { X: 0, Y: 0, Z: 0 } },
-            },
-          },
-        ],
-      }),
-    );
-    const providers = createStudioBundledToolProviders({ cwd });
-    const provider = providers.find((candidate) => candidate.id === "@overdare/studiorpc-tools")!;
-    const tools = await provider.createTools({ cwd });
-    const applyTool = tools.find((tool) => tool.name === "studiorpc_procedural_json_apply")!;
-
-    expect(() =>
-      applyTool.parameters.parse({
-        targetParentGuid: "PARENT_GUID",
-        jsonPath: generatedPath,
-      }),
-    ).not.toThrow();
-    expect(() =>
-      applyTool.parameters.parse({
-        targetParentGuid: "PARENT_GUID",
-        file: generatedPath,
-      }),
-    ).toThrow();
-    expect(() =>
-      applyTool.parameters.parse({
-        targetParentGuid: "PARENT_GUID",
-        jsonPath: generatedPath,
-        proceduralJson: { stale: true },
-      }),
-    ).not.toThrow();
-    expect(() =>
-      applyTool.parameters.parse({
-        targetParentGuid: "PARENT_GUID",
-        jsonPath: generatedPath,
-        maxNodes: 9999,
-      }),
-    ).not.toThrow();
-    expect(() =>
-      applyTool.parameters.parse({
-        targetParentGuid: "PARENT_GUID",
-        jsonPath: generatedPath,
-        maxNodes: 10000,
-      }),
-    ).toThrow();
-  });
-
-  test("allows 100-item instance upsert batches for procedural apply", () => {
-    const items = Array.from({ length: 100 }, (_, index) => ({
-      class: "Part",
-      parentGuid: "PARENT_GUID",
-      name: `Part_${index}`,
-      properties: {},
-    }));
-
-    expect(PROCEDURAL_JSON_APPLY_BATCH_SIZE).toBe(100);
-    expect(() => instanceUpsert.parseArgs({ items })).not.toThrow();
-    expect(() => instanceUpsert.parseArgs({ items: [...items, items[0]] })).toThrow();
-  });
-
-  test("rejects procedural JSON apply before touching Studio", async () => {
-    const cwd = mkdtempSync(join(tmpdir(), "procedural-json-apply-reject-"));
-    const generatedPath = join(cwd, "generated.json");
-    writeFileSync(
-      generatedPath,
-      JSON.stringify({
-        children: [{ class: "Model", name: "Root", properties: { WorldPivot: { Position: { X: 0, Y: 0, Z: 0 } } } }],
-      }),
-    );
-    const providers = createStudioBundledToolProviders({ cwd: "/tmp/project" });
-    const provider = providers.find((candidate) => candidate.id === "@overdare/studiorpc-tools")!;
-    const tools = await provider.createTools({
-      cwd,
-      host: {
-        approve: async () => "reject",
-      },
-    });
-    const applyTool = tools.find((tool) => tool.name === "studiorpc_procedural_json_apply")!;
-
-    const result = await applyTool.execute(
-      {
-        targetParentGuid: "PARENT_GUID",
-        jsonPath: generatedPath,
-      },
-      { toolCallId: "test", signal: new AbortController().signal, abort: () => {} },
-    );
-
-    expect(result).toEqual({
-      output: "[Rejected by user]",
-      metadata: { error: true, method: "procedural-json.apply" },
-    });
   });
 });

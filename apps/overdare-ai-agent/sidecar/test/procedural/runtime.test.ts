@@ -3,13 +3,13 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { generateProceduralDummyJson, resolveLuauExecutable, runProceduralScript } from "../../src/procedural-model";
-import { extractProceduralScriptMetadata } from "../../src/procedural-model/script-metadata";
+import { generateProceduralDummyJson, resolveLuauExecutable, runProceduralScript } from "../../src/procedural";
+import { extractProceduralScriptMetadata } from "../../src/procedural/script-metadata";
 import type {
   ProceduralGeneratedNode,
   ProceduralPartProperties,
   ProceduralSceneNode,
-} from "../../src/procedural-model/types";
+} from "../../src/procedural/types";
 
 const sampleScript = `--!strict
 -- generationId: test-bunny-001

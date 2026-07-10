@@ -1,9 +1,9 @@
 // @summary Run a persisted procedural model: delete the prior generation and re-apply idempotently.
 
 import { z } from "zod";
-import { runProceduralScript } from "../../../procedural-model";
-import { readManifest, readModelScript, writeManifest } from "../../../procedural-model/manifest";
-import type { ProceduralOp, ProceduralParameters } from "../../../procedural-model/types";
+import { runProceduralScript } from "../../../procedural";
+import { readManifest, readModelScript, writeManifest } from "../../../procedural/manifest";
+import type { ProceduralOp, ProceduralParameters } from "../../../procedural/types";
 import type { Tool, ToolContext, ToolResult } from "../types";
 import type { WriteLock } from "../write-lock";
 import { applyProceduralOps } from "./procedural-apply";

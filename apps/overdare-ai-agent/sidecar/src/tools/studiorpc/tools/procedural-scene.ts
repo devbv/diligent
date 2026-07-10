@@ -1,7 +1,7 @@
 // @summary Reads a level subtree into an injectable procedural scene snapshot.
 
-import { DIFF_PROPERTY_WHITELIST } from "../../../procedural-model/ops";
-import type { ProceduralSceneNode } from "../../../procedural-model/types";
+import { DIFF_PROPERTY_WHITELIST } from "../../../procedural/ops";
+import type { ProceduralSceneNode } from "../../../procedural/types";
 import { findNodeByActorGuid, isRecord, type OvdrjmNode, readOvdrjmRoot } from "./ovdrjm-utils";
 
 function whitelistedProperties(node: OvdrjmNode): Record<string, unknown> {
