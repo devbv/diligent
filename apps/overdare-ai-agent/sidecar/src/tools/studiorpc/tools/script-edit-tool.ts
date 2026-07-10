@@ -12,6 +12,7 @@ import {
   normalizeLineEndings,
   type OvdrjmNode,
   readAndWriteOvdrjm,
+  readOvdrjmRoot,
 } from "./ovdrjm-utils";
 
 // ---------------------------------------------------------------------------
@@ -25,6 +26,26 @@ interface SingleEdit {
 }
 
 type MatchMode = "trimEnd" | "trim" | "unicode";
+
+/**
+ * Structured result returned by applyEdit() instead of throwing.
+ *
+ * - edited:          the replacement was applied; result holds the new content.
+ * - already_applied: old_string not found but new_string is already in the
+ *                    file — the edit was likely applied in a previous call.
+ * - not_found:       old_string not found and new_string is not in the file
+ *                    either — the caller should re-read the source before
+ *                    retrying.
+ * - ambiguous:       old_string matches multiple locations without replace_all;
+ *                    the caller should add more context or pass replace_all.
+ * - noop:            old_string and new_string are identical; nothing to do.
+ */
+type EditStatus =
+  | { kind: "edited"; result: string; count: number }
+  | { kind: "already_applied"; newMatchCount: number }
+  | { kind: "not_found" }
+  | { kind: "ambiguous"; matchCount: number; replaceAllAvailable: boolean }
+  | { kind: "noop" };
 
 function normalizeUnicode(value: string): string {
   return value
@@ -90,8 +111,8 @@ function findLineMatches(contentLines: string[], searchLines: string[]): Array<{
 }
 
 /**
- * Validate and apply a single edit to `content`, returning the new content and
- * the number of replacements made. Throws on validation failure.
+ * Validate and apply a single edit to `content`, returning a structured
+ * EditStatus instead of throwing.
  *
  * Two matching strategies:
  *   1. Character-level exact substring (handles within-line edits).
@@ -99,17 +120,17 @@ function findLineMatches(contentLines: string[], searchLines: string[]): Array<{
  *      pure-line arrays so replacements can never accidentally eat a line
  *      terminator.
  */
-function applyEdit(content: string, edit: SingleEdit): { result: string; count: number } {
+function applyEdit(content: string, edit: SingleEdit): EditStatus {
   const { old_string, new_string, replace_all } = edit;
 
   if (old_string === new_string) {
-    throw new Error("old_string and new_string must differ");
+    return { kind: "noop" };
   }
 
   const exact = findExactMatches(content, old_string);
   if (exact.length > 0) {
     if (!replace_all && exact.length > 1) {
-      throw new Error("old_string is not unique, provide more context or use replace_all");
+      return { kind: "ambiguous", matchCount: exact.length, replaceAllAvailable: true };
     }
     const targets = replace_all ? exact : [exact[0]];
     let out = "";
@@ -120,7 +141,7 @@ function applyEdit(content: string, edit: SingleEdit): { result: string; count: 
       last = match.end;
     }
     out += content.slice(last);
-    return { result: out, count: targets.length };
+    return { kind: "edited", result: out, count: targets.length };
   }
 
   const { lines: contentLines, hasTrailingNewline } = splitIntoLines(content);
@@ -129,10 +150,18 @@ function applyEdit(content: string, edit: SingleEdit): { result: string; count: 
 
   const lineMatches = findLineMatches(contentLines, searchLines);
   if (lineMatches.length === 0) {
-    throw new Error("old_string not found in file");
+    const newExact = findExactMatches(content, new_string);
+    if (newExact.length > 0) {
+      return { kind: "already_applied", newMatchCount: newExact.length };
+    }
+    const newLineMatches = findLineMatches(contentLines, splitIntoLines(new_string).lines);
+    if (newLineMatches.length > 0) {
+      return { kind: "already_applied", newMatchCount: newLineMatches.length };
+    }
+    return { kind: "not_found" };
   }
   if (!replace_all && lineMatches.length > 1) {
-    throw new Error("old_string is not unique, provide more context or use replace_all");
+    return { kind: "ambiguous", matchCount: lineMatches.length, replaceAllAvailable: true };
   }
 
   const targets = replace_all ? lineMatches : [lineMatches[0]];
@@ -144,7 +173,7 @@ function applyEdit(content: string, edit: SingleEdit): { result: string; count: 
 
   const joined = next.join("\n");
   const result = hasTrailingNewline ? `${joined}\n` : joined;
-  return { result, count: targets.length };
+  return { kind: "edited", result, count: targets.length };
 }
 
 // ---------------------------------------------------------------------------
@@ -186,13 +215,79 @@ async function executeScriptEdit(
     return { output: "[Rejected by user]", metadata: { error: true } };
   }
 
-  // --- Read .ovdrjm, apply edit, write back ---
+  // --- Read source and classify the edit before writing ---
+  let preCheckStatus: EditStatus;
+  let scriptName: string | undefined;
+  try {
+    const { root } = readOvdrjmRoot(cwd);
+    const target = findNodeByActorGuid(root, targetGuid);
+    if (!target) {
+      return { output: `Error: ActorGuid not found in .ovdrjm: ${targetGuid}`, metadata: { error: true } };
+    }
+    const instanceType = typeof target.InstanceType === "string" ? target.InstanceType : undefined;
+    if (!instanceType || !SCRIPT_CLASSES.has(instanceType)) {
+      return {
+        output:
+          `Error: Instance ${targetGuid} is ${instanceType ?? "unknown"}, not a script. ` +
+          "Use studiorpc_instance_upsert to edit non-script instances.",
+        metadata: { error: true },
+      };
+    }
+    scriptName = typeof target.Name === "string" ? target.Name : undefined;
+    const source = typeof target.Source === "string" ? target.Source : "";
+    preCheckStatus = applyEdit(source, { old_string, new_string, replace_all });
+  } catch (err) {
+    return {
+      output: `Error: ${err instanceof Error ? err.message : String(err)}`,
+      metadata: { error: true },
+    };
+  }
+
+  if (preCheckStatus.kind !== "edited") {
+    switch (preCheckStatus.kind) {
+      case "already_applied":
+        return {
+          output: `Already applied: new_string found ${preCheckStatus.newMatchCount} time(s) in script ${targetGuid}; old_string not found. No changes made.`,
+          metadata: {
+            method: "script.edit",
+            targetGuid,
+            scriptName,
+            editStatus: "already_applied",
+            newMatchCount: preCheckStatus.newMatchCount,
+          },
+        };
+      case "ambiguous":
+        return {
+          output: `Error: old_string matches ${preCheckStatus.matchCount} locations in script ${targetGuid}. Provide more context or use replace_all.`,
+          metadata: {
+            error: true,
+            method: "script.edit",
+            targetGuid,
+            scriptName,
+            editStatus: "ambiguous",
+            matchCount: preCheckStatus.matchCount,
+            replaceAllAvailable: preCheckStatus.replaceAllAvailable,
+          },
+        };
+      case "not_found":
+        return {
+          output: `Error: old_string not found in script ${targetGuid}. Re-read the source before retrying.`,
+          metadata: { error: true, method: "script.edit", targetGuid, scriptName, editStatus: "not_found" },
+        };
+      case "noop":
+        return {
+          output: `No-op: old_string and new_string are identical in script ${targetGuid}. No changes made.`,
+          metadata: { method: "script.edit", targetGuid, scriptName, editStatus: "noop" },
+        };
+    }
+  }
+
+  // --- Apply the edit and write back ---
   const release = await writeLock.acquire();
   try {
     let count = 0;
     let tabCount = 0;
     let eolCount = 0;
-    let scriptName: string | undefined;
 
     readAndWriteOvdrjm(cwd, (rootDoc) => {
       const root = rootDoc.Root;
@@ -205,26 +300,22 @@ async function executeScriptEdit(
         throw new Error(`ActorGuid not found in .ovdrjm: ${targetGuid}`);
       }
 
-      const instanceType = typeof target.InstanceType === "string" ? target.InstanceType : undefined;
-      if (!instanceType || !SCRIPT_CLASSES.has(instanceType)) {
+      const source = typeof target.Source === "string" ? target.Source : "";
+      const writeStatus = applyEdit(source, { old_string, new_string, replace_all });
+
+      if (writeStatus.kind !== "edited") {
         throw new Error(
-          `Instance ${targetGuid} is ${instanceType ?? "unknown"}, not a script. ` +
-            "Use studiorpc_instance_upsert to edit non-script instances.",
+          `Edit status changed between read and write: ${writeStatus.kind}. Source may have changed concurrently.`,
         );
       }
 
-      scriptName = typeof target.Name === "string" ? target.Name : undefined;
-      const source = typeof target.Source === "string" ? target.Source : "";
-
-      const { result, count: editCount } = applyEdit(source, { old_string, new_string, replace_all });
-
       // Normalize leading 4-spaces → tabs, then line endings for the current OS
-      const normalized = normalizeLeadingSpaces(result);
+      const normalized = normalizeLeadingSpaces(writeStatus.result);
       const eolNormalized = normalizeLineEndings(normalized.result);
       target.Source = eolNormalized.result;
       tabCount = normalized.converted;
       eolCount = eolNormalized.converted;
-      count = editCount;
+      count = writeStatus.count;
     });
 
     await applyLevelChanges();
@@ -237,7 +328,7 @@ async function executeScriptEdit(
     return {
       output,
       render: buildScriptEditRender({ targetGuid, scriptName, old_string, new_string, replace_all }, output, count),
-      metadata: { method: "script.edit", targetGuid, count },
+      metadata: { method: "script.edit", targetGuid, scriptName, editStatus: "edited", count },
     };
   } catch (err) {
     return {

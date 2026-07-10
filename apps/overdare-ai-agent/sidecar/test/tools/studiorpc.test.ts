@@ -377,6 +377,123 @@ describe("createStudioRpcToolProvider", () => {
     expect(rpcCalls).toEqual([]);
   });
 
+  test("studiorpc_script_edit: returns already_applied when new_string is already in source", async () => {
+    const cwd = makeStudioProject();
+    const scriptGuid = "script-guid";
+    const source = 'print("hello")\nprint("world")\n';
+    const rpcCalls: Array<{ method: string }> = [];
+
+    const ovdrjm = JSON.parse(require("node:fs").readFileSync(join(cwd, "Test.ovdrjm"), "utf-8"));
+    ovdrjm.Root.LuaChildren.push({
+      InstanceType: "Script",
+      ActorGuid: scriptGuid,
+      Name: "MyScript",
+      Source: source,
+    });
+    writeFileSync(join(cwd, "Test.ovdrjm"), JSON.stringify(ovdrjm, null, 2));
+
+    const tools = await loadStudioTools(cwd, rpcCalls);
+    const result = await tools
+      .get("studiorpc_script_edit")!
+      .execute(
+        { targetGuid: scriptGuid, old_string: 'print("goodbye")', new_string: 'print("world")', replace_all: false },
+        toolContext(),
+      );
+
+    expect(result.metadata).toMatchObject({ editStatus: "already_applied", newMatchCount: 1 });
+    expect(result.output).toContain("Already applied");
+    expect(rpcCalls).toEqual([]);
+  });
+
+  test("studiorpc_script_edit: returns ambiguous when old_string matches multiple locations", async () => {
+    const cwd = makeStudioProject();
+    const scriptGuid = "script-guid-2";
+    const source = 'print("x")\nprint("x")\n';
+    const rpcCalls: Array<{ method: string }> = [];
+
+    const ovdrjm = JSON.parse(require("node:fs").readFileSync(join(cwd, "Test.ovdrjm"), "utf-8"));
+    ovdrjm.Root.LuaChildren.push({
+      InstanceType: "Script",
+      ActorGuid: scriptGuid,
+      Name: "AmbigScript",
+      Source: source,
+    });
+    writeFileSync(join(cwd, "Test.ovdrjm"), JSON.stringify(ovdrjm, null, 2));
+
+    const tools = await loadStudioTools(cwd, rpcCalls);
+    const result = await tools
+      .get("studiorpc_script_edit")!
+      .execute(
+        { targetGuid: scriptGuid, old_string: 'print("x")', new_string: 'print("y")', replace_all: false },
+        toolContext(),
+      );
+
+    expect(result.metadata).toMatchObject({
+      error: true,
+      editStatus: "ambiguous",
+      matchCount: 2,
+      replaceAllAvailable: true,
+    });
+    expect(result.output).toContain("matches 2 locations");
+    expect(rpcCalls).toEqual([]);
+  });
+
+  test("studiorpc_script_edit: returns not_found when old_string is absent and new_string is not in source", async () => {
+    const cwd = makeStudioProject();
+    const scriptGuid = "script-guid-3";
+    const source = 'print("hello")\n';
+    const rpcCalls: Array<{ method: string }> = [];
+
+    const ovdrjm = JSON.parse(require("node:fs").readFileSync(join(cwd, "Test.ovdrjm"), "utf-8"));
+    ovdrjm.Root.LuaChildren.push({
+      InstanceType: "Script",
+      ActorGuid: scriptGuid,
+      Name: "NotFoundScript",
+      Source: source,
+    });
+    writeFileSync(join(cwd, "Test.ovdrjm"), JSON.stringify(ovdrjm, null, 2));
+
+    const tools = await loadStudioTools(cwd, rpcCalls);
+    const result = await tools
+      .get("studiorpc_script_edit")!
+      .execute(
+        { targetGuid: scriptGuid, old_string: "does_not_exist()", new_string: "replacement()", replace_all: false },
+        toolContext(),
+      );
+
+    expect(result.metadata).toMatchObject({ error: true, editStatus: "not_found" });
+    expect(result.output).toContain("not found");
+    expect(rpcCalls).toEqual([]);
+  });
+
+  test("studiorpc_script_edit: returns noop when old_string and new_string are identical", async () => {
+    const cwd = makeStudioProject();
+    const scriptGuid = "script-guid-4";
+    const source = 'print("hello")\n';
+    const rpcCalls: Array<{ method: string }> = [];
+
+    const ovdrjm = JSON.parse(require("node:fs").readFileSync(join(cwd, "Test.ovdrjm"), "utf-8"));
+    ovdrjm.Root.LuaChildren.push({
+      InstanceType: "Script",
+      ActorGuid: scriptGuid,
+      Name: "NoopScript",
+      Source: source,
+    });
+    writeFileSync(join(cwd, "Test.ovdrjm"), JSON.stringify(ovdrjm, null, 2));
+
+    const tools = await loadStudioTools(cwd, rpcCalls);
+    const result = await tools
+      .get("studiorpc_script_edit")!
+      .execute(
+        { targetGuid: scriptGuid, old_string: 'print("hello")', new_string: 'print("hello")', replace_all: false },
+        toolContext(),
+      );
+
+    expect(result.metadata).toMatchObject({ editStatus: "noop" });
+    expect(result.output).toContain("No-op");
+    expect(rpcCalls).toEqual([]);
+  });
+
   test("returns invalid_operation status for protected service move and delete", async () => {
     const cwd = makeStudioProject();
     const rpcCalls: Array<{ method: string; params?: Record<string, unknown> }> = [];
