@@ -27,6 +27,29 @@ export function findNodeByActorGuid(node: OvdrjmNode, targetGuid: string): Ovdrj
   return undefined;
 }
 
+/**
+ * When an instance's CFrame changes, its descendants that are positioned
+ * relative to it (i.e. those without their own CFrame) still carry a stale
+ * cached WorldTransform. Delete those WorldTransform values across the whole
+ * subtree so Studio regenerates them from the new parent CFrame. Descendants
+ * that carry their own CFrame keep their WorldTransform.
+ *
+ * Returns the number of WorldTransform values that were cleared.
+ */
+export function clearStaleWorldTransforms(node: OvdrjmNode): number {
+  if (!Array.isArray(node.LuaChildren)) return 0;
+  let cleared = 0;
+  for (const child of node.LuaChildren) {
+    if (!isRecord(child)) continue;
+    if (!("CFrame" in child) && "WorldTransform" in child) {
+      delete (child as Record<string, unknown>).WorldTransform;
+      cleared++;
+    }
+    cleared += clearStaleWorldTransforms(child as OvdrjmNode);
+  }
+  return cleared;
+}
+
 export function removeNodeByActorGuid(node: OvdrjmNode, targetGuid: string): boolean {
   if (!Array.isArray(node.LuaChildren)) return false;
   const children = node.LuaChildren as OvdrjmNode[];

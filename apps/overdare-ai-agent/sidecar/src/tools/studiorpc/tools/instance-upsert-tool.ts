@@ -7,7 +7,13 @@ import { applyLevelChanges } from "../rpc";
 import type { Tool, ToolContext, ToolResult } from "../types";
 import type { WriteLock } from "../write-lock";
 import { invalidInstanceOperationError, missingGuidError, resultFromInstanceToolStatusError } from "./instance-status";
-import { findNodeByActorGuid, isRecord, type OvdrjmNode, readAndWriteOvdrjm } from "./ovdrjm-utils";
+import {
+  clearStaleWorldTransforms,
+  findNodeByActorGuid,
+  isRecord,
+  type OvdrjmNode,
+  readAndWriteOvdrjm,
+} from "./ovdrjm-utils";
 
 function toToolName(method: string): string {
   return `studiorpc_${method.replace(/\./g, "_")}`;
@@ -100,6 +106,12 @@ export async function executeInstanceUpsertInner(
             Object.assign(target, item.properties);
             if (typeof item.name === "string") {
               target.Name = item.name;
+            }
+            // Changing a CFrame invalidates the cached WorldTransform of every
+            // descendant positioned relative to it. Clear those so Studio
+            // regenerates them from the new CFrame.
+            if (item.properties && "CFrame" in item.properties) {
+              clearStaleWorldTransforms(target);
             }
             continue;
           }
