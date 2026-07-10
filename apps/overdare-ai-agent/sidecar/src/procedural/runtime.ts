@@ -1,5 +1,6 @@
 // @summary Invokes the Luau procedural runner (generate + transform).
 
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
@@ -113,17 +114,31 @@ function vendoredLuauPath(): string | undefined {
   return path.join(sidecarDir(), "vendor", "luau", VENDORED_LUAU_VERSION, platformName, platformLuauBinaryName());
 }
 
+/**
+ * In a compiled/packaged sidecar the interpreter ships beside the executable
+ * under `assets/bin` (populated per-target by build-overdare-sidecar.ts), since
+ * `import.meta.url` no longer resolves to the source `vendor/` tree there.
+ */
+function packagedLuauPath(): string {
+  return path.join(path.dirname(process.execPath), "assets", "bin", platformLuauBinaryName());
+}
+
 export async function resolveLuauExecutable(options: ProceduralLuauRuntimeOptions = {}): Promise<string> {
-  const candidates = [options.luauBin, process.env.OVDR_LUAU_BIN, process.env.LUAU_BIN].filter(
+  const explicit = [options.luauBin, process.env.OVDR_LUAU_BIN, process.env.LUAU_BIN].find(
     (value): value is string => typeof value === "string" && value.length > 0,
   );
-  for (const candidate of candidates) {
-    return candidate;
-  }
-  const vendoredPath = vendoredLuauPath();
-  if (vendoredPath) return vendoredPath;
-  const luauPath = Bun.which("luau");
-  if (luauPath) return luauPath;
+  if (explicit) return explicit;
+
+  // Packaged build: interpreter next to the executable.
+  const packaged = packagedLuauPath();
+  if (existsSync(packaged)) return packaged;
+
+  // Dev / source tree: per-platform vendored binary.
+  const vendored = vendoredLuauPath();
+  if (vendored && existsSync(vendored)) return vendored;
+
+  const onPath = Bun.which("luau");
+  if (onPath) return onPath;
   throw new Error("Luau executable not found. Set OVDR_LUAU_BIN or LUAU_BIN, or install a `luau` executable on PATH.");
 }
 
