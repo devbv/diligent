@@ -19,28 +19,7 @@ type Parameters = {
 		WallThickness: number?,
 	},
 }
-local startTime = 0
-local timerThread : thread = task.spawn(function()
-while true do
-	if not script:IsDescendantOf(game) then
-		startTime = 0
-		return
-	end
-	if startTime > 0 then
-		local elapsed = tick() - startTime
-		print("[ProceduralModel] " .. script:GetFullName() .. " rendering... " .. string.format("%.0f", elapsed) .. " seconds")
-	end
-	task.wait(3)
-end
-end)
-script.Destroying:Connect(function()
-	task.cancel(timerThread)
-end)
-
 RomanColosseum.OnGenerate = function(parameters: Parameters, targetContainer: Instance)
-	-- Timer setup
-	startTime = tick()
-
 	local colosseum = GP.model("RomanColosseum", nil)-- Fix orientation of the model
 	colosseum.WorldPivot = CFrame.identity
 	
@@ -244,14 +223,6 @@ RomanColosseum.OnGenerate = function(parameters: Parameters, targetContainer: In
 			model.WorldPivot -= Vector3.yAxis * parameters.Size.Y / 2
 		end
 	end
-
-	-- Stop timer when generation completes
-	local timeElapsed = tick() - startTime
-	startTime = 0
-	if timeElapsed > 3 and script:IsDescendantOf(game) then
-		print("[ProceduralModel] " .. script:GetFullName() .. " rendering completed")
-	end
-
 end
 
 return RomanColosseum

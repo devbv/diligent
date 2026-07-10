@@ -19,15 +19,6 @@ local dependencies = {
 
 local scriptObject = {
 	Dependencies = dependencies,
-	Destroying = {
-		Connect = function() end,
-	},
-	IsDescendantOf = function()
-		return true
-	end,
-	GetFullName = function()
-		return input.scriptName
-	end,
 }
 
 local function scopedRequire(value)
@@ -48,19 +39,10 @@ local environment = {
 	setmetatable = setmetatable,
 	string = string,
 	table = table,
-	tick = os.clock,
 	type = type,
 	tostring = tostring,
-	task = {
-		spawn = function(callback)
-			return coroutine.create(callback)
-		end,
-		cancel = function() end,
-		wait = function() end,
-	},
 	require = scopedRequire,
 	script = scriptObject,
-	game = {},
 	Vector3 = Ovdr.Vector3,
 	Color3 = Ovdr.Color3,
 	CFrame = Ovdr.CFrame,
@@ -74,7 +56,29 @@ if type(module) ~= "table" or type(module.OnGenerate) ~= "function" then
 end
 
 local targetContainer = Ovdr.createTargetContainer()
+
+-- Transform scripts receive the current scene as a `workspace` global whose
+-- descendants carry real scene GUIDs. Generate-only scripts leave it nil.
+local sceneRoot = nil
+if input.scene ~= nil then
+	sceneRoot = Ovdr.injectScene(input.scene)
+	environment.workspace = sceneRoot
+end
+
 module.OnGenerate(input.parameters, targetContainer)
+
+-- The runner emits a single child list: the mutated injected scene (nodes with
+-- GUIDs) followed by freshly-built targetContainer nodes (no GUIDs). Both attach
+-- to the run's target GUID on the TS side.
+local children = {}
+if sceneRoot ~= nil then
+	for _, child in ipairs(Ovdr.serializeChildren(sceneRoot)) do
+		table.insert(children, child)
+	end
+end
+for _, child in ipairs(Ovdr.serializeChildren(targetContainer)) do
+	table.insert(children, child)
+end
 
 local output = {
 	version = 1,
@@ -82,7 +86,7 @@ local output = {
 	generationId = input.generationId,
 	scriptName = input.scriptName,
 	parameters = input.parameters,
-	children = Ovdr.serializeChildren(targetContainer),
+	children = children,
 }
 
 print("__OVDR_PROCEDURAL_JSON__" .. Json.encode(output))

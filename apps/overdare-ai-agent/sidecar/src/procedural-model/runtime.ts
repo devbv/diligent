@@ -1,10 +1,25 @@
-// @summary Invokes the Luau procedural dummy JSON runner.
+// @summary Invokes the Luau procedural runner (generate + transform).
 
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
+import {
+  assertInputWithinArgvLimit,
+  assertNodeCountWithinLimit,
+  type ProceduralLimits,
+  resolveLimits,
+  spawnLuauCaptured,
+} from "./limits";
+import { deriveProceduralOps } from "./ops";
 import { extractProceduralScriptMetadata } from "./script-metadata";
-import type { ProceduralDummyJson, ProceduralGeneratedNode, ProceduralGenerationInput } from "./types";
+import type {
+  ProceduralDummyJson,
+  ProceduralGeneratedNode,
+  ProceduralGenerationInput,
+  ProceduralSerializedNode,
+  RunProceduralScriptInput,
+  RunProceduralScriptResult,
+} from "./types";
 
 const vector3Schema = z.object({ X: z.number(), Y: z.number(), Z: z.number() }).strict();
 const color3Schema = z.object({ R: z.number(), G: z.number(), B: z.number() }).strict();
@@ -67,6 +82,7 @@ const proceduralDummyJsonSchema = z
 
 export interface ProceduralLuauRuntimeOptions {
   luauBin?: string;
+  limits?: Partial<ProceduralLimits>;
 }
 
 const VENDORED_LUAU_VERSION = "0.723";
@@ -111,13 +127,55 @@ export async function resolveLuauExecutable(options: ProceduralLuauRuntimeOption
   throw new Error("Luau executable not found. Set OVDR_LUAU_BIN or LUAU_BIN, or install a `luau` executable on PATH.");
 }
 
+interface RawRunnerOutput {
+  version: number;
+  kind: string;
+  generationId: string;
+  scriptName: string;
+  parameters: unknown;
+  children: ProceduralSerializedNode[];
+}
+
+/**
+ * Spawns the Luau runner for the given normalized input and returns the parsed
+ * runner output. Enforces the argv-transport size guard and subprocess
+ * guardrails (timeout / max output bytes).
+ */
+async function runLuauProgram(
+  normalizedInput: Record<string, unknown>,
+  options: ProceduralLuauRuntimeOptions,
+): Promise<RawRunnerOutput> {
+  const limits = resolveLimits(options.limits);
+  const luauBin = await resolveLuauExecutable(options);
+  const luauDir = path.join(currentDir(), "luau");
+  const encodedInput = JSON.stringify(normalizedInput);
+  assertInputWithinArgvLimit(encodedInput, limits);
+
+  const { stdout, stderr, exitCode } = await spawnLuauCaptured(
+    luauBin,
+    ["runner.lua", "--program-args", encodedInput],
+    {
+      cwd: luauDir,
+      limits,
+    },
+  );
+
+  if (exitCode !== 0) {
+    throw new Error(`Procedural Luau runner failed with exit code ${exitCode}.\n${stderr || stdout}`.trim());
+  }
+
+  const outputLine = stdout.split(/\r?\n/).find((line) => line.startsWith(OUTPUT_SENTINEL));
+  if (!outputLine) {
+    throw new Error(`Procedural Luau runner did not emit output.\n${stderr || stdout}`.trim());
+  }
+  return JSON.parse(outputLine.slice(OUTPUT_SENTINEL.length)) as RawRunnerOutput;
+}
+
 export async function generateProceduralDummyJson(
   input: ProceduralGenerationInput,
   options: ProceduralLuauRuntimeOptions = {},
 ): Promise<ProceduralDummyJson> {
   const metadata = extractProceduralScriptMetadata(input.scriptSource, input.scriptName);
-  const luauBin = await resolveLuauExecutable(options);
-  const luauDir = path.join(currentDir(), "luau");
   const normalizedInput = {
     ...input,
     parameters: {
@@ -126,24 +184,36 @@ export async function generateProceduralDummyJson(
     },
     ...metadata,
   };
-  const proc = Bun.spawn([luauBin, "runner.lua", "--program-args", JSON.stringify(normalizedInput)], {
-    cwd: luauDir,
-    stdout: "pipe",
-    stderr: "pipe",
+  const raw = await runLuauProgram(normalizedInput, options);
+  assertNodeCountWithinLimit(raw.children, resolveLimits(options.limits));
+  return proceduralDummyJsonSchema.parse(raw) as ProceduralDummyJson;
+}
+
+/**
+ * Runs a procedural script and returns the derived scene ops (add/update/delete).
+ *
+ * With no `scene`, the script is a pure generator and every node is an `add`.
+ * With a `scene`, transform mutations are derived by diffing the injected
+ * snapshot against the runner's serialized end state.
+ */
+export async function runProceduralScript(
+  input: RunProceduralScriptInput,
+  options: ProceduralLuauRuntimeOptions = {},
+): Promise<RunProceduralScriptResult> {
+  const metadata = extractProceduralScriptMetadata(input.scriptSource, input.scriptName, {
+    autoGenerationId: input.autoGenerationId,
   });
-  const [exitCode, stdout, stderr] = await Promise.all([
-    proc.exited,
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ]);
-
-  if (exitCode !== 0) {
-    throw new Error(`Procedural Luau runner failed with exit code ${exitCode}.\n${stderr || stdout}`.trim());
-  }
-
-  const outputLine = stdout.split(/\r?\n/).find((line) => line.startsWith(OUTPUT_SENTINEL));
-  if (!outputLine) {
-    throw new Error(`Procedural Luau runner did not emit dummy JSON.\n${stderr || stdout}`.trim());
-  }
-  return proceduralDummyJsonSchema.parse(JSON.parse(outputLine.slice(OUTPUT_SENTINEL.length))) as ProceduralDummyJson;
+  const normalizedInput: Record<string, unknown> = {
+    scriptSource: input.scriptSource,
+    parameters: {
+      ...input.parameters,
+      Attributes: input.parameters.Attributes ?? {},
+    },
+    ...metadata,
+    ...(input.scene ? { scene: input.scene } : {}),
+  };
+  const raw = await runLuauProgram(normalizedInput, options);
+  const nodeCount = assertNodeCountWithinLimit(raw.children, resolveLimits(options.limits));
+  const ops = deriveProceduralOps(raw.children, input.scene, input.targetGuid);
+  return { generationId: metadata.generationId, scriptName: metadata.scriptName, ops, nodeCount };
 }

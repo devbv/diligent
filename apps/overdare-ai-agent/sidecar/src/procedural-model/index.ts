@@ -1,6 +1,15 @@
-// @summary Public exports for the OVERDARE Luau procedural dummy JSON runtime MVP.
+// @summary Public exports for the OVERDARE Luau procedural runtime.
 
+export {
+  assertInputWithinArgvLimit,
+  assertNodeCountWithinLimit,
+  countTreeNodes,
+  DEFAULT_PROCEDURAL_LIMITS,
+  type ProceduralLimits,
+  resolveLimits,
+} from "./limits";
+export { DIFF_PROPERTY_WHITELIST, deriveProceduralOps } from "./ops";
 export type { ProceduralLuauRuntimeOptions } from "./runtime";
-export { generateProceduralDummyJson, resolveLuauExecutable } from "./runtime";
+export { generateProceduralDummyJson, resolveLuauExecutable, runProceduralScript } from "./runtime";
 export { extractProceduralScriptMetadata } from "./script-metadata";
 export type * from "./types";

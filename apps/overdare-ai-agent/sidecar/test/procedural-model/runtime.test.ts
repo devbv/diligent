@@ -3,9 +3,13 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { generateProceduralDummyJson, resolveLuauExecutable } from "../../src/procedural-model";
+import { generateProceduralDummyJson, resolveLuauExecutable, runProceduralScript } from "../../src/procedural-model";
 import { extractProceduralScriptMetadata } from "../../src/procedural-model/script-metadata";
-import type { ProceduralGeneratedNode, ProceduralPartProperties } from "../../src/procedural-model/types";
+import type {
+  ProceduralGeneratedNode,
+  ProceduralPartProperties,
+  ProceduralSceneNode,
+} from "../../src/procedural-model/types";
 
 const sampleScript = `--!strict
 -- generationId: test-bunny-001
@@ -52,7 +56,6 @@ end
 
 return VectorShim
 `;
-
 
 const quadPlaneScript = `--!strict
 -- generationId: quad-plane-001
@@ -320,11 +323,13 @@ describe("procedural Luau dummy JSON runtime", () => {
     });
   });
 
-
   test("keeps vertical quad planes upright with yaw-only orientation", async () => {
     const result = await generateProceduralDummyJson({ scriptSource: quadPlaneScript, parameters });
 
-    const verticalGateSide = expectPartProperties(findNodeByName(result.children, "VerticalGateSide"), "VerticalGateSide");
+    const verticalGateSide = expectPartProperties(
+      findNodeByName(result.children, "VerticalGateSide"),
+      "VerticalGateSide",
+    );
     expect(verticalGateSide.CFrame).toEqual({
       Position: { X: 300, Y: 150, Z: 0 },
       Orientation: { X: 0, Y: 0, Z: 0 },
@@ -531,5 +536,110 @@ describe("procedural Luau dummy JSON runtime", () => {
         Material: "Rock",
       },
     });
+  });
+
+  test("rejects input that would overflow the argv transport limit", async () => {
+    await expect(
+      generateProceduralDummyJson({ scriptSource: sampleScript, parameters }, { limits: { maxInputBytes: 32 } }),
+    ).rejects.toThrow(/transport limit/);
+  });
+
+  test("rejects output exceeding the max node count", async () => {
+    await expect(
+      generateProceduralDummyJson({ scriptSource: sampleScript, parameters }, { limits: { maxNodes: 1 } }),
+    ).rejects.toThrow(/exceeds the maximum/);
+  });
+
+  test("kills a runaway script once the timeout elapses", async () => {
+    const infiniteLoopScript = `-- generationId: infinite-001
+local Spin = {}
+Spin.OnGenerate = function(parameters, targetContainer)
+	while true do end
+end
+return Spin
+`;
+    await expect(
+      generateProceduralDummyJson({ scriptSource: infiniteLoopScript, parameters }, { limits: { timeoutMs: 300 } }),
+    ).rejects.toThrow(/timed out/);
+  });
+
+  test("round-trips the large colosseum example through argv transport", async () => {
+    const colosseumScript = readFileSync(join(import.meta.dir, "../../../../../roblox-example/colosseum.lua"), "utf8");
+    const result = await generateProceduralDummyJson({ scriptSource: colosseumScript, parameters });
+    expect(result.generationId).toBe("ad1c33ff-a538-40f3-a853-dc8609c21e5f");
+    expect(result.children.length).toBeGreaterThan(0);
+  });
+});
+
+const shiftTransformScript = `-- generationId: shift-x-001
+local Shift = {}
+Shift.OnGenerate = function(parameters, targetContainer)
+	for _, inst in workspace:GetDescendants() do
+		if inst:IsA("BasePart") then
+			if inst.Name == "Doomed" then
+				inst:Destroy()
+			else
+				inst.CFrame += Vector3.xAxis * 1
+			end
+		end
+	end
+	local GP = require(script.Dependencies.GeometryPrimitives)
+	GP.sphere("Added", Vector3.new(0, 100, 0), 5, Color3.fromRGB(255, 0, 0), "Plastic", targetContainer)
+end
+return Shift
+`;
+
+function transformScene(): ProceduralSceneNode {
+  const cframe = (x: number) => ({ Position: { X: x, Y: 0, Z: 0 }, Orientation: { X: 0, Y: 0, Z: 0 } });
+  return {
+    class: "Workspace",
+    name: "Workspace",
+    guid: "W",
+    properties: {},
+    children: [
+      { class: "Part", name: "Keep", guid: "gKeep", properties: { CFrame: cframe(0) }, children: [] },
+      { class: "Part", name: "Doomed", guid: "gDoomed", properties: { CFrame: cframe(5) }, children: [] },
+    ],
+  };
+}
+
+describe("runProceduralScript transform via scene injection", () => {
+  test("derives update, delete, and add ops from a transform script", async () => {
+    const result = await runProceduralScript({
+      scriptSource: shiftTransformScript,
+      parameters,
+      scene: transformScene(),
+      targetGuid: "W",
+    });
+
+    expect(result.generationId).toBe("shift-x-001");
+    const update = result.ops.find((op) => op.kind === "update");
+    expect(update).toMatchObject({ kind: "update", guid: "gKeep", properties: { CFrame: { Position: { X: 1 } } } });
+    expect(result.ops).toContainEqual({ kind: "delete", guid: "gDoomed", depth: 1 });
+    const add = result.ops.find((op) => op.kind === "add");
+    expect(add).toMatchObject({
+      kind: "add",
+      parentGuid: "W",
+      node: { class: "Part", name: "Added", properties: { Shape: "Ball" } },
+    });
+  });
+
+  test("generate-only run (no scene) produces add ops with the target as parent", async () => {
+    const result = await runProceduralScript({ scriptSource: sampleScript, parameters, targetGuid: "TARGET" });
+    expect(result.ops.every((op) => op.kind === "add")).toBe(true);
+    expect(result.ops[0]).toMatchObject({ kind: "add", parentGuid: "TARGET", node: { class: "Model", name: "Bunny" } });
+  });
+
+  test("auto-generates a generationId for one-shot scripts lacking the comment", async () => {
+    const noIdScript = `local Anon = {}
+Anon.OnGenerate = function(parameters, targetContainer)
+	local GP = require(script.Dependencies.GeometryPrimitives)
+	GP.sphere("Ball", Vector3.new(0, 0, 0), 1, Color3.fromRGB(1, 2, 3), "Plastic", targetContainer)
+end
+return Anon
+`;
+    await expect(runProceduralScript({ scriptSource: noIdScript, parameters })).rejects.toThrow(/generationId/);
+    const result = await runProceduralScript({ scriptSource: noIdScript, parameters, autoGenerationId: true });
+    expect(result.generationId).toMatch(/[0-9a-f-]{36}/);
   });
 });

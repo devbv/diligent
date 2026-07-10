@@ -300,7 +300,7 @@ Guidelines:
 
 ### 3. Generate JSON from a Luau file
 
-There is no permanent CLI yet. Use this temporary Bun runner from repo root. Keep the input script and generated output in `/tmp` for ad-hoc requests:
+In Studio, prefer the agent tools (`studiorpc_procedural_run` / `studiorpc_procedural_model_run`) — they execute the script and apply the result directly. For local inspection of the raw generated tree (no Studio), use this temporary Bun runner from repo root, keeping the input script and generated output in `/tmp`:
 
 ```bash
 cat > /tmp/ovdr-generate-procedural-json.ts <<'TS'
@@ -354,26 +354,55 @@ bun test ./apps/overdare-ai-agent/sidecar/test/procedural-model/runtime.test.ts
 bunx biome check apps/overdare-ai-agent/sidecar/test/procedural-model/runtime.test.ts
 ```
 
-## Apply Shape Reminder
+## Agent Tool Surface
 
-When apply tooling exists, recursively create parent before children:
+Scripts are executed and applied through Studio RPC tools, split by **lifetime**
+(not by what the script does — a script can generate or transform in either):
 
-```ts
-async function applyNode(node: ProceduralGeneratedNode, parentGuid: string) {
-  const result = await instanceUpsert({
-    items: [{
-      class: node.class,
-      parentGuid,
-      name: node.name,
-      properties: node.properties,
-    }],
-  });
+| Tool | When | Behavior |
+|---|---|---|
+| `studiorpc_procedural_run` | One-shot | Runs a script once against the current scene and applies the result. Pass `script` (inline, for small edits) or `scriptPath` (file, for large scripts), an optional `targetGuid` (defaults to the whole Workspace), and optional `parameters`. Nothing is persisted. |
+| `studiorpc_procedural_model_save` | Persist | Writes the script + a manifest under `<project>/.overdare/procedural/`. Validates via a dry-run. Requires the `-- generationId:` comment (the model's identity). Does not touch the scene. |
+| `studiorpc_procedural_model_run` | Run persisted | Looks the model up by `id`, runs it, **deletes the prior generation and re-applies** so repeat runs replace rather than duplicate. Updates the manifest. |
+| `studiorpc_procedural_model_list` | Discover | Lists saved models (`id`, params, whether applied, last-updated) so `model_run` can find ids. |
 
-  const nodeGuid = result.added[0].guid;
-  for (const child of node.children ?? []) {
-    await applyNode(child, nodeGuid);
-  }
-}
+`generationId` is required for `model_save`/`model_run`; for one-shot `procedural_run` it is auto-generated when the comment is absent.
+
+### Generate vs Transform
+
+The runner injects the current scene subtree (`targetGuid`, or the whole
+Workspace) as a **`workspace` global** whose descendants carry their real scene
+GUIDs. A script can therefore:
+
+- **Generate** — build fresh geometry under `targetContainer` (the `OnGenerate`
+  second argument), exactly as before. Fresh nodes become `add`s.
+- **Transform** — read and mutate existing objects via `workspace`
+  (`workspace:GetDescendants()`, `part.CFrame -= …`, `inst:Destroy()`).
+
+Ops are derived by diffing the script's final state against the injected
+snapshot: changed → `update`, `Destroy()`ed/detached → `delete`, fresh → `add`.
+
+```lua
+-- Transform example: nudge every part 1 unit along +X and delete markers.
+Move.OnGenerate = function(parameters, targetContainer)
+    for _, inst in workspace:GetDescendants() do
+        if inst:IsA("BasePart") then
+            if inst.Name == "Marker" then
+                inst:Destroy()
+            else
+                inst.CFrame += Vector3.xAxis * 1
+            end
+        end
+    end
+end
 ```
 
-Do not design new output around `refId` / `parentRefId` unless a future apply tool explicitly requires it.
+**Transform limitations (MVP):**
+
+- Only these properties are read/diffed/written: `CFrame`, `Size`, `Color`,
+  `Material`, `WorldPivot`. Everything else stays untouched.
+- **Reparenting an existing object is unsupported** — `update` cannot change a
+  parent. Move/scale/recolor/delete/add are all supported.
+
+Apply order is delete → update → add; new subtrees are created parent-first
+using the live returned GUID. Do not design output around `refId` / `parentRefId`.

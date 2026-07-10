@@ -20,28 +20,7 @@ type Parameters = {
 		TailColor: Color3?,
 	},
 }
-local startTime = 0
-local timerThread : thread = task.spawn(function()
-while true do
-	if not script:IsDescendantOf(game) then
-		startTime = 0
-		return
-	end
-	if startTime > 0 then
-		local elapsed = tick() - startTime
-		print("[ProceduralModel] " .. script:GetFullName() .. " rendering... " .. string.format("%.0f", elapsed) .. " seconds")
-	end
-	task.wait(3)
-end
-end)
-script.Destroying:Connect(function()
-	task.cancel(timerThread)
-end)
-
 Rabbit.OnGenerate = function(parameters: Parameters, targetContainer: Instance)
-	-- Timer setup
-	startTime = tick()
-
 	-- GP, CSG, and SO are automatically imported - do NOT include require statements
 	local rabbit = GP.model("Rabbit", nil)-- Fix orientation of the model
 	rabbit.WorldPivot = CFrame.identity
@@ -195,14 +174,6 @@ Rabbit.OnGenerate = function(parameters: Parameters, targetContainer: Instance)
 			model.WorldPivot -= Vector3.yAxis * parameters.Size.Y / 2
 		end
 	end
-
-	-- Stop timer when generation completes
-	local timeElapsed = tick() - startTime
-	startTime = 0
-	if timeElapsed > 3 and script:IsDescendantOf(game) then
-		print("[ProceduralModel] " .. script:GetFullName() .. " rendering completed")
-	end
-
 end
 
 return Rabbit

@@ -524,6 +524,58 @@ function Ovdr.createTargetContainer()
 	return Ovdr.createInstance("Model", "TargetContainer")
 end
 
+-- Scene injection: turn a serialized subtree into mock Instances that carry the
+-- real scene GUID. Transform scripts read/mutate these; the TS side diffs the
+-- serialized end state against the same snapshot to derive update/delete ops.
+local function deserializeVector3(value)
+	if type(value) ~= "table" then
+		return nil
+	end
+	return vector3(value.X or 0, value.Y or 0, value.Z or 0)
+end
+
+local function deserializeCFrame(value)
+	if type(value) ~= "table" then
+		return nil
+	end
+	return cframe(deserializeVector3(value.Position) or vector3(0, 0, 0), deserializeVector3(value.Orientation) or vector3(0, 0, 0))
+end
+
+local function injectNode(sceneNode)
+	local node = Ovdr.createInstance(sceneNode.class or "Instance", sceneNode.name or "")
+	node.Injected = true
+	node.Guid = sceneNode.guid
+	local properties = sceneNode.properties or {}
+	-- Whitelisted properties are stored as raw keys so scripts can read them and
+	-- reassign them (e.g. `part.CFrame -= Vector3.yAxis * n`) without going
+	-- through the Primitive-only CFrame offset path.
+	if properties.CFrame ~= nil then
+		rawset(node, "CFrame", deserializeCFrame(properties.CFrame))
+	end
+	if properties.WorldPivot ~= nil then
+		rawset(node, "WorldPivot", deserializeCFrame(properties.WorldPivot))
+	end
+	if properties.Size ~= nil then
+		rawset(node, "Size", deserializeVector3(properties.Size))
+	end
+	if properties.Color ~= nil then
+		rawset(node, "Color", properties.Color)
+	end
+	if properties.Material ~= nil then
+		rawset(node, "Material", properties.Material)
+	end
+	if type(sceneNode.children) == "table" then
+		for _, childScene in ipairs(sceneNode.children) do
+			injectNode(childScene).Parent = node
+		end
+	end
+	return node
+end
+
+function Ovdr.injectScene(sceneJson)
+	return injectNode(sceneJson)
+end
+
 local function cleanValue(value)
 	if isVector3(value) then
 		return { X = cleanNumber(value.X), Y = cleanNumber(value.Y), Z = cleanNumber(value.Z) }
@@ -693,9 +745,51 @@ local function primitiveProperties(node)
 	return applyPartOverrides(properties, node)
 end
 
+local function serializeInjectedNode(node)
+	local properties = {}
+	if node.CFrame ~= nil then
+		properties.CFrame = cleanValue(node.CFrame)
+	end
+	if node.WorldPivot ~= nil then
+		properties.WorldPivot = cleanValue(node.WorldPivot)
+	end
+	if node.Size ~= nil then
+		properties.Size = cleanValue(node.Size)
+	end
+	if node.Color ~= nil then
+		properties.Color = cleanValue(node.Color)
+	end
+	if node.Material ~= nil then
+		properties.Material = node.Material
+	end
+	return {
+		class = node.ClassName,
+		name = node.Name,
+		guid = node.Guid,
+		properties = properties,
+	}
+end
+
 local function serializeNode(node)
 	if node.Destroyed then
 		return nil
+	end
+	-- Injected (pre-existing scene) nodes pass through with their GUID + a
+	-- whitelisted property set, regardless of class. The unsupported-class error
+	-- below must never fire for them.
+	if node.Injected then
+		local result = serializeInjectedNode(node)
+		result.children = {}
+		for _, child in ipairs(node.Children) do
+			local serializedChild = serializeNode(child)
+			if serializedChild ~= nil then
+				table.insert(result.children, serializedChild)
+			end
+		end
+		if #result.children == 0 then
+			result.children = nil
+		end
+		return result
 	end
 	local properties = {}
 	local className = node.ClassName
