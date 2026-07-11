@@ -5,8 +5,9 @@ import type { RuntimeAgent } from "@diligent/runtime/agent/runtime-agent";
 import { AgentRegistry, isFinal } from "@diligent/runtime/collab";
 import type { SessionManagerConfig } from "@diligent/runtime/session";
 import { getBuiltinAgentDefinitions } from "../../src/agent/agent-types";
-import { resolveAvailableAgentDefinitions } from "../../src/agent/resolved-agent";
+import { resolveAgentDefinition, resolveAvailableAgentDefinitions } from "../../src/agent/resolved-agent";
 import type { AgentEvent } from "../../src/agent-event";
+import { resolveChildToolAccess } from "../../src/collab/registry";
 import { makeAssistant, makeCollabDeps, makeMockSessionManagerFactory } from "../helpers/collab";
 
 function makeTool(name: string): Tool {
@@ -669,5 +670,171 @@ describe("AgentRegistry", () => {
 
     expect(observedModels).toEqual(["gpt-5.4-mini"]);
     expect(observedEfforts).toEqual(["low"]);
+  });
+});
+
+// ─── resolveChildToolAccess (pure function) edge-case tests ────────────────────
+
+describe("resolveChildToolAccess", () => {
+  it("readonly (plan-mode) agent definition excludes write tools from child", () => {
+    const parentTools = [makeTool("read"), makeTool("bash"), makeTool("edit"), makeTool("grep")];
+    const agentDef = resolveAgentDefinition(getBuiltinAgentDefinitions(), "explore");
+    if (!agentDef) throw new Error("explore agent definition not found");
+
+    const { childTools } = resolveChildToolAccess(parentTools, {}, agentDef);
+
+    const names = childTools.map((tool) => tool.name);
+    expect(names).toContain("read");
+    expect(names).toContain("grep");
+    expect(names).not.toContain("bash");
+    expect(names).not.toContain("edit");
+  });
+
+  it("collab tools excluded from childTools even when allowNestedAgents=true", () => {
+    const parentTools = [makeTool("read"), makeTool("spawn_agent"), makeTool("wait")];
+    const agentDef = resolveAgentDefinition(getBuiltinAgentDefinitions(), "general");
+    if (!agentDef) throw new Error("general agent definition not found");
+
+    const { childTools, nestedCollabEnabled } = resolveChildToolAccess(
+      parentTools,
+      { allowNestedAgents: true },
+      agentDef,
+    );
+
+    expect(nestedCollabEnabled).toBe(true);
+    const names = childTools.map((tool) => tool.name);
+    expect(names).toContain("read");
+    expect(names).not.toContain("spawn_agent");
+    expect(names).not.toContain("wait");
+  });
+
+  it("nestedCollabEnabled=false when allowNestedAgents is not set", () => {
+    const parentTools = [makeTool("read"), makeTool("spawn_agent"), makeTool("wait")];
+    const agentDef = resolveAgentDefinition(getBuiltinAgentDefinitions(), "general");
+    if (!agentDef) throw new Error("general agent definition not found");
+
+    const { nestedCollabEnabled, childTools } = resolveChildToolAccess(parentTools, {}, agentDef);
+
+    expect(nestedCollabEnabled).toBe(false);
+    expect(childTools.map((tool) => tool.name)).toContain("read");
+    expect(childTools.map((tool) => tool.name)).not.toContain("spawn_agent");
+  });
+
+  it("per-spawn allowedTools list intersects with parent tools after mode filtering", () => {
+    const parentTools = [makeTool("read"), makeTool("bash"), makeTool("grep"), makeTool("edit")];
+    const agentDef = resolveAgentDefinition(getBuiltinAgentDefinitions(), "general");
+    if (!agentDef) throw new Error("general agent definition not found");
+
+    const { childTools } = resolveChildToolAccess(parentTools, { allowedTools: ["read", "bash"] }, agentDef);
+
+    const names = childTools.map((tool) => tool.name);
+    expect(names).toContain("read");
+    expect(names).toContain("bash");
+    expect(names).not.toContain("grep");
+    expect(names).not.toContain("edit");
+  });
+});
+
+// ─── Tool filtering integration edge-case tests ────────────────────────────────
+
+describe("AgentRegistry tool filtering edge cases", () => {
+  it("spawn with readonly agent type (explore) excludes plan-mode write tools from child", async () => {
+    let childToolNames: string[] = [];
+    const registry = new AgentRegistry(
+      makeCollabDeps({
+        parentTools: [makeTool("read"), makeTool("bash"), makeTool("edit"), makeTool("grep")],
+        sessionManagerFactory: makeInspectingSessionManagerFactory((agent) => {
+          childToolNames = agent.tools.map((tool) => tool.name);
+        }),
+      }),
+    );
+
+    const { threadId } = registry.spawn({ prompt: "read-only survey", description: "", agentType: "explore" });
+    await registry.wait([threadId], 5000);
+
+    expect(childToolNames).toContain("read");
+    expect(childToolNames).toContain("grep");
+    expect(childToolNames).not.toContain("bash");
+    expect(childToolNames).not.toContain("edit");
+  });
+
+  it("mode change via updateDeps propagates to subsequently spawned child tool sets", async () => {
+    const toolSetsObserved: string[][] = [];
+    const registry = new AgentRegistry(
+      makeCollabDeps({
+        parentTools: [makeTool("read"), makeTool("bash"), makeTool("grep")],
+        sessionManagerFactory: makeInspectingSessionManagerFactory((agent) => {
+          toolSetsObserved.push(agent.tools.map((tool) => tool.name));
+        }),
+      }),
+    );
+
+    const t1 = registry.spawn({ prompt: "task1", description: "", agentType: "general" });
+    await registry.wait([t1.threadId], 5000);
+
+    registry.updateDeps(
+      makeCollabDeps({
+        parentTools: [makeTool("read"), makeTool("grep")],
+      }),
+    );
+
+    const t2 = registry.spawn({ prompt: "task2", description: "", agentType: "general" });
+    await registry.wait([t2.threadId], 5000);
+
+    expect(toolSetsObserved[0]).toContain("bash");
+    expect(toolSetsObserved[1]).not.toContain("bash");
+    expect(toolSetsObserved[1]).toContain("read");
+    expect(toolSetsObserved[1]).toContain("grep");
+  });
+
+  it("parent collab tool instances never appear in childTools; allowedTools limits which fresh collab tools are injected", async () => {
+    let childToolNames: string[] = [];
+    const registry = new AgentRegistry(
+      makeCollabDeps({
+        parentTools: [makeTool("read"), makeTool("spawn_agent"), makeTool("wait"), makeTool("close_agent")],
+        sessionManagerFactory: makeInspectingSessionManagerFactory((agent) => {
+          childToolNames = agent.tools.map((tool) => tool.name);
+        }),
+      }),
+    );
+
+    // allowNestedAgents=true but allowedTools restricts to read + spawn_agent only.
+    // The parent's wait and close_agent instances must not appear in the child;
+    // buildDefaultTools creates fresh collab tools but they are filtered to only spawn_agent.
+    const { threadId } = registry.spawn({
+      prompt: "task",
+      description: "",
+      agentType: "general",
+      allowNestedAgents: true,
+      allowedTools: ["read", "spawn_agent"],
+    });
+    await registry.wait([threadId], 5000);
+
+    expect(childToolNames).toContain("read");
+    expect(childToolNames).toContain("spawn_agent");
+    expect(childToolNames).not.toContain("wait");
+    expect(childToolNames).not.toContain("close_agent");
+  });
+
+  it("zero-tool diagnostic fires when parent has only collab tools and nesting is disabled", async () => {
+    const warnSpy = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const registry = new AgentRegistry(
+        makeCollabDeps({
+          parentTools: [makeTool("spawn_agent"), makeTool("wait"), makeTool("close_agent")],
+          sessionManagerFactory: makeInspectingSessionManagerFactory(() => {}),
+        }),
+      );
+
+      const { threadId } = registry.spawn({ prompt: "task", description: "", agentType: "general" });
+      await registry.wait([threadId], 5000);
+
+      const warning = warnSpy.mock.calls.map((call) => call.join(" ")).join("\n");
+      expect(warning).toContain("with zero tools after filtering");
+      expect(warning).toContain("after nested-collab exclusion");
+      expect(warning).toContain("kept [(none)]");
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 });
