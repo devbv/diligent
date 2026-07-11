@@ -25,7 +25,7 @@ The desired authoring model is closer to a procedural component: a script and it
 
 For this MVP, the implementation does not need to mutate Studio, call `json_apply`, create real `.ovdrjm` nodes, or provide a full production sandbox. It does need to execute Luau through a subprocess runner, provide Luau-side `ovdr-shim` and dependency libraries, and produce a final dummy JSON artifact so that the data model, hierarchy semantics, dependency-library vocabulary, generation metadata, and deterministic serialization can be validated independently.
 
-Important naming rule: the runtime must use OVERDARE naming. The compatibility layer is called `ovdr-shim`, not `roblox-shim`. The script style may be inspired by Roblox ProceduralModel scripts, but the product/system terminology should be OVDR/OVERDARE.
+Important naming rule: the runtime must use OVERDARE naming. The compatibility layer is called `ovdr-shim`. The product/system terminology should be OVDR/OVERDARE throughout.
 
 ## Artifact
 
@@ -73,7 +73,7 @@ Output:
 - No bundled Luau binary packaging in this first pass; runtime discovery is enough.
 - No production-grade arbitrary user script sandbox in the first pass.
 - No full CSG implementation.
-- No real Roblox API naming such as `roblox-shim`; use `ovdr-shim` terminology.
+- Use `ovdr-shim` terminology for the compatibility layer.
 - No built-in `StairGenerator` registry as the source of truth. Stairs and similar structures belong in script libraries used by procedural scripts.
 
 ## File Manifest
@@ -268,7 +268,7 @@ Cover the MVP behavior with focused tests:
 
 1. `generateProceduralDummyJson` exists as a product-sidecar API and returns `kind: "overdare.procedural-dummy-json"`.
 2. Output includes `generationId`, `scriptName`, `parameters`, and generated `root` hierarchy.
-3. `ovdr-shim` naming is used for the Luau compatibility layer; no new `roblox-shim` file or exported symbol is introduced.
+3. `ovdr-shim` naming is used for the Luau compatibility layer.
 4. Luau `GeometryPrimitives` supports `model`, `sphere`, `block`, and `cylinder` for MVP dummy JSON generation.
 5. Unsupported complex primitives can be represented as dummy primitive nodes without failing generation.
 6. The same input script and parameters produce the same JSON object.
@@ -293,7 +293,7 @@ Cover the MVP behavior with focused tests:
 | Luau subprocess runner is not a production sandbox | Unsafe arbitrary script execution if exposed broadly | Keep this MVP as local generation infrastructure only; production sandbox/capabilities are later scope. |
 | Dummy JSON becomes mistaken for final Studio JSON | Incorrect integration assumptions | Use `kind: "overdare.procedural-dummy-json"` and keep StudioRPC/json_apply out of scope. |
 | Dependency libraries become top-level generators | Loses script-as-source-of-truth model | Keep `GeometryPrimitives`, future `Stair`, and placement utilities as libraries called by scripts. |
-| Roblox terminology leaks into product code | Product naming drift | Use `ovdr-shim` consistently and test/file review for naming. |
+| Non-OVERDARE terminology leaks into product code | Product naming drift | Use `ovdr-shim` consistently and test/file review for naming. |
 | Complex primitives cannot be represented accurately | MVP examples may look incomplete | Serialize them as typed dummy primitive nodes first; exact mesh/CSG generation is later scope. |
 
 ## Decisions Referenced

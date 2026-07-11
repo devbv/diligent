@@ -21,7 +21,7 @@ The MVP output should be a nested `children: []` scene tree. Apply can recursive
 
 ## User corrections to preserve
 
-- The compatibility layer must be named `ovdr-shim`, not `roblox-shim`.
+- The compatibility layer must be named `ovdr-shim`.
 - The system must be **Luau-based**, not a TypeScript regex/parser pretending to execute Luau.
 - Libraries such as `Stair`, `GeometryPrimitives`, CSG helpers, etc. are dependencies used by scripts, not top-level generator registries.
 - Procedural JSON should be a nested tree with `children: []`, not a flat `items[]` list.
@@ -329,16 +329,9 @@ The Luau subprocess currently has no timeout/max-node/max-output guard. Add this
 
 ## Recommended next tasks
 
-## Roblox library reference added by user
+## Helper library reference (historical)
 
-The user added a reference folder:
-
-- `roblox-lib/ConstructiveSolidGeometry.lua`
-- `roblox-lib/GeometryPrimitives.lua`
-- `roblox-lib/MathUtils.lua`
-- `roblox-lib/SmartObject.lua`
-
-Treat these files as the primary API/signature reference for filling out the OVDR Luau dependencies.
+The user added a top-level reference folder of helper modules (CSG, geometry primitives, math utilities, smart objects) as the primary API/signature reference while filling out the OVDR Luau dependencies. That folder has since been removed from the tree, and CSG and SmartObject were later dropped as unsupported.
 
 ### Public APIs discovered
 
@@ -405,7 +398,7 @@ getAttribute(instanceOrParameterTable, key, defaultValue)
 - `MathUtils` needs additional shim APIs such as `Vector3:Dot` and `Vector3:Lerp`.
 - `SmartObject.getAttribute` should work with the procedural `parameters` table (`Size` + `Attributes`) and write defaults into `Attributes` when missing.
 
-### Current OVDR gaps against roblox-lib
+### Current OVDR gaps against the reference library
 
 1. `ovdr-shim` lacks `Vector3:Dot` and `Vector3:Lerp`.
 2. `ovdr-shim` lacks `CFrame.fromMatrix`, needed for strut/cylinder orientation.
@@ -497,4 +490,4 @@ Expected uncommitted changes include:
 - `apps/overdare-ai-agent/sidecar/test/procedural-model/`
 - `apps/overdare-ai-agent/sidecar/vendor/luau/`
 
-The `.diligent/knowledge/knowledge.jsonl` change records the user preference that this system should use `ovdr-shim` naming rather than `roblox-shim`.
+The `.diligent/knowledge/knowledge.jsonl` change records the user preference that this system should use `ovdr-shim` naming.

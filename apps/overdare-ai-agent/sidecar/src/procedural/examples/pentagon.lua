@@ -23,9 +23,9 @@ Pentagon.OnGenerate = function(parameters, targetContainer)
 
 	for i = 1, 5 do
 		local nextIndex = (i % 5) + 1
-		GP.strutFromTwoPoints("Wall_" .. i, points[i] + Vector3.yAxis * (height / 2), points[nextIndex] + Vector3.yAxis * (height / 2), wallThickness, height, wallColor, "Metal", model)
+		GP.boxBetween("Wall_" .. i, points[i] + Vector3.yAxis * (height / 2), points[nextIndex] + Vector3.yAxis * (height / 2), wallThickness, height, wallColor, "Metal", model)
 		GP.cylinder("Corner_" .. i, points[i], points[i] + Vector3.yAxis * height, wallThickness * 0.75, wallColor, "Metal", model)
-		GP.triangularPrismFromThreePoints("FloorTri_" .. i, center, points[i], points[nextIndex], 0.2, Vector3.yAxis, floorColor, "Plastic", model)
+		GP.triangle("FloorTri_" .. i, center, points[i], points[nextIndex], 0.2, Vector3.yAxis, floorColor, "Plastic", model)
 	end
 
 	model.Parent = targetContainer

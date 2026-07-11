@@ -113,8 +113,31 @@ local function isCFrame(value)
 	return type(value) == "table" and getmetatable(value) == CFrameMeta
 end
 
-local function cframe(position, orientation)
-	return setmetatable({ Position = position, Orientation = orientation or vector3(0, 0, 0) }, CFrameMeta)
+local function basisFromOrientation(orientation)
+	local roll = math.rad(orientation.X)
+	local pitch = math.rad(orientation.Y)
+	local yaw = math.rad(orientation.Z)
+	local cr, sr = math.cos(roll), math.sin(roll)
+	local cp, sp = math.cos(pitch), math.sin(pitch)
+	local cy, sy = math.cos(yaw), math.sin(yaw)
+	return vector3(cy * cp, sy * cp, -sp),
+		vector3(cy * sp * sr - sy * cr, sy * sp * sr + cy * cr, cp * sr),
+		vector3(cy * sp * cr + sy * sr, sy * sp * cr - cy * sr, cp * cr)
+end
+
+local function cframe(position, orientation, rightVector, upVector, backVector)
+	local resolvedOrientation = orientation or vector3(0, 0, 0)
+	local right, up, back = rightVector, upVector, backVector
+	if right == nil or up == nil or back == nil then
+		right, up, back = basisFromOrientation(resolvedOrientation)
+	end
+	return setmetatable({
+		Position = position,
+		Orientation = resolvedOrientation,
+		_rightVector = right,
+		_upVector = up,
+		_backVector = back,
+	}, CFrameMeta)
 end
 
 local function orientationFromBasis(rightVector, upVector, backVector)
@@ -142,44 +165,6 @@ local function orientationFromBasis(rightVector, upVector, backVector)
 	end
 
 	return vector3(math.deg(roll), math.deg(pitch), math.deg(yaw))
-end
-
-local function cframeAlongX(startPoint, endPoint)
-	local delta = endPoint - startPoint
-	local center = (startPoint + endPoint) / 2
-	if delta.Magnitude == 0 then
-		return cframe(center, vector3(0, 0, 0))
-	end
-	if math.abs(delta.Y) < 0.000001 then
-		return cframe(center, vector3(0, -math.deg(math.atan2(delta.Z, delta.X)), 0))
-	end
-	if math.abs(delta.Z) < 0.000001 then
-		return cframe(center, vector3(0, 0, math.deg(math.atan2(delta.Y, delta.X))))
-	end
-	local right = delta.Unit
-	local upReference = Ovdr.Vector3.yAxis
-	if math.abs(right:Dot(upReference)) > 0.999 then
-		upReference = Ovdr.Vector3.zAxis
-	end
-	local back = right:Cross(upReference).Unit
-	local up = back:Cross(right).Unit
-	return Ovdr.CFrame.fromMatrix(center, right, up, back)
-end
-
-local function cframeAlongY(startPoint, endPoint)
-	local delta = endPoint - startPoint
-	local center = (startPoint + endPoint) / 2
-	if delta.Magnitude == 0 then
-		return cframe(center, vector3(0, 0, 0))
-	end
-	local direction = delta.Unit
-	local horizontalMagnitude = math.sqrt(direction.X * direction.X + direction.Y * direction.Y)
-	local pitchX = math.deg(math.atan2(direction.Z, horizontalMagnitude))
-	local rollZ = -math.deg(math.atan2(direction.X, direction.Y))
-	if math.abs(rollZ + 180) < 0.000000000001 then
-		rollZ = 180
-	end
-	return cframe(center, vector3(pitchX, 0, rollZ))
 end
 
 local function pointsBounds(points)
@@ -409,22 +394,53 @@ end
 
 CFrameMeta.__add = function(left, right)
 	if isVector3(right) then
-		return cframe(left.Position + right, left.Orientation)
+		return cframe(left.Position + right, left.Orientation, left._rightVector, left._upVector, left._backVector)
 	end
 	error("CFrame addition only supports Vector3")
 end
 
 CFrameMeta.__sub = function(left, right)
 	if isVector3(right) then
-		return cframe(left.Position - right, left.Orientation)
+		return cframe(left.Position - right, left.Orientation, left._rightVector, left._upVector, left._backVector)
 	end
 	error("CFrame subtraction only supports Vector3")
+end
+
+CFrameMeta.__index = function(value, key)
+	if key == "RightVector" then
+		return value._rightVector
+	end
+	if key == "UpVector" then
+		return value._upVector
+	end
+	if key == "BackVector" then
+		return value._backVector
+	end
+	if key == "LookVector" then
+		return -value._backVector
+	end
+	if key == "VectorToWorldSpace" then
+		return function(_, localVector)
+			return value._rightVector * localVector.X
+				+ value._upVector * localVector.Y
+				+ value._backVector * localVector.Z
+		end
+	end
+	if key == "PointToWorldSpace" then
+		return function(_, localPoint)
+			return value.Position + value:VectorToWorldSpace(localPoint)
+		end
+	end
+	return rawget(value, key)
 end
 
 Ovdr.CFrame = {
 	identity = cframe(vector3(0, 0, 0), vector3(0, 0, 0)),
 	new = function(x, y, z)
 		return cframe(vector3(x or 0, y or 0, z or 0), vector3(0, 0, 0))
+	end,
+	fromPositionOrientation = function(position, orientation)
+		return cframe(position, orientation)
 	end,
 	fromMatrix = function(position, rightVector, upVector, backVector)
 		local right = rightVector.Unit
@@ -433,7 +449,8 @@ Ovdr.CFrame = {
 		if back == nil then
 			back = right:Cross(up)
 		end
-		return cframe(position, orientationFromBasis(right, up, back.Unit))
+		back = back.Unit
+		return cframe(position, orientationFromBasis(right, up, back), right, up, back)
 	end,
 }
 
@@ -645,7 +662,7 @@ local function primitiveProperties(node)
 		if startPoint ~= nil and endPoint ~= nil then
 			local length = (endPoint - startPoint).Magnitude
 			properties.Shape = "Cylinder"
-			properties.CFrame = cleanValue(cframeAlongY(startPoint, endPoint))
+			properties.CFrame = cleanValue(node.CFrame)
 			properties.Size = cleanValue(vector3(radius * 2, math.max(length, 0.1), radius * 2))
 		end
 	elseif node.Primitive == "StrutFromTwoPoints" then
@@ -655,7 +672,7 @@ local function primitiveProperties(node)
 		local height = data.height or thickness
 		if startPoint ~= nil and endPoint ~= nil then
 			local length = (endPoint - startPoint).Magnitude
-			properties.CFrame = cleanValue(cframeAlongX(startPoint, endPoint))
+			properties.CFrame = cleanValue(node.CFrame)
 			properties.Size = cleanValue(vector3(math.max(length, 0.1), height, thickness))
 		end
 	elseif node.Primitive == "QuadFromFourPoints" then
@@ -686,7 +703,7 @@ local function primitiveProperties(node)
 		if startPoint ~= nil and endPoint ~= nil then
 			local length = (endPoint - startPoint).Magnitude
 			properties.Shape = "Cylinder"
-			properties.CFrame = cleanValue(cframeAlongY(startPoint, endPoint))
+			properties.CFrame = cleanValue(node.CFrame)
 			properties.Size = cleanValue(vector3(radius * 2, math.max(length, 0.1), radius * 2))
 		end
 	elseif node.Primitive == "Capsule" then
@@ -706,38 +723,8 @@ local function primitiveProperties(node)
 				local direction = (endpoint2 - endpoint1).Unit
 				local center = ((endpoint1 - direction * radius1) + (endpoint2 + direction * radius2)) / 2
 				properties.Shape = "Cylinder"
-				properties.CFrame = cleanValue(cframeAlongY(center - direction, center + direction))
+				properties.CFrame = cleanValue(node.CFrame + (center - node.CFrame.Position))
 				properties.Size = cleanValue(vector3(radius * 2, math.max(length + radius1 + radius2, 0.1), radius * 2))
-			end
-		end
-	elseif node.Primitive == "Pyramid" then
-		local baseCorner1 = data.baseCorner1
-		local baseCorner2 = data.baseCorner2
-		local apex = data.apex
-		if baseCorner1 ~= nil and baseCorner2 ~= nil and apex ~= nil then
-			local bounds = pointsBounds({ baseCorner1, baseCorner2, apex })
-			properties.CFrame = cleanValue(cframe(bounds.center, vector3(0, 0, 0)))
-			properties.Size = cleanValue(bounds.size)
-		end
-	elseif node.Primitive == "CSGSubtract" then
-		local base = data.base
-		if type(base) == "table" then
-			local baseProperties = nil
-			if base.ClassName == "Primitive" then
-				baseProperties = primitiveProperties(base)
-			elseif base.ClassName == "Part" then
-				baseProperties = applyPartOverrides({
-					Shape = base.Shape,
-					CFrame = cleanValue(base.CFrame),
-					Size = cleanValue(base.Size),
-					Color = cleanValue(base.Color),
-					Material = cleanMaterial(base.Material),
-				}, base)
-			end
-			if baseProperties ~= nil then
-				for key, value in pairs(baseProperties) do
-					properties[key] = value
-				end
 			end
 		end
 	end

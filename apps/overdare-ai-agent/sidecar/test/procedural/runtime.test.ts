@@ -34,7 +34,7 @@ const parameters = {
   Attributes: {},
 };
 
-const rabbitExampleScript = readFileSync(join(import.meta.dir, "../../../../../roblox-example/rabbit.lua"), "utf8");
+const rabbitExampleScript = readFileSync(join(import.meta.dir, "../../src/procedural/examples/rabbit.lua"), "utf8");
 
 const vectorShimScript = `--!strict
 -- generationId: vector-shim-001
@@ -50,7 +50,7 @@ VectorShim.OnGenerate = function(parameters, targetContainer)
 	local score = endPoint:Dot(Vector3.yAxis)
 	local basis = CFrame.fromMatrix(midpoint, Vector3.xAxis, Vector3.yAxis)
 	GP.block("BasisBlock", basis, Vector3.new(score, 1, 1), Color3.fromRGB(10, 20, 30), "Metal", model)
-	GP.strutFromTwoPoints("DiagonalStrut", startPoint, endPoint, 0.5, 1, Color3.fromRGB(30, 40, 50), "Metal", model)
+	GP.boxBetween("DiagonalStrut", startPoint, endPoint, 0.5, 1, Color3.fromRGB(30, 40, 50), "Metal", model)
 	model.Parent = targetContainer
 end
 
@@ -65,8 +65,8 @@ local QuadPlane = {}
 
 QuadPlane.OnGenerate = function(parameters, targetContainer)
 	local model = GP.model("QuadPlane", nil)
-	GP.quadFromFourPoints("VerticalGateSide", Vector3.new(100, 0, 0), Vector3.new(500, 0, 0), Vector3.new(500, 300, 0), Vector3.new(100, 300, 0), 30, nil, Color3.fromRGB(220, 220, 220), "Rock", model)
-	GP.quadFromFourPoints("SlopedVerticalGateSide", Vector3.new(100, 120, 0), Vector3.new(500, 260, 0), Vector3.new(500, 350, 0), Vector3.new(100, 260, 0), 30, nil, Color3.fromRGB(220, 220, 220), "Rock", model)
+	GP.quad("VerticalGateSide", Vector3.new(100, 0, 0), Vector3.new(500, 0, 0), Vector3.new(500, 300, 0), Vector3.new(100, 300, 0), 30, nil, Color3.fromRGB(220, 220, 220), "Rock", model)
+	GP.quad("SlopedVerticalGateSide", Vector3.new(100, 120, 0), Vector3.new(500, 260, 0), Vector3.new(500, 350, 0), Vector3.new(100, 260, 0), 30, nil, Color3.fromRGB(220, 220, 220), "Rock", model)
 	model.Parent = targetContainer
 end
 
@@ -134,7 +134,6 @@ return CapsuleApproximation
 
 const miniColosseumScript = `--!strict
 -- generationId: mini-colosseum-001
-local CSG = require(script.Dependencies.ConstructiveSolidGeometry)
 local GP = require(script.Dependencies.GeometryPrimitives)
 
 local MiniColosseum = {}
@@ -144,7 +143,7 @@ MiniColosseum.OnGenerate = function(parameters, targetContainer)
 	colosseum.WorldPivot = CFrame.identity
 
 	local wallGroup = GP.model("OuterWall", colosseum)
-	local temp = GP.model("CuttersTemp", nil)
+	local temp = GP.model("ScratchTemp", nil)
 	local stoneColor = parameters.Attributes.StoneColor or Color3.fromRGB(205, 185, 155)
 	local trimColor = parameters.Attributes.TrimColor or Color3.fromRGB(185, 165, 135)
 	local wallThickness = parameters.Attributes.WallThickness or 3
@@ -153,7 +152,6 @@ MiniColosseum.OnGenerate = function(parameters, targetContainer)
 	local b = parameters.Size.Z / 2
 	local theta1 = 0
 	local theta2 = math.pi / 4
-	local mid = (theta1 + theta2) / 2
 
 	local function ellipse(theta, y)
 		return Vector3.new(a * math.cos(theta), y, b * math.sin(theta))
@@ -161,28 +159,16 @@ MiniColosseum.OnGenerate = function(parameters, targetContainer)
 
 	local wallS = ellipse(theta1, parameters.Size.Y / 2)
 	local wallE = ellipse(theta2, parameters.Size.Y / 2)
-	local wallSeg = GP.strutFromTwoPoints("WallSeg_0", wallS, wallE, wallThickness, parameters.Size.Y, stoneColor, "Sandstone", temp)
+	-- OVERDARE has no CSG, so the wall is a solid segment (no carved arch).
+	GP.boxBetween("WallSeg_0", wallS, wallE, wallThickness, parameters.Size.Y, stoneColor, "Sandstone", wallGroup)
 
-	local dir = (wallE - wallS).Unit
-	local outwardNormal = dir:Cross(Vector3.yAxis).Unit
-	local midPt = ellipse(mid, parameters.Size.Y / 2)
-	local cutS = midPt - outwardNormal * 4
-	local cutE = midPt + outwardNormal * 4
-
-	local cutters = {}
-	local archBase = GP.strutFromTwoPoints("ArchBase_1", cutS, cutE, 2, 4, Color3.new(1, 0, 0), "Plastic", temp)
-	table.insert(cutters, archBase)
-	local archTop = GP.cylinder("ArchTop_1", cutS + Vector3.yAxis * 2, cutE + Vector3.yAxis * 2, 1, Color3.new(1, 0, 0), "Plastic", temp)
-	table.insert(cutters, archTop)
-
-	local finalWall = CSG.subtract("CSGWall_0", wallSeg, cutters)
-	finalWall.Parent = wallGroup
-	for _, cutter in ipairs(cutters) do cutter:Destroy() end
-	wallSeg:Destroy()
+	-- Scratch part built in a temp container and destroyed before serialization.
+	local scratch = GP.block("Scratch_0", Vector3.new(0, 0, 0), Vector3.new(1, 1, 1), Color3.new(1, 0, 0), "Plastic", temp)
+	scratch:Destroy()
 
 	GP.cylinder("Column_0", ellipse(theta1, 0), ellipse(theta1, parameters.Size.Y), wallThickness * 0.6, trimColor, "Sandstone", wallGroup)
-	GP.triangularPrismFromThreePoints("ArenaSand_0", Vector3.new(0, 0, 0), ellipse(theta1, 0), ellipse(theta2, 0), 1, Vector3.yAxis, stoneColor, "Sand", colosseum)
-	GP.quadFromFourPoints("Seat_0_1", ellipse(theta1, 1), ellipse(theta2, 1), ellipse(theta2, 2), ellipse(theta1, 2), 1, nil, stoneColor, "Sandstone", colosseum)
+	GP.triangle("ArenaSand_0", Vector3.new(0, 0, 0), ellipse(theta1, 0), ellipse(theta2, 0), 1, Vector3.yAxis, stoneColor, "Sand", colosseum)
+	GP.quad("Seat_0_1", ellipse(theta1, 1), ellipse(theta2, 1), ellipse(theta2, 2), ellipse(theta1, 2), 1, nil, stoneColor, "Sandstone", colosseum)
 
 	temp:Destroy()
 	colosseum.Parent = targetContainer
@@ -199,6 +185,139 @@ MiniColosseum.OnGenerate = function(parameters, targetContainer)
 end
 
 return MiniColosseum
+`;
+
+const mathUtilsScript = `--!strict
+-- generationId: math-utils-001
+local GP = require(script.Dependencies.GeometryPrimitives)
+local MU = require(script.Dependencies.MathUtils)
+
+local MathUtilsDemo = {}
+
+MathUtilsDemo.OnGenerate = function(parameters, targetContainer)
+	local model = GP.model("MathUtilsDemo", nil)
+	if GP.strutFromTwoPoints ~= GP.boxBetween or GP.triangularPrismFromThreePoints ~= GP.triangle or GP.quadFromFourPoints ~= GP.quad then
+		error("GeometryPrimitives compatibility aliases are missing")
+	end
+	if MU.bezier ~= MU.pointOnCubicBezier or MU.quadraticBezier ~= MU.pointOnQuadraticBezier or MU.sampleBezierPoints ~= MU.pointsOnCubicBezier or MU.linearArray ~= MU.forEachPointOnLine or MU.radialArray ~= MU.forEachPointOnCircle or MU.radialArrayConnected ~= MU.forEachSegmentOnCircle then
+		error("MathUtils compatibility aliases are missing")
+	end
+
+	-- lerp (number), lerpVector3, and lerpColor (0-255 channels) all interoperate
+	-- with the Vector3/Color3 globals and GP helpers.
+	local mid = MU.lerpVector3(Vector3.new(0, 0, 0), Vector3.new(10, 20, 0), 0.5)
+	local blended = MU.lerpColor(Color3.fromRGB(0, 0, 0), Color3.fromRGB(200, 100, 40), 0.5)
+	GP.sphere("Mid", mid, MU.lerp(1, 5, 0.5), blended, "Plastic", model)
+
+	-- The callback name makes it explicit that positions are visited, not returned.
+	MU.forEachPointOnCircle(Vector3.new(0, 0, 0), 10, 4, Vector3.yAxis, function(pos, i)
+		GP.sphere("Ring_" .. i, pos, 1, Color3.fromRGB(255, 255, 255), "Plastic", model)
+	end)
+
+	model.Parent = targetContainer
+end
+
+return MathUtilsDemo
+`;
+
+const p0GeometryMathScript = `--!strict
+-- generationId: p0-geometry-math-001
+local GP = require(script.Dependencies.GeometryPrimitives)
+local MU = require(script.Dependencies.MathUtils)
+
+local P0GeometryMath = {}
+
+local function near(actual, expected)
+	return math.abs(actual - expected) < 0.000001
+end
+
+local function assertVector(actual, expected, label)
+	if not near(actual.X, expected.X) or not near(actual.Y, expected.Y) or not near(actual.Z, expected.Z) then
+		error(label .. " did not match")
+	end
+end
+
+local function assertRejects(callback, label)
+	local ok = pcall(callback)
+	if ok then
+		error(label .. " should reject invalid input")
+	end
+end
+
+P0GeometryMath.OnGenerate = function(parameters, targetContainer)
+	local line = MU.pointsOnLine(Vector3.new(-2, 1, 3), Vector3.new(4, 7, 9), 4)
+	if #line ~= 4 then error("pointsOnLine count mismatch") end
+	assertVector(line[1], Vector3.new(-2, 1, 3), "line start")
+	assertVector(line[4], Vector3.new(4, 7, 9), "line end")
+
+	local arbitraryAxis = Vector3.new(1, 1, 0)
+	local circle = MU.pointsOnCircle(Vector3.new(2, 3, 4), 5, 5, arbitraryAxis)
+	if #circle ~= 5 then error("pointsOnCircle count mismatch") end
+	for _, point in ipairs(circle) do
+		local offset = point - Vector3.new(2, 3, 4)
+		if not near(offset.Magnitude, 5) or not near(offset:Dot(arbitraryAxis.Unit), 0) then
+			error("pointsOnCircle left its plane")
+		end
+	end
+	if (circle[1] - circle[#circle]).Magnitude < 0.000001 then error("circle duplicated its first point") end
+
+	local arc = MU.pointsOnArc(Vector3.zero, 2, 0, math.pi, 3, Vector3.yAxis)
+	if #arc ~= 3 then error("pointsOnArc count mismatch") end
+	assertVector(arc[1], Vector3.new(2, 0, 0), "arc start")
+	assertVector(arc[3], Vector3.new(-2, 0, 0), "arc end")
+
+	local ellipse = MU.pointsOnEllipse(Vector3.zero, 3, 2, 4, Vector3.zAxis)
+	if #ellipse ~= 4 then error("pointsOnEllipse count mismatch") end
+	for _, point in ipairs(ellipse) do
+		if not near(point.Z, 0) then error("ellipse left its plane") end
+	end
+
+	local openSegments = MU.segmentsFromPoints(line, false)
+	local closedSegments = MU.segmentsFromPoints(circle, true)
+	if #openSegments ~= 3 or #closedSegments ~= 5 then error("segment count mismatch") end
+	assertVector(openSegments[1].startPoint, line[1], "open segment start")
+	assertVector(openSegments[1].endPoint, line[2], "open segment end")
+	assertVector(closedSegments[5].endPoint, circle[1], "closed segment end")
+
+	local frame = MU.frameBetween(Vector3.zero, Vector3.new(0, 0, 10), Vector3.xAxis, Vector3.zAxis)
+	local transformed = MU.transformPoints({ Vector3.new(2, 0, 0) }, frame)
+	assertVector(transformed[1], Vector3.new(0, 0, 7), "frameBetween/transformPoints")
+	local normalFrame = MU.frameFromNormal(Vector3.new(1, 2, 3), Vector3.yAxis, Vector3.yAxis)
+	assertVector(MU.transformPoints({ Vector3.new(0, 2, 0) }, normalFrame)[1], Vector3.new(1, 4, 3), "frameFromNormal fallback")
+	assertVector(MU.rotateAroundAxis(Vector3.xAxis, Vector3.zero, Vector3.yAxis, math.pi / 2), Vector3.new(0, 0, -1), "rotateAroundAxis")
+	assertVector(MU.mirrorPoint(Vector3.new(1, 2, 3), Vector3.zero, Vector3.yAxis), Vector3.new(1, -2, 3), "mirrorPoint")
+	assertVector(MU.projectOnPlane(Vector3.new(1, 2, 3), Vector3.yAxis), Vector3.new(1, 0, 3), "projectOnPlane")
+
+	assertRejects(function() MU.pointsOnLine(Vector3.zero, Vector3.xAxis, 1) end, "line count")
+	assertRejects(function() MU.pointsOnLine(Vector3.zero, Vector3.xAxis, 2.5) end, "fractional count")
+	assertRejects(function() MU.pointsOnCircle(Vector3.zero, 1, 20001, Vector3.yAxis) end, "excessive count")
+	assertRejects(function() MU.pointsOnCircle(Vector3.zero, 1, 2, Vector3.yAxis) end, "circle count")
+	assertRejects(function() MU.pointsOnArc(Vector3.zero, 1, 0, 1, 1, Vector3.yAxis) end, "arc count")
+	assertRejects(function() MU.pointsOnEllipse(Vector3.zero, 1, 1, 2, Vector3.yAxis) end, "ellipse count")
+	assertRejects(function() MU.pointsOnCircle(Vector3.zero, 1, 3, Vector3.zero) end, "zero axis")
+	assertRejects(function() MU.pointsOnCircle(Vector3.zero, 1, 3, Vector3.new(math.huge, 0, 0)) end, "non-finite axis")
+	assertRejects(function() MU.pointsOnLine(Vector3.zero, Vector3.zero, 2) end, "degenerate line")
+	assertRejects(function() MU.pointsOnArc(Vector3.zero, 1, 1, 1, 2, Vector3.yAxis) end, "degenerate arc")
+	assertRejects(function() MU.segmentsFromPoints({ Vector3.zero, Vector3.zero }, false) end, "degenerate segment")
+	assertRejects(function() MU.frameBetween(Vector3.zero, Vector3.zero, Vector3.xAxis, Vector3.yAxis) end, "degenerate frame")
+	assertRejects(function() GP.cylinderBetween("Bad", Vector3.zero, Vector3.zero, 1, nil) end, "degenerate cylinder")
+	assertRejects(function() GP.disc("Bad", Vector3.zero, 0, 1, nil) end, "zero-radius disc")
+	assertRejects(function() GP.ellipsoid("Bad", Vector3.zero, Vector3.new(1, -1, 1), nil) end, "negative ellipsoid size")
+
+	local model = GP.model("P0Geometry", nil)
+	GP.cylinderBetween("DirectedCylinder", Vector3.new(0, 0, 0), Vector3.new(-10, 0, 0), 2, {
+		color = Color3.fromRGB(10, 20, 30), material = "Metal", parent = model,
+		transparency = 0.25, canCollide = false,
+	})
+	GP.ellipsoid("Ellipsoid", Vector3.new(1, 2, 3), Vector3.new(4, 6, 8), {
+		color = Color3.fromRGB(40, 50, 60), material = "Neon", parent = model,
+	})
+	GP.panel("Panel", CFrame.new(5, 6, 7), 10, 20, 0.5, { parent = model })
+	GP.disc("Disc", Vector3.new(-1, -2, -3), 4, 0.25, { parent = model })
+	model.Parent = targetContainer
+end
+
+return P0GeometryMath
 `;
 
 async function hasLuauExecutable(): Promise<boolean> {
@@ -323,6 +442,79 @@ describe("procedural Luau dummy JSON runtime", () => {
     });
   });
 
+  test("exposes MathUtils interpolation and layout helpers through Luau", async () => {
+    const result = await generateProceduralDummyJson({ scriptSource: mathUtilsScript, parameters });
+
+    expect(result.generationId).toBe("math-utils-001");
+    expect(flattenNodeNames(result.children)).toEqual([
+      "Model:MathUtilsDemo",
+      "  Part:Mid",
+      "  Part:Ring_1",
+      "  Part:Ring_2",
+      "  Part:Ring_3",
+      "  Part:Ring_4",
+    ]);
+
+    // lerpVector3 midpoint, lerp radius (3 -> diameter 6), lerpColor 0-255 midpoint.
+    expect(expectPartProperties(findNodeByName(result.children, "Mid"), "Mid")).toMatchObject({
+      Shape: "Ball",
+      CFrame: { Position: { X: 5, Y: 10, Z: 0 } },
+      Size: { X: 6, Y: 6, Z: 6 },
+      Color: { R: 100, G: 50, B: 20 },
+    });
+
+    // forEachPointOnCircle placements around the Y axis at radius 10.
+    const ringPositions = ["Ring_1", "Ring_2", "Ring_3", "Ring_4"].map(
+      (name) => expectPartProperties(findNodeByName(result.children, name), name).CFrame?.Position,
+    );
+    expect(ringPositions).toEqual([
+      { X: 10, Y: 0, Z: 0 },
+      { X: 0, Y: 0, Z: -10 },
+      { X: -10, Y: 0, Z: 0 },
+      { X: 0, Y: 0, Z: 10 },
+    ]);
+  });
+
+  test("supports P0 point, transform, and direct-part geometry helpers", async () => {
+    const result = await generateProceduralDummyJson({ scriptSource: p0GeometryMathScript, parameters });
+
+    expect(flattenNodeNames(result.children)).toEqual([
+      "Model:P0Geometry",
+      "  Part:DirectedCylinder",
+      "  Part:Ellipsoid",
+      "  Part:Panel",
+      "  Part:Disc",
+    ]);
+    expect(expectPartProperties(findNodeByName(result.children, "DirectedCylinder"), "DirectedCylinder")).toMatchObject(
+      {
+        Shape: "Cylinder",
+        CFrame: { Position: { X: -5, Y: 0, Z: 0 } },
+        Size: { X: 4, Y: 10, Z: 4 },
+        Color: { R: 10, G: 20, B: 30 },
+        Material: "Metal",
+        Transparency: 0.25,
+        CanCollide: false,
+      },
+    );
+    expect(expectPartProperties(findNodeByName(result.children, "Ellipsoid"), "Ellipsoid")).toMatchObject({
+      Shape: "Ball",
+      CFrame: { Position: { X: 1, Y: 2, Z: 3 } },
+      Size: { X: 4, Y: 6, Z: 8 },
+      Color: { R: 40, G: 50, B: 60 },
+      Material: "Neon",
+    });
+    expect(expectPartProperties(findNodeByName(result.children, "Panel"), "Panel")).toMatchObject({
+      Shape: "Block",
+      CFrame: { Position: { X: 5, Y: 6, Z: 7 } },
+      Size: { X: 10, Y: 20, Z: 0.5 },
+    });
+    expect(expectPartProperties(findNodeByName(result.children, "Disc"), "Disc")).toMatchObject({
+      Shape: "Cylinder",
+      CFrame: { Position: { X: -1, Y: -2, Z: -3 } },
+      Size: { X: 8, Y: 0.25, Z: 8 },
+    });
+  });
+
   test("keeps vertical quad planes upright with yaw-only orientation", async () => {
     const result = await generateProceduralDummyJson({ scriptSource: quadPlaneScript, parameters });
 
@@ -433,7 +625,7 @@ describe("procedural Luau dummy JSON runtime", () => {
     });
   });
 
-  test("runs the rabbit Roblox example with capsule primitives", async () => {
+  test("runs the rabbit example with capsule primitives", async () => {
     const result = await generateProceduralDummyJson({ scriptSource: rabbitExampleScript, parameters });
 
     expect(result.generationId).toBe("2456eb64-ed78-47ea-9410-9fd34fa25c6f");
@@ -468,7 +660,7 @@ describe("procedural Luau dummy JSON runtime", () => {
     });
   });
 
-  test("supports colosseum-style vector math, CSG, destroy, and structural primitives", async () => {
+  test("supports colosseum-style vector math, destroy, and structural primitives", async () => {
     const result = await generateProceduralDummyJson({
       scriptSource: miniColosseumScript,
       parameters: {
@@ -487,7 +679,7 @@ describe("procedural Luau dummy JSON runtime", () => {
     expect(flattenNodeNames(result.children)).toEqual([
       "Model:MiniColosseum",
       "  Model:OuterWall",
-      "    Part:CSGWall_0",
+      "    Part:WallSeg_0",
       "    Part:Column_0",
       "  Part:ArenaSand_0",
       "  Part:Seat_0_1",
@@ -496,14 +688,14 @@ describe("procedural Luau dummy JSON runtime", () => {
     const outerWall = miniColosseum?.children?.[0];
     expect(outerWall?.children?.[0]).toMatchObject({
       class: "Part",
-      name: "CSGWall_0",
+      name: "WallSeg_0",
       properties: {
         Shape: "Block",
         CFrame: {
-          Position: { X: 17.071067811865476, Y: 10, Z: 5.303300858899106 },
+          Position: { X: 17.071067811865476, Y: 0, Z: 5.303300858899107 },
           Orientation: { X: 0, Y: -118.91120081841659, Z: 0 },
         },
-        Size: { X: 12.116706444028507, Y: 20, Z: 3 },
+        Size: { X: 12.116706444028509, Y: 20, Z: 3 },
         Anchored: true,
         Material: "Rock",
       },
@@ -564,7 +756,7 @@ return Spin
   });
 
   test("round-trips the large colosseum example through argv transport", async () => {
-    const colosseumScript = readFileSync(join(import.meta.dir, "../../../../../roblox-example/colosseum.lua"), "utf8");
+    const colosseumScript = readFileSync(join(import.meta.dir, "../../src/procedural/examples/colosseum.lua"), "utf8");
     const result = await generateProceduralDummyJson({ scriptSource: colosseumScript, parameters });
     expect(result.generationId).toBe("ad1c33ff-a538-40f3-a853-dc8609c21e5f");
     expect(result.children.length).toBeGreaterThan(0);

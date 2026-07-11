@@ -1,6 +1,6 @@
 ---
 name: procedural-luau-json
-description: Write or adapt OVERDARE procedural Luau scripts and generate instance-upsert-ready nested JSON. Use this skill when the user asks to create Luau procedural code, port Roblox procedural examples, run a procedural script, generate dummy JSON, or inspect/apply OVDR procedural output.
+description: Write or adapt OVERDARE procedural Luau scripts and generate instance-upsert-ready nested JSON. Use this skill when the user asks to create Luau procedural code, port or adapt existing procedural examples, run a procedural script, generate dummy JSON, or inspect/apply OVDR procedural output.
 ---
 
 # Procedural Luau JSON Generator
@@ -12,16 +12,16 @@ Use this skill to write, adapt, and run OVERDARE procedural Luau scripts that pr
 - Luau procedural script is the source of truth.
 - Generated objects are derived output.
 - Output shape is nested scene JSON, not a flat `items[]` list.
-- Use `ovdr-shim` naming. Never introduce `roblox-shim`.
+- Use `ovdr-shim` naming consistently; never rename the shim.
 - Keep generated node `properties` strict to the `instance_upsert` schema. Do not add custom procedural metadata inside `properties`.
 - **Temporary output only:** When creating ad-hoc procedural scripts or generated JSON for a user request, write both the `.lua` script and `.json` output under `/tmp`. Do not add one-off generated models to repo example/source directories unless the user explicitly asks for a persistent repo asset.
 - **Comment procedural intent:** Author generated Luau with useful comments that explain what each major group, helper, and non-obvious transform is for. Future edits should be able to identify “what this part represents” and “why these coordinates/orientations were chosen” without reverse-engineering the model.
 
 ## OVERDARE Scene Authoring Rules
 
-Procedural JSON is static level geometry for OVERDARE Studio. When writing or porting scripts, follow OVERDARE placement semantics instead of Roblox defaults:
+Procedural JSON is static level geometry for OVERDARE Studio. When writing or adapting scripts, follow OVERDARE placement semantics:
 
-- **Units:** OVERDARE units are centimeters. Roblox `1 stud` is roughly `28` OVERDARE units. If a Roblox example looks too small, scale dimensions by about `28x`, or choose explicit centimeter-scale defaults.
+- **Units:** OVERDARE units are centimeters. If an adapted script looks too small, its source likely used a smaller unit scale (roughly `28` OVERDARE units per source unit) — scale dimensions by about `28x`, or choose explicit centimeter-scale defaults.
 - **CFrame placement:** Treat every serialized `CFrame` as world space. Even when an object is nested under a parent model, compute absolute world positions; do not use parent-relative offsets.
 - **Parent-child movement:** In OVERDARE, children follow parent transforms. For generated static JSON, keep child `CFrame`s absolute at generation time so the scene is correct immediately after apply.
 - **Cylinder orientation:** `Part` with `Shape = "Cylinder"` is aligned along the **Y axis**. Size is `(diameter, height, diameter)`. Use small `Y` for flat discs, and rotate only when a sideways cylinder is intentionally needed.
@@ -29,7 +29,7 @@ Procedural JSON is static level geometry for OVERDARE Studio. When writing or po
   - Log/pipe laid along the X axis: `Size = (50, 200, 50)`, `Orientation = (0, 0, 90)`.
   - Wheel on its side: `Size = (80, 20, 80)`, `Orientation = (0, 0, 90)`.
   - For directed two-point `GP.cylinder(startPoint, endPoint, ...)`, the local **Y axis** is serialized along `startPoint -> endPoint`. Current shim expectations: +X direction uses negative Z rotation, -X direction uses positive Z rotation, and +Z direction uses positive X rotation.
-- **Plain, compatible assets:** Asset ids, if ever used, must be `ovdrassetid://[number]`. Avoid Roblox-only asset path formats.
+- **Plain, compatible assets:** Asset ids, if ever used, must be `ovdrassetid://[number]`. Do not use other asset path formats.
 - **Doors, tunnels, and openings:** OVERDARE procedural JSON does not currently provide a GeometryService-style boolean cutout. Build openings by leaving space empty: skip wall/dome blocks where the door should be, and assemble tunnels from separate side walls, floor, and arch/roof pieces. Do not place arbitrary solid objects inside the passage just to imply a hole; if players should pass through it, the center volume must actually remain empty.
 
 ## Key Files
@@ -42,9 +42,8 @@ Procedural JSON is static level geometry for OVERDARE Studio. When writing or po
 | OVDR shim | `apps/overdare-ai-agent/sidecar/src/procedural/luau/ovdr-shim.lua` |
 | OVDR helper libs | `apps/overdare-ai-agent/sidecar/src/procedural/luau/dependencies/` |
 | Runtime tests | `apps/overdare-ai-agent/sidecar/test/procedural/runtime.test.ts` |
-| Roblox helper reference | `roblox-lib/` |
-| Roblox example scripts | `roblox-example/` |
-| Existing OVDR examples | `apps/overdare-ai-agent/sidecar/src/procedural/examples/` |
+| Example scripts | `apps/overdare-ai-agent/sidecar/src/procedural/examples/` |
+| Geometry/math API and roadmap | `docs/guide/procedural-geometry-math.md` |
 | Handoff notes | `docs/plan/feature/P068-procedural-script-dummy-json-runtime-handoff.md` |
 
 ## Supported MVP Output
@@ -75,17 +74,24 @@ type ProceduralGeneratedNode = {
 
 ## Current Luau Compatibility Notes
 
-The current runtime supports the `roblox-example` scripts with these important APIs:
+The current runtime supports the example scripts with these important APIs:
 
 - `Vector3.new`, axes, arithmetic, `.Magnitude`, `.Unit`, `:Cross`, `:Dot`, `:Lerp`
 - `Color3.fromRGB`, `Color3.new`
 - `CFrame.identity`, `CFrame.new`, `CFrame.fromMatrix`, `CFrame +/- Vector3`
 - fake instances with `Parent`, `Children`, `GetDescendants`, `IsA`, `Destroy`
-- `GeometryPrimitives`: `model`, `sphere`, `block`, `cylinder`, `taperedCylinder`, `capsule`, `regularPrism`, `strutFromTwoPoints`, `triangularPrismFromThreePoints`, `pyramid`, `quadFromFourPoints`
-- `ConstructiveSolidGeometry.subtract` as an apply-safe approximation
-- `SmartObject` and `MathUtils` may still be placeholders unless recently expanded
+- `GeometryPrimitives`: `model`, `sphere`, `block`, `cylinder`, `cylinderBetween`, `ellipsoid`, `panel`, `disc`, `taperedCylinder`, `capsule`, `regularPrism`, `boxBetween`, `triangle`, `quad`
+- `MathUtils`: interpolation/Bezier helpers; `pointsOnLine`, `pointsOnCircle`, `pointsOnArc`, `pointsOnEllipse`, `segmentsFromPoints`; `frameBetween`, `frameFromNormal`, `rotateAroundAxis`, `mirrorPoint`, `transformPoints`, `projectOnPlane`; and the `forEach*` wrappers
+
+There is no `SmartObject` dependency. Read tunable inputs directly from `parameters.Size` / `parameters.Attributes`.
+
+OVERDARE has no CSG (boolean geometry): there is no `ConstructiveSolidGeometry` dependency and no `subtract`/`union`/`intersect`. Build shapes additively from parts instead of carving them.
 
 Geometry fidelity is approximate for complex primitives. Prefer apply-safe `Part` approximations over unsupported schema fields.
+
+The geometry/math guide also describes planned APIs. Do not call a roadmap API
+unless it appears in the current compatibility list above or exists in the
+dependency source. Planned names are design guidance, not runtime capability.
 
 ## Quick Library Spec
 
@@ -185,46 +191,86 @@ GP.cylinder(name, center, height, radius, color, material, parent?)
 -- two-point form
 GP.cylinder(name, startPoint, endPoint, radius, color, material, parent?)
 
+-- canonical two-point and direct-part forms use an options table
+GP.cylinderBetween(name, startPoint, endPoint, radius, options?)
+GP.ellipsoid(name, centerOrCFrame, size, options?)
+GP.panel(name, centerOrCFrame, width, height, thickness, options?)
+GP.disc(name, centerOrCFrame, radius, thickness, options?)
+
 GP.taperedCylinder(name, startPoint, endPoint, radiusTop, radiusBottom, color, material, parent?)
 GP.capsule(name, endpoint1, radius1, endpoint2, radius2, color, material, parent?)
 GP.regularPrism(name, startPoint, endPoint, radius, sides, color, material, parent?)
-GP.strutFromTwoPoints(name, startPoint, endPoint, thickness, height, color, material, parent?)
-GP.triangularPrismFromThreePoints(name, point1, point2, point3, thickness, normal?, color, material, parent?)
-GP.pyramid(name, baseCorner1, baseCorner2, apex, color, material, parent?)
-GP.quadFromFourPoints(name, point1, point2, point3, point4, thickness, normal?, color, material, parent?)
+GP.boxBetween(name, startPoint, endPoint, thickness, height, color, material, parent?)
+GP.triangle(name, point1, point2, point3, thickness, normal?, color, material, parent?)
+GP.quad(name, point1, point2, point3, point4, thickness, normal?, color, material, parent?)
 ```
 
 MVP geometry notes:
 
 - `sphere` -> `Part` / `Shape = "Ball"`
-- `block`, `strutFromTwoPoints`, `quadFromFourPoints`, `triangularPrismFromThreePoints`, `pyramid` -> `Part` / `Shape = "Block"` approximation
+- `ellipsoid` -> non-uniform `Part` / `Shape = "Ball"` (verify final appearance in Studio)
+- `panel` -> thin `Block`; `disc` -> short Y-axis `Cylinder`
+- `block`, `boxBetween`, `triangle`, `quad` -> `Part` / `Shape = "Block"` approximation
 - `cylinder`, `taperedCylinder`, `capsule`, `regularPrism` -> `Part` / `Shape = "Cylinder"` approximation where possible
-- Two-point `cylinder`, `taperedCylinder`, `capsule`, and `regularPrism` serialize the cylinder height on local Y along `startPoint -> endPoint`; verify sign-sensitive mirrored details such as whiskers, spokes, arch cutters, or rails.
+- Two-point `cylinder`, `taperedCylinder`, `capsule`, and `regularPrism` serialize the cylinder height on local Y along `startPoint -> endPoint`; verify sign-sensitive mirrored details such as whiskers, spokes, or rails.
 - `capsule` may become a `Ball` if one endpoint radius fully dominates the segment
 - no `WedgePart` / `CornerWedgePart` in the current apply-safe JSON contract
+- no CSG / boolean geometry: holes, cutouts, and true cones/pyramids cannot be produced. Approximate additively with the primitives above, or omit the feature.
 
-### ConstructiveSolidGeometry (`CSG`)
-
-```lua
-local CSG = require(script.Dependencies.ConstructiveSolidGeometry)
-
-CSG.subtract(name, baseObject, cutters)
-```
-
-Current behavior is a placeholder-compatible approximation: it preserves the visible base object's serialized shape, but does not create real holes/cutouts.
-
-### SmartObject / MathUtils
+### MathUtils (`MU`)
 
 ```lua
-local SO = require(script.Dependencies.SmartObject)
 local MU = require(script.Dependencies.MathUtils)
+
+-- Interpolation
+MU.lerp(a, b, t)                         -- number, t clamped to 0..1
+MU.lerpVector3(v1, v2, t)                -- Vector3
+MU.lerpColor(c1, c2, t)                  -- Color3, interpolates 0-255 channels
+
+-- Curves (return/take Vector3)
+MU.pointOnCubicBezier(t, p0, p1, p2, p3)      -- one point on a cubic Bezier
+MU.pointOnQuadraticBezier(t, p0, p1, p2)       -- one point on a quadratic Bezier
+MU.pointsOnCubicBezier(p0, p1, p2, p3, segments) -- { Vector3 }, segments + 1 points
+
+-- Coordinates
+MU.polarToCartesian(center, radius, angle, plane) -- plane: "XZ" (default), "XY", "YZ"
+
+-- Pure point/segment generation (count is returned point count; angles are radians)
+MU.pointsOnLine(startPoint, endPoint, count) -- minimum 2, includes both endpoints
+MU.pointsOnCircle(center, radius, count, axis) -- minimum 3, no duplicate endpoint
+MU.pointsOnArc(center, radius, startAngle, endAngle, count, axis) -- minimum 2
+MU.pointsOnEllipse(center, radiusX, radiusY, count, axis) -- minimum 3
+MU.segmentsFromPoints(points, closed) -- { { startPoint = ..., endPoint = ... }, ... }
+
+-- Orientation and transforms
+MU.frameBetween(startPoint, endPoint, localAxis, up) -- frame is at segment midpoint
+MU.frameFromNormal(position, normal, up) -- local Y follows normal
+MU.rotateAroundAxis(point, pivot, axis, angle) -- radians
+MU.mirrorPoint(point, planePoint, planeNormal)
+MU.transformPoints(points, cframe)
+MU.projectOnPlane(vector, normal)
+
+-- Layout (invoke callback per placement)
+MU.forEachPointOnLine(startPos, endPos, count, function(pos, i) end)
+MU.forEachPointOnCircle(center, radius, count, axis, function(pos, i) end)
+MU.forEachSegmentOnCircle(center, radius, count, axis, function(pos, i, nextPos) end)
 ```
 
-`SmartObject` and `MathUtils` are currently placeholder exports. If a script calls into them, inspect current dependency files first and implement only the required functions.
+The older implementation-oriented names remain as compatibility aliases, but
+new scripts should use the names above. Prefer names that describe the geometry
+or callback behavior instead of the number of input points or an array-like
+implementation detail.
+
+All values are built through `ovdr-shim`, so `MU` outputs interoperate with the
+`Vector3`/`Color3` globals and with `GP` helpers. Interpolation helpers clamp
+`t` to `0..1`; the number/curve helpers reject `NaN`/infinite inputs.
+
+There is no `SmartObject` dependency: read tunable inputs directly from
+`parameters.Size` and `parameters.Attributes`.
 
 ### Materials
 
-Output must normalize to `instance_upsert`-safe materials. Known unsupported Roblox materials fall back through aliases or to `Plastic`.
+Output must normalize to `instance_upsert`-safe materials. Known unsupported materials fall back through aliases or to `Plastic`.
 
 Common safe materials:
 
@@ -250,13 +296,15 @@ Before writing code, identify:
 
 - Desired model name and `generationId`
 - Expected `parameters.Size` and `parameters.Attributes`
-- Which helper APIs the script needs from `GeometryPrimitives`, `CSG`, `SmartObject`, or `MathUtils`
+- Which helper APIs the script needs from `GeometryPrimitives` or `MathUtils`
 - Whether the output only needs MVP dummy geometry or closer visual fidelity
 
-If adapting Roblox Luau, first grep the source for helper calls:
+If adapting a script that uses CSG (`subtract`/`union`/`intersect`), rework it additively first — OVERDARE cannot carve geometry.
+
+When adapting an existing script, first grep the source for helper calls:
 
 ```bash
-grep -n "GP\.\|CSG\.\|SO\.\|MU\." path/to/script.lua
+grep -n "GP\.\|MU\." path/to/script.lua
 ```
 
 Implement only missing prerequisites needed by the target script.
@@ -272,7 +320,6 @@ Use this script shape:
 -- generationId: replace-with-stable-id
 -- Generates <ModelName>. Edit the constants near the top of OnGenerate to tune proportions.
 local GP = require(script.Dependencies.GeometryPrimitives)
-local CSG = require(script.Dependencies.ConstructiveSolidGeometry)
 
 local ModelScript = {}
 

@@ -107,7 +107,7 @@ One-shot `procedural_run` does **not** use this layer.
 
 ## Prerequisite fixes (do first, independent of tool count)
 
-- **P1 — Input transport (gap #3):** change `runner.lua` to read script + input from a temp file or stdin instead of `--program-args`. Verify a large script (e.g. `roblox-example/colosseum.lua`) round-trips.
+- **P1 — Input transport (gap #3):** change `runner.lua` to read script + input from a temp file or stdin instead of `--program-args`. Verify a large script (e.g. `apps/overdare-ai-agent/sidecar/src/procedural/examples/colosseum.lua`) round-trips.
 - **P2 — Guardrails (gap #4):** add timeout, max-node, max-output-bytes to the Luau spawn in `runtime.ts` before any tool exposes it.
 - **P3 — Apply generalization (gap #2):** build `applyProceduralOps` handling `add` (upsert new), `update` (upsert by guid — `executeInstanceUpsertInner` already supports update items), `delete` (`instance.delete`). Keep the batch-100 + parent-first-live-GUID behavior for adds. Note: `applyNodeTree` cannot be extended in place — it is structurally coupled to add-only `ProceduralJsonNode` trees (class/parentGuid/children); write a new dispatcher that reuses the approval + writeLock + parent-first batching pieces. Apply order: delete → update → add; sort deletes deepest-first and skip already-missing guids (removing a parent orphans its subtree, so a child guid later in the batch would otherwise hard-fail).
 - **P4 — Scene injection (gap #5):** extend `ovdr-shim.lua` so a script can enumerate the current scene (`GetDescendants`, `IsA`, read `CFrame`/props) — required for transform scripts. Feed the scene into `runProceduralScript` (read via level file `readOvdrjmRoot(cwd)` — simpler than RPC). See the design addendum below for the diff-based op derivation that this enables.
@@ -144,14 +144,14 @@ The shim's existing `Destroy()` semantics (mark `Destroyed`, drop at serializati
 - **Diff property whitelist:** start with `CFrame`, `Size`, `Color`, `Material`, `Name`. Properties outside the whitelist are neither injected nor diffed — they stay untouched in the scene.
 - **Reparent is unsupported in MVP:** update items (`{guid, name, properties}`) cannot change `parentGuid`. Moving an existing object to a new parent is out of scope; document as a limitation. The primary transform use cases (move/scale/recolor/delete) are all covered.
 
-### Script convention cleanup — Roblox-plugin boilerplate removed (DONE 2026-07-10)
+### Script convention cleanup — legacy plugin boilerplate removed (DONE 2026-07-10)
 
-The progress-timer pattern (`task.spawn` render-progress loop, `script.Destroying:Connect`, `script:IsDescendantOf(game)` checks, `tick()`-based elapsed logs) was only ever needed for long-running Roblox Studio plugin scripts. In this runner it was dead code: the `task.spawn` stub wrapped `coroutine.create` and never resumed it, so the timer loop never executed; `Destroying.Connect`/`task.wait`/`task.cancel` were no-ops.
+The progress-timer pattern (`task.spawn` render-progress loop, `script.Destroying:Connect`, `script:IsDescendantOf(game)` checks, `tick()`-based elapsed logs) was only ever needed for long-running Studio plugin scripts. In this runner it was dead code: the `task.spawn` stub wrapped `coroutine.create` and never resumed it, so the timer loop never executed; `Destroying.Connect`/`task.wait`/`task.cancel` were no-ops.
 
 Applied cleanup (all committed on `hello`):
 
 - `runner.lua`: removed the `task`/`tick`/`game` environment stubs and trimmed the `script` object to `{ Dependencies }`. Scripts that reference these plugin APIs now fail fast instead of silently no-oping.
-- `roblox-example/colosseum.lua`, `roblox-example/rabbit.lua`: stripped the timer boilerplate; they are now canonical examples of the supported convention (module + `OnGenerate(parameters, targetContainer)`, `require(script.Dependencies.*)` only).
+- `src/procedural/examples/colosseum.lua`, `src/procedural/examples/rabbit.lua`: stripped the timer boilerplate; they are now canonical examples of the supported convention (module + `OnGenerate(parameters, targetContainer)`, `require(script.Dependencies.*)` only).
 - **`Instance:Destroy()` stays** — it is genuinely needed for the CSG scratch-part pattern (build cutters → subtract → destroy cutters; used by both examples and the mini-colosseum test) and it is how the future end-state diff detects deletes. Everything else plugin-flavored is gone.
 - Vendored dependencies (`GeometryPrimitives`/`ConstructiveSolidGeometry`/`SmartObject`/`MathUtils`) never used any of the removed APIs — verified by grep.
 

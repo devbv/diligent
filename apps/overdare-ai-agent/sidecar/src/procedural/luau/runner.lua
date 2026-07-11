@@ -11,9 +11,7 @@ local Ovdr = require("./ovdr-shim")
 local input = Json.decode(inputJson)
 
 local dependencies = {
-	ConstructiveSolidGeometry = require("./dependencies/ConstructiveSolidGeometry"),
 	GeometryPrimitives = require("./dependencies/GeometryPrimitives"),
-	SmartObject = require("./dependencies/SmartObject"),
 	MathUtils = require("./dependencies/MathUtils"),
 }
 

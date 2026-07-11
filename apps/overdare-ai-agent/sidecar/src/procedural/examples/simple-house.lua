@@ -26,8 +26,8 @@ SimpleHouse.OnGenerate = function(parameters, targetContainer)
 	GP.block("WallRight", Vector3.new(width / 2, height / 2, 0), Vector3.new(1, height, depth), wallColor, "Plastic", walls)
 
 	local roof = GP.model("Roof", house)
-	GP.strutFromTwoPoints("RoofLeft", Vector3.new(-width / 2 - 1, height + 1, -depth / 2 - 1), Vector3.new(0, height + 4, 0), depth + 2, 1.2, roofColor, "Metal", roof)
-	GP.strutFromTwoPoints("RoofRight", Vector3.new(width / 2 + 1, height + 1, -depth / 2 - 1), Vector3.new(0, height + 4, 0), depth + 2, 1.2, roofColor, "Metal", roof)
+	GP.boxBetween("RoofLeft", Vector3.new(-width / 2 - 1, height + 1, -depth / 2 - 1), Vector3.new(0, height + 4, 0), depth + 2, 1.2, roofColor, "Metal", roof)
+	GP.boxBetween("RoofRight", Vector3.new(width / 2 + 1, height + 1, -depth / 2 - 1), Vector3.new(0, height + 4, 0), depth + 2, 1.2, roofColor, "Metal", roof)
 
 	local doorGroup = GP.model("DoorGroup", walls)
 	GP.block("Door", Vector3.new(0, 2, -depth / 2 - 0.6), Vector3.new(2.5, 4, 0.4), trimColor, "Wood", doorGroup)
