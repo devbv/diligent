@@ -95,6 +95,14 @@ async function run(): Promise<void> {
   );
   await cp(resolve(SIDECAR_ASSETS, "lua", "overdare-types.d.lua"), resolve(assetsDir, "lua", "overdare-types.d.lua"));
 
+  // Stage the procedural runner + its Luau dependencies on real disk under
+  // assets/lua/procedural. In a compiled binary `import.meta.url` resolves into
+  // Bun's embedded virtual filesystem, which the external luau subprocess cannot
+  // read, so runtime.ts (resolveLuauRunnerDir) looks here beside the executable.
+  await cp(resolve(OVERDARE_SIDECAR, "src", "procedural", "luau"), resolve(assetsDir, "lua", "procedural"), {
+    recursive: true,
+  });
+
   // Bundle the procedural runtime's Luau interpreter beside the executable so
   // studiorpc_procedural_* tools work in the packaged sidecar (resolved via
   // assets/bin by src/procedural/runtime.ts). Preserves the executable bit.

@@ -115,6 +115,10 @@ function stageSidecarAssets(platform: PlatformConfig, stageDir: string): void {
   const luauLspName = platform.id === "windows-x64" ? "luau-lsp.exe" : "luau-lsp";
   cpSync(resolve(SIDECAR_ASSETS, "bin", luauLspName), join(binDir, luauLspName));
   cpSync(resolve(SIDECAR_ASSETS, "lua", "overdare-types.d.lua"), join(luaDir, "overdare-types.d.lua"));
+  // Procedural runner + Luau dependencies must live on real disk for the external
+  // luau subprocess (import.meta.url points into Bun's embedded FS in the compiled
+  // binary). runtime.ts (resolveLuauRunnerDir) resolves this beside the executable.
+  cpSync(resolve(OVERDARE_CLI, "sidecar/src/procedural/luau"), join(luaDir, "procedural"), { recursive: true });
 }
 
 function zipRuntimeBundle(stageDir: string, outPath: string): void {

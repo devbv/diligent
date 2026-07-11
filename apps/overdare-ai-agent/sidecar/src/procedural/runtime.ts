@@ -123,6 +123,23 @@ function packagedLuauPath(): string {
   return path.join(path.dirname(process.execPath), "assets", "bin", platformLuauBinaryName());
 }
 
+/**
+ * Resolves the directory that holds `runner.lua` and its Luau dependencies
+ * (`json.lua`, `ovdr-shim.lua`, `dependencies/*.lua`). The runner is executed by
+ * an external `luau` subprocess, so it must live on real disk.
+ *
+ * In a compiled sidecar `import.meta.url` resolves into Bun's embedded virtual
+ * filesystem (e.g. `B:\~BUN\root\...`), which the subprocess cannot read, so the
+ * tree is staged beside the executable under `assets/lua/procedural` (populated
+ * by build-overdare-sidecar.ts). In the dev/source tree it lives next to this
+ * module under `luau/`.
+ */
+function resolveLuauRunnerDir(): string {
+  const packaged = path.join(path.dirname(process.execPath), "assets", "lua", "procedural");
+  if (existsSync(path.join(packaged, "runner.lua"))) return packaged;
+  return path.join(currentDir(), "luau");
+}
+
 export async function resolveLuauExecutable(options: ProceduralLuauRuntimeOptions = {}): Promise<string> {
   const explicit = [options.luauBin, process.env.OVDR_LUAU_BIN, process.env.LUAU_BIN].find(
     (value): value is string => typeof value === "string" && value.length > 0,
@@ -162,7 +179,7 @@ async function runLuauProgram(
 ): Promise<RawRunnerOutput> {
   const limits = resolveLimits(options.limits);
   const luauBin = await resolveLuauExecutable(options);
-  const luauDir = path.join(currentDir(), "luau");
+  const luauDir = resolveLuauRunnerDir();
   const encodedInput = JSON.stringify(normalizedInput);
   assertInputWithinArgvLimit(encodedInput, limits);
 
