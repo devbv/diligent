@@ -235,7 +235,9 @@ For `panel`, local X is width, local Y is height, and local Z is thickness. For
 `material`, `parent`, `transparency`, `canCollide`, `canQuery`, `canTouch`,
 `castShadow`, `anchored`, and the other lower-camel-case Part overrides exposed
 by the shim. Sizes and radii must be positive, and `cylinderBetween` rejects
-coincident endpoints.
+coincident endpoints. Options are strictly validated before instance creation:
+unknown keys, property-style casing such as `Parent`, invalid value types, and
+out-of-range transparency or reflectance values cause an actionable error.
 
 ### P1.1: Polyline composition
 

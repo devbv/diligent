@@ -313,15 +313,18 @@ Relevant build script to inspect next:
 
 - `scripts/build-overdare-sidecar.ts`
 
-### 5. Runner input transport is still argv JSON
+### 5. Runner input transport uses temporary Luau modules
 
-The runner receives input through:
+The sidecar copies the runner dependencies into a unique OS temporary directory
+and writes the input JSON and script source as separate Luau modules. Process
+argv contains only the short input-module reference:
 
 ```text
-luau runner.lua --program-args '<json>'
+luau runner.lua --program-args '--input-module=./procedural-input'
 ```
 
-This works for current examples but may hit command-line length limits for very large scripts. A future approach may need generated Lua input modules or another transport.
+This avoids platform command-line limits for large inline scripts and whole-scene
+snapshots. The temporary directory is removed after every outcome.
 
 ### 6. No timeout or sandbox policy yet
 

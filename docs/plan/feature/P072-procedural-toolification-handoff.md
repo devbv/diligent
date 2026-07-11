@@ -32,7 +32,7 @@ Core gaps:
 
 1. **No tool runs the Luau script** — the agent cannot execute a script to produce the JSON; generation is orphaned.
 2. **Apply is add-only** — it cannot express updates or deletes of existing objects.
-3. **Runtime input transport is argv** — `generateProceduralDummyJson` passes the entire script source via `luau runner.lua --program-args '<json>'`. Large scripts overflow `ARG_MAX`.
+3. **Runtime input transport (resolved)** — every run stages JSON and script source as separate modules in a unique OS temporary directory; argv carries only a short module reference.
 4. **No subprocess guardrails** — no timeout / max-node / max-output limit on the Luau child.
 5. **`ovdr-shim` builds fresh models only** — it cannot inject the *current scene* as iterable instances (needed for transform scripts).
 
@@ -81,7 +81,7 @@ tool 3  procedural_model_run  -> manifest lookup -> L0 -> delete prior -> L1 -> 
 | Layer | Symbol / path | Status |
 |---|---|---|
 | L0 execution runtime | `src/procedural/runtime.ts` → `runProceduralScript()` | **new**, generalizes `generateProceduralDummyJson` |
-| ├ Luau runner | `luau/runner.lua` | extend: argv → **file/stdin** transport (gap #3) |
+| ├ Luau runner | `luau/runner.lua` | **temporary input-module transport**; accepts a short `--input-module=...` reference |
 | ├ compat shim | `luau/ovdr-shim.lua` | extend: **inject current scene** as iterable instances (gap #5) |
 | └ guardrails | `src/procedural/limits.ts` (timeout / maxNodes / maxBytes) | **new** (gap #4) |
 | L1 op model | type `ProceduralOp = {kind:"add"\|"update"\|"delete", ...}` | **new**, generalizes `ProceduralJsonNode` |

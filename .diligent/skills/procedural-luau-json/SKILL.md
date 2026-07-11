@@ -7,6 +7,25 @@ description: Write or adapt OVERDARE procedural Luau scripts and generate instan
 
 Use this skill to write, adapt, and run OVERDARE procedural Luau scripts that produce nested `children: []` JSON compatible with `studiorpc_instance_upsert`.
 
+## When to use procedural_run (vs manual instance edits)
+
+Default to `studiorpc_procedural_run` whenever placement or editing is **algorithmic, parametric, or rule-based** — do **not** hand-place/move objects one-by-one with `instance_upsert`/`instance_move` in those cases. Procedural runs are deterministic and re-runnable: the same script reproduces the same scene, and you can tune parameters and re-run.
+
+**Use `procedural_run` when:**
+
+- Placement follows a pattern or formula: grids, rings, arcs, stairs, spirals, symmetry/mirroring, curves (Bezier), radial layouts.
+- You need to create many objects (roughly a dozen or more), or the count/spacing is parameter-driven.
+- You want a **bulk transform** over existing objects by rule: "shift every part +X", "recolor by height", "scale all by Attribute", "delete all named Marker". The script reads the injected `workspace` and mutates in place; ops are diffed automatically.
+- The result should be reproducible, tweakable, or regenerated later (save it as a model with `procedural_model_save`/`_run`).
+
+**Use `instance_upsert` / `instance_move` / `instance_delete` when:**
+
+- You are placing, nudging, or editing a **few specific, hand-picked** objects (no rule or repetition).
+- You need to reparent a specific instance (`instance_move`) — procedural cannot reparent.
+- The change is a one-off property tweak on a known GUID.
+
+**Rule of thumb:** if you would write a loop or a formula to decide where things go, use `procedural_run`. If you would point at 1–3 specific objects, use the instance tools.
+
 ## Product Direction
 
 - Luau procedural script is the source of truth.
@@ -196,6 +215,16 @@ GP.cylinderBetween(name, startPoint, endPoint, radius, options?)
 GP.ellipsoid(name, centerOrCFrame, size, options?)
 GP.panel(name, centerOrCFrame, width, height, thickness, options?)
 GP.disc(name, centerOrCFrame, radius, thickness, options?)
+
+-- Options use lower-camel-case keys. Property-style keys such as Color,
+-- Material, and Parent are invalid and are rejected before instance creation.
+local options = {
+	color = Color3.fromRGB(255, 255, 255),
+	material = "Plastic",
+	parent = model,
+	transparency = 0,
+	canCollide = true,
+}
 
 GP.taperedCylinder(name, startPoint, endPoint, radiusTop, radiusBottom, color, material, parent?)
 GP.capsule(name, endpoint1, radius1, endpoint2, radius2, color, material, parent?)
@@ -403,17 +432,36 @@ bunx biome check apps/overdare-ai-agent/sidecar/test/procedural/runtime.test.ts
 
 ## Agent Tool Surface
 
+**Where the script lives (important):** A procedural script is *host-side Luau
+source* — either passed inline (`script`) or written as an external `.lua` file
+on disk (`scriptPath`, e.g. under `/tmp` for ad-hoc runs, or
+`.overdare/procedural/scripts/` once saved). It is **not** authored as a `Script`
+instance inside the Studio scene, and the sidecar executes it out-of-scene. What
+lands in the scene is the **generated geometry** (`Model`/`Part` instances), never
+a `Script` object. So: create/edit the `.lua` file (or inline source) and run it —
+do not create a Script in Studio and paste code into it.
+
 Scripts are executed and applied through Studio RPC tools, split by **lifetime**
 (not by what the script does — a script can generate or transform in either):
 
 | Tool | When | Behavior |
 |---|---|---|
-| `studiorpc_procedural_run` | One-shot | Runs a script once against the current scene and applies the result. Pass `script` (inline, for small edits) or `scriptPath` (file, for large scripts), an optional `targetGuid` (defaults to the whole Workspace), and optional `parameters`. Nothing is persisted. |
+| `studiorpc_procedural_run` | One-shot | Runs a script once against the current scene and applies the result. Pass `script` inline or use `scriptPath` when a file is easier to author/reuse, plus optional `targetGuid` and `parameters`. `targetGuid` defaults to the whole Workspace. Nothing is persisted. |
 | `studiorpc_procedural_model_save` | Persist | Writes the script + a manifest under `<project>/.overdare/procedural/`. Validates via a dry-run. Requires the `-- generationId:` comment (the model's identity). Does not touch the scene. |
 | `studiorpc_procedural_model_run` | Run persisted | Looks the model up by `id`, runs it, **deletes the prior generation and re-applies** so repeat runs replace rather than duplicate. Updates the manifest. |
 | `studiorpc_procedural_model_list` | Discover | Lists saved models (`id`, params, whether applied, last-updated) so `model_run` can find ids. |
 
 `generationId` is required for `model_save`/`model_run`; for one-shot `procedural_run` it is auto-generated when the comment is absent.
+
+The runtime always stages the complete input and script source in a unique OS
+temporary directory before starting Luau; large inline scripts and whole-Workspace
+scene snapshots do not travel through process argv. `targetGuid` is therefore
+not a transport-size workaround; it remains the explicit scene-injection scope
+and the parent for fresh top-level nodes. When omitted, Workspace is deliberately
+used for both roles. Temporary files are removed after success, failure, or
+timeout. Existing injected nodes do not consume the internal 5,000-node
+generation guard, which applies only to freshly generated nodes and is not
+exposed as an agent-tool argument.
 
 ### Generate vs Transform
 
