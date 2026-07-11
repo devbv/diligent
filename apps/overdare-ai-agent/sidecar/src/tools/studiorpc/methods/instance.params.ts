@@ -11,6 +11,7 @@ const udim2 = z.object({
 });
 
 const normalIdEnum = z.enum(["Right", "Top", "Back", "Left", "Bottom", "Front"]);
+const mobilityEnum = z.enum(["Static", "Movable"]);
 const colorSequence = z
   .array(z.object({ Time: z.number(), Color: rgb }))
   .describe("ColorSequence keypoints [{Time,Color}]");
@@ -442,6 +443,7 @@ export const instancePropertiesSchema = z
         Locked: z.boolean().optional(),
         Material: materialEnum.optional(),
         MaterialVariant: z.string().optional(),
+        Mobility: mobilityEnum.optional(),
         Transparency: z.number().describe("(0~1)").optional(),
       })
       .strict()
@@ -796,6 +798,7 @@ export const instancePropertiesSchema = z
         MaterialVariant: z.string().optional(),
         MeshId: z.string().describe("Mesh asset ID").optional(),
         MeshShadowDetailLevel: z.enum(["Original", "Medium", "Low"]).optional(),
+        Mobility: mobilityEnum.optional(),
         TextureId: z.string().describe("Surface texture asset ID").optional(),
         Transparency: z.number().describe("(0~1)").optional(),
       })
@@ -948,6 +951,7 @@ export const instancePropertiesSchema = z
         Locked: z.boolean().optional(),
         Material: materialEnum.optional(),
         MaterialVariant: z.string().optional(),
+        Mobility: mobilityEnum.optional(),
         Neutral: z.boolean().optional(),
         TeamColor: rgb.optional(),
         Transparency: z.number().describe("(0~1)").optional(),
