@@ -11,7 +11,18 @@ const udim2 = z.object({
 });
 
 const normalIdEnum = z.enum(["Right", "Top", "Back", "Left", "Bottom", "Front"]);
-const mobilityEnum = z.enum(["Static", "Movable"]);
+const mobilityEnum = z
+  .enum(["Static", "Movable"])
+  .describe("Static or Movable; effective only on top-level Workspace objects (direct children of Workspace)");
+
+/**
+ * Universal base-Instance properties present on every instance class (comparable to ClassName/Name),
+ * injected into each instance-class schema below. Services are excluded — they are singletons, not
+ * Workspace objects.
+ */
+const instanceBaseProperties = {
+  Mobility: mobilityEnum.optional(),
+};
 const colorSequence = z
   .array(z.object({ Time: z.number(), Color: rgb }))
   .describe("ColorSequence keypoints [{Time,Color}]");
@@ -423,7 +434,7 @@ const httpServiceSchema = z
 
 const emptyServiceSchema = z.object({}).strict();
 
-export const instancePropertiesSchema = z
+const rawInstancePropertiesUnion = z
   .union([
     z
       .object({
@@ -443,7 +454,6 @@ export const instancePropertiesSchema = z
         Locked: z.boolean().optional(),
         Material: materialEnum.optional(),
         MaterialVariant: z.string().optional(),
-        Mobility: mobilityEnum.optional(),
         Transparency: z.number().describe("(0~1)").optional(),
       })
       .strict()
@@ -595,7 +605,7 @@ export const instancePropertiesSchema = z
       .object({})
       .strict()
       .describe(
-        "Use when class=Folder. Logical organizer with no properties — use for grouping scripts or non-physical instances.",
+        "Use when class=Folder. Logical organizer with no class-specific properties — use for grouping scripts or non-physical instances.",
       ),
     z
       .object({
@@ -798,7 +808,6 @@ export const instancePropertiesSchema = z
         MaterialVariant: z.string().optional(),
         MeshId: z.string().describe("Mesh asset ID").optional(),
         MeshShadowDetailLevel: z.enum(["Original", "Medium", "Low"]).optional(),
-        Mobility: mobilityEnum.optional(),
         TextureId: z.string().describe("Surface texture asset ID").optional(),
         Transparency: z.number().describe("(0~1)").optional(),
       })
@@ -951,7 +960,6 @@ export const instancePropertiesSchema = z
         Locked: z.boolean().optional(),
         Material: materialEnum.optional(),
         MaterialVariant: z.string().optional(),
-        Mobility: mobilityEnum.optional(),
         Neutral: z.boolean().optional(),
         TeamColor: rgb.optional(),
         Transparency: z.number().describe("(0~1)").optional(),
@@ -989,7 +997,18 @@ export const instancePropertiesSchema = z
     starterPlayerServiceSchema,
     materialServiceSchema,
     httpServiceSchema,
-  ])
+  ]);
+
+// The union's first `instanceClassEnum.options.length` members are the instance-class schemas (same
+// order as the enum); the remainder are service schemas. Inject the universal base-Instance
+// properties into the instance-class members only.
+const instanceClassCount = instanceClassEnum.options.length;
+export const instancePropertiesSchema = z
+  .union(
+    rawInstancePropertiesUnion.options.map((option, index) =>
+      index < instanceClassCount && option instanceof z.ZodObject ? option.extend(instanceBaseProperties) : option,
+    ) as unknown as [z.ZodTypeAny, z.ZodTypeAny, ...z.ZodTypeAny[]],
+  )
   .optional();
 
 /** Explicit service-class → schema entries (not index-dependent). */
