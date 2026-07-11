@@ -1,5 +1,4 @@
 --!strict
--- generationId: demo-pentagon-001
 local GP = require(script.Dependencies.GeometryPrimitives)
 
 local Pentagon = {}

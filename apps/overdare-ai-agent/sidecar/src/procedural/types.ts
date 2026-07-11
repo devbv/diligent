@@ -31,16 +31,16 @@ export interface ProceduralGenerationInput {
 export interface ProceduralDummyJson {
   version: 1;
   kind: "overdare.procedural-dummy-json";
-  generationId: string;
   scriptName: string;
   parameters: ProceduralParameters;
   children: ProceduralGeneratedNode[];
 }
 
 export interface ProceduralGeneratedNode {
-  class: "Model" | "Part";
+  class: string;
   name: string;
-  properties: ProceduralModelProperties | ProceduralPartProperties;
+  localId: string;
+  properties: Record<string, unknown>;
   children?: ProceduralGeneratedNode[];
 }
 
@@ -71,14 +71,15 @@ export interface ProceduralPartProperties {
 
 /**
  * A node as serialized by the Luau runner. Injected (pre-existing scene) nodes
- * carry a `guid`; freshly-built nodes do not. `properties` is left untyped here
- * because injected nodes carry only the diff whitelist while fresh nodes carry
- * full class-specific properties.
+ * carry a `guid`; freshly-built nodes carry an execution-local `localId`.
+ * Exactly one identity is present. Class-specific properties are
+ * validated at the Studio RPC apply boundary.
  */
 export interface ProceduralSerializedNode {
   class: string;
   name: string;
   guid?: string;
+  localId?: string;
   properties?: Record<string, unknown>;
   children?: ProceduralSerializedNode[];
 }
@@ -92,22 +93,34 @@ export interface ProceduralSceneNode {
   children: ProceduralSceneNode[];
 }
 
-/** A fresh subtree to create; applied parent-first using live returned GUIDs. */
-export interface ProceduralAddNode {
+/** An existing or execution-local generated instance used as an operation parent. */
+export type ProceduralInstanceRef = { kind: "existing"; guid: string } | { kind: "generated"; localId: string };
+
+/** A fresh node to create after its symbolic parent has resolved. */
+export interface ProceduralAddOp {
+  kind: "add";
+  localId: string;
+  parent: ProceduralInstanceRef;
   class: string;
   name: string;
   properties: Record<string, unknown>;
-  children?: ProceduralAddNode[];
+}
+
+export interface ProceduralMoveOp {
+  kind: "move";
+  guid: string;
+  parent: ProceduralInstanceRef;
 }
 
 /**
- * A single scene mutation derived by diffing the injected snapshot against the
- * runner's final tree. `add.parentGuid` is undefined for top-level nodes (they
- * attach to the run's target GUID).
+ * A single flat scene mutation derived by diffing the injected snapshot
+ * against the runner's final tree. Hierarchy is expressed through symbolic
+ * parent references rather than recursive add subtrees.
  */
 export type ProceduralOp =
-  | { kind: "add"; parentGuid?: string; node: ProceduralAddNode }
+  | ProceduralAddOp
   | { kind: "update"; guid: string; class: string; name?: string; properties: Record<string, unknown> }
+  | ProceduralMoveOp
   | { kind: "delete"; guid: string; depth: number };
 
 export interface RunProceduralScriptInput {
@@ -118,12 +131,9 @@ export interface RunProceduralScriptInput {
   scene?: ProceduralSceneNode;
   /** GUID that top-level fresh nodes attach to; also the injected scene root's GUID. */
   targetGuid?: string;
-  /** One-shot mode: auto-fill a missing `-- generationId:` comment instead of erroring. */
-  autoGenerationId?: boolean;
 }
 
 export interface RunProceduralScriptResult {
-  generationId: string;
   scriptName: string;
   ops: ProceduralOp[];
   nodeCount: number;

@@ -11,9 +11,10 @@ the current procedural output contract:
 - `Part` with `Shape = "Ball"`
 - `Part` with `Shape = "Cylinder"`
 
-P0 APIs are implemented. Later roadmap APIs are not available at runtime until
-they are added to `GeometryPrimitives.lua` or `MathUtils.lua`. The current API
-tables below are the source of truth for callable functions.
+P0, P1, and the deterministic-random P2.1 APIs are implemented. Later roadmap
+APIs are not available at runtime until they are added to
+`GeometryPrimitives.lua` or `MathUtils.lua`. The current API tables below are
+the source of truth for callable functions.
 
 ## Runtime boundary
 
@@ -110,6 +111,9 @@ Recommended options shape:
 | `regularPrism` | cylinder | approximation |
 | `triangle` | oriented bounding block around three points | approximation |
 | `quad` | oriented bounding block around four points | approximation |
+| `polyline` | model containing one block or cylinder per non-degenerate segment | composite |
+| `arc` | sampled arc joined by polyline segments | composite |
+| `ring` | sampled circle joined by a closed polyline | composite |
 
 Compatibility aliases currently include:
 
@@ -128,10 +132,14 @@ Compatibility aliases currently include:
 | `pointOnQuadraticBezier` | evaluate one quadratic Bezier point |
 | `pointsOnCubicBezier` | sample a cubic Bezier curve |
 | `polarToCartesian` | calculate a point in the `XY`, `XZ`, or `YZ` plane |
+| `deriveSeed` | derive a deterministic integer seed for a named scope |
+| `random` | create an independent deterministic random stream |
 | `pointsOnLine` | return evenly spaced line points, including both endpoints |
 | `pointsOnCircle` | return evenly spaced points without duplicating the first point |
 | `pointsOnArc` | return arc points in radians, including both endpoints |
 | `pointsOnEllipse` | return evenly spaced ellipse points |
+| `pointsOnGrid` | return grid points with the column index changing fastest |
+| `pointsOnHelix` | return helix points centered along an arbitrary axis |
 | `segmentsFromPoints` | return named `startPoint`/`endPoint` segment records |
 | `frameBetween` | orient a local axis along a segment at its midpoint |
 | `frameFromNormal` | orient local Y to a surface normal at a position |
@@ -239,7 +247,7 @@ coincident endpoints. Options are strictly validated before instance creation:
 unknown keys, property-style casing such as `Parent`, invalid value types, and
 out-of-range transparency or reflectance values cause an actionable error.
 
-### P1.1: Polyline composition
+### P1.1: Polyline composition (implemented)
 
 ```lua
 GP.polyline(name, points, thickness, options)
@@ -258,11 +266,25 @@ Recommended options:
 ```
 
 The helper returns a `Model` containing one part per non-degenerate segment.
-It should use `cylinderBetween` for cylinder segments and `boxBetween` for block
+It uses `cylinderBetween` for cylinder segments and `boxBetween` for block
 segments. Segment names must be deterministic and derived from the supplied root
 name and one-based segment index.
 
-### P1.2: Arc and ring composition
+Current behavior:
+
+- `thickness` is the cylinder diameter or the square block cross-section size
+- `segmentShape` defaults to `"Cylinder"`; `closed` defaults to `false`
+- open input requires at least two points and closed input requires at least three
+- finite coincident consecutive points are allowed and skipped explicitly
+- emitted segments receive contiguous names `<name>_1`, `<name>_2`, and so on
+- all direct-part style options are copied to every segment, while `parent`
+  parents the returned model
+- input accepts at most 20,000 points and output accepts at most 4,999 segment
+  parts, so a standalone polyline model stays within the default 5,000-node
+  runtime limit
+- node cost is one `Model` plus one `Part` per non-degenerate segment
+
+### P1.2: Arc and ring composition (implemented)
 
 ```lua
 GP.arc(name, center, radius, startAngle, endAngle, options)
@@ -277,7 +299,21 @@ Both helpers are thin compositions:
 Options must include `segments`, `axis`, and the polyline style options. These
 helpers must not claim to produce a continuous torus or curved mesh.
 
-### P1.3: Repeated layouts
+Current behavior:
+
+- `options.thickness`, `options.segments`, and `options.axis` are required
+- `segments` is the exact number of generated parts; arc accepts at least one
+  and ring accepts at least three
+- both reject more than 4,999 segments and sampling choices that would make any
+  requested segment degenerate
+- `axis` may be any finite, non-zero vector and angles use radians
+- `segmentShape` defaults to `"Cylinder"` and may be `"Block"`
+- `arc` is always open and `ring` is always closed
+- node cost is one `Model` plus exactly `options.segments` parts
+- the result is a sampled, faceted composition rather than a continuous torus
+  or curved mesh
+
+### P1.3: Repeated layouts (implemented)
 
 ```lua
 MU.pointsOnGrid(origin, columns, rows, columnStep, rowStep)
@@ -288,7 +324,57 @@ These remain pure math functions. Scripts may feed their results into existing
 primitives or `polyline`. A geometry-specific `grid` or `helix` wrapper should
 only be added after repeated call sites demonstrate a stable need.
 
-### P2: Numeric authoring helpers
+Current behavior:
+
+- `pointsOnGrid` treats `origin` as the first point and returns rows in order,
+  with the column index changing fastest
+- grid dimensions are positive integers, both step vectors must be finite and
+  non-zero, and `columns * rows` must not exceed 20,000
+- `pointsOnHelix` treats `center` as the midpoint of the helix height and
+  includes the endpoints at `-height / 2` and `height / 2` along `axis`
+- helix radius is positive; height and turns are finite and non-zero, with
+  negative values supported to reverse their respective directions
+- helix count is the number of returned points, with a minimum of two and a
+  maximum of 20,000; its axis must be finite and non-zero
+
+### P2.1: Deterministic random authoring (implemented)
+
+```lua
+MU.deriveSeed(seed, scope)
+MU.random(seed)
+```
+
+`random` returns an independent stream with these methods:
+
+```lua
+local terrainRng = MU.random(MU.deriveSeed(seed, "terrain"))
+
+terrainRng:nextNumber(minimum, maximum) -- half-open [minimum, maximum)
+terrainRng:nextInteger(minimum, maximum) -- inclusive integer bounds
+terrainRng:choice(items)
+terrainRng:shuffle(items) -- returns a new array
+```
+
+Current behavior:
+
+- every stream requires an explicit safe-integer seed and never reads or
+  modifies the global `math.random` state
+- the Park-Miller stream and seed-derivation algorithm are stable runtime
+  contracts, so identical seeds and call order reproduce identical results
+- `deriveSeed` requires a non-empty string scope; separate scopes such as
+  `"terrain"`, `"props"`, and `"enemies"` isolate map-generation sequences
+- `nextNumber` accepts finite bounds and returns a value in the half-open range
+- `nextInteger` accepts inclusive safe-integer bounds and uses rejection
+  sampling; a requested range may contain at most 2,147,483,646 values
+- `choice` requires a non-empty dense array; `shuffle` accepts a dense array and
+  returns a new Fisher-Yates-shuffled array without modifying its input
+- choice and shuffle inputs accept at most 20,000 items
+- streams are call-order-sensitive; derive separate scoped seeds when adding a
+  random call in one map subsystem must not perturb another subsystem
+- these helpers are deterministic authoring utilities, not cryptographic random
+  generators
+
+### P2.2: Numeric authoring helpers
 
 ```lua
 MU.remap(value, fromMin, fromMax, toMin, toMax)
@@ -307,10 +393,11 @@ P0 or P1 geometry work.
 2. [complete] `segmentsFromPoints`
 3. [complete] `frameBetween` and transform helpers
 4. [complete] `cylinderBetween`, `ellipsoid`, `panel`, `disc`
-5. `polyline`
-6. `arc` and `ring`
-7. grid and helix point generation
-8. numeric authoring helpers
+5. [complete] `polyline`
+6. [complete] `arc` and `ring`
+7. [complete] grid and helix point generation
+8. [complete] deterministic random authoring
+9. numeric authoring helpers
 
 This order keeps higher-level geometry dependent on tested pure math and one
 shared orientation implementation.

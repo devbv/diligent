@@ -1,5 +1,4 @@
 --!strict
--- generationId: 2456eb64-ed78-47ea-9410-9fd34fa25c6f
 local GP = require(script.Dependencies.GeometryPrimitives)
 local MU = require(script.Dependencies.MathUtils)
 
@@ -43,8 +42,8 @@ Rabbit.OnGenerate = function(parameters: Parameters, targetContainer: Instance)
 	local colorEye = parameters.Attributes.EyeColor or Color3.fromRGB(15, 15, 15) -- Dark
 	local colorTail = parameters.Attributes.TailColor or Color3.fromRGB(245, 245, 245) -- White
 
-	local matFur = "Fabric"
-	local matSmooth = "SmoothPlastic"
+	local matFur = "FabricWeave"
+	local matSmooth = "Plastic"
 
 	-- == BODY ==
 	local bodyModel = GP.model("Body", rabbit)

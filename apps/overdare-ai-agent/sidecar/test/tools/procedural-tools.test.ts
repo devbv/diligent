@@ -4,19 +4,25 @@
 // mutations still land in the on-disk .ovdrjm via the file utilities.
 
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+let applyLevelChangesCalls = 0;
 mock.module("../../src/tools/studiorpc/rpc.ts", () => ({
-  applyLevelChanges: async () => ({ ok: true }),
+  applyLevelChanges: async () => {
+    applyLevelChangesCalls += 1;
+    return { ok: true };
+  },
   call: async () => ({ ok: true }),
 }));
 
 import type { Tool } from "@diligent/core/tool/types";
+import { runProceduralScript } from "../../src/procedural";
 import { createStudioRpcToolProvider } from "../../src/tools/studiorpc";
 import { findNodeByActorGuid, readOvdrjmRoot } from "../../src/tools/studiorpc/tools/ovdrjm-utils";
 import { applyProceduralOps } from "../../src/tools/studiorpc/tools/procedural-apply";
+import { readProceduralScene } from "../../src/tools/studiorpc/tools/procedural-scene";
 
 const createdDirs: string[] = [];
 
@@ -49,6 +55,32 @@ function makeProject(): string {
   return cwd;
 }
 
+function makeReparentProject(): string {
+  const cwd = mkdtempSync(join(tmpdir(), "procedural-reparent-"));
+  writeFileSync(join(cwd, "World.umap"), "");
+  writeFileSync(
+    join(cwd, "World.ovdrjm"),
+    JSON.stringify({
+      Root: {
+        InstanceType: "Workspace",
+        ActorGuid: "W",
+        Name: "Workspace",
+        LuaChildren: [
+          {
+            InstanceType: "Folder",
+            ActorGuid: "left",
+            Name: "Left",
+            LuaChildren: [{ InstanceType: "Part", ActorGuid: "child", Name: "Child", Size: { X: 1, Y: 1, Z: 1 } }],
+          },
+          { InstanceType: "Folder", ActorGuid: "right", Name: "Right", LuaChildren: [] },
+        ],
+      },
+    }),
+  );
+  createdDirs.push(cwd);
+  return cwd;
+}
+
 async function loadTools(
   cwd: string,
   approve: () => Promise<"once" | "reject"> = async () => "once",
@@ -70,12 +102,28 @@ async function invoke(tool: Tool, rawArgs: Record<string, unknown>) {
   return tool.execute(args as never, ctx());
 }
 
+// procedural_run reads reusable recipes from the canonical project-local path.
+let scriptSeq = 0;
+function writeRecipe(cwd: string, id: string, source: string): string {
+  const recipeDir = join(cwd, ".overdare", "procedural", id);
+  mkdirSync(recipeDir, { recursive: true });
+  const scriptPath = join(recipeDir, "main.lua");
+  writeFileSync(scriptPath, source);
+  return scriptPath;
+}
+
+function invokeRun(tools: Map<string, Tool>, cwd: string, source: string, id = `procedural-run-${scriptSeq++}`) {
+  writeRecipe(cwd, id, source);
+  return invoke(tools.get("studiorpc_procedural_run")!, { id });
+}
+
 function workspaceChildren(cwd: string): Array<Record<string, unknown>> {
   const { root } = readOvdrjmRoot(cwd);
   return Array.isArray(root.LuaChildren) ? (root.LuaChildren as Array<Record<string, unknown>>) : [];
 }
 
 afterEach(() => {
+  applyLevelChangesCalls = 0;
   for (const dir of createdDirs.splice(0)) {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -88,8 +136,11 @@ describe("applyProceduralOps", () => {
       [
         {
           kind: "add",
-          parentGuid: "W",
-          node: { class: "Part", name: "C", properties: { Size: { X: 2, Y: 2, Z: 2 } } },
+          localId: "part-c",
+          parent: { kind: "existing", guid: "W" },
+          class: "Part",
+          name: "C",
+          properties: { Size: { X: 2, Y: 2, Z: 2 } },
         },
         { kind: "update", guid: "pA", class: "Part", properties: { CFrame: cframe(5) } },
         { kind: "delete", guid: "pB", depth: 1 },
@@ -117,11 +168,173 @@ describe("applyProceduralOps", () => {
     expect(result.deletedGuids).toEqual([]);
     expect(result.skippedDeletes).toEqual(["ghost"]);
   });
+
+  test("validates every operation before mutating the level", async () => {
+    const cwd = makeProject();
+
+    await expect(
+      applyProceduralOps(
+        [
+          { kind: "delete", guid: "pB", depth: 1 },
+          { kind: "update", guid: "pA", class: "Part", properties: { Text: "not a Part property" } },
+        ],
+        { targetGuid: "W", cwd },
+      ),
+    ).rejects.toThrow(/class=Part/);
+
+    expect(findNodeByActorGuid(readOvdrjmRoot(cwd).root, "pB")).toBeDefined();
+  });
+
+  test("rejects hierarchy cycles before mutating the level", async () => {
+    const cwd = makeReparentProject();
+
+    await expect(
+      applyProceduralOps([{ kind: "move", guid: "left", parent: { kind: "existing", guid: "child" } }], {
+        targetGuid: "W",
+        cwd,
+      }),
+    ).rejects.toThrow(/cycle|descendant/i);
+
+    expect(workspaceChildren(cwd).map((child) => child.Name)).toContain("Left");
+  });
+
+  test("moves an existing subtree below a generated parent without changing its guid", async () => {
+    const cwd = makeReparentProject();
+    const result = await applyProceduralOps(
+      [
+        {
+          kind: "add",
+          localId: "generated-folder",
+          parent: { kind: "existing", guid: "W" },
+          class: "Folder",
+          name: "GeneratedFolder",
+          properties: {},
+        },
+        { kind: "move", guid: "child", parent: { kind: "generated", localId: "generated-folder" } },
+      ],
+      { targetGuid: "W", cwd },
+    );
+
+    expect(result).toMatchObject({ addCount: 1, moveCount: 1, movedGuids: ["child"] });
+    expect(applyLevelChangesCalls).toBe(1);
+    const root = readOvdrjmRoot(cwd).root;
+    const child = findNodeByActorGuid(root, "child") as Record<string, unknown>;
+    const folder = workspaceChildren(cwd).find((node) => node.Name === "GeneratedFolder")!;
+    expect(child).toMatchObject({ ActorGuid: "child", Name: "Child", Size: { X: 1, Y: 1, Z: 1 } });
+    expect((folder.LuaChildren as Array<Record<string, unknown>>).map((node) => node.ActorGuid)).toEqual(["child"]);
+    expect(result.rootGuids).toEqual([String(folder.ActorGuid)]);
+  });
+
+  test("resolves nested generated parents and mixed fresh/existing siblings", async () => {
+    const cwd = makeProject();
+    const result = await applyProceduralOps(
+      [
+        {
+          kind: "add",
+          localId: "outer",
+          parent: { kind: "existing", guid: "W" },
+          class: "Folder",
+          name: "Outer",
+          properties: {},
+        },
+        {
+          kind: "add",
+          localId: "inner",
+          parent: { kind: "generated", localId: "outer" },
+          class: "Folder",
+          name: "Inner",
+          properties: {},
+        },
+        {
+          kind: "add",
+          localId: "fresh-leaf",
+          parent: { kind: "generated", localId: "inner" },
+          class: "Part",
+          name: "FreshLeaf",
+          properties: { Size: { X: 2, Y: 2, Z: 2 } },
+        },
+        { kind: "move", guid: "pA", parent: { kind: "generated", localId: "inner" } },
+      ],
+      { targetGuid: "W", cwd },
+    );
+
+    expect(result).toMatchObject({ addCount: 3, moveCount: 1, movedGuids: ["pA"] });
+    const root = readOvdrjmRoot(cwd).root;
+    const outer = workspaceChildren(cwd).find((node) => node.Name === "Outer")!;
+    const inner = (outer.LuaChildren as Array<Record<string, unknown>>).find((node) => node.Name === "Inner")!;
+    expect((inner.LuaChildren as Array<Record<string, unknown>>).map((node) => node.Name)).toEqual(["FreshLeaf", "A"]);
+    expect(findNodeByActorGuid(root, "pA")).toBeDefined();
+    expect(result.rootGuids).toEqual([String(outer.ActorGuid)]);
+  });
+
+  test("moves a child out before deleting its old parent", async () => {
+    const cwd = makeReparentProject();
+    const result = await applyProceduralOps(
+      [
+        { kind: "move", guid: "child", parent: { kind: "existing", guid: "right" } },
+        { kind: "delete", guid: "left", depth: 1 },
+      ],
+      { targetGuid: "W", cwd },
+    );
+
+    expect(result).toMatchObject({ movedGuids: ["child"], deletedGuids: ["left"] });
+    const root = readOvdrjmRoot(cwd).root;
+    expect(findNodeByActorGuid(root, "child")).toBeDefined();
+    expect(findNodeByActorGuid(root, "left")).toBeUndefined();
+  });
+
+  test("applies more than 100 generated nodes in the single document transaction", async () => {
+    const cwd = makeProject();
+    const ops = Array.from({ length: 101 }, (_, index) => ({
+      kind: "add" as const,
+      localId: `folder-${index}`,
+      parent: { kind: "existing" as const, guid: "W" },
+      class: "Folder",
+      name: `Folder_${index}`,
+      properties: {},
+    }));
+
+    const result = await applyProceduralOps(ops, { targetGuid: "W", cwd });
+    expect(result.addCount).toBe(101);
+    expect(result.addedGuids).toHaveLength(101);
+    expect(result.rootGuids).toHaveLength(101);
+  });
+
+  test("rejects unresolved generated refs and mixed cycles without writing the level", async () => {
+    const cwd = makeReparentProject();
+    const levelPath = join(cwd, "World.ovdrjm");
+    const before = readFileSync(levelPath);
+
+    await expect(
+      applyProceduralOps([{ kind: "move", guid: "child", parent: { kind: "generated", localId: "missing" } }], {
+        targetGuid: "W",
+        cwd,
+      }),
+    ).rejects.toThrow(/generated.*missing|unresolved/i);
+    expect(readFileSync(levelPath).equals(before)).toBe(true);
+
+    await expect(
+      applyProceduralOps(
+        [
+          {
+            kind: "add",
+            localId: "cycle-folder",
+            parent: { kind: "existing", guid: "left" },
+            class: "Folder",
+            name: "CycleFolder",
+            properties: {},
+          },
+          { kind: "move", guid: "left", parent: { kind: "generated", localId: "cycle-folder" } },
+        ],
+        { targetGuid: "W", cwd },
+      ),
+    ).rejects.toThrow(/cycle/i);
+    expect(readFileSync(levelPath).equals(before)).toBe(true);
+  });
 });
 
 describe("studiorpc_procedural_run", () => {
-  const moveScript = `-- generationId: move-all
-local Move = {}
+  const moveScript = `local Move = {}
 Move.OnGenerate = function(parameters, targetContainer)
 	for _, inst in workspace:GetDescendants() do
 		if inst:IsA("BasePart") then
@@ -132,31 +345,120 @@ end
 return Move
 `;
 
-  test("runs an inline transform and mutates the scene", async () => {
+  test("runs a reusable recipe and mutates the scene", async () => {
     const cwd = makeProject();
     const tools = await loadTools(cwd);
-    const result = await invoke(tools.get("studiorpc_procedural_run")!, { script: moveScript });
+    const result = await invokeRun(tools, cwd, moveScript);
 
     expect(result.metadata).toMatchObject({ method: "procedural.run", updateCount: 2 });
+    expect(result.metadata).not.toHaveProperty("generationId");
     const { root } = readOvdrjmRoot(cwd);
     expect((findNodeByActorGuid(root, "pA") as { CFrame: { Position: { X: number } } }).CFrame.Position.X).toBe(1);
     expect((findNodeByActorGuid(root, "pB") as { CFrame: { Position: { X: number } } }).CFrame.Position.X).toBe(11);
   });
 
-  test("runs a scriptPath-only file through the parseArgs -> execute path (regression)", async () => {
-    // Regression: parseArgs maps scriptPath -> scriptSource; execute must NOT
-    // re-parse, or the "exactly one" check sees neither key and throws even for a
-    // single valid input.
+  test("creates a non-geometry class through generic Instance.new and canonical upsert validation", async () => {
+    const script = `local Generic = {}
+Generic.OnGenerate = function(parameters, targetContainer)
+	local light = Instance.new("PointLight")
+	light.Name = "HallLight"
+	light.Brightness = 125
+	light.Color = Color3.fromRGB(255, 210, 170)
+	light.Parent = targetContainer
+end
+return Generic
+`;
     const cwd = makeProject();
-    writeFileSync(join(cwd, "move.lua"), moveScript);
     const tools = await loadTools(cwd);
-    const result = await invoke(tools.get("studiorpc_procedural_run")!, { scriptPath: "move.lua" });
+
+    await invokeRun(tools, cwd, script);
+
+    const light = workspaceChildren(cwd).find((child) => child.Name === "HallLight");
+    expect(light).toMatchObject({
+      InstanceType: "PointLight",
+      Brightness: 125,
+      Range: 300,
+      Color: { R: 255, G: 210, B: 170 },
+    });
+  });
+
+  test("updates a canonical property on the injected target root", async () => {
+    const script = `local Generic = {}
+Generic.OnGenerate = function(parameters, targetContainer)
+	workspace.Gravity = 750
+end
+return Generic
+`;
+    const cwd = makeProject();
+    const tools = await loadTools(cwd);
+
+    await invokeRun(tools, cwd, script);
+
+    expect(readOvdrjmRoot(cwd).root.Gravity).toBe(750);
+  });
+
+  test("reparents an existing node when the script assigns Parent", async () => {
+    const script = `local Reparent = {}
+Reparent.OnGenerate = function(parameters, targetContainer)
+	local child = workspace:FindFirstChild("Child", true)
+	local right = workspace:FindFirstChild("Right")
+	child.Parent = right
+end
+return Reparent
+`;
+    const cwd = makeReparentProject();
+    const tools = await loadTools(cwd);
+
+    const result = await invokeRun(tools, cwd, script);
+
+    expect(result.metadata).toMatchObject({ moveCount: 1, movedGuids: ["child"] });
+    const root = readOvdrjmRoot(cwd).root;
+    const left = findNodeByActorGuid(root, "left") as Record<string, unknown>;
+    const right = findNodeByActorGuid(root, "right") as Record<string, unknown>;
+    expect((left.LuaChildren as unknown[]).length).toBe(0);
+    expect((right.LuaChildren as Array<Record<string, unknown>>).map((node) => node.ActorGuid)).toContain("child");
+  });
+
+  test("reparents an existing node below a parent created by the same script", async () => {
+    const script = `local Reparent = {}
+Reparent.OnGenerate = function(parameters, targetContainer)
+	local generated = Instance.new("Folder")
+	generated.Name = "GeneratedParent"
+	generated.Parent = workspace
+	local existing = workspace:FindFirstChild("Child", true)
+	existing.Parent = generated
+end
+return Reparent
+`;
+    const cwd = makeReparentProject();
+    const { ops } = await runProceduralScript({
+      scriptSource: script,
+      parameters: { Size: { X: 10, Y: 10, Z: 10 }, Attributes: {} },
+      scene: readProceduralScene(cwd, "W"),
+      targetGuid: "W",
+    });
+    const result = await applyProceduralOps(ops, { targetGuid: "W", cwd });
+
+    expect(result).toMatchObject({ addCount: 1, moveCount: 1, movedGuids: ["child"] });
+    expect(applyLevelChangesCalls).toBe(1);
+    const root = readOvdrjmRoot(cwd).root;
+    const generated = workspaceChildren(cwd).find((node) => node.Name === "GeneratedParent")!;
+    expect((generated.LuaChildren as Array<Record<string, unknown>>).map((node) => node.ActorGuid)).toEqual(["child"]);
+    expect(findNodeByActorGuid(root, "child")).toMatchObject({ ActorGuid: "child", Name: "Child" });
+  });
+
+  test("runs through the real parseArgs -> execute path without re-parsing (regression)", async () => {
+    // Regression: parseArgs maps id -> scriptSource and reads the canonical file;
+    // execute must NOT re-parse, because id has already been consumed.
+    const cwd = makeProject();
+    writeRecipe(cwd, "move", moveScript);
+    const tools = await loadTools(cwd);
+    const result = await invoke(tools.get("studiorpc_procedural_run")!, { id: "move" });
     expect(result.metadata).toMatchObject({ method: "procedural.run", updateCount: 2 });
   });
 
   test("navigates the scene with FindFirstChild / GetChildren / IsA lookups", async () => {
-    const lookupScript = `-- generationId: lookup-nav
-local Nav = {}
+    const lookupScript = `local Nav = {}
 Nav.OnGenerate = function(parameters, targetContainer)
 	-- find by name and update a whitelisted property
 	local a = workspace:FindFirstChild("A")
@@ -171,7 +473,7 @@ return Nav
 `;
     const cwd = makeProject();
     const tools = await loadTools(cwd);
-    const result = await invoke(tools.get("studiorpc_procedural_run")!, { script: lookupScript });
+    const result = await invokeRun(tools, cwd, lookupScript);
 
     expect(result.metadata).toMatchObject({ method: "procedural.run", updateCount: 1, deleteCount: 1 });
     const { root } = readOvdrjmRoot(cwd);
@@ -179,21 +481,42 @@ return Nav
     expect((findNodeByActorGuid(root, "pA") as { CFrame: { Position: { Y: number } } }).CFrame.Position.Y).toBe(50);
   });
 
-  test("requires exactly one of script or scriptPath", async () => {
+  test("navigates ancestors with FindFirstAncestor / IsDescendantOf / GetFullName", async () => {
+    const ancestorScript = `local Nav = {}
+Nav.OnGenerate = function(parameters, targetContainer)
+	local a = workspace:FindFirstChild("A")
+	assert(a:FindFirstAncestor("Workspace") == workspace, "FindFirstAncestor by name")
+	assert(a:FindFirstAncestorWhichIsA("Instance") ~= nil, "FindFirstAncestorWhichIsA")
+	assert(a:IsDescendantOf(workspace), "IsDescendantOf")
+	assert(workspace:GetChildrenNum() == 2, "GetChildrenNum")
+	assert(a:GetFullName() == "Workspace.A", "GetFullName path")
+	-- make one real change so the run produces an op
+	a.CFrame += Vector3.yAxis * 5
+end
+return Nav
+`;
+    const cwd = makeProject();
+    const tools = await loadTools(cwd);
+    const result = await invokeRun(tools, cwd, ancestorScript);
+
+    expect(result.metadata).toMatchObject({ method: "procedural.run", updateCount: 1 });
+  });
+
+  test("requires a safe recipe id and does not accept arbitrary script paths", async () => {
     const cwd = makeProject();
     const tools = await loadTools(cwd);
     const runTool = tools.get("studiorpc_procedural_run")!;
-    expect(() => runTool.parameters.parse({})).not.toThrow();
-    expect(runTool.parameters.parse({ script: moveScript, maxNodes: 999_999 })).not.toHaveProperty("maxNodes");
-    // parseArgs (not the raw schema) enforces the exactly-one rule.
-    await expect(invoke(runTool, { script: moveScript, scriptPath: "/x.lua" })).rejects.toThrow(/exactly one/);
-    await expect(invoke(runTool, {})).rejects.toThrow(/exactly one/);
+    expect(() => runTool.parameters.parse({})).toThrow();
+    expect(() => runTool.parameters.parse({ id: "../escape" })).toThrow();
+    expect(() => runTool.parameters.parse({ script: moveScript })).toThrow();
+    expect(() => runTool.parameters.parse({ scriptPath: "x.lua" })).toThrow();
+    expect(runTool.parameters.parse({ id: "move-all" })).toMatchObject({ id: "move-all" });
   });
 
   test("rejects before mutating when the user declines", async () => {
     const cwd = makeProject();
     const tools = await loadTools(cwd, async () => "reject");
-    const result = await invoke(tools.get("studiorpc_procedural_run")!, { script: moveScript });
+    const result = await invokeRun(tools, cwd, moveScript);
     expect(result).toMatchObject({ output: "[Rejected by user]", metadata: { error: true } });
     // scene untouched
     const { root } = readOvdrjmRoot(cwd);
@@ -201,9 +524,8 @@ return Nav
   });
 });
 
-describe("procedural model save/list/run", () => {
-  const bunnyScript = `-- generationId: bunny-model
-local GP = require(script.Dependencies.GeometryPrimitives)
+describe("unified reusable procedural recipes", () => {
+  const bunnyScript = `local GP = require(script.Dependencies.GeometryPrimitives)
 local Bunny = {}
 Bunny.OnGenerate = function(parameters, targetContainer)
 	local root = GP.model("Bunny", nil)
@@ -213,36 +535,42 @@ end
 return Bunny
 `;
 
-  test("saves, lists, and idempotently re-runs a persisted model", async () => {
+  test("exposes one procedural tool and lets the recipe choose replacement semantics", async () => {
     const cwd = makeProject();
     const tools = await loadTools(cwd);
 
-    const saveResult = await invoke(tools.get("studiorpc_procedural_model_save")!, { script: bunnyScript });
-    expect(saveResult.metadata).toMatchObject({ method: "procedural.model.save", generationId: "bunny-model" });
+    expect(tools.has("studiorpc_procedural_run")).toBe(true);
+    expect(tools.has("studiorpc_procedural_model_save")).toBe(false);
+    expect(tools.has("studiorpc_procedural_model_run")).toBe(false);
+    expect(tools.has("studiorpc_procedural_model_list")).toBe(false);
 
-    const listResult = await invoke(tools.get("studiorpc_procedural_model_list")!, {});
-    expect(listResult.metadata).toMatchObject({ count: 1 });
-    expect(listResult.output).toContain("bunny-model");
-
-    const firstRun = await invoke(tools.get("studiorpc_procedural_model_run")!, { id: "bunny-model", targetGuid: "W" });
-    expect(firstRun.metadata).toMatchObject({ method: "procedural.model.run" });
+    const firstRun = await invokeRun(tools, cwd, bunnyScript, "bunny-model");
+    expect(firstRun.metadata).toMatchObject({ method: "procedural.run", addCount: 2 });
     const afterFirst = workspaceChildren(cwd);
     const bunniesAfterFirst = afterFirst.filter((child) => child.Name === "Bunny");
     expect(bunniesAfterFirst).toHaveLength(1);
     expect(afterFirst).toHaveLength(3); // A, B, Bunny
+    expect(JSON.stringify(readOvdrjmRoot(cwd).root)).not.toContain("localId");
 
-    // Re-run replaces rather than duplicates.
-    await invoke(tools.get("studiorpc_procedural_model_run")!, { id: "bunny-model", targetGuid: "W" });
+    const replacementScript = bunnyScript.replace(
+      'local root = GP.model("Bunny", nil)',
+      'local previous = workspace:FindFirstChild("Bunny")\n\tif previous then previous:Destroy() end\n\tlocal root = GP.model("Bunny", nil)',
+    );
+    const secondRun = await invokeRun(tools, cwd, replacementScript, "bunny-model");
+    expect(secondRun.metadata).toMatchObject({ method: "procedural.run", addCount: 2, deleteCount: 2 });
     const afterSecond = workspaceChildren(cwd);
     expect(afterSecond.filter((child) => child.Name === "Bunny")).toHaveLength(1);
     expect(afterSecond).toHaveLength(3);
+    expect(readFileSync(join(cwd, ".overdare", "procedural", "bunny-model", "main.lua"), "utf8")).toBe(
+      replacementScript,
+    );
   });
 
-  test("model_run errors for an unknown id", async () => {
+  test("reports the canonical recipe path for an unknown id", async () => {
     const cwd = makeProject();
     const tools = await loadTools(cwd);
-    await expect(invoke(tools.get("studiorpc_procedural_model_run")!, { id: "nope" })).rejects.toThrow(
-      /No saved procedural model/,
+    await expect(invoke(tools.get("studiorpc_procedural_run")!, { id: "nope" })).rejects.toThrow(
+      /\.overdare[\\/]procedural[\\/]nope[\\/]main\.lua/,
     );
   });
 });

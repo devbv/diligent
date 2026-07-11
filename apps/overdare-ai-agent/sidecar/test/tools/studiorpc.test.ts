@@ -409,4 +409,24 @@ describe("createStudioRpcToolProvider", () => {
     });
     expect(rpcCalls).toEqual([]);
   });
+
+  test("returns invalid_operation status for a hierarchy cycle", async () => {
+    const cwd = makeStudioProject();
+    const rpcCalls: Array<{ method: string; params?: Record<string, unknown> }> = [];
+    const tools = await loadStudioTools(cwd, rpcCalls);
+
+    const result = await tools
+      .get("studiorpc_instance_move")!
+      .execute({ items: [{ guid: partGuid, parentGuid: partGuid }] }, toolContext());
+
+    expectStatus(result, {
+      kind: "invalid_operation",
+      code: "hierarchy_cycle",
+      operation: "instance.move",
+      guid: partGuid,
+      role: "target",
+      requiresReadback: false,
+    });
+    expect(rpcCalls).toEqual([]);
+  });
 });

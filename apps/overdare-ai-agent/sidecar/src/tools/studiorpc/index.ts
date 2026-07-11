@@ -9,9 +9,6 @@ import { createInstanceDeleteTool } from "./tools/instance-delete-tool";
 import { createInstanceMoveTool } from "./tools/instance-move-tool";
 import { createInstanceReadTool } from "./tools/instance-read-tool";
 import { createInstanceUpsertTool } from "./tools/instance-upsert-tool";
-import { createProceduralModelListTool } from "./tools/procedural-model-list-tool";
-import { createProceduralModelRunTool } from "./tools/procedural-model-run-tool";
-import { createProceduralModelSaveTool } from "./tools/procedural-model-save-tool";
 import { createProceduralRunTool } from "./tools/procedural-run-tool";
 import { createRollbackTool } from "./tools/rollback-tool";
 import { createScriptAddTool } from "./tools/script-add-tool";
@@ -123,9 +120,6 @@ export async function createStudioRpcTools(ctx: {
     wrapTool(createInstanceReadTool(ctx.cwd), ctx.host),
     wrapTool(withSnapshot(createInstanceUpsertTool(ctx.cwd, writeLock)), ctx.host),
     wrapTool(withSnapshot(createProceduralRunTool(ctx.cwd, writeLock)), ctx.host),
-    wrapTool(createProceduralModelSaveTool(ctx.cwd), ctx.host),
-    wrapTool(withSnapshot(createProceduralModelRunTool(ctx.cwd, writeLock)), ctx.host),
-    wrapTool(createProceduralModelListTool(ctx.cwd), ctx.host),
     wrapTool(withSnapshot(createInstanceDeleteTool(ctx.cwd, writeLock)), ctx.host),
     wrapTool(withSnapshot(createInstanceMoveTool(ctx.cwd, writeLock)), ctx.host),
     wrapTool(createScriptReadTool(ctx.cwd), ctx.host),

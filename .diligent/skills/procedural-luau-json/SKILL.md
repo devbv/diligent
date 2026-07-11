@@ -1,134 +1,54 @@
 ---
 name: procedural-luau-json
-description: Write or adapt OVERDARE procedural Luau scripts and generate instance-upsert-ready nested JSON. Use this skill when the user asks to create Luau procedural code, port or adapt existing procedural examples, run a procedural script, generate dummy JSON, or inspect/apply OVDR procedural output.
+description: Create, edit, and run reusable OVERDARE Studio procedural Luau recipes. Use for algorithmic, parametric, repeated, formula-driven, or bulk scene generation, property edits, deletion, and reparenting; use direct instance tools for only a few hand-picked changes.
 ---
 
-# Procedural Luau JSON Generator
+# OVERDARE Studio Procedural Recipes
 
-Use this skill to write, adapt, and run OVERDARE procedural Luau scripts that produce nested `children: []` JSON compatible with `studiorpc_instance_upsert`.
+Use this skill to write, adapt, and run project-local procedural recipes through `studiorpc_procedural_run`.
 
-## When to use procedural_run (vs manual instance edits)
-
-Default to `studiorpc_procedural_run` whenever placement or editing is **algorithmic, parametric, or rule-based** — do **not** hand-place/move objects one-by-one with `instance_upsert`/`instance_move` in those cases. Procedural runs are deterministic and re-runnable: the same script reproduces the same scene, and you can tune parameters and re-run.
-
-**Use `procedural_run` when:**
-
-- Placement follows a pattern or formula: grids, rings, arcs, stairs, spirals, symmetry/mirroring, curves (Bezier), radial layouts.
-- You need to create many objects (roughly a dozen or more), or the count/spacing is parameter-driven.
-- You want a **bulk transform** over existing objects by rule: "shift every part +X", "recolor by height", "scale all by Attribute", "delete all named Marker". The script reads the injected `workspace` and mutates in place; ops are diffed automatically.
-- The result should be reproducible, tweakable, or regenerated later (save it as a model with `procedural_model_save`/`_run`).
-
-**Use `instance_upsert` / `instance_move` / `instance_delete` when:**
-
-- You are placing, nudging, or editing a **few specific, hand-picked** objects (no rule or repetition).
-- You need to reparent a specific instance (`instance_move`) — procedural cannot reparent.
-- The change is a one-off property tweak on a known GUID.
-
-**Rule of thumb:** if you would write a loop or a formula to decide where things go, use `procedural_run`. If you would point at 1–3 specific objects, use the instance tools.
-
-## Product Direction
+## Recipe rules
 
 - Luau procedural script is the source of truth.
 - Generated objects are derived output.
-- Output shape is nested scene JSON, not a flat `items[]` list.
-- Use `ovdr-shim` naming consistently; never rename the shim.
-- Keep generated node `properties` strict to the `instance_upsert` schema. Do not add custom procedural metadata inside `properties`.
-- **Temporary output only:** When creating ad-hoc procedural scripts or generated JSON for a user request, write both the `.lua` script and `.json` output under `/tmp`. Do not add one-off generated models to repo example/source directories unless the user explicitly asks for a persistent repo asset.
+- Create any non-Service class supported by `instance_upsert` with `Instance.new(className)`. Use only properties from that class's canonical upsert schema; values pass through unchanged and invalid values fail during apply.
+- Do not add custom procedural metadata as scene properties.
+- **Canonical recipe storage:** Before creating a recipe, search `.overdare/procedural/` for a reusable one. Store each recipe at `.overdare/procedural/<id>/main.lua`, use a meaningful stable id, and edit that same file for later requests or retries. Never put agent-authored procedural source in `/tmp` or another OS temporary directory.
 - **Comment procedural intent:** Author generated Luau with useful comments that explain what each major group, helper, and non-obvious transform is for. Future edits should be able to identify “what this part represents” and “why these coordinates/orientations were chosen” without reverse-engineering the model.
 
-## OVERDARE Scene Authoring Rules
+## Supported Luau surface
 
-Procedural JSON is static level geometry for OVERDARE Studio. When writing or adapting scripts, follow OVERDARE placement semantics:
-
-- **Units:** OVERDARE units are centimeters. If an adapted script looks too small, its source likely used a smaller unit scale (roughly `28` OVERDARE units per source unit) — scale dimensions by about `28x`, or choose explicit centimeter-scale defaults.
-- **CFrame placement:** Treat every serialized `CFrame` as world space. Even when an object is nested under a parent model, compute absolute world positions; do not use parent-relative offsets.
-- **Parent-child movement:** In OVERDARE, children follow parent transforms. For generated static JSON, keep child `CFrame`s absolute at generation time so the scene is correct immediately after apply.
-- **Cylinder orientation:** `Part` with `Shape = "Cylinder"` is aligned along the **Y axis**. Size is `(diameter, height, diameter)`. Use small `Y` for flat discs, and rotate only when a sideways cylinder is intentionally needed.
-  - Coin/disc: `Size = (100, 5, 100)`, `Orientation = (0, 0, 0)`.
-  - Log/pipe laid along the X axis: `Size = (50, 200, 50)`, `Orientation = (0, 0, 90)`.
-  - Wheel on its side: `Size = (80, 20, 80)`, `Orientation = (0, 0, 90)`.
-  - For directed two-point `GP.cylinder(startPoint, endPoint, ...)`, the local **Y axis** is serialized along `startPoint -> endPoint`. Current shim expectations: +X direction uses negative Z rotation, -X direction uses positive Z rotation, and +Z direction uses positive X rotation.
-- **Plain, compatible assets:** Asset ids, if ever used, must be `ovdrassetid://[number]`. Do not use other asset path formats.
-- **Doors, tunnels, and openings:** OVERDARE procedural JSON does not currently provide a GeometryService-style boolean cutout. Build openings by leaving space empty: skip wall/dome blocks where the door should be, and assemble tunnels from separate side walls, floor, and arch/roof pieces. Do not place arbitrary solid objects inside the passage just to imply a hole; if players should pass through it, the center volume must actually remain empty.
-
-## Key Files
-
-| Purpose | Path |
-|---|---|
-| Runtime generator | `apps/overdare-ai-agent/sidecar/src/procedural/runtime.ts` |
-| Public exports/types | `apps/overdare-ai-agent/sidecar/src/procedural/` |
-| Luau runner | `apps/overdare-ai-agent/sidecar/src/procedural/luau/runner.lua` |
-| OVDR shim | `apps/overdare-ai-agent/sidecar/src/procedural/luau/ovdr-shim.lua` |
-| OVDR helper libs | `apps/overdare-ai-agent/sidecar/src/procedural/luau/dependencies/` |
-| Runtime tests | `apps/overdare-ai-agent/sidecar/test/procedural/runtime.test.ts` |
-| Example scripts | `apps/overdare-ai-agent/sidecar/src/procedural/examples/` |
-| Geometry/math API and roadmap | `docs/guide/procedural-geometry-math.md` |
-| Handoff notes | `docs/plan/feature/P068-procedural-script-dummy-json-runtime-handoff.md` |
-
-## Supported MVP Output
-
-`generateProceduralDummyJson(...)` returns:
-
-```ts
-type ProceduralDummyJson = {
-  version: 1;
-  kind: "overdare.procedural-dummy-json";
-  generationId: string;
-  scriptName: string;
-  parameters: ProceduralParameters;
-  children: ProceduralGeneratedNode[];
-};
-```
-
-Each generated node should be directly creatable through `studiorpc_instance_upsert`:
-
-```ts
-type ProceduralGeneratedNode = {
-  class: "Model" | "Part";
-  name: string;
-  properties: ModelProperties | PartProperties;
-  children?: ProceduralGeneratedNode[];
-};
-```
-
-## Current Luau Compatibility Notes
-
-The current runtime supports the example scripts with these important APIs:
+Recipes can use these APIs:
 
 - `Vector3.new`, axes, arithmetic, `.Magnitude`, `.Unit`, `:Cross`, `:Dot`, `:Lerp`
 - `Color3.fromRGB`, `Color3.new`
 - `CFrame.identity`, `CFrame.new`, `CFrame.fromMatrix`, `CFrame +/- Vector3`
-- fake instances with `Parent`, `Children`, `GetDescendants`, `IsA`, `Destroy`
-- `GeometryPrimitives`: `model`, `sphere`, `block`, `cylinder`, `cylinderBetween`, `ellipsoid`, `panel`, `disc`, `taperedCylinder`, `capsule`, `regularPrism`, `boxBetween`, `triangle`, `quad`
-- `MathUtils`: interpolation/Bezier helpers; `pointsOnLine`, `pointsOnCircle`, `pointsOnArc`, `pointsOnEllipse`, `segmentsFromPoints`; `frameBetween`, `frameFromNormal`, `rotateAroundAxis`, `mirrorPoint`, `transformPoints`, `projectOnPlane`; and the `forEach*` wrappers
-
-There is no `SmartObject` dependency. Read tunable inputs directly from `parameters.Size` / `parameters.Attributes`.
+- `Instance.new(className)` for every creatable class supported by `instance_upsert`
+- instances with generic schema-backed properties, `Parent`, `Children`, navigation methods, `IsA`, and `Destroy`
+- `GeometryPrimitives`: `model`, `sphere`, `block`, `cylinder`, `cylinderBetween`, `ellipsoid`, `panel`, `disc`, `taperedCylinder`, `capsule`, `regularPrism`, `boxBetween`, `triangle`, `quad`, `polyline`, `arc`, `ring`
+- `MathUtils`: deterministic `deriveSeed`/`random` streams; interpolation/Bezier helpers; `pointsOnLine`, `pointsOnCircle`, `pointsOnArc`, `pointsOnEllipse`, `pointsOnGrid`, `pointsOnHelix`, `segmentsFromPoints`; `frameBetween`, `frameFromNormal`, `rotateAroundAxis`, `mirrorPoint`, `transformPoints`, `projectOnPlane`; and the `forEach*` wrappers
 
 OVERDARE has no CSG (boolean geometry): there is no `ConstructiveSolidGeometry` dependency and no `subtract`/`union`/`intersect`. Build shapes additively from parts instead of carving them.
 
 Geometry fidelity is approximate for complex primitives. Prefer apply-safe `Part` approximations over unsupported schema fields.
 
-The geometry/math guide also describes planned APIs. Do not call a roadmap API
-unless it appears in the current compatibility list above or exists in the
-dependency source. Planned names are design guidance, not runtime capability.
-
 ## Quick Library Spec
 
-Use this as the fast authoring reference before opening source files.
+Use this as the authoring reference.
 
 ### Script contract
 
 Write scripts so humans can safely revise them later:
 
 - Add a short file/header comment describing the generated model and its main editable parameters.
-- Add one comment before each major model group (`Body`, `Head`, `Ears`, `Whiskers`, architectural floors, wall rings, etc.) explaining its role.
 - Add comments for non-obvious coordinates, rotations, scale factors, symmetry mirroring, or OVERDARE-specific workarounds.
 - Prefer intent comments over line-by-line noise. Avoid comments that only restate the function name.
-- Keep comments in the `.lua` script; do not place custom metadata inside generated JSON `properties`.
 
 ```lua
 -- Builds a readable example model. Size/Attributes control high-level proportions;
 -- individual part coordinates below are absolute OVERDARE world-space centimeters.
+local GP = require(script.Dependencies.GeometryPrimitives)
+
 local ScriptModule = {}
 
 ScriptModule.OnGenerate = function(parameters, targetContainer)
@@ -154,45 +74,42 @@ return ScriptModule
 }
 ```
 
-### Globals
-
-```lua
-Vector3.new(x, y, z)
-Vector3.zero
-Vector3.xAxis
-Vector3.yAxis
-Vector3.zAxis
-vector.Magnitude
-vector.Unit
-vector:Cross(other)
-vector:Dot(other)
-vector:Lerp(other, alpha)
--- operators: +, -, unary -, *, /
-
-Color3.fromRGB(r, g, b)
-Color3.new(r, g, b) -- 0..1 inputs, serialized as 0..255 RGB
-
-CFrame.identity
-CFrame.new(x, y, z)
-CFrame.fromMatrix(position, rightVector, upVector, backVector?)
--- operators: cframe + Vector3, cframe - Vector3
-```
-
-`CFrame.fromMatrix` serializes an approximate Euler orientation for static geometry. When using it for elongated parts, validate both mirrored sides because equivalent rotations can look correct numerically but flip visual direction in Studio.
+When omitted by the tool call, `Size` defaults to `{ X = 10, Y = 10, Z = 10 }` and `Attributes` defaults to `{}`.
 
 ### Instance-like behavior
 
 ```lua
+local light = Instance.new("PointLight")
+light.Name = "KeyLight"
+light.Brightness = 125
+light.Range = 900
+light.Parent = parent -- fresh instances must join the final tree to be serialized
+
 instance.Parent = parent
 instance.Children
 instance:GetDescendants()
+instance:GetChildren()
+instance:GetChildrenNum()
 instance:IsA("Model")
 instance:IsA("BasePart")
 instance:Destroy()
 
+-- tree navigation (useful for transform/edit scripts over the injected `workspace`)
+instance:FindFirstChild(name, recursive?)
+instance:FindFirstChildOfClass(className, recursive?)
+instance:FindFirstChildWhichIsA(className, recursive?)
+instance:WaitForChild(name)               -- resolves immediately (no yield)
+instance:FindFirstAncestor(name)
+instance:FindFirstAncestorOfClass(className)
+instance:FindFirstAncestorWhichIsA(className)
+instance:IsDescendantOf(ancestor)
+instance:GetFullName()                    -- e.g. "Workspace.Model.Part"
+
 part.CFrame -= Vector3.yAxis * amount
 model.WorldPivot -= Vector3.yAxis * amount
 ```
+
+Assigning `Parent` may target an existing or same-run generated instance. Existing instances retain their GUID when reparented. Do not destroy or reparent the injected `workspace` target root or any Service instance.
 
 ### GeometryPrimitives (`GP`)
 
@@ -216,6 +133,12 @@ GP.ellipsoid(name, centerOrCFrame, size, options?)
 GP.panel(name, centerOrCFrame, width, height, thickness, options?)
 GP.disc(name, centerOrCFrame, radius, thickness, options?)
 
+-- Composite helpers return a Model. Polyline thickness is the cylinder
+-- diameter or square block cross-section size.
+GP.polyline(name, points, thickness, options?)
+GP.arc(name, center, radius, startAngle, endAngle, options)
+GP.ring(name, center, radius, options)
+
 -- Options use lower-camel-case keys. Property-style keys such as Color,
 -- Material, and Parent are invalid and are rejected before instance creation.
 local options = {
@@ -226,6 +149,23 @@ local options = {
 	canCollide = true,
 }
 
+local polylineOptions = {
+	segmentShape = "Cylinder", -- default; may also be "Block"
+	closed = false,
+	color = Color3.fromRGB(255, 255, 255),
+	material = "Metal",
+	parent = model,
+}
+
+-- Arc/ring require thickness, segments, and a finite non-zero axis.
+local curveOptions = {
+	thickness = 10,
+	segments = 24,
+	axis = Vector3.yAxis,
+	segmentShape = "Cylinder",
+	parent = model,
+}
+
 GP.taperedCylinder(name, startPoint, endPoint, radiusTop, radiusBottom, color, material, parent?)
 GP.capsule(name, endpoint1, radius1, endpoint2, radius2, color, material, parent?)
 GP.regularPrism(name, startPoint, endPoint, radius, sides, color, material, parent?)
@@ -234,22 +174,38 @@ GP.triangle(name, point1, point2, point3, thickness, normal?, color, material, p
 GP.quad(name, point1, point2, point3, point4, thickness, normal?, color, material, parent?)
 ```
 
-MVP geometry notes:
+Geometry notes:
 
 - `sphere` -> `Part` / `Shape = "Ball"`
 - `ellipsoid` -> non-uniform `Part` / `Shape = "Ball"` (verify final appearance in Studio)
 - `panel` -> thin `Block`; `disc` -> short Y-axis `Cylinder`
+- `polyline`, `arc`, and `ring` -> faceted `Model` compositions, not continuous curved meshes
+- composite segment names are deterministic (`<name>_1`, `<name>_2`, ...);
+  a helper emits at most 4,999 parts plus its model node
+- `polyline` skips coincident consecutive points; `arc` and `ring` use
+  `options.segments` as the exact emitted part count
 - `block`, `boxBetween`, `triangle`, `quad` -> `Part` / `Shape = "Block"` approximation
 - `cylinder`, `taperedCylinder`, `capsule`, `regularPrism` -> `Part` / `Shape = "Cylinder"` approximation where possible
 - Two-point `cylinder`, `taperedCylinder`, `capsule`, and `regularPrism` serialize the cylinder height on local Y along `startPoint -> endPoint`; verify sign-sensitive mirrored details such as whiskers, spokes, or rails.
 - `capsule` may become a `Ball` if one endpoint radius fully dominates the segment
-- no `WedgePart` / `CornerWedgePart` in the current apply-safe JSON contract
+- no `WedgePart` / `CornerWedgePart` in the supported scene output
 - no CSG / boolean geometry: holes, cutouts, and true cones/pyramids cannot be produced. Approximate additively with the primitives above, or omit the feature.
 
 ### MathUtils (`MU`)
 
 ```lua
 local MU = require(script.Dependencies.MathUtils)
+
+-- Deterministic map authoring. In OnGenerate, this seed can come from
+-- parameters.Attributes.Seed with an explicit integer fallback.
+local mapSeed = 12345
+local terrainRng = MU.random(MU.deriveSeed(mapSeed, "terrain"))
+local propsRng = MU.random(MU.deriveSeed(mapSeed, "props"))
+
+terrainRng:nextNumber(-100, 100) -- half-open range
+terrainRng:nextInteger(1, 10) -- inclusive range
+propsRng:choice({ "Tree", "Rock", "Shrub" })
+local shuffled = propsRng:shuffle({ "North", "East", "South", "West" })
 
 -- Interpolation
 MU.lerp(a, b, t)                         -- number, t clamped to 0..1
@@ -269,6 +225,8 @@ MU.pointsOnLine(startPoint, endPoint, count) -- minimum 2, includes both endpoin
 MU.pointsOnCircle(center, radius, count, axis) -- minimum 3, no duplicate endpoint
 MU.pointsOnArc(center, radius, startAngle, endAngle, count, axis) -- minimum 2
 MU.pointsOnEllipse(center, radiusX, radiusY, count, axis) -- minimum 3
+MU.pointsOnGrid(origin, columns, rows, columnStep, rowStep) -- columns change fastest
+MU.pointsOnHelix(center, radius, height, turns, count, axis) -- centered on height
 MU.segmentsFromPoints(points, closed) -- { { startPoint = ..., endPoint = ... }, ... }
 
 -- Orientation and transforms
@@ -285,68 +243,57 @@ MU.forEachPointOnCircle(center, radius, count, axis, function(pos, i) end)
 MU.forEachSegmentOnCircle(center, radius, count, axis, function(pos, i, nextPos) end)
 ```
 
-The older implementation-oriented names remain as compatibility aliases, but
-new scripts should use the names above. Prefer names that describe the geometry
-or callback behavior instead of the number of input points or an array-like
-implementation detail.
-
-All values are built through `ovdr-shim`, so `MU` outputs interoperate with the
+Use the names above in new recipes. `MU` outputs interoperate with the
 `Vector3`/`Color3` globals and with `GP` helpers. Interpolation helpers clamp
-`t` to `0..1`; the number/curve helpers reject `NaN`/infinite inputs.
+`t` to `0..1`; number and curve helpers reject `NaN`/infinite inputs.
+Grid dimensions are positive integers and the product is capped at 20,000
+points. Helix output includes both height endpoints, accepts signed non-zero
+height/turns, requires at least two points, and is capped at 20,000 points.
+
+Seeded random notes:
+
+- `MU.random(seed)` requires an explicit safe-integer seed and creates an
+  independent deterministic stream; do not use global `math.randomseed`
+- `MU.deriveSeed(seed, scope)` requires a non-empty string scope and keeps map
+  subsystems reproducible when another subsystem adds or removes random calls
+- `nextNumber(minimum, maximum)` uses a half-open range;
+  `nextInteger(minimum, maximum)` includes both integer bounds
+- `choice` requires a non-empty dense array; `shuffle` returns a new array and
+  does not modify its input; both accept at most 20,000 items
+- the RNG is intended for reproducible procedural authoring, not cryptography
 
 There is no `SmartObject` dependency: read tunable inputs directly from
 `parameters.Size` and `parameters.Attributes`.
 
 ### Materials
 
-Output must normalize to `instance_upsert`-safe materials. Known unsupported materials fall back through aliases or to `Plastic`.
-
-Common safe materials:
-
-```text
-Basic, Plastic, Brick, Rock, Metal, Unlit, Bark, SmallBrick, LeafyGround,
-MossyGround, Ground, Glass, Paving, MossyRock, Wood, Neon
-```
-
-Useful aliases:
-
-```text
-SmoothPlastic -> Plastic
-Sandstone -> Rock
-Sand -> Ground
-Concrete/Granite/Marble/Slate -> Rock
-```
+Material values pass through the procedural runtime unchanged. Use an exact value accepted by the canonical
+`instance_upsert` material schema in `instance.params.ts`. Invalid values fail during apply; the runtime never aliases
+or silently falls back to another material.
 
 ## Workflow
 
 ### 1. Understand the script target
 
-Before writing code, identify:
+Before writing code, search `.overdare/procedural/{recipeId}/main.lua` for a recipe that already owns the requested model or edit.
 
-- Desired model name and `generationId`
+- Stable recipe id and model name
 - Expected `parameters.Size` and `parameters.Attributes`
 - Which helper APIs the script needs from `GeometryPrimitives` or `MathUtils`
-- Whether the output only needs MVP dummy geometry or closer visual fidelity
+- Whether to patch existing instances or replace the owned root
 
 If adapting a script that uses CSG (`subtract`/`union`/`intersect`), rework it additively first — OVERDARE cannot carve geometry.
 
-When adapting an existing script, first grep the source for helper calls:
-
-```bash
-grep -n "GP\.\|MU\." path/to/script.lua
-```
-
-Implement only missing prerequisites needed by the target script.
+Use only the APIs documented in this skill. If a requested primitive is unavailable, compose it from supported parts.
 
 ### 2. Author Luau in the supported pattern
 
-For ad-hoc model creation, write the script to `/tmp/<model-name>.lua` first. Keep repo paths for persistent examples, tests, or runtime implementation changes only.
+Create or edit `.overdare/procedural/<id>/main.lua`. Keep one semantic recipe per directory and reuse it instead of creating request-specific files.
 
 Use this script shape:
 
 ```lua
 --!strict
--- generationId: replace-with-stable-id
 -- Generates <ModelName>. Edit the constants near the top of OnGenerate to tune proportions.
 local GP = require(script.Dependencies.GeometryPrimitives)
 
@@ -358,7 +305,7 @@ ModelScript.OnGenerate = function(parameters, targetContainer)
 	root.WorldPivot = CFrame.identity
 
 	-- Example visible part: placed in absolute OVERDARE centimeters.
-	GP.sphere("Example", Vector3.new(0, 2, 0), 1, Color3.fromRGB(255, 255, 255), "SmoothPlastic", root)
+	GP.sphere("Example", Vector3.new(0, 2, 0), 1, Color3.fromRGB(255, 255, 255), "Plastic", root)
 
 	root.Parent = targetContainer
 end
@@ -369,135 +316,97 @@ return ModelScript
 Guidelines:
 
 - Parent generated objects into a root `Model`, then parent the root to `targetContainer`.
+- Parent every fresh instance into the final tree. Unparented fresh instances are not serialized or applied.
 - Use `parameters.Size.X/Y/Z` and `parameters.Attributes` for user-tunable generation.
-- Use materials that normalize to the apply schema. Unknown materials become safe aliases, usually `Plastic`.
+- Use exact materials accepted by the apply schema. Invalid materials are rejected rather than rewritten.
 - Keep shape generation deterministic.
 - Comment every major generated group and every transform that is visually important or easy to break during edits.
 
-### 3. Generate JSON from a Luau file
+### 3. Run the recipe
 
-In Studio, prefer the agent tools (`studiorpc_procedural_run` / `studiorpc_procedural_model_run`) — they execute the script and apply the result directly. For local inspection of the raw generated tree (no Studio), use this temporary Bun runner from repo root, keeping the input script and generated output in `/tmp`:
+Call `studiorpc_procedural_run` with:
 
-```bash
-cat > /tmp/ovdr-generate-procedural-json.ts <<'TS'
-import { readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+- `id`: the recipe directory name
+- `targetGuid`: optional injected subtree and parent for new top-level objects; defaults to Workspace
+- `parameters`: optional `Size` and `Attributes` values used by the recipe
 
-const [, , scriptPath, outputPath = "/tmp/ovdr-procedural.generated.json"] = process.argv;
-if (!scriptPath) {
-  throw new Error("Usage: bun /tmp/ovdr-generate-procedural-json.ts <script.lua> [output.json]");
-}
+The tool reads `.overdare/procedural/<id>/main.lua`, injects the current scene,
+shows the derived add/update/move/delete counts for approval, and applies the
+final diff in one document transaction. Property values are validated by the
+same canonical class schemas used by `instance_upsert` before any scene change
+is committed. It does not accept inline source or arbitrary paths. If execution
+fails or the user requests a change, edit the same `main.lua` and rerun it.
 
-const moduleUrl = pathToFileURL(join(process.cwd(), "apps/overdare-ai-agent/sidecar/src/procedural/index.ts")).href;
-const { generateProceduralDummyJson } = await import(moduleUrl);
-const scriptSource = readFileSync(scriptPath, "utf8");
-const result = await generateProceduralDummyJson({
-  scriptSource,
-  parameters: {
-    Size: { X: 10, Y: 10, Z: 10 },
-    Attributes: {},
-  },
-});
+The recipe source is host-side only. Do not create a `Script` instance in the
+Studio scene; the result should be generated geometry or edits to existing
+instances.
 
-writeFileSync(outputPath, `${JSON.stringify(result, null, 2)}\n`);
-console.log(outputPath);
-TS
+### 4. Make reruns converge
 
-bun /tmp/ovdr-generate-procedural-json.ts /tmp/model.lua /tmp/model.generated.json
-```
-
-Inspect the output:
-
-```bash
-jq '.children | length' /tmp/model.generated.json
-jq '.children[0].name' /tmp/model.generated.json
-```
-
-### 4. Add regression coverage when runtime behavior changes
-
-If you add shim/dependency support, update:
-
-```text
-apps/overdare-ai-agent/sidecar/test/procedural/runtime.test.ts
-```
-
-Targeted validation:
-
-```bash
-bun test ./apps/overdare-ai-agent/sidecar/test/procedural/runtime.test.ts
-./apps/overdare-ai-agent/sidecar/node_modules/.bin/tsc --pretty false --noEmit -p apps/overdare-ai-agent/sidecar/tsconfig.json
-bunx biome check apps/overdare-ai-agent/sidecar/test/procedural/runtime.test.ts
-```
-
-## Agent Tool Surface
-
-**Where the script lives (important):** A procedural script is *host-side Luau
-source* — either passed inline (`script`) or written as an external `.lua` file
-on disk (`scriptPath`, e.g. under `/tmp` for ad-hoc runs, or
-`.overdare/procedural/scripts/` once saved). It is **not** authored as a `Script`
-instance inside the Studio scene, and the sidecar executes it out-of-scene. What
-lands in the scene is the **generated geometry** (`Model`/`Part` instances), never
-a `Script` object. So: create/edit the `.lua` file (or inline source) and run it —
-do not create a Script in Studio and paste code into it.
-
-Scripts are executed and applied through Studio RPC tools, split by **lifetime**
-(not by what the script does — a script can generate or transform in either):
-
-| Tool | When | Behavior |
-|---|---|---|
-| `studiorpc_procedural_run` | One-shot | Runs a script once against the current scene and applies the result. Pass `script` inline or use `scriptPath` when a file is easier to author/reuse, plus optional `targetGuid` and `parameters`. `targetGuid` defaults to the whole Workspace. Nothing is persisted. |
-| `studiorpc_procedural_model_save` | Persist | Writes the script + a manifest under `<project>/.overdare/procedural/`. Validates via a dry-run. Requires the `-- generationId:` comment (the model's identity). Does not touch the scene. |
-| `studiorpc_procedural_model_run` | Run persisted | Looks the model up by `id`, runs it, **deletes the prior generation and re-applies** so repeat runs replace rather than duplicate. Updates the manifest. |
-| `studiorpc_procedural_model_list` | Discover | Lists saved models (`id`, params, whether applied, last-updated) so `model_run` can find ids. |
-
-`generationId` is required for `model_save`/`model_run`; for one-shot `procedural_run` it is auto-generated when the comment is absent.
-
-The runtime always stages the complete input and script source in a unique OS
-temporary directory before starting Luau; large inline scripts and whole-Workspace
-scene snapshots do not travel through process argv. `targetGuid` is therefore
-not a transport-size workaround; it remains the explicit scene-injection scope
-and the parent for fresh top-level nodes. When omitted, Workspace is deliberately
-used for both roles. Temporary files are removed after success, failure, or
-timeout. Existing injected nodes do not consume the internal 5,000-node
-generation guard, which applies only to freshly generated nodes and is not
-exposed as an agent-tool argument.
-
-### Generate vs Transform
-
-The runner injects the current scene subtree (`targetGuid`, or the whole
-Workspace) as a **`workspace` global** whose descendants carry their real scene
-GUIDs. A script can therefore:
+The selected scene subtree (`targetGuid`, or the whole Workspace) is available
+as the `workspace` global. `targetContainer` is a separate temporary container:
+fresh top-level children parented to it are attached directly under the selected
+target when applied. A recipe can therefore:
 
 - **Generate** — build fresh geometry under `targetContainer` (the `OnGenerate`
   second argument), exactly as before. Fresh nodes become `add`s.
 - **Transform** — read and mutate existing objects via `workspace`
   (`workspace:GetDescendants()`, `part.CFrame -= …`, `inst:Destroy()`).
 
-Ops are derived by diffing the script's final state against the injected
-snapshot: changed → `update`, `Destroy()`ed/detached → `delete`, fresh → `add`.
+Rerunning a generator does not automatically remove its previous output. Make
+the recipe converge explicitly: locate the instances it owns, then either patch
+them or call `Destroy()` and build replacements. Scope lookups to the selected
+target and use stable, distinctive root names to avoid touching unrelated
+instances.
 
 ```lua
--- Transform example: nudge every part 1 unit along +X and delete markers.
+-- Convergent transform example: normalize all parts and remove obsolete markers.
+local Move = {}
+
 Move.OnGenerate = function(parameters, targetContainer)
-    for _, inst in workspace:GetDescendants() do
-        if inst:IsA("BasePart") then
-            if inst.Name == "Marker" then
-                inst:Destroy()
-            else
-                inst.CFrame += Vector3.xAxis * 1
-            end
-        end
-    end
+	for _, inst in workspace:GetDescendants() do
+		if inst:IsA("BasePart") then
+			if inst.Name == "Marker" then
+				inst:Destroy()
+			else
+				inst.Material = "Concrete"
+			end
+		end
+	end
 end
+
+return Move
 ```
 
-**Transform limitations (MVP):**
+For replace-style generation, remove only the stable root owned by the recipe before rebuilding it:
 
-- Only these properties are read/diffed/written: `CFrame`, `Size`, `Color`,
-  `Material`, `WorldPivot`. Everything else stays untouched.
-- **Reparenting an existing object is unsupported** — `update` cannot change a
-  parent. Move/scale/recolor/delete/add are all supported.
+```lua
+local previous = workspace:FindFirstChild("OwnedRoot")
+if previous then
+	previous:Destroy()
+end
 
-Apply order is delete → update → add; new subtrees are created parent-first
-using the live returned GUID. Do not design output around `refId` / `parentRefId`.
+local root = GP.model("OwnedRoot", nil)
+-- Build the replacement subtree here.
+root.Parent = targetContainer
+```
+
+Property edits use the same class schemas as `instance_upsert`. Reparenting uses
+normal Luau assignment and keeps existing GUIDs:
+
+```lua
+local generated = Instance.new("Folder")
+generated.Name = "GeneratedParent"
+generated.Parent = workspace
+
+local existing = workspace:FindFirstChild("ExistingChild", true)
+existing.Parent = generated
+```
+
+### 5. Verify the result
+
+After a successful run, check the returned add/update/move/delete counts,
+generated GUIDs, warnings, and info. Inspect the affected scene subtree when
+visual placement or hierarchy matters. If validation or execution fails, fix
+the canonical `main.lua`; do not add procedural-side aliases, fallback values,
+or property whitelists to bypass the shared apply schema.

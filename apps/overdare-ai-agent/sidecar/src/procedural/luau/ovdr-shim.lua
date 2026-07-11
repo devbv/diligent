@@ -323,75 +323,6 @@ local function orientedPlaneProperties(points, thickness, extrusionDir)
 	return Ovdr.CFrame.fromMatrix(center, xAxis, normal, zAxis), vector3(math.max(maxX - minX, thickness), thickness, math.max(maxZ - minZ, thickness))
 end
 
-local supportedMaterials = {
-	Basic = true,
-	Plastic = true,
-	Brick = true,
-	Rock = true,
-	Metal = true,
-	Unlit = true,
-	Bark = true,
-	SmallBrick = true,
-	LeafyGround = true,
-	MossyGround = true,
-	Ground = true,
-	Glass = true,
-	Paving = true,
-	MossyRock = true,
-	Wood = true,
-	Neon = true,
-}
-
-local materialAliases = {
-	Concrete = "Rock",
-	Granite = "Rock",
-	Marble = "Rock",
-	Sand = "Ground",
-	Sandstone = "Rock",
-	Slate = "Rock",
-	SmoothPlastic = "Plastic",
-}
-
-local function cleanMaterial(material)
-	if type(material) ~= "string" then
-		return material
-	end
-	if supportedMaterials[material] then
-		return material
-	end
-	return materialAliases[material] or "Plastic"
-end
-
-local partOverrideKeys = {
-	"CanCollide",
-	"CanQuery",
-	"CanTouch",
-	"CastShadow",
-	"CollisionGroup",
-	"Locked",
-	"Mass",
-	"Massless",
-	"MaterialVariant",
-	"Reflectance",
-	"RootPriority",
-	"Transparency",
-}
-
-local function applyPartOverrides(properties, node)
-	if node.Anchored ~= nil then
-		properties.Anchored = node.Anchored
-	else
-		properties.Anchored = true
-	end
-	for _, key in ipairs(partOverrideKeys) do
-		local value = node[key]
-		if value ~= nil then
-			properties[key] = value
-		end
-	end
-	return properties
-end
-
 CFrameMeta.__add = function(left, right)
 	if isVector3(right) then
 		return cframe(left.Position + right, left.Orientation, left._rightVector, left._upVector, left._backVector)
@@ -459,20 +390,37 @@ Instance.__index = function(instance, key)
 	if key == "Parent" then
 		return rawget(instance, "_parent")
 	end
-	if key == "CFrame" then
+	if key == "CFrame" and rawget(instance, "ClassName") == "Primitive" then
 		return rawget(instance, "_cframe")
 	end
-	return Instance[key] or rawget(instance, key)
+	local method = Instance[key]
+	if method ~= nil then
+		return method
+	end
+	local internal = rawget(instance, key)
+	if internal ~= nil then
+		return internal
+	end
+	return rawget(instance, "_properties")[key]
 end
 
 Instance.__newindex = function(instance, key, value)
-	if key == "CFrame" and instance.ClassName == "Primitive" then
+	if key == "CFrame" and rawget(instance, "ClassName") == "Primitive" then
 		Ovdr.applyCFrameOffset(instance, value)
 		return
 	end
-	if key ~= "Parent" then
+	if key == "Name" or key == "ClassName" or key == "Id" or key == "Children"
+		or key == "Injected" or key == "Guid" or key == "Destroyed"
+		or key == "Primitive" or key == "Data" or string.sub(key, 1, 1) == "_" then
 		rawset(instance, key, value)
 		return
+	end
+	if key ~= "Parent" then
+		rawget(instance, "_properties")[key] = value
+		return
+	end
+	if value == instance or (value ~= nil and value:IsDescendantOf(instance)) then
+		error("Cannot set Parent because it would create a hierarchy cycle")
 	end
 	local previous = rawget(instance, "_parent")
 	if previous == value then
@@ -546,11 +494,19 @@ function Instance:FindFirstChild(name, recursive)
 	return nil
 end
 
--- First direct child whose ClassName matches exactly.
-function Instance:FindFirstChildOfClass(className)
+-- First child whose ClassName matches exactly; direct children unless `recursive`.
+function Instance:FindFirstChildOfClass(className, recursive)
 	for _, child in ipairs(self.Children) do
 		if child.ClassName == className then
 			return child
+		end
+	end
+	if recursive then
+		for _, child in ipairs(self.Children) do
+			local found = child:FindFirstChildOfClass(className, true)
+			if found then
+				return found
+			end
 		end
 	end
 	return nil
@@ -580,6 +536,70 @@ function Instance:WaitForChild(name)
 	return self:FindFirstChild(name)
 end
 
+-- Number of direct children.
+function Instance:GetChildrenNum()
+	return #self.Children
+end
+
+-- Walk up the parent chain; first ancestor whose Name matches.
+function Instance:FindFirstAncestor(name)
+	local node = rawget(self, "_parent")
+	while node ~= nil do
+		if node.Name == name then
+			return node
+		end
+		node = rawget(node, "_parent")
+	end
+	return nil
+end
+
+-- First ancestor whose ClassName matches exactly.
+function Instance:FindFirstAncestorOfClass(className)
+	local node = rawget(self, "_parent")
+	while node ~= nil do
+		if node.ClassName == className then
+			return node
+		end
+		node = rawget(node, "_parent")
+	end
+	return nil
+end
+
+-- First ancestor satisfying :IsA(className).
+function Instance:FindFirstAncestorWhichIsA(className)
+	local node = rawget(self, "_parent")
+	while node ~= nil do
+		if node:IsA(className) then
+			return node
+		end
+		node = rawget(node, "_parent")
+	end
+	return nil
+end
+
+-- True if `ancestor` is somewhere above this node in the tree.
+function Instance:IsDescendantOf(ancestor)
+	local node = rawget(self, "_parent")
+	while node ~= nil do
+		if node == ancestor then
+			return true
+		end
+		node = rawget(node, "_parent")
+	end
+	return false
+end
+
+-- Dotted path from the topmost ancestor down to this node (e.g. "Workspace.Model.Part").
+function Instance:GetFullName()
+	local segments = {}
+	local node = self
+	while node ~= nil do
+		table.insert(segments, 1, node.Name)
+		node = rawget(node, "_parent")
+	end
+	return table.concat(segments, ".")
+end
+
 function Instance:Destroy()
 	for _, child in ipairs({ unpack(self.Children) }) do
 		child:Destroy()
@@ -597,8 +617,18 @@ function Ovdr.createInstance(className, name)
 		ClassName = className,
 		Name = name,
 		Children = {},
+		_properties = { __jsonObject = true },
 	}, Instance)
 end
+
+Ovdr.Instance = {
+	new = function(className)
+		if type(className) ~= "string" or className == "" then
+			error("Instance.new expects a non-empty class name")
+		end
+		return Ovdr.createInstance(className, className)
+	end,
+}
 
 function Ovdr.createTargetContainer()
 	return Ovdr.createInstance("Model", "TargetContainer")
@@ -621,28 +651,35 @@ local function deserializeCFrame(value)
 	return cframe(deserializeVector3(value.Position) or vector3(0, 0, 0), deserializeVector3(value.Orientation) or vector3(0, 0, 0))
 end
 
+local function deserializeValue(value)
+	if type(value) ~= "table" then
+		return value
+	end
+	if type(value.Position) == "table" and type(value.Orientation) == "table" then
+		return deserializeCFrame(value)
+	end
+	if type(value.X) == "number" and type(value.Y) == "number" and type(value.Z) == "number" then
+		return deserializeVector3(value)
+	end
+	local result = {}
+	if value.__jsonObject == true then
+		result.__jsonObject = true
+	elseif value.__jsonArray == true then
+		result.__jsonArray = true
+	end
+	for key, child in pairs(value) do
+		result[key] = deserializeValue(child)
+	end
+	return result
+end
+
 local function injectNode(sceneNode)
 	local node = Ovdr.createInstance(sceneNode.class or "Instance", sceneNode.name or "")
 	node.Injected = true
 	node.Guid = sceneNode.guid
 	local properties = sceneNode.properties or {}
-	-- Whitelisted properties are stored as raw keys so scripts can read them and
-	-- reassign them (e.g. `part.CFrame -= Vector3.yAxis * n`) without going
-	-- through the Primitive-only CFrame offset path.
-	if properties.CFrame ~= nil then
-		rawset(node, "CFrame", deserializeCFrame(properties.CFrame))
-	end
-	if properties.WorldPivot ~= nil then
-		rawset(node, "WorldPivot", deserializeCFrame(properties.WorldPivot))
-	end
-	if properties.Size ~= nil then
-		rawset(node, "Size", deserializeVector3(properties.Size))
-	end
-	if properties.Color ~= nil then
-		rawset(node, "Color", properties.Color)
-	end
-	if properties.Material ~= nil then
-		rawset(node, "Material", properties.Material)
+	for key, value in pairs(properties) do
+		rawget(node, "_properties")[key] = deserializeValue(value)
 	end
 	if type(sceneNode.children) == "table" then
 		for _, childScene in ipairs(sceneNode.children) do
@@ -670,6 +707,11 @@ local function cleanValue(value)
 		return value
 	end
 	local result = {}
+	if value.__jsonObject == true then
+		result.__jsonObject = true
+	elseif value.__jsonArray == true then
+		result.__jsonArray = true
+	end
 	for key, child in pairs(value) do
 		if key ~= "__jsonObject" and key ~= "__jsonArray" then
 			result[key] = cleanValue(child)
@@ -715,7 +757,7 @@ local function primitiveProperties(node)
 		CFrame = cleanValue(node.CFrame),
 		Size = cleanValue(node.Size or vector3(1, 1, 1)),
 		Color = cleanValue(data.color),
-		Material = cleanMaterial(data.material),
+		Material = data.material,
 	}
 
 	if node.Primitive == "CylinderFromTwoPoints" then
@@ -792,41 +834,37 @@ local function primitiveProperties(node)
 		end
 	end
 
-	return applyPartOverrides(properties, node)
+	local overrides = rawget(node, "_properties") or {}
+	if overrides.Anchored == nil then
+		properties.Anchored = true
+	end
+	for key, value in pairs(overrides) do
+		properties[key] = value
+	end
+	return properties
 end
 
 local function serializeInjectedNode(node)
-	local properties = {}
-	if node.CFrame ~= nil then
-		properties.CFrame = cleanValue(node.CFrame)
-	end
-	if node.WorldPivot ~= nil then
-		properties.WorldPivot = cleanValue(node.WorldPivot)
-	end
-	if node.Size ~= nil then
-		properties.Size = cleanValue(node.Size)
-	end
-	if node.Color ~= nil then
-		properties.Color = cleanValue(node.Color)
-	end
-	if node.Material ~= nil then
-		properties.Material = node.Material
-	end
 	return {
 		class = node.ClassName,
 		name = node.Name,
 		guid = node.Guid,
-		properties = properties,
+		properties = cleanValue(rawget(node, "_properties")),
 	}
+end
+
+function Ovdr.serializeInstanceState(node)
+	if node.Destroyed then
+		return nil
+	end
+	return serializeInjectedNode(node)
 end
 
 local function serializeNode(node)
 	if node.Destroyed then
 		return nil
 	end
-	-- Injected (pre-existing scene) nodes pass through with their GUID + a
-	-- whitelisted property set, regardless of class. The unsupported-class error
-	-- below must never fire for them.
+	-- Injected scene nodes pass through with their GUID and generic property bag.
 	if node.Injected then
 		local result = serializeInjectedNode(node)
 		result.children = {}
@@ -841,27 +879,18 @@ local function serializeNode(node)
 		end
 		return result
 	end
-	local properties = {}
 	local className = node.ClassName
-	if node.ClassName == "Model" then
-		properties.WorldPivot = cleanValue(node.WorldPivot)
-	elseif node.ClassName == "Part" then
-		properties = applyPartOverrides({
-			Shape = node.Shape,
-			CFrame = cleanValue(node.CFrame),
-			Size = cleanValue(node.Size),
-			Color = cleanValue(node.Color),
-			Material = cleanMaterial(node.Material),
-		}, node)
-	elseif node.ClassName == "Primitive" then
+	local properties
+	if node.ClassName == "Primitive" then
 		className = "Part"
 		properties = primitiveProperties(node)
 	else
-		error("Unsupported OVDR procedural instance class: " .. tostring(node.ClassName))
+		properties = cleanValue(rawget(node, "_properties"))
 	end
 	local result = {
 		class = className,
 		name = node.Name,
+		localId = node.Id,
 		properties = cleanValue(properties),
 		children = {},
 	}

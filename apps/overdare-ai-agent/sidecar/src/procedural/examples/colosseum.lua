@@ -1,5 +1,4 @@
 --!strict
--- generationId: ad1c33ff-a538-40f3-a853-dc8609c21e5f
 local GP = require(script.Dependencies.GeometryPrimitives)
 local MU = require(script.Dependencies.MathUtils)
 
@@ -74,12 +73,12 @@ RomanColosseum.OnGenerate = function(parameters: Parameters, targetContainer: In
 		local wallS = getEllipsePt(a_out, b_out, theta1, smartHeight / 2)
 		local wallE = getEllipsePt(a_out, b_out, theta2, smartHeight / 2)
 
-		GP.boxBetween("WallSeg_"..i, wallS, wallE, wallThickness, smartHeight, stoneColor, "Sandstone", OuterWallGroup)
+		GP.boxBetween("WallSeg_"..i, wallS, wallE, wallThickness, smartHeight, stoneColor, "Rock", OuterWallGroup)
 
 		-- Engaged Columns (Pillars) at joints to hide seams and add detail
 		local pillarBase = getEllipsePt(a_out, b_out, theta1, 0)
 		local pillarTop = getEllipsePt(a_out, b_out, theta1, smartHeight)
-		GP.cylinder("Column_"..i, pillarBase, pillarTop, wallThickness * 0.6, trimColor, "Sandstone", OuterWallGroup)
+		GP.cylinder("Column_"..i, pillarBase, pillarTop, wallThickness * 0.6, trimColor, "Rock", OuterWallGroup)
 
 		-- Horizontal Cornices dividing the levels
 		for lvl = 2, 4 do
@@ -88,7 +87,7 @@ RomanColosseum.OnGenerate = function(parameters: Parameters, targetContainer: In
 			local cornE = getEllipsePt(a_out, b_out, theta2, cy)
 			-- Offset slightly outwards using the segment normal to avoid Z-fighting
 			local cNorm = (cornE - cornS).Unit:Cross(Vector3.yAxis).Unit
-			GP.boxBetween("Cornice_"..lvl.."_"..i, cornS + cNorm * 0.5, cornE + cNorm * 0.5, wallThickness + 1.5, 1.2, trimColor, "Sandstone", OuterWallGroup)
+			GP.boxBetween("Cornice_"..lvl.."_"..i, cornS + cNorm * 0.5, cornE + cNorm * 0.5, wallThickness + 1.5, 1.2, trimColor, "Rock", OuterWallGroup)
 		end
 
 		-- ==========================================
@@ -102,7 +101,7 @@ RomanColosseum.OnGenerate = function(parameters: Parameters, targetContainer: In
 		if not isGate then
 			local podT2 = getEllipsePt(a_in, b_in, theta2, podiumHeight)
 			local podT1 = getEllipsePt(a_in, b_in, theta1, podiumHeight)
-			GP.quad("PodiumWall_"..i, floorP1, floorP2, podT2, podT1, 1.5, nil, trimColor, "Sandstone", ArenaGroup)
+			GP.quad("PodiumWall_"..i, floorP1, floorP2, podT2, podT1, 1.5, nil, trimColor, "Rock", ArenaGroup)
 		end
 
 		-- ==========================================
@@ -132,10 +131,10 @@ RomanColosseum.OnGenerate = function(parameters: Parameters, targetContainer: In
 			if not isGate then
 				-- Riser (Vertical back of the step)
 				if t > 1 then
-					GP.quad("Riser_"..i.."_"..t, p1_in, p2_in, p2_mid, p1_mid, 1.2, nil, stoneColor, "Sandstone", SeatingGroup)
+					GP.quad("Riser_"..i.."_"..t, p1_in, p2_in, p2_mid, p1_mid, 1.2, nil, stoneColor, "Rock", SeatingGroup)
 				end
 				-- Seat (Horizontal part)
-				GP.quad("Seat_"..i.."_"..t, p1_mid, p2_mid, p2_out, p1_out, 1.2, nil, stoneColor, "Sandstone", SeatingGroup)
+				GP.quad("Seat_"..i.."_"..t, p1_mid, p2_mid, p2_out, p1_out, 1.2, nil, stoneColor, "Rock", SeatingGroup)
 			else
 				-- For Gates, construct a tunnel passage by building a flat floor and vertical side walls
 				if t == 1 then
@@ -149,11 +148,11 @@ RomanColosseum.OnGenerate = function(parameters: Parameters, targetContainer: In
 				-- Drop vertical side walls from the current tier's seat level down to the ground
 				local g1_mid = getEllipsePt(a1, b1, theta1, 0)
 				local g1_out = getEllipsePt(a2, b2, theta1, 0)
-				GP.quad("GateSideL_"..i.."_"..t, g1_mid, g1_out, p1_out, p1_mid, 1.5, nil, stoneColor, "Sandstone", SeatingGroup)
+				GP.quad("GateSideL_"..i.."_"..t, g1_mid, g1_out, p1_out, p1_mid, 1.5, nil, stoneColor, "Rock", SeatingGroup)
 
 				local g2_mid = getEllipsePt(a1, b1, theta2, 0)
 				local g2_out = getEllipsePt(a2, b2, theta2, 0)
-				GP.quad("GateSideR_"..i.."_"..t, g2_out, g2_mid, p2_mid, p2_out, 1.5, nil, stoneColor, "Sandstone", SeatingGroup)
+				GP.quad("GateSideR_"..i.."_"..t, g2_out, g2_mid, p2_mid, p2_out, 1.5, nil, stoneColor, "Rock", SeatingGroup)
 			end
 		end
 	end

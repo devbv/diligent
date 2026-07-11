@@ -1,5 +1,4 @@
 --!strict
--- generationId: demo-simple-house-001
 local GP = require(script.Dependencies.GeometryPrimitives)
 
 local SimpleHouse = {}

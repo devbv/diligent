@@ -64,6 +64,7 @@ local environment = {
 	Vector3 = Ovdr.Vector3,
 	Color3 = Ovdr.Color3,
 	CFrame = Ovdr.CFrame,
+	Instance = Ovdr.Instance,
 }
 
 local chunk = assert(loadstring(input.scriptSource, input.scriptName))
@@ -101,10 +102,10 @@ end
 local output = {
 	version = 1,
 	kind = "overdare.procedural-dummy-json",
-	generationId = input.generationId,
 	scriptName = input.scriptName,
 	parameters = input.parameters,
 	children = children,
+	sceneRoot = sceneRoot ~= nil and Ovdr.serializeInstanceState(sceneRoot) or nil,
 }
 
 print("__OVDR_PROCEDURAL_JSON__" .. Json.encode(output))

@@ -9,7 +9,7 @@ import {
   resolveLuauExecutable,
   runProceduralScript,
 } from "../../src/procedural";
-import { extractProceduralScriptMetadata } from "../../src/procedural/script-metadata";
+import { extractProceduralScriptName } from "../../src/procedural/script-metadata";
 import type {
   ProceduralGeneratedNode,
   ProceduralPartProperties,
@@ -17,17 +17,16 @@ import type {
 } from "../../src/procedural/types";
 
 const sampleScript = `--!strict
--- generationId: test-bunny-001
 local GP = require(script.Dependencies.GeometryPrimitives)
 
 local Bunny = {}
 
 Bunny.OnGenerate = function(parameters, targetContainer)
 	local model = GP.model("Bunny", nil)
-	GP.sphere("Body", Vector3.new(0, 2, 0), 2, Color3.fromRGB(245, 175, 185), "SmoothPlastic", model)
+	GP.sphere("Body", Vector3.new(0, 2, 0), 2, Color3.fromRGB(245, 175, 185), "Plastic", model)
 	GP.block("Pedestal", Vector3.new(0, 0, 0), Vector3.new(4, 1, 4), Color3.fromRGB(80, 80, 80), "Metal", model)
-	GP.cylinder("Tail", Vector3.new(0, 2, 2), 1, 0.5, Color3.new(1, 1, 1), "SmoothPlastic", model)
-	GP.taperedCylinder("DummyLeg", Vector3.new(0, 1, 0), Vector3.new(0, 0, 0), 1, 0.5, Color3.fromRGB(245, 175, 185), "SmoothPlastic", model)
+	GP.cylinder("Tail", Vector3.new(0, 2, 2), 1, 0.5, Color3.new(1, 1, 1), "Plastic", model)
+	GP.taperedCylinder("DummyLeg", Vector3.new(0, 1, 0), Vector3.new(0, 0, 0), 1, 0.5, Color3.fromRGB(245, 175, 185), "Plastic", model)
 	model.Parent = targetContainer
 end
 
@@ -42,7 +41,6 @@ const parameters = {
 const rabbitExampleScript = readFileSync(join(import.meta.dir, "../../src/procedural/examples/rabbit.lua"), "utf8");
 
 const vectorShimScript = `--!strict
--- generationId: vector-shim-001
 local GP = require(script.Dependencies.GeometryPrimitives)
 
 local VectorShim = {}
@@ -63,7 +61,6 @@ return VectorShim
 `;
 
 const quadPlaneScript = `--!strict
--- generationId: quad-plane-001
 local GP = require(script.Dependencies.GeometryPrimitives)
 
 local QuadPlane = {}
@@ -79,24 +76,24 @@ return QuadPlane
 `;
 
 const physicsPropertiesScript = `--!strict
--- generationId: physics-properties-001
 local GP = require(script.Dependencies.GeometryPrimitives)
 
 local PhysicsProperties = {}
 
 PhysicsProperties.OnGenerate = function(parameters, targetContainer)
 	local model = GP.model("PhysicsProperties", nil)
-	local blocker = GP.block("DecorativeMarker", Vector3.new(0, 0, 0), Vector3.new(1, 1, 1), Color3.fromRGB(255, 0, 0), "Neon", model)
+	local blocker = GP.block("DecorativeMarker", Vector3.new(0, 0, 0), Vector3.new(1, 1, 1), Color3.fromRGB(255, 0, 0), "Concrete", model)
 	blocker.CanCollide = false
 	blocker.CanQuery = false
 	blocker.CanTouch = false
 	blocker.Transparency = 0.35
 
-	local primitive = GP.cylinder("PrimitiveMarker", Vector3.new(0, 0, 0), Vector3.new(0, 2, 0), 0.5, Color3.fromRGB(0, 255, 0), "Neon", model)
+	local primitive = GP.cylinder("PrimitiveMarker", Vector3.new(0, 0, 0), Vector3.new(0, 2, 0), 0.5, Color3.fromRGB(0, 255, 0), "Sand", model)
 	primitive.CanCollide = false
 	primitive.CanQuery = false
 	primitive.CanTouch = false
 	primitive.CastShadow = false
+	primitive.Mobility = "Movable"
 	model.Parent = targetContainer
 end
 
@@ -104,7 +101,6 @@ return PhysicsProperties
 `;
 
 const yAxisCylinderScript = `--!strict
--- generationId: y-axis-cylinder-001
 local GP = require(script.Dependencies.GeometryPrimitives)
 
 local YAxisCylinder = {}
@@ -121,16 +117,16 @@ return YAxisCylinder
 `;
 
 const capsuleApproximationScript = `--!strict
--- generationId: capsule-approximation-001
 local GP = require(script.Dependencies.GeometryPrimitives)
 
 local CapsuleApproximation = {}
 
 CapsuleApproximation.OnGenerate = function(parameters, targetContainer)
 	local model = GP.model("CapsuleApproximation", nil)
-	GP.capsule("EqualCapsule", Vector3.new(0, 0, 0), 2, Vector3.new(0, 10, 0), 2, Color3.fromRGB(200, 200, 200), "Fabric", model)
-	GP.capsule("WideStartCapsule", Vector3.new(0, 0, 0), 3, Vector3.new(0, 10, 0), 1, Color3.fromRGB(200, 200, 200), "Fabric", model)
-	GP.capsule("WideEndCapsule", Vector3.new(0, 0, 0), 1, Vector3.new(0, 10, 0), 3, Color3.fromRGB(200, 200, 200), "Fabric", model)
+	local equalCapsule = GP.capsule("EqualCapsule", Vector3.new(0, 0, 0), 2, Vector3.new(0, 10, 0), 2, Color3.fromRGB(200, 200, 200), "FabricWeave", model)
+	equalCapsule.Mobility = "Movable"
+	GP.capsule("WideStartCapsule", Vector3.new(0, 0, 0), 3, Vector3.new(0, 10, 0), 1, Color3.fromRGB(200, 200, 200), "FabricWeave", model)
+	GP.capsule("WideEndCapsule", Vector3.new(0, 0, 0), 1, Vector3.new(0, 10, 0), 3, Color3.fromRGB(200, 200, 200), "FabricWeave", model)
 	model.Parent = targetContainer
 end
 
@@ -138,7 +134,6 @@ return CapsuleApproximation
 `;
 
 const miniColosseumScript = `--!strict
--- generationId: mini-colosseum-001
 local GP = require(script.Dependencies.GeometryPrimitives)
 
 local MiniColosseum = {}
@@ -165,15 +160,15 @@ MiniColosseum.OnGenerate = function(parameters, targetContainer)
 	local wallS = ellipse(theta1, parameters.Size.Y / 2)
 	local wallE = ellipse(theta2, parameters.Size.Y / 2)
 	-- OVERDARE has no CSG, so the wall is a solid segment (no carved arch).
-	GP.boxBetween("WallSeg_0", wallS, wallE, wallThickness, parameters.Size.Y, stoneColor, "Sandstone", wallGroup)
+	GP.boxBetween("WallSeg_0", wallS, wallE, wallThickness, parameters.Size.Y, stoneColor, "Rock", wallGroup)
 
 	-- Scratch part built in a temp container and destroyed before serialization.
 	local scratch = GP.block("Scratch_0", Vector3.new(0, 0, 0), Vector3.new(1, 1, 1), Color3.new(1, 0, 0), "Plastic", temp)
 	scratch:Destroy()
 
-	GP.cylinder("Column_0", ellipse(theta1, 0), ellipse(theta1, parameters.Size.Y), wallThickness * 0.6, trimColor, "Sandstone", wallGroup)
+	GP.cylinder("Column_0", ellipse(theta1, 0), ellipse(theta1, parameters.Size.Y), wallThickness * 0.6, trimColor, "Rock", wallGroup)
 	GP.triangle("ArenaSand_0", Vector3.new(0, 0, 0), ellipse(theta1, 0), ellipse(theta2, 0), 1, Vector3.yAxis, stoneColor, "Sand", colosseum)
-	GP.quad("Seat_0_1", ellipse(theta1, 1), ellipse(theta2, 1), ellipse(theta2, 2), ellipse(theta1, 2), 1, nil, stoneColor, "Sandstone", colosseum)
+	GP.quad("Seat_0_1", ellipse(theta1, 1), ellipse(theta2, 1), ellipse(theta2, 2), ellipse(theta1, 2), 1, nil, stoneColor, "Rock", colosseum)
 
 	temp:Destroy()
 	colosseum.Parent = targetContainer
@@ -193,7 +188,6 @@ return MiniColosseum
 `;
 
 const mathUtilsScript = `--!strict
--- generationId: math-utils-001
 local GP = require(script.Dependencies.GeometryPrimitives)
 local MU = require(script.Dependencies.MathUtils)
 
@@ -226,7 +220,6 @@ return MathUtilsDemo
 `;
 
 const p0GeometryMathScript = `--!strict
--- generationId: p0-geometry-math-001
 local GP = require(script.Dependencies.GeometryPrimitives)
 local MU = require(script.Dependencies.MathUtils)
 
@@ -329,8 +322,198 @@ end
 return P0GeometryMath
 `;
 
+const p1GeometryMathScript = `--!strict
+local GP = require(script.Dependencies.GeometryPrimitives)
+local MU = require(script.Dependencies.MathUtils)
+
+local P1GeometryMath = {}
+
+local function near(actual, expected)
+	return math.abs(actual - expected) < 0.000001
+end
+
+local function assertVector(actual, expected, label)
+	if not near(actual.X, expected.X) or not near(actual.Y, expected.Y) or not near(actual.Z, expected.Z) then
+		error(label .. " did not match")
+	end
+end
+
+local function assertRejects(callback, label)
+	local ok = pcall(callback)
+	if ok then
+		error(label .. " should reject invalid input")
+	end
+end
+
+P1GeometryMath.OnGenerate = function(parameters, targetContainer)
+	local grid = MU.pointsOnGrid(
+		Vector3.new(1, 2, 3),
+		2,
+		3,
+		Vector3.new(10, 0, 0),
+		Vector3.new(0, 0, -5)
+	)
+	if #grid ~= 6 then error("pointsOnGrid count mismatch") end
+	assertVector(grid[1], Vector3.new(1, 2, 3), "grid origin")
+	assertVector(grid[2], Vector3.new(11, 2, 3), "grid column order")
+	assertVector(grid[3], Vector3.new(1, 2, -2), "grid row order")
+	assertVector(grid[6], Vector3.new(11, 2, -7), "grid final point")
+	local minimumGrid = MU.pointsOnGrid(Vector3.zero, 1, 1, Vector3.xAxis, Vector3.zAxis)
+	if #minimumGrid ~= 1 then error("minimum pointsOnGrid count mismatch") end
+
+	local helix = MU.pointsOnHelix(Vector3.zero, 2, 10, 1, 5, Vector3.yAxis)
+	if #helix ~= 5 then error("pointsOnHelix count mismatch") end
+	assertVector(helix[1], Vector3.new(2, -5, 0), "helix start")
+	assertVector(helix[3], Vector3.new(-2, 0, 0), "helix midpoint")
+	assertVector(helix[5], Vector3.new(2, 5, 0), "helix end")
+	local mirroredHelix = MU.pointsOnHelix(Vector3.zero, 2, -10, -1, 5, -Vector3.yAxis)
+	if #mirroredHelix ~= 5 then error("signed mirrored helix count mismatch") end
+	local minimumHelix = MU.pointsOnHelix(Vector3.zero, 2, 1, 0.5, 2, Vector3.zAxis)
+	if #minimumHelix ~= 2 then error("minimum pointsOnHelix count mismatch") end
+
+	assertRejects(function() MU.pointsOnGrid(Vector3.zero, 0, 1, Vector3.xAxis, Vector3.zAxis) end, "zero grid columns")
+	assertRejects(function() MU.pointsOnGrid(Vector3.zero, 1.5, 1, Vector3.xAxis, Vector3.zAxis) end, "fractional grid columns")
+	assertRejects(function() MU.pointsOnGrid(Vector3.zero, 200, 101, Vector3.xAxis, Vector3.zAxis) end, "excessive grid points")
+	assertRejects(function() MU.pointsOnGrid(Vector3.zero, 1, 1, Vector3.zero, Vector3.zAxis) end, "zero column step")
+	assertRejects(function() MU.pointsOnHelix(Vector3.zero, 1, 1, 1, 1, Vector3.yAxis) end, "helix count")
+	assertRejects(function() MU.pointsOnHelix(Vector3.zero, 1, 1, 1, 20001, Vector3.yAxis) end, "excessive helix count")
+	assertRejects(function() MU.pointsOnHelix(Vector3.zero, 0, 1, 1, 2, Vector3.yAxis) end, "zero helix radius")
+	assertRejects(function() MU.pointsOnHelix(Vector3.zero, 1, 0, 1, 2, Vector3.yAxis) end, "zero helix height")
+	assertRejects(function() MU.pointsOnHelix(Vector3.zero, 1, 1, 0, 2, Vector3.yAxis) end, "zero helix turns")
+	assertRejects(function() MU.pointsOnHelix(Vector3.zero, 1, 1, 1, 2, Vector3.zero) end, "zero helix axis")
+
+	local tooManyPoints = {}
+	for index = 1, 5001 do
+		table.insert(tooManyPoints, Vector3.new(index, 0, 0))
+	end
+	assertRejects(function() GP.polyline("TooLarge", tooManyPoints, 1, nil) end, "polyline segment limit")
+	assertRejects(function() GP.polyline("Bad", { Vector3.zero }, 1, nil) end, "polyline point count")
+	assertRejects(function() GP.polyline("Bad", { Vector3.zero, Vector3.xAxis }, 0, nil) end, "polyline thickness")
+	assertRejects(function() GP.polyline("Bad", { Vector3.zero, Vector3.xAxis }, 1, { segmentShape = "Ball" }) end, "polyline shape")
+	assertRejects(function() GP.polyline("Bad", { Vector3.zero, Vector3.xAxis }, 1, { closed = true }) end, "closed polyline point count")
+	assertRejects(function() GP.polyline("Bad", { Vector3.zero, Vector3.xAxis }, 1, { segments = 3 }) end, "polyline unknown option")
+	assertRejects(function() GP.arc("Bad", Vector3.zero, 1, 0, math.pi, nil) end, "arc options")
+	assertRejects(function() GP.arc("Bad", Vector3.zero, 1, 0, math.pi, { segments = 1, axis = Vector3.yAxis }) end, "arc thickness option")
+	assertRejects(function() GP.arc("Bad", Vector3.zero, 1, 0, math.pi, { thickness = 1, axis = Vector3.yAxis }) end, "arc segments option")
+	assertRejects(function() GP.arc("Bad", Vector3.zero, 1, 0, math.pi, { thickness = 1, segments = 1 }) end, "arc axis option")
+	assertRejects(function() GP.arc("Bad", Vector3.zero, 1, 0, math.pi, { thickness = 1, segments = 0, axis = Vector3.yAxis }) end, "arc segment count")
+	assertRejects(function() GP.arc("Bad", Vector3.zero, 1, 0, math.pi, { thickness = 1, segments = 5000, axis = Vector3.yAxis }) end, "arc segment limit")
+	assertRejects(function() GP.arc("Bad", Vector3.zero, 1, 0, math.pi * 2, { thickness = 1, segments = 1, axis = Vector3.yAxis }) end, "degenerate arc sampling")
+	assertRejects(function() GP.ring("Bad", Vector3.zero, 1, { thickness = 1, segments = 2, axis = Vector3.yAxis }) end, "ring segment count")
+	assertRejects(function() GP.ring("Bad", Vector3.zero, 0.0000001, { thickness = 1, segments = 3, axis = Vector3.yAxis }) end, "degenerate ring sampling")
+	local minimumPolyline = GP.polyline("MinimumPolyline", { Vector3.zero, Vector3.xAxis }, 1, nil)
+	if #minimumPolyline.Children ~= 1 then error("minimum polyline segment count mismatch") end
+	local minimumArc = GP.arc("MinimumArc", Vector3.zero, 1, 0, math.pi / 2, {
+		thickness = 1, segments = 1, axis = Vector3.yAxis,
+	})
+	if #minimumArc.Children ~= 1 then error("minimum arc segment count mismatch") end
+
+	local root = GP.model("P1Geometry", nil)
+	GP.polyline("Route", {
+		Vector3.zero,
+		Vector3.new(10, 0, 0),
+		Vector3.new(10, 0, 0),
+		Vector3.new(10, 0, 10),
+	}, 2, {
+		color = Color3.fromRGB(10, 20, 30), material = "Metal", parent = root,
+		canCollide = false,
+	})
+	GP.polyline("Triangle", {
+		Vector3.new(0, 0, 0),
+		Vector3.new(4, 0, 0),
+		Vector3.new(0, 3, 0),
+	}, 1, {
+		segmentShape = "Block", closed = true, parent = root, castShadow = false,
+	})
+	GP.arc("Arch", Vector3.zero, 4, 0, math.pi, {
+		thickness = 1, segments = 2, axis = Vector3.yAxis, parent = root,
+	})
+	GP.ring("Ring", Vector3.zero, 3, {
+		thickness = 1, segments = 3, axis = -Vector3.zAxis,
+		segmentShape = "Block", parent = root,
+	})
+	root.Parent = targetContainer
+end
+
+return P1GeometryMath
+`;
+
+const seededRandomScript = `--!strict
+-- generationId: seeded-random-001
+local GP = require(script.Dependencies.GeometryPrimitives)
+local MU = require(script.Dependencies.MathUtils)
+
+local SeededRandom = {}
+
+local function assertRejects(callback, label)
+	local ok = pcall(callback)
+	if ok then
+		error(label .. " should reject invalid input")
+	end
+end
+
+SeededRandom.OnGenerate = function(parameters, targetContainer)
+	local terrainSeed = MU.deriveSeed(12345, "terrain")
+	local propsSeed = MU.deriveSeed(12345, "props")
+	if terrainSeed ~= 1297138559 or propsSeed ~= 1493243482 then
+		error("derived seed regression")
+	end
+	if terrainSeed == propsSeed or terrainSeed ~= MU.deriveSeed(12345, "terrain") then
+		error("derived seeds are not deterministic and scoped")
+	end
+
+	local terrainRng = MU.random(terrainSeed)
+	local replayRng = MU.random(terrainSeed)
+	local model = GP.model("SeededRandom", nil)
+	for index = 1, 4 do
+		local x = terrainRng:nextInteger(-10, 10)
+		local z = terrainRng:nextInteger(-10, 10)
+		if x ~= replayRng:nextInteger(-10, 10) or z ~= replayRng:nextInteger(-10, 10) then
+			error("same seed did not replay the same sequence")
+		end
+		GP.sphere("Sample_" .. index, Vector3.new(x, 0, z), 1, Color3.fromRGB(255, 255, 255), "Plastic", model)
+	end
+
+	local numberRng = MU.random(7)
+	local sampledNumber = numberRng:nextNumber(-2.5, 4.5)
+	if sampledNumber < -2.5 or sampledNumber >= 4.5 then
+		error("nextNumber left its half-open range")
+	end
+
+	local choiceRng = MU.random(42)
+	if choiceRng:choice({ "A", "B", "C" }) ~= "C" then
+		error("choice regression")
+	end
+	local original = { 1, 2, 3, 4, 5 }
+	local shuffled = MU.random(42):shuffle(original)
+	if original[1] ~= 1 or original[2] ~= 2 or original[3] ~= 3 or original[4] ~= 4 or original[5] ~= 5 then
+		error("shuffle mutated its input")
+	end
+	if shuffled[1] ~= 4 or shuffled[2] ~= 1 or shuffled[3] ~= 5 or shuffled[4] ~= 3 or shuffled[5] ~= 2 then
+		error("shuffle regression")
+	end
+
+	assertRejects(function() MU.random(nil) end, "missing seed")
+	assertRejects(function() MU.random(1.5) end, "fractional seed")
+	assertRejects(function() MU.random(9007199254740992) end, "unsafe seed")
+	assertRejects(function() MU.deriveSeed(1, "") end, "empty seed scope")
+	assertRejects(function() MU.deriveSeed(1, 2) end, "non-string seed scope")
+	assertRejects(function() MU.random(1):nextNumber(2, 2) end, "empty number range")
+	assertRejects(function() MU.random(1):nextNumber(-math.huge, 2) end, "non-finite number range")
+	assertRejects(function() MU.random(1):nextInteger(1.5, 2) end, "fractional integer range")
+	assertRejects(function() MU.random(1):nextInteger(2, 1) end, "reversed integer range")
+	assertRejects(function() MU.random(1):nextInteger(0, 2147483646) end, "oversized integer range")
+	assertRejects(function() MU.random(1):choice({}) end, "empty choice")
+	assertRejects(function() MU.random(1):choice({ [1] = "A", extra = "B" }) end, "non-array choice")
+	assertRejects(function() MU.random(1):shuffle({ [1] = "A", [3] = "C" }) end, "sparse shuffle")
+
+	model.Parent = targetContainer
+end
+
+return SeededRandom
+`;
+
 const invalidGeometryOptionsScript = `--!strict
--- generationId: invalid-geometry-options-001
 local GP = require(script.Dependencies.GeometryPrimitives)
 
 local InvalidGeometryOptions = {}
@@ -391,11 +574,8 @@ describe("procedural Luau dummy JSON runtime", () => {
     expect(DEFAULT_PROCEDURAL_LIMITS.maxNodes).toBe(5_000);
   });
 
-  test("extracts generation metadata from Luau source", () => {
-    expect(extractProceduralScriptMetadata(sampleScript)).toEqual({
-      generationId: "test-bunny-001",
-      scriptName: "Bunny",
-    });
+  test("extracts the script name from Luau source", () => {
+    expect(extractProceduralScriptName(sampleScript)).toBe("Bunny");
   });
 
   test("fails clearly when explicit Luau executable is unavailable", async () => {
@@ -415,7 +595,7 @@ describe("procedural Luau dummy JSON runtime", () => {
 
     expect(first).toEqual(second);
     expect(first.kind).toBe("overdare.procedural-dummy-json");
-    expect(first.generationId).toBe("test-bunny-001");
+    expect(first).not.toHaveProperty("generationId");
     expect(first.scriptName).toBe("Bunny");
     expect(flattenNodeNames(first.children)).toEqual([
       "Model:Bunny",
@@ -427,6 +607,7 @@ describe("procedural Luau dummy JSON runtime", () => {
     expect(first.children[0]).toEqual({
       class: "Model",
       name: "Bunny",
+      localId: expect.any(String),
       properties: { WorldPivot: { Position: { X: 0, Y: 0, Z: 0 }, Orientation: { X: 0, Y: 0, Z: 0 } } },
       children: expect.any(Array),
     });
@@ -477,7 +658,6 @@ describe("procedural Luau dummy JSON runtime", () => {
   test("exposes MathUtils interpolation and layout helpers through Luau", async () => {
     const result = await generateProceduralDummyJson({ scriptSource: mathUtilsScript, parameters });
 
-    expect(result.generationId).toBe("math-utils-001");
     expect(flattenNodeNames(result.children)).toEqual([
       "Model:MathUtilsDemo",
       "  Part:Mid",
@@ -547,6 +727,79 @@ describe("procedural Luau dummy JSON runtime", () => {
     });
   });
 
+  test("supports P1 composite geometry and repeated-layout helpers", async () => {
+    const result = await generateProceduralDummyJson({ scriptSource: p1GeometryMathScript, parameters });
+
+    expect(flattenNodeNames(result.children)).toEqual([
+      "Model:P1Geometry",
+      "  Model:Route",
+      "    Part:Route_1",
+      "    Part:Route_2",
+      "  Model:Triangle",
+      "    Part:Triangle_1",
+      "    Part:Triangle_2",
+      "    Part:Triangle_3",
+      "  Model:Arch",
+      "    Part:Arch_1",
+      "    Part:Arch_2",
+      "  Model:Ring",
+      "    Part:Ring_1",
+      "    Part:Ring_2",
+      "    Part:Ring_3",
+    ]);
+    expect(expectPartProperties(findNodeByName(result.children, "Route_1"), "Route_1")).toMatchObject({
+      Shape: "Cylinder",
+      CFrame: { Position: { X: 5, Y: 0, Z: 0 }, Orientation: { X: 0, Y: 0, Z: -90 } },
+      Size: { X: 2, Y: 10, Z: 2 },
+      Color: { R: 10, G: 20, B: 30 },
+      Material: "Metal",
+      CanCollide: false,
+    });
+    expect(expectPartProperties(findNodeByName(result.children, "Route_2"), "Route_2")).toMatchObject({
+      Shape: "Cylinder",
+      CFrame: { Position: { X: 10, Y: 0, Z: 5 }, Orientation: { X: 90, Y: 0, Z: 0 } },
+      Size: { X: 2, Y: 10, Z: 2 },
+    });
+    expect(expectPartProperties(findNodeByName(result.children, "Triangle_1"), "Triangle_1")).toMatchObject({
+      Shape: "Block",
+      Size: { X: 4, Y: 1, Z: 1 },
+      CastShadow: false,
+    });
+    expect(expectPartProperties(findNodeByName(result.children, "Arch_1"), "Arch_1")).toMatchObject({
+      Shape: "Cylinder",
+      CFrame: { Position: { X: 2, Y: 0, Z: -2 } },
+      Size: { X: 1, Y: 5.65685424949238, Z: 1 },
+    });
+    expect(expectPartProperties(findNodeByName(result.children, "Ring_1"), "Ring_1")).toMatchObject({
+      Shape: "Block",
+      Size: { X: 5.196152422706631, Y: 1, Z: 1 },
+    });
+  });
+
+  test("provides deterministic, scoped random streams for map authoring", async () => {
+    const first = await generateProceduralDummyJson({ scriptSource: seededRandomScript, parameters });
+    const second = await generateProceduralDummyJson({ scriptSource: seededRandomScript, parameters });
+
+    expect(first).toEqual(second);
+    expect(flattenNodeNames(first.children)).toEqual([
+      "Model:SeededRandom",
+      "  Part:Sample_1",
+      "  Part:Sample_2",
+      "  Part:Sample_3",
+      "  Part:Sample_4",
+    ]);
+    expect(
+      ["Sample_1", "Sample_2", "Sample_3", "Sample_4"].map(
+        (name) => expectPartProperties(findNodeByName(first.children, name), name).CFrame?.Position,
+      ),
+    ).toEqual([
+      { X: -8, Y: 0, Z: 9 },
+      { X: 3, Y: 0, Z: 1 },
+      { X: -4, Y: 0, Z: -8 },
+      { X: 4, Y: 0, Z: 9 },
+    ]);
+  });
+
   test("rejects unknown geometry options with a casing correction", async () => {
     await expect(
       generateProceduralDummyJson({ scriptSource: invalidGeometryOptionsScript, parameters }),
@@ -587,6 +840,7 @@ describe("procedural Luau dummy JSON runtime", () => {
         CanQuery: false,
         CanTouch: false,
         Transparency: 0.35,
+        Material: "Concrete",
       },
     });
     expect(findNodeByName(result.children, "PrimitiveMarker")).toMatchObject({
@@ -596,6 +850,8 @@ describe("procedural Luau dummy JSON runtime", () => {
         CanQuery: false,
         CanTouch: false,
         CastShadow: false,
+        Material: "Sand",
+        Mobility: "Movable",
       },
     });
   });
@@ -645,28 +901,28 @@ describe("procedural Luau dummy JSON runtime", () => {
       Shape: "Cylinder",
       CFrame: { Position: { X: 0, Y: 5, Z: 0 }, Orientation: { X: 0, Y: 0, Z: 0 } },
       Size: { X: 4, Y: 14, Z: 4 },
-      Material: "Plastic",
+      Material: "FabricWeave",
+      Mobility: "Movable",
     });
     expect(expectPartProperties(findNodeByName(result.children, "WideStartCapsule"), "WideStartCapsule")).toMatchObject(
       {
         Shape: "Cylinder",
         CFrame: { Position: { X: 0, Y: 4, Z: 0 }, Orientation: { X: 0, Y: 0, Z: 0 } },
         Size: { X: 6, Y: 14, Z: 6 },
-        Material: "Plastic",
+        Material: "FabricWeave",
       },
     );
     expect(expectPartProperties(findNodeByName(result.children, "WideEndCapsule"), "WideEndCapsule")).toMatchObject({
       Shape: "Cylinder",
       CFrame: { Position: { X: 0, Y: 6, Z: 0 }, Orientation: { X: 0, Y: 0, Z: 0 } },
       Size: { X: 6, Y: 14, Z: 6 },
-      Material: "Plastic",
+      Material: "FabricWeave",
     });
   });
 
   test("runs the rabbit example with capsule primitives", async () => {
     const result = await generateProceduralDummyJson({ scriptSource: rabbitExampleScript, parameters });
 
-    expect(result.generationId).toBe("2456eb64-ed78-47ea-9410-9fd34fa25c6f");
     expect(flattenNodeNames(result.children)).toContain("Model:Rabbit");
     expect(flattenNodeNames(result.children)).toEqual(
       expect.arrayContaining([
@@ -693,7 +949,7 @@ describe("procedural Luau dummy JSON runtime", () => {
       properties: {
         Shape: "Cylinder",
         Anchored: true,
-        Material: "Plastic",
+        Material: "FabricWeave",
       },
     });
   });
@@ -754,7 +1010,7 @@ describe("procedural Luau dummy JSON runtime", () => {
       properties: {
         Shape: "Block",
         CFrame: { Orientation: { X: 0, Y: 0, Z: 0 } },
-        Material: "Ground",
+        Material: "Sand",
       },
     });
     expect(miniColosseum?.children?.[2]).toMatchObject({
@@ -777,7 +1033,6 @@ describe("procedural Luau dummy JSON runtime", () => {
   test("transports inline scripts larger than the former 512 KiB argv cap", async () => {
     const largeInlineScript = `${sampleScript}\n-- ]] ]=] ]==] ]===]${"x".repeat(520 * 1024)}`;
     const result = await generateProceduralDummyJson({ scriptSource: largeInlineScript, parameters });
-    expect(result.generationId).toBe("test-bunny-001");
     expect(result.children).toHaveLength(1);
   }, 30_000);
 
@@ -785,7 +1040,7 @@ describe("procedural Luau dummy JSON runtime", () => {
     const results = await Promise.all(
       Array.from({ length: 3 }, () => generateProceduralDummyJson({ scriptSource: sampleScript, parameters })),
     );
-    expect(results.every((result) => result.generationId === "test-bunny-001")).toBe(true);
+    expect(results).toHaveLength(3);
   });
 
   test("rejects output exceeding the max node count", async () => {
@@ -795,8 +1050,7 @@ describe("procedural Luau dummy JSON runtime", () => {
   });
 
   test("kills a runaway script once the timeout elapses", async () => {
-    const infiniteLoopScript = `-- generationId: infinite-001
-local Spin = {}
+    const infiniteLoopScript = `local Spin = {}
 Spin.OnGenerate = function(parameters, targetContainer)
 	while true do end
 end
@@ -810,13 +1064,11 @@ return Spin
   test("round-trips the large colosseum example through temporary-file transport", async () => {
     const colosseumScript = readFileSync(join(import.meta.dir, "../../src/procedural/examples/colosseum.lua"), "utf8");
     const result = await generateProceduralDummyJson({ scriptSource: colosseumScript, parameters });
-    expect(result.generationId).toBe("ad1c33ff-a538-40f3-a853-dc8609c21e5f");
     expect(result.children.length).toBeGreaterThan(0);
   });
 });
 
-const shiftTransformScript = `-- generationId: shift-x-001
-local Shift = {}
+const shiftTransformScript = `local Shift = {}
 Shift.OnGenerate = function(parameters, targetContainer)
 	for _, inst in workspace:GetDescendants() do
 		if inst:IsA("BasePart") then
@@ -856,27 +1108,189 @@ describe("runProceduralScript transform via scene injection", () => {
       targetGuid: "W",
     });
 
-    expect(result.generationId).toBe("shift-x-001");
     const update = result.ops.find((op) => op.kind === "update");
     expect(update).toMatchObject({ kind: "update", guid: "gKeep", properties: { CFrame: { Position: { X: 1 } } } });
     expect(result.ops).toContainEqual({ kind: "delete", guid: "gDoomed", depth: 1 });
     const add = result.ops.find((op) => op.kind === "add");
     expect(add).toMatchObject({
       kind: "add",
-      parentGuid: "W",
-      node: { class: "Part", name: "Added", properties: { Shape: "Ball" } },
+      localId: expect.any(String),
+      parent: { kind: "existing", guid: "W" },
+      class: "Part",
+      name: "Added",
+      properties: { Shape: "Ball" },
     });
   });
 
   test("generate-only run (no scene) produces add ops with the target as parent", async () => {
     const result = await runProceduralScript({ scriptSource: sampleScript, parameters, targetGuid: "TARGET" });
     expect(result.ops.every((op) => op.kind === "add")).toBe(true);
-    expect(result.ops[0]).toMatchObject({ kind: "add", parentGuid: "TARGET", node: { class: "Model", name: "Bunny" } });
+    expect(result.ops[0]).toMatchObject({
+      kind: "add",
+      localId: expect.any(String),
+      parent: { kind: "existing", guid: "TARGET" },
+      class: "Model",
+      name: "Bunny",
+    });
+    const localIds = result.ops.flatMap((op) => (op.kind === "add" ? [op.localId] : []));
+    expect(new Set(localIds).size).toBe(localIds.length);
+  });
+
+  test("creates any upsert-supported class through the generic Instance API", async () => {
+    const script = `local Generic = {}
+Generic.OnGenerate = function(parameters, targetContainer)
+	local light = Instance.new("PointLight")
+	light.Name = "HallLight"
+	light.Brightness = 125
+	light.Range = 900
+	light.Color = Color3.fromRGB(255, 210, 170)
+	light.Parent = targetContainer
+end
+return Generic
+`;
+
+    const result = await runProceduralScript({ scriptSource: script, parameters, targetGuid: "TARGET" });
+
+    expect(result.ops).toContainEqual(
+      expect.objectContaining({
+        kind: "add",
+        localId: expect.any(String),
+        parent: { kind: "existing", guid: "TARGET" },
+        class: "PointLight",
+        name: "HallLight",
+        properties: {
+          Brightness: 125,
+          Range: 900,
+          Color: { R: 255, G: 210, B: 170 },
+        },
+      }),
+    );
+  });
+
+  test("diffs updates for properties outside the former procedural whitelist", async () => {
+    const script = `local Generic = {}
+Generic.OnGenerate = function(parameters, targetContainer)
+	workspace:FindFirstChild("Keep").Transparency = 0.5
+end
+return Generic
+`;
+    const scene = transformScene();
+    scene.children[0].properties.Transparency = 0;
+
+    const result = await runProceduralScript({ scriptSource: script, parameters, scene, targetGuid: "W" });
+
+    expect(result.ops).toContainEqual({
+      kind: "update",
+      guid: "gKeep",
+      class: "Part",
+      properties: { Transparency: 0.5 },
+    });
+  });
+
+  test("diffs canonical property updates on the injected target root", async () => {
+    const script = `local Generic = {}
+Generic.OnGenerate = function(parameters, targetContainer)
+	workspace.Gravity = 750
+end
+return Generic
+`;
+    const scene = transformScene();
+    scene.properties.Gravity = 980;
+
+    const result = await runProceduralScript({ scriptSource: script, parameters, scene, targetGuid: "W" });
+
+    expect(result.ops).toContainEqual({
+      kind: "update",
+      guid: "W",
+      class: "Workspace",
+      properties: { Gravity: 750 },
+    });
+  });
+
+  test("keeps only the final reparent when an existing node is moved twice", async () => {
+    const script = `local Reparent = {}
+Reparent.OnGenerate = function(parameters, targetContainer)
+	local existing = workspace:FindFirstChild("Keep")
+	local first = Instance.new("Folder")
+	first.Name = "First"
+	first.Parent = workspace
+	local final = Instance.new("Folder")
+	final.Name = "Final"
+	final.Parent = workspace
+	existing.Parent = first
+	existing.Parent = final
+end
+return Reparent
+`;
+
+    const result = await runProceduralScript({
+      scriptSource: script,
+      parameters,
+      scene: transformScene(),
+      targetGuid: "W",
+    });
+    const moves = result.ops.filter((op) => op.kind === "move");
+    const finalAdd = result.ops.find((op) => op.kind === "add" && op.name === "Final");
+    expect(moves).toHaveLength(1);
+    expect(moves[0]).toEqual({
+      kind: "move",
+      guid: "gKeep",
+      parent: { kind: "generated", localId: finalAdd?.kind === "add" ? finalAdd.localId : "missing" },
+    });
+  });
+
+  test("emits delete rather than move when a moved existing node is destroyed", async () => {
+    const script = `local Remove = {}
+Remove.OnGenerate = function(parameters, targetContainer)
+	local keep = workspace:FindFirstChild("Keep")
+	local doomed = workspace:FindFirstChild("Doomed")
+	doomed.Parent = keep
+	doomed:Destroy()
+end
+return Remove
+`;
+
+    const result = await runProceduralScript({
+      scriptSource: script,
+      parameters,
+      scene: transformScene(),
+      targetGuid: "W",
+    });
+    expect(result.ops.filter((op) => op.kind === "move")).toEqual([]);
+    expect(result.ops).toEqual([{ kind: "delete", guid: "gDoomed", depth: 1 }]);
+  });
+
+  test("rejects mixed existing/generated hierarchy cycles in the Luau mock tree", async () => {
+    const script = `local Cycle = {}
+Cycle.OnGenerate = function(parameters, targetContainer)
+	local existing = workspace:FindFirstChild("Keep")
+	local folder = Instance.new("Folder")
+	folder.Parent = existing
+	existing.Parent = folder
+end
+return Cycle
+`;
+
+    await expect(
+      runProceduralScript({ scriptSource: script, parameters, scene: transformScene(), targetGuid: "W" }),
+    ).rejects.toThrow(/hierarchy cycle/i);
+  });
+
+  test("rejects destroying the protected injected target root", async () => {
+    const script = `local DestroyRoot = {}
+DestroyRoot.OnGenerate = function(parameters, targetContainer)
+	workspace:Destroy()
+end
+return DestroyRoot
+`;
+
+    await expect(
+      runProceduralScript({ scriptSource: script, parameters, scene: transformScene(), targetGuid: "W" }),
+    ).rejects.toThrow(/protected.*root/i);
   });
 
   test("accepts a whole-workspace snapshot larger than the former argv cap", async () => {
-    const noOpScript = `-- generationId: whole-workspace-001
-local NoOp = {}
+    const noOpScript = `local NoOp = {}
 NoOp.OnGenerate = function(parameters, targetContainer) end
 return NoOp
 `;
@@ -908,7 +1322,7 @@ return NoOp
     expect(result.nodeCount).toBe(0);
   });
 
-  test("auto-generates a generationId for one-shot scripts lacking the comment", async () => {
+  test("runs scripts without identity metadata", async () => {
     const noIdScript = `local Anon = {}
 Anon.OnGenerate = function(parameters, targetContainer)
 	local GP = require(script.Dependencies.GeometryPrimitives)
@@ -916,8 +1330,11 @@ Anon.OnGenerate = function(parameters, targetContainer)
 end
 return Anon
 `;
-    await expect(runProceduralScript({ scriptSource: noIdScript, parameters })).rejects.toThrow(/generationId/);
-    const result = await runProceduralScript({ scriptSource: noIdScript, parameters, autoGenerationId: true });
-    expect(result.generationId).toMatch(/[0-9a-f-]{36}/);
+    const result = await runProceduralScript({
+      scriptSource: noIdScript,
+      parameters,
+      targetGuid: "TARGET",
+    });
+    expect(result.ops).toHaveLength(1);
   });
 });

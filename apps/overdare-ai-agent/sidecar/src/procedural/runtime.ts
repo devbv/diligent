@@ -14,7 +14,7 @@ import {
   spawnLuauCaptured,
 } from "./limits";
 import { deriveProceduralOps } from "./ops";
-import { extractProceduralScriptMetadata } from "./script-metadata";
+import { extractProceduralScriptName } from "./script-metadata";
 import type {
   ProceduralDummyJson,
   ProceduralGeneratedNode,
@@ -25,58 +25,22 @@ import type {
 } from "./types";
 
 const vector3Schema = z.object({ X: z.number(), Y: z.number(), Z: z.number() }).strict();
-const color3Schema = z.object({ R: z.number(), G: z.number(), B: z.number() }).strict();
-const cframeSchema = z.object({ Position: vector3Schema, Orientation: vector3Schema }).strict();
-const modelPropertiesSchema = z.object({ WorldPivot: cframeSchema.optional() }).strict();
-const partPropertiesSchema = z
-  .object({
-    Shape: z.enum(["Block", "Ball", "Cylinder"]).optional(),
-    CFrame: cframeSchema.optional(),
-    Size: vector3Schema.optional(),
-    Anchored: z.boolean().optional(),
-    CanCollide: z.boolean().optional(),
-    CanQuery: z.boolean().optional(),
-    CanTouch: z.boolean().optional(),
-    CastShadow: z.boolean().optional(),
-    CollisionGroup: z.string().optional(),
-    Color: color3Schema.optional(),
-    Locked: z.boolean().optional(),
-    Mass: z.number().optional(),
-    Massless: z.boolean().optional(),
-    Material: z.string().optional(),
-    MaterialVariant: z.string().optional(),
-    Reflectance: z.number().optional(),
-    RootPriority: z.number().optional(),
-    Transparency: z.number().optional(),
-  })
-  .strict();
-
 const proceduralGeneratedNodeSchema: z.ZodType<ProceduralGeneratedNode> = z.lazy(() =>
-  z.union([
-    z
-      .object({
-        class: z.literal("Model"),
-        name: z.string(),
-        properties: modelPropertiesSchema,
-        children: z.array(proceduralGeneratedNodeSchema).optional(),
-      })
-      .strict(),
-    z
-      .object({
-        class: z.literal("Part"),
-        name: z.string(),
-        properties: partPropertiesSchema,
-        children: z.array(proceduralGeneratedNodeSchema).optional(),
-      })
-      .strict(),
-  ]),
+  z
+    .object({
+      class: z.string(),
+      name: z.string(),
+      localId: z.string().min(1),
+      properties: z.record(z.string(), z.unknown()),
+      children: z.array(proceduralGeneratedNodeSchema).optional(),
+    })
+    .strict(),
 );
 
 const proceduralDummyJsonSchema = z
   .object({
     version: z.literal(1),
     kind: z.literal("overdare.procedural-dummy-json"),
-    generationId: z.string(),
     scriptName: z.string(),
     parameters: z.object({ Size: vector3Schema, Attributes: z.record(z.string(), z.unknown()).optional() }).strict(),
     children: z.array(proceduralGeneratedNodeSchema),
@@ -164,10 +128,10 @@ export async function resolveLuauExecutable(options: ProceduralLuauRuntimeOption
 interface RawRunnerOutput {
   version: number;
   kind: string;
-  generationId: string;
   scriptName: string;
   parameters: unknown;
   children: ProceduralSerializedNode[];
+  sceneRoot?: ProceduralSerializedNode;
 }
 
 function toLuaLongString(value: string): string {
@@ -247,14 +211,14 @@ export async function generateProceduralDummyJson(
   input: ProceduralGenerationInput,
   options: ProceduralLuauRuntimeOptions = {},
 ): Promise<ProceduralDummyJson> {
-  const metadata = extractProceduralScriptMetadata(input.scriptSource, input.scriptName);
+  const scriptName = extractProceduralScriptName(input.scriptSource, input.scriptName);
   const normalizedInput = {
     ...input,
     parameters: {
       ...input.parameters,
       Attributes: input.parameters.Attributes ?? {},
     },
-    ...metadata,
+    scriptName,
   };
   const raw = await runLuauProgram(normalizedInput, options);
   assertNodeCountWithinLimit(raw.children, resolveLimits(options.limits));
@@ -262,7 +226,7 @@ export async function generateProceduralDummyJson(
 }
 
 /**
- * Runs a procedural script and returns the derived scene ops (add/update/delete).
+ * Runs a procedural script and returns the derived scene ops (add/update/move/delete).
  *
  * With no `scene`, the script is a pure generator and every node is an `add`.
  * With a `scene`, transform mutations are derived by diffing the injected
@@ -272,20 +236,21 @@ export async function runProceduralScript(
   input: RunProceduralScriptInput,
   options: ProceduralLuauRuntimeOptions = {},
 ): Promise<RunProceduralScriptResult> {
-  const metadata = extractProceduralScriptMetadata(input.scriptSource, input.scriptName, {
-    autoGenerationId: input.autoGenerationId,
-  });
+  const scriptName = extractProceduralScriptName(input.scriptSource, input.scriptName);
   const normalizedInput: Record<string, unknown> = {
     scriptSource: input.scriptSource,
     parameters: {
       ...input.parameters,
       Attributes: input.parameters.Attributes ?? {},
     },
-    ...metadata,
+    scriptName,
     ...(input.scene ? { scene: input.scene } : {}),
   };
   const raw = await runLuauProgram(normalizedInput, options);
   const nodeCount = assertGeneratedNodeCountWithinLimit(raw.children, resolveLimits(options.limits));
-  const ops = deriveProceduralOps(raw.children, input.scene, input.targetGuid);
-  return { generationId: metadata.generationId, scriptName: metadata.scriptName, ops, nodeCount };
+  if (input.scene && !raw.sceneRoot) {
+    throw new Error(`Protected procedural target root ${input.scene.guid} cannot be destroyed.`);
+  }
+  const ops = deriveProceduralOps(raw.children, input.scene, input.targetGuid, raw.sceneRoot);
+  return { scriptName, ops, nodeCount };
 }

@@ -1,17 +1,8 @@
 // @summary Reads a level subtree into an injectable procedural scene snapshot.
 
-import { DIFF_PROPERTY_WHITELIST } from "../../../procedural/ops";
 import type { ProceduralSceneNode } from "../../../procedural/types";
+import { pickKnownInstanceProperties } from "../methods/instance-properties";
 import { findNodeByActorGuid, isRecord, type OvdrjmNode, readOvdrjmRoot } from "./ovdrjm-utils";
-
-function whitelistedProperties(node: OvdrjmNode): Record<string, unknown> {
-  const props: Record<string, unknown> = {};
-  for (const key of DIFF_PROPERTY_WHITELIST) {
-    const value = (node as Record<string, unknown>)[key];
-    if (value !== undefined) props[key] = value;
-  }
-  return props;
-}
 
 function toSceneNode(node: OvdrjmNode): ProceduralSceneNode | undefined {
   const guid = typeof node.ActorGuid === "string" ? node.ActorGuid : undefined;
@@ -28,14 +19,17 @@ function toSceneNode(node: OvdrjmNode): ProceduralSceneNode | undefined {
     class: typeof node.InstanceType === "string" ? node.InstanceType : "Instance",
     name: typeof node.Name === "string" ? node.Name : "",
     guid,
-    properties: whitelistedProperties(node),
+    properties: pickKnownInstanceProperties(
+      typeof node.InstanceType === "string" ? node.InstanceType : "Instance",
+      node,
+    ),
     children,
   };
 }
 
 /**
  * Reads the subtree rooted at `targetGuid` from the current level and returns it
- * as an injectable scene snapshot (whitelisted properties only). The returned
+ * as an injectable scene snapshot (canonical class properties only). The returned
  * root's `children` are the mutable scene contents; the root itself is the
  * target parent and carries `targetGuid`.
  */

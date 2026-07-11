@@ -10,6 +10,10 @@ local Ovdr = require("../ovdr-shim")
 local MathUtils = {}
 local EPSILON = 0.000001
 local MAX_POINT_COUNT = 20000
+local MAX_SAFE_INTEGER = 9007199254740991
+local RANDOM_MODULUS = 2147483647
+local RANDOM_RANGE = RANDOM_MODULUS - 1
+local RANDOM_MULTIPLIER = 48271
 
 -- ===========================================================================
 -- INPUT VALIDATION
@@ -58,6 +62,50 @@ local function validateCount(funcName, count, minimum)
 		error(funcName .. ": 'count' must not exceed " .. tostring(MAX_POINT_COUNT))
 	end
 	return count
+end
+
+local function validateSafeInteger(funcName, paramName, value)
+	validateFiniteNumber(funcName, paramName, value)
+	if value ~= math.floor(value) then
+		error(funcName .. ": '" .. paramName .. "' must be an integer")
+	end
+	if math.abs(value) > MAX_SAFE_INTEGER then
+		error(funcName .. ": '" .. paramName .. "' must be a safe integer")
+	end
+	return value
+end
+
+local function normalizeSeed(funcName, seed)
+	validateSafeInteger(funcName, "seed", seed)
+	local normalized = seed % RANDOM_MODULUS
+	if normalized <= 0 then
+		normalized += RANDOM_RANGE
+	end
+	return normalized
+end
+
+local function validateDenseArray(funcName, paramName, values, requireNonEmpty)
+	if type(values) ~= "table" then
+		error(funcName .. ": '" .. paramName .. "' must be an array")
+	end
+	local length = #values
+	local entryCount = 0
+	for key in pairs(values) do
+		if type(key) ~= "number" or key ~= math.floor(key) or key < 1 or key > length then
+			error(funcName .. ": '" .. paramName .. "' must be a dense array")
+		end
+		entryCount += 1
+	end
+	if entryCount ~= length then
+		error(funcName .. ": '" .. paramName .. "' must be a dense array")
+	end
+	if requireNonEmpty and length == 0 then
+		error(funcName .. ": '" .. paramName .. "' must not be empty")
+	end
+	if length > MAX_POINT_COUNT then
+		error(funcName .. ": '" .. paramName .. "' must not contain more than " .. tostring(MAX_POINT_COUNT) .. " items")
+	end
+	return length
 end
 
 local function validateAxis(funcName, paramName, axis)
@@ -136,6 +184,85 @@ local function frameForDirection(funcName, position, direction, localAxis, up)
 		transformLocalBasis(Ovdr.Vector3.yAxis),
 		transformLocalBasis(Ovdr.Vector3.zAxis)
 	)
+end
+
+-- ===========================================================================
+-- DETERMINISTIC RANDOM AUTHORING
+-- ===========================================================================
+
+function MathUtils.deriveSeed(seed, scope)
+	local derived = normalizeSeed("deriveSeed", seed)
+	if type(scope) ~= "string" or #scope == 0 then
+		error("deriveSeed: 'scope' must be a non-empty string")
+	end
+	for index = 1, #scope do
+		derived = (derived * 257 + string.byte(scope, index) + 1) % RANDOM_MODULUS
+	end
+	if derived == 0 then
+		return 1
+	end
+	return derived
+end
+
+function MathUtils.random(seed)
+	local state = normalizeSeed("random", seed)
+	local rng = {}
+
+	local function nextRawInteger()
+		state = (state * RANDOM_MULTIPLIER) % RANDOM_MODULUS
+		return state - 1
+	end
+
+	function rng:nextNumber(minimum, maximum)
+		validateFiniteNumber("random.nextNumber", "minimum", minimum)
+		validateFiniteNumber("random.nextNumber", "maximum", maximum)
+		if minimum >= maximum then
+			error("random.nextNumber: 'minimum' must be less than 'maximum'")
+		end
+		local width = maximum - minimum
+		if math.abs(width) == math.huge then
+			error("random.nextNumber: range width must be finite")
+		end
+		return minimum + width * (nextRawInteger() / RANDOM_RANGE)
+	end
+
+	function rng:nextInteger(minimum, maximum)
+		validateSafeInteger("random.nextInteger", "minimum", minimum)
+		validateSafeInteger("random.nextInteger", "maximum", maximum)
+		if minimum > maximum then
+			error("random.nextInteger: 'minimum' must not exceed 'maximum'")
+		end
+		local width = maximum - minimum + 1
+		if width > RANDOM_RANGE then
+			error("random.nextInteger: integer range must not contain more than " .. tostring(RANDOM_RANGE) .. " values")
+		end
+		local acceptanceLimit = RANDOM_RANGE - (RANDOM_RANGE % width)
+		local value
+		repeat
+			value = nextRawInteger()
+		until value < acceptanceLimit
+		return minimum + (value % width)
+	end
+
+	function rng:choice(items)
+		local length = validateDenseArray("random.choice", "items", items, true)
+		return items[self:nextInteger(1, length)]
+	end
+
+	function rng:shuffle(items)
+		local length = validateDenseArray("random.shuffle", "items", items, false)
+		local shuffled = {}
+		for index = 1, length do
+			shuffled[index] = items[index]
+		end
+		for index = length, 2, -1 do
+			local swapIndex = self:nextInteger(1, index)
+			shuffled[index], shuffled[swapIndex] = shuffled[swapIndex], shuffled[index]
+		end
+		return shuffled
+	end
+
+	return rng
 end
 
 -- ===========================================================================
@@ -350,6 +477,64 @@ function MathUtils.pointsOnEllipse(center, radiusX, radiusY, count, axis)
 	for i = 1, count do
 		local angle = ((i - 1) / count) * math.pi * 2
 		table.insert(points, center + u * (math.cos(angle) * radiusX) + v * (math.sin(angle) * radiusY))
+	end
+	return points
+end
+
+function MathUtils.pointsOnGrid(origin, columns, rows, columnStep, rowStep)
+	validateFiniteVector3("pointsOnGrid", "origin", origin)
+	validateFiniteNumber("pointsOnGrid", "columns", columns)
+	validateFiniteNumber("pointsOnGrid", "rows", rows)
+	if columns ~= math.floor(columns) or columns < 1 then
+		error("pointsOnGrid: 'columns' must be a positive integer")
+	end
+	if rows ~= math.floor(rows) or rows < 1 then
+		error("pointsOnGrid: 'rows' must be a positive integer")
+	end
+	if columns * rows > MAX_POINT_COUNT then
+		error("pointsOnGrid: point count must not exceed " .. tostring(MAX_POINT_COUNT))
+	end
+	validateFiniteVector3("pointsOnGrid", "columnStep", columnStep)
+	validateFiniteVector3("pointsOnGrid", "rowStep", rowStep)
+	if columnStep.Magnitude <= EPSILON then
+		error("pointsOnGrid: 'columnStep' must be non-zero")
+	end
+	if rowStep.Magnitude <= EPSILON then
+		error("pointsOnGrid: 'rowStep' must be non-zero")
+	end
+
+	local points = {}
+	for row = 1, rows do
+		for column = 1, columns do
+			table.insert(points, origin + columnStep * (column - 1) + rowStep * (row - 1))
+		end
+	end
+	return points
+end
+
+function MathUtils.pointsOnHelix(center, radius, height, turns, count, axis)
+	validateFiniteVector3("pointsOnHelix", "center", center)
+	validatePositiveNumber("pointsOnHelix", "radius", radius)
+	validateFiniteNumber("pointsOnHelix", "height", height)
+	validateFiniteNumber("pointsOnHelix", "turns", turns)
+	validateCount("pointsOnHelix", count, 2)
+	if math.abs(height) <= EPSILON then
+		error("pointsOnHelix: 'height' must be non-zero")
+	end
+	if math.abs(turns) <= EPSILON then
+		error("pointsOnHelix: 'turns' must be non-zero")
+	end
+	local axisDir = validateAxis("pointsOnHelix", "axis", axis)
+	local u, v = circleBasis("pointsOnHelix", axisDir)
+	local points = {}
+	for index = 1, count do
+		local t = (index - 1) / (count - 1)
+		local angle = t * turns * math.pi * 2
+		local axialOffset = height * (t - 0.5)
+		table.insert(
+			points,
+			center + axisDir * axialOffset + u * (math.cos(angle) * radius) + v * (math.sin(angle) * radius)
+		)
 	end
 	return points
 end
