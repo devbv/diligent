@@ -1,14 +1,34 @@
 -- @summary Luau runner that executes procedural scripts and writes dummy JSON.
 
-local inputJson = ...
-if inputJson == nil then
-	error("Usage: runner.lua --program-args <input-json>")
+local inputArg = ...
+if inputArg == nil then
+	error("Usage: runner.lua --program-args <input-json|--input-module=module-path>")
+end
+
+local inputModulePrefix = "--input-module="
+local inputJson = inputArg
+if string.sub(inputArg, 1, #inputModulePrefix) == inputModulePrefix then
+	local inputModulePath = string.sub(inputArg, #inputModulePrefix + 1)
+	if inputModulePath == "" then
+		error("Input module path must not be empty")
+	end
+	inputJson = require(inputModulePath)
+	if type(inputJson) ~= "string" then
+		error("Input module must return a JSON string")
+	end
 end
 
 local Json = require("./json")
 local Ovdr = require("./ovdr-shim")
 
 local input = Json.decode(inputJson)
+if input.scriptSourceModule ~= nil then
+	input.scriptSource = require(input.scriptSourceModule)
+	input.scriptSourceModule = nil
+	if type(input.scriptSource) ~= "string" then
+		error("Script source module must return a string")
+	end
+end
 
 local dependencies = {
 	GeometryPrimitives = require("./dependencies/GeometryPrimitives"),

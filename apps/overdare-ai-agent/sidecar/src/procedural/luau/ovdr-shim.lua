@@ -517,6 +517,69 @@ function Instance:GetDescendants()
 	return descendants
 end
 
+-- Returns a shallow copy of the direct children so callers can iterate/mutate
+-- the tree without aliasing the live Children array.
+function Instance:GetChildren()
+	local out = {}
+	for _, child in ipairs(self.Children) do
+		table.insert(out, child)
+	end
+	return out
+end
+
+-- Find a direct child by Name; with `recursive` true, search the whole subtree
+-- (depth-first, first match wins).
+function Instance:FindFirstChild(name, recursive)
+	for _, child in ipairs(self.Children) do
+		if child.Name == name then
+			return child
+		end
+	end
+	if recursive then
+		for _, child in ipairs(self.Children) do
+			local found = child:FindFirstChild(name, true)
+			if found then
+				return found
+			end
+		end
+	end
+	return nil
+end
+
+-- First direct child whose ClassName matches exactly.
+function Instance:FindFirstChildOfClass(className)
+	for _, child in ipairs(self.Children) do
+		if child.ClassName == className then
+			return child
+		end
+	end
+	return nil
+end
+
+-- First child satisfying :IsA(className); direct children unless `recursive`.
+function Instance:FindFirstChildWhichIsA(className, recursive)
+	for _, child in ipairs(self.Children) do
+		if child:IsA(className) then
+			return child
+		end
+	end
+	if recursive then
+		for _, child in ipairs(self.Children) do
+			local found = child:FindFirstChildWhichIsA(className, true)
+			if found then
+				return found
+			end
+		end
+	end
+	return nil
+end
+
+-- Static generation has no async loading, so WaitForChild resolves immediately
+-- (never yields). Returns nil if absent, unlike Roblox's blocking WaitForChild.
+function Instance:WaitForChild(name)
+	return self:FindFirstChild(name)
+end
+
 function Instance:Destroy()
 	for _, child in ipairs({ unpack(self.Children) }) do
 		child:Destroy()

@@ -157,10 +157,11 @@ export function createProceduralModelRunTool(cwd: string, writeLock: WriteLock):
   return {
     name: TOOL_NAME,
     description:
-      "Generate a saved OVERDARE procedural model into the scene. Looks the model up by `id`, runs it with " +
-      "its stored (or overridden) parameters, deletes the prior generation via the manifest, re-applies the new " +
-      "generation, and updates the manifest — so repeated runs replace rather than duplicate. If the prior " +
-      "generation was manually removed, it warns and creates a fresh one.",
+      "Generate a saved OVERDARE procedural model into the scene as Model/Part geometry (never a Script " +
+      "instance). Looks the model up by `id`, runs its host-side Luau script with its stored (or overridden) " +
+      "parameters, deletes the prior generation via the manifest, re-applies the new generation, and updates the " +
+      "manifest — so repeated runs replace rather than duplicate. If the prior generation was manually removed, " +
+      "it warns and creates a fresh one.",
     parameters: params,
     parseArgs: (raw) => parseProceduralModelRunArgs(raw as Record<string, unknown>),
     async execute(args, ctx) {

@@ -62,6 +62,14 @@ function ctx() {
   return { toolCallId: "test", signal: new AbortController().signal, abort: () => {} };
 }
 
+// Mirror the real tool executor: parseArgs runs BEFORE execute and its result is
+// what execute receives. Tests must go through this path (not call execute with
+// raw args) so regressions like double-parsing are caught.
+async function invoke(tool: Tool, rawArgs: Record<string, unknown>) {
+  const args = tool.parseArgs ? tool.parseArgs(rawArgs) : rawArgs;
+  return tool.execute(args as never, ctx());
+}
+
 function workspaceChildren(cwd: string): Array<Record<string, unknown>> {
   const { root } = readOvdrjmRoot(cwd);
   return Array.isArray(root.LuaChildren) ? (root.LuaChildren as Array<Record<string, unknown>>) : [];
@@ -127,7 +135,7 @@ return Move
   test("runs an inline transform and mutates the scene", async () => {
     const cwd = makeProject();
     const tools = await loadTools(cwd);
-    const result = await tools.get("studiorpc_procedural_run")!.execute({ script: moveScript } as never, ctx());
+    const result = await invoke(tools.get("studiorpc_procedural_run")!, { script: moveScript });
 
     expect(result.metadata).toMatchObject({ method: "procedural.run", updateCount: 2 });
     const { root } = readOvdrjmRoot(cwd);
@@ -135,21 +143,57 @@ return Move
     expect((findNodeByActorGuid(root, "pB") as { CFrame: { Position: { X: number } } }).CFrame.Position.X).toBe(11);
   });
 
+  test("runs a scriptPath-only file through the parseArgs -> execute path (regression)", async () => {
+    // Regression: parseArgs maps scriptPath -> scriptSource; execute must NOT
+    // re-parse, or the "exactly one" check sees neither key and throws even for a
+    // single valid input.
+    const cwd = makeProject();
+    writeFileSync(join(cwd, "move.lua"), moveScript);
+    const tools = await loadTools(cwd);
+    const result = await invoke(tools.get("studiorpc_procedural_run")!, { scriptPath: "move.lua" });
+    expect(result.metadata).toMatchObject({ method: "procedural.run", updateCount: 2 });
+  });
+
+  test("navigates the scene with FindFirstChild / GetChildren / IsA lookups", async () => {
+    const lookupScript = `-- generationId: lookup-nav
+local Nav = {}
+Nav.OnGenerate = function(parameters, targetContainer)
+	-- find by name and update a whitelisted property
+	local a = workspace:FindFirstChild("A")
+	a.CFrame += Vector3.yAxis * 50
+	-- find by name and delete
+	workspace:FindFirstChild("B"):Destroy()
+	-- GetChildren + FindFirstChildWhichIsA must still resolve after the delete
+	assert(#workspace:GetChildren() >= 1, "GetChildren should list remaining children")
+	assert(workspace:FindFirstChildWhichIsA("BasePart") ~= nil, "should still find a BasePart")
+end
+return Nav
+`;
+    const cwd = makeProject();
+    const tools = await loadTools(cwd);
+    const result = await invoke(tools.get("studiorpc_procedural_run")!, { script: lookupScript });
+
+    expect(result.metadata).toMatchObject({ method: "procedural.run", updateCount: 1, deleteCount: 1 });
+    const { root } = readOvdrjmRoot(cwd);
+    expect(findNodeByActorGuid(root, "pB")).toBeUndefined();
+    expect((findNodeByActorGuid(root, "pA") as { CFrame: { Position: { Y: number } } }).CFrame.Position.Y).toBe(50);
+  });
+
   test("requires exactly one of script or scriptPath", async () => {
     const cwd = makeProject();
     const tools = await loadTools(cwd);
     const runTool = tools.get("studiorpc_procedural_run")!;
     expect(() => runTool.parameters.parse({})).not.toThrow();
+    expect(runTool.parameters.parse({ script: moveScript, maxNodes: 999_999 })).not.toHaveProperty("maxNodes");
     // parseArgs (not the raw schema) enforces the exactly-one rule.
-    await expect(runTool.execute({ script: moveScript, scriptPath: "/x.lua" } as never, ctx())).rejects.toThrow(
-      /exactly one/,
-    );
+    await expect(invoke(runTool, { script: moveScript, scriptPath: "/x.lua" })).rejects.toThrow(/exactly one/);
+    await expect(invoke(runTool, {})).rejects.toThrow(/exactly one/);
   });
 
   test("rejects before mutating when the user declines", async () => {
     const cwd = makeProject();
     const tools = await loadTools(cwd, async () => "reject");
-    const result = await tools.get("studiorpc_procedural_run")!.execute({ script: moveScript } as never, ctx());
+    const result = await invoke(tools.get("studiorpc_procedural_run")!, { script: moveScript });
     expect(result).toMatchObject({ output: "[Rejected by user]", metadata: { error: true } });
     // scene untouched
     const { root } = readOvdrjmRoot(cwd);
@@ -173,18 +217,14 @@ return Bunny
     const cwd = makeProject();
     const tools = await loadTools(cwd);
 
-    const saveResult = await tools
-      .get("studiorpc_procedural_model_save")!
-      .execute({ script: bunnyScript } as never, ctx());
+    const saveResult = await invoke(tools.get("studiorpc_procedural_model_save")!, { script: bunnyScript });
     expect(saveResult.metadata).toMatchObject({ method: "procedural.model.save", generationId: "bunny-model" });
 
-    const listResult = await tools.get("studiorpc_procedural_model_list")!.execute({} as never, ctx());
+    const listResult = await invoke(tools.get("studiorpc_procedural_model_list")!, {});
     expect(listResult.metadata).toMatchObject({ count: 1 });
     expect(listResult.output).toContain("bunny-model");
 
-    const firstRun = await tools
-      .get("studiorpc_procedural_model_run")!
-      .execute({ id: "bunny-model", targetGuid: "W" } as never, ctx());
+    const firstRun = await invoke(tools.get("studiorpc_procedural_model_run")!, { id: "bunny-model", targetGuid: "W" });
     expect(firstRun.metadata).toMatchObject({ method: "procedural.model.run" });
     const afterFirst = workspaceChildren(cwd);
     const bunniesAfterFirst = afterFirst.filter((child) => child.Name === "Bunny");
@@ -192,7 +232,7 @@ return Bunny
     expect(afterFirst).toHaveLength(3); // A, B, Bunny
 
     // Re-run replaces rather than duplicates.
-    await tools.get("studiorpc_procedural_model_run")!.execute({ id: "bunny-model", targetGuid: "W" } as never, ctx());
+    await invoke(tools.get("studiorpc_procedural_model_run")!, { id: "bunny-model", targetGuid: "W" });
     const afterSecond = workspaceChildren(cwd);
     expect(afterSecond.filter((child) => child.Name === "Bunny")).toHaveLength(1);
     expect(afterSecond).toHaveLength(3);
@@ -201,7 +241,7 @@ return Bunny
   test("model_run errors for an unknown id", async () => {
     const cwd = makeProject();
     const tools = await loadTools(cwd);
-    await expect(tools.get("studiorpc_procedural_model_run")!.execute({ id: "nope" } as never, ctx())).rejects.toThrow(
+    await expect(invoke(tools.get("studiorpc_procedural_model_run")!, { id: "nope" })).rejects.toThrow(
       /No saved procedural model/,
     );
   });

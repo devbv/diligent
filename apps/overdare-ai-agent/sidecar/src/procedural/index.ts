@@ -1,8 +1,11 @@
 // @summary Public exports for the OVERDARE Luau procedural runtime.
 
 export {
+  assertGeneratedNodeCountWithinLimit,
   assertInputWithinArgvLimit,
+  assertInputWithinLimit,
   assertNodeCountWithinLimit,
+  countGeneratedTreeNodes,
   countTreeNodes,
   DEFAULT_PROCEDURAL_LIMITS,
   type ProceduralLimits,

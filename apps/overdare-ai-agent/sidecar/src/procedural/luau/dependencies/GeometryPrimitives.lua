@@ -53,40 +53,111 @@ local function resolveCFrame(funcName, centerOrCFrame)
 	return cframeAt(validateFiniteVector3(funcName, "centerOrCFrame", centerOrCFrame))
 end
 
-local optionProperties = {
-	transparency = "Transparency",
-	canCollide = "CanCollide",
-	canQuery = "CanQuery",
-	canTouch = "CanTouch",
-	castShadow = "CastShadow",
-	anchored = "Anchored",
-	collisionGroup = "CollisionGroup",
-	locked = "Locked",
-	mass = "Mass",
-	massless = "Massless",
-	materialVariant = "MaterialVariant",
-	reflectance = "Reflectance",
-	rootPriority = "RootPriority",
+local optionDefinitions = {
+	{ name = "color", property = "Color", kind = "color" },
+	{ name = "material", property = "Material", kind = "string" },
+	{ name = "parent", property = "Parent", kind = "parent" },
+	{ name = "transparency", property = "Transparency", kind = "unitNumber" },
+	{ name = "canCollide", property = "CanCollide", kind = "boolean" },
+	{ name = "canQuery", property = "CanQuery", kind = "boolean" },
+	{ name = "canTouch", property = "CanTouch", kind = "boolean" },
+	{ name = "castShadow", property = "CastShadow", kind = "boolean" },
+	{ name = "anchored", property = "Anchored", kind = "boolean" },
+	{ name = "collisionGroup", property = "CollisionGroup", kind = "string" },
+	{ name = "locked", property = "Locked", kind = "boolean" },
+	{ name = "mass", property = "Mass", kind = "positiveNumber" },
+	{ name = "massless", property = "Massless", kind = "boolean" },
+	{ name = "materialVariant", property = "MaterialVariant", kind = "string" },
+	{ name = "reflectance", property = "Reflectance", kind = "unitNumber" },
+	{ name = "rootPriority", property = "RootPriority", kind = "number" },
 }
+
+local allowedOptionNames = {}
+for _, definition in ipairs(optionDefinitions) do
+	allowedOptionNames[definition.name] = true
+end
+
+local function validateOptionValue(funcName, definition, value)
+	local paramName = "options." .. definition.name
+	if definition.kind == "boolean" then
+		if type(value) ~= "boolean" then
+			error(funcName .. ": '" .. paramName .. "' must be a boolean")
+		end
+	elseif definition.kind == "string" then
+		if type(value) ~= "string" then
+			error(funcName .. ": '" .. paramName .. "' must be a string")
+		end
+	elseif definition.kind == "number" then
+		validateFiniteNumber(funcName, paramName, value)
+	elseif definition.kind == "positiveNumber" then
+		validatePositiveNumber(funcName, paramName, value)
+	elseif definition.kind == "unitNumber" then
+		validateFiniteNumber(funcName, paramName, value)
+		if value < 0 or value > 1 then
+			error(funcName .. ": '" .. paramName .. "' must be between 0 and 1")
+		end
+	elseif definition.kind == "color" then
+		if type(value) ~= "table" then
+			error(funcName .. ": '" .. paramName .. "' must be a Color3")
+		end
+		validateFiniteNumber(funcName, paramName .. ".R", value.R)
+		validateFiniteNumber(funcName, paramName .. ".G", value.G)
+		validateFiniteNumber(funcName, paramName .. ".B", value.B)
+	elseif definition.kind == "parent" then
+		if type(value) ~= "table" or type(value.Children) ~= "table" then
+			error(funcName .. ": '" .. paramName .. "' must be an Instance")
+		end
+	end
+end
+
+local function validateOptions(funcName, options)
+	if options == nil then
+		return nil
+	end
+	if type(options) ~= "table" then
+		error(funcName .. ": 'options' must be a table")
+	end
+
+	-- Check property-style casing first so common mistakes receive a stable,
+	-- actionable correction instead of a generic unknown-key error.
+	for _, definition in ipairs(optionDefinitions) do
+		if definition.property ~= definition.name and options[definition.property] ~= nil then
+			error(funcName .. ": unknown option '" .. definition.property .. "'; use '" .. definition.name .. "'")
+		end
+	end
+	for optionName in pairs(options) do
+		if type(optionName) ~= "string" or not allowedOptionNames[optionName] then
+			error(funcName .. ": unknown option '" .. tostring(optionName) .. "'")
+		end
+	end
+	for _, definition in ipairs(optionDefinitions) do
+		local value = options[definition.name]
+		if value ~= nil then
+			validateOptionValue(funcName, definition, value)
+		end
+	end
+	return options
+end
 
 local function applyOptions(part, options)
 	if options == nil then
 		return part
 	end
-	if type(options) ~= "table" then
-		error("geometry options must be a table")
-	end
 	part.Color = options.color
 	part.Material = options.material
-	for optionName, propertyName in pairs(optionProperties) do
-		if options[optionName] ~= nil then
-			part[propertyName] = options[optionName]
+	for _, definition in ipairs(optionDefinitions) do
+		if definition.name ~= "color" and definition.name ~= "material" and definition.name ~= "parent" then
+			local value = options[definition.name]
+			if value ~= nil then
+				part[definition.property] = value
+			end
 		end
 	end
 	return parentTo(part, options.parent)
 end
 
-local function directPart(name, shape, cframe, size, options)
+local function directPart(funcName, name, shape, cframe, size, options)
+	validateOptions(funcName, options)
 	local part = Ovdr.createInstance("Part", name)
 	part.Shape = shape
 	part.CFrame = cframe
@@ -167,6 +238,7 @@ function GP.cylinderBetween(name, startPoint, endPoint, radius, options)
 		error("cylinderBetween: 'startPoint' and 'endPoint' must be distinct")
 	end
 	return directPart(
+		"cylinderBetween",
 		name,
 		"Cylinder",
 		MathUtils.frameBetween(startPoint, endPoint, Ovdr.Vector3.yAxis, Ovdr.Vector3.yAxis),
@@ -180,7 +252,7 @@ function GP.ellipsoid(name, centerOrCFrame, size, options)
 	validatePositiveNumber("ellipsoid", "size.X", size.X)
 	validatePositiveNumber("ellipsoid", "size.Y", size.Y)
 	validatePositiveNumber("ellipsoid", "size.Z", size.Z)
-	return directPart(name, "Ball", resolveCFrame("ellipsoid", centerOrCFrame), size, options)
+	return directPart("ellipsoid", name, "Ball", resolveCFrame("ellipsoid", centerOrCFrame), size, options)
 end
 
 function GP.panel(name, centerOrCFrame, width, height, thickness, options)
@@ -188,6 +260,7 @@ function GP.panel(name, centerOrCFrame, width, height, thickness, options)
 	validatePositiveNumber("panel", "height", height)
 	validatePositiveNumber("panel", "thickness", thickness)
 	return directPart(
+		"panel",
 		name,
 		"Block",
 		resolveCFrame("panel", centerOrCFrame),
@@ -200,6 +273,7 @@ function GP.disc(name, centerOrCFrame, radius, thickness, options)
 	validatePositiveNumber("disc", "radius", radius)
 	validatePositiveNumber("disc", "thickness", thickness)
 	return directPart(
+		"disc",
 		name,
 		"Cylinder",
 		resolveCFrame("disc", centerOrCFrame),
@@ -255,6 +329,7 @@ function GP.boxBetween(name, ...)
 		error("boxBetween: 'startPoint' and 'endPoint' must be distinct")
 	end
 	return directPart(
+		"boxBetween",
 		name,
 		"Block",
 		MathUtils.frameBetween(startPoint, endPoint, Ovdr.Vector3.xAxis, Ovdr.Vector3.yAxis),

@@ -1,11 +1,13 @@
 // @summary Invokes the Luau procedural runner (generate + transform).
 
-import { existsSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import {
-  assertInputWithinArgvLimit,
+  assertGeneratedNodeCountWithinLimit,
+  assertInputWithinLimit,
   assertNodeCountWithinLimit,
   type ProceduralLimits,
   resolveLimits,
@@ -168,10 +170,33 @@ interface RawRunnerOutput {
   children: ProceduralSerializedNode[];
 }
 
+function toLuaLongString(value: string): string {
+  let equals = "";
+  while (value.includes(`]${equals}]`)) equals += "=";
+  return `[${equals}[${value}]${equals}]`;
+}
+
+function stageLuauExecution(luauDir: string, encodedInput: string, scriptSource: string): string {
+  const executionDir = mkdtempSync(path.join(tmpdir(), "overdare-procedural-"));
+  try {
+    cpSync(luauDir, executionDir, { recursive: true });
+    writeFileSync(path.join(executionDir, "procedural-input.lua"), `return ${toLuaLongString(encodedInput)}\n`, "utf8");
+    writeFileSync(
+      path.join(executionDir, "procedural-script-source.lua"),
+      `return ${toLuaLongString(scriptSource)}\n`,
+      "utf8",
+    );
+    return executionDir;
+  } catch (error) {
+    rmSync(executionDir, { recursive: true, force: true });
+    throw error;
+  }
+}
+
 /**
  * Spawns the Luau runner for the given normalized input and returns the parsed
- * runner output. Enforces the argv-transport size guard and subprocess
- * guardrails (timeout / max output bytes).
+ * runner output. The complete input is staged in a unique temporary Luau
+ * module so process argv stays small regardless of script or scene size.
  */
 async function runLuauProgram(
   normalizedInput: Record<string, unknown>,
@@ -180,17 +205,32 @@ async function runLuauProgram(
   const limits = resolveLimits(options.limits);
   const luauBin = await resolveLuauExecutable(options);
   const luauDir = resolveLuauRunnerDir();
-  const encodedInput = JSON.stringify(normalizedInput);
-  assertInputWithinArgvLimit(encodedInput, limits);
-
-  const { stdout, stderr, exitCode } = await spawnLuauCaptured(
-    luauBin,
-    ["runner.lua", "--program-args", encodedInput],
-    {
-      cwd: luauDir,
-      limits,
-    },
-  );
+  const scriptSource = normalizedInput.scriptSource;
+  if (typeof scriptSource !== "string") {
+    throw new Error("Procedural runner input is missing scriptSource.");
+  }
+  const encodedInput = JSON.stringify({
+    ...normalizedInput,
+    scriptSource: undefined,
+    scriptSourceModule: "./procedural-script-source",
+  });
+  assertInputWithinLimit(encodedInput, limits, Buffer.byteLength(scriptSource, "utf8"));
+  const executionDir = stageLuauExecution(luauDir, encodedInput, scriptSource);
+  let stdout: string;
+  let stderr: string;
+  let exitCode: number;
+  try {
+    ({ stdout, stderr, exitCode } = await spawnLuauCaptured(
+      luauBin,
+      ["runner.lua", "--program-args", "--input-module=./procedural-input"],
+      {
+        cwd: executionDir,
+        limits,
+      },
+    ));
+  } finally {
+    rmSync(executionDir, { recursive: true, force: true });
+  }
 
   if (exitCode !== 0) {
     throw new Error(`Procedural Luau runner failed with exit code ${exitCode}.\n${stderr || stdout}`.trim());
@@ -245,7 +285,7 @@ export async function runProceduralScript(
     ...(input.scene ? { scene: input.scene } : {}),
   };
   const raw = await runLuauProgram(normalizedInput, options);
-  const nodeCount = assertNodeCountWithinLimit(raw.children, resolveLimits(options.limits));
+  const nodeCount = assertGeneratedNodeCountWithinLimit(raw.children, resolveLimits(options.limits));
   const ops = deriveProceduralOps(raw.children, input.scene, input.targetGuid);
   return { generationId: metadata.generationId, scriptName: metadata.scriptName, ops, nodeCount };
 }

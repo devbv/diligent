@@ -21,8 +21,24 @@ const vec3Schema = z.object({ X: z.number(), Y: z.number(), Z: z.number() }).str
 
 const params = z
   .object({
-    script: z.string().min(1).optional().describe("Inline Luau procedural script source."),
-    scriptPath: z.string().min(1).optional().describe("Absolute or project-relative path to a .lua procedural script."),
+    script: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        "Inline Luau procedural script source, executed host-side (NOT a Script instance in the Studio scene). " +
+          "Return a table with OnGenerate(parameters, targetContainer). Injected globals: Vector3, Color3, CFrame. " +
+          "Available modules: require(script.Dependencies.GeometryPrimitives) and " +
+          "require(script.Dependencies.MathUtils). See the procedural-luau-json skill for the full API.",
+      ),
+    scriptPath: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        "Absolute or project-relative path to a .lua procedural script file on disk (host-side source, NOT a " +
+          "Studio scene Script). Same Luau surface as `script`.",
+      ),
     parameters: z
       .object({ Size: vec3Schema.optional(), Attributes: z.record(z.string(), z.unknown()).optional() })
       .strict()
@@ -55,12 +71,14 @@ export function parseProceduralModelSaveArgs(value: Record<string, unknown>, cwd
   };
 }
 
+// `parsed` is already the output of parseArgs; do NOT re-parse (see the note in
+// procedural-run-tool.ts — parseProceduralModelSaveArgs maps script/scriptPath ->
+// scriptSource and is not idempotent).
 async function executeProceduralModelSave(
-  args: Record<string, unknown>,
+  parsed: ProceduralModelSaveArgs,
   ctx: ToolContext,
   cwd: string,
 ): Promise<ToolResult> {
-  const parsed = parseProceduralModelSaveArgs(args, cwd);
   // generationId is the model's stable identity — required for persisted models.
   const { generationId, scriptName } = extractProceduralScriptMetadata(parsed.scriptSource, undefined, {
     autoGenerationId: false,
@@ -105,14 +123,15 @@ export function createProceduralModelSaveTool(cwd: string): Tool {
   return {
     name: TOOL_NAME,
     description:
-      "Persist a reusable OVERDARE procedural model. Writes the script to the project's " +
-      ".overdare/procedural/scripts and records a manifest keyed by the script's required " +
+      "Persist a reusable OVERDARE procedural model. The script is host-side Luau source (inline `script` or an " +
+      "external `.lua` file via `scriptPath`), NOT a Script instance in the Studio scene. Writes the script to " +
+      "the project's .overdare/procedural/scripts and records a manifest keyed by the script's required " +
       "`-- generationId:` comment. Validates the script with a dry-run (no scene changes). " +
-      "Use studiorpc_procedural_model_run to generate it into the scene.",
+      "Use studiorpc_procedural_model_run to generate it into the scene as Model/Part geometry.",
     parameters: params,
     parseArgs: (raw) => parseProceduralModelSaveArgs(raw as Record<string, unknown>, cwd),
     async execute(args, ctx) {
-      return executeProceduralModelSave(args, ctx, cwd);
+      return executeProceduralModelSave(args as ProceduralModelSaveArgs, ctx, cwd);
     },
   };
 }

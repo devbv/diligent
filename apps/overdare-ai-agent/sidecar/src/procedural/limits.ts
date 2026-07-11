@@ -6,42 +6,35 @@ export interface ProceduralLimits {
   timeoutMs: number;
   /** Max bytes of captured stdout/stderr before the child is aborted. */
   maxOutputBytes: number;
-  /** Max number of serialized nodes accepted from a single run. */
+  /** Max number of freshly generated nodes accepted from a single run. */
   maxNodes: number;
-  /**
-   * Max bytes of the argv-encoded input payload.
-   *
-   * The vendored Luau 0.723 CLI is sandboxed — it exposes no `io`, no stdin
-   * reader, and `require` cannot reach paths outside the project root — so the
-   * only viable transport is `--program-args`. `ARG_MAX` is ~1 MiB on the
-   * platforms we target; this cap keeps us well under it and turns a would-be
-   * cryptic `E2BIG` spawn failure into an actionable error.
-   */
-  maxInputBytes: number;
+  /** Optional cap for temporary-file input bytes; omitted by default. */
+  maxInputBytes?: number;
 }
 
 export const DEFAULT_PROCEDURAL_LIMITS: ProceduralLimits = {
   timeoutMs: 15_000,
-  maxOutputBytes: 16 * 1024 * 1024,
-  maxNodes: 20_000,
-  maxInputBytes: 512 * 1024,
+  maxOutputBytes: 64 * 1024 * 1024,
+  maxNodes: 5_000,
 };
 
 export function resolveLimits(overrides?: Partial<ProceduralLimits>): ProceduralLimits {
   return { ...DEFAULT_PROCEDURAL_LIMITS, ...overrides };
 }
 
-/** Throws an actionable error if the argv-encoded input would risk `ARG_MAX`. */
-export function assertInputWithinArgvLimit(encoded: string, limits: ProceduralLimits): void {
-  const bytes = Buffer.byteLength(encoded, "utf8");
+/** Throws when a caller explicitly configured a serialized-input byte limit. */
+export function assertInputWithinLimit(encoded: string, limits: ProceduralLimits, additionalBytes = 0): void {
+  if (limits.maxInputBytes === undefined) return;
+  const bytes = Buffer.byteLength(encoded, "utf8") + additionalBytes;
   if (bytes > limits.maxInputBytes) {
     throw new Error(
-      `Procedural script input is ${bytes} bytes, which exceeds the ${limits.maxInputBytes}-byte transport limit. ` +
-        "Reduce the script size (or split the generation) — the Luau runner receives its input via command-line " +
-        "arguments and larger payloads risk overflowing the OS argument limit.",
+      `Procedural input is ${bytes} bytes, which exceeds the configured ${limits.maxInputBytes}-byte input limit.`,
     );
   }
 }
+
+/** @deprecated Input is no longer argv-encoded. Use {@link assertInputWithinLimit}. */
+export const assertInputWithinArgvLimit = assertInputWithinLimit;
 
 export interface CapturedLuauResult {
   stdout: string;
@@ -129,6 +122,7 @@ export async function spawnLuauCaptured(
 }
 
 interface CountableNode {
+  guid?: string;
   children?: CountableNode[];
 }
 
@@ -151,6 +145,27 @@ export function assertNodeCountWithinLimit(nodes: CountableNode[], limits: Proce
   const count = countTreeNodes(nodes);
   if (count > limits.maxNodes) {
     throw new Error(`Procedural output contains ${count} nodes, which exceeds the maximum of ${limits.maxNodes}.`);
+  }
+  return count;
+}
+
+/** Counts only fresh nodes; injected scene nodes carry GUIDs and do not consume generation budget. */
+export function countGeneratedTreeNodes(nodes: CountableNode[], depth = 1): number {
+  if (depth > MAX_NODE_DEPTH) {
+    throw new Error(`Procedural output exceeds the maximum tree depth of ${MAX_NODE_DEPTH}.`);
+  }
+  let count = 0;
+  for (const node of nodes) {
+    count += (node.guid === undefined ? 1 : 0) + countGeneratedTreeNodes(node.children ?? [], depth + 1);
+  }
+  return count;
+}
+
+/** Throws when freshly generated nodes exceed the run's node budget. */
+export function assertGeneratedNodeCountWithinLimit(nodes: CountableNode[], limits: ProceduralLimits): number {
+  const count = countGeneratedTreeNodes(nodes);
+  if (count > limits.maxNodes) {
+    throw new Error(`Procedural output generates ${count} nodes, which exceeds the maximum of ${limits.maxNodes}.`);
   }
   return count;
 }

@@ -3,7 +3,12 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { generateProceduralDummyJson, resolveLuauExecutable, runProceduralScript } from "../../src/procedural";
+import {
+  DEFAULT_PROCEDURAL_LIMITS,
+  generateProceduralDummyJson,
+  resolveLuauExecutable,
+  runProceduralScript,
+} from "../../src/procedural";
 import { extractProceduralScriptMetadata } from "../../src/procedural/script-metadata";
 import type {
   ProceduralGeneratedNode,
@@ -303,6 +308,10 @@ P0GeometryMath.OnGenerate = function(parameters, targetContainer)
 	assertRejects(function() GP.cylinderBetween("Bad", Vector3.zero, Vector3.zero, 1, nil) end, "degenerate cylinder")
 	assertRejects(function() GP.disc("Bad", Vector3.zero, 0, 1, nil) end, "zero-radius disc")
 	assertRejects(function() GP.ellipsoid("Bad", Vector3.zero, Vector3.new(1, -1, 1), nil) end, "negative ellipsoid size")
+	assertRejects(function() GP.disc("Bad", Vector3.zero, 1, 1, { mystery = true }) end, "unknown option")
+	assertRejects(function() GP.disc("Bad", Vector3.zero, 1, 1, { transparency = 2 }) end, "option range")
+	assertRejects(function() GP.disc("Bad", Vector3.zero, 1, 1, { canCollide = "false" }) end, "option type")
+	assertRejects(function() GP.disc("Bad", Vector3.zero, 1, 1, { parent = {} }) end, "option parent")
 
 	local model = GP.model("P0Geometry", nil)
 	GP.cylinderBetween("DirectedCylinder", Vector3.new(0, 0, 0), Vector3.new(-10, 0, 0), 2, {
@@ -318,6 +327,25 @@ P0GeometryMath.OnGenerate = function(parameters, targetContainer)
 end
 
 return P0GeometryMath
+`;
+
+const invalidGeometryOptionsScript = `--!strict
+-- generationId: invalid-geometry-options-001
+local GP = require(script.Dependencies.GeometryPrimitives)
+
+local InvalidGeometryOptions = {}
+
+InvalidGeometryOptions.OnGenerate = function(parameters, targetContainer)
+	local model = GP.model("InvalidGeometryOptions", nil)
+	GP.disc("OrphanedDisc", Vector3.zero, 10, 1, {
+		Color = Color3.fromRGB(255, 255, 255),
+		Material = "Ground",
+		Parent = model,
+	})
+	model.Parent = targetContainer
+end
+
+return InvalidGeometryOptions
 `;
 
 async function hasLuauExecutable(): Promise<boolean> {
@@ -359,6 +387,10 @@ function expectPartProperties(node: ProceduralGeneratedNode | undefined, name: s
 }
 
 describe("procedural Luau dummy JSON runtime", () => {
+  test("caps freshly generated output at 5,000 nodes by default", () => {
+    expect(DEFAULT_PROCEDURAL_LIMITS.maxNodes).toBe(5_000);
+  });
+
   test("extracts generation metadata from Luau source", () => {
     expect(extractProceduralScriptMetadata(sampleScript)).toEqual({
       generationId: "test-bunny-001",
@@ -513,6 +545,12 @@ describe("procedural Luau dummy JSON runtime", () => {
       CFrame: { Position: { X: -1, Y: -2, Z: -3 } },
       Size: { X: 8, Y: 0.25, Z: 8 },
     });
+  });
+
+  test("rejects unknown geometry options with a casing correction", async () => {
+    await expect(
+      generateProceduralDummyJson({ scriptSource: invalidGeometryOptionsScript, parameters }),
+    ).rejects.toThrow("disc: unknown option 'Color'; use 'color'");
   });
 
   test("keeps vertical quad planes upright with yaw-only orientation", async () => {
@@ -730,10 +768,24 @@ describe("procedural Luau dummy JSON runtime", () => {
     });
   });
 
-  test("rejects input that would overflow the argv transport limit", async () => {
+  test("honors an explicitly configured serialized-input limit", async () => {
     await expect(
       generateProceduralDummyJson({ scriptSource: sampleScript, parameters }, { limits: { maxInputBytes: 32 } }),
-    ).rejects.toThrow(/transport limit/);
+    ).rejects.toThrow(/input limit/);
+  });
+
+  test("transports inline scripts larger than the former 512 KiB argv cap", async () => {
+    const largeInlineScript = `${sampleScript}\n-- ]] ]=] ]==] ]===]${"x".repeat(520 * 1024)}`;
+    const result = await generateProceduralDummyJson({ scriptSource: largeInlineScript, parameters });
+    expect(result.generationId).toBe("test-bunny-001");
+    expect(result.children).toHaveLength(1);
+  }, 30_000);
+
+  test("isolates concurrent temporary-input transports", async () => {
+    const results = await Promise.all(
+      Array.from({ length: 3 }, () => generateProceduralDummyJson({ scriptSource: sampleScript, parameters })),
+    );
+    expect(results.every((result) => result.generationId === "test-bunny-001")).toBe(true);
   });
 
   test("rejects output exceeding the max node count", async () => {
@@ -755,7 +807,7 @@ return Spin
     ).rejects.toThrow(/timed out/);
   });
 
-  test("round-trips the large colosseum example through argv transport", async () => {
+  test("round-trips the large colosseum example through temporary-file transport", async () => {
     const colosseumScript = readFileSync(join(import.meta.dir, "../../src/procedural/examples/colosseum.lua"), "utf8");
     const result = await generateProceduralDummyJson({ scriptSource: colosseumScript, parameters });
     expect(result.generationId).toBe("ad1c33ff-a538-40f3-a853-dc8609c21e5f");
@@ -820,6 +872,40 @@ describe("runProceduralScript transform via scene injection", () => {
     const result = await runProceduralScript({ scriptSource: sampleScript, parameters, targetGuid: "TARGET" });
     expect(result.ops.every((op) => op.kind === "add")).toBe(true);
     expect(result.ops[0]).toMatchObject({ kind: "add", parentGuid: "TARGET", node: { class: "Model", name: "Bunny" } });
+  });
+
+  test("accepts a whole-workspace snapshot larger than the former argv cap", async () => {
+    const noOpScript = `-- generationId: whole-workspace-001
+local NoOp = {}
+NoOp.OnGenerate = function(parameters, targetContainer) end
+return NoOp
+`;
+    const largeScene: ProceduralSceneNode = {
+      class: "Workspace",
+      name: "Workspace",
+      guid: "W",
+      properties: {},
+      children: Array.from({ length: 2_500 }, (_, index) => ({
+        class: "Part",
+        name: `Existing_${index}_${"x".repeat(64)}`,
+        guid: `existing-${index}`,
+        properties: {
+          CFrame: {
+            Position: { X: index, Y: 0, Z: 0 },
+            Orientation: { X: 0, Y: 0, Z: 0 },
+          },
+        },
+        children: [],
+      })),
+    };
+    expect(Buffer.byteLength(JSON.stringify(largeScene), "utf8")).toBeGreaterThan(512 * 1024);
+
+    const result = await runProceduralScript(
+      { scriptSource: noOpScript, parameters, scene: largeScene, targetGuid: "W" },
+      { limits: { maxNodes: 1 } },
+    );
+    expect(result.ops).toEqual([]);
+    expect(result.nodeCount).toBe(0);
   });
 
   test("auto-generates a generationId for one-shot scripts lacking the comment", async () => {
