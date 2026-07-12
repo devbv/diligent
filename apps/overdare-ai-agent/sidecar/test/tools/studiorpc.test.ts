@@ -1,13 +1,14 @@
 // @summary Tests OVERDARE Studio bundled Studio RPC tool provider assembly.
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Tool } from "@diligent/core/tool/types";
 import { createStudioBundledToolProviders } from "../../src/tools";
 import { createStudioRpcToolProvider } from "../../src/tools/studiorpc";
 import * as levelBrowse from "../../src/tools/studiorpc/methods/level.browse";
+import { findNodeByActorGuid } from "../../src/tools/studiorpc/tools/ovdrjm-utils";
 
 const createdDirs: string[] = [];
 
@@ -453,5 +454,24 @@ describe("createStudioRpcToolProvider", () => {
       requiresReadback: false,
     });
     expect(rpcCalls).toEqual([]);
+  });
+
+  test("instance_move re-normalizes Mobility when a node's top-level ancestor changes", async () => {
+    const cwd = makeStudioProject();
+    const tools = await loadStudioTools(cwd);
+    const upsert = tools.get("studiorpc_instance_upsert")!;
+    // Both Folder and Part are direct children of Workspace, so their Mobility is authoritative.
+    await upsert.execute({ items: [{ guid: folderGuid, properties: { Mobility: "Movable" } }] }, toolContext());
+    await upsert.execute({ items: [{ guid: partGuid, properties: { Mobility: "Static" } }] }, toolContext());
+
+    // Moving the Part under the (Movable) Folder demotes it to a descendant that must follow the Folder.
+    await tools
+      .get("studiorpc_instance_move")!
+      .execute({ items: [{ guid: partGuid, parentGuid: folderGuid }] }, toolContext());
+
+    const doc = JSON.parse(readFileSync(join(cwd, "Test.ovdrjm"), "utf-8")) as {
+      Root: Parameters<typeof findNodeByActorGuid>[0];
+    };
+    expect(findNodeByActorGuid(doc.Root, partGuid)?.Mobility).toBe("Movable");
   });
 });

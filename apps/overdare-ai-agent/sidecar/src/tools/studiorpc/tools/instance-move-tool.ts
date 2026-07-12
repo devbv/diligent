@@ -5,6 +5,7 @@ import { buildInstanceMoveRender } from "../render";
 import { applyLevelChanges } from "../rpc";
 import type { Tool, ToolContext, ToolResult } from "../types";
 import type { WriteLock } from "../write-lock";
+import { normalizeWorkspaceMobility } from "./instance-document-operations";
 import { moveInstancesInDocument, validateInstanceMoves } from "./instance-move-operations";
 import { resultFromInstanceToolStatusError } from "./instance-status";
 import { isRecord, type OvdrjmNode, readAndWriteOvdrjm } from "./ovdrjm-utils";
@@ -53,6 +54,9 @@ async function executeInstanceMoveInner(
 
         validateInstanceMoves(root as OvdrjmNode, parsedArgs.items);
         const movedGuids = moveInstancesInDocument(root as OvdrjmNode, parsedArgs.items);
+        // Reparenting can change a node's top-level Workspace ancestor, so its
+        // assembly must re-follow the new ancestor's Mobility (same as upsert).
+        normalizeWorkspaceMobility(root as OvdrjmNode);
 
         return { added: movedGuids.map((g) => ({ guid: g, name: "", class: "" })) };
       });
