@@ -261,6 +261,11 @@ Seeded random notes:
 - `choice` requires a non-empty dense array; `shuffle` returns a new array and
   does not modify its input; both accept at most 20,000 items
 - the RNG is intended for reproducible procedural authoring, not cryptography
+- when placing objects at random positions, guard against unintended overlap:
+  uniform random sampling readily produces clipping, so enforce a minimum
+  spacing (reject or nudge samples that collide, e.g. a Poisson-style check)
+  and account for each part's full size, not just its center. Only allow
+  overlapping placements when the user explicitly wants them.
 
 There is no `SmartObject` dependency: read tunable inputs directly from
 `parameters.Size` and `parameters.Attributes`.
@@ -270,6 +275,31 @@ There is no `SmartObject` dependency: read tunable inputs directly from
 Material values pass through the procedural runtime unchanged. Use an exact value accepted by the canonical
 `instance_upsert` material schema in `instance.params.ts`. Invalid values fail during apply; the runtime never aliases
 or silently falls back to another material.
+
+### Mobility (Static vs Movable)
+
+`Mobility` is a base instance property with values `"Static"` or `"Movable"`. It
+is effective only on a top-level Workspace object (a direct child of Workspace),
+and descendants inherit their top-level ancestor's mobility — so set it once on
+the recipe root, never per part.
+
+- Set `Mobility = "Static"` on the root of terrain, level geometry, structures,
+  and any map that never moves. The engine can then optimize rendering and skip
+  physics for the whole subtree.
+- Because mobility is inherited, a `"Static"` root forces every descendant
+  static. Do not nest parts that must move, animate, or be physics-/script-driven
+  under a static root — keep those on a `"Movable"` root (the default).
+- Mobility only takes effect on the top-level object. When the recipe root is
+  applied as a direct child of Workspace (the default target), set it there; a
+  root parented deeper inherits from its own top-level ancestor instead.
+
+```lua
+-- Fixed map/terrain: mark the root Static; every generated part inherits it.
+local root = GP.model("Terrain", nil)
+root.Mobility = "Static" -- whole map never moves; descendants inherit Static
+-- Build the static level geometry under `root` here.
+root.Parent = targetContainer
+```
 
 ## Workflow
 
@@ -319,6 +349,8 @@ Guidelines:
 - Parent every fresh instance into the final tree. Unparented fresh instances are not serialized or applied.
 - Use `parameters.Size.X/Y/Z` and `parameters.Attributes` for user-tunable generation.
 - Use exact materials accepted by the apply schema. Invalid materials are rejected rather than rewritten.
+- For fixed maps, terrain, and structures that never move, set `Mobility = "Static"` on the top-level root (see [Mobility](#mobility-static-vs-movable)); keep objects that must move `"Movable"`.
+- Avoid unintended overlap: unless the user explicitly wants parts to intersect (e.g. deliberately fused or embedded geometry), lay pieces out so they do not overlap or clip into each other. Account for each part's full size — not just its center — when spacing, tiling, or stacking, and leave clearances between distinct objects.
 - Keep shape generation deterministic.
 - Comment every major generated group and every transform that is visually important or easy to break during edits.
 

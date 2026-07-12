@@ -320,6 +320,30 @@ describe("createStudioRpcToolProvider", () => {
     expect(rpcCalls).toEqual([]);
   });
 
+  test("reports ignored Mobility when upserting below a Workspace top-level object", async () => {
+    const cwd = makeStudioProject();
+    const tools = await loadStudioTools(cwd);
+    const result = await tools.get("studiorpc_instance_upsert")!.execute(
+      {
+        items: [
+          {
+            class: "Part",
+            parentGuid: folderGuid,
+            name: "NestedPart",
+            properties: { Mobility: "Static" },
+          },
+        ],
+      },
+      toolContext(),
+    );
+
+    expect(result.metadata?.info).toEqual([
+      expect.stringMatching(/^Ignored Mobility for .+: Mobility can only be changed on a direct child of Workspace\.$/),
+    ]);
+    expect(result.output).toContain("<suggestions>");
+    expect(result.output).toContain("Ignored Mobility");
+  });
+
   test("returns structured readback status for move missing target and new parent GUIDs", async () => {
     const cwd = makeStudioProject();
     const rpcCalls: Array<{ method: string; params?: Record<string, unknown> }> = [];

@@ -8,6 +8,7 @@ import { applyLevelChanges } from "../rpc";
 import {
   addInstancesInDocument,
   deleteInstancesInDocument,
+  normalizeWorkspaceMobility,
   requireDocumentRoot,
   updateInstancesInDocument,
 } from "./instance-document-operations";
@@ -223,6 +224,7 @@ function applyGeneratedAdds(document: Record<string, unknown>, adds: readonly Pr
         name: op.name,
         properties: op.properties,
       })),
+      { mobilityPolicy: "preserve-for-normalization" },
     );
     if (added.length !== ready.length) {
       throw new Error(`Added ${added.length} generated instances for ${ready.length} ready operations.`);
@@ -259,7 +261,10 @@ export async function applyProceduralOps(
       plan.deletes.map((op) => op.guid),
       { skipMissing: true },
     );
-    const updatedGuids = updateInstancesInDocument(root, plan.updates);
+    const updatedGuids = updateInstancesInDocument(root, plan.updates, {
+      mobilityPolicy: "preserve-for-normalization",
+    });
+    normalizeWorkspaceMobility(root);
     const addedGuids = plan.adds.map((op) =>
       resolveInstanceRef({ kind: "generated", localId: op.localId }, generatedGuids),
     );

@@ -28,6 +28,22 @@ export function findNodeByActorGuid(node: OvdrjmNode, targetGuid: string): Ovdrj
 }
 
 /**
+ * Locates the Workspace service node in a document tree. Workspace may be the
+ * tree root itself or nested beneath it. Returns undefined when no Workspace
+ * node exists.
+ */
+export function findWorkspaceNode(node: OvdrjmNode): OvdrjmNode | undefined {
+  if (node.InstanceType === "Workspace") return node;
+  if (!Array.isArray(node.LuaChildren)) return undefined;
+  for (const child of node.LuaChildren) {
+    if (!isRecord(child)) continue;
+    const found = findWorkspaceNode(child as OvdrjmNode);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+/**
  * When an instance's CFrame changes, its descendants that are positioned
  * relative to it (i.e. those without their own CFrame) still carry a stale
  * cached WorldTransform. Delete those WorldTransform values across the whole

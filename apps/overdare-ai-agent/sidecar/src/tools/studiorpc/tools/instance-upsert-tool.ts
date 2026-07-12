@@ -56,18 +56,22 @@ export async function executeInstanceUpsertInner(
     try {
       return readAndWriteOvdrjm(cwd, (rootDoc) => {
         const root = requireDocumentRoot(rootDoc);
+        const mobilityInfo: string[] = [];
+        const writeOptions = { mobilityPolicy: "ignore-non-top-level" as const, mobilityInfo };
 
         const added: { guid: string; name: string; class: string }[] = [];
         for (const item of parsedArgs.items) {
           if (instanceUpsert.isUpdateItem(item)) {
-            updateInstancesInDocument(root, [{ ...item, properties: item.properties ?? {} }]);
+            updateInstancesInDocument(root, [{ ...item, properties: item.properties ?? {} }], writeOptions);
             continue;
           }
-          added.push(...addInstancesInDocument(rootDoc, [{ ...item, properties: item.properties ?? {} }]));
+          added.push(
+            ...addInstancesInDocument(rootDoc, [{ ...item, properties: item.properties ?? {} }], writeOptions),
+          );
         }
 
         ovdrjmRoot = root;
-        return { added };
+        return { added, mobilityInfo };
       });
     } catch (error) {
       const result = resultFromInstanceToolStatusError(error);
@@ -84,6 +88,7 @@ export async function executeInstanceUpsertInner(
     await applyLevelChanges();
   }
   const diag = ovdrjmRoot ? collectUiDiagnostics(ovdrjmRoot) : { warnings: [], info: [] };
+  diag.info.push(...fileResult.mobilityInfo);
   const addedGuids = fileResult.added.map((item) => item.guid);
   const updatedGuids = parsedArgs.items.flatMap((item) => (instanceUpsert.isUpdateItem(item) ? [item.guid] : []));
   const targetGuids = [...updatedGuids, ...addedGuids];

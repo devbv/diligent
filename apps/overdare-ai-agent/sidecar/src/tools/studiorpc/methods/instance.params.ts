@@ -13,7 +13,10 @@ const udim2 = z.object({
 const normalIdEnum = z.enum(["Right", "Top", "Back", "Left", "Bottom", "Front"]);
 const mobilityEnum = z
   .enum(["Static", "Movable"])
-  .describe("Static or Movable; effective only on top-level Workspace objects (direct children of Workspace)");
+  .describe(
+    "Static or Movable; settable only on top-level Workspace objects (direct children of Workspace). " +
+      "A deeper instance_upsert value is ignored; JSON apply normalizes explicitly set descendants to the top-level value.",
+  );
 
 /**
  * Universal base-Instance properties present on every instance class (comparable to ClassName/Name),
@@ -434,570 +437,562 @@ const httpServiceSchema = z
 
 const emptyServiceSchema = z.object({}).strict();
 
-const rawInstancePropertiesUnion = z
-  .union([
-    z
-      .object({
-        Shape: z.enum(["Block", "Ball", "Cylinder"]).optional(),
-        CFrame: z.object({ Position: vec3, Orientation: vec3 }).optional(),
-        Size: vec3.describe("units in cm").optional(),
-        Anchored: z.boolean().default(true),
-        BrickColor: z.string().optional(),
-        CanClimb: z.boolean().optional(),
-        CanCollide: z.boolean().default(true),
-        CanQuery: z.boolean().default(true),
-        CanTouch: z.boolean().default(true),
-        CastShadow: z.boolean().optional(),
-        CollisionGroup: z.string().optional(),
-        CollisionProfile: z.string().describe('e.g. "BlockAll"').optional(),
-        Color: rgb.optional(),
-        Locked: z.boolean().optional(),
-        Material: materialEnum.optional(),
-        MaterialVariant: z.string().optional(),
-        Transparency: z.number().describe("(0~1)").optional(),
-      })
-      .strict()
-      .describe("Use when class=Part. A 3D primitive shape (Block, Ball, Cylinder) with physics and collision."),
-    z
-      .object({
-        Color: rgb.optional(),
-        Thickness: z.number().optional(),
-        Adornee: z.string().describe("InstanceGuid of the target instance to outline").optional(),
-        Enabled: z.boolean().optional(),
-      })
-      .strict()
-      .describe("Use when class=Outline. Overlay effect with edge color/thickness around an adornee instance."),
-    z
-      .object({
-        Color: rgb.optional(),
-        DepthMode: z.enum(["AlwaysOnTop", "VisibleWhenNotOccluded", "VisibleWhenOccluded"]).optional(),
-        Transparency: z.number().describe("(0~1)").optional(),
-        Adornee: z.string().describe("InstanceGuid of the target instance to fill").optional(),
-        Enabled: z.boolean().optional(),
-      })
-      .strict()
-      .describe("Use when class=Fill. Overlay effect with color fill over an adornee instance."),
-    z
-      .object({
-        ...guiObjectProperties,
-      })
-      .strict()
-      .describe("Use when class=Frame. Layout and visual properties with optional border styling."),
-    z
-      .object({
-        Image: z.string().describe("Image asset ID").optional(),
-        ImageColor3: rgb.default({ R: 255, G: 255, B: 255 }),
-        ImageTransparency: z.number().describe("(0~1)").optional(),
-        PressImage: z.string().describe("Image asset ID").optional(),
-        HoverImage: z.string().describe("Image asset ID").optional(),
-        ...guiObjectProperties,
-      })
-      .strict()
-      .describe("Use when class=ImageButton. Clickable GUI element that displays an image with press/hover states."),
-    z
-      .object({
-        Image: z.string().describe("Image asset ID").optional(),
-        ImageColor3: rgb.optional(),
-        ImageTransparency: z.number().describe("(0~1)").optional(),
-        ...guiObjectProperties,
-      })
-      .strict()
-      .describe("Use when class=ImageLabel. Non-interactive GUI element that displays an image."),
-    z
-      .object({ ...textProperties, ...guiObjectProperties })
-      .strict()
-      .describe("Use when class=TextButton. Clickable GUI element that displays text."),
-    z
-      .object({ ...textProperties, ...guiObjectProperties })
-      .strict()
-      .describe("Use when class=TextLabel. Same as TextButton properties but non-interactive."),
-    z
-      .object({
-        SoundId: z.string().optional(),
-        Volume: z.number().describe("multiplier (0~10)").default(0.5),
-        Looped: z.boolean().optional(),
-        LoopRegion: z.object({ Min: z.number(), Max: z.number() }).optional(),
-        PlaybackRegion: z.object({ Min: z.number(), Max: z.number() }).optional(),
-        PlaybackRegionsEnabled: z.boolean().default(false),
-        PlaybackSpeed: z.number().default(1),
-        Playing: z.boolean().optional(),
-        PlayOnRemove: z.boolean().optional(),
-        RollOffMaxDistance: z.number().default(5000),
-        RollOffMinDistance: z.number().default(10),
-        RollOffMode: z.enum(["Inverse", "InverseTapered", "Linear", "LinearSquare"]).optional(),
-        StartTimePosition: z.number().optional(),
-      })
-      .strict()
-      .describe("Use when class=Sound. Audio source with 3D spatial roll-off."),
-    z
-      .object({})
-      .strict()
-      .describe("Use when class=RemoteEvent. No configurable properties — just set parentGuid and name."),
-    z
-      .object({
-        CanBeDropped: z.boolean().default(true),
-        Enabled: z.boolean().optional(),
-      })
-      .strict()
-      .describe("Use when class=Tool. An equippable item a player can pick up and activate."),
-    z
-      .object({
-        PresetName: z.string(),
-        Color: z.array(z.object({ Time: z.number(), R: z.number(), G: z.number(), B: z.number() })),
-        Enabled: z.boolean().default(true),
-        InfiniteLoop: z.boolean().default(true),
-        LoopCount: z.number().default(1),
-        Size: z.number().default(1),
-        Transparency: z.number().describe("(0~1)").optional(),
-      })
-      .strict()
-      .describe("Use when class=VFXPreset. A named visual effects preset for quick particle effect setup."),
-    z
-      .object({
-        AngularVelocity: vec3.optional(),
-        Enabled: z.boolean().default(true),
-        MaxTorque: z.number().default(1000),
-        ReactionTorqueEnabled: z.boolean().optional(),
-        RelativeTo: z.string().describe('e.g. "World"').optional(),
-      })
-      .strict()
-      .describe("Use when class=AngularVelocity. Applies a target rotational velocity to a physics body."),
-    z
-      .object({
-        VelocityConstraintMode: z.string().describe('e.g. "Vector"').optional(),
-        VectorVelocity: vec3.optional(),
-        LineDirection: vec3.optional(),
-        LineVelocity: z.number().optional(),
-        PlaneVelocity: z.object({ X: z.number(), Y: z.number() }).optional(),
-        PrimaryTangentAxis: vec3.optional(),
-        SecondaryTangentAxis: vec3.optional(),
-        Enabled: z.boolean().default(true),
-        ForceLimitsEnabled: z.boolean().default(true),
-        MaxForce: z.number().default(10),
-        RelativeTo: z.string().describe('e.g. "World"').optional(),
-      })
-      .strict()
-      .describe(
-        "Use when class=LinearVelocity. Applies a target linear velocity to a physics body via Vector, Line, or Plane mode.",
-      ),
-    z
-      .object({
-        Force: vec3.optional(),
-        ApplyAtCenterOfMass: z.boolean().optional(),
-        Enabled: z.boolean().default(true),
-        RelativeTo: z.string().describe('e.g. "World"').optional(),
-      })
-      .strict()
-      .describe(
-        "Use when class=VectorForce. Applies a constant force vector to a physics body, optionally at its center of mass.",
-      ),
-    z
-      .object({
-        CastShadow: z.boolean().optional(),
-        PrimaryPart: z.string().describe("InstanceGuid of the primary part").optional(),
-        WorldPivot: z.object({ Position: vec3, Orientation: vec3 }).optional(),
-      })
-      .strict()
-      .describe(
-        "Use when class=Model. Groups BaseParts into a single unit; supports physics, movement, and rotation as one entity.",
-      ),
-    z
-      .object({})
-      .strict()
-      .describe(
-        "Use when class=Folder. Logical organizer with no class-specific properties — use for grouping scripts or non-physical instances.",
-      ),
-    z
-      .object({
-        AutomaticCanvasSize: z.string().describe('e.g. "Y"').optional(),
-        CanvasPosition: z.object({ X: z.number(), Y: z.number() }).describe("Scroll offset (Vector2)").optional(),
-        CanvasSize: udim2.describe("Total scrollable area (UDim2)").optional(),
-        ScrollBarImageColor3: rgb.optional(),
-        ScrollBarImageTransparency: z.number().describe("(0~1)").optional(),
-        ScrollBarThickness: z.number().default(12),
-        ScrollingDirection: z.string().describe('e.g. "Y"').optional(),
-        ScrollingEnabled: z.boolean().default(true),
-        ...guiObjectProperties,
-        ClipsDescendants: z.boolean().default(true),
-      })
-      .strict()
-      .describe(
-        "Use when class=ScrollingFrame. Scrollable UI container; use for inventory lists, quest logs, or any overflowing content.",
-      ),
-    z
-      .object({
-        Padding: udim.describe("Space between list items (UDim)").optional(),
-        Wraps: z.boolean().optional(),
-        FillDirection: z.string().describe('e.g. "Vertical"').optional(),
-        HorizontalAlignment: z.string().describe('e.g. "Center"').optional(),
-        VerticalAlignment: z.string().describe('e.g. "Top"').optional(),
-        SortOrder: z.string().describe('e.g. "LayoutOrder"').optional(),
-      })
-      .strict()
-      .describe("Use when class=UIListLayout. Auto-arranges sibling UI elements in a horizontal or vertical list."),
-    z
-      .object({
-        CellPadding: udim2.describe("Space between grid cells (UDim2)").optional(),
-        CellSize: udim2.describe("Uniform size of each grid cell (UDim2)").optional(),
-        FillDirectionMaxCells: z.number().int().optional(),
-        FillDirection: z.string().describe('e.g. "Horizontal"').optional(),
-        HorizontalAlignment: z.string().describe('e.g. "Left"').optional(),
-        VerticalAlignment: z.string().describe('e.g. "Top"').optional(),
-        SortOrder: z.string().describe('e.g. "LayoutOrder"').optional(),
-      })
-      .strict()
-      .describe("Use when class=UIGridLayout. Auto-arranges sibling UI elements in a uniform grid."),
-    z
-      .object({
-        ...surfaceGuiBaseProperties,
-        DistanceLowerLimit: z.number().optional(),
-        DistanceUpperLimit: z.number().optional(),
-        ExtentsOffsetWorldSpace: vec3.optional(),
-        PositionOffset: vec3.optional(),
-        PositionOffsetWorldSpace: vec3.optional(),
-        SizeOffset: z
-          .object({ X: z.number(), Y: z.number() })
-          .describe("Screen-space size offset (Vector2)")
-          .optional(),
-      })
-      .strict()
-      .describe("Use when class=BillboardGui. World-space GUI that always faces the camera, anchored to an Adornee."),
-    z
-      .object({
-        ...surfaceGuiBaseProperties,
-        Face: normalIdEnum.optional(),
-        ZOffset: z.number().default(1),
-      })
-      .strict()
-      .describe("Use when class=SurfaceGui. GUI rendered on a specific face of a Part."),
-    z
-      .object({})
-      .strict()
-      .describe("Use when class=BindableEvent. No configurable properties — just set parentGuid and name."),
-    z
-      .object({
-        Axis: vec3.optional(),
-        CFrame: z.object({ Position: vec3, Orientation: vec3 }).optional(),
-        SecondaryAxis: vec3.optional(),
-      })
-      .strict()
-      .describe(
-        "Use when class=Attachment. Defines a local coordinate frame on a BasePart for constraints and effects.",
-      ),
-    z
-      .object({
-        Color: colorSequence.optional(),
-        CurveSize0: z.number().optional(),
-        CurveSize1: z.number().optional(),
-        Enabled: z.boolean().default(true),
-        FaceCamera: z.boolean().optional(),
-        Texture: z.string().describe("Texture asset ID").optional(),
-        TextureLength: z.number().default(1),
-        TextureSpeed: z.number().default(1),
-        Transparency: numberSequence.optional(),
-        Width0: z.number().default(1),
-        Width1: z.number().default(1),
-      })
-      .strict()
-      .describe("Use when class=Beam. Visual beam rendered between two Attachments."),
-    z
-      .object({
-        Color: colorSequence.optional(),
-        Enabled: z.boolean().default(true),
-        Lifetime: z.number().default(2),
-        Offset: vec3.optional(),
-        Texture: z.string().describe("Texture asset ID").optional(),
-        TextureLength: z.number().default(1),
-        TextureSpeed: z.number().default(1),
-        Transparency: numberSequence.optional(),
-        Width: z.number().default(200),
-        WidthScale: numberSequence.optional(),
-      })
-      .strict()
-      .describe("Use when class=Trail. Motion trail rendered between two Attachments."),
-    z
-      .object({
-        Acceleration: vec3.optional(),
-        Brightness: z.number().optional(),
-        Color: colorSequence.optional(),
-        Drag: z.number().optional(),
-        EmissionDirection: normalIdEnum.optional(),
-        Enabled: z.boolean().default(true),
-        FlipbookFramerate: numberRange.optional(),
-        FlipbookLayout: z.enum(["None", "Grid2x2", "Grid4x4", "Grid8x8"]).optional(),
-        FlipbookMode: z.enum(["Loop", "OneShot", "PingPong", "Random"]).optional(),
-        FlipbookStartRandom: z.boolean().optional(),
-        Lifetime: numberRange.optional(),
-        LightEmission: z.number().describe("(0~1)").optional(),
-        LockedToPart: z.boolean().optional(),
-        Orientation: z
-          .enum(["FacingCamera", "FacingCameraWorldUp", "VelocityParallel", "VelocityPerpendicular"])
-          .optional(),
-        Rate: z.number().default(5),
-        RotSpeed: z.number().optional(),
-        Rotation: numberRange.optional(),
-        Shape: z.enum(["Box", "Sphere", "Cylinder", "Disc"]).optional(),
-        ShapeInOut: z.enum(["OutWard", "InWard"]).optional(),
-        ShapeStyle: z.enum(["Volume", "Surface"]).optional(),
-        Size: numberSequence.optional(),
-        Speed: numberRange.optional(),
-        SpreadAngle: z.number().optional(),
-        Squash: numberSequence.optional(),
-        Texture: z.string().describe("Texture asset ID").optional(),
-        Transparency: numberSequence.optional(),
-      })
-      .strict()
-      .describe(
-        "Use when class=ParticleEmitter. Full particle system with emission shape, flipbook animation, and physics.",
-      ),
-    z
-      .object({
-        Brightness: z.number().default(50),
-        Color: rgb.optional(),
-        Enabled: z.boolean().optional(),
-        Range: z.number().describe("Radius of illumination in studs").default(300),
-      })
-      .strict()
-      .describe("Use when class=PointLight. Omnidirectional point light source."),
-    z
-      .object({
-        Angle: z.number().describe("Cone half-angle in degrees").default(45),
-        Brightness: z.number().default(50),
-        Color: rgb.optional(),
-        Enabled: z.boolean().optional(),
-        Face: normalIdEnum.optional(),
-        Range: z.number().describe("Radius of illumination in studs").default(300),
-      })
-      .strict()
-      .describe("Use when class=SpotLight. Cone-shaped directional light source."),
-    z
-      .object({ Value: z.string().optional() })
-      .strict()
-      .describe("Use when class=StringValue. Stores a single string value."),
-    z
-      .object({ Value: z.number().optional() })
-      .strict()
-      .describe("Use when class=NumberValue. Stores a single floating-point value."),
-    z
-      .object({ Value: z.boolean().optional() })
-      .strict()
-      .describe("Use when class=BoolValue. Stores a single boolean value."),
-    z
-      .object({ Value: z.number().int().optional() })
-      .strict()
-      .describe("Use when class=IntValue. Stores a single integer value."),
-    z
-      .object({
-        Shape: z.enum(["Block", "Ball", "Cylinder"]).optional(),
-        CFrame: z.object({ Position: vec3, Orientation: vec3 }).optional(),
-        Size: vec3.describe("units in cm").optional(),
-        Anchored: z.boolean().default(true),
-        BrickColor: z.string().optional(),
-        CanClimb: z.boolean().optional(),
-        CanCollide: z.boolean().default(true),
-        CanQuery: z.boolean().default(true),
-        CanTouch: z.boolean().default(true),
-        CastShadow: z.boolean().optional(),
-        CollisionGroup: z.string().optional(),
-        CollisionProfile: z.string().describe('e.g. "BlockAll"').optional(),
-        Color: rgb.optional(),
-        DoubleSided: z.boolean().optional(),
-        EnableMeshShadowDetails: z.boolean().optional(),
-        Locked: z.boolean().optional(),
-        Material: materialEnum.optional(),
-        MaterialVariant: z.string().optional(),
-        MeshId: z.string().describe("Mesh asset ID").optional(),
-        MeshShadowDetailLevel: z.enum(["Original", "Medium", "Low"]).optional(),
-        TextureId: z.string().describe("Surface texture asset ID").optional(),
-        Transparency: z.number().describe("(0~1)").optional(),
-      })
-      .strict()
-      .describe(
-        "Use when class=MeshPart. BasePart with a custom mesh asset. Inherits all Part physics/collision properties.",
-      ),
-    z
-      .object({ AnimationId: z.string().describe("Animation asset ID").optional() })
-      .strict()
-      .describe("Use when class=Animation. References an animation asset to be loaded by an Animator."),
-    z
-      .object({
-        Head: z.string().describe("Head mesh asset ID").optional(),
-        Torso: z.string().describe("Torso mesh asset ID").optional(),
-        LeftArm: z.string().describe("Left arm mesh asset ID").optional(),
-        RightArm: z.string().describe("Right arm mesh asset ID").optional(),
-        LeftLeg: z.string().describe("Left leg mesh asset ID").optional(),
-        RightLeg: z.string().describe("Right leg mesh asset ID").optional(),
-        HeadColor: rgb.optional(),
-        TorsoColor: rgb.optional(),
-        LeftArmColor: rgb.optional(),
-        RightArmColor: rgb.optional(),
-        LeftLegColor: rgb.optional(),
-        RightLegColor: rgb.optional(),
-        HeadTextureId: z.string().describe("Head texture asset ID").optional(),
-        TorsoTextureId: z.string().describe("Torso texture asset ID").optional(),
-        LeftArmTextureId: z.string().describe("Left arm texture asset ID").optional(),
-        RightArmTextureId: z.string().describe("Right arm texture asset ID").optional(),
-        LeftLegTextureId: z.string().describe("Left leg texture asset ID").optional(),
-        RightLegTextureId: z.string().describe("Right leg texture asset ID").optional(),
-        IdleAnimation: z.string().describe("Animation asset ID").optional(),
-        WalkAnimation: z.string().describe("Animation asset ID").optional(),
-        RunAnimation: z.string().describe("Animation asset ID").optional(),
-        JumpAnimation: z.string().describe("Animation asset ID").optional(),
-        FallAnimation: z.string().describe("Animation asset ID").optional(),
-        LandedAnimation: z.string().describe("Animation asset ID").optional(),
-        ClimbAnimation: z.string().describe("Animation asset ID").optional(),
-        SwimmingIdleAnimation: z.string().describe("Animation asset ID").optional(),
-        SwimmingBreaststrokeAnimation: z.string().describe("Animation asset ID").optional(),
-        SprintAnimation: z.string().describe("Animation asset ID").optional(),
-        MoodAnimation: z.string().describe("Animation asset ID").optional(),
-        DieAnimation: z.string().describe("Animation asset ID").optional(),
-        HeightScale: z.number().describe("Character y-axis scale").default(1),
-        DepthScale: z.number().describe("Character z-axis scale").default(1),
-        WidthScale: z.number().describe("Character x-axis scale").default(1),
-        HeadScale: z.number().default(1),
-        BodyTypeScale: z.number().default(1),
-        ProportionScale: z.number().default(1),
-        Face: z.string().describe("Face asset ID").optional(),
-        Shirt: z.string().describe("Shirt asset ID").optional(),
-        Pants: z.string().describe("Pants asset ID").optional(),
-        GraphicTShirt: z.string().describe("Graphic T-Shirt asset ID").optional(),
-        HatAccessory: z.string().describe("Hat asset ID").optional(),
-        HairAccessory: z.string().describe("Hair asset ID").optional(),
-        FaceAccessory: z.string().describe("Face accessory asset ID").optional(),
-        NeckAccessory: z.string().describe("Neck accessory asset ID").optional(),
-        ShoulderAccessory: z.string().describe("Shoulder accessory asset ID").optional(),
-        FrontAccessory: z.string().describe("Front accessory asset ID").optional(),
-        BackAccessory: z.string().describe("Back accessory asset ID").optional(),
-        WaistAccessory: z.string().describe("Waist accessory asset ID").optional(),
-        AccessoryBlob: z.string().describe("JSON accessory blob").optional(),
-        IdleVariations: z.array(z.string()).optional(),
-      })
-      .strict()
-      .describe(
-        "Use when class=HumanoidDescription. Defines a character's full appearance including body parts, animations, and accessories.",
-      ),
-    z
-      .object({
-        CFrame: z.object({ Position: vec3, Orientation: vec3 }).optional(),
-        CameraOffset: vec3.optional(),
-        CameraSubject: z.string().describe("InstanceGuid of the subject to follow").optional(),
-        CameraType: z
-          .enum(["Fixed", "Attach", "Watch", "Track", "Follow", "Custom", "Scriptable", "Orbital"])
-          .optional(),
-        EnableSmoothFollow: z.boolean().optional(),
-        EnableSmoothRotation: z.boolean().optional(),
-        FieldOfView: z.number().optional(),
-        FollowMaxDistance: z.number().optional(),
-        RotationInput: vec3.optional(),
-        SmoothFollowSpeed: z.number().optional(),
-        SmoothRotationSpeed: z.number().optional(),
-      })
-      .strict()
-      .describe("Use when class=Camera. Controls the world camera view and behavior."),
-    z
-      .object({
-        BaseMaterial: materialEnum.optional(),
-        ColorMap: z.string().describe("Texture asset ID").optional(),
-        Emissive: rgb.optional(),
-        EmissiveIntensity: z.number().optional(),
-        EmissiveMap: z.string().describe("Texture asset ID").optional(),
-        Metalness: z.number().describe("(0~1)").optional(),
-        MetalnessMap: z.string().describe("Texture asset ID").optional(),
-        MetersPerTile: z.number().optional(),
-        NormalMap: z.string().describe("Texture asset ID").optional(),
-        Roughness: z.number().describe("(0~1)").optional(),
-        RoughnessMap: z.string().describe("Texture asset ID").optional(),
-      })
-      .strict()
-      .describe("Use when class=MaterialVariant. Custom material override with PBR texture maps and surface color."),
-    z
-      .object({
-        DisplayOrder: z.number().optional(),
-        Enabled: z.boolean().default(true),
-      })
-      .strict()
-      .describe("Use when class=ScreenGui. Full-screen GUI container for HUD and menu elements."),
-    z
-      .object({
-        BallMeshCollisionProfile: z.string().optional(),
-        BallRadius: z.number().optional(),
-        BallTraceChannel: z.number().optional(),
-        CFrame: z.object({ Position: vec3, Orientation: vec3 }).optional(),
-        Color: rgb.optional(),
-        EnablePathMarker: z.boolean().optional(),
-        IsPathMarkerWorldSpace: z.boolean().optional(),
-        Material: materialEnum.optional(),
-        MaterialVariant: z.string().optional(),
-        PathMarkerScale: z.number().optional(),
-        SlomoFactor: z.number().optional(),
-        TextureId: z.string().describe("Texture asset ID").optional(),
-        Transparency: z.number().describe("(0~1)").optional(),
-      })
-      .strict()
-      .describe("Use when class=SimulationBall. Physics-simulated ball with trajectory and path marker."),
-    z
-      .object({
-        Volume: z.number().describe("multiplier (0~10)").default(1),
-      })
-      .strict()
-      .describe("Use when class=SoundGroup. Groups Sounds under a shared volume multiplier."),
-    z
-      .object({
-        Shape: z.enum(["Block", "Ball", "Cylinder"]).optional(),
-        CFrame: z.object({ Position: vec3, Orientation: vec3 }).optional(),
-        Size: vec3.describe("units in cm").optional(),
-        Anchored: z.boolean().default(true),
-        BrickColor: z.string().optional(),
-        CanClimb: z.boolean().optional(),
-        CanCollide: z.boolean().default(true),
-        CanQuery: z.boolean().default(true),
-        CanTouch: z.boolean().default(true),
-        CastShadow: z.boolean().optional(),
-        CollisionGroup: z.string().optional(),
-        CollisionProfile: z.string().describe('e.g. "BlockAll"').optional(),
-        Color: rgb.optional(),
-        Enabled: z.boolean().optional(),
-        Locked: z.boolean().optional(),
-        Material: materialEnum.optional(),
-        MaterialVariant: z.string().optional(),
-        Neutral: z.boolean().optional(),
-        TeamColor: rgb.optional(),
-        Transparency: z.number().describe("(0~1)").optional(),
-      })
-      .strict()
-      .describe("Use when class=SpawnLocation. Player spawn point. Inherits all Part physics/collision properties."),
-    z
-      .object({
-        AspectRatio: z.number().optional(),
-        AspectType: z.string().describe('e.g. "FitWithinMaxSize"').optional(),
-        DominantAxis: z.string().describe('e.g. "Width"').optional(),
-      })
-      .strict()
-      .describe("Use when class=UIAspectRatioConstraint. Locks the aspect ratio of a sibling UI element."),
-    z
-      .object({
-        KeyboardKeyCode: z.string().describe('e.g. "E"'),
-        UIOffset: z.object({ X: z.number(), Y: z.number() }).optional(),
-        ActionText: z.string(),
-        AutoLocalize: z.boolean().default(true),
-        ClickablePrompt: z.boolean().default(true),
-        Enabled: z.boolean().default(true),
-        Exclusivity: z.enum(["OnePerButton", "OneGlobally", "AlwaysShow"]).optional(),
-        HoldDuration: z.number().default(0),
-        MaxActivationDistance: z.number().default(200),
-        ObjectText: z.string(),
-        RequiresLineOfSight: z.boolean().default(true),
-      })
-      .strict()
-      .describe("Use when class=ProximityPrompt. Nearby interaction prompt triggered when a player approaches."),
-    workspaceServiceSchema,
-    lightingServiceSchema,
-    atmosphereServiceSchema,
-    playersServiceSchema,
-    starterPlayerServiceSchema,
-    materialServiceSchema,
-    httpServiceSchema,
-  ]);
+const rawInstancePropertiesUnion = z.union([
+  z
+    .object({
+      Shape: z.enum(["Block", "Ball", "Cylinder"]).optional(),
+      CFrame: z.object({ Position: vec3, Orientation: vec3 }).optional(),
+      Size: vec3.describe("units in cm").optional(),
+      Anchored: z.boolean().default(true),
+      BrickColor: z.string().optional(),
+      CanClimb: z.boolean().optional(),
+      CanCollide: z.boolean().default(true),
+      CanQuery: z.boolean().default(true),
+      CanTouch: z.boolean().default(true),
+      CastShadow: z.boolean().optional(),
+      CollisionGroup: z.string().optional(),
+      CollisionProfile: z.string().describe('e.g. "BlockAll"').optional(),
+      Color: rgb.optional(),
+      Locked: z.boolean().optional(),
+      Material: materialEnum.optional(),
+      MaterialVariant: z.string().optional(),
+      Transparency: z.number().describe("(0~1)").optional(),
+    })
+    .strict()
+    .describe("Use when class=Part. A 3D primitive shape (Block, Ball, Cylinder) with physics and collision."),
+  z
+    .object({
+      Color: rgb.optional(),
+      Thickness: z.number().optional(),
+      Adornee: z.string().describe("InstanceGuid of the target instance to outline").optional(),
+      Enabled: z.boolean().optional(),
+    })
+    .strict()
+    .describe("Use when class=Outline. Overlay effect with edge color/thickness around an adornee instance."),
+  z
+    .object({
+      Color: rgb.optional(),
+      DepthMode: z.enum(["AlwaysOnTop", "VisibleWhenNotOccluded", "VisibleWhenOccluded"]).optional(),
+      Transparency: z.number().describe("(0~1)").optional(),
+      Adornee: z.string().describe("InstanceGuid of the target instance to fill").optional(),
+      Enabled: z.boolean().optional(),
+    })
+    .strict()
+    .describe("Use when class=Fill. Overlay effect with color fill over an adornee instance."),
+  z
+    .object({
+      ...guiObjectProperties,
+    })
+    .strict()
+    .describe("Use when class=Frame. Layout and visual properties with optional border styling."),
+  z
+    .object({
+      Image: z.string().describe("Image asset ID").optional(),
+      ImageColor3: rgb.default({ R: 255, G: 255, B: 255 }),
+      ImageTransparency: z.number().describe("(0~1)").optional(),
+      PressImage: z.string().describe("Image asset ID").optional(),
+      HoverImage: z.string().describe("Image asset ID").optional(),
+      ...guiObjectProperties,
+    })
+    .strict()
+    .describe("Use when class=ImageButton. Clickable GUI element that displays an image with press/hover states."),
+  z
+    .object({
+      Image: z.string().describe("Image asset ID").optional(),
+      ImageColor3: rgb.optional(),
+      ImageTransparency: z.number().describe("(0~1)").optional(),
+      ...guiObjectProperties,
+    })
+    .strict()
+    .describe("Use when class=ImageLabel. Non-interactive GUI element that displays an image."),
+  z
+    .object({ ...textProperties, ...guiObjectProperties })
+    .strict()
+    .describe("Use when class=TextButton. Clickable GUI element that displays text."),
+  z
+    .object({ ...textProperties, ...guiObjectProperties })
+    .strict()
+    .describe("Use when class=TextLabel. Same as TextButton properties but non-interactive."),
+  z
+    .object({
+      SoundId: z.string().optional(),
+      Volume: z.number().describe("multiplier (0~10)").default(0.5),
+      Looped: z.boolean().optional(),
+      LoopRegion: z.object({ Min: z.number(), Max: z.number() }).optional(),
+      PlaybackRegion: z.object({ Min: z.number(), Max: z.number() }).optional(),
+      PlaybackRegionsEnabled: z.boolean().default(false),
+      PlaybackSpeed: z.number().default(1),
+      Playing: z.boolean().optional(),
+      PlayOnRemove: z.boolean().optional(),
+      RollOffMaxDistance: z.number().default(5000),
+      RollOffMinDistance: z.number().default(10),
+      RollOffMode: z.enum(["Inverse", "InverseTapered", "Linear", "LinearSquare"]).optional(),
+      StartTimePosition: z.number().optional(),
+    })
+    .strict()
+    .describe("Use when class=Sound. Audio source with 3D spatial roll-off."),
+  z
+    .object({})
+    .strict()
+    .describe("Use when class=RemoteEvent. No configurable properties — just set parentGuid and name."),
+  z
+    .object({
+      CanBeDropped: z.boolean().default(true),
+      Enabled: z.boolean().optional(),
+    })
+    .strict()
+    .describe("Use when class=Tool. An equippable item a player can pick up and activate."),
+  z
+    .object({
+      PresetName: z.string(),
+      Color: z.array(z.object({ Time: z.number(), R: z.number(), G: z.number(), B: z.number() })),
+      Enabled: z.boolean().default(true),
+      InfiniteLoop: z.boolean().default(true),
+      LoopCount: z.number().default(1),
+      Size: z.number().default(1),
+      Transparency: z.number().describe("(0~1)").optional(),
+    })
+    .strict()
+    .describe("Use when class=VFXPreset. A named visual effects preset for quick particle effect setup."),
+  z
+    .object({
+      AngularVelocity: vec3.optional(),
+      Enabled: z.boolean().default(true),
+      MaxTorque: z.number().default(1000),
+      ReactionTorqueEnabled: z.boolean().optional(),
+      RelativeTo: z.string().describe('e.g. "World"').optional(),
+    })
+    .strict()
+    .describe("Use when class=AngularVelocity. Applies a target rotational velocity to a physics body."),
+  z
+    .object({
+      VelocityConstraintMode: z.string().describe('e.g. "Vector"').optional(),
+      VectorVelocity: vec3.optional(),
+      LineDirection: vec3.optional(),
+      LineVelocity: z.number().optional(),
+      PlaneVelocity: z.object({ X: z.number(), Y: z.number() }).optional(),
+      PrimaryTangentAxis: vec3.optional(),
+      SecondaryTangentAxis: vec3.optional(),
+      Enabled: z.boolean().default(true),
+      ForceLimitsEnabled: z.boolean().default(true),
+      MaxForce: z.number().default(10),
+      RelativeTo: z.string().describe('e.g. "World"').optional(),
+    })
+    .strict()
+    .describe(
+      "Use when class=LinearVelocity. Applies a target linear velocity to a physics body via Vector, Line, or Plane mode.",
+    ),
+  z
+    .object({
+      Force: vec3.optional(),
+      ApplyAtCenterOfMass: z.boolean().optional(),
+      Enabled: z.boolean().default(true),
+      RelativeTo: z.string().describe('e.g. "World"').optional(),
+    })
+    .strict()
+    .describe(
+      "Use when class=VectorForce. Applies a constant force vector to a physics body, optionally at its center of mass.",
+    ),
+  z
+    .object({
+      CastShadow: z.boolean().optional(),
+      PrimaryPart: z.string().describe("InstanceGuid of the primary part").optional(),
+      WorldPivot: z.object({ Position: vec3, Orientation: vec3 }).optional(),
+    })
+    .strict()
+    .describe(
+      "Use when class=Model. Groups BaseParts into a single unit; supports physics, movement, and rotation as one entity.",
+    ),
+  z
+    .object({})
+    .strict()
+    .describe(
+      "Use when class=Folder. Logical organizer with no class-specific properties — use for grouping scripts or non-physical instances.",
+    ),
+  z
+    .object({
+      AutomaticCanvasSize: z.string().describe('e.g. "Y"').optional(),
+      CanvasPosition: z.object({ X: z.number(), Y: z.number() }).describe("Scroll offset (Vector2)").optional(),
+      CanvasSize: udim2.describe("Total scrollable area (UDim2)").optional(),
+      ScrollBarImageColor3: rgb.optional(),
+      ScrollBarImageTransparency: z.number().describe("(0~1)").optional(),
+      ScrollBarThickness: z.number().default(12),
+      ScrollingDirection: z.string().describe('e.g. "Y"').optional(),
+      ScrollingEnabled: z.boolean().default(true),
+      ...guiObjectProperties,
+      ClipsDescendants: z.boolean().default(true),
+    })
+    .strict()
+    .describe(
+      "Use when class=ScrollingFrame. Scrollable UI container; use for inventory lists, quest logs, or any overflowing content.",
+    ),
+  z
+    .object({
+      Padding: udim.describe("Space between list items (UDim)").optional(),
+      Wraps: z.boolean().optional(),
+      FillDirection: z.string().describe('e.g. "Vertical"').optional(),
+      HorizontalAlignment: z.string().describe('e.g. "Center"').optional(),
+      VerticalAlignment: z.string().describe('e.g. "Top"').optional(),
+      SortOrder: z.string().describe('e.g. "LayoutOrder"').optional(),
+    })
+    .strict()
+    .describe("Use when class=UIListLayout. Auto-arranges sibling UI elements in a horizontal or vertical list."),
+  z
+    .object({
+      CellPadding: udim2.describe("Space between grid cells (UDim2)").optional(),
+      CellSize: udim2.describe("Uniform size of each grid cell (UDim2)").optional(),
+      FillDirectionMaxCells: z.number().int().optional(),
+      FillDirection: z.string().describe('e.g. "Horizontal"').optional(),
+      HorizontalAlignment: z.string().describe('e.g. "Left"').optional(),
+      VerticalAlignment: z.string().describe('e.g. "Top"').optional(),
+      SortOrder: z.string().describe('e.g. "LayoutOrder"').optional(),
+    })
+    .strict()
+    .describe("Use when class=UIGridLayout. Auto-arranges sibling UI elements in a uniform grid."),
+  z
+    .object({
+      ...surfaceGuiBaseProperties,
+      DistanceLowerLimit: z.number().optional(),
+      DistanceUpperLimit: z.number().optional(),
+      ExtentsOffsetWorldSpace: vec3.optional(),
+      PositionOffset: vec3.optional(),
+      PositionOffsetWorldSpace: vec3.optional(),
+      SizeOffset: z.object({ X: z.number(), Y: z.number() }).describe("Screen-space size offset (Vector2)").optional(),
+    })
+    .strict()
+    .describe("Use when class=BillboardGui. World-space GUI that always faces the camera, anchored to an Adornee."),
+  z
+    .object({
+      ...surfaceGuiBaseProperties,
+      Face: normalIdEnum.optional(),
+      ZOffset: z.number().default(1),
+    })
+    .strict()
+    .describe("Use when class=SurfaceGui. GUI rendered on a specific face of a Part."),
+  z
+    .object({})
+    .strict()
+    .describe("Use when class=BindableEvent. No configurable properties — just set parentGuid and name."),
+  z
+    .object({
+      Axis: vec3.optional(),
+      CFrame: z.object({ Position: vec3, Orientation: vec3 }).optional(),
+      SecondaryAxis: vec3.optional(),
+    })
+    .strict()
+    .describe("Use when class=Attachment. Defines a local coordinate frame on a BasePart for constraints and effects."),
+  z
+    .object({
+      Color: colorSequence.optional(),
+      CurveSize0: z.number().optional(),
+      CurveSize1: z.number().optional(),
+      Enabled: z.boolean().default(true),
+      FaceCamera: z.boolean().optional(),
+      Texture: z.string().describe("Texture asset ID").optional(),
+      TextureLength: z.number().default(1),
+      TextureSpeed: z.number().default(1),
+      Transparency: numberSequence.optional(),
+      Width0: z.number().default(1),
+      Width1: z.number().default(1),
+    })
+    .strict()
+    .describe("Use when class=Beam. Visual beam rendered between two Attachments."),
+  z
+    .object({
+      Color: colorSequence.optional(),
+      Enabled: z.boolean().default(true),
+      Lifetime: z.number().default(2),
+      Offset: vec3.optional(),
+      Texture: z.string().describe("Texture asset ID").optional(),
+      TextureLength: z.number().default(1),
+      TextureSpeed: z.number().default(1),
+      Transparency: numberSequence.optional(),
+      Width: z.number().default(200),
+      WidthScale: numberSequence.optional(),
+    })
+    .strict()
+    .describe("Use when class=Trail. Motion trail rendered between two Attachments."),
+  z
+    .object({
+      Acceleration: vec3.optional(),
+      Brightness: z.number().optional(),
+      Color: colorSequence.optional(),
+      Drag: z.number().optional(),
+      EmissionDirection: normalIdEnum.optional(),
+      Enabled: z.boolean().default(true),
+      FlipbookFramerate: numberRange.optional(),
+      FlipbookLayout: z.enum(["None", "Grid2x2", "Grid4x4", "Grid8x8"]).optional(),
+      FlipbookMode: z.enum(["Loop", "OneShot", "PingPong", "Random"]).optional(),
+      FlipbookStartRandom: z.boolean().optional(),
+      Lifetime: numberRange.optional(),
+      LightEmission: z.number().describe("(0~1)").optional(),
+      LockedToPart: z.boolean().optional(),
+      Orientation: z
+        .enum(["FacingCamera", "FacingCameraWorldUp", "VelocityParallel", "VelocityPerpendicular"])
+        .optional(),
+      Rate: z.number().default(5),
+      RotSpeed: z.number().optional(),
+      Rotation: numberRange.optional(),
+      Shape: z.enum(["Box", "Sphere", "Cylinder", "Disc"]).optional(),
+      ShapeInOut: z.enum(["OutWard", "InWard"]).optional(),
+      ShapeStyle: z.enum(["Volume", "Surface"]).optional(),
+      Size: numberSequence.optional(),
+      Speed: numberRange.optional(),
+      SpreadAngle: z.number().optional(),
+      Squash: numberSequence.optional(),
+      Texture: z.string().describe("Texture asset ID").optional(),
+      Transparency: numberSequence.optional(),
+    })
+    .strict()
+    .describe(
+      "Use when class=ParticleEmitter. Full particle system with emission shape, flipbook animation, and physics.",
+    ),
+  z
+    .object({
+      Brightness: z.number().default(50),
+      Color: rgb.optional(),
+      Enabled: z.boolean().optional(),
+      Range: z.number().describe("Radius of illumination in studs").default(300),
+    })
+    .strict()
+    .describe("Use when class=PointLight. Omnidirectional point light source."),
+  z
+    .object({
+      Angle: z.number().describe("Cone half-angle in degrees").default(45),
+      Brightness: z.number().default(50),
+      Color: rgb.optional(),
+      Enabled: z.boolean().optional(),
+      Face: normalIdEnum.optional(),
+      Range: z.number().describe("Radius of illumination in studs").default(300),
+    })
+    .strict()
+    .describe("Use when class=SpotLight. Cone-shaped directional light source."),
+  z
+    .object({ Value: z.string().optional() })
+    .strict()
+    .describe("Use when class=StringValue. Stores a single string value."),
+  z
+    .object({ Value: z.number().optional() })
+    .strict()
+    .describe("Use when class=NumberValue. Stores a single floating-point value."),
+  z
+    .object({ Value: z.boolean().optional() })
+    .strict()
+    .describe("Use when class=BoolValue. Stores a single boolean value."),
+  z
+    .object({ Value: z.number().int().optional() })
+    .strict()
+    .describe("Use when class=IntValue. Stores a single integer value."),
+  z
+    .object({
+      Shape: z.enum(["Block", "Ball", "Cylinder"]).optional(),
+      CFrame: z.object({ Position: vec3, Orientation: vec3 }).optional(),
+      Size: vec3.describe("units in cm").optional(),
+      Anchored: z.boolean().default(true),
+      BrickColor: z.string().optional(),
+      CanClimb: z.boolean().optional(),
+      CanCollide: z.boolean().default(true),
+      CanQuery: z.boolean().default(true),
+      CanTouch: z.boolean().default(true),
+      CastShadow: z.boolean().optional(),
+      CollisionGroup: z.string().optional(),
+      CollisionProfile: z.string().describe('e.g. "BlockAll"').optional(),
+      Color: rgb.optional(),
+      DoubleSided: z.boolean().optional(),
+      EnableMeshShadowDetails: z.boolean().optional(),
+      Locked: z.boolean().optional(),
+      Material: materialEnum.optional(),
+      MaterialVariant: z.string().optional(),
+      MeshId: z.string().describe("Mesh asset ID").optional(),
+      MeshShadowDetailLevel: z.enum(["Original", "Medium", "Low"]).optional(),
+      TextureId: z.string().describe("Surface texture asset ID").optional(),
+      Transparency: z.number().describe("(0~1)").optional(),
+    })
+    .strict()
+    .describe(
+      "Use when class=MeshPart. BasePart with a custom mesh asset. Inherits all Part physics/collision properties.",
+    ),
+  z
+    .object({ AnimationId: z.string().describe("Animation asset ID").optional() })
+    .strict()
+    .describe("Use when class=Animation. References an animation asset to be loaded by an Animator."),
+  z
+    .object({
+      Head: z.string().describe("Head mesh asset ID").optional(),
+      Torso: z.string().describe("Torso mesh asset ID").optional(),
+      LeftArm: z.string().describe("Left arm mesh asset ID").optional(),
+      RightArm: z.string().describe("Right arm mesh asset ID").optional(),
+      LeftLeg: z.string().describe("Left leg mesh asset ID").optional(),
+      RightLeg: z.string().describe("Right leg mesh asset ID").optional(),
+      HeadColor: rgb.optional(),
+      TorsoColor: rgb.optional(),
+      LeftArmColor: rgb.optional(),
+      RightArmColor: rgb.optional(),
+      LeftLegColor: rgb.optional(),
+      RightLegColor: rgb.optional(),
+      HeadTextureId: z.string().describe("Head texture asset ID").optional(),
+      TorsoTextureId: z.string().describe("Torso texture asset ID").optional(),
+      LeftArmTextureId: z.string().describe("Left arm texture asset ID").optional(),
+      RightArmTextureId: z.string().describe("Right arm texture asset ID").optional(),
+      LeftLegTextureId: z.string().describe("Left leg texture asset ID").optional(),
+      RightLegTextureId: z.string().describe("Right leg texture asset ID").optional(),
+      IdleAnimation: z.string().describe("Animation asset ID").optional(),
+      WalkAnimation: z.string().describe("Animation asset ID").optional(),
+      RunAnimation: z.string().describe("Animation asset ID").optional(),
+      JumpAnimation: z.string().describe("Animation asset ID").optional(),
+      FallAnimation: z.string().describe("Animation asset ID").optional(),
+      LandedAnimation: z.string().describe("Animation asset ID").optional(),
+      ClimbAnimation: z.string().describe("Animation asset ID").optional(),
+      SwimmingIdleAnimation: z.string().describe("Animation asset ID").optional(),
+      SwimmingBreaststrokeAnimation: z.string().describe("Animation asset ID").optional(),
+      SprintAnimation: z.string().describe("Animation asset ID").optional(),
+      MoodAnimation: z.string().describe("Animation asset ID").optional(),
+      DieAnimation: z.string().describe("Animation asset ID").optional(),
+      HeightScale: z.number().describe("Character y-axis scale").default(1),
+      DepthScale: z.number().describe("Character z-axis scale").default(1),
+      WidthScale: z.number().describe("Character x-axis scale").default(1),
+      HeadScale: z.number().default(1),
+      BodyTypeScale: z.number().default(1),
+      ProportionScale: z.number().default(1),
+      Face: z.string().describe("Face asset ID").optional(),
+      Shirt: z.string().describe("Shirt asset ID").optional(),
+      Pants: z.string().describe("Pants asset ID").optional(),
+      GraphicTShirt: z.string().describe("Graphic T-Shirt asset ID").optional(),
+      HatAccessory: z.string().describe("Hat asset ID").optional(),
+      HairAccessory: z.string().describe("Hair asset ID").optional(),
+      FaceAccessory: z.string().describe("Face accessory asset ID").optional(),
+      NeckAccessory: z.string().describe("Neck accessory asset ID").optional(),
+      ShoulderAccessory: z.string().describe("Shoulder accessory asset ID").optional(),
+      FrontAccessory: z.string().describe("Front accessory asset ID").optional(),
+      BackAccessory: z.string().describe("Back accessory asset ID").optional(),
+      WaistAccessory: z.string().describe("Waist accessory asset ID").optional(),
+      AccessoryBlob: z.string().describe("JSON accessory blob").optional(),
+      IdleVariations: z.array(z.string()).optional(),
+    })
+    .strict()
+    .describe(
+      "Use when class=HumanoidDescription. Defines a character's full appearance including body parts, animations, and accessories.",
+    ),
+  z
+    .object({
+      CFrame: z.object({ Position: vec3, Orientation: vec3 }).optional(),
+      CameraOffset: vec3.optional(),
+      CameraSubject: z.string().describe("InstanceGuid of the subject to follow").optional(),
+      CameraType: z.enum(["Fixed", "Attach", "Watch", "Track", "Follow", "Custom", "Scriptable", "Orbital"]).optional(),
+      EnableSmoothFollow: z.boolean().optional(),
+      EnableSmoothRotation: z.boolean().optional(),
+      FieldOfView: z.number().optional(),
+      FollowMaxDistance: z.number().optional(),
+      RotationInput: vec3.optional(),
+      SmoothFollowSpeed: z.number().optional(),
+      SmoothRotationSpeed: z.number().optional(),
+    })
+    .strict()
+    .describe("Use when class=Camera. Controls the world camera view and behavior."),
+  z
+    .object({
+      BaseMaterial: materialEnum.optional(),
+      ColorMap: z.string().describe("Texture asset ID").optional(),
+      Emissive: rgb.optional(),
+      EmissiveIntensity: z.number().optional(),
+      EmissiveMap: z.string().describe("Texture asset ID").optional(),
+      Metalness: z.number().describe("(0~1)").optional(),
+      MetalnessMap: z.string().describe("Texture asset ID").optional(),
+      MetersPerTile: z.number().optional(),
+      NormalMap: z.string().describe("Texture asset ID").optional(),
+      Roughness: z.number().describe("(0~1)").optional(),
+      RoughnessMap: z.string().describe("Texture asset ID").optional(),
+    })
+    .strict()
+    .describe("Use when class=MaterialVariant. Custom material override with PBR texture maps and surface color."),
+  z
+    .object({
+      DisplayOrder: z.number().optional(),
+      Enabled: z.boolean().default(true),
+    })
+    .strict()
+    .describe("Use when class=ScreenGui. Full-screen GUI container for HUD and menu elements."),
+  z
+    .object({
+      BallMeshCollisionProfile: z.string().optional(),
+      BallRadius: z.number().optional(),
+      BallTraceChannel: z.number().optional(),
+      CFrame: z.object({ Position: vec3, Orientation: vec3 }).optional(),
+      Color: rgb.optional(),
+      EnablePathMarker: z.boolean().optional(),
+      IsPathMarkerWorldSpace: z.boolean().optional(),
+      Material: materialEnum.optional(),
+      MaterialVariant: z.string().optional(),
+      PathMarkerScale: z.number().optional(),
+      SlomoFactor: z.number().optional(),
+      TextureId: z.string().describe("Texture asset ID").optional(),
+      Transparency: z.number().describe("(0~1)").optional(),
+    })
+    .strict()
+    .describe("Use when class=SimulationBall. Physics-simulated ball with trajectory and path marker."),
+  z
+    .object({
+      Volume: z.number().describe("multiplier (0~10)").default(1),
+    })
+    .strict()
+    .describe("Use when class=SoundGroup. Groups Sounds under a shared volume multiplier."),
+  z
+    .object({
+      Shape: z.enum(["Block", "Ball", "Cylinder"]).optional(),
+      CFrame: z.object({ Position: vec3, Orientation: vec3 }).optional(),
+      Size: vec3.describe("units in cm").optional(),
+      Anchored: z.boolean().default(true),
+      BrickColor: z.string().optional(),
+      CanClimb: z.boolean().optional(),
+      CanCollide: z.boolean().default(true),
+      CanQuery: z.boolean().default(true),
+      CanTouch: z.boolean().default(true),
+      CastShadow: z.boolean().optional(),
+      CollisionGroup: z.string().optional(),
+      CollisionProfile: z.string().describe('e.g. "BlockAll"').optional(),
+      Color: rgb.optional(),
+      Enabled: z.boolean().optional(),
+      Locked: z.boolean().optional(),
+      Material: materialEnum.optional(),
+      MaterialVariant: z.string().optional(),
+      Neutral: z.boolean().optional(),
+      TeamColor: rgb.optional(),
+      Transparency: z.number().describe("(0~1)").optional(),
+    })
+    .strict()
+    .describe("Use when class=SpawnLocation. Player spawn point. Inherits all Part physics/collision properties."),
+  z
+    .object({
+      AspectRatio: z.number().optional(),
+      AspectType: z.string().describe('e.g. "FitWithinMaxSize"').optional(),
+      DominantAxis: z.string().describe('e.g. "Width"').optional(),
+    })
+    .strict()
+    .describe("Use when class=UIAspectRatioConstraint. Locks the aspect ratio of a sibling UI element."),
+  z
+    .object({
+      KeyboardKeyCode: z.string().describe('e.g. "E"'),
+      UIOffset: z.object({ X: z.number(), Y: z.number() }).optional(),
+      ActionText: z.string(),
+      AutoLocalize: z.boolean().default(true),
+      ClickablePrompt: z.boolean().default(true),
+      Enabled: z.boolean().default(true),
+      Exclusivity: z.enum(["OnePerButton", "OneGlobally", "AlwaysShow"]).optional(),
+      HoldDuration: z.number().default(0),
+      MaxActivationDistance: z.number().default(200),
+      ObjectText: z.string(),
+      RequiresLineOfSight: z.boolean().default(true),
+    })
+    .strict()
+    .describe("Use when class=ProximityPrompt. Nearby interaction prompt triggered when a player approaches."),
+  workspaceServiceSchema,
+  lightingServiceSchema,
+  atmosphereServiceSchema,
+  playersServiceSchema,
+  starterPlayerServiceSchema,
+  materialServiceSchema,
+  httpServiceSchema,
+]);
 
 // The union's first `instanceClassEnum.options.length` members are the instance-class schemas (same
 // order as the enum); the remainder are service schemas. Inject the universal base-Instance

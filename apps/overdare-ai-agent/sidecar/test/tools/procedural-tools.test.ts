@@ -169,6 +169,47 @@ describe("applyProceduralOps", () => {
     expect(result.skippedDeletes).toEqual(["ghost"]);
   });
 
+  test("normalizes explicit descendant Mobility after applying procedural JSON", async () => {
+    const cwd = makeProject();
+    const result = await applyProceduralOps(
+      [
+        {
+          kind: "add",
+          localId: "hello",
+          parent: { kind: "existing", guid: "W" },
+          class: "Folder",
+          name: "hello",
+          properties: { Mobility: "Static" },
+        },
+        {
+          kind: "add",
+          localId: "hey",
+          parent: { kind: "generated", localId: "hello" },
+          class: "Model",
+          name: "hey",
+          properties: { Mobility: "Movable" },
+        },
+        {
+          kind: "add",
+          localId: "k",
+          parent: { kind: "generated", localId: "hey" },
+          class: "Part",
+          name: "k",
+          properties: {},
+        },
+      ],
+      { targetGuid: "W", cwd },
+    );
+
+    const root = readOvdrjmRoot(cwd).root;
+    const hello = findNodeByActorGuid(root, result.addedGuids[0]) as Record<string, unknown>;
+    const hey = findNodeByActorGuid(root, result.addedGuids[1]) as Record<string, unknown>;
+    const k = findNodeByActorGuid(root, result.addedGuids[2]) as Record<string, unknown>;
+    expect(hello.Mobility).toBe("Static");
+    expect(hey.Mobility).toBe("Static");
+    expect("Mobility" in k).toBe(false);
+  });
+
   test("validates every operation before mutating the level", async () => {
     const cwd = makeProject();
 
