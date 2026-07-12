@@ -6,7 +6,14 @@ import { resolveProjectDirName } from "../infrastructure/diligent-dir";
 import { DEFAULT_CONFIG, type DiligentConfig, DiligentConfigSchema } from "./schema";
 
 /** Load and merge config from all sources (D033: global < project < env) */
-export async function loadDiligentConfig(cwd: string): Promise<{ config: DiligentConfig; sources: string[] }> {
+export interface DiligentConfigLayers {
+  global?: DiligentConfig;
+  project?: DiligentConfig;
+}
+
+export async function loadDiligentConfig(
+  cwd: string,
+): Promise<{ config: DiligentConfig; sources: string[]; layers: DiligentConfigLayers }> {
   const sources: string[] = [];
   const projectDirName = resolveProjectDirName();
 
@@ -33,7 +40,14 @@ export async function loadDiligentConfig(cwd: string): Promise<{ config: Diligen
     delete merged.tools;
   }
 
-  return { config: merged, sources };
+  return {
+    config: merged,
+    sources,
+    layers: {
+      ...(globalConfig ? { global: globalConfig } : {}),
+      ...(projectConfig ? { project: projectConfig } : {}),
+    },
+  };
 }
 
 /** Parse JSONC file, validate with Zod */

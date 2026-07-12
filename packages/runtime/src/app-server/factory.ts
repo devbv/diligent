@@ -11,9 +11,11 @@ import {
 import { RuntimeAgent } from "../agent/runtime-agent";
 import { openBrowser as defaultOpenBrowser } from "../auth";
 import { applyConsentPatch, refreshPrivacyPolicyUrl, resolveConsentState } from "../config/consent";
+import { loadDiligentConfig } from "../config/loader";
 import { loadRuntimeConfig, type RuntimeConfig } from "../config/runtime";
 import { getGlobalConfigPath, saveGlobalConsent, saveGlobalModel } from "../config/writer";
 import { type DiligentPaths, ensureDiligentDir } from "../infrastructure";
+import { discoverSkills } from "../skills";
 import type { BundledToolProvider } from "../tools/bundled-provider";
 import { buildDefaultTools } from "../tools/defaults";
 import { buildMcpNeedsAuthNote, getMcpManager } from "../tools/mcp";
@@ -251,6 +253,40 @@ export function createAppServerConfig(opts: CreateAppServerConfigOptions): Dilig
         }
       },
     },
+    skillConfig: {
+      resolve: async (requestCwd) => {
+        if (requestCwd === cwd) {
+          return {
+            cwd,
+            config: runtimeConfig.diligent.skills,
+            layers: runtimeConfig.configLayers ?? {},
+            discoveredSkills: runtimeConfig.discoveredSkills ?? [],
+          };
+        }
+
+        const loaded = await loadDiligentConfig(requestCwd);
+        const discovered = await discoverSkills({ cwd: requestCwd, additionalPaths: loaded.config.skills?.paths });
+        return {
+          cwd: requestCwd,
+          config: loaded.config.skills,
+          layers: loaded.layers,
+          discoveredSkills: discovered.skills,
+        };
+      },
+    },
+    subagentConfig: {
+      resolve: async (requestCwd) => {
+        if (requestCwd !== cwd) {
+          throw new Error(`Subagent settings are only available for the app-server startup cwd: ${cwd}`);
+        }
+        return {
+          cwd,
+          config: runtimeConfig.diligent.agents,
+          layers: runtimeConfig.configLayers ?? {},
+          catalog: runtimeConfig.agentCatalog,
+        };
+      },
+    },
     modelConfig: {
       currentModelId: runtimeConfig.model?.id,
       getAvailableModels: () => modelsForConfiguredProviders(),
@@ -281,12 +317,16 @@ export function createAppServerConfig(opts: CreateAppServerConfigOptions): Dilig
   config.reloadConfig = async (): Promise<ConfigReloadResult> => {
     const paths = await getPaths();
     const fresh = await loadRuntimeConfig(cwd, paths);
+    runtimeConfig.discoveredSkills = fresh.discoveredSkills;
     runtimeConfig.skills = fresh.skills;
     runtimeConfig.agents = fresh.agents;
+    runtimeConfig.discoveredAgents = fresh.discoveredAgents;
+    runtimeConfig.agentCatalog = fresh.agentCatalog;
     runtimeConfig.agentDefinitions = fresh.agentDefinitions;
     runtimeConfig.systemPrompt = fresh.systemPrompt;
     runtimeConfig.diligent = fresh.diligent;
     runtimeConfig.sources = fresh.sources;
+    runtimeConfig.configLayers = fresh.configLayers;
     config.mcpServers = fresh.diligent.mcpServers;
     config.skillNames = fresh.skills.map((skill) => skill.name);
     config.hooks = fresh.diligent.hooks;

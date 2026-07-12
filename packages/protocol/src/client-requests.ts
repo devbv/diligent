@@ -382,6 +382,81 @@ export type ToolsSetParams = z.infer<typeof ToolsSetParamsSchema>;
 export const ToolsSetResponseSchema = ToolsListResponseSchema;
 export type ToolsSetResponse = z.infer<typeof ToolsSetResponseSchema>;
 
+export const SkillStateReasonSchema = z.enum(["enabled", "disabled_by_user", "skills_disabled"]);
+export type SkillStateReason = z.infer<typeof SkillStateReasonSchema>;
+
+export const SkillDescriptorSchema = z.object({
+  name: z.string(),
+  description: z.string(),
+  source: z.enum(["global", "project", "config"]),
+  globalEnabled: z.boolean(),
+  effectiveEnabled: z.boolean(),
+  available: z.boolean(),
+  controlledBy: z.enum(["default", "global", "project"]),
+  reason: SkillStateReasonSchema,
+});
+export type SkillDescriptor = z.infer<typeof SkillDescriptorSchema>;
+
+export const SkillsListParamsSchema = z.object({
+  threadId: z.string().optional(),
+});
+export type SkillsListParams = z.infer<typeof SkillsListParamsSchema>;
+
+export const SkillsListResponseSchema = z.object({
+  configPath: z.string(),
+  appliesOnNextTurn: z.literal(true),
+  skillsEnabled: z.boolean(),
+  skillsEnabledControlledBy: z.enum(["default", "global", "project"]),
+  skills: z.array(SkillDescriptorSchema),
+});
+export type SkillsListResponse = z.infer<typeof SkillsListResponseSchema>;
+
+export const SkillsSetParamsSchema = z.object({
+  threadId: z.string().optional(),
+  overrides: z.record(z.string(), z.boolean()),
+});
+export type SkillsSetParams = z.infer<typeof SkillsSetParamsSchema>;
+
+export const SkillsSetResponseSchema = SkillsListResponseSchema;
+export type SkillsSetResponse = z.infer<typeof SkillsSetResponseSchema>;
+
+export const SubagentStateReasonSchema = z.enum(["enabled", "disabled_by_user", "required_builtin"]);
+export type SubagentStateReason = z.infer<typeof SubagentStateReasonSchema>;
+
+export const SubagentDescriptorSchema = z.object({
+  name: z.string(),
+  description: z.string(),
+  source: z.enum(["builtin", "global", "project", "config"]),
+  required: z.boolean(),
+  globalEnabled: z.boolean(),
+  effectiveEnabled: z.boolean(),
+  available: z.boolean(),
+  controlledBy: z.enum(["required", "default", "global", "project"]),
+  reason: SubagentStateReasonSchema,
+});
+export type SubagentDescriptor = z.infer<typeof SubagentDescriptorSchema>;
+
+export const SubagentsListParamsSchema = z.object({
+  threadId: z.string().optional(),
+});
+export type SubagentsListParams = z.infer<typeof SubagentsListParamsSchema>;
+
+export const SubagentsListResponseSchema = z.object({
+  configPath: z.string(),
+  appliesOnNextTurn: z.literal(true),
+  subagents: z.array(SubagentDescriptorSchema),
+});
+export type SubagentsListResponse = z.infer<typeof SubagentsListResponseSchema>;
+
+export const SubagentsSetParamsSchema = z.object({
+  threadId: z.string().optional(),
+  overrides: z.record(z.string(), z.boolean()),
+});
+export type SubagentsSetParams = z.infer<typeof SubagentsSetParamsSchema>;
+
+export const SubagentsSetResponseSchema = SubagentsListResponseSchema;
+export type SubagentsSetResponse = z.infer<typeof SubagentsSetResponseSchema>;
+
 // --- config/set ---
 export const ConfigSetParamsSchema = z.object({
   threadId: z.string().optional(),
@@ -583,6 +658,10 @@ export const DiligentClientRequestSchema = z.discriminatedUnion("method", [
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.THREAD_DELETE), params: ThreadDeleteParamsSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.TOOLS_LIST), params: ToolsListParamsSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.TOOLS_SET), params: ToolsSetParamsSchema }),
+  z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.SKILLS_LIST), params: SkillsListParamsSchema }),
+  z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.SKILLS_SET), params: SkillsSetParamsSchema }),
+  z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.SUBAGENTS_LIST), params: SubagentsListParamsSchema }),
+  z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.SUBAGENTS_SET), params: SubagentsSetParamsSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.CONFIG_SET), params: ConfigSetParamsSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.CONFIG_RELOAD), params: ConfigReloadParamsSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.CONSENT_SET), params: ConsentSetParamsSchema }),
@@ -640,6 +719,10 @@ export const DiligentClientResponseSchema = z.discriminatedUnion("method", [
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.THREAD_DELETE), result: ThreadDeleteResponseSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.TOOLS_LIST), result: ToolsListResponseSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.TOOLS_SET), result: ToolsSetResponseSchema }),
+  z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.SKILLS_LIST), result: SkillsListResponseSchema }),
+  z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.SKILLS_SET), result: SkillsSetResponseSchema }),
+  z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.SUBAGENTS_LIST), result: SubagentsListResponseSchema }),
+  z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.SUBAGENTS_SET), result: SubagentsSetResponseSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.CONFIG_SET), result: ConfigSetResponseSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.CONFIG_RELOAD), result: ConfigReloadResponseSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.CONSENT_SET), result: ConsentSetResponseSchema }),

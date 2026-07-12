@@ -5,6 +5,12 @@ import type {
   McpListResponse,
   McpLoginStartResponse,
   McpLogoutResponse,
+  SkillsListResponse,
+  SkillsSetParams,
+  SkillsSetResponse,
+  SubagentsListResponse,
+  SubagentsSetParams,
+  SubagentsSetResponse,
   ThreadReadResponse,
   ToolsListResponse,
   ToolsSetParams,
@@ -42,6 +48,52 @@ export function useThreadData({
       return rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.TOOLS_SET, params);
     },
     [rpcRef],
+  );
+
+  const listSkills = useCallback(
+    async (threadId?: string): Promise<SkillsListResponse> => {
+      const rpc = rpcRef.current;
+      if (!rpc) throw new Error("WebSocket is not connected");
+      return rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.SKILLS_LIST, {
+        threadId: threadId ?? state.activeThreadId ?? undefined,
+      });
+    },
+    [rpcRef, state.activeThreadId],
+  );
+
+  const saveSkills = useCallback(
+    async (params: SkillsSetParams): Promise<SkillsSetResponse> => {
+      const rpc = rpcRef.current;
+      if (!rpc) throw new Error("WebSocket is not connected");
+      return rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.SKILLS_SET, {
+        ...params,
+        threadId: params.threadId ?? state.activeThreadId ?? undefined,
+      });
+    },
+    [rpcRef, state.activeThreadId],
+  );
+
+  const listSubagents = useCallback(
+    async (threadId?: string): Promise<SubagentsListResponse> => {
+      const rpc = rpcRef.current;
+      if (!rpc) throw new Error("WebSocket is not connected");
+      return rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.SUBAGENTS_LIST, {
+        threadId: threadId ?? state.activeThreadId ?? undefined,
+      });
+    },
+    [rpcRef, state.activeThreadId],
+  );
+
+  const saveSubagents = useCallback(
+    async (params: SubagentsSetParams): Promise<SubagentsSetResponse> => {
+      const rpc = rpcRef.current;
+      if (!rpc) throw new Error("WebSocket is not connected");
+      return rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.SUBAGENTS_SET, {
+        ...params,
+        threadId: params.threadId ?? state.activeThreadId ?? undefined,
+      });
+    },
+    [rpcRef, state.activeThreadId],
   );
 
   const listKnowledge = useCallback(
@@ -110,6 +162,10 @@ export function useThreadData({
   return {
     listTools,
     saveTools,
+    listSkills,
+    saveSkills,
+    listSubagents,
+    saveSubagents,
     listKnowledge,
     updateKnowledge,
     loadChildThread,

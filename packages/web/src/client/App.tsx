@@ -91,6 +91,11 @@ export function App() {
     actions,
     listTools,
     saveTools,
+    listSkills,
+    saveSkills,
+    listSubagents,
+    saveSubagents,
+    setSkills,
     listKnowledge,
     updateKnowledge,
     listMcpServers,
@@ -294,6 +299,11 @@ export function App() {
               onConsentChange={updateConsent}
               onList={listTools}
               onSave={saveTools}
+              onListSkills={listSkills}
+              onSaveSkills={saveSkills}
+              onListSubagents={listSubagents}
+              onSaveSubagents={saveSubagents}
+              onSkillsChange={setSkills}
               onDesktopNotificationsEnabledChange={setDesktopNotificationsEnabled}
               onOpenProviders={() => {
                 setShowProviderModal(true);

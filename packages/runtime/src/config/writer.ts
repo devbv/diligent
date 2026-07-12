@@ -2,7 +2,7 @@
 import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { applyEdits, format, modify, parse as parseJsonc } from "jsonc-parser";
+import { applyEdits, format, modify, type ParseError, parse as parseJsonc } from "jsonc-parser";
 
 import { resolveProjectDirName } from "../infrastructure/diligent-dir";
 import type { DiligentConfig } from "./schema";
@@ -52,6 +52,38 @@ export interface WriteToolsConfigResult {
   configPath: string;
   config: DiligentConfig;
   tools: StoredToolsConfig | undefined;
+}
+
+export interface SkillConfigPatch {
+  overrides?: Record<string, boolean>;
+}
+
+export interface StoredSkillsConfig {
+  enabled?: boolean;
+  paths?: string[];
+  overrides?: Record<string, false>;
+}
+
+export interface WriteSkillsConfigResult {
+  configPath: string;
+  config: DiligentConfig;
+  skills: StoredSkillsConfig | undefined;
+}
+
+export interface AgentConfigPatch {
+  overrides?: Record<string, boolean>;
+}
+
+export interface StoredAgentsConfig {
+  enabled?: boolean;
+  paths?: string[];
+  overrides?: Record<string, false>;
+}
+
+export interface WriteAgentsConfigResult {
+  configPath: string;
+  config: DiligentConfig;
+  agents: StoredAgentsConfig | undefined;
 }
 
 export function getProjectConfigPath(cwd: string): string {
@@ -159,6 +191,141 @@ export async function writeGlobalToolsConfig(patch: ToolConfigPatch): Promise<Wr
   return writeToolsConfigAtPath(getGlobalConfigPath(), patch);
 }
 
+export function normalizeStoredSkillsConfig(
+  skills: DiligentConfig["skills"] | undefined,
+): StoredSkillsConfig | undefined {
+  if (!skills) return undefined;
+
+  const overrides = normalizeFalseOnlyMap(skills.overrides);
+  if (skills.enabled === undefined && skills.paths === undefined && !overrides) {
+    return undefined;
+  }
+
+  return {
+    ...(skills.enabled !== undefined ? { enabled: skills.enabled } : {}),
+    ...(skills.paths !== undefined ? { paths: [...skills.paths] } : {}),
+    ...(overrides ? { overrides } : {}),
+  };
+}
+
+export function applySkillConfigPatch(
+  current: DiligentConfig["skills"] | undefined,
+  patch: SkillConfigPatch,
+): StoredSkillsConfig | undefined {
+  const mergedOverrides = mergeBooleanMaps(current?.overrides, patch.overrides);
+  return normalizeStoredSkillsConfig({
+    ...(current?.enabled !== undefined ? { enabled: current.enabled } : {}),
+    ...(current?.paths !== undefined ? { paths: current.paths } : {}),
+    ...(mergedOverrides ? { overrides: mergedOverrides } : {}),
+  });
+}
+
+export async function writeGlobalSkillsConfig(patch: SkillConfigPatch): Promise<WriteSkillsConfigResult> {
+  return writeSkillsConfigAtPath(getGlobalConfigPath(), patch);
+}
+
+export function normalizeStoredAgentsConfig(
+  agents: DiligentConfig["agents"] | undefined,
+): StoredAgentsConfig | undefined {
+  if (!agents) return undefined;
+
+  const overrides = normalizeFalseOnlyMap(agents.overrides);
+  if (agents.enabled === undefined && agents.paths === undefined && !overrides) {
+    return undefined;
+  }
+
+  return {
+    ...(agents.enabled !== undefined ? { enabled: agents.enabled } : {}),
+    ...(agents.paths !== undefined ? { paths: [...agents.paths] } : {}),
+    ...(overrides ? { overrides } : {}),
+  };
+}
+
+export function applyAgentConfigPatch(
+  current: DiligentConfig["agents"] | undefined,
+  patch: AgentConfigPatch,
+): StoredAgentsConfig | undefined {
+  const mergedOverrides = mergeBooleanMaps(current?.overrides, patch.overrides);
+  return normalizeStoredAgentsConfig({
+    ...(current?.enabled !== undefined ? { enabled: current.enabled } : {}),
+    ...(current?.paths !== undefined ? { paths: current.paths } : {}),
+    ...(mergedOverrides ? { overrides: mergedOverrides } : {}),
+  });
+}
+
+export async function writeGlobalAgentsConfig(patch: AgentConfigPatch): Promise<WriteAgentsConfigResult> {
+  return writeAgentsConfigAtPath(getGlobalConfigPath(), patch);
+}
+
+async function writeSkillsConfigAtPath(configPath: string, patch: SkillConfigPatch): Promise<WriteSkillsConfigResult> {
+  await mkdir(dirname(configPath), { recursive: true });
+
+  let content = "{}\n";
+  const file = Bun.file(configPath);
+  if (await file.exists()) {
+    content = await file.text();
+  }
+
+  const parseErrors: ParseError[] = [];
+  const parsed = parseJsonc(content, parseErrors);
+  if (parseErrors.length > 0) {
+    throw new Error(`Failed to parse existing config at ${configPath}`);
+  }
+  const validatedCurrent = DiligentConfigSchema.safeParse(parsed);
+  if (!validatedCurrent.success) {
+    throw new Error(`Failed to validate existing config at ${configPath}: ${validatedCurrent.error.message}`);
+  }
+  const currentConfig = validatedCurrent.data;
+
+  const nextSkills = applySkillConfigPatch(currentConfig.skills, patch);
+  const updatedText = updateSkillsSubtree(content, currentConfig.skills, nextSkills);
+  await Bun.write(configPath, updatedText);
+
+  const reparsed = parseJsonc(updatedText);
+  const result = DiligentConfigSchema.safeParse(reparsed);
+  if (!result.success) {
+    throw new Error(`Failed to validate updated config at ${configPath}: ${result.error.message}`);
+  }
+
+  return {
+    configPath,
+    config: result.data,
+    skills: normalizeStoredSkillsConfig(result.data.skills),
+  };
+}
+
+async function writeAgentsConfigAtPath(configPath: string, patch: AgentConfigPatch): Promise<WriteAgentsConfigResult> {
+  await mkdir(dirname(configPath), { recursive: true });
+
+  let content = "{}\n";
+  const file = Bun.file(configPath);
+  if (await file.exists()) content = await file.text();
+
+  const parseErrors: ParseError[] = [];
+  const parsed = parseJsonc(content, parseErrors);
+  if (parseErrors.length > 0) {
+    throw new Error(`Failed to parse existing config at ${configPath}`);
+  }
+  const validatedCurrent = DiligentConfigSchema.safeParse(parsed);
+  if (!validatedCurrent.success) {
+    throw new Error(`Failed to validate existing config at ${configPath}: ${validatedCurrent.error.message}`);
+  }
+  const currentConfig = validatedCurrent.data;
+  const nextAgents = applyAgentConfigPatch(currentConfig.agents, patch);
+  const updatedText = updateAgentsSubtree(content, currentConfig.agents, nextAgents);
+  await Bun.write(configPath, updatedText);
+
+  const result = DiligentConfigSchema.safeParse(parseJsonc(updatedText));
+  if (!result.success) {
+    throw new Error(`Failed to validate updated config at ${configPath}: ${result.error.message}`);
+  }
+  return {
+    configPath,
+    config: result.data,
+    agents: normalizeStoredAgentsConfig(result.data.agents),
+  };
+}
+
 async function writeToolsConfigAtPath(configPath: string, patch: ToolConfigPatch): Promise<WriteToolsConfigResult> {
   await mkdir(dirname(configPath), { recursive: true });
 
@@ -197,6 +364,88 @@ function updateToolsSubtree(content: string, tools: StoredToolsConfig | undefine
     return applyEdits(updated, formatEdits);
   }
   return updated;
+}
+
+function updateSkillsSubtree(
+  content: string,
+  currentSkills: DiligentConfig["skills"] | undefined,
+  nextSkills: StoredSkillsConfig | undefined,
+): string {
+  if (!nextSkills) {
+    return applyConfigEdit(content, ["skills"], undefined);
+  }
+
+  let updated = content;
+  const currentOverrides = currentSkills?.overrides ?? {};
+  const nextOverrides = nextSkills.overrides ?? {};
+
+  for (const [name, enabled] of Object.entries(currentOverrides)) {
+    if (nextOverrides[name] === false) {
+      if (enabled !== false) {
+        updated = applyConfigEdit(updated, ["skills", "overrides", name], false);
+      }
+      continue;
+    }
+    updated = applyConfigEdit(updated, ["skills", "overrides", name], undefined);
+  }
+
+  for (const name of Object.keys(nextOverrides)) {
+    if (!Object.hasOwn(currentOverrides, name)) {
+      updated = applyConfigEdit(updated, ["skills", "overrides", name], false);
+    }
+  }
+
+  if (Object.keys(nextOverrides).length === 0 && Object.keys(currentOverrides).length > 0) {
+    updated = applyConfigEdit(updated, ["skills", "overrides"], undefined);
+  }
+
+  if (!currentSkills && Object.keys(nextOverrides).length === 0) {
+    updated = applyConfigEdit(updated, ["skills"], nextSkills);
+  }
+
+  if (content.trim() === "{}" || content.trim() === "") {
+    const formatEdits = format(updated, undefined, JSONC_FORMAT_OPTIONS);
+    return applyEdits(updated, formatEdits);
+  }
+  return updated;
+}
+
+function updateAgentsSubtree(
+  content: string,
+  currentAgents: DiligentConfig["agents"] | undefined,
+  nextAgents: StoredAgentsConfig | undefined,
+): string {
+  if (!nextAgents) return applyConfigEdit(content, ["agents"], undefined);
+
+  let updated = content;
+  const currentOverrides = currentAgents?.overrides ?? {};
+  const nextOverrides = nextAgents.overrides ?? {};
+  for (const [name, enabled] of Object.entries(currentOverrides)) {
+    if (nextOverrides[name] === false) {
+      if (enabled !== false) updated = applyConfigEdit(updated, ["agents", "overrides", name], false);
+      continue;
+    }
+    updated = applyConfigEdit(updated, ["agents", "overrides", name], undefined);
+  }
+  for (const name of Object.keys(nextOverrides)) {
+    if (!Object.hasOwn(currentOverrides, name))
+      updated = applyConfigEdit(updated, ["agents", "overrides", name], false);
+  }
+  if (Object.keys(nextOverrides).length === 0 && Object.keys(currentOverrides).length > 0) {
+    updated = applyConfigEdit(updated, ["agents", "overrides"], undefined);
+  }
+  if (!currentAgents && Object.keys(nextOverrides).length === 0) {
+    updated = applyConfigEdit(updated, ["agents"], nextAgents);
+  }
+  if (content.trim() === "{}" || content.trim() === "") {
+    return applyEdits(updated, format(updated, undefined, JSONC_FORMAT_OPTIONS));
+  }
+  return updated;
+}
+
+function applyConfigEdit(content: string, path: (string | number)[], value: unknown): string {
+  const edits = modify(content, path, value, { formattingOptions: JSONC_FORMAT_OPTIONS });
+  return applyEdits(content, edits);
 }
 
 function normalizeFalseOnlyMap(input: Record<string, boolean> | undefined): Record<string, false> | undefined {

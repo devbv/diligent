@@ -17,19 +17,20 @@ export function resolveAvailableAgentDefinitions(
   builtinAgents: ResolvedAgentDefinition[],
   userAgents: AgentMetadata[],
 ): ResolvedAgentDefinition[] {
-  return [
-    ...builtinAgents,
-    ...userAgents.map((agent) => ({
-      name: agent.name,
-      description: agent.description,
-      source: "user" as const,
-      systemPromptPrefix: `${agent.content.trim()}\n`,
-      allowedTools: agent.tools,
-      readonly: false,
-      defaultModelClass: agent.defaultModelClass,
-      filePath: agent.filePath,
-    })),
-  ];
+  return [...builtinAgents, ...resolveCustomAgentDefinitions(userAgents)];
+}
+
+export function resolveCustomAgentDefinitions(userAgents: AgentMetadata[]): ResolvedAgentDefinition[] {
+  return userAgents.map((agent) => ({
+    name: agent.name,
+    description: agent.description,
+    source: "user" as const,
+    systemPromptPrefix: `${agent.content.trim()}\n`,
+    allowedTools: agent.tools,
+    readonly: false,
+    defaultModelClass: agent.defaultModelClass,
+    filePath: agent.filePath,
+  }));
 }
 
 export function resolveAgentDefinition(

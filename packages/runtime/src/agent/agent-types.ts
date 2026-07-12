@@ -140,9 +140,10 @@ function formatCustomAgentLine(agent: ResolvedAgentDefinition): string {
 export function formatSpawnAgentToolDescription(
   agentDefinitions: ResolvedAgentDefinition[] = getBuiltinAgentDefinitions(),
 ): string {
-  const builtinLines = BUILTIN_AGENT_TYPE_NAMES.map(
-    (name) => `- ${formatGuidanceLine(BUILTIN_AGENT_TYPES[name])}`,
-  ).join("\n");
+  const availableBuiltins = BUILTIN_AGENT_TYPE_NAMES.filter((name) =>
+    agentDefinitions.some((agent) => agent.name === name),
+  );
+  const builtinLines = availableBuiltins.map((name) => `- ${formatGuidanceLine(BUILTIN_AGENT_TYPES[name])}`).join("\n");
   const customLines = agentDefinitions
     .filter((agent) => agent.source === "user")
     .map((agent) => `- ${formatCustomAgentLine(agent)}`)
@@ -177,9 +178,10 @@ export function formatSpawnAgentToolDescription(
 export function formatAgentTypeParameterDescription(
   agentDefinitions: ResolvedAgentDefinition[] = getBuiltinAgentDefinitions(),
 ): string {
-  const builtinLines = BUILTIN_AGENT_TYPE_NAMES.map(
-    (name) => `- ${formatGuidanceLine(BUILTIN_AGENT_TYPES[name])}`,
-  ).join("\n");
+  const availableBuiltins = BUILTIN_AGENT_TYPE_NAMES.filter((name) =>
+    agentDefinitions.some((agent) => agent.name === name),
+  );
+  const builtinLines = availableBuiltins.map((name) => `- ${formatGuidanceLine(BUILTIN_AGENT_TYPES[name])}`).join("\n");
   const customLines = agentDefinitions
     .filter((agent) => agent.source === "user")
     .map((agent) => `- ${formatCustomAgentLine(agent)}`)

@@ -32,6 +32,8 @@ import {
 import { handleKnowledgeList, handleKnowledgeUpdate } from "./knowledge-handlers";
 import { handleMcpList, handleMcpLoginStart, handleMcpLogout } from "./mcp-handlers";
 import { handleThreadDelete, handleThreadList, handleThreadResume } from "./session-handlers";
+import { handleSkillsList, handleSkillsSet, type SkillConfigManager } from "./skill-handlers";
+import { handleSubagentsList, handleSubagentsSet, type SubagentConfigManager } from "./subagent-handlers";
 import {
   handleEffortSet,
   handleModeSet,
@@ -96,6 +98,8 @@ export interface ClientRequestDispatchContext {
   threadHandlersCtx: ThreadHandlersContext;
   turnInitiators: Map<string, string>;
   toolConfig: ToolConfigManager | undefined;
+  skillConfig: SkillConfigManager | undefined;
+  subagentConfig: SubagentConfigManager | undefined;
   consentConfig: ConsentConfigManager | undefined;
   reloadConfig: (() => Promise<ConfigReloadResult>) | undefined;
 
@@ -168,6 +172,10 @@ export function applySessionDefaults(
     DILIGENT_CLIENT_REQUEST_METHODS.KNOWLEDGE_UPDATE,
     DILIGENT_CLIENT_REQUEST_METHODS.TOOLS_LIST,
     DILIGENT_CLIENT_REQUEST_METHODS.TOOLS_SET,
+    DILIGENT_CLIENT_REQUEST_METHODS.SKILLS_LIST,
+    DILIGENT_CLIENT_REQUEST_METHODS.SKILLS_SET,
+    DILIGENT_CLIENT_REQUEST_METHODS.SUBAGENTS_LIST,
+    DILIGENT_CLIENT_REQUEST_METHODS.SUBAGENTS_SET,
   ];
 
   if (threadScoped.includes(method)) {
@@ -293,6 +301,30 @@ export async function dispatchClientRequest(
       const manager = ctx.toolConfig;
       if (!manager) throw Object.assign(new Error("Tool config not available"), { code: -32601 });
       return handleToolsSet(ctx.threadHandlersCtx, manager, request.params.threadId, request.params);
+    }
+
+    case DILIGENT_CLIENT_REQUEST_METHODS.SKILLS_LIST: {
+      const manager = ctx.skillConfig;
+      if (!manager) throw Object.assign(new Error("Skill config not available"), { code: -32601 });
+      return handleSkillsList(ctx.threadHandlersCtx, manager, request.params.threadId);
+    }
+
+    case DILIGENT_CLIENT_REQUEST_METHODS.SKILLS_SET: {
+      const manager = ctx.skillConfig;
+      if (!manager) throw Object.assign(new Error("Skill config not available"), { code: -32601 });
+      return handleSkillsSet(ctx.threadHandlersCtx, manager, ctx.reloadConfig, request.params);
+    }
+
+    case DILIGENT_CLIENT_REQUEST_METHODS.SUBAGENTS_LIST: {
+      const manager = ctx.subagentConfig;
+      if (!manager) throw Object.assign(new Error("Subagent config not available"), { code: -32601 });
+      return handleSubagentsList(ctx.threadHandlersCtx, manager, request.params.threadId);
+    }
+
+    case DILIGENT_CLIENT_REQUEST_METHODS.SUBAGENTS_SET: {
+      const manager = ctx.subagentConfig;
+      if (!manager) throw Object.assign(new Error("Subagent config not available"), { code: -32601 });
+      return handleSubagentsSet(ctx.threadHandlersCtx, manager, ctx.reloadConfig, request.params);
     }
 
     case DILIGENT_CLIENT_REQUEST_METHODS.THREAD_SUBSCRIBE: {

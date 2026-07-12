@@ -38,6 +38,8 @@ function makeRuntimeConfig(overrides?: Partial<RuntimeConfig>): RuntimeConfig {
     },
     diligent: {},
     sources: [],
+    configLayers: {},
+    discoveredSkills: [],
     skills: [],
     compaction: {
       enabled: true,
@@ -313,7 +315,7 @@ describe("reloadConfig", () => {
     await Promise.all(tempProjects.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
   });
 
-  it("re-discovers skills from disk and clears the frozen skillNames/mcpServers snapshot", async () => {
+  it("re-discovers skills from disk and refreshes discovered and active skill snapshots", async () => {
     const originalHome = process.env.HOME;
     const fakeHome = await mkdtemp(join(tmpdir(), "diligent-factory-home-"));
     tempHomes.push(fakeHome);
@@ -338,8 +340,47 @@ describe("reloadConfig", () => {
       const result = await config.reloadConfig?.();
 
       expect(result?.skills).toEqual([{ name: "my-skill", description: "A reloaded skill" }]);
+      expect(runtimeConfig.discoveredSkills.map((skill) => skill.name)).toEqual(["my-skill"]);
       expect(runtimeConfig.skills.map((skill) => skill.name)).toEqual(["my-skill"]);
       expect(config.skillNames).toEqual(["my-skill"]);
+    } finally {
+      if (originalHome === undefined) {
+        delete process.env.HOME;
+      } else {
+        process.env.HOME = originalHome;
+      }
+    }
+  });
+
+  it("reload keeps disabled discovered skills out of active skill names", async () => {
+    const originalHome = process.env.HOME;
+    const fakeHome = await mkdtemp(join(tmpdir(), "diligent-factory-home-"));
+    tempHomes.push(fakeHome);
+    process.env.HOME = fakeHome;
+
+    const projectRoot = await mkdtemp(join(tmpdir(), "diligent-factory-reload-disabled-"));
+    tempProjects.push(projectRoot);
+
+    try {
+      const runtimeConfig = makeRuntimeConfig();
+      const config = createAppServerConfig({ cwd: projectRoot, runtimeConfig });
+      const skillDir = join(projectRoot, ".diligent", "skills", "my-skill");
+      await mkdir(skillDir, { recursive: true });
+      await writeFile(
+        join(skillDir, "SKILL.md"),
+        ["---", "name: my-skill", "description: A reloaded skill", "---", "", "Do the thing."].join("\n"),
+      );
+      await writeFile(
+        join(projectRoot, ".diligent", "config.jsonc"),
+        JSON.stringify({ skills: { overrides: { "my-skill": false } } }),
+      );
+
+      const result = await config.reloadConfig?.();
+
+      expect(result?.skills).toEqual([]);
+      expect(runtimeConfig.discoveredSkills.map((skill) => skill.name)).toEqual(["my-skill"]);
+      expect(runtimeConfig.skills).toEqual([]);
+      expect(config.skillNames).toEqual([]);
     } finally {
       if (originalHome === undefined) {
         delete process.env.HOME;

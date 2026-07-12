@@ -84,6 +84,41 @@ describe("loadRuntimeConfig", () => {
     ).toBe(true);
   });
 
+  it("keeps the full subagent catalog while filtering disabled optional roles from runtime definitions", async () => {
+    tmpRoot = await mkdtemp(join(tmpdir(), "diligent-runtime-subagents-"));
+    const paths = makePaths(tmpRoot);
+    const isolatedHome = join(tmpRoot, ".isolated-home");
+    await mkdir(paths.sessions, { recursive: true });
+    await mkdir(paths.knowledge, { recursive: true });
+    await mkdir(paths.skills, { recursive: true });
+    await mkdir(paths.images, { recursive: true });
+    await mkdir(join(isolatedHome, ".diligent"), { recursive: true });
+    const agentDir = join(tmpRoot, ".diligent", "agents", "reviewer");
+    await mkdir(agentDir, { recursive: true });
+    await writeFile(
+      join(agentDir, "AGENT.md"),
+      "---\nname: reviewer\ndescription: Reviews code\n---\n\nReview carefully.",
+    );
+    await writeFile(
+      join(tmpRoot, ".diligent", "config.jsonc"),
+      JSON.stringify({ agents: { overrides: { general: false, explore: false, reviewer: false } } }),
+    );
+    const originalHome = process.env.HOME;
+    const originalUserProfile = process.env.USERPROFILE;
+    process.env.HOME = isolatedHome;
+    process.env.USERPROFILE = isolatedHome;
+    try {
+      const config = await loadRuntimeConfig(tmpRoot, paths);
+      expect(config.discoveredAgents.map((agent) => agent.name)).toEqual(["reviewer"]);
+      expect(config.agentCatalog.map((entry) => entry.definition.name)).toEqual(["general", "explore", "reviewer"]);
+      expect(config.agentDefinitions.map((agent) => agent.name)).toEqual(["general"]);
+      expect(config.systemPrompt.some((section) => section.label === "agents")).toBe(false);
+    } finally {
+      process.env.HOME = originalHome;
+      process.env.USERPROFILE = originalUserProfile;
+    }
+  });
+
   it("generates and persists a fallback userId when config userId is unset", async () => {
     tmpRoot = await mkdtemp(join(tmpdir(), "diligent-runtime-userid-"));
     const paths = makePaths(tmpRoot);
@@ -329,6 +364,69 @@ describe("loadRuntimeConfig", () => {
       process.env.HOME = originalHome;
       process.env.USERPROFILE = originalUserProfile;
       globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("keeps discovered skills separate from config-enabled runtime skills", async () => {
+    tmpRoot = await mkdtemp(join(tmpdir(), "diligent-runtime-skills-"));
+    const paths = makePaths(tmpRoot);
+    const isolatedHome = join(tmpRoot, ".isolated-home");
+    await mkdir(paths.sessions, { recursive: true });
+    await mkdir(paths.knowledge, { recursive: true });
+    await mkdir(paths.skills, { recursive: true });
+    await mkdir(paths.images, { recursive: true });
+    await mkdir(join(isolatedHome, ".diligent"), { recursive: true });
+    const skillDir = join(tmpRoot, ".diligent", "skills", "alpha");
+    await mkdir(skillDir, { recursive: true });
+    await writeFile(join(skillDir, "SKILL.md"), "---\nname: alpha\ndescription: Alpha skill\n---\n\nUse alpha.");
+    await writeFile(
+      join(tmpRoot, ".diligent", "config.jsonc"),
+      JSON.stringify({ skills: { overrides: { alpha: false } } }),
+    );
+
+    const originalHome = process.env.HOME;
+    const originalUserProfile = process.env.USERPROFILE;
+    process.env.HOME = isolatedHome;
+    process.env.USERPROFILE = isolatedHome;
+    try {
+      const config = await loadRuntimeConfig(tmpRoot, paths);
+
+      expect(config.discoveredSkills.map((skill) => skill.name)).toEqual(["alpha"]);
+      expect(config.skills).toEqual([]);
+      expect(config.systemPrompt.some((section) => section.label === "skills")).toBe(false);
+    } finally {
+      process.env.HOME = originalHome;
+      process.env.USERPROFILE = originalUserProfile;
+    }
+  });
+
+  it("discovers skills when the master switch is off but exposes none at runtime", async () => {
+    tmpRoot = await mkdtemp(join(tmpdir(), "diligent-runtime-skills-master-"));
+    const paths = makePaths(tmpRoot);
+    const isolatedHome = join(tmpRoot, ".isolated-home");
+    await mkdir(paths.sessions, { recursive: true });
+    await mkdir(paths.knowledge, { recursive: true });
+    await mkdir(paths.skills, { recursive: true });
+    await mkdir(paths.images, { recursive: true });
+    await mkdir(join(isolatedHome, ".diligent"), { recursive: true });
+    const skillDir = join(tmpRoot, ".diligent", "skills", "alpha");
+    await mkdir(skillDir, { recursive: true });
+    await writeFile(join(skillDir, "SKILL.md"), "---\nname: alpha\ndescription: Alpha skill\n---\n\nUse alpha.");
+    await writeFile(join(tmpRoot, ".diligent", "config.jsonc"), JSON.stringify({ skills: { enabled: false } }));
+
+    const originalHome = process.env.HOME;
+    const originalUserProfile = process.env.USERPROFILE;
+    process.env.HOME = isolatedHome;
+    process.env.USERPROFILE = isolatedHome;
+    try {
+      const config = await loadRuntimeConfig(tmpRoot, paths);
+
+      expect(config.discoveredSkills.map((skill) => skill.name)).toEqual(["alpha"]);
+      expect(config.skills).toEqual([]);
+      expect(config.configLayers.project?.skills?.enabled).toBe(false);
+    } finally {
+      process.env.HOME = originalHome;
+      process.env.USERPROFILE = originalUserProfile;
     }
   });
 });

@@ -49,6 +49,12 @@ const McpHttpServerSchema = z.object({
 
 export const McpServerConfigSchema = z.union([McpStdioServerSchema, McpHttpServerSchema]);
 
+export const SkillsConfigSchema = z.object({
+  enabled: z.boolean().optional(),
+  paths: z.array(z.string()).optional(),
+  overrides: z.record(z.string(), z.boolean()).optional(),
+});
+
 // Global MCP behavior (not per-server). `toolLoading` controls how many MCP tools are exposed
 // to the model: `eager` surfaces every tool's full schema; `lazy` exposes only two proxy tools
 // (search + run) so schemas load on demand; `auto` (default) uses `lazy` once the exposed tool
@@ -165,17 +171,13 @@ export const DiligentConfigSchema = z
       .optional(),
 
     // Skills settings
-    skills: z
-      .object({
-        enabled: z.boolean().optional(),
-        paths: z.array(z.string()).optional(),
-      })
-      .optional(),
+    skills: SkillsConfigSchema.optional(),
 
     agents: z
       .object({
         enabled: z.boolean().optional(),
         paths: z.array(z.string()).optional(),
+        overrides: z.record(z.string(), z.boolean()).optional(),
       })
       .optional(),
 
