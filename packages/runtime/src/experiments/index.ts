@@ -7,6 +7,7 @@ export interface ExperimentDefinition {
   defaultEnabled: boolean;
   toolNames?: readonly string[];
   skillNames?: readonly string[];
+  agentNames?: readonly string[];
 }
 
 export interface ResolvedExperiment extends ExperimentDefinition {
@@ -26,13 +27,16 @@ export function resolveExperimentStates(
 export function resolveExperimentGates(states: readonly ResolvedExperiment[]): {
   disabledToolNames: Set<string>;
   disabledSkillNames: Set<string>;
+  disabledAgentNames: Set<string>;
 } {
   const disabledToolNames = new Set<string>();
   const disabledSkillNames = new Set<string>();
+  const disabledAgentNames = new Set<string>();
   for (const state of states) {
     if (state.enabled) continue;
     for (const name of state.toolNames ?? []) disabledToolNames.add(name);
     for (const name of state.skillNames ?? []) disabledSkillNames.add(name);
+    for (const name of state.agentNames ?? []) disabledAgentNames.add(name);
   }
-  return { disabledToolNames, disabledSkillNames };
+  return { disabledToolNames, disabledSkillNames, disabledAgentNames };
 }

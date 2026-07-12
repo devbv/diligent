@@ -11,6 +11,7 @@ const definitions = [
     defaultEnabled: false,
     toolNames: ["studiorpc_procedural_run"],
     skillNames: ["procedural-luau-json"],
+    agentNames: ["procedural-builder"],
   },
 ];
 
@@ -19,10 +20,15 @@ describe("experiment settings", () => {
     expect(resolveExperimentStates(definitions, undefined)[0]?.enabled).toBe(false);
 
     const enabled = resolveExperimentGates(resolveExperimentStates(definitions, { procedural: true }));
-    expect(enabled).toEqual({ disabledToolNames: new Set(), disabledSkillNames: new Set() });
+    expect(enabled).toEqual({
+      disabledToolNames: new Set(),
+      disabledSkillNames: new Set(),
+      disabledAgentNames: new Set(),
+    });
 
     const disabled = resolveExperimentGates(resolveExperimentStates(definitions, { procedural: false }));
     expect(disabled.disabledToolNames).toEqual(new Set(["studiorpc_procedural_run"]));
     expect(disabled.disabledSkillNames).toEqual(new Set(["procedural-luau-json"]));
+    expect(disabled.disabledAgentNames).toEqual(new Set(["procedural-builder"]));
   });
 });

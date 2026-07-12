@@ -59,6 +59,14 @@ async function makeBootstrapDir(): Promise<string> {
     "utf-8",
   );
 
+  const proceduralAgentDir = join(dir, "agents", "procedural-builder");
+  await mkdir(proceduralAgentDir, { recursive: true });
+  await writeFile(
+    join(proceduralAgentDir, "AGENT.md"),
+    "---\nname: procedural-builder\ndescription: Procedural builder\n---\nPROCEDURAL AGENT BODY",
+    "utf-8",
+  );
+
   return dir;
 }
 
@@ -90,7 +98,7 @@ describe("OVERDARE MCP server", () => {
     await client.close();
   });
 
-  test("applies the same disabled experiment gate to procedural tool and skill", async () => {
+  test("applies the same disabled experiment gate to procedural tool, skill, and agent", async () => {
     const bootstrapDir = await makeBootstrapDir();
     const registries = await buildRegistries({
       cwd: process.cwd(),
@@ -104,12 +112,14 @@ describe("OVERDARE MCP server", () => {
           enabled: false,
           toolNames: ["studiorpc_procedural_run"],
           skillNames: ["procedural-builder"],
+          agentNames: ["procedural-builder"],
         },
       ],
     });
     expect(registries.tools.has("studiorpc_procedural_run")).toBe(false);
     const loadSkill = registries.tools.get("load_skill");
     expect(loadSkill?.description).not.toContain("procedural-builder");
+    expect(registries.prompts.has("agent-procedural-builder")).toBe(false);
   });
 
   test("calls a studio tool and returns its output", async () => {

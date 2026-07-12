@@ -9,13 +9,7 @@ import { getBuiltinAgentDefinitions } from "../agent/agent-types";
 import type { Mode } from "../agent/mode";
 import { type ResolvedAgentDefinition, resolveCustomAgentDefinitions } from "../agent/resolved-agent";
 import type { AgentMetadata } from "../agents/index";
-import {
-  discoverAgents,
-  filterAvailableAgentDefinitions,
-  renderAgentsSection,
-  resolveSubagentStates,
-  type SubagentCatalogEntry,
-} from "../agents/index";
+import { discoverAgents, renderAgentsSection, resolveSubagentStates, type SubagentCatalogEntry } from "../agents/index";
 import type { PermissionEngine } from "../approval/index";
 import { createPermissionEngine, createYoloPermissionEngine } from "../approval/index";
 import {
@@ -72,6 +66,7 @@ export interface RuntimeConfig {
   experiments: ResolvedExperiment[];
   disabledToolNames: Set<string>;
   disabledSkillNames: Set<string>;
+  disabledAgentNames: Set<string>;
 }
 
 export async function loadRuntimeConfig(
@@ -82,7 +77,7 @@ export async function loadRuntimeConfig(
   const { config, sources, layers } = await loadDiligentConfig(cwd);
   const experimentDefinitions = options?.experimentDefinitions ?? [];
   const experiments = resolveExperimentStates(experimentDefinitions, config.experiments?.overrides);
-  const { disabledToolNames, disabledSkillNames } = resolveExperimentGates(experiments);
+  const { disabledToolNames, disabledSkillNames, disabledAgentNames } = resolveExperimentGates(experiments);
   const resolvedUserId = await resolveConfiguredUserId(config.userId);
   const instructions = await discoverInstructions(cwd);
   const authStore: AuthStoreOptions = {
@@ -195,7 +190,20 @@ export async function loadRuntimeConfig(
       required: false,
     })),
   ];
-  const agentDefinitions = filterAvailableAgentDefinitions(resolveSubagentStates(agentCatalog, config.agents, layers));
+  const requiredAgentNames = new Set(
+    agentCatalog.filter((entry) => entry.required).map((entry) => entry.definition.name),
+  );
+  const experimentManagedAgentNames = new Set(
+    experimentDefinitions.flatMap((definition) => [...(definition.agentNames ?? [])]),
+  );
+  const agentDefinitions = resolveSubagentStates(agentCatalog, config.agents, layers)
+    .filter((state) => {
+      const name = state.definition.name;
+      if (requiredAgentNames.has(name)) return true;
+      if (disabledAgentNames.has(name)) return false;
+      return experimentManagedAgentNames.has(name) || state.available;
+    })
+    .map((state) => state.definition);
   const availableCustomAgentNames = new Set(
     agentDefinitions.filter((definition) => definition.source === "user").map((definition) => definition.name),
   );
@@ -268,6 +276,7 @@ export async function loadRuntimeConfig(
     experiments,
     disabledToolNames,
     disabledSkillNames,
+    disabledAgentNames,
   };
 }
 

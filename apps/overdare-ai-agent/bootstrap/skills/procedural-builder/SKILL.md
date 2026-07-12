@@ -272,9 +272,10 @@ There is no `SmartObject` dependency: read tunable inputs directly from
 
 ### Materials
 
-Material values pass through the procedural runtime unchanged. Use an exact value accepted by the canonical
-`instance_upsert` material schema in `instance.params.ts`. Invalid values fail during apply; the runtime never aliases
-or silently falls back to another material.
+Material values pass through the procedural runtime unchanged. Use an exact value from the `instance_upsert`
+schema's `Material` enum — common ones include `Plastic`, `Wood`, `Rock`, `Metal`, `Glass`, `Brick`, `Concrete`,
+`Marble`, `Grass`, `Sand`, `Snow`, `Neon`, and `Unlit`. Invalid values fail during apply; the runtime never aliases
+or silently falls back to another material, so pick a known enum value rather than an arbitrary name.
 
 ### Mobility (Static vs Movable)
 

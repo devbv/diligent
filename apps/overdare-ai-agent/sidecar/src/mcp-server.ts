@@ -82,8 +82,12 @@ async function buildToolRegistry(
   return tools;
 }
 
-async function buildPromptRegistry(bootstrapDir: string): Promise<Map<string, PromptEntry>> {
+async function buildPromptRegistry(
+  bootstrapDir: string,
+  experiments: readonly ResolvedExperiment[] = [],
+): Promise<Map<string, PromptEntry>> {
   const prompts = new Map<string, PromptEntry>();
+  const { disabledAgentNames } = resolveExperimentGates(experiments);
 
   // The base system prompt and skills are exposed as model-callable tools (ensure_system_prompt /
   // load_skill in buildBootstrapTools), not prompts — Claude Code only surfaces prompts to the user
@@ -109,6 +113,7 @@ async function buildPromptRegistry(bootstrapDir: string): Promise<Map<string, Pr
     }
     const parsed = parseFrontmatter(content, agentPath);
     if ("error" in parsed) continue;
+    if (disabledAgentNames.has(parsed.frontmatter.name)) continue;
     const promptName = `agent-${parsed.frontmatter.name}`;
     prompts.set(promptName, {
       name: promptName,
@@ -203,7 +208,7 @@ export async function buildRegistries(options: McpServerOptions): Promise<McpReg
   const [tools, bootstrapTools, prompts] = await Promise.all([
     buildToolRegistry(options.cwd, options.experiments),
     buildBootstrapTools(options.bootstrapDir, options.experiments),
-    buildPromptRegistry(options.bootstrapDir),
+    buildPromptRegistry(options.bootstrapDir, options.experiments),
   ]);
   for (const tool of bootstrapTools) tools.set(tool.name, tool);
   return { tools, prompts };

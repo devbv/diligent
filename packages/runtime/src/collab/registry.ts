@@ -220,11 +220,9 @@ export class AgentRegistry {
       throw new Error(`Max active agents reached (${this.maxAgents}). Close some agents first.`);
     }
 
-    const agentDefinition =
-      resolveAgentDefinition(this.deps.agentDefinitions, params.agentType) ??
-      resolveAgentDefinition(this.deps.agentDefinitions, "general");
+    const agentDefinition = resolveAgentDefinition(this.deps.agentDefinitions, params.agentType);
     if (!agentDefinition) {
-      throw new Error("Missing built-in general agent definition");
+      throw new Error(`Unknown or unavailable agent type: ${params.agentType}`);
     }
     const nickname = this.pool.reserve();
     const abortController = new AbortController();

@@ -186,6 +186,12 @@ export function createAppServerConfig(opts: CreateAppServerConfigOptions): Dilig
   const experimentManagedSkillNames = new Set(
     experimentDefinitions.flatMap((definition) => [...(definition.skillNames ?? [])]),
   );
+  const experimentManagedAgentNames = new Set(
+    experimentDefinitions.flatMap((definition) => [...(definition.agentNames ?? [])]),
+  );
+  for (const entry of runtimeConfig.agentCatalog ?? []) {
+    if (entry.required) experimentManagedAgentNames.delete(entry.definition.name);
+  }
 
   // Wire interactive OAuth for remote MCP servers: token state lives under the global
   // diligent dir, and browser login uses the client-provided opener (falls back to default).
@@ -295,6 +301,7 @@ export function createAppServerConfig(opts: CreateAppServerConfigOptions): Dilig
           config: runtimeConfig.diligent.agents,
           layers: runtimeConfig.configLayers ?? {},
           catalog: runtimeConfig.agentCatalog,
+          experimentManagedAgentNames,
         };
       },
     },
@@ -344,6 +351,7 @@ export function createAppServerConfig(opts: CreateAppServerConfigOptions): Dilig
     runtimeConfig.experiments = fresh.experiments;
     runtimeConfig.disabledToolNames = fresh.disabledToolNames;
     runtimeConfig.disabledSkillNames = fresh.disabledSkillNames;
+    runtimeConfig.disabledAgentNames = fresh.disabledAgentNames;
     config.mcpServers = fresh.diligent.mcpServers;
     config.skillNames = fresh.skills.map((skill) => skill.name);
     config.hooks = fresh.diligent.hooks;

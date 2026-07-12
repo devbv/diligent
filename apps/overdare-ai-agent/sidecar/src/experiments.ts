@@ -10,5 +10,6 @@ export const OVERDARE_EXPERIMENTS: ExperimentDefinition[] = [
     defaultEnabled: false,
     toolNames: ["studiorpc_procedural_run"],
     skillNames: ["procedural-builder"],
+    agentNames: ["procedural-builder"],
   },
 ];

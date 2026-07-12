@@ -25,6 +25,12 @@ describe("runtime experiment gating", () => {
       join(skillDir, "SKILL.md"),
       "---\nname: procedural-skill\ndescription: Procedural test skill\n---\nUse procedural_tool.",
     );
+    const agentDir = join(cwd, ".diligent", "agents", "procedural-agent");
+    await mkdir(agentDir, { recursive: true });
+    await writeFile(
+      join(agentDir, "AGENT.md"),
+      "---\nname: procedural-agent\ndescription: Procedural test agent\ntools: read\n---\nBuild procedural scenes.",
+    );
     const paths = {
       root: join(cwd, ".diligent"),
       sessions: join(cwd, ".diligent", "sessions"),
@@ -40,6 +46,7 @@ describe("runtime experiment gating", () => {
         defaultEnabled: false,
         toolNames: ["procedural_tool"],
         skillNames: ["procedural-skill"],
+        agentNames: ["procedural-agent"],
       },
     ];
 
@@ -47,15 +54,21 @@ describe("runtime experiment gating", () => {
       const disabled = await loadRuntimeConfig(cwd, paths, { experimentDefinitions });
       expect(disabled.skills.map((skill) => skill.name)).not.toContain("procedural-skill");
       expect(disabled.disabledToolNames).toEqual(new Set(["procedural_tool"]));
+      expect(disabled.agentCatalog.map((entry) => entry.definition.name)).toContain("procedural-agent");
+      expect(disabled.agentDefinitions.map((definition) => definition.name)).not.toContain("procedural-agent");
 
       await mkdir(join(home, ".diligent"), { recursive: true });
       await writeFile(
         join(home, ".diligent", "config.jsonc"),
-        JSON.stringify({ experiments: { overrides: { procedural: true } } }),
+        JSON.stringify({
+          experiments: { overrides: { procedural: true } },
+          agents: { overrides: { "procedural-agent": false } },
+        }),
       );
       const enabled = await loadRuntimeConfig(cwd, paths, { experimentDefinitions });
       expect(enabled.skills.map((skill) => skill.name)).toContain("procedural-skill");
       expect(enabled.disabledToolNames.size).toBe(0);
+      expect(enabled.agentDefinitions.map((definition) => definition.name)).toContain("procedural-agent");
     } finally {
       if (originalHome === undefined) delete process.env.HOME;
       else process.env.HOME = originalHome;
