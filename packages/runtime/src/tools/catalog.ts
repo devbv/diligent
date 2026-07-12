@@ -67,6 +67,7 @@ export type ToolMapEntry = {
 
 export interface BuildToolCatalogOptions {
   bundledProviders?: BundledToolProvider[];
+  disabledToolNames?: ReadonlySet<string>;
 }
 
 export interface ProviderToolBatch {
@@ -140,6 +141,7 @@ export async function loadBundledBatches(
   cwd: string,
   host: RuntimeToolHost | undefined,
   orderStart: number,
+  disabledToolNames: ReadonlySet<string> = new Set(),
 ): Promise<{ batches: ProviderToolBatch[]; errors: PluginLoadError[] }> {
   const batches: ProviderToolBatch[] = [];
   const errors: PluginLoadError[] = [];
@@ -161,7 +163,7 @@ export async function loadBundledBatches(
       id: provider.id,
       tools: providerTools,
       orderBase: orderStart + providerIndex * 1000,
-      toolToggles: {},
+      toolToggles: Object.fromEntries(providerTools.map((tool) => [tool.name, !disabledToolNames.has(tool.name)])),
       label: "Bundled provider",
     });
   }
@@ -525,6 +527,7 @@ export async function buildToolCatalog(
     cwd,
     host,
     bundledOrderStart,
+    options.disabledToolNames,
   );
 
   // Phase 3: plugins

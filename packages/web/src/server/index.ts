@@ -10,6 +10,7 @@ import {
   createWsPeer,
   DiligentAppServer,
   type DiligentPaths,
+  type ExperimentDefinition,
   ensureDiligentDir,
   getModelInfoList,
   loadRuntimeConfig,
@@ -31,6 +32,7 @@ interface CreateServerOptions {
   userId?: string;
   distDir?: string;
   bundledToolProviders?: BundledToolProvider[];
+  experimentDefinitions?: ExperimentDefinition[];
   /** Remote-backed consent manager (e.g. OVERDARE gateway `/v1/consent`); overrides local config. */
   consentBackend?: ConsentConfigManager;
 }
@@ -104,7 +106,10 @@ export async function createWebServer(options: CreateServerOptions = {}): Promis
 
   const paths = await ensureDiligentDir(cwd);
   const bundledToolProviders = options.bundledToolProviders ?? [];
-  const runtimeConfig = await loadRuntimeConfig(cwd, paths, { bundledToolProviders });
+  const runtimeConfig = await loadRuntimeConfig(cwd, paths, {
+    bundledToolProviders,
+    experimentDefinitions: options.experimentDefinitions,
+  });
   if (options.userId?.trim()) {
     runtimeConfig.diligent = {
       ...runtimeConfig.diligent,

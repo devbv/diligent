@@ -368,6 +368,25 @@ describe("buildToolCatalog", () => {
     });
   });
 
+  it("keeps experiment-disabled bundled tools in state but removes them from the agent", async () => {
+    const provider: BundledToolProvider = {
+      id: "@product/bundled-tools",
+      createTools: () => [mockTool("experimental_tool"), mockTool("stable_tool")],
+    };
+
+    const result = await buildToolCatalog(standardBuiltins(), undefined, "/tmp", undefined, {
+      bundledProviders: [provider],
+      disabledToolNames: new Set(["experimental_tool"]),
+    });
+
+    expect(toolNames(result.tools)).toContain("stable_tool");
+    expect(toolNames(result.tools)).not.toContain("experimental_tool");
+    expect(result.state.find((entry) => entry.name === "experimental_tool")).toMatchObject({
+      enabled: false,
+      reason: "disabled_by_user",
+    });
+  });
+
   it("keeps bundled provider tools ahead of conflicting external plugin tools", async () => {
     const provider: BundledToolProvider = {
       id: "@product/bundled-tools",

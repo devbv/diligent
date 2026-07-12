@@ -1,6 +1,7 @@
 // @summary Tests for Diligent protocol JSON-RPC lite envelope schemas
 import { describe, expect, it } from "bun:test";
 import {
+  DiligentClientRequestSchema,
   JSONRPCErrorResponseSchema,
   JSONRPCMessageSchema,
   JSONRPCNotificationSchema,
@@ -63,5 +64,15 @@ describe("protocol/jsonrpc", () => {
     });
 
     expect(result.success).toBe(false);
+  });
+
+  it("accepts product experiment list and set requests", () => {
+    expect(DiligentClientRequestSchema.safeParse({ method: "experiments/list", params: {} }).success).toBe(true);
+    expect(
+      DiligentClientRequestSchema.safeParse({
+        method: "experiments/set",
+        params: { overrides: { procedural: true } },
+      }).success,
+    ).toBe(true);
   });
 });

@@ -173,6 +173,13 @@ export const DiligentConfigSchema = z
     // Skills settings
     skills: SkillsConfigSchema.optional(),
 
+    // Product-injected experimental capability groups.
+    experiments: z
+      .object({
+        overrides: z.record(z.string(), z.boolean()).optional(),
+      })
+      .optional(),
+
     agents: z
       .object({
         enabled: z.boolean().optional(),

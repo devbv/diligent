@@ -93,6 +93,8 @@ export function App() {
     saveTools,
     listSkills,
     saveSkills,
+    listExperiments,
+    saveExperiments,
     listSubagents,
     saveSubagents,
     setSkills,
@@ -301,6 +303,8 @@ export function App() {
               onSave={saveTools}
               onListSkills={listSkills}
               onSaveSkills={saveSkills}
+              onListExperiments={listExperiments}
+              onSaveExperiments={saveExperiments}
               onListSubagents={listSubagents}
               onSaveSubagents={saveSubagents}
               onSkillsChange={setSkills}

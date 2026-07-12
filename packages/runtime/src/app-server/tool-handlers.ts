@@ -24,6 +24,7 @@ export async function handleToolsList(
     paths,
     toolsConfig: tools,
     bundledToolProviders: ctx.getBundledToolProviders(),
+    disabledToolNames: ctx.getDisabledToolNames?.(),
     mcpServers: ctx.getMcpServers(),
   });
 
@@ -74,6 +75,7 @@ export async function handleToolsSet(
     paths,
     toolsConfig: writeResult.config.tools,
     bundledToolProviders: ctx.getBundledToolProviders(),
+    disabledToolNames: ctx.getDisabledToolNames?.(),
     mcpServers: ctx.getMcpServers(),
   });
 

@@ -86,6 +86,7 @@ export interface ThreadHandlersContext {
   resolveSkillSettingsCwd: (threadId?: string) => Promise<string>;
   resolveSubagentSettingsCwd: (threadId?: string) => Promise<string>;
   getBundledToolProviders: () => BundledToolProvider[];
+  getDisabledToolNames?: () => ReadonlySet<string>;
   getMcpServers: () => DiligentConfig["mcpServers"];
   getSkillNames: () => string[];
   setActiveThreadId: (threadId: string | null) => void;

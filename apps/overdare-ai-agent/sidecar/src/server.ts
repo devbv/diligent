@@ -1,6 +1,7 @@
 // @summary OVERDARE Studio product web-server runner that injects product-owned bundled tools.
 
 import { createWebServer, enableProcessLogFile, parseArgs } from "@diligent/web/server";
+import { OVERDARE_EXPERIMENTS } from "./experiments";
 import { runMcpServerMain } from "./mcp-server";
 import { createStudioBundledToolProviders } from "./tools";
 import { createGatewayConsentBackend } from "./tools/gateway/consent";
@@ -62,6 +63,7 @@ export async function startStudioServer(argv: string[] = process.argv.slice(2)):
         // STUDIO_DISABLED=1 → skip the Studio RPC provider entirely (no 13377 connects).
         studioDisabled: process.env.STUDIO_DISABLED === "1" || process.env.STUDIO_DISABLED?.toLowerCase() === "true",
       }),
+      experimentDefinitions: OVERDARE_EXPERIMENTS,
     });
 
     const cleanup = () => {

@@ -105,6 +105,7 @@ async function createRuntimeAgent(args: {
     existingRegistry: existingAgent?.registry,
     host: { approve, ask },
     bundledToolProviders,
+    disabledToolNames: runtimeConfig.disabledToolNames,
     provider: model.provider as ProviderName,
     mcpServers: runtimeConfig.diligent.mcpServers,
     mcpToolLoading: runtimeConfig.diligent.mcp?.toolLoading ?? "auto",
@@ -181,6 +182,10 @@ export function createAppServerConfig(opts: CreateAppServerConfigOptions): Dilig
   const { cwd, runtimeConfig, bundledToolProviders = [], consentBackend, overrides } = opts;
   const modelInfoList = getModelInfoList();
   const initialEffort = runtimeConfig.effort;
+  const experimentDefinitions = runtimeConfig.experimentDefinitions ?? [];
+  const experimentManagedSkillNames = new Set(
+    experimentDefinitions.flatMap((definition) => [...(definition.skillNames ?? [])]),
+  );
 
   // Wire interactive OAuth for remote MCP servers: token state lives under the global
   // diligent dir, and browser login uses the client-provided opener (falls back to default).
@@ -260,7 +265,9 @@ export function createAppServerConfig(opts: CreateAppServerConfigOptions): Dilig
             cwd,
             config: runtimeConfig.diligent.skills,
             layers: runtimeConfig.configLayers ?? {},
-            discoveredSkills: runtimeConfig.discoveredSkills ?? [],
+            discoveredSkills: (runtimeConfig.discoveredSkills ?? []).filter(
+              (skill) => !experimentManagedSkillNames.has(skill.name),
+            ),
           };
         }
 
@@ -270,9 +277,13 @@ export function createAppServerConfig(opts: CreateAppServerConfigOptions): Dilig
           cwd: requestCwd,
           config: loaded.config.skills,
           layers: loaded.layers,
-          discoveredSkills: discovered.skills,
+          discoveredSkills: discovered.skills.filter((skill) => !experimentManagedSkillNames.has(skill.name)),
         };
       },
+    },
+    experimentConfig: {
+      getDefinitions: () => experimentDefinitions,
+      getExperiments: () => runtimeConfig.experiments ?? [],
     },
     subagentConfig: {
       resolve: async (requestCwd) => {
@@ -316,7 +327,10 @@ export function createAppServerConfig(opts: CreateAppServerConfigOptions): Dilig
   // reads live on every call.
   config.reloadConfig = async (): Promise<ConfigReloadResult> => {
     const paths = await getPaths();
-    const fresh = await loadRuntimeConfig(cwd, paths);
+    const fresh = await loadRuntimeConfig(cwd, paths, {
+      bundledToolProviders,
+      experimentDefinitions,
+    });
     runtimeConfig.discoveredSkills = fresh.discoveredSkills;
     runtimeConfig.skills = fresh.skills;
     runtimeConfig.agents = fresh.agents;
@@ -327,6 +341,9 @@ export function createAppServerConfig(opts: CreateAppServerConfigOptions): Dilig
     runtimeConfig.diligent = fresh.diligent;
     runtimeConfig.sources = fresh.sources;
     runtimeConfig.configLayers = fresh.configLayers;
+    runtimeConfig.experiments = fresh.experiments;
+    runtimeConfig.disabledToolNames = fresh.disabledToolNames;
+    runtimeConfig.disabledSkillNames = fresh.disabledSkillNames;
     config.mcpServers = fresh.diligent.mcpServers;
     config.skillNames = fresh.skills.map((skill) => skill.name);
     config.hooks = fresh.diligent.hooks;

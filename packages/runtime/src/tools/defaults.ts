@@ -54,6 +54,7 @@ export interface BuildDefaultToolsOptions {
   existingRegistry?: AgentRegistry;
   host?: RuntimeToolHost;
   bundledToolProviders?: BundledToolProvider[];
+  disabledToolNames?: ReadonlySet<string>;
   provider?: ProviderName;
   /** External MCP servers whose tools are exposed to the agent (P069). */
   mcpServers?: DiligentConfig["mcpServers"];
@@ -101,6 +102,7 @@ export async function buildDefaultTools(options: BuildDefaultToolsOptions): Prom
     existingRegistry,
     host,
     bundledToolProviders,
+    disabledToolNames,
     provider,
     mcpServers,
     mcpToolLoading = "eager",
@@ -163,7 +165,10 @@ export async function buildDefaultTools(options: BuildDefaultToolsOptions): Prom
           builtinTools.push(createUpdateKnowledgeTool(paths.knowledge));
         }
 
-        return buildToolCatalog(builtinTools, toolsConfig, cwd, host, { bundledProviders: providers });
+        return buildToolCatalog(builtinTools, toolsConfig, cwd, host, {
+          bundledProviders: providers,
+          disabledToolNames,
+        });
       })();
 
   // 2. Add collab tools (always enabled, not user-configurable)

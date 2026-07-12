@@ -34,6 +34,14 @@ async function makeBootstrapDir(): Promise<string> {
     "utf-8",
   );
 
+  const proceduralSkillDir = join(dir, "skills", "procedural-luau-json");
+  await mkdir(proceduralSkillDir, { recursive: true });
+  await writeFile(
+    join(proceduralSkillDir, "SKILL.md"),
+    "---\nname: procedural-luau-json\ndescription: Procedural preview\n---\nPROCEDURAL SKILL BODY",
+    "utf-8",
+  );
+
   // A skill that is not usable over MCP — load_skill must exclude it (see MCP_EXCLUDED_SKILLS).
   const excludedSkillDir = join(dir, "skills", "record-project-memory");
   await mkdir(excludedSkillDir, { recursive: true });
@@ -80,6 +88,28 @@ describe("OVERDARE MCP server", () => {
     expect(browse?.inputSchema).toBeDefined();
     expect(browse?.inputSchema).not.toHaveProperty("$schema");
     await client.close();
+  });
+
+  test("applies the same disabled experiment gate to procedural tool and skill", async () => {
+    const bootstrapDir = await makeBootstrapDir();
+    const registries = await buildRegistries({
+      cwd: process.cwd(),
+      bootstrapDir,
+      experiments: [
+        {
+          id: "procedural",
+          title: "Procedural generation",
+          description: "Procedural preview",
+          defaultEnabled: false,
+          enabled: false,
+          toolNames: ["studiorpc_procedural_run"],
+          skillNames: ["procedural-luau-json"],
+        },
+      ],
+    });
+    expect(registries.tools.has("studiorpc_procedural_run")).toBe(false);
+    const loadSkill = registries.tools.get("load_skill");
+    expect(loadSkill?.description).not.toContain("procedural-luau-json");
   });
 
   test("calls a studio tool and returns its output", async () => {

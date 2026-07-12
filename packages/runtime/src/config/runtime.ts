@@ -27,6 +27,8 @@ import {
   saveOAuthTokens,
 } from "../auth/index";
 import { createChatGPTOAuthBinding, createVertexAccessTokenBinding } from "../auth/provider-auth";
+import type { ExperimentDefinition, ResolvedExperiment } from "../experiments";
+import { resolveExperimentGates, resolveExperimentStates } from "../experiments";
 import type { DiligentPaths } from "../infrastructure/index";
 import { buildKnowledgeSection, readKnowledge } from "../knowledge/index";
 import { buildBaseSystemPrompt } from "../prompt/index";
@@ -66,14 +68,21 @@ export interface RuntimeConfig {
   permissionEngine: PermissionEngine;
   providerManager: ProviderManager;
   authStore: AuthStoreOptions;
+  experimentDefinitions: ExperimentDefinition[];
+  experiments: ResolvedExperiment[];
+  disabledToolNames: Set<string>;
+  disabledSkillNames: Set<string>;
 }
 
 export async function loadRuntimeConfig(
   cwd: string,
   paths: DiligentPaths,
-  options?: { bundledToolProviders?: BundledToolProvider[] },
+  options?: { bundledToolProviders?: BundledToolProvider[]; experimentDefinitions?: ExperimentDefinition[] },
 ): Promise<RuntimeConfig> {
   const { config, sources, layers } = await loadDiligentConfig(cwd);
+  const experimentDefinitions = options?.experimentDefinitions ?? [];
+  const experiments = resolveExperimentStates(experimentDefinitions, config.experiments?.overrides);
+  const { disabledToolNames, disabledSkillNames } = resolveExperimentGates(experiments);
   const resolvedUserId = await resolveConfiguredUserId(config.userId);
   const instructions = await discoverInstructions(cwd);
   const authStore: AuthStoreOptions = {
@@ -147,6 +156,7 @@ export async function loadRuntimeConfig(
   });
   discoveredSkills = skillDiscoveryResult.skills;
   skills = filterAvailableSkills(resolveSkillStates(discoveredSkills, config.skills, layers));
+  skills = skills.filter((skill) => !disabledSkillNames.has(skill.name));
   skillsSection = renderSkillsSection(skills);
 
   let agents: AgentMetadata[] = [];
@@ -164,6 +174,7 @@ export async function loadRuntimeConfig(
       // referencing them validates against the real runtime tool set instead of only the generic
       // built-ins — otherwise shipped agents like studio-explorer emit false "unknown tool" warnings.
       bundledToolProviders: options?.bundledToolProviders,
+      disabledToolNames,
     });
     const result = await discoverAgents({
       cwd,
@@ -253,6 +264,10 @@ export async function loadRuntimeConfig(
     permissionEngine: config.yolo ? createYoloPermissionEngine() : createPermissionEngine(config.permissions ?? []),
     providerManager,
     authStore,
+    experimentDefinitions,
+    experiments,
+    disabledToolNames,
+    disabledSkillNames,
   };
 }
 

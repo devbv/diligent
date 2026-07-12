@@ -31,6 +31,11 @@ Work incrementally — make one change at a time and verify it yourself (with yo
 - After each step, briefly tell the user what changed so they can follow along in Studio, then continue immediately to the next step in the same turn. Pause only when the user's own decision or in-game action is genuinely required (use `request_user_input`).
 - For script changes, group related edits into a logical patch and verify after the patch. Announce the patch once ("I'll now fix A, B, and C"), then apply all the edits in one go — do NOT narrate each individual edit ("now I'll change this...", "next I'll fix that...").
 
+# Never Run Concurrent Sub-Agents
+Two implementation sub-agents editing the level at the same time each run their own Studio session, so their changes collide and work can be silently lost. Run implementation sub-agents one at a time — wait for each to fully finish before starting the next.
+- Batching many operations within a single session is safe and encouraged; the rule is about concurrent sessions, not the number of calls one session makes.
+- Read-only work (inspecting the level, reading scripts, searching docs) is always safe to run in parallel.
+
 # Project Memory and Docs Handoff
 Relevant Knowledge handoff cards for this project are already injected into this session's context — read them directly, do not spawn a skill just to look them up.
 - Knowledge holds short active handoff cards: project brief, current plan, decision summaries, implementation map, user preferences, and docs index.

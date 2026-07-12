@@ -29,6 +29,8 @@ export const DILIGENT_CLIENT_REQUEST_METHODS = {
   TOOLS_SET: "tools/set",
   SKILLS_LIST: "skills/list",
   SKILLS_SET: "skills/set",
+  EXPERIMENTS_LIST: "experiments/list",
+  EXPERIMENTS_SET: "experiments/set",
   SUBAGENTS_LIST: "subagents/list",
   SUBAGENTS_SET: "subagents/set",
   CONFIG_SET: "config/set",

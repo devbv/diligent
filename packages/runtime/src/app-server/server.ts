@@ -11,6 +11,7 @@ import type { ApprovalRequest, ApprovalResponse, PermissionEngine } from "../app
 import { type AuthStoreOptions, loadOAuthTokens } from "../auth/auth-store";
 import type { ChildStopInfo } from "../collab/types";
 import type { DiligentConfig } from "../config/schema";
+import { resolveExperimentGates } from "../experiments";
 import {
   getLastAssistantMessage,
   getTurnUsage,
@@ -41,6 +42,7 @@ import { type BundledToolProvider, collectBundledHooks } from "../tools/bundled-
 import { collectPluginHooks } from "../tools/plugin-loader";
 import type { UserInputRequest, UserInputResponse } from "../tools/user-input-types";
 import type { ConfigReloadResult, ConsentConfigManager } from "./config-handlers";
+import type { ExperimentConfigManager } from "./experiment-handlers";
 import { createKeyedSerializer } from "./keyed-serializer";
 import {
   applySessionDefaults,
@@ -99,6 +101,7 @@ export interface DiligentAppServerConfig {
   toolConfig?: ToolConfigManager;
   /** Skill settings management — required for SKILLS_LIST and SKILLS_SET */
   skillConfig?: SkillConfigManager;
+  experimentConfig?: ExperimentConfigManager;
   /** Subagent settings management — required for SUBAGENTS_LIST and SUBAGENTS_SET */
   subagentConfig?: SubagentConfigManager;
   /** AI-data consent management — required for CONSENT_SET (OVDR-11475 §3.A) */
@@ -821,6 +824,7 @@ export class DiligentAppServer {
       turnInitiators: this.turnInitiators,
       toolConfig: this.config.toolConfig,
       skillConfig: this.config.skillConfig,
+      experimentConfig: this.config.experimentConfig,
       subagentConfig: this.config.subagentConfig,
       consentConfig: this.config.consentConfig,
       reloadConfig: this.config.reloadConfig,
@@ -893,6 +897,8 @@ export class DiligentAppServer {
       resolveSkillSettingsCwd: (threadId?: string) => this.resolveSkillSettingsCwd(threadId),
       resolveSubagentSettingsCwd: (threadId?: string) => this.resolveSubagentSettingsCwd(threadId),
       getBundledToolProviders: () => this.config.bundledToolProviders ?? [],
+      getDisabledToolNames: () =>
+        resolveExperimentGates(this.config.experimentConfig?.getExperiments() ?? []).disabledToolNames,
       getMcpServers: () => this.config.mcpServers,
       getSkillNames: () => this.getSkillNames(),
       setActiveThreadId: (threadId: string | null) => {
