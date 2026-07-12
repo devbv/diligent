@@ -1,15 +1,15 @@
 ---
-id: P073-HANDOFF
-parent: P072
+id: P075-HANDOFF
+parent: P074
 created: 2026-07-12
 status: active
 ---
 
-# P073 Hand-off: Symbolic Instance References and Atomic Procedural Apply
+# P075 Hand-off: Symbolic Instance References and Atomic Procedural Apply
 
 ## Why this hand-off exists
 
-P072 now supports end-state-diffed procedural add, update, move, and delete operations. An existing scene instance can
+P074 now supports end-state-diffed procedural add, update, move, and delete operations. An existing scene instance can
 be reparented under another existing scene instance with normal Luau syntax:
 
 ```lua
@@ -38,7 +38,7 @@ instance references, flatten generated adds into a plan, and apply the complete 
 
 Read alongside:
 
-- `docs/plan/feature/P072-procedural-toolification-handoff.md`
+- `docs/plan/feature/P074-procedural-toolification-handoff.md`
 - `.diligent/skills/procedural-luau-json/SKILL.md`
 - `apps/overdare-ai-agent/sidecar/src/procedural/types.ts`
 - `apps/overdare-ai-agent/sidecar/src/procedural/ops.ts`
@@ -50,7 +50,7 @@ As of 2026-07-12:
 
 - Branch: `p072-procedural-toolification`
 - HEAD: `e080d2a8 add movable`
-- The worktree is intentionally dirty and contains the P072 follow-up implementation. Do not reset or discard it.
+- The worktree is intentionally dirty and contains the P074 follow-up implementation. Do not reset or discard it.
 - Full TypeScript typecheck passes.
 - All sidecar tests pass: 148 tests, 489 expectations.
 - Biome checks on touched files and `git diff --check` pass.
@@ -92,7 +92,7 @@ Cannot move existing instance <guid> below a newly generated parent in this proc
 This rejection is required until generated parents have a symbolic identity that can be resolved to a live GUID.
 Do not remove the rejection without implementing the complete resolution/apply path described below.
 
-## Design decisions locked for P073
+## Design decisions locked for P075
 
 ### 1. Keep end-state diffing; do not add a Luau mutation event log
 
@@ -461,12 +461,12 @@ git diff --check
 - Reparenting Service instances or the protected scene root.
 - Adding a new public procedural move tool.
 - Replacing end-state diff with Luau source parsing or an assignment event log.
-- General instance-valued property references. Hierarchy references are the P073 scope; property references can reuse
+- General instance-valued property references. Hierarchy references are the P075 scope; property references can reuse
   `ProceduralInstanceRef` in a later feature if required.
 
 ## Completion criteria
 
-P073 is complete when the following script succeeds without changing the existing child's GUID:
+P075 is complete when the following script succeeds without changing the existing child's GUID:
 
 ```lua
 local generated = Instance.new("Folder")

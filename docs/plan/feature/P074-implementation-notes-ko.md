@@ -1,20 +1,20 @@
 ---
-id: P072-NOTES-KO
-parent: P072
+id: P074-NOTES-KO
+parent: P074
 created: 2026-07-10
 status: implemented
 ---
 
-# P072 구현 정리 (인수인계 / 알아둘 점)
+# P074 구현 정리 (인수인계 / 알아둘 점)
 
-`docs/plan/feature/P072-procedural-toolification-handoff.md` 설계를 구현 완료한 내용 요약입니다.
+`docs/plan/feature/P074-procedural-toolification-handoff.md` 설계를 구현 완료한 내용 요약입니다.
 OVERDARE 절차적(procedural) Luau 런타임을 Studio 에이전트용 툴로 노출했습니다.
 
 ## 브랜치 / 커밋
 
 - 새 브랜치: `p072-procedural-toolification` (origin 에 푸시됨).
-- 베이스: `hello` = `origin/main` + `tt` 커밋(P068 절차적 생성 기능). P072 는 P068 위에 쌓이므로,
-  이 브랜치에는 **P068 + P072 가 함께** 들어 있습니다(둘은 분리 불가).
+- 베이스: `hello` = `origin/main` + `tt` 커밋(P068 절차적 생성 기능). P074 는 P068 위에 쌓이므로,
+  이 브랜치에는 **P068 + P074 가 함께** 들어 있습니다(둘은 분리 불가).
 - `tt` 커밋은 P068 시절 커밋(작성자 본인)이라 메시지가 부실합니다. 리뷰 편의상 필요하면 나중에 reword 하세요.
 
 ## 에이전트에 새로 노출된 툴 (수명(lifetime) 기준으로 분리)
