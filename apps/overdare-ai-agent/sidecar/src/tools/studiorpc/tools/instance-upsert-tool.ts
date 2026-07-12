@@ -6,7 +6,12 @@ import { buildInstanceUpsertRender } from "../render";
 import { applyLevelChanges } from "../rpc";
 import type { Tool, ToolContext, ToolResult } from "../types";
 import type { WriteLock } from "../write-lock";
-import { addInstancesInDocument, requireDocumentRoot, updateInstancesInDocument } from "./instance-document-operations";
+import {
+  addInstancesInDocument,
+  normalizeWorkspaceMobility,
+  requireDocumentRoot,
+  updateInstancesInDocument,
+} from "./instance-document-operations";
 import { resultFromInstanceToolStatusError } from "./instance-status";
 import { type OvdrjmNode, readAndWriteOvdrjm } from "./ovdrjm-utils";
 
@@ -69,6 +74,10 @@ export async function executeInstanceUpsertInner(
             ...addInstancesInDocument(rootDoc, [{ ...item, properties: item.properties ?? {} }], writeOptions),
           );
         }
+
+        // A top-level object's Mobility governs its whole assembly, so cascade it
+        // down to every descendant that carries an explicit Mobility.
+        normalizeWorkspaceMobility(root);
 
         ovdrjmRoot = root;
         return { added, mobilityInfo };

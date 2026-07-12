@@ -1,12 +1,17 @@
 // @summary Verifies upsert and JSON-apply Mobility behavior across Workspace hierarchies.
 
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { parseArgs } from "../../../../src/tools/studiorpc/methods/instance.upsert";
 import {
   addInstancesInDocument,
   normalizeWorkspaceMobility,
   requireDocumentRoot,
   updateInstancesInDocument,
 } from "../../../../src/tools/studiorpc/tools/instance-document-operations";
+import { executeInstanceUpsertInner } from "../../../../src/tools/studiorpc/tools/instance-upsert-tool";
 import { findNodeByActorGuid, type OvdrjmNode } from "../../../../src/tools/studiorpc/tools/ovdrjm-utils";
 
 function makeDocument(): {
@@ -119,5 +124,70 @@ describe("Workspace Mobility rules", () => {
     node(document, childGuid).Mobility = "Movable";
     normalizeWorkspaceMobility(requireDocumentRoot(document));
     expect(node(document, childGuid).Mobility).toBe("Movable");
+  });
+});
+
+describe("instance.upsert Mobility cascade (tool path)", () => {
+  const createdDirs: string[] = [];
+  afterEach(() => {
+    for (const dir of createdDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  /** Workspace → Folder "Lobby" (top-level) → Part "Wall" with a stale, mismatched Mobility. */
+  function makeProject(): { cwd: string; lobbyGuid: string; wallGuid: string } {
+    const cwd = join(tmpdir(), `sidecar-mobility-${process.pid}-${Date.now()}-${createdDirs.length}`);
+    mkdirSync(cwd, { recursive: true });
+    createdDirs.push(cwd);
+    const lobbyGuid = "LOBBY";
+    const wallGuid = "WALL";
+    writeFileSync(join(cwd, "World.umap"), "");
+    writeFileSync(
+      join(cwd, "World.ovdrjm"),
+      JSON.stringify({
+        Root: {
+          InstanceType: "Workspace",
+          ActorGuid: "WS",
+          Name: "Workspace",
+          LuaChildren: [
+            {
+              InstanceType: "Folder",
+              ActorGuid: lobbyGuid,
+              Name: "Lobby",
+              Mobility: "Static",
+              LuaChildren: [{ InstanceType: "Part", ActorGuid: wallGuid, Name: "Wall", Mobility: "Movable" }],
+            },
+          ],
+        },
+      }),
+    );
+    return { cwd, lobbyGuid, wallGuid };
+  }
+
+  function readWall(cwd: string, wallGuid: string): OvdrjmNode {
+    const doc = JSON.parse(readFileSync(join(cwd, "World.ovdrjm"), "utf-8")) as Record<string, unknown>;
+    const found = findNodeByActorGuid(requireDocumentRoot(doc), wallGuid);
+    if (!found) throw new Error("wall missing");
+    return found;
+  }
+
+  test("changing a top-level object's Mobility cascades to descendants", async () => {
+    const { cwd, lobbyGuid, wallGuid } = makeProject();
+    await executeInstanceUpsertInner(
+      parseArgs({ items: [{ guid: lobbyGuid, properties: { Mobility: "Movable" } }] }),
+      cwd,
+      {
+        applyAndSaveChanges: false,
+      },
+    );
+    expect(readWall(cwd, wallGuid).Mobility).toBe("Movable");
+
+    await executeInstanceUpsertInner(
+      parseArgs({ items: [{ guid: lobbyGuid, properties: { Mobility: "Static" } }] }),
+      cwd,
+      {
+        applyAndSaveChanges: false,
+      },
+    );
+    expect(readWall(cwd, wallGuid).Mobility).toBe("Static");
   });
 });
