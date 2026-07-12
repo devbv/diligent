@@ -11,9 +11,9 @@ import type {
   SubagentsSetParams,
   SubagentsSetResponse,
 } from "../protocol/index";
-import type { ConfigReloadResult } from "./config-handlers";
-import { handleConfigReload } from "./config-handlers";
-import type { ThreadHandlersContext } from "./thread-handlers";
+import type { ConfigReloadResult } from "./config-reload";
+import { handleConfigReload } from "./config-reload";
+import type { ThreadHandlersContext } from "./context";
 
 export interface SubagentSettingsContext {
   cwd: string;

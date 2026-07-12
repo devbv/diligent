@@ -6,9 +6,9 @@ import { getGlobalConfigPath, writeGlobalSkillsConfig } from "../config/writer";
 import type { SkillDescriptor, SkillsListResponse, SkillsSetParams, SkillsSetResponse } from "../protocol/index";
 import type { SkillMetadata } from "../skills";
 import { resolveSkillStates, resolveSkillsEnabledControl } from "../skills";
-import type { ConfigReloadResult } from "./config-handlers";
-import { handleConfigReload } from "./config-handlers";
-import type { ThreadHandlersContext } from "./thread-handlers";
+import type { ConfigReloadResult } from "./config-reload";
+import { handleConfigReload } from "./config-reload";
+import type { ThreadHandlersContext } from "./context";
 
 export interface SkillSettingsContext {
   cwd: string;

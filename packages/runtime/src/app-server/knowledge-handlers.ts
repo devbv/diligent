@@ -2,7 +2,7 @@
 
 import { readKnowledge, writeKnowledge } from "../knowledge/store";
 import type { KnowledgeEntry, KnowledgeType } from "../protocol/index";
-import type { ThreadHandlersContext } from "./thread-handlers";
+import type { ThreadHandlersContext } from "./context";
 
 export async function handleKnowledgeList(
   ctx: ThreadHandlersContext,

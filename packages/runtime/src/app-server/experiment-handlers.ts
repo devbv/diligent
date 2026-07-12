@@ -3,9 +3,9 @@
 import { getGlobalConfigPath, saveGlobalExperimentOverrides } from "../config";
 import type { ExperimentDefinition, ResolvedExperiment } from "../experiments";
 import type { ExperimentsListResponse, ExperimentsSetParams } from "../protocol";
-import type { ConfigReloadResult } from "./config-handlers";
-import { handleConfigReload } from "./config-handlers";
-import type { ThreadRuntime } from "./thread-handlers";
+import type { ConfigReloadResult } from "./config-reload";
+import { handleConfigReload } from "./config-reload";
+import type { ThreadRuntime } from "./context";
 
 export interface ExperimentConfigManager {
   getDefinitions: () => ExperimentDefinition[];

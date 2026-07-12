@@ -4,7 +4,7 @@ import { DILIGENT_SERVER_NOTIFICATION_METHODS, type SessionSummary, type Thinkin
 import { buildSessionContext } from "../session/context-builder";
 import { deleteSession, listSessions, readSessionFile } from "../session/persistence";
 import { generateSessionId } from "../session/types";
-import type { ThreadHandlersContext, ThreadRuntime } from "./thread-handlers";
+import type { ThreadHandlersContext, ThreadRuntime } from "./context";
 
 export async function handleThreadResume(
   ctx: ThreadHandlersContext,
