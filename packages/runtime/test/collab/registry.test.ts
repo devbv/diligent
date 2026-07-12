@@ -65,6 +65,13 @@ function makeInspectingSessionManagerFactory(observer: (agent: RuntimeAgent) => 
 }
 
 describe("AgentRegistry", () => {
+  it("rejects an unavailable agent type instead of falling back to general", () => {
+    const registry = new AgentRegistry(makeCollabDeps());
+    expect(() => registry.spawn({ prompt: "task", description: "", agentType: "experiment-disabled-agent" })).toThrow(
+      /Unknown or unavailable agent type/,
+    );
+  });
+
   it("spawn returns threadId and nickname immediately", () => {
     const registry = new AgentRegistry(
       makeCollabDeps({

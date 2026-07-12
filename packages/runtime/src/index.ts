@@ -51,6 +51,7 @@ export type {
   CreateAgentArgs,
   CreateAppServerConfigOptions,
   DiligentAppServerConfig,
+  ExperimentConfigManager,
 } from "./app-server";
 export { bindAppServer, createAppServerConfig, DiligentAppServer } from "./app-server";
 export type { ApprovalRequest, ApprovalResponse, PermissionAction, PermissionEngine, PermissionRule } from "./approval";
@@ -106,10 +107,13 @@ export {
   refreshPrivacyPolicyUrl,
   resolveConfiguredUserId,
   resolveConsentState,
+  saveGlobalExperimentOverrides,
   saveGlobalModel,
   writeGlobalToolsConfig,
   writeProjectToolsConfig,
 } from "./config";
+export type { ExperimentDefinition, ResolvedExperiment } from "./experiments";
+export { resolveExperimentGates, resolveExperimentStates } from "./experiments";
 export type { HookInput, HookResult, PluginHookFn } from "./hooks/runner";
 export type { DiligentPaths } from "./infrastructure";
 export { ensureDiligentDir, resolvePaths } from "./infrastructure";

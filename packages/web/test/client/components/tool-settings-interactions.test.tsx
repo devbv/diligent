@@ -6,6 +6,9 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 import { afterAll, expect, test } from "bun:test";
 import type {
+  ExperimentsListResponse,
+  ExperimentsSetParams,
+  ExperimentsSetResponse,
   SkillsListResponse,
   SkillsSetParams,
   SkillsSetResponse,
@@ -113,10 +116,26 @@ const subagentState: SubagentsListResponse = {
   ],
 };
 
+const experimentState: ExperimentsListResponse = {
+  configPath: "/home/user/.overdare/config.jsonc",
+  appliesOnNextTurn: true,
+  experiments: [
+    {
+      id: "procedural",
+      title: "Procedural generation",
+      description: "Create scenes from reusable Luau recipes.",
+      enabled: false,
+      defaultEnabled: false,
+    },
+  ],
+};
+
 function renderModal(options: {
   onSave?: (params: ToolsSetParams) => Promise<ToolsSetResponse>;
   onSaveSkills?: (params: SkillsSetParams) => Promise<SkillsSetResponse>;
   onSaveSubagents?: (params: SubagentsSetParams) => Promise<SubagentsSetResponse>;
+  onSaveExperiments?: (params: ExperimentsSetParams) => Promise<ExperimentsSetResponse>;
+  withExperiments?: boolean;
   onSkillsChange?: (skills: Array<{ name: string; description: string }>) => void;
   onClose?: () => void;
 }) {
@@ -137,6 +156,10 @@ function renderModal(options: {
             onSave: options.onSave ?? (async () => toolState),
             onListSkills: async () => skillState,
             onSaveSkills: options.onSaveSkills ?? (async () => skillState),
+            onListExperiments: options.withExperiments ? async () => experimentState : undefined,
+            onSaveExperiments: options.withExperiments
+              ? (options.onSaveExperiments ?? (async () => experimentState))
+              : undefined,
             onListSubagents: async () => subagentState,
             onSaveSubagents: options.onSaveSubagents ?? (async () => subagentState),
             onSkillsChange: options.onSkillsChange,
@@ -196,6 +219,29 @@ test("skill toggle save sends changed non-project overrides and refreshes active
 
   await act(async () => root.unmount());
   rootElement.remove();
+});
+
+test("product experiment is hidden without server advertisement and saves one coupled override when advertised", async () => {
+  const payloads: ExperimentsSetParams[] = [];
+  const hidden = renderModal({});
+  await hidden.render();
+  expect(document.body.textContent).not.toContain("Procedural generation");
+  await act(async () => hidden.root.unmount());
+  hidden.rootElement.remove();
+
+  const shown = renderModal({
+    withExperiments: true,
+    onSaveExperiments: async (params) => {
+      payloads.push(params);
+      return { ...experimentState, experiments: [{ ...experimentState.experiments[0]!, enabled: true }] };
+    },
+  });
+  await shown.render();
+  await act(async () => checkboxFor("Procedural generation").click());
+  await act(async () => saveButton().click());
+  expect(payloads).toEqual([{ threadId: "thread-1", overrides: { procedural: true } }]);
+  await act(async () => shown.root.unmount());
+  shown.rootElement.remove();
 });
 
 test("project-controlled skill rows are read-only and omitted from save payload", async () => {

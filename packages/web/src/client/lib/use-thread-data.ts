@@ -1,5 +1,8 @@
 // @summary RPC data operation hooks: tools, knowledge, child-thread fetch, and derived display values
 import type {
+  ExperimentsListResponse,
+  ExperimentsSetParams,
+  ExperimentsSetResponse,
   KnowledgeEntry,
   KnowledgeUpdateParams,
   McpListResponse,
@@ -66,6 +69,29 @@ export function useThreadData({
       const rpc = rpcRef.current;
       if (!rpc) throw new Error("WebSocket is not connected");
       return rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.SKILLS_SET, {
+        ...params,
+        threadId: params.threadId ?? state.activeThreadId ?? undefined,
+      });
+    },
+    [rpcRef, state.activeThreadId],
+  );
+
+  const listExperiments = useCallback(
+    async (threadId?: string): Promise<ExperimentsListResponse> => {
+      const rpc = rpcRef.current;
+      if (!rpc) throw new Error("WebSocket is not connected");
+      return rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.EXPERIMENTS_LIST, {
+        threadId: threadId ?? state.activeThreadId ?? undefined,
+      });
+    },
+    [rpcRef, state.activeThreadId],
+  );
+
+  const saveExperiments = useCallback(
+    async (params: ExperimentsSetParams): Promise<ExperimentsSetResponse> => {
+      const rpc = rpcRef.current;
+      if (!rpc) throw new Error("WebSocket is not connected");
+      return rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.EXPERIMENTS_SET, {
         ...params,
         threadId: params.threadId ?? state.activeThreadId ?? undefined,
       });
@@ -164,6 +190,8 @@ export function useThreadData({
     saveTools,
     listSkills,
     saveSkills,
+    listExperiments,
+    saveExperiments,
     listSubagents,
     saveSubagents,
     listKnowledge,

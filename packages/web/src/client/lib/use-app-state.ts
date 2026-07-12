@@ -345,6 +345,8 @@ export function useAppState({
     saveTools: threadData.saveTools,
     listSkills: threadData.listSkills,
     saveSkills: threadData.saveSkills,
+    listExperiments: threadData.listExperiments,
+    saveExperiments: threadData.saveExperiments,
     listSubagents: threadData.listSubagents,
     saveSubagents: threadData.saveSubagents,
     listKnowledge: threadData.listKnowledge,

@@ -34,6 +34,14 @@ async function makeBootstrapDir(): Promise<string> {
     "utf-8",
   );
 
+  const proceduralSkillDir = join(dir, "skills", "procedural-builder");
+  await mkdir(proceduralSkillDir, { recursive: true });
+  await writeFile(
+    join(proceduralSkillDir, "SKILL.md"),
+    "---\nname: procedural-builder\ndescription: Procedural preview\n---\nPROCEDURAL SKILL BODY",
+    "utf-8",
+  );
+
   // A skill that is not usable over MCP — load_skill must exclude it (see MCP_EXCLUDED_SKILLS).
   const excludedSkillDir = join(dir, "skills", "record-project-memory");
   await mkdir(excludedSkillDir, { recursive: true });
@@ -48,6 +56,14 @@ async function makeBootstrapDir(): Promise<string> {
   await writeFile(
     join(agentDir, "AGENT.md"),
     "---\nname: test-agent\ndescription: A test agent\nmodel_class: lite\n---\nAGENT BODY CONTENT",
+    "utf-8",
+  );
+
+  const proceduralAgentDir = join(dir, "agents", "procedural-builder");
+  await mkdir(proceduralAgentDir, { recursive: true });
+  await writeFile(
+    join(proceduralAgentDir, "AGENT.md"),
+    "---\nname: procedural-builder\ndescription: Procedural builder\n---\nPROCEDURAL AGENT BODY",
     "utf-8",
   );
 
@@ -80,6 +96,30 @@ describe("OVERDARE MCP server", () => {
     expect(browse?.inputSchema).toBeDefined();
     expect(browse?.inputSchema).not.toHaveProperty("$schema");
     await client.close();
+  });
+
+  test("applies the same disabled experiment gate to procedural tool, skill, and agent", async () => {
+    const bootstrapDir = await makeBootstrapDir();
+    const registries = await buildRegistries({
+      cwd: process.cwd(),
+      bootstrapDir,
+      experiments: [
+        {
+          id: "procedural",
+          title: "Procedural generation",
+          description: "Procedural preview",
+          defaultEnabled: false,
+          enabled: false,
+          toolNames: ["studiorpc_procedural_run"],
+          skillNames: ["procedural-builder"],
+          agentNames: ["procedural-builder"],
+        },
+      ],
+    });
+    expect(registries.tools.has("studiorpc_procedural_run")).toBe(false);
+    const loadSkill = registries.tools.get("load_skill");
+    expect(loadSkill?.description).not.toContain("procedural-builder");
+    expect(registries.prompts.has("agent-procedural-builder")).toBe(false);
   });
 
   test("calls a studio tool and returns its output", async () => {

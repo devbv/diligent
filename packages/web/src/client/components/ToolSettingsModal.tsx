@@ -3,6 +3,9 @@
 import type {
   ConsentSetParams,
   ConsentState,
+  ExperimentsListResponse,
+  ExperimentsSetParams,
+  ExperimentsSetResponse,
   ProviderAuthStatus,
   SkillDescriptor,
   SkillInfo,
@@ -82,6 +85,9 @@ interface ToolSettingsModalProps {
   onListSkills?: (threadId?: string) => Promise<SkillsListResponse>;
   onSaveSkills?: (params: SkillsSetParams) => Promise<SkillsSetResponse>;
   onSkillsChange?: (skills: SkillInfo[]) => void;
+  initialExperimentState?: ExperimentsListResponse;
+  onListExperiments?: (threadId?: string) => Promise<ExperimentsListResponse>;
+  onSaveExperiments?: (params: ExperimentsSetParams) => Promise<ExperimentsSetResponse>;
   initialSubagentState?: SubagentsListResponse;
   onListSubagents?: (threadId?: string) => Promise<SubagentsListResponse>;
   onSaveSubagents?: (params: SubagentsSetParams) => Promise<SubagentsSetResponse>;
@@ -270,6 +276,9 @@ export function ToolSettingsModal({
   onListSkills,
   onSaveSkills,
   onSkillsChange,
+  initialExperimentState,
+  onListExperiments,
+  onSaveExperiments,
   initialSubagentState,
   onListSubagents,
   onSaveSubagents,
@@ -286,14 +295,24 @@ export function ToolSettingsModal({
   const [skillDraft, setSkillDraft] = useState<SkillSettingsDraft | null>(
     initialSkillState ? createSkillDraft(initialSkillState) : null,
   );
+  const [experimentState, setExperimentState] = useState<ExperimentsListResponse | null>(
+    initialExperimentState ?? null,
+  );
+  const [experimentDraft, setExperimentDraft] = useState<Record<string, boolean>>(
+    Object.fromEntries(initialExperimentState?.experiments.map((entry) => [entry.id, entry.enabled]) ?? []),
+  );
   const [subagentState, setSubagentState] = useState<SubagentsListResponse | null>(initialSubagentState ?? null);
   const [subagentDraft, setSubagentDraft] = useState<SubagentSettingsDraft | null>(
     initialSubagentState ? createSubagentDraft(initialSubagentState) : null,
   );
   const shouldLoadSkills = Boolean(onListSkills);
+  const shouldLoadExperiments = Boolean(onListExperiments);
   const shouldLoadSubagents = Boolean(onListSubagents);
   const [loading, setLoading] = useState(
-    !initialState || (shouldLoadSkills && !initialSkillState) || (shouldLoadSubagents && !initialSubagentState),
+    !initialState ||
+      (shouldLoadSkills && !initialSkillState) ||
+      (shouldLoadExperiments && !initialExperimentState) ||
+      (shouldLoadSubagents && !initialSubagentState),
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -308,8 +327,9 @@ export function ToolSettingsModal({
     let cancelled = false;
     const needsToolLoad = !initialState;
     const needsSkillLoad = shouldLoadSkills && !initialSkillState;
+    const needsExperimentLoad = shouldLoadExperiments && !initialExperimentState;
     const needsSubagentLoad = shouldLoadSubagents && !initialSubagentState;
-    if (!needsToolLoad && !needsSkillLoad && !needsSubagentLoad) {
+    if (!needsToolLoad && !needsSkillLoad && !needsExperimentLoad && !needsSubagentLoad) {
       if (initialState) {
         setState(initialState);
         setDraft(createDraft(initialState));
@@ -317,6 +337,12 @@ export function ToolSettingsModal({
       if (initialSkillState) {
         setSkillState(initialSkillState);
         setSkillDraft(createSkillDraft(initialSkillState));
+      }
+      if (initialExperimentState) {
+        setExperimentState(initialExperimentState);
+        setExperimentDraft(
+          Object.fromEntries(initialExperimentState.experiments.map((entry) => [entry.id, entry.enabled])),
+        );
       }
       if (initialSubagentState) {
         setSubagentState(initialSubagentState);
@@ -361,7 +387,19 @@ export function ToolSettingsModal({
             return result;
           });
 
-    void Promise.all([toolPromise, skillPromise, subagentPromise])
+    const experimentPromise = !shouldLoadExperiments
+      ? Promise.resolve(null)
+      : initialExperimentState
+        ? Promise.resolve(initialExperimentState)
+        : onListExperiments!(threadId ?? undefined).then((result) => {
+            if (!cancelled) {
+              setExperimentState(result);
+              setExperimentDraft(Object.fromEntries(result.experiments.map((entry) => [entry.id, entry.enabled])));
+            }
+            return result;
+          });
+
+    void Promise.all([toolPromise, skillPromise, experimentPromise, subagentPromise])
       .catch((cause) => {
         if (cancelled) return;
         setError(cause instanceof Error ? cause.message : "Failed to load config settings");
@@ -375,12 +413,15 @@ export function ToolSettingsModal({
     };
   }, [
     initialSkillState,
+    initialExperimentState,
     initialState,
     initialSubagentState,
     onList,
     onListSkills,
+    onListExperiments,
     onListSubagents,
     shouldLoadSkills,
+    shouldLoadExperiments,
     shouldLoadSubagents,
     threadId,
   ]);
@@ -513,6 +554,22 @@ export function ToolSettingsModal({
         setSkillState(result);
         setSkillDraft(createSkillDraft(result));
         onSkillsChange?.(activeSkillInfoFromSettings(result));
+      }
+      if (
+        experimentState &&
+        onSaveExperiments &&
+        experimentState.experiments.some((entry) => experimentDraft[entry.id] !== entry.enabled)
+      ) {
+        const result = await onSaveExperiments({ threadId: threadId ?? undefined, overrides: experimentDraft });
+        persisted.push("experiment settings");
+        setExperimentState(result);
+        setExperimentDraft(Object.fromEntries(result.experiments.map((entry) => [entry.id, entry.enabled])));
+        if (onListSkills) {
+          const refreshedSkills = await onListSkills(threadId ?? undefined);
+          setSkillState(refreshedSkills);
+          setSkillDraft(createSkillDraft(refreshedSkills));
+          onSkillsChange?.(activeSkillInfoFromSettings(refreshedSkills));
+        }
       }
       if (subagentState && subagentDraft && onSaveSubagents && hasSubagentDraftChanged(subagentState, subagentDraft)) {
         const result = await onSaveSubagents(buildSubagentsSetParams(threadId, subagentState, subagentDraft));
@@ -749,6 +806,35 @@ export function ToolSettingsModal({
                       })}
                     </div>
                   )}
+                </section>
+              ) : null}
+
+              {experimentState && experimentState.experiments.length > 0 ? (
+                <section className={sectionStackClasses}>
+                  <div>
+                    <h3 className="text-sm font-semibold text-text">Experiments</h3>
+                    <p className="text-xs text-muted">
+                      Enable preview capabilities. Each switch controls every skill and tool that belongs to it.
+                    </p>
+                  </div>
+                  <div className={itemStackClasses}>
+                    {experimentState.experiments.map((experiment) => (
+                      <label key={experiment.id} className={controlRowClasses}>
+                        <input
+                          type="checkbox"
+                          checked={experimentDraft[experiment.id] ?? experiment.enabled}
+                          onChange={(event) =>
+                            setExperimentDraft((current) => ({ ...current, [experiment.id]: event.target.checked }))
+                          }
+                          className="mt-0.5"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm font-medium text-text">{experiment.title}</div>
+                          <p className="mt-0.5 text-xs text-muted">{experiment.description}</p>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
                 </section>
               ) : null}
 

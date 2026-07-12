@@ -144,6 +144,18 @@ export async function saveGlobalConsent(consent: NonNullable<DiligentConfig["con
   }
 }
 
+/** Persist product experiment overrides while preserving unrelated JSONC content. */
+export async function saveGlobalExperimentOverrides(overrides: Record<string, boolean>): Promise<void> {
+  const configPath = getGlobalConfigPath();
+  await mkdir(dirname(configPath), { recursive: true });
+  let content = "{}\n";
+  const file = Bun.file(configPath);
+  if (await file.exists()) content = await file.text();
+  const value = Object.keys(overrides).length > 0 ? overrides : undefined;
+  const edits = modify(content, ["experiments", "overrides"], value, { formattingOptions: JSONC_FORMAT_OPTIONS });
+  await Bun.write(configPath, applyEdits(content, edits));
+}
+
 export function normalizeStoredToolsConfig(
   tools: DiligentConfig["tools"] | ToolConfigPatch | undefined,
 ): StoredToolsConfig | undefined {

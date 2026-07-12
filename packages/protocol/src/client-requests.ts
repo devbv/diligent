@@ -420,6 +420,36 @@ export type SkillsSetParams = z.infer<typeof SkillsSetParamsSchema>;
 export const SkillsSetResponseSchema = SkillsListResponseSchema;
 export type SkillsSetResponse = z.infer<typeof SkillsSetResponseSchema>;
 
+export const ExperimentDescriptorSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  description: z.string(),
+  enabled: z.boolean(),
+  defaultEnabled: z.boolean(),
+});
+export type ExperimentDescriptor = z.infer<typeof ExperimentDescriptorSchema>;
+
+export const ExperimentsListParamsSchema = z.object({
+  threadId: z.string().optional(),
+});
+export type ExperimentsListParams = z.infer<typeof ExperimentsListParamsSchema>;
+
+export const ExperimentsListResponseSchema = z.object({
+  configPath: z.string(),
+  appliesOnNextTurn: z.literal(true),
+  experiments: z.array(ExperimentDescriptorSchema),
+});
+export type ExperimentsListResponse = z.infer<typeof ExperimentsListResponseSchema>;
+
+export const ExperimentsSetParamsSchema = z.object({
+  threadId: z.string().optional(),
+  overrides: z.record(z.string(), z.boolean()),
+});
+export type ExperimentsSetParams = z.infer<typeof ExperimentsSetParamsSchema>;
+
+export const ExperimentsSetResponseSchema = ExperimentsListResponseSchema;
+export type ExperimentsSetResponse = z.infer<typeof ExperimentsSetResponseSchema>;
+
 export const SubagentStateReasonSchema = z.enum(["enabled", "disabled_by_user", "required_builtin"]);
 export type SubagentStateReason = z.infer<typeof SubagentStateReasonSchema>;
 
@@ -660,6 +690,11 @@ export const DiligentClientRequestSchema = z.discriminatedUnion("method", [
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.TOOLS_SET), params: ToolsSetParamsSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.SKILLS_LIST), params: SkillsListParamsSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.SKILLS_SET), params: SkillsSetParamsSchema }),
+  z.object({
+    method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.EXPERIMENTS_LIST),
+    params: ExperimentsListParamsSchema,
+  }),
+  z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.EXPERIMENTS_SET), params: ExperimentsSetParamsSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.SUBAGENTS_LIST), params: SubagentsListParamsSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.SUBAGENTS_SET), params: SubagentsSetParamsSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.CONFIG_SET), params: ConfigSetParamsSchema }),
@@ -721,6 +756,14 @@ export const DiligentClientResponseSchema = z.discriminatedUnion("method", [
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.TOOLS_SET), result: ToolsSetResponseSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.SKILLS_LIST), result: SkillsListResponseSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.SKILLS_SET), result: SkillsSetResponseSchema }),
+  z.object({
+    method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.EXPERIMENTS_LIST),
+    result: ExperimentsListResponseSchema,
+  }),
+  z.object({
+    method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.EXPERIMENTS_SET),
+    result: ExperimentsSetResponseSchema,
+  }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.SUBAGENTS_LIST), result: SubagentsListResponseSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.SUBAGENTS_SET), result: SubagentsSetResponseSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.CONFIG_SET), result: ConfigSetResponseSchema }),

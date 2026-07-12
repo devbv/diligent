@@ -29,6 +29,7 @@ import {
   handleConsentSet,
   handleImageUpload,
 } from "./config-handlers";
+import { type ExperimentConfigManager, handleExperimentsList, handleExperimentsSet } from "./experiment-handlers";
 import { handleKnowledgeList, handleKnowledgeUpdate } from "./knowledge-handlers";
 import { handleMcpList, handleMcpLoginStart, handleMcpLogout } from "./mcp-handlers";
 import { handleThreadDelete, handleThreadList, handleThreadResume } from "./session-handlers";
@@ -99,6 +100,7 @@ export interface ClientRequestDispatchContext {
   turnInitiators: Map<string, string>;
   toolConfig: ToolConfigManager | undefined;
   skillConfig: SkillConfigManager | undefined;
+  experimentConfig: ExperimentConfigManager | undefined;
   subagentConfig: SubagentConfigManager | undefined;
   consentConfig: ConsentConfigManager | undefined;
   reloadConfig: (() => Promise<ConfigReloadResult>) | undefined;
@@ -174,6 +176,8 @@ export function applySessionDefaults(
     DILIGENT_CLIENT_REQUEST_METHODS.TOOLS_SET,
     DILIGENT_CLIENT_REQUEST_METHODS.SKILLS_LIST,
     DILIGENT_CLIENT_REQUEST_METHODS.SKILLS_SET,
+    DILIGENT_CLIENT_REQUEST_METHODS.EXPERIMENTS_LIST,
+    DILIGENT_CLIENT_REQUEST_METHODS.EXPERIMENTS_SET,
     DILIGENT_CLIENT_REQUEST_METHODS.SUBAGENTS_LIST,
     DILIGENT_CLIENT_REQUEST_METHODS.SUBAGENTS_SET,
   ];
@@ -313,6 +317,18 @@ export async function dispatchClientRequest(
       const manager = ctx.skillConfig;
       if (!manager) throw Object.assign(new Error("Skill config not available"), { code: -32601 });
       return handleSkillsSet(ctx.threadHandlersCtx, manager, ctx.reloadConfig, request.params);
+    }
+
+    case DILIGENT_CLIENT_REQUEST_METHODS.EXPERIMENTS_LIST: {
+      const manager = ctx.experimentConfig;
+      if (!manager) throw Object.assign(new Error("Experiment config not available"), { code: -32601 });
+      return handleExperimentsList(manager);
+    }
+
+    case DILIGENT_CLIENT_REQUEST_METHODS.EXPERIMENTS_SET: {
+      const manager = ctx.experimentConfig;
+      if (!manager) throw Object.assign(new Error("Experiment config not available"), { code: -32601 });
+      return handleExperimentsSet(manager, ctx.reloadConfig, ctx.threadHandlersCtx.threads, request.params);
     }
 
     case DILIGENT_CLIENT_REQUEST_METHODS.SUBAGENTS_LIST: {

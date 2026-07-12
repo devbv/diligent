@@ -9,6 +9,21 @@ const OVERDARE_SIDECAR = resolve(ROOT, "apps/overdare-ai-agent/sidecar");
 const SIDECAR_ASSETS = resolve(OVERDARE_SIDECAR, "assets");
 const OUT_DIR = resolve(ROOT, "apps/overdare-ai-agent/.diligent/diagnostics");
 
+const VENDORED_LUAU_VERSION = "0.723";
+const VENDORED_LUAU_DIR = resolve(OVERDARE_SIDECAR, "vendor", "luau", VENDORED_LUAU_VERSION);
+
+// Maps a build platform key to the vendored procedural Luau interpreter subdir.
+// Only the officially supported targets ship a bundled interpreter.
+const LUAU_VENDOR_SUBDIR_BY_PLATFORM = new Map<string, string>([
+  ["darwin-arm64", "darwin"],
+  ["windows-x64", "win32"],
+  ["linux-x64", "linux"],
+]);
+
+function proceduralLuauName(platformKey: string): string {
+  return platformKey === "windows-x64" ? "luau.exe" : "luau";
+}
+
 const TARGET_BY_PLATFORM = new Map<string, string>([
   ["darwin-arm64", "bun-darwin-arm64"],
   ["darwin-x64", "bun-darwin-x64"],
@@ -79,6 +94,28 @@ async function run(): Promise<void> {
     resolve(assetsDir, "bin", luauLspName(platformKey)),
   );
   await cp(resolve(SIDECAR_ASSETS, "lua", "overdare-types.d.lua"), resolve(assetsDir, "lua", "overdare-types.d.lua"));
+
+  // Stage the procedural runner + its Luau dependencies on real disk under
+  // assets/lua/procedural. In a compiled binary `import.meta.url` resolves into
+  // Bun's embedded virtual filesystem, which the external luau subprocess cannot
+  // read, so runtime.ts (resolveLuauRunnerDir) looks here beside the executable.
+  await cp(resolve(OVERDARE_SIDECAR, "src", "procedural", "luau"), resolve(assetsDir, "lua", "procedural"), {
+    recursive: true,
+  });
+
+  // Bundle the procedural runtime's Luau interpreter beside the executable so
+  // studiorpc_procedural_* tools work in the packaged sidecar (resolved via
+  // assets/bin by src/procedural/runtime.ts). Preserves the executable bit.
+  const luauSubdir = LUAU_VENDOR_SUBDIR_BY_PLATFORM.get(platformKey);
+  if (luauSubdir) {
+    const luauName = proceduralLuauName(platformKey);
+    await cp(resolve(VENDORED_LUAU_DIR, luauSubdir, luauName), resolve(assetsDir, "bin", luauName));
+  } else {
+    console.warn(
+      `No vendored procedural Luau interpreter for ${platformKey}; ` +
+        "procedural tools will fall back to OVDR_LUAU_BIN/LUAU_BIN or a `luau` on PATH.",
+    );
+  }
 
   console.log(outPath);
 }

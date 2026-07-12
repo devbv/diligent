@@ -218,7 +218,7 @@ describe("createStudioRpcToolProvider", () => {
     ]);
   });
 
-  test("does not save after individual mutating Studio RPC tool calls", async () => {
+  test("saves the level to file after a mutating asset-import tool call", async () => {
     const calls: Array<{ method: string; params?: Record<string, unknown>; timeoutMs?: number }> = [];
     const provider = createStudioRpcToolProvider({
       callRpc: async (method, params, options) => {
@@ -243,6 +243,7 @@ describe("createStudioRpcToolProvider", () => {
         params: { assetid: "ovdrassetid://123", assetName: "Tree", assetType: "MODEL" },
         timeoutMs: undefined,
       },
+      { method: "level.save.file", params: {}, timeoutMs: undefined },
     ]);
   });
 
@@ -318,6 +319,30 @@ describe("createStudioRpcToolProvider", () => {
       suggestedTool: "studiorpc_level_browse",
     });
     expect(rpcCalls).toEqual([]);
+  });
+
+  test("reports ignored Mobility when upserting below a Workspace top-level object", async () => {
+    const cwd = makeStudioProject();
+    const tools = await loadStudioTools(cwd);
+    const result = await tools.get("studiorpc_instance_upsert")!.execute(
+      {
+        items: [
+          {
+            class: "Part",
+            parentGuid: folderGuid,
+            name: "NestedPart",
+            properties: { Mobility: "Static" },
+          },
+        ],
+      },
+      toolContext(),
+    );
+
+    expect(result.metadata?.info).toEqual([
+      expect.stringMatching(/^Ignored Mobility for .+: Mobility can only be changed on a direct child of Workspace\.$/),
+    ]);
+    expect(result.output).toContain("<suggestions>");
+    expect(result.output).toContain("Ignored Mobility");
   });
 
   test("returns structured readback status for move missing target and new parent GUIDs", async () => {
@@ -405,6 +430,26 @@ describe("createStudioRpcToolProvider", () => {
       guid: workspaceGuid,
       role: "target",
       class: "Workspace",
+      requiresReadback: false,
+    });
+    expect(rpcCalls).toEqual([]);
+  });
+
+  test("returns invalid_operation status for a hierarchy cycle", async () => {
+    const cwd = makeStudioProject();
+    const rpcCalls: Array<{ method: string; params?: Record<string, unknown> }> = [];
+    const tools = await loadStudioTools(cwd, rpcCalls);
+
+    const result = await tools
+      .get("studiorpc_instance_move")!
+      .execute({ items: [{ guid: partGuid, parentGuid: partGuid }] }, toolContext());
+
+    expectStatus(result, {
+      kind: "invalid_operation",
+      code: "hierarchy_cycle",
+      operation: "instance.move",
+      guid: partGuid,
+      role: "target",
       requiresReadback: false,
     });
     expect(rpcCalls).toEqual([]);

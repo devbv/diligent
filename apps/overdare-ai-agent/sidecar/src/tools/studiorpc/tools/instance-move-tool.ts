@@ -1,21 +1,13 @@
 // @summary Moves instances to a new parent in the level file.
 
 import * as instanceMove from "../methods/instance.move";
-import { serviceClassEnum } from "../methods/instance.params";
 import { buildInstanceMoveRender } from "../render";
 import { applyLevelChanges } from "../rpc";
 import type { Tool, ToolContext, ToolResult } from "../types";
 import type { WriteLock } from "../write-lock";
-import { invalidInstanceOperationError, missingGuidError, resultFromInstanceToolStatusError } from "./instance-status";
-import {
-  findNodeByActorGuid,
-  isRecord,
-  type OvdrjmNode,
-  readAndWriteOvdrjm,
-  removeNodeByActorGuid,
-} from "./ovdrjm-utils";
-
-const serviceClasses = new Set<string>(serviceClassEnum.options);
+import { moveInstancesInDocument, validateInstanceMoves } from "./instance-move-operations";
+import { resultFromInstanceToolStatusError } from "./instance-status";
+import { isRecord, type OvdrjmNode, readAndWriteOvdrjm } from "./ovdrjm-utils";
 
 async function executeInstanceMove(
   args: Record<string, unknown>,
@@ -59,39 +51,8 @@ async function executeInstanceMoveInner(
           throw new Error("Invalid .ovdrjm format: Root object is missing.");
         }
 
-        const movedGuids: string[] = [];
-        for (const item of parsedArgs.items) {
-          const target = findNodeByActorGuid(root as OvdrjmNode, item.guid);
-          if (!target) {
-            throw missingGuidError({ operation: "instance.move", guid: item.guid, role: "target" });
-          }
-          const instanceType = typeof target.InstanceType === "string" ? target.InstanceType : undefined;
-          if (instanceType && serviceClasses.has(instanceType)) {
-            throw invalidInstanceOperationError({
-              operation: "instance.move",
-              code: "protected_service_class",
-              guid: item.guid,
-              role: "target",
-              class: instanceType,
-              message: `"${instanceType}" is a Service and cannot be moved.`,
-            });
-          }
-
-          const newParent = findNodeByActorGuid(root as OvdrjmNode, item.parentGuid);
-          if (!newParent) {
-            throw missingGuidError({ operation: "instance.move", guid: item.parentGuid, role: "new_parent" });
-          }
-
-          const removed = removeNodeByActorGuid(root as OvdrjmNode, item.guid);
-          if (!removed) {
-            throw new Error(`Failed to detach ActorGuid from .ovdrjm: ${item.guid}`);
-          }
-
-          const childList = Array.isArray(newParent.LuaChildren) ? newParent.LuaChildren : [];
-          newParent.LuaChildren = childList;
-          childList.push(target);
-          movedGuids.push(item.guid);
-        }
+        validateInstanceMoves(root as OvdrjmNode, parsedArgs.items);
+        const movedGuids = moveInstancesInDocument(root as OvdrjmNode, parsedArgs.items);
 
         return { added: movedGuids.map((g) => ({ guid: g, name: "", class: "" })) };
       });

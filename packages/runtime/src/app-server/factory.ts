@@ -1,7 +1,7 @@
 // @summary Factory that builds a DiligentAppServerConfig from a RuntimeConfig, eliminating Web/CLI duplication
 import { dirname, join } from "node:path";
 import { getModelInfoList, resolveModel } from "@diligent/core/llm/models";
-import type { ProviderName } from "@diligent/core/llm/types";
+import type { ProviderName, SystemSection } from "@diligent/core/llm/types";
 import {
   EXECUTE_MODE_DISALLOWED_TOOLS,
   MODE_SYSTEM_PROMPT_SUFFIXES,
@@ -15,6 +15,7 @@ import { loadDiligentConfig } from "../config/loader";
 import { loadRuntimeConfig, type RuntimeConfig } from "../config/runtime";
 import { getGlobalConfigPath, saveGlobalConsent, saveGlobalModel } from "../config/writer";
 import { type DiligentPaths, ensureDiligentDir } from "../infrastructure";
+import { buildKnowledgeSection, readKnowledge } from "../knowledge";
 import { discoverSkills } from "../skills";
 import type { BundledToolProvider } from "../tools/bundled-provider";
 import { buildDefaultTools } from "../tools/defaults";
@@ -46,6 +47,33 @@ function applyModeToPrompt(mode: Mode, systemPrompt: RuntimeConfig["systemPrompt
     return systemPrompt;
   }
   return [...systemPrompt, { tag: "collaboration_mode", label: "mode", content: MODE_SYSTEM_PROMPT_SUFFIXES[mode] }];
+}
+
+/**
+ * Read the persistent knowledge store at agent creation time, so every newly started session
+ * receives knowledge saved after the app server itself started.
+ */
+async function withLatestKnowledge(
+  systemPrompt: SystemSection[],
+  paths: DiligentPaths,
+  knowledgeConfig: RuntimeConfig["diligent"]["knowledge"],
+): Promise<SystemSection[]> {
+  const withoutKnowledge = systemPrompt.filter((section) => section.label !== "knowledge");
+  if (knowledgeConfig?.enabled === false) return withoutKnowledge;
+
+  const entries = await readKnowledge(paths.knowledge);
+  const content = buildKnowledgeSection(entries, knowledgeConfig?.injectionBudget ?? 8192, knowledgeConfig?.maxItems);
+  if (!content) return withoutKnowledge;
+
+  const knowledgeSection: SystemSection = {
+    tag: "knowledge",
+    label: "knowledge",
+    content,
+    cacheControl: "ephemeral",
+  };
+  const baseIndex = withoutKnowledge.findIndex((section) => section.label === "base");
+  const insertAt = baseIndex < 0 ? 0 : baseIndex + 1;
+  return [...withoutKnowledge.slice(0, insertAt), knowledgeSection, ...withoutKnowledge.slice(insertAt)];
 }
 
 export function filterToolsByMode(mode: Mode, tools: Awaited<ReturnType<typeof buildDefaultTools>>["tools"]) {
@@ -82,8 +110,13 @@ async function createRuntimeAgent(args: {
 }): Promise<RuntimeAgent> {
   const { request, runtimeConfig, getPaths, bundledToolProviders } = args;
   const { cwd, mode, effort, modelId, approve, ask, getSessionId, existingAgent, onChildStop, userId } = request;
-  const guardedSystemPrompt = withSkillGuardrail(runtimeConfig);
   const paths = await getPaths();
+  const guardedSystemPrompt = withSkillGuardrail(runtimeConfig);
+  const systemPromptWithLatestKnowledge = await withLatestKnowledge(
+    guardedSystemPrompt,
+    paths,
+    runtimeConfig.diligent.knowledge,
+  );
   const model = resolveModel(modelId);
   const toolsResult = await buildDefaultTools({
     cwd,
@@ -105,6 +138,7 @@ async function createRuntimeAgent(args: {
     existingRegistry: existingAgent?.registry,
     host: { approve, ask },
     bundledToolProviders,
+    disabledToolNames: runtimeConfig.disabledToolNames,
     provider: model.provider as ProviderName,
     mcpServers: runtimeConfig.diligent.mcpServers,
     mcpToolLoading: runtimeConfig.diligent.mcp?.toolLoading ?? "auto",
@@ -118,7 +152,10 @@ async function createRuntimeAgent(args: {
   // Surface unauthenticated MCP servers to the agent. `buildDefaultTools` above already ran the MCP
   // sync (with OAuth deps set), so `listStatus` reads the same authoritative needs_auth result from
   // cache without reconnecting — keeping the note consistent with the tools actually exposed.
-  const promptSections = await appendMcpNeedsAuthNote(guardedSystemPrompt, runtimeConfig.diligent.mcpServers);
+  const promptSections = await appendMcpNeedsAuthNote(
+    systemPromptWithLatestKnowledge,
+    runtimeConfig.diligent.mcpServers,
+  );
 
   const activeMode = (mode ?? "default") as Mode;
   const llmCompactionFn = runtimeConfig.providerManager.createNativeCompactionForProvider(
@@ -181,6 +218,16 @@ export function createAppServerConfig(opts: CreateAppServerConfigOptions): Dilig
   const { cwd, runtimeConfig, bundledToolProviders = [], consentBackend, overrides } = opts;
   const modelInfoList = getModelInfoList();
   const initialEffort = runtimeConfig.effort;
+  const experimentDefinitions = runtimeConfig.experimentDefinitions ?? [];
+  const experimentManagedSkillNames = new Set(
+    experimentDefinitions.flatMap((definition) => [...(definition.skillNames ?? [])]),
+  );
+  const experimentManagedAgentNames = new Set(
+    experimentDefinitions.flatMap((definition) => [...(definition.agentNames ?? [])]),
+  );
+  for (const entry of runtimeConfig.agentCatalog ?? []) {
+    if (entry.required) experimentManagedAgentNames.delete(entry.definition.name);
+  }
 
   // Wire interactive OAuth for remote MCP servers: token state lives under the global
   // diligent dir, and browser login uses the client-provided opener (falls back to default).
@@ -260,7 +307,9 @@ export function createAppServerConfig(opts: CreateAppServerConfigOptions): Dilig
             cwd,
             config: runtimeConfig.diligent.skills,
             layers: runtimeConfig.configLayers ?? {},
-            discoveredSkills: runtimeConfig.discoveredSkills ?? [],
+            discoveredSkills: (runtimeConfig.discoveredSkills ?? []).filter(
+              (skill) => !experimentManagedSkillNames.has(skill.name),
+            ),
           };
         }
 
@@ -270,9 +319,13 @@ export function createAppServerConfig(opts: CreateAppServerConfigOptions): Dilig
           cwd: requestCwd,
           config: loaded.config.skills,
           layers: loaded.layers,
-          discoveredSkills: discovered.skills,
+          discoveredSkills: discovered.skills.filter((skill) => !experimentManagedSkillNames.has(skill.name)),
         };
       },
+    },
+    experimentConfig: {
+      getDefinitions: () => experimentDefinitions,
+      getExperiments: () => runtimeConfig.experiments ?? [],
     },
     subagentConfig: {
       resolve: async (requestCwd) => {
@@ -284,6 +337,7 @@ export function createAppServerConfig(opts: CreateAppServerConfigOptions): Dilig
           config: runtimeConfig.diligent.agents,
           layers: runtimeConfig.configLayers ?? {},
           catalog: runtimeConfig.agentCatalog,
+          experimentManagedAgentNames,
         };
       },
     },
@@ -316,7 +370,10 @@ export function createAppServerConfig(opts: CreateAppServerConfigOptions): Dilig
   // reads live on every call.
   config.reloadConfig = async (): Promise<ConfigReloadResult> => {
     const paths = await getPaths();
-    const fresh = await loadRuntimeConfig(cwd, paths);
+    const fresh = await loadRuntimeConfig(cwd, paths, {
+      bundledToolProviders,
+      experimentDefinitions,
+    });
     runtimeConfig.discoveredSkills = fresh.discoveredSkills;
     runtimeConfig.skills = fresh.skills;
     runtimeConfig.agents = fresh.agents;
@@ -327,6 +384,10 @@ export function createAppServerConfig(opts: CreateAppServerConfigOptions): Dilig
     runtimeConfig.diligent = fresh.diligent;
     runtimeConfig.sources = fresh.sources;
     runtimeConfig.configLayers = fresh.configLayers;
+    runtimeConfig.experiments = fresh.experiments;
+    runtimeConfig.disabledToolNames = fresh.disabledToolNames;
+    runtimeConfig.disabledSkillNames = fresh.disabledSkillNames;
+    runtimeConfig.disabledAgentNames = fresh.disabledAgentNames;
     config.mcpServers = fresh.diligent.mcpServers;
     config.skillNames = fresh.skills.map((skill) => skill.name);
     config.hooks = fresh.diligent.hooks;

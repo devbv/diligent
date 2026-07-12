@@ -8,7 +8,8 @@ import { existsSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import type { Tool, ToolContext, ToolResult } from "@diligent/core/tool/types";
-import type { BundledToolProvider } from "@diligent/runtime";
+import type { BundledToolProvider, ResolvedExperiment } from "@diligent/runtime";
+import { loadDiligentConfig, resolveExperimentGates, resolveExperimentStates } from "@diligent/runtime";
 import { discoverSkills, extractBody, parseFrontmatter } from "@diligent/runtime/skills";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -20,6 +21,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
+import { OVERDARE_EXPERIMENTS } from "./experiments";
 import { createRagToolProvider } from "./tools/rag";
 import { createStudioRpcToolProvider } from "./tools/studiorpc";
 import { createValidatorToolProvider } from "./tools/validator";
@@ -41,6 +43,7 @@ export interface McpServerOptions {
   cwd: string;
   /** Directory containing bootstrap `skills/`, `agents/`, and `system-prompt.txt`. */
   bootstrapDir: string;
+  experiments?: ResolvedExperiment[];
 }
 
 /** A prompt exposed over MCP (skill / agent / system prompt), loaded lazily. */
@@ -64,18 +67,27 @@ function studioToolProviders(): BundledToolProvider[] {
   return [createStudioRpcToolProvider(), createValidatorToolProvider(), createRagToolProvider()];
 }
 
-async function buildToolRegistry(cwd: string): Promise<Map<string, Tool>> {
+async function buildToolRegistry(
+  cwd: string,
+  experiments: readonly ResolvedExperiment[] = [],
+): Promise<Map<string, Tool>> {
+  const { disabledToolNames } = resolveExperimentGates(experiments);
   const tools = new Map<string, Tool>();
   for (const provider of studioToolProviders()) {
     for (const tool of await provider.createTools({ cwd })) {
+      if (disabledToolNames.has(tool.name)) continue;
       tools.set(tool.name, tool);
     }
   }
   return tools;
 }
 
-async function buildPromptRegistry(bootstrapDir: string): Promise<Map<string, PromptEntry>> {
+async function buildPromptRegistry(
+  bootstrapDir: string,
+  experiments: readonly ResolvedExperiment[] = [],
+): Promise<Map<string, PromptEntry>> {
   const prompts = new Map<string, PromptEntry>();
+  const { disabledAgentNames } = resolveExperimentGates(experiments);
 
   // The base system prompt and skills are exposed as model-callable tools (ensure_system_prompt /
   // load_skill in buildBootstrapTools), not prompts — Claude Code only surfaces prompts to the user
@@ -101,6 +113,7 @@ async function buildPromptRegistry(bootstrapDir: string): Promise<Map<string, Pr
     }
     const parsed = parseFrontmatter(content, agentPath);
     if ("error" in parsed) continue;
+    if (disabledAgentNames.has(parsed.frontmatter.name)) continue;
     const promptName = `agent-${parsed.frontmatter.name}`;
     prompts.set(promptName, {
       name: promptName,
@@ -127,7 +140,10 @@ const MCP_EXCLUDED_SKILLS = new Set(["record-project-memory"]);
  * carries the available skill names so the model knows what it can pull without a separate call.
  * Skills that rely on host-only features unavailable over MCP are filtered out (MCP_EXCLUDED_SKILLS).
  */
-async function buildBootstrapTools(bootstrapDir: string): Promise<Tool[]> {
+async function buildBootstrapTools(
+  bootstrapDir: string,
+  experiments: readonly ResolvedExperiment[] = [],
+): Promise<Tool[]> {
   const systemPromptPath = join(bootstrapDir, "system-prompt.txt");
 
   const skillsDir = join(bootstrapDir, "skills");
@@ -136,7 +152,10 @@ async function buildBootstrapTools(bootstrapDir: string): Promise<Tool[]> {
     globalConfigDir: join(bootstrapDir, "__no_global__"),
     additionalPaths: [skillsDir],
   });
-  const skills = discovered.filter((skill) => !MCP_EXCLUDED_SKILLS.has(skill.name));
+  const { disabledSkillNames } = resolveExperimentGates(experiments);
+  const skills = discovered.filter(
+    (skill) => !MCP_EXCLUDED_SKILLS.has(skill.name) && !disabledSkillNames.has(skill.name),
+  );
   const skillsByName = new Map(skills.map((skill) => [skill.name, skill]));
   const skillIndex = skills.length
     ? skills.map((skill) => `- ${skill.name}: ${skill.description}`).join("\n")
@@ -187,9 +206,9 @@ async function buildBootstrapTools(bootstrapDir: string): Promise<Tool[]> {
 
 export async function buildRegistries(options: McpServerOptions): Promise<McpRegistries> {
   const [tools, bootstrapTools, prompts] = await Promise.all([
-    buildToolRegistry(options.cwd),
-    buildBootstrapTools(options.bootstrapDir),
-    buildPromptRegistry(options.bootstrapDir),
+    buildToolRegistry(options.cwd, options.experiments),
+    buildBootstrapTools(options.bootstrapDir, options.experiments),
+    buildPromptRegistry(options.bootstrapDir, options.experiments),
   ]);
   for (const tool of bootstrapTools) tools.set(tool.name, tool);
   return { tools, prompts };
@@ -303,6 +322,8 @@ function resolveBootstrapDir(): string {
  * subcommand (see server.ts). Runs the stdio MCP server; diagnostics go to stderr.
  */
 export async function runMcpServerMain(): Promise<void> {
+  // Match the web sidecar's direct-run behavior so experiment config resolves under ~/.overdare.
+  process.env.DILIGENT_STORAGE_NAMESPACE ??= "overdare";
   // stdout is the JSON-RPC transport for the stdio MCP server. Any stray write to it corrupts the
   // protocol stream and makes the client (e.g. Claude) drop the connection mid-session — which is
   // exactly what the studio RPC tracing in tools/studiorpc/rpc.ts (console.log `[RPC →]`/`[RPC ←]`)
@@ -328,7 +349,9 @@ export async function runMcpServerMain(): Promise<void> {
   const cwd = process.env.OVERDARE_MCP_CWD ?? process.cwd();
   const bootstrapDir = resolveBootstrapDir();
   try {
-    await startMcpServer({ cwd, bootstrapDir });
+    const { config } = await loadDiligentConfig(cwd);
+    const experiments = resolveExperimentStates(OVERDARE_EXPERIMENTS, config.experiments?.overrides);
+    await startMcpServer({ cwd, bootstrapDir, experiments });
     console.info("OVERDARE MCP server ready on stdio");
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

@@ -110,6 +110,7 @@ Current guides:
 - Tool settings: `docs/guide/tool-settings.md`
 - Tool rendering: `docs/guide/tool-rendering.md`
 - AgentNativeBridge: `docs/guide/agent-native-bridge.md`
+- Product experiments: `docs/guide/experiments.md`
 
 ## Frontend Protocol Philosophy
 

@@ -70,6 +70,13 @@ export const mutatingMethods = new Set([
   actionSequencerApplyJson.method,
 ]);
 
+/**
+ * Methods that change the live editor state and should immediately flush it to
+ * file (level.save.file) once they succeed, so the change is persisted without
+ * waiting for the turn-boundary save hook.
+ */
+export const savingMethods = new Set([assetDrawerImport.method, assetManagerImageImport.method]);
+
 export const renderBuilders: Record<string, RenderBuilder> = {
   studiorpc_asset_drawer_import: ({ normalizedArgs, output }) => buildAssetDrawerImportRender(normalizedArgs, output),
   studiorpc_asset_manager_image_import: ({ normalizedArgs, output, result }) =>

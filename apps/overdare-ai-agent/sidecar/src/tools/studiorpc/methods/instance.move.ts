@@ -3,7 +3,8 @@ import { z } from "zod";
 export const method = "instance.move";
 
 export const description =
-  "Move instances to a new parent in batch. Each item specifies a guid to move and the parentGuid of the new parent.";
+  "Reparent instances in batch: each item specifies a guid to move and the parentGuid of its new parent. " +
+  "This changes hierarchy only — it does not translate objects in space.";
 
 export const params = z
   .object({

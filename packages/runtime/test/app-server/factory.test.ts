@@ -11,6 +11,7 @@ import { z } from "zod";
 import { getBuiltinAgentDefinitions } from "../../src/agent/agent-types";
 import type { PermissionEngine } from "../../src/approval";
 import type { RuntimeConfig } from "../../src/config/runtime";
+import { writeKnowledge } from "../../src/knowledge/store";
 import type { BundledToolProvider } from "../../src/tools/bundled-provider";
 import { makeAssistant, makeStreamFn } from "../helpers/collab";
 
@@ -242,6 +243,63 @@ describe("createAppServerConfig", () => {
     });
 
     expect(agent.tools.map((tool) => tool.name)).toContain("factory_bundled_tool");
+  });
+
+  it("reads the latest persisted knowledge whenever it creates an agent", async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), "diligent-factory-knowledge-"));
+    tempHomes.push(projectRoot);
+    const runtimeConfig = makeRuntimeConfig({
+      systemPrompt: [
+        { label: "base", content: "test" },
+        { label: "knowledge", content: "stale knowledge from startup" },
+      ],
+    });
+    const config = createAppServerConfig({ cwd: projectRoot, runtimeConfig });
+    const paths = await config.resolvePaths(projectRoot);
+    await writeKnowledge(paths.knowledge, [
+      {
+        id: "project.preference",
+        timestamp: "2026-07-12T00:00:00.000Z",
+        type: "preference",
+        content: "Use npm for package scripts.",
+        confidence: 0.8,
+      },
+    ]);
+
+    const firstAgent = await config.createAgent({
+      cwd: projectRoot,
+      mode: "default",
+      effort: "medium",
+      modelId: DEFAULT_ANTHROPIC_MODEL_ID,
+      approve: async () => "once",
+      ask: async () => null,
+    });
+
+    await writeKnowledge(paths.knowledge, [
+      {
+        id: "project.preference",
+        timestamp: "2026-07-12T00:01:00.000Z",
+        type: "preference",
+        content: "Use Bun for package scripts.",
+        confidence: 0.8,
+      },
+    ]);
+    const nextSessionAgent = await config.createAgent({
+      cwd: projectRoot,
+      mode: "default",
+      effort: "medium",
+      modelId: DEFAULT_ANTHROPIC_MODEL_ID,
+      approve: async () => "once",
+      ask: async () => null,
+    });
+
+    const firstKnowledge = firstAgent.systemPrompt.filter((section) => section.label === "knowledge");
+    const nextKnowledge = nextSessionAgent.systemPrompt.filter((section) => section.label === "knowledge");
+    expect(firstKnowledge).toHaveLength(1);
+    expect(firstKnowledge[0]?.content).toContain("Use npm for package scripts.");
+    expect(nextKnowledge).toHaveLength(1);
+    expect(nextKnowledge[0]?.content).toContain("Use Bun for package scripts.");
+    expect(nextKnowledge[0]?.content).not.toContain("stale knowledge from startup");
   });
 
   it("keeps collab registry parent tools aligned with execute mode filtering", async () => {

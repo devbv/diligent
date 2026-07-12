@@ -40,6 +40,7 @@ export {
   normalizeStoredAgentsConfig,
   normalizeStoredSkillsConfig,
   normalizeStoredToolsConfig,
+  saveGlobalExperimentOverrides,
   saveGlobalModel,
   writeGlobalAgentsConfig,
   writeGlobalSkillsConfig,

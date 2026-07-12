@@ -6,48 +6,12 @@ import { buildInstanceUpsertRender } from "../render";
 import { applyLevelChanges } from "../rpc";
 import type { Tool, ToolContext, ToolResult } from "../types";
 import type { WriteLock } from "../write-lock";
-import { invalidInstanceOperationError, missingGuidError, resultFromInstanceToolStatusError } from "./instance-status";
-import {
-  clearStaleWorldTransforms,
-  findNodeByActorGuid,
-  isRecord,
-  type OvdrjmNode,
-  readAndWriteOvdrjm,
-} from "./ovdrjm-utils";
+import { addInstancesInDocument, requireDocumentRoot, updateInstancesInDocument } from "./instance-document-operations";
+import { resultFromInstanceToolStatusError } from "./instance-status";
+import { type OvdrjmNode, readAndWriteOvdrjm } from "./ovdrjm-utils";
 
 function toToolName(method: string): string {
   return `studiorpc_${method.replace(/\./g, "_")}`;
-}
-
-function makeActorGuid(): string {
-  return Array.from({ length: 32 }, () =>
-    Math.floor(Math.random() * 16)
-      .toString(16)
-      .toUpperCase(),
-  ).join("");
-}
-
-function nextObjectKey(rootDoc: Record<string, unknown>): number {
-  const current = rootDoc.MapObjectKeyIndex;
-  const numeric = typeof current === "number" && Number.isFinite(current) ? Math.floor(current) : 0;
-  const next = numeric + 1;
-  rootDoc.MapObjectKeyIndex = next;
-  return next;
-}
-
-function buildAddedNode(
-  item: { class: string; name: string; properties: Record<string, unknown> },
-  rootDoc: Record<string, unknown>,
-): Record<string, unknown> {
-  const newNode: Record<string, unknown> = {
-    InstanceType: item.class,
-    ActorGuid: makeActorGuid(),
-    ObjectKey: nextObjectKey(rootDoc),
-    Name: item.name,
-    ...item.properties,
-  };
-
-  return newNode;
 }
 
 async function executeInstanceUpsert(
@@ -80,66 +44,34 @@ async function executeInstanceUpsert(
   }
 }
 
-async function executeInstanceUpsertInner(
+export async function executeInstanceUpsertInner(
   parsedArgs: ReturnType<typeof instanceUpsert.parseArgs>,
   cwd: string,
+  options: { applyAndSaveChanges?: boolean } = {},
 ): Promise<ToolResult> {
   let ovdrjmRoot: OvdrjmNode | undefined;
+  const applyAndSaveChanges = options.applyAndSaveChanges ?? true;
 
   const fileResult = (() => {
     try {
       return readAndWriteOvdrjm(cwd, (rootDoc) => {
-        const root = rootDoc.Root;
-        if (!isRecord(root)) {
-          throw new Error("Invalid .ovdrjm format: Root object is missing.");
-        }
+        const root = requireDocumentRoot(rootDoc);
+        const mobilityInfo: string[] = [];
+        const writeOptions = { mobilityPolicy: "ignore-non-top-level" as const, mobilityInfo };
 
         const added: { guid: string; name: string; class: string }[] = [];
         for (const item of parsedArgs.items) {
           if (instanceUpsert.isUpdateItem(item)) {
-            const target = findNodeByActorGuid(root as OvdrjmNode, item.guid);
-            if (!target) {
-              throw missingGuidError({ operation: "instance.upsert", guid: item.guid, role: "target" });
-            }
-            Object.assign(target, item.properties);
-            if (typeof item.name === "string") {
-              target.Name = item.name;
-            }
-            // Changing a CFrame invalidates the cached WorldTransform of every
-            // descendant positioned relative to it. Clear those so Studio
-            // regenerates them from the new CFrame.
-            if (item.properties && "CFrame" in item.properties) {
-              clearStaleWorldTransforms(target);
-            }
+            updateInstancesInDocument(root, [{ ...item, properties: item.properties ?? {} }], writeOptions);
             continue;
           }
-
-          const parent = findNodeByActorGuid(root as OvdrjmNode, item.parentGuid);
-          if (!parent) {
-            throw missingGuidError({ operation: "instance.upsert", guid: item.parentGuid, role: "parent" });
-          }
-
-          if (item.class === "MaterialVariant" && parent.InstanceType !== "MaterialService") {
-            throw invalidInstanceOperationError({
-              operation: "instance.upsert",
-              code: "invalid_parent_class",
-              guid: item.parentGuid,
-              role: "parent",
-              class: String(parent.InstanceType ?? "unknown"),
-              message: `MaterialVariant can only be created under MaterialService, but parent is ${String(parent.InstanceType ?? "unknown")}.`,
-            });
-          }
-
-          const childList = Array.isArray(parent.LuaChildren) ? parent.LuaChildren : [];
-          parent.LuaChildren = childList;
-
-          const newNode = buildAddedNode({ ...item, properties: item.properties ?? {} }, rootDoc);
-          childList.push(newNode);
-          added.push({ guid: String(newNode.ActorGuid), name: item.name, class: item.class });
+          added.push(
+            ...addInstancesInDocument(rootDoc, [{ ...item, properties: item.properties ?? {} }], writeOptions),
+          );
         }
 
-        ovdrjmRoot = root as OvdrjmNode;
-        return { added };
+        ovdrjmRoot = root;
+        return { added, mobilityInfo };
       });
     } catch (error) {
       const result = resultFromInstanceToolStatusError(error);
@@ -152,8 +84,11 @@ async function executeInstanceUpsertInner(
     return fileResult;
   }
 
-  await applyLevelChanges();
+  if (applyAndSaveChanges) {
+    await applyLevelChanges();
+  }
   const diag = ovdrjmRoot ? collectUiDiagnostics(ovdrjmRoot) : { warnings: [], info: [] };
+  diag.info.push(...fileResult.mobilityInfo);
   const addedGuids = fileResult.added.map((item) => item.guid);
   const updatedGuids = parsedArgs.items.flatMap((item) => (instanceUpsert.isUpdateItem(item) ? [item.guid] : []));
   const targetGuids = [...updatedGuids, ...addedGuids];

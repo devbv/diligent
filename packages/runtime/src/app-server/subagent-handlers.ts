@@ -20,6 +20,7 @@ export interface SubagentSettingsContext {
   config: DiligentConfig["agents"] | undefined;
   layers: DiligentConfigLayers;
   catalog: SubagentCatalogEntry[];
+  experimentManagedAgentNames?: ReadonlySet<string>;
 }
 
 export interface SubagentConfigManager {
@@ -44,6 +45,13 @@ export async function handleSubagentsSet(
   const cwd = await ctx.resolveSubagentSettingsCwd(params.threadId);
   const before = await manager.resolve(cwd);
   const requested = Object.keys(params.overrides);
+  const experimentManaged = requested.filter((name) => before.experimentManagedAgentNames?.has(name));
+  if (experimentManaged.length > 0) {
+    throw Object.assign(
+      new Error(`Cannot edit experiment-managed subagent(s): ${experimentManaged.sort().join(", ")}`),
+      { code: -32602 },
+    );
+  }
   const required = new Set(before.catalog.filter((entry) => entry.required).map((entry) => entry.definition.name));
   const projectOverrides = before.layers.project?.agents?.overrides ?? {};
   const immutable = requested.filter((name) => required.has(name));
@@ -82,7 +90,11 @@ export function buildSubagentsListResponse(context: SubagentSettingsContext): Su
   return {
     configPath: getGlobalConfigPath(),
     appliesOnNextTurn: true,
-    subagents: resolveSubagentStates(context.catalog, context.config, context.layers).map(
+    subagents: resolveSubagentStates(
+      context.catalog.filter((entry) => !context.experimentManagedAgentNames?.has(entry.definition.name)),
+      context.config,
+      context.layers,
+    ).map(
       (state): SubagentDescriptor => ({
         name: state.definition.name,
         description: state.definition.description,

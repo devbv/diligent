@@ -5,6 +5,7 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getBuiltinAgentDefinitions } from "../../src/agent/agent-types";
+import type { ResolvedAgentDefinition } from "../../src/agent/resolved-agent";
 import {
   buildSubagentCatalog,
   handleSubagentsList,
@@ -44,6 +45,33 @@ afterEach(async () => {
 });
 
 describe("subagent handlers", () => {
+  it("hides experiment-managed agents and rejects direct settings overrides", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "diligent-subagent-experiment-"));
+    tempDirs.push(cwd);
+    const procedural: ResolvedAgentDefinition = {
+      name: "procedural-builder",
+      description: "Procedural builder",
+      source: "user",
+    };
+    const manager: SubagentConfigManager = {
+      resolve: async () => ({
+        cwd,
+        config: undefined,
+        layers: {},
+        catalog: buildSubagentCatalog(getBuiltinAgentDefinitions(), [{ definition: procedural, source: "global" }]),
+        experimentManagedAgentNames: new Set(["procedural-builder"]),
+      }),
+    };
+
+    const listed = await handleSubagentsList(makeCtx(cwd), manager, undefined);
+    expect(listed.subagents.map((agent) => agent.name)).not.toContain("procedural-builder");
+    await expect(
+      handleSubagentsSet(makeCtx(cwd), manager, async () => ({ skills: [] }), {
+        overrides: { "procedural-builder": true },
+      }),
+    ).rejects.toThrow("experiment-managed");
+  });
+
   it("lists required and optional built-ins", async () => {
     const cwd = await mkdtemp(join(tmpdir(), "diligent-subagent-handler-"));
     tempDirs.push(cwd);

@@ -1,12 +1,7 @@
 // @summary Defines batched argument schemas for instance upserts.
 import { z } from "zod";
-import {
-  classPropertiesSchemas,
-  classPropertyShapes,
-  instanceClassEnum,
-  instancePropertiesSchema,
-  serviceClassEnum,
-} from "./instance.params";
+import { instanceClassEnum, instancePropertiesSchema, serviceClassEnum } from "./instance.params";
+import { parseInstanceCreateProperties } from "./instance-properties";
 
 const addParams = z
   .object({
@@ -38,9 +33,9 @@ export const params = z
     items: z
       .array(itemParams)
       .min(1)
-      .max(20)
+      .max(100)
       .describe(
-        "Batch items inferred as add or update by their fields. Do not mix adds and updates in a single call — use one call for all adds, another for all updates. Start with a small number first, then increase up to 10 if needed.",
+        "Batch items inferred as add or update by their fields. Do not mix adds and updates in a single call — use one call for all adds, another for all updates. Start with a small number first, then increase up to 100 if needed.",
       ),
   })
   .strict();
@@ -50,7 +45,7 @@ export const method = "instance.upsert";
 export const description =
   "Upsert instances in batch. " +
   "Do not mix adds and updates in a single call — use one call for all adds, another for all updates. " +
-  "Start with a small number of items first, then increase up to 10 if needed. " +
+  "Start with a small number of items first, then increase up to 100 if needed. " +
   "Each item is inferred by its fields: add uses parentGuid/class/name/properties, update uses guid with optional name and properties. " +
   "To create nested hierarchies, add the parent first so its GUID is returned, then add children using that GUID as parentGuid in subsequent items. " +
   "Services (Workspace, Lighting, Atmosphere, Players, StarterPlayer, MaterialService, etc.) are singletons — they cannot be added, only updated by guid. " +
@@ -70,10 +65,26 @@ export function isUpdateItem(value: InstanceUpsertItemArgs): value is InstanceUp
  * Falls back to the raw ZodError if no class-specific issues are found.
  */
 export function parseArgs(value: Record<string, unknown>): InstanceUpsertArgs {
-  const result = params.safeParse(value);
-  if (result.success) return result.data;
+  const rawProperties = z.record(z.string(), z.unknown()).optional();
+  const structuralItem = z.union([
+    z
+      .object({ class: instanceClassEnum, parentGuid: z.string(), name: z.string(), properties: rawProperties })
+      .strict(),
+    z.object({ guid: z.string(), name: z.string().optional(), properties: rawProperties }).strict(),
+  ]);
+  const result = z
+    .object({ items: z.array(structuralItem).min(1).max(100) })
+    .strict()
+    .safeParse(value);
+  if (result.success) {
+    return {
+      items: result.data.items.map((item) => {
+        if ("guid" in item) return { ...item, properties: item.properties ?? {} };
+        return { ...item, properties: parseInstanceCreateProperties(item.class, item.properties) };
+      }),
+    } as InstanceUpsertArgs;
+  }
 
-  // Attempt class-aware re-validation for actionable error messages
   const items = Array.isArray(value.items) ? (value.items as Record<string, unknown>[]) : [];
   const details: string[] = [];
   const serviceClasses = new Set<string>(serviceClassEnum.options);
@@ -94,32 +105,6 @@ export function parseArgs(value: Record<string, unknown>): InstanceUpsertArgs {
   }
   // No class-specific issues found — throw the original zod error
   throw result.error;
-}
-
-/**
- * For update items (no `class` field), find the best-matching class by key overlap
- * so we can validate against the right schema and give precise errors.
- */
-function inferClassFromProperties(props: Record<string, unknown>): string | undefined {
-  const propKeys = Object.keys(props);
-  if (propKeys.length === 0) return undefined;
-
-  let bestClass: string | undefined;
-  let bestOverlap = 0;
-
-  for (const [name, shapes] of Object.entries(classPropertyShapes)) {
-    const shapeKeys = Object.keys(shapes);
-    let overlap = 0;
-    for (const key of propKeys) {
-      if (shapeKeys.includes(key)) overlap++;
-    }
-    if (overlap > bestOverlap) {
-      bestOverlap = overlap;
-      bestClass = name;
-    }
-  }
-
-  return bestClass;
 }
 
 // ---------------------------------------------------------------------------
@@ -470,21 +455,11 @@ function walkNodes(
 
 function validateItemProperties(item: Record<string, unknown>, path: string, details: string[]): void {
   const className = typeof item.class === "string" ? item.class : undefined;
-  const props = item.properties;
-  if (props == null || typeof props !== "object") return;
-
-  const resolvedClass = className ?? inferClassFromProperties(props as Record<string, unknown>);
-  if (!resolvedClass) return;
-
-  const schema = classPropertiesSchemas.get(resolvedClass);
-  if (!schema) return;
-
-  const r = schema.safeParse(props);
-  if (!r.success) {
-    const label = className ? `class=${resolvedClass}` : `closest match: ${resolvedClass}`;
-    for (const issue of r.error.issues) {
-      const loc = issue.path.length > 0 ? `.${issue.path.join(".")}` : "";
-      details.push(`  [${path}.properties${loc}] (${label}) ${issue.message}`);
-    }
+  if (!className) return;
+  try {
+    parseInstanceCreateProperties(className, item.properties);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    details.push(...message.split("\n").map((line) => `  [${path}] ${line.trim()}`));
   }
 }
