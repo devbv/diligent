@@ -117,11 +117,37 @@ describe("DiligentConfigSchema — tools section", () => {
     expect(result.model).toBe("gpt-4o");
   });
 
-  it("accepts agents config with enabled and paths", () => {
+  it("accepts agents config with enabled, paths, and boolean overrides", () => {
     const result = DiligentConfigSchema.parse({
-      agents: { enabled: true, paths: ["/tmp/agents"] },
+      agents: { enabled: true, paths: ["/tmp/agents"], overrides: { explore: false, reviewer: true } },
     });
-    expect(result.agents).toEqual({ enabled: true, paths: ["/tmp/agents"] });
+    expect(result.agents).toEqual({
+      enabled: true,
+      paths: ["/tmp/agents"],
+      overrides: { explore: false, reviewer: true },
+    });
+    expect(() => DiligentConfigSchema.parse({ agents: { overrides: { explore: "off" } } })).toThrow();
+  });
+
+  it("accepts skills config with enabled, paths, and boolean overrides", () => {
+    const result = DiligentConfigSchema.parse({
+      skills: {
+        enabled: true,
+        paths: ["/tmp/skills"],
+        overrides: { "tech-lead": false, "write-plan": true },
+      },
+    });
+
+    expect(result.skills).toEqual({
+      enabled: true,
+      paths: ["/tmp/skills"],
+      overrides: { "tech-lead": false, "write-plan": true },
+    });
+  });
+
+  it("accepts skills config omission and rejects non-boolean skill overrides", () => {
+    expect(DiligentConfigSchema.parse({ model: "gpt-4o" }).skills).toBeUndefined();
+    expect(() => DiligentConfigSchema.parse({ skills: { overrides: { "tech-lead": "off" } } })).toThrow();
   });
 
   it("accepts vertex provider config", () => {

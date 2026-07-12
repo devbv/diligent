@@ -172,6 +172,74 @@ describe("loadDiligentConfig", () => {
     });
   });
 
+  it("deep merges skills overrides and returns validated layer snapshots", async () => {
+    const globalConfigFile = join(TEST_HOME, ".diligent", "config.jsonc");
+    const projectConfigFile = projectConfigPath(TEST_ROOT);
+    await mkdir(join(TEST_HOME, ".diligent"), { recursive: true });
+    await mkdir(join(TEST_ROOT, ".diligent"), { recursive: true });
+
+    await Bun.write(
+      globalConfigFile,
+      JSON.stringify({
+        skills: {
+          enabled: false,
+          paths: ["/global-skills"],
+          overrides: { alpha: false, beta: false },
+        },
+      }),
+    );
+    await Bun.write(
+      projectConfigFile,
+      JSON.stringify({
+        skills: {
+          enabled: true,
+          overrides: { alpha: true, gamma: false },
+        },
+      }),
+    );
+
+    const { config, layers } = await loadDiligentConfig(TEST_ROOT);
+
+    expect(config.skills).toEqual({
+      enabled: true,
+      paths: ["/global-skills"],
+      overrides: { alpha: true, beta: false, gamma: false },
+    });
+    expect(layers.global?.skills).toEqual({
+      enabled: false,
+      paths: ["/global-skills"],
+      overrides: { alpha: false, beta: false },
+    });
+    expect(layers.project?.skills).toEqual({
+      enabled: true,
+      overrides: { alpha: true, gamma: false },
+    });
+  });
+
+  it("deep merges agent overrides while retaining layer provenance", async () => {
+    await mkdir(join(TEST_ROOT, ".diligent"), { recursive: true });
+    await Bun.write(
+      join(TEST_HOME, ".diligent", "config.jsonc"),
+      JSON.stringify({
+        agents: { enabled: true, paths: ["/global-agents"], overrides: { explore: false, reviewer: false } },
+      }),
+    );
+    await Bun.write(
+      projectConfigPath(TEST_ROOT),
+      JSON.stringify({ agents: { overrides: { explore: true, auditor: false } } }),
+    );
+
+    const { config, layers } = await loadDiligentConfig(TEST_ROOT);
+
+    expect(config.agents).toEqual({
+      enabled: true,
+      paths: ["/global-agents"],
+      overrides: { explore: true, reviewer: false, auditor: false },
+    });
+    expect(layers.global?.agents?.overrides).toEqual({ explore: false, reviewer: false });
+    expect(layers.project?.agents?.overrides).toEqual({ explore: true, auditor: false });
+  });
+
   it("template substitution replaces {env:VAR}", async () => {
     await mkdir(join(TEST_ROOT, ".diligent"), { recursive: true });
     await Bun.write(projectConfigPath(TEST_ROOT), `{ "provider": { "anthropic": { "apiKey": "{env:MY_KEY}" } } }`);

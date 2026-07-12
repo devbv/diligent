@@ -83,6 +83,8 @@ export interface ThreadHandlersContext {
   emit: (notification: DiligentServerNotification) => Promise<void>;
   consumeTurn: (runtime: ThreadRuntime, runPromise: Promise<void>, turnId: string) => Promise<void>;
   resolveToolsContext: (threadId?: string) => Promise<{ cwd: string; tools: DiligentConfig["tools"] | undefined }>;
+  resolveSkillSettingsCwd: (threadId?: string) => Promise<string>;
+  resolveSubagentSettingsCwd: (threadId?: string) => Promise<string>;
   getBundledToolProviders: () => BundledToolProvider[];
   getMcpServers: () => DiligentConfig["mcpServers"];
   getSkillNames: () => string[];

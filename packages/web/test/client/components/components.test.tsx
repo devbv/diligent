@@ -122,6 +122,73 @@ test("tool settings modal renders vertex provider badge label", () => {
   expect(html).toContain("Open AI connection settings");
 });
 
+test("tool settings modal renders required, optional, and project-controlled subagents", () => {
+  const html = renderToStaticMarkup(
+    <ToolSettingsModal
+      initialState={{
+        configPath: "/repo/.diligent/config.jsonc",
+        appliesOnNextTurn: true,
+        trustMode: "full_trust",
+        conflictPolicy: "error",
+        tools: [],
+        plugins: [],
+      }}
+      initialSubagentState={{
+        configPath: "/repo/.diligent/config.jsonc",
+        appliesOnNextTurn: true,
+        subagents: [
+          {
+            name: "general",
+            description: "Required fallback.",
+            source: "builtin",
+            required: true,
+            globalEnabled: true,
+            effectiveEnabled: true,
+            available: true,
+            controlledBy: "required",
+            reason: "required_builtin",
+          },
+          {
+            name: "explore",
+            description: "Explore code.",
+            source: "builtin",
+            required: false,
+            globalEnabled: false,
+            effectiveEnabled: false,
+            available: false,
+            controlledBy: "global",
+            reason: "disabled_by_user",
+          },
+          {
+            name: "code-reviewer",
+            description: "Review changes.",
+            source: "project",
+            required: false,
+            globalEnabled: true,
+            effectiveEnabled: false,
+            available: false,
+            controlledBy: "project",
+            reason: "disabled_by_user",
+          },
+        ],
+      }}
+      onList={async () => {
+        throw new Error("unused");
+      }}
+      onSave={async () => {
+        throw new Error("unused");
+      }}
+      onClose={() => {}}
+    />,
+  );
+
+  expect(html).toContain("Subagents");
+  expect(html).toContain("Required built-in");
+  expect(html).toContain("Built-in subagent");
+  expect(html).toContain("Controlled by project config");
+  expect(html).toContain("code-reviewer");
+});
+
 function createClipboardData(options: {
   items?: Array<{ kind: string; type: string; file?: File | null }>;
   files?: File[];
@@ -479,6 +546,80 @@ test("tool settings modal renders tool and plugin rows", () => {
   expect(html).toContain("View Privacy Policy");
   expect(html).toContain('data-icon="external-link"');
   expect(html).toContain('href="https://example.com/privacy"');
+});
+
+test("tool settings modal renders skill rows and config copy", () => {
+  const html = renderToStaticMarkup(
+    <ToolSettingsModal
+      threadId="thread-1"
+      initialState={{
+        configPath: "/repo/.diligent/config.jsonc",
+        appliesOnNextTurn: true,
+        trustMode: "full_trust",
+        conflictPolicy: "error",
+        tools: [],
+        plugins: [],
+      }}
+      initialSkillState={{
+        configPath: "/home/user/.diligent/config.jsonc",
+        appliesOnNextTurn: true,
+        skillsEnabled: false,
+        skillsEnabledControlledBy: "project",
+        skills: [
+          {
+            name: "tech-lead",
+            description: "Review architecture sustainability.",
+            source: "project",
+            globalEnabled: true,
+            effectiveEnabled: true,
+            available: false,
+            controlledBy: "default",
+            reason: "skills_disabled",
+          },
+          {
+            name: "passion-junior",
+            description: "Resolve small follow-up issues.",
+            source: "global",
+            globalEnabled: false,
+            effectiveEnabled: false,
+            available: false,
+            controlledBy: "global",
+            reason: "disabled_by_user",
+          },
+          {
+            name: "write-plan",
+            description: "Create implementation plans.",
+            source: "config",
+            globalEnabled: true,
+            effectiveEnabled: false,
+            available: false,
+            controlledBy: "project",
+            reason: "disabled_by_user",
+          },
+        ],
+      }}
+      onList={async () => {
+        throw new Error("unused");
+      }}
+      onSave={async () => {
+        throw new Error("unused");
+      }}
+      onClose={() => {}}
+    />,
+  );
+
+  expect(html).toContain("Manage runtime configuration for skills, tools, and trusted JavaScript plugin packages.");
+  expect(html).toContain("Skills");
+  expect(html).toContain("Changes apply on the next turn");
+  expect(html).toContain("The skills master switch is off in project config");
+  expect(html).toContain("Config path: /home/user/.diligent/config.jsonc");
+  expect(html).toContain("tech-lead");
+  expect(html).toContain("passion-junior");
+  expect(html).toContain("Project skill");
+  expect(html).toContain("Global skill");
+  expect(html).toContain("Configured path");
+  expect(html).toContain("Controlled by project config");
+  expect(html).toContain("Effective Off");
 });
 
 test("tool settings modal shows runtime fallback when version is missing", () => {

@@ -57,10 +57,14 @@ import {
   requestUserInputFromConnections,
 } from "./server-requests";
 import { getLatestEffortFromSessions, getLatestModelFromSessions } from "./session-handlers";
+import type { SkillConfigManager } from "./skill-handlers";
+import type { SubagentConfigManager } from "./subagent-handlers";
 import { resetTurnRuntimeState, type ThreadRuntime } from "./thread-handlers";
 
 export type { ConsentConfigManager } from "./config-handlers";
 export type { ConnectedPeer, ModelConfig, ToolConfigManager } from "./request-dispatcher";
+export type { SkillConfigManager } from "./skill-handlers";
+export type { SubagentConfigManager } from "./subagent-handlers";
 
 export interface CreateAgentArgs {
   cwd: string;
@@ -93,6 +97,10 @@ export interface DiligentAppServerConfig {
   modelConfig?: ModelConfig;
   /** Tool config management — required for TOOLS_LIST and TOOLS_SET */
   toolConfig?: ToolConfigManager;
+  /** Skill settings management — required for SKILLS_LIST and SKILLS_SET */
+  skillConfig?: SkillConfigManager;
+  /** Subagent settings management — required for SUBAGENTS_LIST and SUBAGENTS_SET */
+  subagentConfig?: SubagentConfigManager;
   /** AI-data consent management — required for CONSENT_SET (OVDR-11475 §3.A) */
   consentConfig?: ConsentConfigManager;
   /** Provider manager — required for AUTH_* methods */
@@ -679,6 +687,57 @@ export class DiligentAppServer {
     return { cwd, tools: manager.getTools() };
   }
 
+  private async resolveSkillSettingsCwd(threadId?: string): Promise<string> {
+    if (threadId || this.activeThreadId) {
+      try {
+        const runtime = await this.resolveThreadRuntime(threadId);
+        return this.assertStartupSkillSettingsCwd(runtime.cwd);
+      } catch (error) {
+        if (threadId) throw error;
+      }
+    }
+
+    const cwd = this.config.cwd ?? process.cwd();
+    this.knownCwds.add(cwd);
+    return this.assertStartupSkillSettingsCwd(cwd);
+  }
+
+  private async resolveSubagentSettingsCwd(threadId?: string): Promise<string> {
+    if (threadId || this.activeThreadId) {
+      try {
+        const runtime = await this.resolveThreadRuntime(threadId);
+        return this.assertStartupSubagentSettingsCwd(runtime.cwd);
+      } catch (error) {
+        if (threadId) throw error;
+      }
+    }
+    const cwd = this.config.cwd ?? process.cwd();
+    this.knownCwds.add(cwd);
+    return this.assertStartupSubagentSettingsCwd(cwd);
+  }
+
+  private assertStartupSkillSettingsCwd(cwd: string): string {
+    const startupCwd = this.config.cwd ?? process.cwd();
+    if (cwd !== startupCwd) {
+      throw Object.assign(
+        new Error(`Skill settings are only available for the app-server startup cwd: ${startupCwd}`),
+        { code: -32602 },
+      );
+    }
+    return cwd;
+  }
+
+  private assertStartupSubagentSettingsCwd(cwd: string): string {
+    const startupCwd = this.config.cwd ?? process.cwd();
+    if (cwd !== startupCwd) {
+      throw Object.assign(
+        new Error(`Subagent settings are only available for the app-server startup cwd: ${startupCwd}`),
+        { code: -32602 },
+      );
+    }
+    return cwd;
+  }
+
   /**
    * Dispatch an "EntryAppended" lifecycle hook for a durably-appended session entry,
    * gated on AI-data consent (OVDR-11475). Runs through the plugin-hook runner so
@@ -761,6 +820,8 @@ export class DiligentAppServer {
       threadHandlersCtx: this.buildThreadHandlersContext(),
       turnInitiators: this.turnInitiators,
       toolConfig: this.config.toolConfig,
+      skillConfig: this.config.skillConfig,
+      subagentConfig: this.config.subagentConfig,
       consentConfig: this.config.consentConfig,
       reloadConfig: this.config.reloadConfig,
       subscribeToThread: (connectionId, threadId) => this.subscribeToThread(connectionId, threadId),
@@ -829,6 +890,8 @@ export class DiligentAppServer {
       consumeTurn: (runtime: ThreadRuntime, runPromise: Promise<void>, turnId: string) =>
         this.consumeTurn(runtime, runPromise, turnId),
       resolveToolsContext: (threadId?: string) => this.resolveToolsContext(threadId),
+      resolveSkillSettingsCwd: (threadId?: string) => this.resolveSkillSettingsCwd(threadId),
+      resolveSubagentSettingsCwd: (threadId?: string) => this.resolveSubagentSettingsCwd(threadId),
       getBundledToolProviders: () => this.config.bundledToolProviders ?? [],
       getMcpServers: () => this.config.mcpServers,
       getSkillNames: () => this.getSkillNames(),

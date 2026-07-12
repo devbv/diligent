@@ -7,9 +7,15 @@ import { ProviderManager } from "@diligent/core/llm/provider-manager";
 import type { Model, ProviderName, StreamFunction, SystemSection, ThinkingEffort } from "@diligent/core/llm/types";
 import { getBuiltinAgentDefinitions } from "../agent/agent-types";
 import type { Mode } from "../agent/mode";
-import { type ResolvedAgentDefinition, resolveAvailableAgentDefinitions } from "../agent/resolved-agent";
+import { type ResolvedAgentDefinition, resolveCustomAgentDefinitions } from "../agent/resolved-agent";
 import type { AgentMetadata } from "../agents/index";
-import { discoverAgents, renderAgentsSection } from "../agents/index";
+import {
+  discoverAgents,
+  filterAvailableAgentDefinitions,
+  renderAgentsSection,
+  resolveSubagentStates,
+  type SubagentCatalogEntry,
+} from "../agents/index";
 import type { PermissionEngine } from "../approval/index";
 import { createPermissionEngine, createYoloPermissionEngine } from "../approval/index";
 import {
@@ -25,10 +31,11 @@ import type { DiligentPaths } from "../infrastructure/index";
 import { buildKnowledgeSection, readKnowledge } from "../knowledge/index";
 import { buildBaseSystemPrompt } from "../prompt/index";
 import type { SkillMetadata } from "../skills/index";
-import { discoverSkills, renderSkillsSection } from "../skills/index";
+import { discoverSkills, filterAvailableSkills, renderSkillsSection, resolveSkillStates } from "../skills/index";
 import type { BundledToolProvider } from "../tools/bundled-provider";
 import { buildDefaultTools } from "../tools/defaults";
 import { buildSystemPromptWithKnowledge, discoverInstructions } from "./instructions";
+import type { DiligentConfigLayers } from "./loader";
 import { loadDiligentConfig } from "./loader";
 import type { DiligentConfig } from "./schema";
 import { resolveConfiguredUserId } from "./user-id";
@@ -43,8 +50,12 @@ export interface RuntimeConfig {
   streamFunction: StreamFunction;
   diligent: DiligentConfig;
   sources: string[];
+  configLayers: DiligentConfigLayers;
+  discoveredSkills: SkillMetadata[];
   skills: SkillMetadata[];
+  discoveredAgents: AgentMetadata[];
   agents: AgentMetadata[];
+  agentCatalog: SubagentCatalogEntry[];
   agentDefinitions: ResolvedAgentDefinition[];
   compaction: {
     enabled: boolean;
@@ -62,7 +73,7 @@ export async function loadRuntimeConfig(
   paths: DiligentPaths,
   options?: { bundledToolProviders?: BundledToolProvider[] },
 ): Promise<RuntimeConfig> {
-  const { config, sources } = await loadDiligentConfig(cwd);
+  const { config, sources, layers } = await loadDiligentConfig(cwd);
   const resolvedUserId = await resolveConfiguredUserId(config.userId);
   const instructions = await discoverInstructions(cwd);
   const authStore: AuthStoreOptions = {
@@ -127,17 +138,16 @@ export async function loadRuntimeConfig(
   }
 
   // Load skills
+  let discoveredSkills: SkillMetadata[] = [];
   let skills: SkillMetadata[] = [];
   let skillsSection = "";
-  const skillsEnabled = config.skills?.enabled ?? true;
-  if (skillsEnabled) {
-    const result = await discoverSkills({
-      cwd,
-      additionalPaths: config.skills?.paths,
-    });
-    skills = result.skills;
-    skillsSection = renderSkillsSection(skills);
-  }
+  const skillDiscoveryResult = await discoverSkills({
+    cwd,
+    additionalPaths: config.skills?.paths,
+  });
+  discoveredSkills = skillDiscoveryResult.skills;
+  skills = filterAvailableSkills(resolveSkillStates(discoveredSkills, config.skills, layers));
+  skillsSection = renderSkillsSection(skills);
 
   let agents: AgentMetadata[] = [];
   let agentsSection = "";
@@ -161,9 +171,24 @@ export async function loadRuntimeConfig(
       knownToolNames: toolsResult.toolState.map((tool) => tool.name),
     });
     agents = result.agents;
-    agentsSection = renderAgentsSection(agents);
   }
-  const agentDefinitions = resolveAvailableAgentDefinitions(getBuiltinAgentDefinitions(), agents);
+  const agentCatalog: SubagentCatalogEntry[] = [
+    ...getBuiltinAgentDefinitions().map((definition) => ({
+      definition,
+      source: "builtin" as const,
+      required: definition.name === "general",
+    })),
+    ...resolveCustomAgentDefinitions(agents).map((definition, index) => ({
+      definition,
+      source: agents[index]!.source,
+      required: false,
+    })),
+  ];
+  const agentDefinitions = filterAvailableAgentDefinitions(resolveSubagentStates(agentCatalog, config.agents, layers));
+  const availableCustomAgentNames = new Set(
+    agentDefinitions.filter((definition) => definition.source === "user").map((definition) => definition.name),
+  );
+  agentsSection = renderAgentsSection(agents.filter((agent) => availableCustomAgentNames.has(agent.name)));
 
   // Build system prompt with knowledge AND skills
   let basePrompt: string;
@@ -212,8 +237,12 @@ export async function loadRuntimeConfig(
       userId: resolvedUserId,
     },
     sources,
+    configLayers: layers,
+    discoveredSkills,
     skills,
+    discoveredAgents: agents,
     agents,
+    agentCatalog,
     agentDefinitions,
     compaction: {
       enabled: config.compaction?.enabled ?? true,

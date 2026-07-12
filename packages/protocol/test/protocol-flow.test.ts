@@ -12,6 +12,10 @@ import {
   InitializeResponseSchema,
   MessageSchema,
   PluginDescriptorSchema,
+  SkillDescriptorSchema,
+  SkillsListResponseSchema,
+  SubagentDescriptorSchema,
+  SubagentsListResponseSchema,
   ToolDescriptorSchema,
   ToolRenderPayloadSchema,
   ToolResultMessageSchema,
@@ -296,6 +300,95 @@ describe("protocol/flow", () => {
           tools: [],
           plugins: [],
         },
+      }).success,
+    ).toBe(true);
+  });
+
+  it("accepts skills/list and skills/set request/response payloads", () => {
+    expect(
+      DiligentClientRequestSchema.safeParse({
+        method: DILIGENT_CLIENT_REQUEST_METHODS.SKILLS_LIST,
+        params: { threadId: "th-1" },
+      }).success,
+    ).toBe(true);
+
+    expect(
+      DiligentClientRequestSchema.safeParse({
+        method: DILIGENT_CLIENT_REQUEST_METHODS.SKILLS_SET,
+        params: { threadId: "th-1", overrides: { "tech-lead": false, "write-plan": true } },
+      }).success,
+    ).toBe(true);
+
+    expect(
+      SkillDescriptorSchema.safeParse({
+        name: "tech-lead",
+        description: "Review architecture",
+        source: "project",
+        globalEnabled: false,
+        effectiveEnabled: false,
+        available: false,
+        controlledBy: "global",
+        reason: "disabled_by_user",
+      }).success,
+    ).toBe(true);
+
+    const response = {
+      configPath: "/home/me/.diligent/config.jsonc",
+      appliesOnNextTurn: true,
+      skillsEnabled: true,
+      skillsEnabledControlledBy: "default",
+      skills: [
+        {
+          name: "write-plan",
+          description: "Create implementation plans",
+          source: "global",
+          globalEnabled: true,
+          effectiveEnabled: true,
+          available: true,
+          controlledBy: "default",
+          reason: "enabled",
+        },
+      ],
+    };
+
+    expect(SkillsListResponseSchema.safeParse(response).success).toBe(true);
+    expect(
+      DiligentClientResponseSchema.safeParse({
+        method: DILIGENT_CLIENT_REQUEST_METHODS.SKILLS_SET,
+        result: response,
+      }).success,
+    ).toBe(true);
+  });
+
+  it("accepts subagents/list and subagents/set request/response payloads", () => {
+    expect(
+      DiligentClientRequestSchema.safeParse({
+        method: DILIGENT_CLIENT_REQUEST_METHODS.SUBAGENTS_SET,
+        params: { threadId: "th-1", overrides: { explore: false } },
+      }).success,
+    ).toBe(true);
+    const descriptor = {
+      name: "general",
+      description: "Execution agent",
+      source: "builtin",
+      required: true,
+      globalEnabled: true,
+      effectiveEnabled: true,
+      available: true,
+      controlledBy: "required",
+      reason: "required_builtin",
+    };
+    expect(SubagentDescriptorSchema.safeParse(descriptor).success).toBe(true);
+    const response = {
+      configPath: "/home/me/.diligent/config.jsonc",
+      appliesOnNextTurn: true,
+      subagents: [descriptor],
+    };
+    expect(SubagentsListResponseSchema.safeParse(response).success).toBe(true);
+    expect(
+      DiligentClientResponseSchema.safeParse({
+        method: DILIGENT_CLIENT_REQUEST_METHODS.SUBAGENTS_LIST,
+        result: response,
       }).success,
     ).toBe(true);
   });

@@ -9,8 +9,12 @@ import {
   applyToolConfigPatch,
   getGlobalConfigPath,
   getProjectConfigPath,
+  normalizeStoredAgentsConfig,
+  normalizeStoredSkillsConfig,
   normalizeStoredToolsConfig,
   saveGlobalConsent,
+  writeGlobalAgentsConfig,
+  writeGlobalSkillsConfig,
   writeGlobalToolsConfig,
   writeProjectToolsConfig,
 } from "../../src/config/writer";
@@ -283,6 +287,187 @@ describe("writeGlobalToolsConfig", () => {
       expect(text).toContain('"web_action": false');
       expect(text).toContain('"package": "@acme/diligent-tools"');
       expect(text).toContain('"jira_comment": false');
+    } finally {
+      if (originalHome !== undefined) process.env.HOME = originalHome;
+      else delete process.env.HOME;
+    }
+  });
+});
+
+describe("writeGlobalSkillsConfig", () => {
+  it("stores sorted false-only skill overrides and removes true entries", async () => {
+    expect(
+      normalizeStoredSkillsConfig({
+        enabled: true,
+        paths: ["/team-skills"],
+        overrides: { zeta: false, alpha: true, beta: false },
+      }),
+    ).toEqual({
+      enabled: true,
+      paths: ["/team-skills"],
+      overrides: { beta: false, zeta: false },
+    });
+  });
+
+  it("patches global skills overrides while preserving sibling and retained override comments", async () => {
+    const home = await makeTempProject();
+    const originalHome = process.env.HOME;
+    process.env.HOME = home;
+
+    try {
+      const configPath = getGlobalConfigPath();
+      await Bun.write(
+        configPath,
+        `{
+  // keep model
+  "model": "gpt-4o",
+  "skills": {
+    // keep master switch
+    "enabled": true,
+    // keep configured path
+    "paths": ["/shared/team-skills"],
+    "overrides": {
+      // keep alpha override
+      "alpha": false,
+      "beta": false
+    }
+  }
+}
+`,
+      );
+
+      const result = await writeGlobalSkillsConfig({ overrides: { beta: true, zeta: false } });
+      const text = await Bun.file(configPath).text();
+
+      expect(text).toContain("// keep model");
+      expect(text).toContain("// keep master switch");
+      expect(text).toContain("// keep configured path");
+      expect(text).toContain("// keep alpha override");
+      expect(text).toContain('"model": "gpt-4o"');
+      expect(text).toContain('"enabled": true');
+      expect(text).toContain('"paths"');
+      expect(text).toContain('"alpha": false');
+      expect(text).toContain('"zeta": false');
+      expect(text).not.toContain('"beta"');
+      expect(result.skills).toEqual({
+        enabled: true,
+        paths: ["/shared/team-skills"],
+        overrides: { alpha: false, zeta: false },
+      });
+    } finally {
+      if (originalHome !== undefined) process.env.HOME = originalHome;
+      else delete process.env.HOME;
+    }
+  });
+
+  it("removes an empty overrides property while keeping skills enabled and paths", async () => {
+    const home = await makeTempProject();
+    const originalHome = process.env.HOME;
+    process.env.HOME = home;
+
+    try {
+      const configPath = getGlobalConfigPath();
+      await Bun.write(
+        configPath,
+        `{ "skills": { "enabled": false, "paths": ["/x"], "overrides": { "alpha": false } } }`,
+      );
+
+      const first = await writeGlobalSkillsConfig({ overrides: { alpha: true } });
+      const second = await writeGlobalSkillsConfig({ overrides: { alpha: true } });
+      const text = await Bun.file(configPath).text();
+
+      expect(text).toContain('"enabled": false');
+      expect(text).toContain('"paths"');
+      expect(text).not.toContain('"overrides"');
+      expect(first.skills).toEqual({ enabled: false, paths: ["/x"] });
+      expect(second.skills).toEqual({ enabled: false, paths: ["/x"] });
+    } finally {
+      if (originalHome !== undefined) process.env.HOME = originalHome;
+      else delete process.env.HOME;
+    }
+  });
+
+  it("does not modify an invalid global config", async () => {
+    const home = await makeTempProject();
+    const originalHome = process.env.HOME;
+    process.env.HOME = home;
+
+    try {
+      const configPath = getGlobalConfigPath();
+      const original = `{
+  "model": 42
+}\n`;
+      await Bun.write(configPath, original);
+
+      await expect(writeGlobalSkillsConfig({ overrides: { "tech-lead": false } })).rejects.toThrow(
+        "Failed to validate existing config",
+      );
+      expect(await Bun.file(configPath).text()).toBe(original);
+    } finally {
+      if (originalHome !== undefined) process.env.HOME = originalHome;
+      else delete process.env.HOME;
+    }
+  });
+});
+
+describe("writeGlobalAgentsConfig", () => {
+  it("stores sorted false-only optional overrides while preserving sibling agent settings and comments", async () => {
+    const home = await makeTempProject();
+    const originalHome = process.env.HOME;
+    process.env.HOME = home;
+    try {
+      const configPath = getGlobalConfigPath();
+      await Bun.write(
+        configPath,
+        `{
+  "agents": {
+    // preserve discovery gate
+    "enabled": true,
+    "paths": ["/team-agents"],
+    "overrides": {
+      // retain reviewer preference
+      "reviewer": false,
+      "explore": false
+    }
+  }
+}
+`,
+      );
+      const result = await writeGlobalAgentsConfig({ overrides: { explore: true, auditor: false } });
+      const text = await Bun.file(configPath).text();
+      expect(text).toContain("// preserve discovery gate");
+      expect(text).toContain("// retain reviewer preference");
+      expect(text).toContain('"enabled": true');
+      expect(text).toContain('"paths"');
+      expect(text).toContain('"reviewer": false');
+      expect(text).toContain('"auditor": false');
+      expect(text).not.toContain('"explore"');
+      expect(result.agents).toEqual({
+        enabled: true,
+        paths: ["/team-agents"],
+        overrides: { auditor: false, reviewer: false },
+      });
+      expect(normalizeStoredAgentsConfig({ overrides: { zeta: false, alpha: true } })).toEqual({
+        overrides: { zeta: false },
+      });
+    } finally {
+      if (originalHome !== undefined) process.env.HOME = originalHome;
+      else delete process.env.HOME;
+    }
+  });
+
+  it("does not modify an invalid global config", async () => {
+    const home = await makeTempProject();
+    const originalHome = process.env.HOME;
+    process.env.HOME = home;
+    try {
+      const configPath = getGlobalConfigPath();
+      const original = `{ "agents": { "overrides": { "explore": "off" } } }\n`;
+      await Bun.write(configPath, original);
+      await expect(writeGlobalAgentsConfig({ overrides: { explore: false } })).rejects.toThrow(
+        "Failed to validate existing config",
+      );
+      expect(await Bun.file(configPath).text()).toBe(original);
     } finally {
       if (originalHome !== undefined) process.env.HOME = originalHome;
       else delete process.env.HOME;
