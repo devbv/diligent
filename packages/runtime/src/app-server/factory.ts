@@ -1,7 +1,7 @@
 // @summary Factory that builds a DiligentAppServerConfig from a RuntimeConfig, eliminating Web/CLI duplication
 import { dirname, join } from "node:path";
 import { getModelInfoList, resolveModel } from "@diligent/core/llm/models";
-import type { ProviderName } from "@diligent/core/llm/types";
+import type { ProviderName, SystemSection } from "@diligent/core/llm/types";
 import {
   EXECUTE_MODE_DISALLOWED_TOOLS,
   MODE_SYSTEM_PROMPT_SUFFIXES,
@@ -15,6 +15,7 @@ import { loadDiligentConfig } from "../config/loader";
 import { loadRuntimeConfig, type RuntimeConfig } from "../config/runtime";
 import { getGlobalConfigPath, saveGlobalConsent, saveGlobalModel } from "../config/writer";
 import { type DiligentPaths, ensureDiligentDir } from "../infrastructure";
+import { buildKnowledgeSection, readKnowledge } from "../knowledge";
 import { discoverSkills } from "../skills";
 import type { BundledToolProvider } from "../tools/bundled-provider";
 import { buildDefaultTools } from "../tools/defaults";
@@ -46,6 +47,33 @@ function applyModeToPrompt(mode: Mode, systemPrompt: RuntimeConfig["systemPrompt
     return systemPrompt;
   }
   return [...systemPrompt, { tag: "collaboration_mode", label: "mode", content: MODE_SYSTEM_PROMPT_SUFFIXES[mode] }];
+}
+
+/**
+ * Read the persistent knowledge store at agent creation time, so every newly started session
+ * receives knowledge saved after the app server itself started.
+ */
+async function withLatestKnowledge(
+  systemPrompt: SystemSection[],
+  paths: DiligentPaths,
+  knowledgeConfig: RuntimeConfig["diligent"]["knowledge"],
+): Promise<SystemSection[]> {
+  const withoutKnowledge = systemPrompt.filter((section) => section.label !== "knowledge");
+  if (knowledgeConfig?.enabled === false) return withoutKnowledge;
+
+  const entries = await readKnowledge(paths.knowledge);
+  const content = buildKnowledgeSection(entries, knowledgeConfig?.injectionBudget ?? 8192, knowledgeConfig?.maxItems);
+  if (!content) return withoutKnowledge;
+
+  const knowledgeSection: SystemSection = {
+    tag: "knowledge",
+    label: "knowledge",
+    content,
+    cacheControl: "ephemeral",
+  };
+  const baseIndex = withoutKnowledge.findIndex((section) => section.label === "base");
+  const insertAt = baseIndex < 0 ? 0 : baseIndex + 1;
+  return [...withoutKnowledge.slice(0, insertAt), knowledgeSection, ...withoutKnowledge.slice(insertAt)];
 }
 
 export function filterToolsByMode(mode: Mode, tools: Awaited<ReturnType<typeof buildDefaultTools>>["tools"]) {
@@ -82,8 +110,13 @@ async function createRuntimeAgent(args: {
 }): Promise<RuntimeAgent> {
   const { request, runtimeConfig, getPaths, bundledToolProviders } = args;
   const { cwd, mode, effort, modelId, approve, ask, getSessionId, existingAgent, onChildStop, userId } = request;
-  const guardedSystemPrompt = withSkillGuardrail(runtimeConfig);
   const paths = await getPaths();
+  const guardedSystemPrompt = withSkillGuardrail(runtimeConfig);
+  const systemPromptWithLatestKnowledge = await withLatestKnowledge(
+    guardedSystemPrompt,
+    paths,
+    runtimeConfig.diligent.knowledge,
+  );
   const model = resolveModel(modelId);
   const toolsResult = await buildDefaultTools({
     cwd,
@@ -119,7 +152,10 @@ async function createRuntimeAgent(args: {
   // Surface unauthenticated MCP servers to the agent. `buildDefaultTools` above already ran the MCP
   // sync (with OAuth deps set), so `listStatus` reads the same authoritative needs_auth result from
   // cache without reconnecting — keeping the note consistent with the tools actually exposed.
-  const promptSections = await appendMcpNeedsAuthNote(guardedSystemPrompt, runtimeConfig.diligent.mcpServers);
+  const promptSections = await appendMcpNeedsAuthNote(
+    systemPromptWithLatestKnowledge,
+    runtimeConfig.diligent.mcpServers,
+  );
 
   const activeMode = (mode ?? "default") as Mode;
   const llmCompactionFn = runtimeConfig.providerManager.createNativeCompactionForProvider(
