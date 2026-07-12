@@ -9,6 +9,6 @@ export const OVERDARE_EXPERIMENTS: ExperimentDefinition[] = [
     description: "Create and update scenes from reusable procedural Luau recipes.",
     defaultEnabled: false,
     toolNames: ["studiorpc_procedural_run"],
-    skillNames: ["procedural-luau-json"],
+    skillNames: ["procedural-builder"],
   },
 ];

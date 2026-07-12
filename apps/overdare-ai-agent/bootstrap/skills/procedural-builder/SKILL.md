@@ -1,5 +1,5 @@
 ---
-name: procedural-luau-json
+name: procedural-builder
 description: Create, edit, and run reusable OVERDARE Studio procedural Luau recipes. Use for algorithmic, parametric, repeated, formula-driven, or bulk scene generation, property edits, deletion, and reparenting; use direct instance tools for only a few hand-picked changes.
 ---
 
