@@ -1,7 +1,7 @@
 import type { Tool as CoreTool, ToolContext as CoreToolContext } from "@diligent/core/tool/types";
 import type { BundledToolProvider, HookInput, PluginHookFn, RuntimeToolHost } from "@diligent/runtime";
 import { call } from "./rpc";
-import { methodModules, mutatingMethods, renderBuilders } from "./tool-registry";
+import { methodModules, mutatingMethods, renderBuilders, savingMethods } from "./tool-registry";
 import { createCollisionProfileTools } from "./tools/collision-profile-tool";
 import { createHubWorldCategoriesListTool } from "./tools/hub-world-categories-list-tool";
 import { createHubWorldLookupTool } from "./tools/hub-world-lookup-tool";
@@ -172,6 +172,10 @@ export async function createStudioRpcTools(ctx: {
           let result: unknown = await callRpc(rpcMethod, normalizedArgs, { timeoutMs: mod.timeoutMs });
           if (mod.postProcess) {
             result = mod.postProcess(result, args as Record<string, unknown>);
+          }
+          // Persist editor-state changes to file immediately on success.
+          if (savingMethods.has(method)) {
+            await callRpc("level.save.file", {});
           }
           const output = typeof result === "string" ? result : JSON.stringify(result, null, 2);
           const renderBuilder = renderBuilders[toolName];

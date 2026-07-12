@@ -218,7 +218,7 @@ describe("createStudioRpcToolProvider", () => {
     ]);
   });
 
-  test("does not save after individual mutating Studio RPC tool calls", async () => {
+  test("saves the level to file after a mutating asset-import tool call", async () => {
     const calls: Array<{ method: string; params?: Record<string, unknown>; timeoutMs?: number }> = [];
     const provider = createStudioRpcToolProvider({
       callRpc: async (method, params, options) => {
@@ -243,6 +243,7 @@ describe("createStudioRpcToolProvider", () => {
         params: { assetid: "ovdrassetid://123", assetName: "Tree", assetType: "MODEL" },
         timeoutMs: undefined,
       },
+      { method: "level.save.file", params: {}, timeoutMs: undefined },
     ]);
   });
 
