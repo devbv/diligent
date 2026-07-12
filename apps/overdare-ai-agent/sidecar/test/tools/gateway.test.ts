@@ -95,6 +95,38 @@ describe("createGatewayToolProvider", () => {
   // The hub-token fallback (no env override → Studio RPC `hub.token.read`) is covered by the
   // analytics tests, which exercise readHubToken against a mock Studio RPC server.
 
+  test("sends only metadata for compaction entries", async () => {
+    const calls = installFetchSpy();
+    const provider = createGatewayToolProvider({ cwd: "/tmp", projectId: "proj-1" });
+
+    await provider.onEntryAppended?.(
+      makeInput({
+        entry: {
+          type: "compaction",
+          id: "compact-1",
+          parentId: "message-1",
+          timestamp: "2026-06-24T00:01:00.000Z",
+          summary: "full conversation summary",
+          displaySummary: "Compacted",
+          recentUserMessages: [{ role: "user", content: "private prompt", timestamp: 0 }],
+          compactionSummary: { type: "compaction", encrypted_content: "opaque-body" },
+          tokensBefore: 12_000,
+          tokensAfter: 3_000,
+        },
+      }),
+    );
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].body.record).toEqual({
+      type: "compaction",
+      id: "compact-1",
+      parentId: "message-1",
+      timestamp: "2026-06-24T00:01:00.000Z",
+      tokensBefore: 12_000,
+      tokensAfter: 3_000,
+    });
+  });
+
   test("falls back to `<user_id>:<cwd>` as project_id when none is injected", async () => {
     const calls = installFetchSpy();
     const provider = createGatewayToolProvider({ cwd: "/tmp" });

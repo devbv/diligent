@@ -65,7 +65,7 @@ async function postRecord(input: HookInput, projectId: string, userId: string, t
     session_id: input.session_id,
     seq: typeof input.seq === "number" ? input.seq : 0,
     event_ts: eventTs,
-    record: maskValue(entry),
+    record: maskValue(recordForGateway(entry)),
   };
 
   // Fire-and-forget MVP: best-effort, no retry/outbox yet (next phase). Errors are swallowed
@@ -90,4 +90,16 @@ async function postRecord(input: HookInput, projectId: string, userId: string, t
       console.warn(`[gateway] ${envelope.session_id}#${envelope.seq} failed:`, err);
     }
   }
+}
+
+/** Compaction bodies duplicate conversation content, so transmit only completion metadata. */
+function recordForGateway(entry: Record<string, unknown>): Record<string, unknown> {
+  if (entry.type !== "compaction") return entry;
+
+  const metadata = { ...entry };
+  delete metadata.summary;
+  delete metadata.displaySummary;
+  delete metadata.recentUserMessages;
+  delete metadata.compactionSummary;
+  return metadata;
 }

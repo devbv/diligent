@@ -278,20 +278,11 @@ or silently falls back to another material.
 
 ### Mobility (Static vs Movable)
 
-`Mobility` is a base instance property with values `"Static"` or `"Movable"`. It
-is effective only on a top-level Workspace object (a direct child of Workspace),
-and descendants inherit their top-level ancestor's mobility — so set it once on
-the recipe root, never per part.
-
-- Set `Mobility = "Static"` on the root of terrain, level geometry, structures,
-  and any map that never moves. The engine can then optimize rendering and skip
-  physics for the whole subtree.
-- Because mobility is inherited, a `"Static"` root forces every descendant
-  static. Do not nest parts that must move, animate, or be physics-/script-driven
-  under a static root — keep those on a `"Movable"` root (the default).
-- Mobility only takes effect on the top-level object. When the recipe root is
-  applied as a direct child of Workspace (the default target), set it there; a
-  root parented deeper inherits from its own top-level ancestor instead.
+Mobility is inherited from the top-level Workspace object, so set it once on the
+recipe root — never per part (see the Mobility building rule for the inheritance
+model). For a fixed map/terrain that never moves, set `Mobility = "Static"` on
+the root and every generated part inherits it. Keep anything that must move,
+animate, or be physics-/script-driven on a `"Movable"` root (the default).
 
 ```lua
 -- Fixed map/terrain: mark the root Static; every generated part inherits it.
