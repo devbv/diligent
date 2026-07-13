@@ -7,10 +7,9 @@ import { detailPanelClasses, focusRingClasses } from "./ui-styles";
 
 interface ContextMessageProps {
   summary: string;
-  label?: string;
 }
 
-export function ContextMessage({ summary, label = "Context compacted" }: ContextMessageProps) {
+export function ContextMessage({ summary }: ContextMessageProps) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -28,7 +27,7 @@ export function ContextMessage({ summary, label = "Context compacted" }: Context
             className="h-4 w-4 text-muted/80 transition-colors group-hover:text-text"
             strokeWidth={1.8}
           />
-          <span>{label}</span>
+          <span>Context compacted</span>
           <ChevronDown
             aria-hidden="true"
             className={`h-3.5 w-3.5 transition-transform duration-150 ${open ? "rotate-180" : "rotate-0"}`}

@@ -90,8 +90,8 @@ export type RenderItem =
       id: string;
       kind: "context";
       summary: string;
-      /** Divider label; defaults to the compaction wording when absent. */
-      label?: string;
+      /** Distinguishes the human-edits notice from the default compaction divider. */
+      variant?: "human-edits";
       timestamp: number;
     }
   | {
@@ -466,7 +466,7 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent, turnId?: string
         nextState = withItem(nextState, humanEditsKey, {
           id: humanEditsKey,
           kind: "context",
-          label: "Human edits detected",
+          variant: "human-edits",
           summary: `\`\`\`\n${humanEdits}\n\`\`\``,
           timestamp: event.message.timestamp,
         });

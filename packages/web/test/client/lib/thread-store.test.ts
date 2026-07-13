@@ -2822,7 +2822,7 @@ test("user_message splits hook-injected human edits into a labeled context card"
   expect(contextCards).toHaveLength(1);
   const card = contextCards[0];
   if (!card || card.kind !== "context") throw new Error("expected context item");
-  expect(card.label).toBe("Human edits detected");
+  expect(card.variant).toBe("human-edits");
   expect(card.summary).toContain('+ Part "Ramp" (p2)');
 
   const users = next.items.filter((item) => item.kind === "user");
