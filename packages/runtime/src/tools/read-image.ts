@@ -2,11 +2,11 @@
 
 import { lstat, realpath } from "node:fs/promises";
 import { basename, extname } from "node:path";
+import { downscaleImageIfNeeded } from "@diligent/core/llm/image-resize";
 import type { Tool, ToolContext, ToolResult } from "@diligent/core/tool/types";
 import type { ImageBlock } from "@diligent/core/types";
 import { z } from "zod";
 import { isAbsolute, stripExtendedLengthPrefix } from "../util/path";
-import { downscaleImageIfNeeded } from "./image-resize";
 import { createTextRenderPayload, summarizeRenderText } from "./render-payload";
 
 const ReadImageParams = z.object({

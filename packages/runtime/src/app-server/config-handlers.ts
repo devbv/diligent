@@ -3,6 +3,7 @@
 import { randomBytes } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
+import { downscaleImageIfNeeded } from "@diligent/core/llm/image-resize";
 import { PROVIDER_NAMES, type ProviderManager } from "@diligent/core/llm/provider-manager";
 import {
   type AuthStoreOptions,
@@ -289,7 +290,20 @@ export async function handleImageUpload(args: {
   if (buffer.length === 0) throw new Error("Empty image payload");
   if (buffer.length > 10 * 1024 * 1024) throw new Error("Image exceeds 10 MB limit");
 
-  await Bun.write(absPath, buffer);
+  // Downscale once at ingest so the stored file — re-read and base64'd on every subsequent
+  // request — stays small. A raw 4K screenshot is ~10 MB (~13 MB as base64); a few of them in one
+  // session breach Anthropic's 32 MB request cap while staying invisible to token accounting.
+  let toWrite: ArrayBuffer = buffer.buffer.slice(
+    buffer.byteOffset,
+    buffer.byteOffset + buffer.byteLength,
+  ) as ArrayBuffer;
+  try {
+    toWrite = await downscaleImageIfNeeded(toWrite, args.params.mediaType);
+  } catch {
+    // Re-encode failure must not reject the upload — store the original.
+  }
+
+  await Bun.write(absPath, toWrite);
 
   const webUrl = args.toImageUrl?.(absPath);
   return {

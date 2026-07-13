@@ -13,7 +13,7 @@ import {
   downscaleImageIfNeeded,
   imageDimensionsFromHeader,
   withImageDownscaling,
-} from "../../src/tools/image-resize";
+} from "../../src/llm/image-resize";
 
 // Build a solid-white image of the given size and encode it to a real PNG for use as a fixture.
 function solidImage(width: number, height: number): { data: Uint8ClampedArray; width: number; height: number } {

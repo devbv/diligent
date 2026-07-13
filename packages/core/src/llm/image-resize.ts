@@ -3,9 +3,6 @@
 // decoded server-side before the vision encoder runs. Capping the long edge keeps token cost bounded
 // and uniform across providers (Anthropic auto-resizes; OpenAI/Gemini do not).
 
-import type { Tool } from "@diligent/core/tool/types";
-import type { ImageBlock } from "@diligent/core/types";
-
 // `with { type: "file" }` makes bun embed the wasm into the compiled single-file binary; the import
 // resolves to a path we read at runtime and hand to each codec's init — bypassing the broken
 // fetch/streaming-instantiate path that fails under `bun build --compile`. This is a bun-only import
@@ -30,6 +27,8 @@ import webpDecWasm from "@jsquash/webp/codec/dec/webp_dec.wasm" with { type: "fi
 import webpEncWasm from "@jsquash/webp/codec/enc/webp_enc.wasm" with { type: "file" };
 import decodeWebp, { init as initWebpDecode } from "@jsquash/webp/decode";
 import encodeWebp, { init as initWebpEncode } from "@jsquash/webp/encode";
+import type { Tool } from "../tool/types";
+import type { ImageBlock } from "../types";
 
 export type ResizableMediaType = "image/png" | "image/jpeg" | "image/webp";
 
