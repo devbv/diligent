@@ -208,6 +208,25 @@ export function createConnectOAuthProvider(
   });
 }
 
+/**
+ * True when a connect/refresh failure means the server needs interactive OAuth login. Covers our
+ * own `NeedsAuthError` (the provider refused to open a browser), a raw SDK `UnauthorizedError`/401,
+ * and OAuth token-rejection payloads (RFC 6750/6749) that some servers (e.g. Atlassian) surface as
+ * a plain transport error like `{"error":"invalid_token","error_description":"Missing or invalid
+ * access token"}` instead of a clean 401 — those must degrade to `needs_auth`, not a hard `error`.
+ */
+export function isNeedsAuth(error: unknown): boolean {
+  if (error instanceof NeedsAuthError) return true;
+  const name = (error as { name?: string })?.name;
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    name === "UnauthorizedError" ||
+    /unauthorized|\b401\b|\b403\b|invalid_token|invalid_grant|missing or invalid (access )?token|token (has )?expired/i.test(
+      message,
+    )
+  );
+}
+
 export function createMcpOAuthHandle(
   serverName: string,
   deps: McpOAuthDeps,
