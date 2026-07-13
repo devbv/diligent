@@ -2792,3 +2792,58 @@ test("hydrateFromThreadRead keeps sub-agent running when truncated wait summary 
   const collabWait = hydrated.items.find((item) => item.kind === "collab" && item.eventType === "wait");
   expect(collabWait && collabWait.kind === "collab" ? collabWait.status : "").toBe("running");
 });
+
+test("user_message splits hook-injected human edits into a labeled context card", () => {
+  resetAdapter();
+  const text = [
+    "<HumanEdits>",
+    "Human edits since the agent's last completed turn:",
+    "",
+    "Added (1):",
+    '+ Part "Ramp" (p2) under "Workspace" (ws-0)',
+    "</HumanEdits>",
+    "",
+    "move it up",
+  ].join("\n");
+
+  const event = {
+    type: "user_message",
+    itemId: "u1",
+    message: { role: "user", content: text, timestamp: 1 },
+  } as const;
+  const notification: DiligentServerNotification = {
+    method: "agent/event",
+    params: { threadId: "t1", turnId: "turn1", event },
+  };
+
+  const next = reduceServerNotification(initialThreadState, notification, [event]);
+
+  const contextCards = next.items.filter((item) => item.kind === "context");
+  expect(contextCards).toHaveLength(1);
+  const card = contextCards[0];
+  if (!card || card.kind !== "context") throw new Error("expected context item");
+  expect(card.label).toBe("Human edits detected");
+  expect(card.summary).toContain('+ Part "Ramp" (p2)');
+
+  const users = next.items.filter((item) => item.kind === "user");
+  expect(users).toHaveLength(1);
+  expect(users[0] && users[0].kind === "user" ? users[0].text : "").toBe("move it up");
+});
+
+test("user_message without human edits produces no context card", () => {
+  resetAdapter();
+  const event = {
+    type: "user_message",
+    itemId: "u2",
+    message: { role: "user", content: "just a message", timestamp: 1 },
+  } as const;
+  const notification: DiligentServerNotification = {
+    method: "agent/event",
+    params: { threadId: "t1", turnId: "turn1", event },
+  };
+
+  const next = reduceServerNotification(initialThreadState, notification, [event]);
+  expect(next.items.filter((item) => item.kind === "context")).toHaveLength(0);
+  const users = next.items.filter((item) => item.kind === "user");
+  expect(users[0] && users[0].kind === "user" ? users[0].text : "").toBe("just a message");
+});

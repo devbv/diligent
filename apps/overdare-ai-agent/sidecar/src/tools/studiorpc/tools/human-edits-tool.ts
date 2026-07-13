@@ -165,10 +165,12 @@ export function diffOvdrjmRoots(baseline: OvdrjmNode, current: OvdrjmNode): stri
   }
 
   if (sections.length === 0) {
-    return "No human edits detected since the agent's last completed turn.";
+    return NO_EDITS_MESSAGE;
   }
   return `Human edits since the agent's last completed turn:\n\n${sections.join("\n\n")}`;
 }
+
+const NO_EDITS_MESSAGE = "No human edits detected since the agent's last completed turn.";
 
 /**
  * Diff the agent-done baseline against the .ovdrjm as it is right now. The
@@ -193,9 +195,10 @@ export function computeHumanEdits(cwd: string): ToolResult {
       throw new Error("Invalid baseline snapshot: Root object is missing.");
     }
     const { root: currentRoot } = readOvdrjmRoot(cwd);
+    const output = diffOvdrjmRoots(baselineRoot as OvdrjmNode, currentRoot);
     return {
-      output: diffOvdrjmRoots(baselineRoot as OvdrjmNode, currentRoot),
-      metadata: { method: "human_edits" },
+      output,
+      metadata: { method: "human_edits", humanEditsDetected: output !== NO_EDITS_MESSAGE },
     };
   } catch (error) {
     return {

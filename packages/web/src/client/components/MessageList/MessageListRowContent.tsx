@@ -31,7 +31,7 @@ export function MessageListRowContent({
     case "message":
       switch (row.item.kind) {
         case "context":
-          return <ContextMessage summary={row.item.summary} />;
+          return <ContextMessage summary={row.item.summary} label={row.item.label} />;
         case "tool":
           return <ToolBlock item={row.item} threadCwd={threadCwd} />;
         case "user":

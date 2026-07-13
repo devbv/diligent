@@ -74,6 +74,15 @@ export function createStudioRpcToolProvider(options: StudioRpcToolProviderOption
     turnState.sessionId = input.session_id;
     turnState.taken = false;
     turnState.humanEdits = computeHumanEdits(input.cwd);
+    // Surface detected human edits without requiring a tool call: the summary
+    // is prepended to the user message (LLM context) and the web client splits
+    // the <HumanEdits> block out into a visible context card.
+    if (turnState.humanEdits.metadata?.humanEditsDetected === true) {
+      return {
+        blocked: false,
+        additionalContext: `<HumanEdits>\n${turnState.humanEdits.output}\n</HumanEdits>`,
+      };
+    }
     return { blocked: false };
   };
   beginTurn.mode = "sync";

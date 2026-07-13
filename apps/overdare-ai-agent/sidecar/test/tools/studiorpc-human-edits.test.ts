@@ -260,3 +260,51 @@ describe("turn-start diff cache", () => {
     expect(result.output).not.toContain("AgentPart"); // agent edit excluded
   });
 });
+
+describe("human-edits context injection at prompt submit", () => {
+  function promptProvider() {
+    const provider = createStudioRpcToolProvider({ callRpc: async () => ({}) });
+    return provider as typeof provider & {
+      onStop: NonNullable<typeof provider.onStop>;
+      onUserPromptSubmit: NonNullable<typeof provider.onUserPromptSubmit>;
+    };
+  }
+
+  test("returns additionalContext wrapped in <HumanEdits> when edits exist", async () => {
+    const cwd = projectDir(
+      JSON.stringify({ Root: node("Workspace", "ws-0", "Workspace", {}, [node("Part", "p1", "Floor")]) }),
+    );
+    const p = promptProvider();
+    await p.onStop(stopInput(cwd)); // baseline
+    writeFileSync(
+      join(cwd, "world.ovdrjm"),
+      JSON.stringify({
+        Root: node("Workspace", "ws-0", "Workspace", {}, [node("Part", "p1", "Floor"), node("Part", "p2", "Ramp")]),
+      }),
+    );
+
+    const result = await p.onUserPromptSubmit({ ...stopInput(cwd), hook_event_name: "UserPromptSubmit" });
+    expect(result.additionalContext).toStartWith("<HumanEdits>\n");
+    expect(result.additionalContext).toEndWith("\n</HumanEdits>");
+    expect(result.additionalContext).toContain('+ Part "Ramp" (p2)');
+  });
+
+  test("returns no additionalContext when nothing changed", async () => {
+    const cwd = projectDir(
+      JSON.stringify({ Root: node("Workspace", "ws-0", "Workspace", {}, [node("Part", "p1", "Floor")]) }),
+    );
+    const p = promptProvider();
+    await p.onStop(stopInput(cwd));
+
+    const result = await p.onUserPromptSubmit({ ...stopInput(cwd), hook_event_name: "UserPromptSubmit" });
+    expect(result.additionalContext).toBeUndefined();
+  });
+
+  test("returns no additionalContext when no baseline exists", async () => {
+    const cwd = projectDir();
+    const p = promptProvider();
+
+    const result = await p.onUserPromptSubmit({ ...stopInput(cwd), hook_event_name: "UserPromptSubmit" });
+    expect(result.additionalContext).toBeUndefined();
+  });
+});

@@ -73,11 +73,25 @@ function isInjectedReminderText(text: string): boolean {
   return text.startsWith(INJECTED_REMINDER_PREFIX);
 }
 
+/**
+ * The studiorpc provider prepends a human-edit summary to the user message
+ * (via the UserPromptSubmit hook) wrapped in this marker. Split it out of the
+ * visible user text and surface it as a collapsible context item instead.
+ */
+const HUMAN_EDITS_PATTERN = /<HumanEdits>\n([\s\S]*?)\n<\/HumanEdits>\n*/;
+export function parseHumanEditsFromText(text: string): { humanEdits?: string; remainingText: string } {
+  const match = text.match(HUMAN_EDITS_PATTERN);
+  if (!match) return { remainingText: text };
+  return { humanEdits: match[1], remainingText: text.replace(HUMAN_EDITS_PATTERN, "") };
+}
+
 export type RenderItem =
   | {
       id: string;
       kind: "context";
       summary: string;
+      /** Divider label; defaults to the compaction wording when absent. */
+      label?: string;
       timestamp: number;
     }
   | {
@@ -435,7 +449,9 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent, turnId?: string
 
     case "user_message": {
       const { text, images } = extractUserTextAndImages(event.message.content);
-      const { contextItems, remainingText } = parseContextFromText(text);
+      // Hook-injected human edits precede the AttachedContext block; split them off first.
+      const { humanEdits, remainingText: textWithoutHumanEdits } = parseHumanEditsFromText(text);
+      const { contextItems, remainingText } = parseContextFromText(textWithoutHumanEdits);
       // Persisted plan reminders rehydrate as user messages; keep them out of the transcript.
       if (isInjectedReminderText(remainingText)) return merged;
       let nextState = merged;
@@ -444,6 +460,16 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent, turnId?: string
         if (remainingText === joinedSteers || text === joinedSteers) {
           nextState = { ...nextState, pendingSteers: [] };
         }
+      }
+      if (humanEdits) {
+        const humanEditsKey = `remote-user-${event.itemId}-human-edits`;
+        nextState = withItem(nextState, humanEditsKey, {
+          id: humanEditsKey,
+          kind: "context",
+          label: "Human edits detected",
+          summary: `\`\`\`\n${humanEdits}\n\`\`\``,
+          timestamp: event.message.timestamp,
+        });
       }
       return withItem(nextState, `remote-user-${event.itemId}`, {
         id: `remote-user-${event.itemId}`,
