@@ -7,7 +7,13 @@ import { isNetworkError } from "../errors";
 import { flattenSections } from "../system-sections";
 import type { Model, ProviderEvent, ProviderResult, StreamContext, StreamFunction, StreamOptions } from "../types";
 import { ProviderError } from "../types";
-import { type ChatGPTWebSocketSession, createChatGPTWebSocketSession } from "./chatgpt-websocket-session";
+import {
+  type ChatGPTWebSocketFactory,
+  type ChatGPTWebSocketSession,
+  ChatGPTWebSocketUpgradeError,
+  classifyWebSocketUpgradeError,
+  createChatGPTWebSocketSession,
+} from "./chatgpt-websocket-session";
 import type { NativeCompactFn } from "./native-compaction";
 import {
   buildResponsesRequestBody,
@@ -38,7 +44,15 @@ const USER_AGENT = `diligent (${platform()} ${release()}; ${arch()})`;
 
 export interface ChatGPTStreamOptions {
   useWebSocketForGpt56?: boolean;
-  webSocketFactory?: (url: string, headers: Record<string, string>) => WebSocket;
+  /**
+   * Injectable WebSocket connection factory for deterministic testing.
+   *
+   * May return a WebSocket synchronously or resolve one asynchronously.
+   * To simulate an HTTP upgrade failure, throw (or reject with) a
+   * `ChatGPTWebSocketUpgradeError`; the caller will classify it into the
+   * appropriate ProviderError (auth / rate_limit / server_error).
+   */
+  webSocketFactory?: ChatGPTWebSocketFactory;
   webSocketIdleTimeoutMs?: number;
   /** Maximum wait for HTTP response headers. Does not limit SSE body streaming. */
   httpHeaderTimeoutMs?: number;
@@ -280,12 +294,13 @@ function createChatGPTWebSocketEvents(input: {
   headers: Record<string, string>;
   request: Record<string, unknown>;
   signal?: AbortSignal;
-  webSocketFactory: (url: string, headers: Record<string, string>) => WebSocket;
+  webSocketFactory: ChatGPTWebSocketFactory;
   idleTimeoutMs?: number;
 }): { opened: Promise<void>; events: AsyncIterable<Record<string, unknown>> } {
   const queue = new AsyncEventQueue<Record<string, unknown>>();
-  const socket = input.webSocketFactory(CHATGPT_CODEX_WEBSOCKET_URL, input.headers);
   const idleTimeoutMs = input.idleTimeoutMs ?? CHATGPT_WEBSOCKET_IDLE_TIMEOUT_MS;
+  // socket is assigned after the (possibly async) factory resolves
+  let socket: WebSocket | undefined;
   let opened = false;
   let settled = false;
   let terminalSeen = false;
@@ -304,15 +319,17 @@ function createChatGPTWebSocketEvents(input: {
       clearTimeout(idleTimer);
       idleTimer = undefined;
     }
-    socket.removeEventListener("open", handleOpen);
-    socket.removeEventListener("message", handleMessage);
-    socket.removeEventListener("error", handleError);
-    socket.removeEventListener("close", handleClose);
+    if (socket) {
+      socket.removeEventListener("open", handleOpen);
+      socket.removeEventListener("message", handleMessage);
+      socket.removeEventListener("error", handleError);
+      socket.removeEventListener("close", handleClose);
+    }
     input.signal?.removeEventListener("abort", handleAbort);
   };
 
   const terminate = () => {
-    if (socket.readyState === WebSocket.CLOSED) return;
+    if (!socket || socket.readyState === WebSocket.CLOSED) return;
     const terminatingSocket = socket as WebSocket & { terminate?: () => void };
     if (typeof terminatingSocket.terminate === "function") {
       terminatingSocket.terminate();
@@ -362,7 +379,7 @@ function createChatGPTWebSocketEvents(input: {
           summarizeChatGPTWebSocketPayload(input.request),
         );
       }
-      socket.send(requestText);
+      socket!.send(requestText);
       settled = true;
       resolveOpened();
       resetIdleTimeout("ChatGPT WebSocket idle timeout waiting for response");
@@ -408,7 +425,7 @@ function createChatGPTWebSocketEvents(input: {
           terminalSeen = true;
           queue.end();
           cleanup();
-          if (socket.readyState !== WebSocket.CLOSED) socket.close(1000);
+          if (socket && socket.readyState !== WebSocket.CLOSED) socket.close(1000);
         }
       })
       .finally(() => {
@@ -480,13 +497,56 @@ function createChatGPTWebSocketEvents(input: {
     terminate();
   }
 
-  socket.addEventListener("open", handleOpen);
-  socket.addEventListener("message", handleMessage);
-  socket.addEventListener("error", handleError);
-  socket.addEventListener("close", handleClose);
+  // Set up abort handling and the initial connection idle-timeout before the
+  // factory call so that pre-connect aborts and slow factories are both guarded.
   input.signal?.addEventListener("abort", handleAbort, { once: true });
   resetIdleTimeout("ChatGPT WebSocket idle timeout waiting for connection");
   if (input.signal?.aborted) handleAbort();
+
+  // Resolve the (possibly async) factory, then attach WebSocket event listeners.
+  // If the factory throws a ChatGPTWebSocketUpgradeError, classify it precisely
+  // instead of producing a generic "network" error.
+  //
+  // For synchronous factories (the default), attach event listeners immediately
+  // without yielding so they are in place before any queued microtasks fire
+  // (e.g. the fake WebSocket's queueMicrotask(() => this.open())).
+  const attachListeners = (ws: WebSocket): void => {
+    if (settled) {
+      ws.close();
+      return;
+    }
+    socket = ws;
+    socket.addEventListener("open", handleOpen);
+    socket.addEventListener("message", handleMessage);
+    socket.addEventListener("error", handleError);
+    socket.addEventListener("close", handleClose);
+  };
+
+  let factoryResult: WebSocket | Promise<WebSocket>;
+  try {
+    factoryResult = input.webSocketFactory(CHATGPT_CODEX_WEBSOCKET_URL, input.headers);
+  } catch (error) {
+    fail(
+      error instanceof ChatGPTWebSocketUpgradeError
+        ? classifyWebSocketUpgradeError(error.status, error.body)
+        : new ProviderError("ChatGPT WebSocket connection failed", "network", true),
+    );
+    return { opened: openedPromise, events: queue };
+  }
+
+  if (factoryResult instanceof Promise) {
+    void factoryResult.then(attachListeners).catch((error: unknown) => {
+      if (!settled) {
+        fail(
+          error instanceof ChatGPTWebSocketUpgradeError
+            ? classifyWebSocketUpgradeError(error.status, error.body)
+            : new ProviderError("ChatGPT WebSocket connection failed", "network", true),
+        );
+      }
+    });
+  } else {
+    attachListeners(factoryResult);
+  }
 
   return { opened: openedPromise, events: queue };
 }

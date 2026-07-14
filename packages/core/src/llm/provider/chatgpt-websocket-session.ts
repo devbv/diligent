@@ -1,7 +1,62 @@
 // @summary Reusable, single-flight WebSocket transport for ChatGPT Responses Lite
 import { ProviderError } from "../types";
 
-export type ChatGPTWebSocketFactory = (url: string, headers: Record<string, string>) => WebSocket;
+/**
+ * Thrown by a ChatGPTWebSocketFactory when the HTTP upgrade handshake itself
+ * fails before the WebSocket is established. The factory receives the HTTP
+ * status code and response body so that error classification can be precise
+ * (401/403 = auth, 429 usage-limit = non-retryable, 5xx = retryable).
+ */
+export class ChatGPTWebSocketUpgradeError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly body: string,
+    public readonly upgradeHeaders: Record<string, string> = {},
+  ) {
+    super(`ChatGPT WebSocket upgrade failed with HTTP ${status}`);
+    this.name = "ChatGPTWebSocketUpgradeError";
+  }
+}
+
+/**
+ * Maps an HTTP upgrade failure to a classified ProviderError using the same
+ * status-code rules as the ChatGPT HTTP/SSE path:
+ * - 401/403 → auth (non-retryable)
+ * - 429 with usage_limit_reached body → "unknown" (non-retryable)
+ * - 429 without usage_limit → rate_limit (non-retryable)
+ * - 5xx → server_error (retryable)
+ */
+export function classifyWebSocketUpgradeError(status: number, body: string): ProviderError {
+  const isUsageLimit = body.includes("usage_limit_reached");
+  const is429 = status === 429;
+  const message =
+    is429 && isUsageLimit
+      ? "AI usage limit reached. Please try again later or upgrade your plan."
+      : `ChatGPT WebSocket upgrade failed (${status}): ${body || "no body"}`;
+  return new ProviderError(
+    message,
+    is429 && isUsageLimit
+      ? "unknown"
+      : is429
+        ? "rate_limit"
+        : status >= 500
+          ? "server_error"
+          : status === 401 || status === 403
+            ? "auth"
+            : "unknown",
+    !is429 && status >= 500,
+    undefined,
+    status,
+  );
+}
+
+/**
+ * Factory that creates (or async-resolves) a WebSocket for the given URL and
+ * headers. Implementations may throw (or reject with) a
+ * ChatGPTWebSocketUpgradeError to surface HTTP-level upgrade failures with
+ * precise status and body information.
+ */
+export type ChatGPTWebSocketFactory = (url: string, headers: Record<string, string>) => WebSocket | Promise<WebSocket>;
 
 export interface ChatGPTWebSocketSessionOptions {
   url: string;
@@ -149,7 +204,16 @@ export class ChatGPTWebSocketSession {
     if (this.connecting) return this.connecting;
     this.connecting = (async () => {
       const headers = await this.options.resolveHeaders();
-      const socket = this.options.webSocketFactory(this.options.url, headers);
+      let socket: WebSocket;
+      try {
+        const factoryResult = this.options.webSocketFactory(this.options.url, headers);
+        socket = factoryResult instanceof Promise ? await factoryResult : factoryResult;
+      } catch (error) {
+        this.connecting = undefined;
+        throw error instanceof ChatGPTWebSocketUpgradeError
+          ? classifyWebSocketUpgradeError(error.status, error.body)
+          : new ProviderError("ChatGPT WebSocket connection failed", "network", true);
+      }
       this.socket = socket;
       socket.addEventListener("message", (event) => this.handleMessage(socket, event));
       socket.addEventListener("error", () =>

@@ -5,6 +5,7 @@ import { toSerializableError } from "../../../src/agent/util/errors";
 import type { EventStream } from "../../../src/event-stream";
 import { resolveModel } from "../../../src/llm/models";
 import { createChatGPTStream, summarizeChatGPTWebSocketPayload } from "../../../src/llm/provider/chatgpt";
+import { ChatGPTWebSocketUpgradeError } from "../../../src/llm/provider/chatgpt-websocket-session";
 import {
   buildResponsesRequestBody,
   isGpt56Model,
@@ -859,6 +860,63 @@ describe("createChatGPTStream retry classification", () => {
     const error = events.find((event): event is Extract<ProviderEvent, { type: "error" }> => event.type === "error");
     expect(error?.error.message).toContain("websocket_connection_limit_reached");
     expect((error?.error as { isRetryable?: boolean }).isRetryable).toBe(true);
+  });
+
+  test("maps GPT-5.6 WebSocket upgrade 401 as auth error (non-retryable)", async () => {
+    const chatgptStream = createChatGPTStream(() => ({ access_token: "token", refresh_token: "refresh" }), {
+      useWebSocketForGpt56: true,
+      webSocketFactory: () => {
+        throw new ChatGPTWebSocketUpgradeError(401, "Unauthorized");
+      },
+    });
+
+    const events = await collectEvents(
+      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, { effort: "medium" }),
+    );
+
+    const error = events.find((event): event is Extract<ProviderEvent, { type: "error" }> => event.type === "error");
+    expect(error?.error.message).toContain("401");
+    expect((error?.error as { errorType?: string }).errorType).toBe("auth");
+    expect((error?.error as { isRetryable?: boolean }).isRetryable).toBe(false);
+    expect((error?.error as { statusCode?: number }).statusCode).toBe(401);
+  });
+
+  test("maps GPT-5.6 WebSocket upgrade 429 usage-limit as non-retryable non-network", async () => {
+    const chatgptStream = createChatGPTStream(() => ({ access_token: "token", refresh_token: "refresh" }), {
+      useWebSocketForGpt56: true,
+      webSocketFactory: async () => {
+        throw new ChatGPTWebSocketUpgradeError(429, "usage_limit_reached");
+      },
+    });
+
+    const events = await collectEvents(
+      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, { effort: "medium" }),
+    );
+
+    const error = events.find((event): event is Extract<ProviderEvent, { type: "error" }> => event.type === "error");
+    expect(error?.error.message).toBe("AI usage limit reached. Please try again later or upgrade your plan.");
+    expect((error?.error as { errorType?: string }).errorType).not.toBe("network");
+    expect((error?.error as { isRetryable?: boolean }).isRetryable).toBe(false);
+    expect((error?.error as { statusCode?: number }).statusCode).toBe(429);
+  });
+
+  test("maps GPT-5.6 WebSocket upgrade 5xx as retryable server error", async () => {
+    const chatgptStream = createChatGPTStream(() => ({ access_token: "token", refresh_token: "refresh" }), {
+      useWebSocketForGpt56: true,
+      webSocketFactory: async () => {
+        throw new ChatGPTWebSocketUpgradeError(503, "Service Unavailable");
+      },
+    });
+
+    const events = await collectEvents(
+      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, { effort: "medium" }),
+    );
+
+    const error = events.find((event): event is Extract<ProviderEvent, { type: "error" }> => event.type === "error");
+    expect(error?.error.message).toContain("503");
+    expect((error?.error as { errorType?: string }).errorType).toBe("server_error");
+    expect((error?.error as { isRetryable?: boolean }).isRetryable).toBe(true);
+    expect((error?.error as { statusCode?: number }).statusCode).toBe(503);
   });
 
   test("does not retry HTTP 429 without usage limit body", async () => {
