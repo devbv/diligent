@@ -1082,9 +1082,9 @@ test("human edits notice renders a visible banner with counts and collapsed diff
   ].join("\n");
   const html = renderToStaticMarkup(<HumanEditsNotice summary={summary} />);
 
-  expect(html).toContain("Your edits detected");
-  expect(html).toContain("1 added · 2 removed");
-  expect(html).toContain("The changes were shared with the agent");
+  expect(html).toContain("Continuing from your edits");
+  expect(html).toContain("3 changes");
+  expect(html).toContain("will keep your edits in mind");
   expect(html).toContain('aria-expanded="false"');
   expect(html).not.toContain("Ramp"); // diff details collapsed by default
 });

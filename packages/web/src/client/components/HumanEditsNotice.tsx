@@ -9,22 +9,17 @@ interface HumanEditsNoticeProps {
   summary: string;
 }
 
-const COUNT_SECTIONS = [
-  ["Added", "added"],
-  ["Removed", "removed"],
-  ["Moved", "moved"],
-  ["Modified", "modified"],
-  ["Script source changed", "script"],
-] as const;
+const COUNT_SECTIONS = ["Added", "Removed", "Moved", "Modified", "Script source changed"] as const;
 
-/** e.g. "1 added · 2 removed" parsed from the diff section headers. */
+/** Total change count parsed from the diff section headers, e.g. "3 changes". */
 function countLabel(summary: string): string {
-  const parts: string[] = [];
-  for (const [section, word] of COUNT_SECTIONS) {
+  let total = 0;
+  for (const section of COUNT_SECTIONS) {
     const match = summary.match(new RegExp(`^${section} \\((\\d+)\\):`, "m"));
-    if (match) parts.push(`${match[1]} ${word}`);
+    if (match) total += Number(match[1]);
   }
-  return parts.join(" · ");
+  if (total === 0) return "";
+  return total === 1 ? "1 change" : `${total} changes`;
 }
 
 export function HumanEditsNotice({ summary }: HumanEditsNoticeProps) {
@@ -41,7 +36,7 @@ export function HumanEditsNotice({ summary }: HumanEditsNoticeProps) {
           onClick={() => setOpen((value) => !value)}
         >
           <Pencil aria-hidden="true" className="h-4 w-4 shrink-0 text-muted/80" strokeWidth={1.8} />
-          <span className="text-xs font-medium leading-5 text-text">Your edits detected</span>
+          <span className="text-xs font-medium leading-5 text-text">Continuing from your edits</span>
           {counts ? <span className="text-xs leading-5 text-muted">{counts}</span> : null}
           <ChevronDown
             aria-hidden="true"
@@ -50,8 +45,7 @@ export function HumanEditsNotice({ summary }: HumanEditsNoticeProps) {
           />
         </button>
         <p className="mt-1 text-xs leading-5 text-muted">
-          You edited the level in Studio since the agent last finished. The changes were shared with the agent so it can
-          take them into account before continuing.
+          The agent noticed what you changed in Studio and will keep your edits in mind as it continues.
         </p>
         {open ? (
           <div className="mt-2">
