@@ -1081,6 +1081,399 @@ git commit -m "docs(studiorpc): document point-in-time rollback and snapshot lis
 
 ---
 
+## Follow-up: Cross-Session Context (Tasks 8-9, added after the branch review)
+
+Rolling back across sessions (a new conversation restoring an old session's snapshot) leaves the model with only the 120-char label for context. These tasks record where each snapshot's conversation lives and add a read-time content search — no fragile line-number pointers (label text is matched by content, and user messages survive compaction verbatim in this runtime).
+
+Transcript format (from `packages/runtime/src/session/persistence.ts` / `session/types.ts`): a JSONL file whose first line is a `{ type: "session", ... }` header, followed by entries; message entries are `{ type: "message", id, parentId, timestamp, message: { role, content } }` where `content` is a string or an array of blocks (text blocks are `{ type: "text", text }`).
+
+### Task 8: Record transcriptPath in snapshot metadata
+
+**Files:**
+- Modify: `src/tools/studiorpc/tools/snapshot.ts`
+- Modify: `src/tools/studiorpc/index.ts`
+- Test: `test/tools/studiorpc-rollback.test.ts`
+
+**Interfaces:**
+- Consumes: `input.transcript_path` (string) on the `UserPromptSubmit` hook input (see `packages/runtime/src/app-server/turn-handlers.ts:166`).
+- Produces: `SnapshotMeta` and `CaptureOptions` gain `transcriptPath?: string`; `TurnSnapshotState` gains `transcriptPath?: string`; `listSnapshots` entries carry it through. Task 9 relies on `SnapshotEntry.transcriptPath`.
+
+- [ ] **Step 1: Write the failing tests**
+
+Inside `describe("captureSnapshot", ...)`:
+
+```typescript
+  test("records transcriptPath in the metadata sidecar when given", () => {
+    const cwd = projectDir();
+    captureSnapshot(cwd, "sess1", 0, { transcriptPath: "/tmp/sessions/abc.jsonl" });
+    const meta = JSON.parse(readFileSync(join(snapshotsDir(cwd), "sess1_0.json"), "utf-8"));
+    expect(meta.transcriptPath).toBe("/tmp/sessions/abc.jsonl");
+  });
+```
+
+Inside `describe("snapshot capture on first edit", ...)` (the `hookInput` helper already passes `transcript_path: "/tmp/s.jsonl"`):
+
+```typescript
+  test("stores the turn's transcript path in the snapshot metadata", async () => {
+    const cwd = projectDir();
+    const { tools } = await setup(cwd, "sess");
+    const importTool = tools.find((t) => t.name === "studiorpc_asset_drawer_import")!;
+
+    await importTool.execute(importArgs as never, toolCtx());
+
+    const meta = JSON.parse(readFileSync(join(snapshotsDir(cwd), "sess_0.json"), "utf-8"));
+    expect(meta.transcriptPath).toBe("/tmp/s.jsonl");
+  });
+```
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `bun test test/tools/studiorpc-rollback.test.ts`
+Expected: FAIL — `transcriptPath` is undefined in both metas.
+
+- [ ] **Step 3: Implement**
+
+In `snapshot.ts`, add the field to both interfaces:
+
+```typescript
+export interface SnapshotMeta {
+  id: string;
+  sessionId: string;
+  index: number;
+  createdAt: string;
+  label?: string;
+  kind: SnapshotKind;
+  /** Session transcript the labeled request came from; enables read-time context lookup. */
+  transcriptPath?: string;
+}
+
+export interface CaptureOptions {
+  label?: string;
+  kind?: SnapshotKind;
+  transcriptPath?: string;
+}
+```
+
+In `captureSnapshot`, extend the meta literal:
+
+```typescript
+    ...(options.label !== undefined ? { label: options.label } : {}),
+    ...(options.transcriptPath !== undefined ? { transcriptPath: options.transcriptPath } : {}),
+```
+
+In `listSnapshots`, carry it through next to the label spread:
+
+```typescript
+      ...(meta?.label !== undefined ? { label: meta.label } : {}),
+      ...(meta?.transcriptPath !== undefined ? { transcriptPath: meta.transcriptPath } : {}),
+```
+
+In `index.ts`: `TurnSnapshotState` gains `/** Session transcript path for the current turn; recorded into snapshot metadata. */ transcriptPath?: string;`, `beginTurn` sets `turnState.transcriptPath = typeof input.transcript_path === "string" ? input.transcript_path : undefined;`, and `ensureSnapshot` passes it: `captureSnapshot(ctx.cwd, ts.sessionId, index, { label: ts.promptLabel, kind: "turn", transcriptPath: ts.transcriptPath });`.
+
+(The `studiorpc_snapshot_list` output gains the field automatically — only `path` is stripped there; that is intended.)
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `bun test test/tools/studiorpc-rollback.test.ts`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/tools/studiorpc/tools/snapshot.ts src/tools/studiorpc/index.ts test/tools/studiorpc-rollback.test.ts
+git commit -m "feat(studiorpc): record transcript path in snapshot metadata"
+```
+
+---
+
+### Task 9: `studiorpc_snapshot_context` tool
+
+**Files:**
+- Create: `src/tools/studiorpc/tools/snapshot-context-tool.ts`
+- Modify: `src/tools/studiorpc/index.ts` (register after the snapshot list tool)
+- Test: `test/tools/studiorpc-rollback.test.ts`
+
+**Interfaces:**
+- Consumes: `findSnapshotById`, `SnapshotEntry.transcriptPath` (Task 8), `truncateLabel`.
+- Produces: read-only tool `studiorpc_snapshot_context({ snapshotId })` returning the matched user request plus up to 4 following transcript entries (each clipped to 500 chars), or a plain informative message when the snapshot has no transcript reference / no label, the transcript is unreadable, or the request is not found. Factory: `createSnapshotContextTool(cwd: string): Tool`.
+
+- [ ] **Step 1: Write the failing tests**
+
+New top-level describe (import `createSnapshotContextTool` from `../../src/tools/studiorpc/tools/snapshot-context-tool`):
+
+```typescript
+describe("createSnapshotContextTool", () => {
+  function writeTranscript(path: string, entries: Array<{ role: string; content: unknown; at: string }>) {
+    const lines = [
+      JSON.stringify({ type: "session", version: 1, id: "s", timestamp: "2026-01-01T00:00:00Z", cwd: "/x" }),
+    ];
+    for (const [i, e] of entries.entries()) {
+      lines.push(
+        JSON.stringify({
+          type: "message",
+          id: String(i),
+          parentId: null,
+          timestamp: e.at,
+          message: { role: e.role, content: e.content },
+        }),
+      );
+    }
+    writeFileSync(path, `${lines.join("\n")}\n`);
+  }
+
+  test("returns the matched request and the entries that follow it", async () => {
+    const cwd = projectDir();
+    const transcriptPath = join(cwd, "session.jsonl");
+    writeTranscript(transcriptPath, [
+      { role: "user", content: "make a castle", at: "2026-01-01T00:01:00Z" },
+      { role: "assistant", content: [{ type: "text", text: "Building the castle now." }], at: "2026-01-01T00:02:00Z" },
+      { role: "user", content: "make it bigger", at: "2026-01-01T00:03:00Z" },
+    ]);
+    captureSnapshot(cwd, "sess", 0, { label: "make a castle", transcriptPath });
+    const tool = createSnapshotContextTool(cwd);
+
+    const result = await tool.execute({ snapshotId: "sess_0" } as never, toolCtx());
+
+    expect(result.output).toContain("[user] make a castle");
+    expect(result.output).toContain("[assistant] Building the castle now.");
+    expect(result.output).toContain("[user] make it bigger");
+    expect(result.metadata?.error).toBeUndefined();
+  });
+
+  test("prefers the occurrence closest before the snapshot when the same prompt repeats", async () => {
+    const cwd = projectDir();
+    const transcriptPath = join(cwd, "session.jsonl");
+    writeTranscript(transcriptPath, [
+      { role: "user", content: "fix it", at: "2026-01-01T00:01:00Z" },
+      { role: "assistant", content: "first attempt", at: "2026-01-01T00:02:00Z" },
+      { role: "user", content: "fix it", at: "2026-01-01T00:05:00Z" },
+    ]);
+    captureSnapshot(cwd, "sess", 0, { label: "fix it", transcriptPath });
+    // Pin the capture time between the two occurrences.
+    const sidecar = join(snapshotsDir(cwd), "sess_0.json");
+    const meta = JSON.parse(readFileSync(sidecar, "utf-8"));
+    meta.createdAt = "2026-01-01T00:03:00Z";
+    writeFileSync(sidecar, JSON.stringify(meta));
+    const tool = createSnapshotContextTool(cwd);
+
+    const result = await tool.execute({ snapshotId: "sess_0" } as never, toolCtx());
+
+    expect(result.output).toContain("first attempt"); // matched the 00:01 occurrence, not 00:05
+  });
+
+  test("reports when the snapshot has no transcript reference", async () => {
+    const cwd = projectDir();
+    captureSnapshot(cwd, "sess", 0, { label: "x" });
+    const tool = createSnapshotContextTool(cwd);
+    const result = await tool.execute({ snapshotId: "sess_0" } as never, toolCtx());
+    expect(result.output).toContain("no transcript reference");
+    expect(result.metadata?.error).toBeUndefined();
+  });
+
+  test("reports when the transcript file cannot be read", async () => {
+    const cwd = projectDir();
+    captureSnapshot(cwd, "sess", 0, { label: "x", transcriptPath: join(cwd, "gone.jsonl") });
+    const tool = createSnapshotContextTool(cwd);
+    const result = await tool.execute({ snapshotId: "sess_0" } as never, toolCtx());
+    expect(result.output).toContain("could not be read");
+  });
+
+  test("reports when the request is not found in the transcript", async () => {
+    const cwd = projectDir();
+    const transcriptPath = join(cwd, "session.jsonl");
+    writeTranscript(transcriptPath, [{ role: "user", content: "something else", at: "2026-01-01T00:01:00Z" }]);
+    captureSnapshot(cwd, "sess", 0, { label: "make a castle", transcriptPath });
+    const tool = createSnapshotContextTool(cwd);
+    const result = await tool.execute({ snapshotId: "sess_0" } as never, toolCtx());
+    expect(result.output).toContain("not found in the transcript");
+  });
+
+  test("errors on an unknown snapshotId", async () => {
+    const cwd = projectDir();
+    const tool = createSnapshotContextTool(cwd);
+    const result = await tool.execute({ snapshotId: "nope_9" } as never, toolCtx());
+    expect(result.metadata?.error).toBe(true);
+  });
+
+  test("is registered as a tool on the provider", async () => {
+    const provider = createStudioRpcToolProvider({ callRpc: async () => ({}) });
+    const tools = await provider.createTools({ cwd: "/tmp/project", host: { approve: async () => "once" } });
+    expect(tools.map((tool) => tool.name)).toContain("studiorpc_snapshot_context");
+  });
+});
+```
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `bun test test/tools/studiorpc-rollback.test.ts`
+Expected: FAIL — module does not exist.
+
+- [ ] **Step 3: Create `snapshot-context-tool.ts`**
+
+```typescript
+// @summary Shows the conversation context around the request that produced a snapshot.
+
+import { readFileSync } from "node:fs";
+import { z } from "zod";
+import type { Tool, ToolResult } from "../types";
+import { findSnapshotById, type SnapshotEntry, truncateLabel } from "./snapshot";
+
+const params = z.object({
+  snapshotId: z.string().describe("Snapshot id from studiorpc_snapshot_list."),
+});
+
+const description =
+  "Show the conversation context around the user request that produced a rollback snapshot. Reads the " +
+  "session transcript recorded with the snapshot and returns the matched request plus the entries that " +
+  "followed it. Useful when rolling back across sessions, where the current conversation does not contain " +
+  "the original request.";
+
+const FOLLOWING_ENTRIES = 4;
+const ENTRY_CHAR_CAP = 500;
+
+interface TranscriptMessage {
+  role: string;
+  text: string;
+  timestamp: string;
+}
+
+/** Extract plain text from a session message's string-or-blocks content. */
+function messageText(content: unknown): string | undefined {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return undefined;
+  const texts: string[] = [];
+  for (const block of content) {
+    if (block && typeof block === "object" && (block as { type?: unknown }).type === "text") {
+      const text = (block as { text?: unknown }).text;
+      if (typeof text === "string") texts.push(text);
+    }
+  }
+  return texts.length > 0 ? texts.join("\n") : undefined;
+}
+
+/** Parse "message" entries out of a session JSONL transcript, tolerating bad lines. */
+function readTranscriptMessages(transcriptPath: string): TranscriptMessage[] {
+  const messages: TranscriptMessage[] = [];
+  for (const line of readFileSync(transcriptPath, "utf-8").split("\n")) {
+    if (!line.trim()) continue;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (!parsed || typeof parsed !== "object") continue;
+    const entry = parsed as {
+      type?: unknown;
+      timestamp?: unknown;
+      message?: { role?: unknown; content?: unknown };
+    };
+    if (entry.type !== "message" || !entry.message || typeof entry.message.role !== "string") continue;
+    const text = messageText(entry.message.content);
+    if (text === undefined) continue;
+    messages.push({
+      role: entry.message.role,
+      text,
+      timestamp: typeof entry.timestamp === "string" ? entry.timestamp : "",
+    });
+  }
+  return messages;
+}
+
+function clip(text: string): string {
+  return text.length > ENTRY_CHAR_CAP ? `${text.slice(0, ENTRY_CHAR_CAP)}…` : text;
+}
+
+function infoResult(output: string): ToolResult {
+  return { output, metadata: { method: "snapshot.context" } };
+}
+
+export function createSnapshotContextTool(cwd: string): Tool {
+  return {
+    name: "studiorpc_snapshot_context",
+    description,
+    parameters: params,
+    async execute(rawArgs): Promise<ToolResult> {
+      const { snapshotId } = params.parse(rawArgs ?? {});
+      let snapshot: SnapshotEntry;
+      try {
+        snapshot = findSnapshotById(cwd, snapshotId);
+      } catch (error) {
+        return { output: (error as Error).message, metadata: { error: true, method: "snapshot.context" } };
+      }
+      const label = snapshot.label;
+      if (!snapshot.transcriptPath) {
+        return infoResult(
+          `Snapshot ${snapshotId} has no transcript reference (captured before transcript recording, or as a pre-rollback safety snapshot).`,
+        );
+      }
+      if (!label) {
+        return infoResult(`Snapshot ${snapshotId} has no label to locate in the transcript.`);
+      }
+      let messages: TranscriptMessage[];
+      try {
+        messages = readTranscriptMessages(snapshot.transcriptPath);
+      } catch {
+        return infoResult(
+          `The transcript recorded for snapshot ${snapshotId} could not be read (${snapshot.transcriptPath}).`,
+        );
+      }
+      // The label is the opening of the user prompt that started the turn.
+      // The same prompt can repeat, so prefer the occurrence closest before
+      // the snapshot's capture time.
+      const matches = messages
+        .map((message, index) => ({ message, index }))
+        .filter(({ message }) => message.role === "user" && message.text.startsWith(label));
+      if (matches.length === 0) {
+        return infoResult(
+          `The request for snapshot ${snapshotId} was not found in the transcript (it may have been compacted away).`,
+        );
+      }
+      const before = matches.filter(({ message }) => message.timestamp && message.timestamp <= snapshot.createdAt);
+      const eligible = before.length > 0 ? before : matches;
+      const match = eligible[eligible.length - 1];
+      const window = messages.slice(match.index, match.index + 1 + FOLLOWING_ENTRIES);
+      const rendered = window.map((m) => `[${m.role}] ${clip(m.text)}`).join("\n");
+      return {
+        output:
+          `Context for snapshot ${snapshot.id} ("${truncateLabel(label)}"), captured at ${snapshot.createdAt}:\n\n` +
+          rendered,
+        metadata: { method: "snapshot.context", snapshotId: snapshot.id },
+      };
+    },
+  };
+}
+```
+
+- [ ] **Step 4: Register in `index.ts`**
+
+Import (alphabetical with siblings):
+
+```typescript
+import { createSnapshotContextTool } from "./tools/snapshot-context-tool";
+```
+
+In the `tools` array, right after the snapshot list tool line:
+
+```typescript
+    wrapTool(createSnapshotListTool(ctx.cwd), ctx.host),
+    wrapTool(createSnapshotContextTool(ctx.cwd), ctx.host),
+```
+
+- [ ] **Step 5: Run tests to verify they pass**
+
+Run: `bun test test/tools/studiorpc-rollback.test.ts`
+Expected: PASS.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/tools/studiorpc/tools/snapshot-context-tool.ts src/tools/studiorpc/index.ts test/tools/studiorpc-rollback.test.ts
+git commit -m "feat(studiorpc): add snapshot context tool for cross-session rollback"
+```
+
+---
+
 ## Self-Review Notes
 
 - **Spec coverage:** improvements 1, 2, 3, 4, 5, 7 and the breakpoint feature each map to tasks (see coverage table); improvement 6 is explicitly descoped with rationale and a follow-up path.

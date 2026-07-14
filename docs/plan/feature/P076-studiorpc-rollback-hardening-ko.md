@@ -1083,6 +1083,140 @@ git commit -m "docs(studiorpc): document point-in-time rollback and snapshot lis
 
 ---
 
+## 후속: 크로스 세션 컨텍스트 (Task 8-9, 브랜치 리뷰 후 추가)
+
+세션을 넘어간 롤백(새 대화에서 옛 세션의 스냅샷 복원)에서는 모델에게 120자 라벨만 남는다. 이 태스크들은 각 스냅샷의 대화가 어디 있는지 기록하고 읽기 시점 내용 검색을 추가한다 — 깨지기 쉬운 줄 번호 포인터 없이(라벨 텍스트를 내용으로 매칭하며, 이 런타임에서는 사용자 메시지가 컴팩션에서 원문 보존됨).
+
+트랜스크립트 형식 (`packages/runtime/src/session/persistence.ts` / `session/types.ts`): 첫 줄이 `{ type: "session", ... }` 헤더인 JSONL 파일이고, 메시지 엔트리는 `{ type: "message", id, parentId, timestamp, message: { role, content } }` — `content`는 문자열 또는 블록 배열(텍스트 블록은 `{ type: "text", text }`).
+
+### Task 8: 스냅샷 메타데이터에 transcriptPath 기록
+
+**파일:**
+- 수정: `src/tools/studiorpc/tools/snapshot.ts`
+- 수정: `src/tools/studiorpc/index.ts`
+- 테스트: `test/tools/studiorpc-rollback.test.ts`
+
+**인터페이스:**
+- 소비: `UserPromptSubmit` 훅 입력의 `input.transcript_path` (string) (`packages/runtime/src/app-server/turn-handlers.ts:166` 참고).
+- 생산: `SnapshotMeta`와 `CaptureOptions`에 `transcriptPath?: string` 추가; `TurnSnapshotState`에 `transcriptPath?: string` 추가; `listSnapshots` 엔트리로 관통. Task 9가 `SnapshotEntry.transcriptPath`에 의존.
+
+- [ ] **Step 1: 실패하는 테스트 작성**
+
+`describe("captureSnapshot", ...)` 안에:
+
+```typescript
+  test("records transcriptPath in the metadata sidecar when given", () => {
+    const cwd = projectDir();
+    captureSnapshot(cwd, "sess1", 0, { transcriptPath: "/tmp/sessions/abc.jsonl" });
+    const meta = JSON.parse(readFileSync(join(snapshotsDir(cwd), "sess1_0.json"), "utf-8"));
+    expect(meta.transcriptPath).toBe("/tmp/sessions/abc.jsonl");
+  });
+```
+
+`describe("snapshot capture on first edit", ...)` 안에 (`hookInput` 헬퍼는 이미 `transcript_path: "/tmp/s.jsonl"`을 전달함):
+
+```typescript
+  test("stores the turn's transcript path in the snapshot metadata", async () => {
+    const cwd = projectDir();
+    const { tools } = await setup(cwd, "sess");
+    const importTool = tools.find((t) => t.name === "studiorpc_asset_drawer_import")!;
+
+    await importTool.execute(importArgs as never, toolCtx());
+
+    const meta = JSON.parse(readFileSync(join(snapshotsDir(cwd), "sess_0.json"), "utf-8"));
+    expect(meta.transcriptPath).toBe("/tmp/s.jsonl");
+  });
+```
+
+- [ ] **Step 2: 테스트 실패 확인** — `bun test test/tools/studiorpc-rollback.test.ts`, 기대: FAIL (두 메타 모두 `transcriptPath` undefined).
+
+- [ ] **Step 3: 구현**
+
+`snapshot.ts` 두 인터페이스에 필드 추가:
+
+```typescript
+export interface SnapshotMeta {
+  id: string;
+  sessionId: string;
+  index: number;
+  createdAt: string;
+  label?: string;
+  kind: SnapshotKind;
+  /** Session transcript the labeled request came from; enables read-time context lookup. */
+  transcriptPath?: string;
+}
+
+export interface CaptureOptions {
+  label?: string;
+  kind?: SnapshotKind;
+  transcriptPath?: string;
+}
+```
+
+`captureSnapshot`의 메타 리터럴 확장:
+
+```typescript
+    ...(options.label !== undefined ? { label: options.label } : {}),
+    ...(options.transcriptPath !== undefined ? { transcriptPath: options.transcriptPath } : {}),
+```
+
+`listSnapshots`에서 라벨 스프레드 옆에 관통:
+
+```typescript
+      ...(meta?.label !== undefined ? { label: meta.label } : {}),
+      ...(meta?.transcriptPath !== undefined ? { transcriptPath: meta.transcriptPath } : {}),
+```
+
+`index.ts`: `TurnSnapshotState`에 `/** Session transcript path for the current turn; recorded into snapshot metadata. */ transcriptPath?: string;` 추가, `beginTurn`에서 `turnState.transcriptPath = typeof input.transcript_path === "string" ? input.transcript_path : undefined;`, `ensureSnapshot`에서 전달: `captureSnapshot(ctx.cwd, ts.sessionId, index, { label: ts.promptLabel, kind: "turn", transcriptPath: ts.transcriptPath });`
+
+(`studiorpc_snapshot_list` 출력에는 자동으로 포함됨 — 거기서 제거하는 건 `path`뿐이며 의도된 동작.)
+
+- [ ] **Step 4: 테스트 통과 확인** — PASS 기대.
+
+- [ ] **Step 5: 커밋**
+
+```bash
+git add src/tools/studiorpc/tools/snapshot.ts src/tools/studiorpc/index.ts test/tools/studiorpc-rollback.test.ts
+git commit -m "feat(studiorpc): record transcript path in snapshot metadata"
+```
+
+---
+
+### Task 9: `studiorpc_snapshot_context` 툴
+
+**파일:**
+- 생성: `src/tools/studiorpc/tools/snapshot-context-tool.ts`
+- 수정: `src/tools/studiorpc/index.ts` (스냅샷 리스트 툴 다음에 등록)
+- 테스트: `test/tools/studiorpc-rollback.test.ts`
+
+**인터페이스:**
+- 소비: `findSnapshotById`, `SnapshotEntry.transcriptPath` (Task 8), `truncateLabel`.
+- 생산: 읽기 전용 툴 `studiorpc_snapshot_context({ snapshotId })` — 매칭된 사용자 요청 + 뒤따르는 최대 4개 엔트리(각 500자 클립) 반환; 트랜스크립트 참조/라벨 없음, 파일 읽기 실패, 매칭 실패 시에는 평이한 안내 메시지. 팩토리: `createSnapshotContextTool(cwd: string): Tool`.
+
+- [ ] **Step 1: 실패하는 테스트 작성** — 영어 원본 Task 9 Step 1의 테스트 코드를 그대로 사용 (동일 코드이므로 원본 참조; `createSnapshotContextTool` import 추가).
+
+- [ ] **Step 2: 테스트 실패 확인** — 모듈 부재로 FAIL 기대.
+
+- [ ] **Step 3: `snapshot-context-tool.ts` 생성** — 영어 원본 Task 9 Step 3의 코드를 그대로 사용. 핵심 동작: JSONL을 관대하게 파싱(깨진 줄 무시), 라벨로 시작하는 user 메시지를 찾되 동일 프롬프트 반복 시 스냅샷 `createdAt` 직전의 발생을 우선, 매칭 엔트리 + 이후 4개를 각 500자로 잘라 반환.
+
+- [ ] **Step 4: `index.ts` 등록**
+
+```typescript
+    wrapTool(createSnapshotListTool(ctx.cwd), ctx.host),
+    wrapTool(createSnapshotContextTool(ctx.cwd), ctx.host),
+```
+
+- [ ] **Step 5: 테스트 통과 확인** — PASS 기대.
+
+- [ ] **Step 6: 커밋**
+
+```bash
+git add src/tools/studiorpc/tools/snapshot-context-tool.ts src/tools/studiorpc/index.ts test/tools/studiorpc-rollback.test.ts
+git commit -m "feat(studiorpc): add snapshot context tool for cross-session rollback"
+```
+
+---
+
 ## 셀프 리뷰 노트
 
 - **스펙 커버리지:** 개선점 1, 2, 3, 4, 5, 7과 브레이크포인트 기능이 각각 태스크에 매핑됨 (커버리지 표 참고); 개선점 6은 사유와 후속 경로를 명시하고 범위에서 제외.
