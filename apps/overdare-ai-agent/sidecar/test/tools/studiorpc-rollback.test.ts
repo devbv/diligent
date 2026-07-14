@@ -12,6 +12,7 @@ import {
   findSnapshotById,
   listSnapshots,
   nextRequestIndex,
+  pruneSnapshots,
   restoreSnapshot,
   snapshotsDir,
 } from "../../src/tools/studiorpc/tools/snapshot";
@@ -167,6 +168,33 @@ describe("restoreSnapshot", () => {
     writeFileSync(snap, '{"Root":{"restored":true}}');
     restoreSnapshot(cwd, snap);
     expect(readFileSync(join(cwd, "world.ovdrjm"), "utf-8")).toBe('{"Root":{"restored":true}}');
+  });
+});
+
+describe("pruneSnapshots", () => {
+  test("keeps only the newest N snapshots for the session, removing files and sidecars", () => {
+    const cwd = projectDir();
+    captureSnapshot(cwd, "sess", 0);
+    captureSnapshot(cwd, "sess", 1);
+    captureSnapshot(cwd, "sess", 2);
+    captureSnapshot(cwd, "other", 0); // different session untouched
+
+    pruneSnapshots(cwd, "sess", 2);
+
+    const dir = snapshotsDir(cwd);
+    expect(existsSync(join(dir, "sess_0.ovdrjm"))).toBe(false);
+    expect(existsSync(join(dir, "sess_0.json"))).toBe(false);
+    expect(existsSync(join(dir, "sess_1.ovdrjm"))).toBe(true);
+    expect(existsSync(join(dir, "sess_2.ovdrjm"))).toBe(true);
+    expect(existsSync(join(dir, "other_0.ovdrjm"))).toBe(true);
+  });
+
+  test("is a no-op when under the cap or when the dir does not exist", () => {
+    const cwd = projectDir();
+    expect(() => pruneSnapshots(cwd, "sess", 2)).not.toThrow(); // no dir yet
+    captureSnapshot(cwd, "sess", 0);
+    pruneSnapshots(cwd, "sess", 2);
+    expect(existsSync(join(snapshotsDir(cwd), "sess_0.ovdrjm"))).toBe(true);
   });
 });
 

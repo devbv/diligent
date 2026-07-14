@@ -1,6 +1,6 @@
 // @summary Rollback snapshot helpers: capture/restore .ovdrjm level snapshots with metadata.
 
-import { copyFileSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { resolvePaths } from "@diligent/runtime";
 import { resolveOvdrjmPathFromUmap } from "./ovdrjm-utils";
@@ -184,4 +184,23 @@ export function findSnapshotById(cwd: string, id: string): SnapshotEntry {
 export function restoreSnapshot(cwd: string, snapshotPath: string): void {
   const { ovdrjmPath } = resolveOvdrjmPathFromUmap(cwd);
   copyFileSync(snapshotPath, ovdrjmPath);
+}
+
+// ponytail: fixed cap; make configurable only if a real project needs it.
+export const MAX_SNAPSHOTS_PER_SESSION = 20;
+
+/**
+ * Delete the oldest snapshots (and their metadata sidecars) beyond `keep` for
+ * one session. Ordered by index — within a session the index is monotonic, so
+ * it is a more reliable age signal than mtime.
+ */
+export function pruneSnapshots(cwd: string, sessionId: string, keep = MAX_SNAPSHOTS_PER_SESSION): void {
+  const dir = snapshotsDir(cwd);
+  const sessionEntries = listSnapshots(cwd)
+    .filter((entry) => entry.sessionId === sessionId)
+    .sort((a, b) => b.index - a.index);
+  for (const entry of sessionEntries.slice(keep)) {
+    rmSync(entry.path, { force: true });
+    rmSync(join(dir, `${entry.id}.json`), { force: true });
+  }
 }
