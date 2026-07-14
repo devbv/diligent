@@ -5,6 +5,7 @@ import { DEFAULT_ANTHROPIC_MODEL_ID } from "../../../src/llm/models";
 import type { Model, StreamContext, StreamOptions, ToolDefinition } from "../../../src/llm/types";
 
 const anthropicCalls: unknown[] = [];
+const anthropicConstructorOptions: unknown[] = [];
 
 class MockAnthropicStream {
   on() {
@@ -26,6 +27,10 @@ class MockAnthropicStream {
 
 class MockAnthropicClient {
   static APIError = APIError;
+
+  constructor(options: unknown) {
+    anthropicConstructorOptions.push(options);
+  }
 
   messages = {
     stream: (params: unknown) => {
@@ -61,6 +66,7 @@ function baseModel(overrides: Partial<Model>): Model {
 
 async function collectRequest(model: Model, options: StreamOptions = { effort: "medium" }) {
   anthropicCalls.length = 0;
+  anthropicConstructorOptions.length = 0;
   const stream = createAnthropicStream("test-key")(model, EMPTY_CONTEXT, options);
   await stream.result();
   expect(anthropicCalls).toHaveLength(1);
@@ -68,6 +74,37 @@ async function collectRequest(model: Model, options: StreamOptions = { effort: "
 }
 
 describe("createAnthropicStream", () => {
+  test("constructs the SDK client with explicit timeout and no retries", async () => {
+    await collectRequest(baseModel({}));
+
+    expect(anthropicConstructorOptions).toHaveLength(1);
+    expect(anthropicConstructorOptions[0]).toEqual({
+      apiKey: "test-key",
+      baseURL: "https://api.anthropic.com",
+      timeout: 300_000,
+      maxRetries: 0,
+    });
+  });
+
+  test("passes through a custom base URL while keeping timeout and retries explicit", async () => {
+    anthropicCalls.length = 0;
+    anthropicConstructorOptions.length = 0;
+
+    const stream = createAnthropicStream("test-key", "https://example.anthropic.local/")(baseModel({}), EMPTY_CONTEXT, {
+      effort: "medium",
+    });
+
+    await stream.result();
+
+    expect(anthropicConstructorOptions).toHaveLength(1);
+    expect(anthropicConstructorOptions[0]).toEqual({
+      apiKey: "test-key",
+      baseURL: "https://example.anthropic.local",
+      timeout: 300_000,
+      maxRetries: 0,
+    });
+  });
+
   test("uses adaptive thinking without budget_tokens and sends output_config effort", async () => {
     const request = await collectRequest(
       baseModel({

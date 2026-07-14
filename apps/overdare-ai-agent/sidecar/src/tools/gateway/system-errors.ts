@@ -60,6 +60,11 @@ export function installConsoleSystemErrorForwarder(options: ConsoleSystemErrorFo
   }
 }
 
+export function resetConsoleSystemErrorForwarderForTests(): void {
+  installed = false;
+  originalConsole = {};
+}
+
 export function enqueueSystemErrorFromConsole(
   args: unknown[],
   options: ConsoleSystemErrorForwarderOptions,
@@ -101,7 +106,7 @@ function buildSystemLogEvent(
   severity: string,
 ): SystemLogEvent {
   const firstError = args.find((arg): arg is Error => arg instanceof Error);
-  const message = formatConsoleArgs(args).slice(0, 4096);
+  const message = stripRemoteLlmRetryTimestamp(formatConsoleArgs(args)).slice(0, 4096);
   const stack = firstError?.stack?.slice(0, 65536);
   const errorType = firstError?.name?.slice(0, 256);
 
@@ -134,6 +139,15 @@ function formatConsoleArgs(args: unknown[]): string {
       }
     })
     .join(" ")
+    .trim();
+}
+
+function stripRemoteLlmRetryTimestamp(message: string): string {
+  if (!message.startsWith("[llm:retry]")) return message;
+
+  return message
+    .replace(/\stimestamp=\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z(?=\s|$)/, "")
+    .replace(/\s{2,}/g, " ")
     .trim();
 }
 

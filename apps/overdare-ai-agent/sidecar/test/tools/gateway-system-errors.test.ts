@@ -5,6 +5,7 @@ import {
   enqueueSystemErrorFromConsole,
   installConsoleSystemErrorForwarder,
   postSystemErrorFromConsole,
+  resetConsoleSystemErrorForwarderForTests,
 } from "../../src/tools/gateway/system-errors";
 
 const realFetch = globalThis.fetch;
@@ -45,6 +46,7 @@ beforeEach(() => {
 
 afterEach(() => {
   globalThis.fetch = realFetch;
+  resetConsoleSystemErrorForwarderForTests();
   console.debug = realConsole.debug;
   console.error = realConsole.error;
   console.info = realConsole.info;
@@ -109,6 +111,18 @@ describe("postSystemErrorFromConsole", () => {
 
     expect(calls[0].body).not.toHaveProperty("user_id");
   });
+
+  test("strips llm retry timestamps from the forwarded remote message only", async () => {
+    const calls = installFetchSpy();
+    const retryLog = "[llm:retry] timestamp=2026-07-14T05:00:00.123Z sessionId=sess-123 provider=openai attempt=2";
+
+    await postSystemErrorFromConsole([retryLog], { source: "overdare-ai-agent" });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].body.message).toBe("[llm:retry] sessionId=sess-123 provider=openai attempt=2");
+    expect(calls[0].body.event_ts).toEqual(expect.any(String));
+    expect(calls[0].body.event_ts).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
 });
 
 describe("enqueueSystemErrorFromConsole", () => {
@@ -157,5 +171,25 @@ describe("installConsoleSystemErrorForwarder", () => {
 
     expect(calls.map((call) => call.body.severity)).toEqual(["info", "info", "warning", "error"]);
     expect(calls.map((call) => call.body.message)).toEqual(["ready", "started", "careful", "boom"]);
+  });
+
+  test("preserves llm retry timestamps locally while omitting them from remote forwarding", async () => {
+    const calls = installFetchSpy();
+    const printed: Array<[string, unknown[]]> = [];
+    console.info = (...args: unknown[]) => printed.push(["info", args]);
+
+    installConsoleSystemErrorForwarder({ source: "overdare-ai-agent" });
+
+    const retryLog = "[llm:retry] timestamp=2026-07-14T05:00:00.123Z sessionId=sess-123 provider=openai attempt=2";
+    console.info(retryLog);
+
+    expect(printed).toEqual([["info", [retryLog]]]);
+    expect(calls).toHaveLength(0);
+
+    await new Promise((resolve) => setTimeout(resolve, 1));
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].body.event_ts).toEqual(expect.any(String));
+    expect(calls[0].body.message).toBe("[llm:retry] sessionId=sess-123 provider=openai attempt=2");
   });
 });

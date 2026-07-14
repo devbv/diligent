@@ -28,7 +28,12 @@ export function createAnthropicStream(apiKey?: string, baseUrl?: string): Stream
   const resolvedApiKey = resolveAnthropicApiKey(apiKey);
   const resolvedSdkBaseUrl = resolveAnthropicSdkBaseUrl(baseUrl);
   const debugEndpoint = `${resolvedSdkBaseUrl.replace(/\/+$/, "")}/v1/messages`;
-  const client = new Anthropic({ apiKey: resolvedApiKey, baseURL: resolvedSdkBaseUrl });
+  const client = new Anthropic({
+    apiKey: resolvedApiKey,
+    baseURL: resolvedSdkBaseUrl,
+    timeout: 300_000,
+    maxRetries: 0,
+  });
 
   return (model: Model, context: StreamContext, options: StreamOptions): EventStream<ProviderEvent, ProviderResult> => {
     const stream = new EventStream<ProviderEvent, ProviderResult>(

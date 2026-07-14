@@ -1,5 +1,5 @@
 // @summary Tests for provider stream retry wrapper behavior
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, mock, test } from "bun:test";
 import { EventStream } from "../../../src/event-stream";
 import { withRetry } from "../../../src/llm/retry";
 import type {
@@ -75,9 +75,29 @@ const testOptions: StreamOptions = {
 
 afterEach(() => {
   console.warn = originalConsoleWarn;
+  console.info = originalConsoleInfo;
+  console.error = originalConsoleError;
+  mock.restore();
 });
 
 const originalConsoleWarn = console.warn;
+const originalConsoleInfo = console.info;
+const originalConsoleError = console.error;
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function expectRetryLogContext(line: string, sessionId: string): void {
+  const pattern = new RegExp(
+    `^\\[llm:retry\\] timestamp=\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z sessionId=${escapeRegex(sessionId)} `,
+  );
+  expect(line).toMatch(pattern);
+}
+
+function expectRequestStartedAt(line: string): void {
+  expect(line).toMatch(/ requestStartedAt=\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z /);
+}
 
 describe("withRetry", () => {
   test("succeeds on first attempt without retrying", async () => {
@@ -141,6 +161,62 @@ describe("withRetry", () => {
     await stream.result().catch(() => {});
 
     expect(logs).toContain("[llm:provider-error] status=503 message=server unavailable");
+  });
+
+  test("includes timestamp and sessionId in retry logs when sessionId is present", async () => {
+    const failures = [new ProviderError("server unavailable", "server_error", true, undefined, 503)];
+    const { streamFn } = createFailingStreamFn(failures);
+    const logs: string[] = [];
+    console.warn = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+    console.info = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+
+    const retried = withRetry(streamFn, { maxAttempts: 2, baseDelayMs: 1, maxDelayMs: 10 });
+
+    const stream = retried(testModel, testContext, { ...testOptions, sessionId: "session-123" });
+    for await (const _event of stream) {
+      /* consume */
+    }
+    await stream.result().catch(() => {});
+
+    const retryLogs = logs.filter((line) => line.startsWith("[llm:retry]"));
+    expect(retryLogs.length).toBeGreaterThan(0);
+    expectRetryLogContext(retryLogs[0], "session-123");
+    const streamErrorLog = retryLogs.find((line) => line.includes("stream error attempt=1/2"));
+    expect(streamErrorLog).toBeDefined();
+    expectRequestStartedAt(streamErrorLog ?? "");
+    expect(retryLogs.some((line) => line.includes("retrying nextAttempt=2/2 delayMs=1 type=server_error"))).toBe(true);
+    expect(retryLogs.some((line) => line.includes("recovered on attempt=2/2"))).toBe(true);
+  });
+
+  test("includes timestamp and n/a sessionId in retry logs when sessionId is missing", async () => {
+    const streamFn: StreamFunction = () => {
+      throw new ProviderError("fatal", "unknown", false, undefined, 500);
+    };
+    const logs: string[] = [];
+    console.warn = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+    console.error = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+
+    const retried = withRetry(streamFn, { maxAttempts: 1, baseDelayMs: 1, maxDelayMs: 10 });
+
+    const stream = retried(testModel, testContext, testOptions);
+    for await (const _event of stream) {
+      /* consume */
+    }
+    await stream.result().catch(() => {});
+
+    const retryLogs = logs.filter((line) => line.startsWith("[llm:retry]"));
+    expect(retryLogs.length).toBeGreaterThan(0);
+    expectRetryLogContext(retryLogs[0], "n/a");
+    expect(retryLogs.some((line) => line.includes("stream exception attempt=1/1"))).toBe(true);
+    expect(retryLogs.some((line) => line.includes("giving up attempt=1/1 reason=not_retryable"))).toBe(true);
   });
 
   test("stops on non-retryable error", async () => {

@@ -22,7 +22,12 @@ import { handleResponsesAPIEvents } from "./openai-sse";
 
 export function createOpenAIStream(apiKey?: string, baseUrl?: string, imageDetail?: OpenAIImageDetail): StreamFunction {
   const resolvedApiKey = resolveOpenAIApiKey(apiKey);
-  const client = new OpenAI({ apiKey: resolvedApiKey, baseURL: baseUrl });
+  const client = new OpenAI({
+    apiKey: resolvedApiKey,
+    baseURL: baseUrl,
+    timeout: 300_000,
+    maxRetries: 0,
+  });
 
   return (model: Model, context: StreamContext, options: StreamOptions): EventStream<ProviderEvent, ProviderResult> => {
     const stream = new EventStream<ProviderEvent, ProviderResult>(
