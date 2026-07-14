@@ -214,13 +214,20 @@ describe("snapshot capture on first edit", () => {
   // so it exercises the "first edit" capture path without touching the ovdrjm.
   const importArgs = { assetid: "ovdrassetid://1", assetName: "Tree", assetType: "MODEL" };
 
-  async function setup(cwd: string, sessionId: string) {
-    const provider = createStudioRpcToolProvider({ callRpc: async () => ({}) });
+  async function setup(
+    cwd: string,
+    sessionId: string,
+    options: {
+      callRpc?: (method: string, params?: Record<string, unknown>) => Promise<unknown>;
+      approve?: () => Promise<"once" | "always" | "reject">;
+    } = {},
+  ) {
+    const provider = createStudioRpcToolProvider({ callRpc: options.callRpc ?? (async () => ({})) });
     const p = provider as typeof provider & {
       onUserPromptSubmit: NonNullable<typeof provider.onUserPromptSubmit>;
     };
     await p.onUserPromptSubmit(hookInput(cwd, sessionId)); // begins the turn
-    const tools = await provider.createTools({ cwd, host: { approve: async () => "once" } });
+    const tools = await provider.createTools({ cwd, host: { approve: options.approve ?? (async () => "once") } });
     return { provider: p, tools };
   }
 
@@ -298,6 +305,40 @@ describe("snapshot capture on first edit", () => {
     // Reported once per turn, not on every subsequent edit.
     const second = await importTool.execute(importArgs as never, toolCtx());
     expect(second.output).not.toContain("[warning]");
+  });
+
+  test("delivers the capture warning on a rejected edit tool, not just a successful one", async () => {
+    // Same broken cwd as above: capture fails while the RPC tool would succeed.
+    const cwd = mkdtempSync(join(tmpdir(), "proj-"));
+    writeFileSync(join(cwd, "world.umap"), "umap");
+    const { tools } = await setup(cwd, "sess", { approve: async () => "reject" });
+    const importTool = tools.find((t) => t.name === "studiorpc_asset_drawer_import")!;
+
+    const result = await importTool.execute(importArgs as never, toolCtx());
+
+    expect(result.output).toContain("[warning] Rollback baseline could not be captured");
+    expect(result.output).toContain("[Rejected by user]");
+  });
+
+  test("regenerates the capture warning on the next edit when the first edit's execute throws", async () => {
+    // Same broken cwd: capture fails. The mock RPC also throws for the import
+    // method itself, so the warning is generated but the whole call rejects.
+    const cwd = mkdtempSync(join(tmpdir(), "proj-"));
+    writeFileSync(join(cwd, "world.umap"), "umap");
+    let shouldThrow = true;
+    const { tools } = await setup(cwd, "sess", {
+      callRpc: async (method) => {
+        if (method === "asset_drawer.import" && shouldThrow) throw new Error("rpc down");
+        return {};
+      },
+    });
+    const importTool = tools.find((t) => t.name === "studiorpc_asset_drawer_import")!;
+
+    await expect(importTool.execute(importArgs as never, toolCtx())).rejects.toThrow("rpc down");
+
+    shouldThrow = false;
+    const second = await importTool.execute(importArgs as never, toolCtx());
+    expect(second.output).toContain("[warning] Rollback baseline could not be captured");
   });
 
   test("prunes old snapshots after capturing", async () => {
@@ -474,6 +515,24 @@ describe("createRollbackTool", () => {
     expect(result.output).toContain("sess_0");
     expect(result.output).toContain("build a castle");
     expect(result.output).toContain("no longer exist");
+  });
+
+  test("flags a successful rollback as un-undoable when the safety snapshot could not be saved", async () => {
+    const cwd = projectDir();
+    const dir = snapshotsDir(cwd);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "sess_0.ovdrjm"), '{"Root":{"original":true}}');
+    chmodSync(dir, 0o555); // safety snapshot capture fails: dir is read-only
+    try {
+      const tool = createRollbackTool(cwd, async () => ({})); // level.save.file / level.apply all succeed
+
+      const result = await tool.execute({} as never, toolCtx());
+
+      expect(result.metadata?.error).toBeUndefined();
+      expect(result.output).toContain("cannot be undone");
+    } finally {
+      chmodSync(dir, 0o755); // let temp cleanup remove the dir
+    }
   });
 });
 

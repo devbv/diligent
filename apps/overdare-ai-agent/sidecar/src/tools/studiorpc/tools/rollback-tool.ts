@@ -121,7 +121,7 @@ export function createRollbackTool(cwd: string, callRpc: typeof call): Tool {
       const labelNote = shortLabel ? ` ("${shortLabel}")` : "";
       const undoNote = safetyPath
         ? " To undo this rollback, restore the pre-rollback snapshot listed by studiorpc_snapshot_list."
-        : "";
+        : " Note: the discarded state could not be saved; this rollback cannot be undone.";
       return {
         output:
           `Rolled back to snapshot ${target.id}${labelNote}, captured at ${target.createdAt}. ` +

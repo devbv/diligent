@@ -41,6 +41,11 @@ export function snapshotsDir(cwd: string): string {
  * it against the current .ovdrjm reveals what the human edited in between.
  * Lives in the snapshots dir but is excluded from rollback selection.
  */
+// Invariant: this stem must never contain an underscore. listSnapshots relies
+// on parseSnapshotName rejecting underscore-less stems to implicitly exclude
+// the baseline from rollback selection — an underscore would make it parse as
+// a `{sessionId}_{index}` rollback snapshot, becoming a rollback target and
+// prunable by pruneSnapshots.
 const BASELINE_FILENAME = "agent-done-baseline.ovdrjm";
 
 export function baselinePath(cwd: string): string {

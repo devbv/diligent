@@ -156,7 +156,16 @@ export async function createStudioRpcTools(ctx: {
     ...tool,
     execute: async (args, toolCtx) => {
       const warning = ensureSnapshot();
-      const result = await tool.execute(args, toolCtx);
+      let result: Awaited<ReturnType<Tool["execute"]>>;
+      try {
+        result = await tool.execute(args, toolCtx);
+      } catch (error) {
+        // The warning was generated but never delivered (execute threw before
+        // returning). Un-mark it as reported so the next edit tool regenerates
+        // and delivers it, instead of the failure permanently swallowing it.
+        if (warning && ctx.turnState) ctx.turnState.captureError = undefined;
+        throw error;
+      }
       return warning ? { ...result, output: `${warning}\n${result.output}` } : result;
     },
   });
@@ -209,7 +218,7 @@ export async function createStudioRpcTools(ctx: {
 
         if (approval === "reject") {
           return {
-            output: "[Rejected by user]",
+            output: warning ? `${warning}\n[Rejected by user]` : "[Rejected by user]",
             metadata: { error: true, method: rpcMethod },
           };
         }
@@ -217,26 +226,33 @@ export async function createStudioRpcTools(ctx: {
         const isMutating = mutatingMethods.has(method);
         const release = isMutating ? await writeLock.acquire() : undefined;
         try {
-          const normalizedArgs = mod.normalizeArgs
-            ? mod.normalizeArgs(args as Record<string, unknown>)
-            : (args as Record<string, unknown>);
-          let result: unknown = await callRpc(rpcMethod, normalizedArgs, { timeoutMs: mod.timeoutMs });
-          if (mod.postProcess) {
-            result = mod.postProcess(result, args as Record<string, unknown>);
-          }
-          // Persist editor-state changes to file immediately on success.
-          if (savingMethods.has(method)) {
-            await callRpc("level.save.file", {});
-          }
-          const output = typeof result === "string" ? result : JSON.stringify(result, null, 2);
-          const renderBuilder = renderBuilders[toolName];
-          const render = renderBuilder?.({ args: args as Record<string, unknown>, normalizedArgs, output, result });
+          try {
+            const normalizedArgs = mod.normalizeArgs
+              ? mod.normalizeArgs(args as Record<string, unknown>)
+              : (args as Record<string, unknown>);
+            let result: unknown = await callRpc(rpcMethod, normalizedArgs, { timeoutMs: mod.timeoutMs });
+            if (mod.postProcess) {
+              result = mod.postProcess(result, args as Record<string, unknown>);
+            }
+            // Persist editor-state changes to file immediately on success.
+            if (savingMethods.has(method)) {
+              await callRpc("level.save.file", {});
+            }
+            const output = typeof result === "string" ? result : JSON.stringify(result, null, 2);
+            const renderBuilder = renderBuilders[toolName];
+            const render = renderBuilder?.({ args: args as Record<string, unknown>, normalizedArgs, output, result });
 
-          return {
-            output: warning ? `${warning}\n${output}` : output,
-            render,
-            metadata: { method: rpcMethod, result },
-          };
+            return {
+              output: warning ? `${warning}\n${output}` : output,
+              render,
+              metadata: { method: rpcMethod, result },
+            };
+          } catch (error) {
+            // Same rationale as withSnapshot's catch: a warning generated but
+            // lost to a thrown error must be regenerated on the next edit tool.
+            if (warning && ctx.turnState) ctx.turnState.captureError = undefined;
+            throw error;
+          }
         } finally {
           release?.();
         }
