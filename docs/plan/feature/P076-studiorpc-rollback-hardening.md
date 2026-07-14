@@ -792,7 +792,7 @@ git commit -m "feat(studiorpc): add snapshot list tool for point-in-time rollbac
   2. approve — the prompt names the target id and its truncated label, so the user sees what will be restored → reject returns error result.
   3. `level.save.file` (flush — after this the on-disk ovdrjm IS the pre-rollback state).
   4. Capture a `pre-rollback` safety snapshot of the flushed current state (best-effort; labeled "state before rollback"). This is what makes the rollback itself undoable.
-  5. `restoreSnapshot(target)` → `level.apply`. If apply throws: restore the safety copy back over the ovdrjm (disk and editor agree again, so the turn-end save cannot silently clobber a half-applied rollback), return an error result.
+  5. `restoreSnapshot(target)` → `level.apply`. If apply throws: restore the safety copy back over the ovdrjm; without a safety copy, ask the editor to re-save its pre-rollback state instead. Return an error result that claims "the map was left unchanged" only when recovery actually succeeded — otherwise it reports the disk/editor inconsistency honestly. (Recovery branch added during execution after review found the compound-failure case — safety capture failed AND apply failed — produced a false "unchanged" claim; two compound-failure tests cover it.)
   6. `level.save.file` (persist) → success output naming the restored id, label, createdAt, plus a context note that instances/scripts created after that point no longer exist.
 
 - [ ] **Step 1: Update the changed existing test**
@@ -993,13 +993,29 @@ export function createRollbackTool(cwd: string, callRpc: typeof call): Tool {
       try {
         await callRpc("level.apply", {});
       } catch (error) {
-        // The editor was not synced. Put the file back to the pre-rollback
-        // state so disk and editor agree; otherwise the turn-end save would
-        // silently overwrite the restored file with the editor's state.
-        if (safetyPath) restoreSnapshot(cwd, safetyPath);
+        // The editor was not synced; make disk and editor agree again so the
+        // turn-end save cannot silently clobber a half-applied rollback.
+        let recovered = false;
+        if (safetyPath) {
+          restoreSnapshot(cwd, safetyPath);
+          recovered = true;
+        } else {
+          // No safety copy — ask the editor to re-save its (pre-rollback)
+          // state over the half-restored file.
+          try {
+            await callRpc("level.save.file", {});
+            recovered = true;
+          } catch {
+            // editor unreachable; report the inconsistency honestly below
+          }
+        }
         return errorResult(
-          `Rollback failed: level.apply error (${(error as Error).message}). The map was left unchanged; ` +
-            `fix the Studio connection and retry.`,
+          recovered
+            ? `Rollback failed: level.apply error (${(error as Error).message}). The map was left unchanged; ` +
+              `fix the Studio connection and retry.`
+            : `Rollback failed: level.apply error (${(error as Error).message}). The on-disk level file now ` +
+              `holds the target snapshot but the editor was not synced and could not re-save; verify the map ` +
+              `state in Studio before continuing.`,
         );
       }
       await callRpc("level.save.file", {});

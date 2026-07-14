@@ -794,7 +794,7 @@ git commit -m "feat(studiorpc): add snapshot list tool for point-in-time rollbac
   2. 승인 — 프롬프트에 대상 id와 잘린 라벨을 표시해 사용자가 무엇이 복원되는지 알 수 있게 함 → 거절 시 에러 결과 반환.
   3. `level.save.file` (플러시 — 이후 디스크의 ovdrjm이 곧 롤백 직전 상태).
   4. 플러시된 현재 상태를 `pre-rollback` 안전 스냅샷으로 캡처 (best-effort; 라벨 "state before rollback"). 이것이 롤백 자체를 취소 가능하게 만드는 장치.
-  5. `restoreSnapshot(target)` → `level.apply`. apply가 throw하면: 안전 사본을 ovdrjm 위에 되돌려(디스크와 에디터가 다시 일치 → 턴 종료 save가 반쯤 적용된 롤백을 조용히 덮어쓸 수 없음) 에러 결과 반환.
+  5. `restoreSnapshot(target)` → `level.apply`. apply가 throw하면: 안전 사본을 ovdrjm 위에 되돌린다; 안전 사본이 없으면 대신 에디터에 재저장(level.save.file)을 요청해 롤백 직전 상태를 복구한다. 에러 결과는 복구가 실제로 성공했을 때만 "맵은 변경되지 않았다"고 주장하고, 아니면 디스크/에디터 불일치를 정직하게 보고한다. (복구 분기는 실행 중 리뷰에서 복합 실패 — 안전 캡처 실패 + apply 실패 — 시 거짓 "unchanged" 메시지가 발견되어 추가됨; 복합 실패 테스트 2개가 커버.)
   6. `level.save.file` (영속화) → 복원된 id/label/createdAt과 "그 시점 이후 생성된 인스턴스/스크립트는 더 이상 존재하지 않음" 컨텍스트 노트를 담은 성공 출력.
 
 - [ ] **Step 1: 변경되는 기존 테스트 갱신**
@@ -995,13 +995,29 @@ export function createRollbackTool(cwd: string, callRpc: typeof call): Tool {
       try {
         await callRpc("level.apply", {});
       } catch (error) {
-        // The editor was not synced. Put the file back to the pre-rollback
-        // state so disk and editor agree; otherwise the turn-end save would
-        // silently overwrite the restored file with the editor's state.
-        if (safetyPath) restoreSnapshot(cwd, safetyPath);
+        // The editor was not synced; make disk and editor agree again so the
+        // turn-end save cannot silently clobber a half-applied rollback.
+        let recovered = false;
+        if (safetyPath) {
+          restoreSnapshot(cwd, safetyPath);
+          recovered = true;
+        } else {
+          // No safety copy — ask the editor to re-save its (pre-rollback)
+          // state over the half-restored file.
+          try {
+            await callRpc("level.save.file", {});
+            recovered = true;
+          } catch {
+            // editor unreachable; report the inconsistency honestly below
+          }
+        }
         return errorResult(
-          `Rollback failed: level.apply error (${(error as Error).message}). The map was left unchanged; ` +
-            `fix the Studio connection and retry.`,
+          recovered
+            ? `Rollback failed: level.apply error (${(error as Error).message}). The map was left unchanged; ` +
+              `fix the Studio connection and retry.`
+            : `Rollback failed: level.apply error (${(error as Error).message}). The on-disk level file now ` +
+              `holds the target snapshot but the editor was not synced and could not re-save; verify the map ` +
+              `state in Studio before continuing.`,
         );
       }
       await callRpc("level.save.file", {});
