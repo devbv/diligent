@@ -252,8 +252,8 @@ describe("snapshot capture on first edit", () => {
     expect(existsSync(join(snapshotsDir(cwd), "sess_0.ovdrjm"))).toBe(false);
   });
 
-  test("the rollback tool does not create a snapshot of the state being rolled back", async () => {
-    const cwd = projectDir();
+  test("the rollback turn leaves no 'turn' snapshot but saves a pre-rollback safety snapshot", async () => {
+    const cwd = projectDir(); // current ovdrjm = {"Root":{"x":1}}
     const dir = snapshotsDir(cwd);
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "sess_0.ovdrjm"), '{"Root":{"original":true}}'); // prior edit's baseline
@@ -262,8 +262,13 @@ describe("snapshot capture on first edit", () => {
 
     await rollbackTool.execute({} as never, toolCtx());
 
-    // No new snapshot from the rollback turn, and the baseline was restored.
-    expect(existsSync(join(dir, "sess_1.ovdrjm"))).toBe(false);
+    // Baseline restored; the discarded state was preserved as a pre-rollback snapshot.
+    expect(readFileSync(join(cwd, "world.ovdrjm"), "utf-8")).toBe('{"Root":{"original":true}}');
+    const safetyMeta = JSON.parse(readFileSync(join(dir, "sess_1.json"), "utf-8"));
+    expect(safetyMeta.kind).toBe("pre-rollback");
+    expect(readFileSync(join(dir, "sess_1.ovdrjm"), "utf-8")).toBe('{"Root":{"x":1}}');
+    // A second parameterless rollback still targets sess_0 (idempotent).
+    await rollbackTool.execute({} as never, toolCtx());
     expect(readFileSync(join(cwd, "world.ovdrjm"), "utf-8")).toBe('{"Root":{"original":true}}');
   });
 
@@ -354,6 +359,72 @@ describe("createRollbackTool", () => {
       host: { approve: async () => "once" },
     });
     expect(tools.map((tool) => tool.name)).toContain("studiorpc_rollback");
+  });
+
+  test("restores a specific snapshot when snapshotId is given", async () => {
+    const cwd = projectDir();
+    captureSnapshot(cwd, "sess", 0, { label: "first edit" }); // {"Root":{"x":1}}
+    writeFileSync(join(cwd, "world.ovdrjm"), '{"Root":{"x":2}}');
+    captureSnapshot(cwd, "sess", 1, { label: "second edit" }); // {"Root":{"x":2}}
+    writeFileSync(join(cwd, "world.ovdrjm"), '{"Root":{"x":3}}');
+    const tool = createRollbackTool(cwd, async () => ({}));
+
+    const result = await tool.execute({ snapshotId: "sess_0" } as never, toolCtx());
+
+    expect(readFileSync(join(cwd, "world.ovdrjm"), "utf-8")).toBe('{"Root":{"x":1}}');
+    expect(result.metadata?.restored).toBe("sess_0");
+    expect(result.output).toContain("first edit");
+  });
+
+  test("reports an error for an unknown snapshotId without touching the map", async () => {
+    const cwd = projectDir();
+    captureSnapshot(cwd, "sess", 0);
+    const calls: string[] = [];
+    const tool = createRollbackTool(cwd, async (method) => {
+      calls.push(method);
+      return {};
+    });
+
+    const result = await tool.execute({ snapshotId: "missing_1" } as never, toolCtx());
+
+    expect(result.metadata?.error).toBe(true);
+    expect(calls).not.toContain("level.apply");
+    expect(readFileSync(join(cwd, "world.ovdrjm"), "utf-8")).toBe('{"Root":{"x":1}}');
+  });
+
+  test("restores the pre-rollback state when level.apply fails", async () => {
+    const cwd = projectDir(); // current = {"Root":{"x":1}} — the pre-rollback state
+    const dir = snapshotsDir(cwd);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "sess_0.ovdrjm"), '{"Root":{"original":true}}');
+    const calls: string[] = [];
+    const tool = createRollbackTool(cwd, async (method) => {
+      calls.push(method);
+      if (method === "level.apply") throw new Error("editor busy");
+      return {};
+    });
+
+    const result = await tool.execute({} as never, toolCtx());
+
+    expect(result.metadata?.error).toBe(true);
+    expect(result.output).toContain("level.apply");
+    // Disk was put back to the pre-rollback state, so it matches the editor again
+    // and the turn-end save cannot silently clobber a half-applied rollback.
+    expect(readFileSync(join(cwd, "world.ovdrjm"), "utf-8")).toBe('{"Root":{"x":1}}');
+    expect(calls).toEqual(["level.save.file", "level.apply"]); // no final persist save
+  });
+
+  test("success output names the restored point and warns about stale references", async () => {
+    const cwd = projectDir();
+    captureSnapshot(cwd, "sess", 0, { label: "build a castle" });
+    writeFileSync(join(cwd, "world.ovdrjm"), '{"Root":{"x":9}}');
+    const tool = createRollbackTool(cwd, async () => ({}));
+
+    const result = await tool.execute({} as never, toolCtx());
+
+    expect(result.output).toContain("sess_0");
+    expect(result.output).toContain("build a castle");
+    expect(result.output).toContain("no longer exist");
   });
 });
 
