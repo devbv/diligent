@@ -9,6 +9,7 @@ import { createRollbackTool } from "../../src/tools/studiorpc/tools/rollback-too
 import {
   captureSnapshot,
   findLatestSnapshot,
+  listSnapshots,
   nextRequestIndex,
   restoreSnapshot,
   snapshotsDir,
@@ -51,6 +52,61 @@ describe("captureSnapshot", () => {
     const path = captureSnapshot(cwd, "sess1", 2);
     expect(path).toBe(join(snapshotsDir(cwd), "sess1_2.ovdrjm"));
     expect(readFileSync(path, "utf-8")).toBe('{"Root":{"x":1}}');
+  });
+
+  test("writes a metadata sidecar with label and kind", () => {
+    const cwd = projectDir();
+    captureSnapshot(cwd, "sess1", 0, { label: "make the tree bigger", kind: "turn" });
+    const meta = JSON.parse(readFileSync(join(snapshotsDir(cwd), "sess1_0.json"), "utf-8"));
+    expect(meta).toMatchObject({
+      id: "sess1_0",
+      sessionId: "sess1",
+      index: 0,
+      label: "make the tree bigger",
+      kind: "turn",
+    });
+    expect(typeof meta.createdAt).toBe("string");
+  });
+
+  test("defaults kind to 'turn' and omits label when not given", () => {
+    const cwd = projectDir();
+    captureSnapshot(cwd, "sess1", 0);
+    const meta = JSON.parse(readFileSync(join(snapshotsDir(cwd), "sess1_0.json"), "utf-8"));
+    expect(meta.kind).toBe("turn");
+    expect("label" in meta).toBe(false);
+  });
+});
+
+describe("listSnapshots", () => {
+  test("returns entries newest-first with metadata merged in", () => {
+    const cwd = projectDir();
+    captureSnapshot(cwd, "sess", 0, { label: "first edit" });
+    captureSnapshot(cwd, "sess", 1, { label: "second edit", kind: "pre-rollback" });
+    const dir = snapshotsDir(cwd);
+    utimesSync(join(dir, "sess_0.ovdrjm"), new Date(2020, 0, 1), new Date(2020, 0, 1));
+    utimesSync(join(dir, "sess_1.ovdrjm"), new Date(2020, 0, 2), new Date(2020, 0, 2));
+
+    const entries = listSnapshots(cwd);
+    expect(entries.map((e) => e.id)).toEqual(["sess_1", "sess_0"]);
+    expect(entries[0]).toMatchObject({ label: "second edit", kind: "pre-rollback", index: 1 });
+    expect(entries[1]).toMatchObject({ label: "first edit", kind: "turn", sessionId: "sess" });
+  });
+
+  test("legacy snapshots without a metadata file get kind 'turn' and mtime-based createdAt", () => {
+    const cwd = projectDir();
+    const dir = snapshotsDir(cwd);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "old_3.ovdrjm"), "{}"); // pre-metadata snapshot
+    const entries = listSnapshots(cwd);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({ id: "old_3", sessionId: "old", index: 3, kind: "turn" });
+    expect(entries[0].label).toBeUndefined();
+    expect(typeof entries[0].createdAt).toBe("string");
+  });
+
+  test("returns an empty array when the snapshots dir does not exist", () => {
+    const cwd = projectDir();
+    expect(listSnapshots(cwd)).toEqual([]);
   });
 });
 

@@ -1,9 +1,31 @@
-// @summary Rollback snapshot helpers: capture/restore .ovdrjm level snapshots.
+// @summary Rollback snapshot helpers: capture/restore .ovdrjm level snapshots with metadata.
 
-import { copyFileSync, mkdirSync, readdirSync, statSync } from "node:fs";
+import { copyFileSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { resolvePaths } from "@diligent/runtime";
 import { resolveOvdrjmPathFromUmap } from "./ovdrjm-utils";
+
+export type SnapshotKind = "turn" | "pre-rollback";
+
+/** Metadata stored in the `{id}.json` sidecar next to each snapshot. */
+export interface SnapshotMeta {
+  id: string;
+  sessionId: string;
+  index: number;
+  createdAt: string;
+  label?: string;
+  kind: SnapshotKind;
+}
+
+/** A snapshot on disk: sidecar metadata plus the path to the .ovdrjm copy. */
+export interface SnapshotEntry extends SnapshotMeta {
+  path: string;
+}
+
+export interface CaptureOptions {
+  label?: string;
+  kind?: SnapshotKind;
+}
 
 /**
  * Directory holding rollback snapshots, under the project's storage-namespace
@@ -58,17 +80,80 @@ export function nextRequestIndex(snapshotsDir: string, sessionId: string): numbe
 
 /**
  * Copy the project's current .ovdrjm into the snapshots dir as
- * `{sessionId}_{index}.ovdrjm`. Raw byte copy preserves the original
+ * `{sessionId}_{index}.ovdrjm` and write a `{sessionId}_{index}.json` metadata
+ * sidecar (label, kind, createdAt). Raw byte copy preserves the original
  * UTF-16/UTF-8 encoding. Caller must ensure the level was saved to file first.
  * Returns the snapshot path.
  */
-export function captureSnapshot(cwd: string, sessionId: string, index: number): string {
+export function captureSnapshot(cwd: string, sessionId: string, index: number, options: CaptureOptions = {}): string {
   const { ovdrjmPath } = resolveOvdrjmPathFromUmap(cwd);
   const dir = snapshotsDir(cwd);
   mkdirSync(dir, { recursive: true });
-  const dest = join(dir, `${sessionId}_${index}.ovdrjm`);
+  const id = `${sessionId}_${index}`;
+  const dest = join(dir, `${id}.ovdrjm`);
   copyFileSync(ovdrjmPath, dest);
+  const meta: SnapshotMeta = {
+    id,
+    sessionId,
+    index,
+    createdAt: new Date().toISOString(),
+    ...(options.label !== undefined ? { label: options.label } : {}),
+    kind: options.kind ?? "turn",
+  };
+  writeFileSync(join(dir, `${id}.json`), JSON.stringify(meta));
   return dest;
+}
+
+/** Parse `{sessionId}_{index}` from a snapshot filename; sessionId may itself contain underscores. */
+function parseSnapshotName(name: string): { sessionId: string; index: number } | undefined {
+  const stem = name.slice(0, -".ovdrjm".length);
+  const sep = stem.lastIndexOf("_");
+  if (sep <= 0) return undefined;
+  const index = Number(stem.slice(sep + 1));
+  if (!Number.isInteger(index)) return undefined;
+  return { sessionId: stem.slice(0, sep), index };
+}
+
+/**
+ * All snapshots in the project, newest first (by file mtime). Snapshots
+ * predating the metadata sidecar are listed with kind "turn", no label, and an
+ * mtime-derived createdAt so old projects keep working.
+ */
+export function listSnapshots(cwd: string): SnapshotEntry[] {
+  const dir = snapshotsDir(cwd);
+  let names: string[];
+  try {
+    names = readdirSync(dir);
+  } catch {
+    return [];
+  }
+  const entries: Array<SnapshotEntry & { mtimeMs: number }> = [];
+  for (const name of names) {
+    if (!name.endsWith(".ovdrjm")) continue;
+    const parsed = parseSnapshotName(name);
+    if (!parsed) continue;
+    const path = join(dir, name);
+    const mtimeMs = statSync(path).mtimeMs;
+    const id = name.slice(0, -".ovdrjm".length);
+    let meta: SnapshotMeta | undefined;
+    try {
+      meta = JSON.parse(readFileSync(join(dir, `${id}.json`), "utf-8")) as SnapshotMeta;
+    } catch {
+      // legacy snapshot without metadata sidecar
+    }
+    entries.push({
+      id,
+      path,
+      sessionId: parsed.sessionId,
+      index: parsed.index,
+      createdAt: meta?.createdAt ?? new Date(mtimeMs).toISOString(),
+      ...(meta?.label !== undefined ? { label: meta.label } : {}),
+      kind: meta?.kind ?? "turn",
+      mtimeMs,
+    });
+  }
+  entries.sort((a, b) => b.mtimeMs - a.mtimeMs);
+  return entries.map(({ mtimeMs: _mtimeMs, ...entry }) => entry);
 }
 
 /**
