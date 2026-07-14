@@ -204,3 +204,8 @@ export function pruneSnapshots(cwd: string, sessionId: string, keep = MAX_SNAPSH
     rmSync(join(dir, `${entry.id}.json`), { force: true });
   }
 }
+
+/** Labels store the full prompt (up to 2000 chars); keep human-facing output compact. */
+export function truncateLabel(label: string): string {
+  return label.length > 120 ? `${label.slice(0, 120)}…` : label;
+}

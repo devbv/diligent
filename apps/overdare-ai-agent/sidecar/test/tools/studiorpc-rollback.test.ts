@@ -16,6 +16,7 @@ import {
   restoreSnapshot,
   snapshotsDir,
 } from "../../src/tools/studiorpc/tools/snapshot";
+import { createSnapshotListTool } from "../../src/tools/studiorpc/tools/snapshot-list-tool";
 
 function projectDir(): string {
   const cwd = mkdtempSync(join(tmpdir(), "proj-"));
@@ -353,5 +354,38 @@ describe("createRollbackTool", () => {
       host: { approve: async () => "once" },
     });
     expect(tools.map((tool) => tool.name)).toContain("studiorpc_rollback");
+  });
+});
+
+describe("createSnapshotListTool", () => {
+  test("lists snapshots newest-first without exposing paths", async () => {
+    const cwd = projectDir();
+    captureSnapshot(cwd, "sess", 0, { label: "first edit" });
+    captureSnapshot(cwd, "sess", 1, { label: "state before rollback", kind: "pre-rollback" });
+    const dir = snapshotsDir(cwd);
+    utimesSync(join(dir, "sess_0.ovdrjm"), new Date(2020, 0, 1), new Date(2020, 0, 1));
+    utimesSync(join(dir, "sess_1.ovdrjm"), new Date(2020, 0, 2), new Date(2020, 0, 2));
+
+    const tool = createSnapshotListTool(cwd);
+    const result = await tool.execute({} as never, toolCtx());
+
+    const entries = JSON.parse(result.output);
+    expect(entries.map((e: { id: string }) => e.id)).toEqual(["sess_1", "sess_0"]);
+    expect(entries[0].kind).toBe("pre-rollback");
+    expect(entries[0].path).toBeUndefined();
+    expect(result.metadata?.count).toBe(2);
+  });
+
+  test("reports when no snapshots exist", async () => {
+    const cwd = projectDir();
+    const tool = createSnapshotListTool(cwd);
+    const result = await tool.execute({} as never, toolCtx());
+    expect(result.output).toBe("No snapshots found.");
+  });
+
+  test("is registered as a tool on the provider", async () => {
+    const provider = createStudioRpcToolProvider({ callRpc: async () => ({}) });
+    const tools = await provider.createTools({ cwd: "/tmp/project", host: { approve: async () => "once" } });
+    expect(tools.map((tool) => tool.name)).toContain("studiorpc_snapshot_list");
   });
 });
