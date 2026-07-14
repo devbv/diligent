@@ -18,6 +18,7 @@ import { createScriptEditTool } from "./tools/script-edit-tool";
 import { createScriptGrepTool } from "./tools/script-grep-tool";
 import { createScriptReadTool } from "./tools/script-read-tool";
 import { captureBaseline, captureSnapshot, nextRequestIndex, pruneSnapshots, snapshotsDir } from "./tools/snapshot";
+import { createSnapshotContextTool } from "./tools/snapshot-context-tool";
 import { createSnapshotListTool } from "./tools/snapshot-list-tool";
 import type { Tool, ToolResult } from "./types";
 import { createWriteLock } from "./write-lock";
@@ -194,6 +195,7 @@ export async function createStudioRpcTools(ctx: {
     ),
     wrapTool(createRollbackTool(ctx.cwd, callRpc), ctx.host),
     wrapTool(createSnapshotListTool(ctx.cwd), ctx.host),
+    wrapTool(createSnapshotContextTool(ctx.cwd), ctx.host),
     wrapTool(
       createHumanEditsTool(ctx.cwd, () => ctx.turnState?.humanEdits),
       ctx.host,

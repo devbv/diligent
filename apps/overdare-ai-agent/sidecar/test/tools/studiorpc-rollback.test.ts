@@ -16,6 +16,7 @@ import {
   restoreSnapshot,
   snapshotsDir,
 } from "../../src/tools/studiorpc/tools/snapshot";
+import { createSnapshotContextTool } from "../../src/tools/studiorpc/tools/snapshot-context-tool";
 import { createSnapshotListTool } from "../../src/tools/studiorpc/tools/snapshot-list-tool";
 
 function projectDir(): string {
@@ -584,5 +585,105 @@ describe("createSnapshotListTool", () => {
     const provider = createStudioRpcToolProvider({ callRpc: async () => ({}) });
     const tools = await provider.createTools({ cwd: "/tmp/project", host: { approve: async () => "once" } });
     expect(tools.map((tool) => tool.name)).toContain("studiorpc_snapshot_list");
+  });
+});
+
+describe("createSnapshotContextTool", () => {
+  function writeTranscript(path: string, entries: Array<{ role: string; content: unknown; at: string }>) {
+    const lines = [
+      JSON.stringify({ type: "session", version: 1, id: "s", timestamp: "2026-01-01T00:00:00Z", cwd: "/x" }),
+    ];
+    for (const [i, e] of entries.entries()) {
+      lines.push(
+        JSON.stringify({
+          type: "message",
+          id: String(i),
+          parentId: null,
+          timestamp: e.at,
+          message: { role: e.role, content: e.content },
+        }),
+      );
+    }
+    writeFileSync(path, `${lines.join("\n")}\n`);
+  }
+
+  test("returns the matched request and the entries that follow it", async () => {
+    const cwd = projectDir();
+    const transcriptPath = join(cwd, "session.jsonl");
+    writeTranscript(transcriptPath, [
+      { role: "user", content: "make a castle", at: "2026-01-01T00:01:00Z" },
+      { role: "assistant", content: [{ type: "text", text: "Building the castle now." }], at: "2026-01-01T00:02:00Z" },
+      { role: "user", content: "make it bigger", at: "2026-01-01T00:03:00Z" },
+    ]);
+    captureSnapshot(cwd, "sess", 0, { label: "make a castle", transcriptPath });
+    const tool = createSnapshotContextTool(cwd);
+
+    const result = await tool.execute({ snapshotId: "sess_0" } as never, toolCtx());
+
+    expect(result.output).toContain("[user] make a castle");
+    expect(result.output).toContain("[assistant] Building the castle now.");
+    expect(result.output).toContain("[user] make it bigger");
+    expect(result.metadata?.error).toBeUndefined();
+  });
+
+  test("prefers the occurrence closest before the snapshot when the same prompt repeats", async () => {
+    const cwd = projectDir();
+    const transcriptPath = join(cwd, "session.jsonl");
+    writeTranscript(transcriptPath, [
+      { role: "user", content: "fix it", at: "2026-01-01T00:01:00Z" },
+      { role: "assistant", content: "first attempt", at: "2026-01-01T00:02:00Z" },
+      { role: "user", content: "fix it", at: "2026-01-01T00:05:00Z" },
+    ]);
+    captureSnapshot(cwd, "sess", 0, { label: "fix it", transcriptPath });
+    // Pin the capture time between the two occurrences.
+    const sidecar = join(snapshotsDir(cwd), "sess_0.json");
+    const meta = JSON.parse(readFileSync(sidecar, "utf-8"));
+    meta.createdAt = "2026-01-01T00:03:00Z";
+    writeFileSync(sidecar, JSON.stringify(meta));
+    const tool = createSnapshotContextTool(cwd);
+
+    const result = await tool.execute({ snapshotId: "sess_0" } as never, toolCtx());
+
+    expect(result.output).toContain("first attempt"); // matched the 00:01 occurrence, not 00:05
+  });
+
+  test("reports when the snapshot has no transcript reference", async () => {
+    const cwd = projectDir();
+    captureSnapshot(cwd, "sess", 0, { label: "x" });
+    const tool = createSnapshotContextTool(cwd);
+    const result = await tool.execute({ snapshotId: "sess_0" } as never, toolCtx());
+    expect(result.output).toContain("no transcript reference");
+    expect(result.metadata?.error).toBeUndefined();
+  });
+
+  test("reports when the transcript file cannot be read", async () => {
+    const cwd = projectDir();
+    captureSnapshot(cwd, "sess", 0, { label: "x", transcriptPath: join(cwd, "gone.jsonl") });
+    const tool = createSnapshotContextTool(cwd);
+    const result = await tool.execute({ snapshotId: "sess_0" } as never, toolCtx());
+    expect(result.output).toContain("could not be read");
+  });
+
+  test("reports when the request is not found in the transcript", async () => {
+    const cwd = projectDir();
+    const transcriptPath = join(cwd, "session.jsonl");
+    writeTranscript(transcriptPath, [{ role: "user", content: "something else", at: "2026-01-01T00:01:00Z" }]);
+    captureSnapshot(cwd, "sess", 0, { label: "make a castle", transcriptPath });
+    const tool = createSnapshotContextTool(cwd);
+    const result = await tool.execute({ snapshotId: "sess_0" } as never, toolCtx());
+    expect(result.output).toContain("not found in the transcript");
+  });
+
+  test("errors on an unknown snapshotId", async () => {
+    const cwd = projectDir();
+    const tool = createSnapshotContextTool(cwd);
+    const result = await tool.execute({ snapshotId: "nope_9" } as never, toolCtx());
+    expect(result.metadata?.error).toBe(true);
+  });
+
+  test("is registered as a tool on the provider", async () => {
+    const provider = createStudioRpcToolProvider({ callRpc: async () => ({}) });
+    const tools = await provider.createTools({ cwd: "/tmp/project", host: { approve: async () => "once" } });
+    expect(tools.map((tool) => tool.name)).toContain("studiorpc_snapshot_context");
   });
 });
