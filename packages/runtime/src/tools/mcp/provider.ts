@@ -1,6 +1,7 @@
 // @summary MCP bundled tool provider — syncs connections and exposes enabled server tools
 
 import type { Tool } from "@diligent/core/tool/types";
+import { createLogger } from "@diligent/logging";
 import type { BundledToolProvider } from "../bundled-provider";
 import { getMcpManager } from "./client";
 import { createMcpPromptTools, createMcpResourceTools } from "./resources-prompts";
@@ -16,6 +17,8 @@ import {
   type McpServerConfig,
   type McpToolLoading,
 } from "./types";
+
+const logger = createLogger({ scope: "runtime.mcp.provider" });
 
 /** Drop servers explicitly disabled via `enabled: false`. */
 export function filterEnabledServers(servers: Record<string, McpServerConfig>): Record<string, McpServerConfig> {
@@ -79,9 +82,15 @@ export function createMcpToolProvider(
       for (const runtime of runtimes) {
         if (runtime.status !== "connected") {
           if (runtime.status === "error") {
-            console.warn(`[mcp] server "${runtime.name}" unavailable: ${runtime.error}`);
+            logger.warn("server_unavailable", {
+              message: `[mcp] server "${runtime.name}" unavailable: ${runtime.error}`,
+              fields: { server: runtime.name, status: runtime.status, reason: runtime.error },
+            });
           } else if (runtime.status === "needs_auth") {
-            console.warn(`[mcp] server "${runtime.name}" needs authorization — run \`/mcp login ${runtime.name}\``);
+            logger.warn("server_needs_auth", {
+              message: `[mcp] server "${runtime.name}" needs authorization — run \`/mcp login ${runtime.name}\``,
+              fields: { server: runtime.name, status: runtime.status },
+            });
           }
           continue;
         }

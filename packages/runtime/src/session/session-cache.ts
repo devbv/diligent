@@ -1,5 +1,9 @@
 // @summary Tracks per-session prompt hash and cache read state for cache-hit diagnostics
 
+import { createLogger } from "@diligent/logging";
+
+const logger = createLogger({ scope: "runtime.session.cache" });
+
 export class SessionCache {
   private prevCacheReadBySession = new Map<string, number>();
   private prevPromptHashesBySession = new Map<string, string[]>();
@@ -62,9 +66,11 @@ export class SessionCache {
     commonPrefix: number;
     reason: "cache_read_decreased" | "turn_ge_2_cache_read_zero";
   }): void {
-    console.warn(
-      `[usage:prefix-compare] session=${payload.sessionId} turn=${payload.turn} prevCacheRead=${payload.prevCacheRead} currCacheRead=${payload.currCacheRead} commonPrefix=${payload.commonPrefix} reason=${payload.reason}`,
-    );
+    logger.warn("usage_prefix_compare", {
+      sessionId: payload.sessionId,
+      message: `[usage:prefix-compare] session=${payload.sessionId} turn=${payload.turn} prevCacheRead=${payload.prevCacheRead} currCacheRead=${payload.currCacheRead} commonPrefix=${payload.commonPrefix} reason=${payload.reason}`,
+      fields: payload,
+    });
   }
 }
 

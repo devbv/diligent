@@ -73,7 +73,7 @@ describe("createOpenAIStream", () => {
     expect(openAIConstructorOptions[0]).toEqual({
       apiKey: "test-key",
       baseURL: undefined,
-      timeout: 300_000,
+      timeout: 15_000,
       maxRetries: 0,
     });
     expect(openAICreateCalls).toHaveLength(1);
@@ -86,7 +86,7 @@ describe("createOpenAIStream", () => {
     expect(openAIConstructorOptions[0]).toEqual({
       apiKey: "test-key",
       baseURL: "https://openai-proxy.example/v1",
-      timeout: 300_000,
+      timeout: 15_000,
       maxRetries: 0,
     });
   });

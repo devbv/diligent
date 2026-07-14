@@ -1,5 +1,6 @@
 // @summary App action handlers for sending, image uploads, slash commands, and turn controls
 
+import { createLogger } from "@diligent/logging";
 import type {
   ImageUploadAttachment,
   Mode,
@@ -26,6 +27,7 @@ import { parseSlashCommand, type SlashCommand } from "./slash-commands";
 import type { ThreadState } from "./thread-store";
 
 const IMAGE_UPLOAD_INDICATOR_DELAY_MS = 200;
+const logger = createLogger({ scope: "web.client.actions" });
 
 export function clearComposerInputAfterSend({
   activeThreadId,
@@ -317,7 +319,11 @@ export function useAppActions({
       });
       await refreshThreadList(rpc);
     } catch (error) {
-      console.error(error);
+      logger.error("message.send_failed", {
+        message: "Failed to send message",
+        error,
+        threadId: existingThreadId ?? undefined,
+      });
     }
   }, [
     rpcRef,
@@ -459,7 +465,12 @@ export function useAppActions({
         setPendingImages((previous) => [...previous, ...uploaded]);
       } catch (error) {
         dispatch({ type: "show_info_toast", payload: "Failed to upload images." });
-        console.error(error);
+        logger.error("images.upload_failed", {
+          message: "Failed to upload images.",
+          error,
+          threadId: state.activeThreadId ?? undefined,
+          fields: { imageCount: uploads.length },
+        });
       } finally {
         setIsUploadingImages(false);
         setShowImageUploadIndicator(false);
@@ -684,7 +695,11 @@ export function useAppActions({
       } catch (error) {
         steeringControl.pendingAbortRestartMessageRef.current = null;
         steeringControl.suppressNextSteeringInjectedRef.current = false;
-        console.error("[App] turn/interrupt failed:", error);
+        logger.error("turn.interrupt_failed", {
+          message: "[App] turn/interrupt failed:",
+          error,
+          threadId,
+        });
       }
     })();
   }, [rpcRef, state.activeThreadId, stateRef, steeringControl]);

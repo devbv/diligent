@@ -1,5 +1,6 @@
 // @summary Wraps stream functions with exponential backoff retry logic
 
+import { createLogger, type Logger } from "@diligent/logging";
 import { formatSerializableErrorForLog, toSerializableError } from "../agent/util/errors";
 import { EventStream } from "../event-stream";
 import type { ProviderEvent, ProviderResult, StreamFunction } from "./types";
@@ -10,6 +11,8 @@ export interface RetryConfig {
   baseDelayMs: number; // default: 1000 (1s)
   maxDelayMs: number; // default: 30_000 (30s)
 }
+
+const defaultRetryLogger = createLogger({ scope: "llm:retry" });
 
 function isVisibleProviderEvent(event: ProviderEvent): boolean {
   return (
@@ -27,20 +30,33 @@ function toProviderError(err: unknown): ProviderError {
     : new ProviderError(err instanceof Error ? err.message : String(err), "unknown", false);
 }
 
-function logProviderError(error: ProviderError): void {
-  console.warn(`[llm:provider-error] status=${error.statusCode ?? "n/a"} message=${error.message}`);
+function errorFields(error: ProviderError): Record<string, unknown> {
+  return {
+    errorType: error.errorType,
+    retryable: error.isRetryable,
+    ...(error.retryAfterMs !== undefined && { retryAfterMs: error.retryAfterMs }),
+    ...(error.statusCode !== undefined && { statusCode: error.statusCode }),
+  };
 }
 
-function logIfProviderError(error: unknown): void {
-  if (error instanceof ProviderError) logProviderError(error);
+function logIfProviderError(logger: Logger, error: unknown, attempt: number, maxAttempts: number): void {
+  if (!(error instanceof ProviderError)) return;
+  logger.warn("provider_error", {
+    message: `Provider error: [llm:provider-error] status=${error.statusCode ?? "n/a"} message=${error.message}`,
+    error,
+    fields: { attempt, maxAttempts, ...errorFields(error) },
+  });
 }
 
-function formatRetryLogContext(sessionId?: string): string {
-  return `timestamp=${new Date().toISOString()} sessionId=${sessionId ?? "n/a"}`;
-}
-
-function logRetry(level: "info" | "warn" | "error", sessionId: string | undefined, message: string): void {
-  console[level](`[llm:retry] ${formatRetryLogContext(sessionId)} ${message}`);
+function logRetry(
+  logger: Logger,
+  level: "info" | "warn" | "error",
+  event: string,
+  message: string,
+  fields: Record<string, unknown>,
+  error?: ProviderError,
+): void {
+  logger[level](event, { message: `[llm:retry] ${message}`, fields, ...(error && { error }) });
 }
 
 /**
@@ -51,8 +67,13 @@ export function withRetry(
   streamFn: StreamFunction,
   config: RetryConfig,
   onRetry?: (attempt: number, delayMs: number, error: ProviderError) => void,
+  logger: Logger = defaultRetryLogger,
 ): StreamFunction {
   return (model, context, options) => {
+    const retryLogger = logger.child({
+      ...(options.sessionId !== undefined && { sessionId: options.sessionId }),
+      fields: { provider: model.provider, model: model.id },
+    });
     const signal = options.signal;
     const stream = new EventStream<ProviderEvent, ProviderResult>(
       (event) => event.type === "done" || event.type === "error",
@@ -65,7 +86,10 @@ export function withRetry(
     (async () => {
       for (let attempt = 1; attempt <= config.maxAttempts; attempt++) {
         if (signal?.aborted) {
-          logRetry("info", options.sessionId, `aborted before attempt=${attempt}/${config.maxAttempts}`);
+          logRetry(retryLogger, "info", "retry_aborted", `aborted before attempt=${attempt}/${config.maxAttempts}`, {
+            attempt,
+            maxAttempts: config.maxAttempts,
+          });
           stream.push({
             type: "error",
             error: new ProviderError("Aborted", "unknown", false),
@@ -77,7 +101,6 @@ export function withRetry(
         let hasSentDelta = false;
         let sawToolCallEnd = false;
         let inner: ReturnType<StreamFunction> | undefined;
-        const requestStartedAt = new Date().toISOString();
 
         try {
           // Collect events from the inner stream
@@ -86,12 +109,15 @@ export function withRetry(
           for await (const event of inner) {
             if (event.type === "error") {
               // Capture the error, don't forward yet
-              logIfProviderError(event.error);
+              logIfProviderError(retryLogger, event.error, attempt, config.maxAttempts);
               errorEvent = toProviderError(event.error);
               logRetry(
+                retryLogger,
                 "warn",
-                options.sessionId,
-                `stream error attempt=${attempt}/${config.maxAttempts} requestStartedAt=${requestStartedAt} ${formatSerializableErrorForLog(toSerializableError(errorEvent))}`,
+                "stream_error",
+                `stream error attempt=${attempt}/${config.maxAttempts} ${formatSerializableErrorForLog(toSerializableError(errorEvent))}`,
+                { attempt, maxAttempts: config.maxAttempts, ...errorFields(errorEvent) },
+                errorEvent,
               );
               break;
             }
@@ -99,7 +125,13 @@ export function withRetry(
             if (event.type === "done") {
               // Success — forward the done event and return
               if (attempt > 1) {
-                logRetry("info", options.sessionId, `recovered on attempt=${attempt}/${config.maxAttempts}`);
+                logRetry(
+                  retryLogger,
+                  "info",
+                  "retry_recovered",
+                  `recovered on attempt=${attempt}/${config.maxAttempts}`,
+                  { attempt, maxAttempts: config.maxAttempts },
+                );
               }
               stream.push(event);
               return;
@@ -115,12 +147,15 @@ export function withRetry(
             stream.push(event);
           }
         } catch (err) {
-          logIfProviderError(err);
+          logIfProviderError(retryLogger, err, attempt, config.maxAttempts);
           errorEvent = toProviderError(err);
           logRetry(
+            retryLogger,
             "warn",
-            options.sessionId,
-            `stream exception attempt=${attempt}/${config.maxAttempts} requestStartedAt=${requestStartedAt} ${formatSerializableErrorForLog(toSerializableError(errorEvent))}`,
+            "stream_exception",
+            `stream exception attempt=${attempt}/${config.maxAttempts} ${formatSerializableErrorForLog(toSerializableError(errorEvent))}`,
+            { attempt, maxAttempts: config.maxAttempts, ...errorFields(errorEvent) },
+            errorEvent,
           );
         }
 
@@ -129,12 +164,15 @@ export function withRetry(
 
         // If no error captured from events, check if stream completed normally
         if (!errorEvent) {
-          logRetry(
-            "warn",
-            options.sessionId,
-            `stream ended without terminal event attempt=${attempt}/${config.maxAttempts} requestStartedAt=${requestStartedAt}`,
-          );
           errorEvent = new ProviderError("Provider stream ended without producing a terminal event", "network", true);
+          logRetry(
+            retryLogger,
+            "warn",
+            "stream_ended",
+            `stream ended without terminal event attempt=${attempt}/${config.maxAttempts}`,
+            { attempt, maxAttempts: config.maxAttempts, ...errorFields(errorEvent) },
+            errorEvent,
+          );
         }
 
         // We have an error — decide whether to retry. After visible streaming
@@ -147,9 +185,12 @@ export function withRetry(
               ? "not_retryable"
               : "max_attempts_reached";
           logRetry(
+            retryLogger,
             "error",
-            options.sessionId,
+            "retry_exhausted",
             `giving up attempt=${attempt}/${config.maxAttempts} reason=${reason} ${formatSerializableErrorForLog(toSerializableError(errorEvent))}`,
+            { attempt, maxAttempts: config.maxAttempts, reason, ...errorFields(errorEvent) },
+            errorEvent,
           );
           stream.push({ type: "error", error: errorEvent });
           return;
@@ -160,9 +201,17 @@ export function withRetry(
         const delayMs = Math.min(Math.max(exponentialDelay, errorEvent.retryAfterMs ?? 0), config.maxDelayMs);
 
         logRetry(
+          retryLogger,
           "info",
-          options.sessionId,
+          "retry_scheduled",
           `retrying nextAttempt=${attempt + 1}/${config.maxAttempts} delayMs=${delayMs} type=${errorEvent.errorType}`,
+          {
+            attempt,
+            nextAttempt: attempt + 1,
+            maxAttempts: config.maxAttempts,
+            delayMs,
+            ...errorFields(errorEvent),
+          },
         );
         onRetry?.(attempt, delayMs, errorEvent);
         if (hasSentDelta) {
@@ -190,9 +239,12 @@ export function withRetry(
     })().catch((err) => {
       const providerErr = toProviderError(err);
       logRetry(
+        retryLogger,
         "error",
-        options.sessionId,
+        "wrapper_exception",
         `wrapper exception ${formatSerializableErrorForLog(toSerializableError(providerErr))}`,
+        errorFields(providerErr),
+        providerErr,
       );
       stream.push({ type: "error", error: providerErr });
     });

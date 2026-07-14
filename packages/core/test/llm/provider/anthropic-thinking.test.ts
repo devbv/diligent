@@ -81,7 +81,7 @@ describe("createAnthropicStream", () => {
     expect(anthropicConstructorOptions[0]).toEqual({
       apiKey: "test-key",
       baseURL: "https://api.anthropic.com",
-      timeout: 300_000,
+      timeout: 15_000,
       maxRetries: 0,
     });
   });
@@ -100,7 +100,7 @@ describe("createAnthropicStream", () => {
     expect(anthropicConstructorOptions[0]).toEqual({
       apiKey: "test-key",
       baseURL: "https://example.anthropic.local",
-      timeout: 300_000,
+      timeout: 15_000,
       maxRetries: 0,
     });
   });

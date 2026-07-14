@@ -2,6 +2,7 @@
 
 import { createHash } from "node:crypto";
 import type { Tool, ToolContext, ToolResult } from "@diligent/core/tool/types";
+import { createLogger } from "@diligent/logging";
 import type { ImageBlock } from "@diligent/protocol";
 import { SUPPORTED_IMAGE_MEDIA_TYPES } from "@diligent/protocol";
 import { z } from "zod";
@@ -9,6 +10,8 @@ import type { RuntimeToolHost } from "../capabilities";
 import { requestToolApproval } from "../capabilities";
 import type { McpConnectionManager } from "./client";
 import type { McpCallResult, McpOutputLimit, McpToolDef } from "./types";
+
+const logger = createLogger({ scope: "runtime.mcp.tool" });
 
 /** Provider function-name limit (OpenAI caps at 64). */
 const MAX_TOOL_NAME_BYTES = 64;
@@ -67,10 +70,12 @@ export function mapMcpCallResult(
   if (outputLimit) {
     const bytes = Buffer.byteLength(output, "utf8");
     if (bytes > outputLimit.warnBytes) {
-      console.warn(
-        `[mcp] tool "${toolName}" on server "${serverName}" returned ${bytes} bytes` +
+      logger.warn("large_tool_output", {
+        message:
+          `[mcp] tool "${toolName}" on server "${serverName}" returned ${bytes} bytes` +
           (bytes > outputLimit.maxBytes ? ` (exceeds ${outputLimit.maxBytes}-byte cap, will be truncated)` : ""),
-      );
+        fields: { server: serverName, tool: toolName, bytes, maxBytes: outputLimit.maxBytes },
+      });
     }
   }
   return {

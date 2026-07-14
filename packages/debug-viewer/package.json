@@ -9,6 +9,7 @@
     "build:windows-exe": "bun scripts/build-windows-exe.ts"
   },
   "dependencies": {
+    "@diligent/logging": "workspace:*",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-json-view-lite": "^2.0.0",

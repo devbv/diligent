@@ -2,6 +2,7 @@
 import { dirname, join } from "node:path";
 import { getModelInfoList, resolveModel } from "@diligent/core/llm/models";
 import type { ProviderName, SystemSection } from "@diligent/core/llm/types";
+import { createLogger } from "@diligent/logging";
 import {
   EXECUTE_MODE_DISALLOWED_TOOLS,
   MODE_SYSTEM_PROMPT_SUFFIXES,
@@ -22,6 +23,8 @@ import { buildDefaultTools } from "../tools/defaults";
 import { buildMcpNeedsAuthNote, getMcpManager } from "../tools/mcp";
 import type { ConfigReloadResult, ConsentConfigManager } from "./config-handlers";
 import type { CreateAgentArgs, DiligentAppServerConfig } from "./server";
+
+const logger = createLogger({ scope: "runtime.app-server.config" });
 
 function withSkillGuardrail(runtimeConfig: RuntimeConfig) {
   const hasSkillSection = runtimeConfig.systemPrompt.some((section) => section.label === "skills");
@@ -253,7 +256,10 @@ export function createAppServerConfig(opts: CreateAppServerConfigOptions): Dilig
       const next = applyConsentPatch(runtimeConfig.diligent.consent, params, new Date().toISOString());
       runtimeConfig.diligent = { ...runtimeConfig.diligent, consent: next };
       saveGlobalConsent(next).catch((err) => {
-        console.warn("[config] Failed to persist consent selection:", err);
+        logger.warn("persist_consent_failed", {
+          message: `[config] Failed to persist consent selection: ${err instanceof Error ? err.message : String(err)}`,
+          error: err,
+        });
       });
       return resolveConsentState(next);
     },
@@ -348,7 +354,11 @@ export function createAppServerConfig(opts: CreateAppServerConfigOptions): Dilig
         if (!threadId) {
           runtimeConfig.model = resolveModel(modelId);
           saveGlobalModel(modelId).catch((err) => {
-            console.warn("[config] Failed to persist model selection:", err);
+            logger.warn("persist_model_failed", {
+              message: `[config] Failed to persist model selection: ${err instanceof Error ? err.message : String(err)}`,
+              error: err,
+              fields: { modelId },
+            });
           });
         }
       },

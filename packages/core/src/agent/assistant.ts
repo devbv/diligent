@@ -2,6 +2,7 @@
 
 import { createHash } from "node:crypto";
 import { zodToJsonSchema } from "zod-to-json-schema";
+import type { StreamTurnScope } from "../llm/turn-scope";
 import type {
   FunctionToolDefinition,
   Model,
@@ -80,6 +81,7 @@ export async function streamAssistantMessage(
     sessionId?: string;
     signal?: AbortSignal;
     compactionSummary?: Record<string, unknown>;
+    turnScope: StreamTurnScope;
   },
   runtime: {
     tools: Tool[];
@@ -106,13 +108,13 @@ export async function streamAssistantMessage(
     hashes: promptHashes,
   });
 
-  const turnStateRef: { value: string | undefined } = { value: undefined };
   const providerStream = runtime.providerStream(request.config.model, context, {
     signal: request.signal,
     effort: request.config.effort,
     sessionId: request.sessionId,
     maxTokens: resolveMaxTokens(request.config.model),
-    turnStateRef,
+    turnStateRef: request.turnScope.turnStateRef,
+    turnScope: request.turnScope,
   });
 
   const _requestStartedAt = Date.now();

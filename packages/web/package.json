@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@diligent/core": "workspace:*",
+    "@diligent/logging": "workspace:*",
     "@diligent/protocol": "workspace:*",
     "@diligent/runtime": "workspace:*",
     "@tauri-apps/plugin-notification": "^2",

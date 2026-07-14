@@ -1,5 +1,6 @@
 // @summary App lifecycle hooks for RPC notification wiring and bootstrap resume flow
 
+import { createLogger } from "@diligent/logging";
 import type {
   ConsentState,
   DiligentServerNotification,
@@ -29,6 +30,8 @@ import type { AppAction } from "./app-state";
 import { getThreadIdFromUrl, replaceDraftUrl, replaceThreadUrl } from "./app-utils";
 import type { WebRpcClient } from "./rpc-client";
 import type { ThreadState } from "./thread-store";
+
+const logger = createLogger({ scope: "web.client.lifecycle" });
 
 function hasNotificationThreadId(params: unknown): params is { threadId: string } {
   return typeof (params as { threadId?: unknown } | null)?.threadId === "string";
@@ -157,7 +160,13 @@ export function useAppRpcBindings({
                 payload: { threadId: rehydrateThreadId, mode: stateRef.current.mode, history },
               });
             })
-            .catch(console.error);
+            .catch((error) => {
+              logger.error("thread.rehydrate_failed", {
+                message: "Failed to rehydrate thread after idle status",
+                error,
+                threadId: rehydrateThreadId,
+              });
+            });
         }
       }
 
@@ -299,7 +308,10 @@ export function useAppBootstrap({
         replaceDraftUrl();
         await refreshThreadList(rpc);
       } catch (error) {
-        console.error(error);
+        logger.error("bootstrap.failed", {
+          message: "Failed to bootstrap Diligent web client",
+          error,
+        });
       } finally {
         await refreshProviders(rpc);
       }

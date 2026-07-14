@@ -1,5 +1,7 @@
 // @summary JSONL parser and tree builder for session data
+
 import { basename } from "node:path";
+import { createLogger, type Logger } from "@diligent/logging";
 import type {
   CompactionEntry,
   ContentBlock,
@@ -15,7 +17,13 @@ import type {
 
 interface DetectEntryContext {
   sessionId?: string;
+  logger?: Logger;
 }
+
+const parserLogger = createLogger({
+  scope: "debug-viewer",
+  context: { component: "server.parser" },
+});
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -373,8 +381,11 @@ export function detectEntryType(raw: Record<string, unknown>, context?: DetectEn
   }
 
   // Unknown entry type — skip with warning
-  const sessionTag = context?.sessionId ? ` [session:${context.sessionId}]` : "";
-  console.warn(`Unknown session entry type${sessionTag}:`, JSON.stringify(raw).slice(0, 300));
+  (context?.logger ?? parserLogger).warn("session_entry_unknown", {
+    message: "Unknown session entry type.",
+    sessionId: context?.sessionId,
+    fields: { raw: JSON.stringify(raw).slice(0, 300) },
+  });
   return null;
 }
 
@@ -405,7 +416,11 @@ export function parseSessionText(text: string, context?: DetectEntryContext): Se
         entries.push(result);
       }
     } catch {
-      console.warn("Failed to parse JSONL line:", trimmed.slice(0, 80));
+      (context?.logger ?? parserLogger).warn("session_jsonl_line_parse_failed", {
+        message: "Failed to parse JSONL line.",
+        sessionId: context?.sessionId,
+        fields: { line: trimmed.slice(0, 80) },
+      });
     }
   }
 

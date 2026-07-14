@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
+    "@diligent/logging": "workspace:*",
     "@diligent/protocol": "workspace:*",
     "@google/genai": "^2.3.0",
     "jsonc-parser": "^3.3.1",

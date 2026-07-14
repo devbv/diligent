@@ -4,7 +4,123 @@ import { describe, expect, it, mock } from "bun:test";
 import { mkdir, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createVertexAccessTokenBinding } from "../../src/auth/provider-auth";
+import { createChatGPTOAuthBinding, createVertexAccessTokenBinding } from "../../src/auth/provider-auth";
+
+class CompletingWebSocket extends EventTarget {
+  readyState = WebSocket.CONNECTING;
+
+  constructor() {
+    super();
+    queueMicrotask(() => {
+      this.readyState = WebSocket.OPEN;
+      this.dispatchEvent(new Event("open"));
+    });
+  }
+
+  send(): void {
+    queueMicrotask(() => {
+      this.dispatchEvent(
+        new MessageEvent("message", {
+          data: JSON.stringify({
+            type: "response.completed",
+            response: { status: "completed", usage: { input_tokens: 1, output_tokens: 1 } },
+          }),
+        }),
+      );
+    });
+  }
+
+  close(): void {
+    this.readyState = WebSocket.CLOSED;
+  }
+}
+
+describe("createChatGPTOAuthBinding", () => {
+  it("returns one stable stream function while token updates remain visible", async () => {
+    const originalFetch = globalThis.fetch;
+    const authorizationHeaders: string[] = [];
+    globalThis.fetch = (async (_input, init) => {
+      authorizationHeaders.push(new Headers(init?.headers).get("Authorization") ?? "");
+      return new Response(
+        [
+          'data: {"type":"response.output_text.delta","delta":"ok"}',
+          'data: {"type":"response.completed","response":{"status":"completed","usage":{"input_tokens":1,"output_tokens":1}}}',
+          "",
+        ].join("\n"),
+        { status: 200, headers: { "content-type": "text/event-stream" } },
+      );
+    }) as typeof fetch;
+
+    try {
+      const binding = createChatGPTOAuthBinding({
+        initialTokens: { access_token: "first", refresh_token: "refresh" },
+      });
+      const stream = binding.auth.getStream();
+      expect(binding.auth.getStream()).toBe(stream);
+
+      const model = {
+        id: "chatgpt-5.6-luna",
+        provider: "chatgpt",
+        contextWindow: 128_000,
+        maxOutputTokens: 16_384,
+        supportsThinking: true,
+      };
+      for await (const _event of stream(model, { systemPrompt: [], messages: [], tools: [] }, {})) {
+      }
+
+      binding.setTokens({ access_token: "second", refresh_token: "refresh" });
+      for await (const _event of stream(model, { systemPrompt: [], messages: [], tools: [] }, {})) {
+      }
+
+      expect(authorizationHeaders).toEqual(["Bearer first", "Bearer second"]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("forwards the opt-in GPT-5.6 WebSocket transport option", async () => {
+    const originalFetch = globalThis.fetch;
+    let fetchCalled = false;
+    let socketCount = 0;
+    globalThis.fetch = mock(() => {
+      fetchCalled = true;
+      throw new Error("HTTP/SSE must not be used when WebSocket is enabled");
+    }) as typeof fetch;
+
+    try {
+      const binding = createChatGPTOAuthBinding({
+        initialTokens: { access_token: "token", refresh_token: "refresh" },
+        streamOptions: {
+          useWebSocketForGpt56: true,
+          webSocketFactory: () => {
+            socketCount += 1;
+            return new CompletingWebSocket() as unknown as WebSocket;
+          },
+        },
+      });
+      const stream = binding.auth.getStream()(
+        {
+          id: "chatgpt-5.6-luna",
+          provider: "chatgpt",
+          contextWindow: 128_000,
+          maxOutputTokens: 16_384,
+          supportsThinking: true,
+        },
+        { systemPrompt: [], messages: [], tools: [] },
+        {},
+      );
+
+      for await (const _event of stream) {
+      }
+      await stream.result();
+
+      expect(socketCount).toBe(1);
+      expect(fetchCalled).toBe(false);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
 
 describe("createVertexAccessTokenBinding", () => {
   it("refreshes ADC token before first stream request", async () => {

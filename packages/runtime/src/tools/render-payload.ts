@@ -1,6 +1,9 @@
 // @summary Runtime helpers for generic text payloads and tool-specific producer render block builders
 
+import { createLogger } from "@diligent/logging";
 import type { DiffFile, ToolRenderPayload } from "@diligent/protocol";
+
+const logger = createLogger({ scope: "runtime.tools.render-payload" });
 
 export interface SearchRenderPayloadOptions {
   cwd?: string;
@@ -542,7 +545,10 @@ function isRenderPayloadDebugEnabled(): boolean {
 
 function debugRenderPayload(event: string, data: Record<string, unknown>): void {
   if (!isRenderPayloadDebugEnabled()) return;
-  console.debug("[render-payload]", event, data);
+  logger.debug(event, {
+    message: `[render-payload] ${event}`,
+    fields: data,
+  });
 }
 
 function buildSearchSummary(pattern?: string, path?: string): string {

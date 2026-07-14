@@ -1,6 +1,8 @@
 // @summary Agent loop coordinating compaction, streaming, tools, and loop safety
 
+import type { Logger } from "@diligent/logging";
 import type { NativeCompactFn } from "../llm/provider/native-compaction";
+import type { StreamTurnScope } from "../llm/turn-scope";
 import type { Model, StreamFunction, SystemSection, ThinkingEffort } from "../llm/types";
 import { ProviderError } from "../llm/types";
 import type { Tool } from "../tool/types";
@@ -30,6 +32,8 @@ export interface LoopRuntime {
   streamFunction: StreamFunction;
   llmCompactionFn?: NativeCompactFn;
   stream: AgentStream;
+  logger: Logger;
+  turnScope: StreamTurnScope;
   sessionId?: string;
   compactionSummary?: Record<string, unknown>;
   /** Reminder state (plan + cadence counter) seeded by the Agent so it survives re-prompts. */
@@ -44,6 +48,8 @@ type LoopRequest = {
   config: LoopConfig;
   streamFunction: StreamFunction;
   llmCompactionFn?: NativeCompactFn;
+  logger: Logger;
+  turnScope: StreamTurnScope;
   sessionId?: string;
   signal?: AbortSignal;
   compactionSummary?: Record<string, unknown>;
@@ -66,6 +72,8 @@ export async function runAgentLoop(
     config,
     streamFunction,
     llmCompactionFn: runtime.llmCompactionFn,
+    logger: runtime.logger,
+    turnScope: runtime.turnScope,
     sessionId: runtime.sessionId,
     signal,
     compactionSummary: runtime.compactionSummary,
@@ -84,6 +92,10 @@ export async function runAgentLoop(
   const planReminder = new PlanReminder(
     config.planReminderIntervalTurns ?? 0,
     runtime.planReminderState ?? { plan: findLatestPlanSteps(conversation), turnsSinceSurfaced: 0 },
+    runtime.logger.child({
+      scope: "agent:plan-reminder",
+      ...(runtime.sessionId !== undefined && { sessionId: runtime.sessionId }),
+    }),
   );
   const runGoal = latestUserGoal(conversation);
 
@@ -222,9 +234,18 @@ async function compactIfNeeded(messages: Message[], request: LoopRequest, stream
   const decision = getCompactionDecision(messages, request.config.model.contextWindow, config.reservePercent);
   if (!decision.shouldCompact) return false;
 
-  console.info(
-    `[agent:compaction] triggered source=${decision.source} estimatedTokens=${decision.estimatedTokens} thresholdTokens=${decision.thresholdTokens} reserveTokens=${decision.reserveTokens}`,
-  );
+  request.logger.info("compaction_triggered", {
+    message: `[agent:compaction] triggered source=${decision.source} estimatedTokens=${decision.estimatedTokens} thresholdTokens=${decision.thresholdTokens} reserveTokens=${decision.reserveTokens}`,
+    sessionId: request.sessionId,
+    fields: {
+      source: decision.source,
+      estimatedTokens: decision.estimatedTokens,
+      thresholdTokens: decision.thresholdTokens,
+      reserveTokens: decision.reserveTokens,
+      provider: request.config.model.provider,
+      model: request.config.model.id,
+    },
+  });
 
   await applyCompaction(messages, request, stream);
   return true;
@@ -236,7 +257,15 @@ async function compactAfterContextOverflow(
   stream: AgentStream,
 ): Promise<boolean> {
   if (!request.config.compaction) return false;
-  console.warn("[agent:compaction] forced after context_overflow");
+  request.logger.warn("compaction_forced", {
+    message: "[agent:compaction] forced after context_overflow",
+    sessionId: request.sessionId,
+    fields: {
+      reason: "context_overflow",
+      provider: request.config.model.provider,
+      model: request.config.model.id,
+    },
+  });
   await applyCompaction(messages, request, stream);
   return true;
 }

@@ -9,6 +9,7 @@ import type { Model, ProviderEvent, ProviderResult, StreamFunction } from "@dili
 import { ProviderError } from "@diligent/core/llm/types";
 import type { Tool } from "@diligent/core/tool/types";
 import type { AssistantMessage, Message } from "@diligent/core/types";
+import { type LogRecord, resetDefaultLogSinkForTests, setDefaultLogSink } from "@diligent/logging";
 import { resolvePaths } from "@diligent/runtime/infrastructure";
 import type { SessionManagerConfig } from "@diligent/runtime/session";
 import { readSessionFile, SessionManager } from "@diligent/runtime/session";
@@ -113,6 +114,7 @@ async function runCollecting(mgr: SessionManager, userMsg: Message): Promise<Age
 }
 
 afterEach(async () => {
+  resetDefaultLogSinkForTests();
   try {
     await rm(TEST_ROOT, { recursive: true, force: true });
   } catch {}
@@ -176,6 +178,8 @@ describe("SessionManager", () => {
 
   test("run() persists staged user message and non-fatal error when the turn fails before streaming", async () => {
     const dir = await setupDir();
+    const logs: LogRecord[] = [];
+    setDefaultLogSink((record) => logs.push(record));
     const mgr = new SessionManager({
       cwd: dir,
       paths: resolvePaths(dir),
@@ -203,6 +207,16 @@ describe("SessionManager", () => {
       expect(entries[1].fatal).toBe(false);
       expect(entries[1].error.message).toBe("provider failed");
     }
+    expect(logs).toContainEqual(
+      expect.objectContaining({
+        level: "error",
+        scope: "runtime.session",
+        event: "run_failed",
+        sessionId: mgr.sessionId,
+        message: expect.stringContaining("[SessionManager] Run error"),
+        error: expect.objectContaining({ message: "provider failed" }),
+      }),
+    );
   });
 
   test("run() persists user message before provider response completes", async () => {
@@ -743,56 +757,57 @@ describe("SessionManager", () => {
 
   test("logs usage prefix compare on second turn when cacheReadTokens is zero", async () => {
     const dir = await setupDir();
-    const warnSpy = spyOn(console, "warn").mockImplementation(() => {});
+    const logs: LogRecord[] = [];
+    setDefaultLogSink((record) => logs.push(record));
 
-    try {
-      const response1 = makeAssistantMessage([{ type: "text", text: "turn one" }]);
-      response1.usage.cacheReadTokens = 5000;
+    const response1 = makeAssistantMessage([{ type: "text", text: "turn one" }]);
+    response1.usage.cacheReadTokens = 5000;
 
-      const response2 = makeAssistantMessage([{ type: "text", text: "turn two" }]);
-      response2.usage.cacheReadTokens = 0;
+    const response2 = makeAssistantMessage([{ type: "text", text: "turn two" }]);
+    response2.usage.cacheReadTokens = 0;
 
-      const mgr = new SessionManager(makeManagerConfig(dir, createMockStreamFn([response1, response2])));
-      await mgr.create();
+    const mgr = new SessionManager(makeManagerConfig(dir, createMockStreamFn([response1, response2])));
+    await mgr.create();
 
-      await mgr.run({ role: "user", content: "first", timestamp: Date.now() });
-      await mgr.run({ role: "user", content: "second", timestamp: Date.now() });
+    await mgr.run({ role: "user", content: "first", timestamp: Date.now() });
+    await mgr.run({ role: "user", content: "second", timestamp: Date.now() });
 
-      const logs = warnSpy.mock.calls.map((call) => call.join(" "));
-      const prefixLogs = logs.filter((log) => log.includes("[usage:prefix-compare]"));
+    const prefixLogs = logs.filter((record) => record.event === "usage_prefix_compare");
 
-      expect(prefixLogs.some((log) => log.includes("reason=turn_ge_2_cache_read_zero"))).toBe(true);
-      expect(prefixLogs.some((log) => log.includes("reason=cache_read_decreased"))).toBe(true);
-      expect(prefixLogs.some((log) => log.includes("turn=2"))).toBe(true);
-      expect(prefixLogs.some((log) => log.includes("currCacheRead=0"))).toBe(true);
-    } finally {
-      warnSpy.mockRestore();
-    }
+    expect(prefixLogs).toHaveLength(2);
+    expect(prefixLogs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: "warn",
+          scope: "runtime.session.cache",
+          sessionId: mgr.sessionId,
+          fields: expect.objectContaining({ reason: "turn_ge_2_cache_read_zero", turn: 2, currCacheRead: 0 }),
+        }),
+        expect.objectContaining({
+          sessionId: mgr.sessionId,
+          fields: expect.objectContaining({ reason: "cache_read_decreased", turn: 2, currCacheRead: 0 }),
+        }),
+      ]),
+    );
   });
 
   test("does not log usage prefix compare when cacheReadTokens stays zero", async () => {
     const dir = await setupDir();
-    const warnSpy = spyOn(console, "warn").mockImplementation(() => {});
+    const logs: LogRecord[] = [];
+    setDefaultLogSink((record) => logs.push(record));
 
-    try {
-      const response1 = makeAssistantMessage([{ type: "text", text: "turn one" }]);
-      response1.usage.cacheReadTokens = 0;
+    const response1 = makeAssistantMessage([{ type: "text", text: "turn one" }]);
+    response1.usage.cacheReadTokens = 0;
 
-      const response2 = makeAssistantMessage([{ type: "text", text: "turn two" }]);
-      response2.usage.cacheReadTokens = 0;
+    const response2 = makeAssistantMessage([{ type: "text", text: "turn two" }]);
+    response2.usage.cacheReadTokens = 0;
 
-      const mgr = new SessionManager(makeManagerConfig(dir, createMockStreamFn([response1, response2])));
-      await mgr.create();
+    const mgr = new SessionManager(makeManagerConfig(dir, createMockStreamFn([response1, response2])));
+    await mgr.create();
 
-      await mgr.run({ role: "user", content: "first", timestamp: Date.now() });
-      await mgr.run({ role: "user", content: "second", timestamp: Date.now() });
+    await mgr.run({ role: "user", content: "first", timestamp: Date.now() });
+    await mgr.run({ role: "user", content: "second", timestamp: Date.now() });
 
-      const logs = warnSpy.mock.calls.map((call) => call.join(" "));
-      const prefixLogs = logs.filter((log) => log.includes("[usage:prefix-compare]"));
-
-      expect(prefixLogs).toHaveLength(0);
-    } finally {
-      warnSpy.mockRestore();
-    }
+    expect(logs.filter((record) => record.event === "usage_prefix_compare")).toHaveLength(0);
   });
 });

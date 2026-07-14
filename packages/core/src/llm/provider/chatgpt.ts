@@ -1,11 +1,13 @@
 // @summary ChatGPT subscription stream — HTTP/SSE for legacy models and WebSocket Responses Lite for GPT-5.6
 import { arch, platform, release } from "node:os";
+import { createLogger } from "@diligent/logging";
 import type { OpenAIOAuthTokens } from "../../auth/types";
 import { EventStream } from "../../event-stream";
 import { isNetworkError } from "../errors";
 import { flattenSections } from "../system-sections";
 import type { Model, ProviderEvent, ProviderResult, StreamContext, StreamFunction, StreamOptions } from "../types";
 import { ProviderError } from "../types";
+import { type ChatGPTWebSocketSession, createChatGPTWebSocketSession } from "./chatgpt-websocket-session";
 import type { NativeCompactFn } from "./native-compaction";
 import {
   buildResponsesRequestBody,
@@ -21,6 +23,9 @@ import {
 } from "./openai-shared";
 import { handleResponsesAPIEvents } from "./openai-sse";
 
+const webSocketLogger = createLogger({ scope: "llm:chatgpt-ws" });
+const httpSseLogger = createLogger({ scope: "llm:chatgpt-sse" });
+
 const CHATGPT_CODEX_URL = "https://chatgpt.com/backend-api/codex/responses";
 const CHATGPT_CODEX_WEBSOCKET_URL = "wss://chatgpt.com/backend-api/codex/responses";
 const CHATGPT_COMPACT_URL = "https://chatgpt.com/backend-api/codex/responses/compact";
@@ -35,6 +40,11 @@ export interface ChatGPTStreamOptions {
   webSocketFactory?: (url: string, headers: Record<string, string>) => WebSocket;
   webSocketIdleTimeoutMs?: number;
 }
+
+type ChatGPTTransportState = {
+  websocketDisabled: boolean;
+  consecutiveTransportFailures: number;
+};
 
 type QueueWaiter<T> = {
   resolve: (result: IteratorResult<T>) => void;
@@ -187,7 +197,31 @@ export function summarizeChatGPTWebSocketPayload(payload: Record<string, unknown
 
 function debugChatGPTWebSocket(direction: "->" | "<-", byteLength: number | undefined, summary: string): void {
   if (process.env.DILIGENT_DEBUG_CHATGPT_WEBSOCKET !== "1") return;
-  console.debug(`[llm:chatgpt-ws] ${direction} bytes=${byteLength ?? "unknown"} ${summary}`);
+  webSocketLogger.debug("websocket_payload", {
+    message: `ChatGPT WebSocket: [llm:chatgpt-ws] ${direction} bytes=${byteLength ?? "unknown"} ${summary}`,
+    fields: { direction, ...(byteLength !== undefined && { byteLength }), summary },
+  });
+}
+
+function debugChatGPTHttpSse(direction: "->" | "<-", byteLength: number, summary: string): void {
+  if (process.env.DILIGENT_DEBUG_CHATGPT_HTTP_SSE !== "1") return;
+  httpSseLogger.debug("sse_payload", {
+    message: `ChatGPT HTTP/SSE: [llm:chatgpt-sse] ${direction} bytes=${byteLength} ${summary}`,
+    fields: { direction, byteLength, summary },
+  });
+}
+
+function debugChatGPTHttpRequest(
+  state: "sending" | "sent",
+  byteLength: number,
+  summary: string,
+  status?: number,
+): void {
+  if (process.env.DILIGENT_DEBUG_CHATGPT_HTTP_SSE !== "1") return;
+  httpSseLogger.debug("http_request", {
+    message: `ChatGPT HTTP/SSE: [llm:chatgpt-sse] -> state=${state} bytes=${byteLength}${status !== undefined ? ` status=${status}` : ""} ${summary}`,
+    fields: { direction: "->", state, byteLength, ...(status !== undefined && { status }), summary },
+  });
 }
 
 function toChatGPTWebSocketError(payload: Record<string, unknown>): ProviderError {
@@ -285,7 +319,10 @@ function createChatGPTWebSocketEvents(input: {
     if (idleTimer) clearTimeout(idleTimer);
     idleTimer = setTimeout(() => {
       if (process.env.DILIGENT_DEBUG_CHATGPT_WEBSOCKET === "1") {
-        console.debug(`[llm:chatgpt-ws] state=timeout pendingDecode=${pendingMessageCount} message=${message}`);
+        webSocketLogger.debug("websocket_timeout", {
+          message: `[llm:chatgpt-ws] state=timeout pendingDecode=${pendingMessageCount} message=${message}`,
+          fields: { state: "timeout", pendingDecode: pendingMessageCount },
+        });
       }
       fail(new ProviderError(message, "network", true));
     }, idleTimeoutMs);
@@ -304,7 +341,10 @@ function createChatGPTWebSocketEvents(input: {
   function handleOpen(): void {
     opened = true;
     if (process.env.DILIGENT_DEBUG_CHATGPT_WEBSOCKET === "1") {
-      console.debug("[llm:chatgpt-ws] state=open");
+      webSocketLogger.debug("websocket_open", {
+        message: "[llm:chatgpt-ws] state=open",
+        fields: { state: "open" },
+      });
     }
     resetIdleTimeout("ChatGPT WebSocket idle timeout sending request");
     try {
@@ -373,7 +413,10 @@ function createChatGPTWebSocketEvents(input: {
 
   function handleError(): void {
     if (process.env.DILIGENT_DEBUG_CHATGPT_WEBSOCKET === "1") {
-      console.debug(`[llm:chatgpt-ws] state=error opened=${opened} pendingDecode=${pendingMessageCount}`);
+      webSocketLogger.debug("websocket_error", {
+        message: `[llm:chatgpt-ws] state=error opened=${opened} pendingDecode=${pendingMessageCount}`,
+        fields: { state: "error", opened, pendingDecode: pendingMessageCount },
+      });
     }
     fail(new ProviderError("ChatGPT WebSocket connection failed", "network", true));
   }
@@ -411,9 +454,10 @@ function createChatGPTWebSocketEvents(input: {
     const code = event.code;
     const reason = event.reason;
     if (process.env.DILIGENT_DEBUG_CHATGPT_WEBSOCKET === "1") {
-      console.debug(
-        `[llm:chatgpt-ws] state=close code=${code} reason=${truncateWebSocketLogValue(reason || "none")} pendingDecode=${pendingMessageCount}`,
-      );
+      webSocketLogger.debug("websocket_close", {
+        message: `[llm:chatgpt-ws] state=close code=${code} reason=${truncateWebSocketLogValue(reason || "none")} pendingDecode=${pendingMessageCount}`,
+        fields: { state: "close", code, reason: reason || "none", pendingDecode: pendingMessageCount },
+      });
     }
     messageWork = messageWork
       .then(() => finalizeClose(code, reason))
@@ -445,6 +489,15 @@ function resolveChatGPTModelId(modelId: string): string {
   return modelId.startsWith("chatgpt-") ? `gpt-${modelId.slice("chatgpt-".length)}` : modelId;
 }
 
+function useChatGPTWebSocketTransportFailure(
+  error: unknown,
+  providerOptions: ChatGPTStreamOptions,
+  model: Model,
+): boolean {
+  if (providerOptions.useWebSocketForGpt56 !== true || !isGpt56Model(resolveChatGPTModelId(model.id))) return false;
+  return error instanceof ProviderError && error.errorType === "network";
+}
+
 /**
  * Create a StreamFunction for ChatGPT subscription (OAuth).
  *
@@ -463,6 +516,8 @@ export function createChatGPTStream(
   getTokens: () => OpenAIOAuthTokens,
   providerOptions: ChatGPTStreamOptions = {},
 ): StreamFunction {
+  const transportState: ChatGPTTransportState = { websocketDisabled: false, consecutiveTransportFailures: 0 };
+  const turnSessionKey = Symbol("chatgpt-websocket-turn-session");
   return (model: Model, context: StreamContext, options: StreamOptions): EventStream<ProviderEvent, ProviderResult> => {
     const stream = new EventStream<ProviderEvent, ProviderResult>(
       (event) => event.type === "done" || event.type === "error",
@@ -476,29 +531,27 @@ export function createChatGPTStream(
     (async () => {
       try {
         if (options.signal?.aborted) return;
-        const tokens = getTokens();
-
-        const headers: Record<string, string> = {
-          Authorization: `Bearer ${tokens.access_token}`,
-          "User-Agent": USER_AGENT,
-          originator: "diligent",
-          version: CHATGPT_CODEX_CLIENT_VERSION,
+        const resolveHeaders = async (): Promise<Record<string, string>> => {
+          const tokens = getTokens();
+          const headers: Record<string, string> = {
+            Authorization: `Bearer ${tokens.access_token}`,
+            "User-Agent": USER_AGENT,
+            originator: "diligent",
+            version: CHATGPT_CODEX_CLIENT_VERSION,
+          };
+          if (tokens.account_id) headers["ChatGPT-Account-ID"] = tokens.account_id;
+          if (options.sessionId) headers["session-id"] = options.sessionId;
+          if (options.turnStateRef?.value !== undefined) headers["x-codex-turn-state"] = options.turnStateRef.value;
+          return headers;
         };
-        if (tokens.account_id) {
-          headers["ChatGPT-Account-ID"] = tokens.account_id;
-        }
-        if (options.sessionId) {
-          headers["session-id"] = options.sessionId;
-        }
-        if (options.turnStateRef?.value !== undefined) {
-          headers["x-codex-turn-state"] = options.turnStateRef.value;
-        }
+        const headers = await resolveHeaders();
 
         const effort = options.effort;
         const useReasoning = model.supportsThinking;
         const upstreamModelId = resolveChatGPTModelId(model.id);
         const useResponsesLite = isGpt56Model(upstreamModelId);
-        const useWebSocket = useResponsesLite && providerOptions.useWebSocketForGpt56 === true;
+        const useWebSocket =
+          useResponsesLite && providerOptions.useWebSocketForGpt56 === true && !transportState.websocketDisabled;
 
         const standardBody = await buildResponsesRequestBody({
           model: upstreamModelId,
@@ -519,13 +572,25 @@ export function createChatGPTStream(
         }
 
         if (useWebSocket) {
-          const connection = createChatGPTWebSocketEvents({
-            headers,
-            request: { type: "response.create", ...requestBody },
-            signal: options.signal,
-            webSocketFactory: providerOptions.webSocketFactory ?? createDefaultWebSocket,
-            idleTimeoutMs: providerOptions.webSocketIdleTimeoutMs,
+          const request = { type: "response.create", ...requestBody };
+          const session: ChatGPTWebSocketSession | undefined = options.turnScope?.getOrCreate(turnSessionKey, () => {
+            const value = createChatGPTWebSocketSession({
+              url: CHATGPT_CODEX_WEBSOCKET_URL,
+              resolveHeaders,
+              webSocketFactory: providerOptions.webSocketFactory ?? createDefaultWebSocket,
+              idleTimeoutMs: providerOptions.webSocketIdleTimeoutMs ?? CHATGPT_WEBSOCKET_IDLE_TIMEOUT_MS,
+            });
+            return { value, dispose: () => value.dispose() };
           });
+          const connection = session
+            ? session.streamRequest(request, options.signal)
+            : createChatGPTWebSocketEvents({
+                headers,
+                request,
+                signal: options.signal,
+                webSocketFactory: providerOptions.webSocketFactory ?? createDefaultWebSocket,
+                idleTimeoutMs: providerOptions.webSocketIdleTimeoutMs,
+              });
           await connection.opened;
           stream.push({ type: "start" });
           await handleResponsesAPIEvents(
@@ -536,9 +601,19 @@ export function createChatGPTStream(
             context.messages.length,
             options.sessionId,
           );
+          transportState.consecutiveTransportFailures = 0;
           return;
         }
 
+        const requestText = JSON.stringify(requestBody);
+        const debugHttpSse = process.env.DILIGENT_DEBUG_CHATGPT_HTTP_SSE === "1";
+        const requestByteLength = debugHttpSse ? new TextEncoder().encode(requestText).byteLength : 0;
+        const requestSummary = debugHttpSse
+          ? summarizeChatGPTWebSocketPayload({ ...requestBody, type: "response.create" })
+          : "";
+        if (debugHttpSse) {
+          debugChatGPTHttpRequest("sending", requestByteLength, requestSummary);
+        }
         const response = await fetch(CHATGPT_CODEX_URL, {
           method: "POST",
           headers: {
@@ -546,9 +621,12 @@ export function createChatGPTStream(
             "Content-Type": "application/json",
             Accept: "text/event-stream",
           },
-          body: JSON.stringify(requestBody),
+          body: requestText,
           signal: options.signal,
         });
+        if (debugHttpSse) {
+          debugChatGPTHttpRequest("sent", requestByteLength, requestSummary, response.status);
+        }
 
         if (!response.ok) {
           const errText = await response.text().catch(() => "");
@@ -587,6 +665,7 @@ export function createChatGPTStream(
         async function* parseSse(): AsyncIterable<Record<string, unknown>> {
           const reader = response.body!.getReader();
           const decoder = new TextDecoder();
+          const debugEnabled = process.env.DILIGENT_DEBUG_CHATGPT_HTTP_SSE === "1";
           let buffer = "";
 
           while (true) {
@@ -607,7 +686,17 @@ export function createChatGPTStream(
               try {
                 event = JSON.parse(data) as Record<string, unknown>;
               } catch {
+                if (debugEnabled) {
+                  debugChatGPTHttpSse("<-", new TextEncoder().encode(data).byteLength, "invalid_json");
+                }
                 continue;
+              }
+              if (debugEnabled) {
+                debugChatGPTHttpSse(
+                  "<-",
+                  new TextEncoder().encode(data).byteLength,
+                  summarizeChatGPTWebSocketPayload(event),
+                );
               }
               yield event;
             }
@@ -623,6 +712,10 @@ export function createChatGPTStream(
           options.sessionId,
         );
       } catch (err) {
+        if (useChatGPTWebSocketTransportFailure(err, providerOptions, model)) {
+          transportState.consecutiveTransportFailures += 1;
+          if (transportState.consecutiveTransportFailures >= 2) transportState.websocketDisabled = true;
+        }
         if (err instanceof ProviderError) {
           stream.push({ type: "error", error: err });
         } else if (isNetworkError(err)) {

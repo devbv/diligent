@@ -25,7 +25,7 @@ export function createOpenAIStream(apiKey?: string, baseUrl?: string, imageDetai
   const client = new OpenAI({
     apiKey: resolvedApiKey,
     baseURL: baseUrl,
-    timeout: 300_000,
+    timeout: 15_000,
     maxRetries: 0,
   });
 

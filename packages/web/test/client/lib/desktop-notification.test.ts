@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { createLogger, type LogRecord } from "@diligent/logging";
 import type { DiligentServerNotification, DiligentServerRequest } from "@diligent/protocol";
 import { DILIGENT_SERVER_NOTIFICATION_METHODS, DILIGENT_SERVER_REQUEST_METHODS } from "@diligent/protocol";
 import {
@@ -57,6 +58,40 @@ function createNotificationEnvironment(options?: {
 }
 
 describe("DesktopNotificationController", () => {
+  test("emits structured diagnostics with stable events and fields", async () => {
+    const setup = createNotificationEnvironment({ isBackgrounded: false });
+    const records: LogRecord[] = [];
+    const logger = createLogger({
+      scope: "web.client.desktop-notification",
+      sink: (record) => records.push(record),
+      clock: () => new Date("2026-01-02T03:04:05.006Z"),
+    });
+    const controller = new DesktopNotificationController(setup.environment, logger);
+    const request = {
+      method: DILIGENT_SERVER_REQUEST_METHODS.APPROVAL_REQUEST,
+      params: {
+        threadId: "thread-1",
+        request: { permission: "commentary", toolName: "bash", details: {} },
+      },
+    } satisfies DiligentServerRequest;
+
+    await controller.notifyForServerRequest(7, request);
+
+    expect(records).toMatchObject([
+      {
+        level: "debug",
+        scope: "web.client.desktop-notification",
+        event: "notification.skipped_foreground",
+        message: "[desktop-notification] skip:foreground",
+        fields: {
+          source: "server_request",
+          enabled: true,
+          dedupeKey: "server-request:7:approval",
+        },
+      },
+    ]);
+  });
+
   test("defaults desktop notifications to enabled", () => {
     const original = globalThis.localStorage;
     const storage = new Map<string, string>();

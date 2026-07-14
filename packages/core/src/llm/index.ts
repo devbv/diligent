@@ -56,6 +56,8 @@ export {
   supportsThinkingEffort,
   supportsThinkingNone,
 } from "./thinking-effort";
+export type { StreamTurnResource, StreamTurnScope } from "./turn-scope";
+export { createStreamTurnScope } from "./turn-scope";
 export type {
   FunctionToolDefinition,
   Model,

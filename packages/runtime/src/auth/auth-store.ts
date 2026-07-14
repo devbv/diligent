@@ -5,9 +5,12 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import type { OpenAIOAuthTokens } from "@diligent/core/auth";
 import type { ProviderName } from "@diligent/core/llm/types";
+import { createLogger } from "@diligent/logging";
 import { parse as parseJsonc } from "jsonc-parser";
 import { z } from "zod";
 import { resolveProjectDirName } from "../infrastructure/diligent-dir";
+
+const logger = createLogger({ scope: "runtime.auth" });
 
 export type AuthKeys = {
   anthropic?: string;
@@ -133,7 +136,11 @@ async function readValidatedStore(filePath: string, warnOnInvalid: boolean): Pro
     const result = AuthKeysSchema.safeParse(substituteEnv(parsed as Record<string, unknown>));
     if (!result.success) {
       if (warnOnInvalid) {
-        console.warn(`auth.jsonc warning: ${filePath}\n${result.error.message}`);
+        logger.warn("invalid_auth_file", {
+          message: `auth.jsonc warning: ${filePath}\n${result.error.message}`,
+          error: result.error,
+          fields: { filePath },
+        });
       }
       return {};
     }
@@ -210,7 +217,10 @@ class KeyringAuthStorage implements AuthStorageBackend {
     const parsed = JSON.parse(raw) as unknown;
     const result = AuthKeysSchema.safeParse(parsed);
     if (!result.success) {
-      console.warn(`keyring auth warning: ${result.error.message}`);
+      logger.warn("invalid_keyring_auth", {
+        message: `keyring auth warning: ${result.error.message}`,
+        error: result.error,
+      });
       return {};
     }
     return result.data;
@@ -243,9 +253,10 @@ class LazyKeyringAuthStorage implements AuthStorageBackend {
       const storage = await this.getStorage();
       return storage.load();
     } catch (error) {
-      console.warn(
-        `[auth] Keyring load failed, falling back to file: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      logger.warn("keyring_load_failed", {
+        message: `[auth] Keyring load failed, falling back to file: ${error instanceof Error ? error.message : String(error)}`,
+        error,
+      });
       return this.fileStorage.load();
     }
   }
@@ -278,9 +289,10 @@ class AutoAuthStorage implements AuthStorageBackend {
       const fromKeyring = await keyring.load();
       return { ...fromFile, ...fromKeyring };
     } catch (error) {
-      console.warn(
-        `[auth] Keyring load failed, falling back to file: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      logger.warn("keyring_load_failed", {
+        message: `[auth] Keyring load failed, falling back to file: ${error instanceof Error ? error.message : String(error)}`,
+        error,
+      });
     }
     return this.fileStorage.load();
   }
@@ -291,9 +303,10 @@ class AutoAuthStorage implements AuthStorageBackend {
       await keyring.save(store);
       return;
     } catch (error) {
-      console.warn(
-        `[auth] Keyring save failed, falling back to file: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      logger.warn("keyring_save_failed", {
+        message: `[auth] Keyring save failed, falling back to file: ${error instanceof Error ? error.message : String(error)}`,
+        error,
+      });
     }
     await this.fileStorage.save(store);
   }

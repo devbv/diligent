@@ -5,6 +5,7 @@ import { agentTypeToModelClass, resolveModel, resolveModelForClass } from "@dili
 import type { ThinkingEffort } from "@diligent/core/llm/types";
 import type { Tool } from "@diligent/core/tool/types";
 import type { TextBlock } from "@diligent/core/types";
+import { createLogger } from "@diligent/logging";
 import { PLAN_MODE_DISALLOWED_TOOLS } from "../agent/mode";
 import type { ResolvedAgentDefinition } from "../agent/resolved-agent";
 import { resolveAgentDefinition } from "../agent/resolved-agent";
@@ -15,6 +16,8 @@ import { COLLAB_TOOL_NAMES } from "../tools/tool-metadata";
 import { NicknamePool } from "./nicknames";
 import type { AgentEntry, AgentStatus, CollabAgentEvent, CollabToolDeps } from "./types";
 import { isFinal } from "./types";
+
+const logger = createLogger({ scope: "runtime.collab" });
 
 type CollabStatusString = "pending" | "running" | "completed" | "errored" | "shutdown";
 
@@ -235,10 +238,13 @@ export class AgentRegistry {
     );
 
     if (childTools.length === 0 && !nestedCollabEnabled) {
-      console.warn(
-        `[collab] Spawning agent '${params.agentType}' with zero tools after filtering. ` +
+      logger.warn("agent_spawned_without_tools", {
+        message:
+          `[collab] Spawning agent '${params.agentType}' with zero tools after filtering. ` +
           buildZeroToolDiagnostics(this.deps.parentTools, params, agentDefinition),
-      );
+        sessionId: this.deps.getParentSessionId?.(),
+        fields: { agentType: params.agentType },
+      });
     }
 
     const nestedAgentPolicy = params.allowNestedAgents

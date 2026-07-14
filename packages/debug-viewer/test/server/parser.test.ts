@@ -1,5 +1,6 @@
 // @summary Tests for session JSONL parser and entry type detection
 import { describe, expect, test } from "bun:test";
+import { createLogger, type LogRecord } from "@diligent/logging";
 import { join } from "path";
 import {
   buildTree,
@@ -322,20 +323,14 @@ describe("parseSessionText", () => {
   });
 
   test("passes sessionId context to unknown-entry warning", () => {
-    const warn = console.warn;
-    const calls: unknown[][] = [];
-    console.warn = (...args: unknown[]) => {
-      calls.push(args);
-    };
+    const records: LogRecord[] = [];
+    const logger = createLogger({ scope: "test", sink: (record) => records.push(record) });
 
-    try {
-      parseSessionText('{"foo":"bar"}', { sessionId: "session-ctx-test" });
-    } finally {
-      console.warn = warn;
-    }
+    parseSessionText('{"foo":"bar"}', { sessionId: "session-ctx-test", logger });
 
-    expect(calls.length).toBe(1);
-    expect(String(calls[0][0])).toContain("[session:session-ctx-test]");
+    expect(records.length).toBe(1);
+    expect(records[0].event).toBe("session_entry_unknown");
+    expect(records[0].sessionId).toBe("session-ctx-test");
   });
 });
 

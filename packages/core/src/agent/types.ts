@@ -1,6 +1,8 @@
 // @summary Agent public types and event stream primitives for the core runner
 
+import type { Logger } from "@diligent/logging";
 import type { NativeCompactFn } from "../llm/provider/native-compaction";
+import type { StreamTurnScope } from "../llm/turn-scope";
 import type { ProviderErrorType, StreamFunction, ThinkingEffort } from "../llm/types";
 import type {
   AssistantMessage,
@@ -152,6 +154,10 @@ export interface LLMRetryConfig {
 export interface AgentOptions {
   cwd?: string;
   effort?: ThinkingEffort;
+  /** Structured diagnostic logger. Defaults to the local console-compatible core logger. */
+  logger?: Logger;
+  /** Session correlation attached structurally to logs and provider requests. */
+  sessionId?: string;
   retry?: LLMRetryConfig;
   compaction?: CompactionConfig;
   /** Explicit stream function — overrides the global stream resolver. Use in tests and custom extensions. */
@@ -165,4 +171,9 @@ export interface AgentOptions {
    * reminder fires. 0/undefined disables the feature (no behavior change).
    */
   planReminderIntervalTurns?: number;
+}
+
+export interface AgentPromptOptions {
+  /** Caller-owned per-turn provider resource scope. */
+  turnScope?: StreamTurnScope;
 }
