@@ -265,6 +265,51 @@ describe("snapshot capture on first edit", () => {
     expect(existsSync(join(dir, "sess_1.ovdrjm"))).toBe(false);
     expect(readFileSync(join(cwd, "world.ovdrjm"), "utf-8")).toBe('{"Root":{"original":true}}');
   });
+
+  test("stores the user prompt as the snapshot label", async () => {
+    const cwd = projectDir();
+    const { tools } = await setup(cwd, "sess");
+    const importTool = tools.find((t) => t.name === "studiorpc_asset_drawer_import")!;
+
+    await importTool.execute(importArgs as never, toolCtx());
+
+    const meta = JSON.parse(readFileSync(join(snapshotsDir(cwd), "sess_0.json"), "utf-8"));
+    expect(meta.label).toBe("go");
+    expect(meta.kind).toBe("turn");
+  });
+
+  test("surfaces a warning in the tool output when baseline capture fails", async () => {
+    // A cwd with a umap but no ovdrjm makes resolveOvdrjmPathFromUmap throw,
+    // so captureSnapshot fails while the RPC tool itself still succeeds.
+    const cwd = mkdtempSync(join(tmpdir(), "proj-"));
+    writeFileSync(join(cwd, "world.umap"), "umap");
+    const { tools } = await setup(cwd, "sess");
+    const importTool = tools.find((t) => t.name === "studiorpc_asset_drawer_import")!;
+
+    const first = await importTool.execute(importArgs as never, toolCtx());
+    expect(first.output).toContain("[warning] Rollback baseline could not be captured");
+
+    // Reported once per turn, not on every subsequent edit.
+    const second = await importTool.execute(importArgs as never, toolCtx());
+    expect(second.output).not.toContain("[warning]");
+  });
+
+  test("prunes old snapshots after capturing", async () => {
+    const cwd = projectDir();
+    const dir = snapshotsDir(cwd);
+    mkdirSync(dir, { recursive: true });
+    // Pre-existing snapshots 0..20 for this session (21 files, cap is 20).
+    for (let i = 0; i <= 20; i++) writeFileSync(join(dir, `sess_${i}.ovdrjm`), "{}");
+    const { tools } = await setup(cwd, "sess");
+    const importTool = tools.find((t) => t.name === "studiorpc_asset_drawer_import")!;
+
+    await importTool.execute(importArgs as never, toolCtx()); // captures sess_21
+
+    expect(existsSync(join(dir, "sess_21.ovdrjm"))).toBe(true);
+    expect(existsSync(join(dir, "sess_0.ovdrjm"))).toBe(false); // pruned
+    expect(existsSync(join(dir, "sess_1.ovdrjm"))).toBe(false); // pruned (22 - 20 = 2 oldest)
+    expect(existsSync(join(dir, "sess_2.ovdrjm"))).toBe(true);
+  });
 });
 
 describe("createRollbackTool", () => {
