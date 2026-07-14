@@ -91,13 +91,29 @@ export function createRollbackTool(cwd: string, callRpc: typeof call): Tool {
       try {
         await callRpc("level.apply", {});
       } catch (error) {
-        // The editor was not synced. Put the file back to the pre-rollback
-        // state so disk and editor agree; otherwise the turn-end save would
-        // silently overwrite the restored file with the editor's state.
-        if (safetyPath) restoreSnapshot(cwd, safetyPath);
+        // The editor was not synced; make disk and editor agree again so the
+        // turn-end save cannot silently clobber a half-applied rollback.
+        let recovered = false;
+        if (safetyPath) {
+          restoreSnapshot(cwd, safetyPath);
+          recovered = true;
+        } else {
+          // No safety copy — ask the editor to re-save its (pre-rollback)
+          // state over the half-restored file.
+          try {
+            await callRpc("level.save.file", {});
+            recovered = true;
+          } catch {
+            // editor unreachable; report the inconsistency honestly below
+          }
+        }
         return errorResult(
-          `Rollback failed: level.apply error (${(error as Error).message}). The map was left unchanged; ` +
-            `fix the Studio connection and retry.`,
+          recovered
+            ? `Rollback failed: level.apply error (${(error as Error).message}). The map was left unchanged; ` +
+                `fix the Studio connection and retry.`
+            : `Rollback failed: level.apply error (${(error as Error).message}). The on-disk level file now ` +
+                `holds the target snapshot but the editor was not synced and could not re-save; verify the map ` +
+                `state in Studio before continuing.`,
         );
       }
       await callRpc("level.save.file", {});

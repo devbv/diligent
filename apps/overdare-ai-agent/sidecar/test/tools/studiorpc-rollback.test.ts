@@ -1,7 +1,7 @@
 // @summary Tests Studio rollback snapshot helpers and the (full-restore) rollback tool.
 
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createStudioRpcToolProvider } from "../../src/tools/studiorpc";
@@ -412,6 +412,55 @@ describe("createRollbackTool", () => {
     // and the turn-end save cannot silently clobber a half-applied rollback.
     expect(readFileSync(join(cwd, "world.ovdrjm"), "utf-8")).toBe('{"Root":{"x":1}}');
     expect(calls).toEqual(["level.save.file", "level.apply"]); // no final persist save
+  });
+
+  test("re-saves the editor state when both the safety snapshot and level.apply fail", async () => {
+    const cwd = projectDir(); // current = {"Root":{"x":1}} — the pre-rollback state
+    const dir = snapshotsDir(cwd);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "sess_0.ovdrjm"), '{"Root":{"original":true}}');
+    chmodSync(dir, 0o555); // safety snapshot capture fails: dir is read-only
+    try {
+      const calls: string[] = [];
+      const tool = createRollbackTool(cwd, async (method) => {
+        calls.push(method);
+        if (method === "level.apply") throw new Error("editor busy");
+        return {};
+      });
+
+      const result = await tool.execute({} as never, toolCtx());
+
+      expect(result.metadata?.error).toBe(true);
+      // No safety copy existed, so the recovery is an editor re-save.
+      expect(calls).toEqual(["level.save.file", "level.apply", "level.save.file"]);
+      expect(result.output).toContain("left unchanged");
+    } finally {
+      chmodSync(dir, 0o755); // let temp cleanup remove the dir
+    }
+  });
+
+  test("reports the inconsistency honestly when safety snapshot, apply, and re-save all fail", async () => {
+    const cwd = projectDir();
+    const dir = snapshotsDir(cwd);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "sess_0.ovdrjm"), '{"Root":{"original":true}}');
+    chmodSync(dir, 0o555); // safety snapshot capture fails: dir is read-only
+    try {
+      let saveCalls = 0;
+      const tool = createRollbackTool(cwd, async (method) => {
+        if (method === "level.apply") throw new Error("editor busy");
+        if (method === "level.save.file" && ++saveCalls > 1) throw new Error("editor gone");
+        return {};
+      });
+
+      const result = await tool.execute({} as never, toolCtx());
+
+      expect(result.metadata?.error).toBe(true);
+      expect(result.output).toContain("verify the map state");
+      expect(result.output).not.toContain("left unchanged");
+    } finally {
+      chmodSync(dir, 0o755); // let temp cleanup remove the dir
+    }
   });
 
   test("success output names the restored point and warns about stale references", async () => {
