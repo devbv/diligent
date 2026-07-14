@@ -31,6 +31,7 @@ const CHATGPT_WEBSOCKET_IDLE_TIMEOUT_MS = 300_000;
 const USER_AGENT = `diligent (${platform()} ${release()}; ${arch()})`;
 
 export interface ChatGPTStreamOptions {
+  useWebSocketForGpt56?: boolean;
   webSocketFactory?: (url: string, headers: Record<string, string>) => WebSocket;
   webSocketIdleTimeoutMs?: number;
 }
@@ -447,8 +448,8 @@ function resolveChatGPTModelId(modelId: string): string {
 /**
  * Create a StreamFunction for ChatGPT subscription (OAuth).
  *
- * Bypasses the OpenAI Node SDK entirely. Legacy models use raw HTTP/SSE,
- * while GPT-5.6 models use the ChatGPT Codex WebSocket Responses Lite contract.
+ * Bypasses the OpenAI Node SDK entirely. Models use raw HTTP/SSE by default,
+ * while GPT-5.6 can opt into the ChatGPT Codex WebSocket Responses Lite transport.
  *
  * ChatGPT subscriber endpoint limitations (store: false enforced):
  * - store: true → 400 "Store must be set to false"
@@ -487,7 +488,7 @@ export function createChatGPTStream(
           headers["ChatGPT-Account-ID"] = tokens.account_id;
         }
         if (options.sessionId) {
-          headers.session_id = options.sessionId;
+          headers["session-id"] = options.sessionId;
         }
         if (options.turnStateRef?.value !== undefined) {
           headers["x-codex-turn-state"] = options.turnStateRef.value;
@@ -497,6 +498,7 @@ export function createChatGPTStream(
         const useReasoning = model.supportsThinking;
         const upstreamModelId = resolveChatGPTModelId(model.id);
         const useResponsesLite = isGpt56Model(upstreamModelId);
+        const useWebSocket = useResponsesLite && providerOptions.useWebSocketForGpt56 === true;
 
         const standardBody = await buildResponsesRequestBody({
           model: upstreamModelId,
@@ -511,12 +513,15 @@ export function createChatGPTStream(
           store: false,
         });
 
+        const requestBody = useResponsesLite ? toResponsesLiteRequestBody(standardBody) : standardBody;
         if (useResponsesLite) {
           headers[RESPONSES_LITE_HEADER] = "true";
-          const body = toResponsesLiteRequestBody(standardBody);
+        }
+
+        if (useWebSocket) {
           const connection = createChatGPTWebSocketEvents({
             headers,
-            request: { type: "response.create", ...body },
+            request: { type: "response.create", ...requestBody },
             signal: options.signal,
             webSocketFactory: providerOptions.webSocketFactory ?? createDefaultWebSocket,
             idleTimeoutMs: providerOptions.webSocketIdleTimeoutMs,
@@ -541,7 +546,7 @@ export function createChatGPTStream(
             "Content-Type": "application/json",
             Accept: "text/event-stream",
           },
-          body: JSON.stringify(standardBody),
+          body: JSON.stringify(requestBody),
           signal: options.signal,
         });
 
