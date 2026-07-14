@@ -33,12 +33,15 @@ const RESPONSES_LITE_HEADER = "x-openai-internal-codex-responses-lite";
 // Pinned to the Codex client version used to verify the GPT-5.6 transport contract.
 const CHATGPT_CODEX_CLIENT_VERSION = "0.144.1";
 const CHATGPT_WEBSOCKET_IDLE_TIMEOUT_MS = 300_000;
+const CHATGPT_HTTP_HEADER_TIMEOUT_MS = 15_000;
 const USER_AGENT = `diligent (${platform()} ${release()}; ${arch()})`;
 
 export interface ChatGPTStreamOptions {
   useWebSocketForGpt56?: boolean;
   webSocketFactory?: (url: string, headers: Record<string, string>) => WebSocket;
   webSocketIdleTimeoutMs?: number;
+  /** Maximum wait for HTTP response headers. Does not limit SSE body streaming. */
+  httpHeaderTimeoutMs?: number;
 }
 
 type ChatGPTTransportState = {
@@ -203,10 +206,11 @@ function debugChatGPTWebSocket(direction: "->" | "<-", byteLength: number | unde
   });
 }
 
-function debugChatGPTHttpSse(direction: "->" | "<-", byteLength: number, summary: string): void {
+function debugChatGPTHttpSse(direction: "->" | "<-", byteLength: number, summary: string, sessionId?: string): void {
   if (process.env.DILIGENT_DEBUG_CHATGPT_HTTP_SSE !== "1") return;
   httpSseLogger.debug("sse_payload", {
     message: `ChatGPT HTTP/SSE: [llm:chatgpt-sse] ${direction} bytes=${byteLength} ${summary}`,
+    sessionId,
     fields: { direction, byteLength, summary },
   });
 }
@@ -215,11 +219,13 @@ function debugChatGPTHttpRequest(
   state: "sending" | "sent",
   byteLength: number,
   summary: string,
-  status?: number,
+  context?: { status?: number; sessionId?: string },
 ): void {
   if (process.env.DILIGENT_DEBUG_CHATGPT_HTTP_SSE !== "1") return;
+  const status = context?.status;
   httpSseLogger.debug("http_request", {
     message: `ChatGPT HTTP/SSE: [llm:chatgpt-sse] -> state=${state} bytes=${byteLength}${status !== undefined ? ` status=${status}` : ""} ${summary}`,
+    sessionId: context?.sessionId,
     fields: { direction: "->", state, byteLength, ...(status !== undefined && { status }), summary },
   });
 }
@@ -612,20 +618,50 @@ export function createChatGPTStream(
           ? summarizeChatGPTWebSocketPayload({ ...requestBody, type: "response.create" })
           : "";
         if (debugHttpSse) {
-          debugChatGPTHttpRequest("sending", requestByteLength, requestSummary);
+          debugChatGPTHttpRequest("sending", requestByteLength, requestSummary, { sessionId: options.sessionId });
         }
-        const response = await fetch(CHATGPT_CODEX_URL, {
-          method: "POST",
-          headers: {
-            ...headers,
-            "Content-Type": "application/json",
-            Accept: "text/event-stream",
-          },
-          body: requestText,
-          signal: options.signal,
-        });
+        const headerTimeoutMs = Math.max(1, providerOptions.httpHeaderTimeoutMs ?? CHATGPT_HTTP_HEADER_TIMEOUT_MS);
+        const headerTimeoutController = new AbortController();
+        const fetchSignal = options.signal
+          ? AbortSignal.any([options.signal, headerTimeoutController.signal])
+          : headerTimeoutController.signal;
+        let headerTimedOut = false;
+        const headerTimeout = setTimeout(() => {
+          headerTimedOut = true;
+          headerTimeoutController.abort();
+        }, headerTimeoutMs);
+        let response: Response;
+        try {
+          response = await fetch(CHATGPT_CODEX_URL, {
+            method: "POST",
+            headers: {
+              ...headers,
+              "Content-Type": "application/json",
+              Accept: "text/event-stream",
+            },
+            body: requestText,
+            signal: fetchSignal,
+          });
+        } catch (error) {
+          if (headerTimedOut) {
+            throw new ProviderError(
+              `ChatGPT HTTP response header timeout after ${headerTimeoutMs}ms`,
+              "network",
+              true,
+              undefined,
+              undefined,
+              error instanceof Error ? error : undefined,
+            );
+          }
+          throw error;
+        } finally {
+          clearTimeout(headerTimeout);
+        }
         if (debugHttpSse) {
-          debugChatGPTHttpRequest("sent", requestByteLength, requestSummary, response.status);
+          debugChatGPTHttpRequest("sent", requestByteLength, requestSummary, {
+            status: response.status,
+            sessionId: options.sessionId,
+          });
         }
 
         if (!response.ok) {
@@ -687,7 +723,12 @@ export function createChatGPTStream(
                 event = JSON.parse(data) as Record<string, unknown>;
               } catch {
                 if (debugEnabled) {
-                  debugChatGPTHttpSse("<-", new TextEncoder().encode(data).byteLength, "invalid_json");
+                  debugChatGPTHttpSse(
+                    "<-",
+                    new TextEncoder().encode(data).byteLength,
+                    "invalid_json",
+                    options.sessionId,
+                  );
                 }
                 continue;
               }
@@ -696,6 +737,7 @@ export function createChatGPTStream(
                   "<-",
                   new TextEncoder().encode(data).byteLength,
                   summarizeChatGPTWebSocketPayload(event),
+                  options.sessionId,
                 );
               }
               yield event;

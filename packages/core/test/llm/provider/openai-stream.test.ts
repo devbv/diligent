@@ -1,5 +1,6 @@
 // @summary Tests for OpenAI Responses request construction, usage mapping, and streaming edge cases
 import { afterEach, describe, expect, test } from "bun:test";
+import { type LogRecord, resetDefaultLogSinkForTests, setDefaultLogSink } from "@diligent/logging";
 import { toSerializableError } from "../../../src/agent/util/errors";
 import type { EventStream } from "../../../src/event-stream";
 import { resolveModel } from "../../../src/llm/models";
@@ -147,6 +148,7 @@ function createRetriedChatGPTStream(): EventStream<ProviderEvent, ProviderResult
 afterEach(() => {
   globalThis.fetch = originalFetch;
   console.debug = originalConsoleDebug;
+  resetDefaultLogSinkForTests();
   if (originalChatGPTWebSocketDebug === undefined) {
     delete process.env.DILIGENT_DEBUG_CHATGPT_WEBSOCKET;
   } else {
@@ -327,8 +329,8 @@ describe("createChatGPTStream retry classification", () => {
 
   test("logs ChatGPT HTTP/SSE payloads with byte sizes and content-safe summaries", async () => {
     process.env.DILIGENT_DEBUG_CHATGPT_HTTP_SSE = "1";
-    const logs: string[] = [];
-    console.debug = (...args: unknown[]) => logs.push(args.map(String).join(" "));
+    const logs: LogRecord[] = [];
+    setDefaultLogSink((record) => logs.push(record));
     let requestBytes = 0;
     const completedPayload =
       '{"type":"response.completed","response":{"status":"completed","usage":{"input_tokens":3,"output_tokens":2}}}';
@@ -345,31 +347,92 @@ describe("createChatGPTStream retry classification", () => {
     const chatgptStream = createChatGPTStream(() => ({ access_token: "token", refresh_token: "refresh" }));
 
     const events = await collectEvents(
-      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, { effort: "medium" }),
+      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, {
+        effort: "medium",
+        sessionId: "session-http-debug",
+      }),
     );
 
-    const outgoingLogs = logs.filter((line) => line.includes("[llm:chatgpt-sse] ->"));
+    const transportLogs = logs.filter((record) => record.scope === "llm:chatgpt-sse");
+    expect(transportLogs.every((record) => record.sessionId === "session-http-debug")).toBe(true);
+    const outgoingLogs = transportLogs.map((record) => record.message).filter((line) => line.includes("->"));
     expect(outgoingLogs).toHaveLength(2);
     expect(outgoingLogs[0]).toContain(`state=sending bytes=${requestBytes}`);
     expect(outgoingLogs[1]).toContain(`state=sent bytes=${requestBytes} status=200`);
     expect(outgoingLogs.every((line) => line.includes("response.create model=gpt-5.6-luna"))).toBe(true);
     expect(outgoingLogs.every((line) => !line.includes("sensitive text"))).toBe(true);
     expect(
-      logs.some(
-        (line) =>
-          line.includes("[llm:chatgpt-sse] <- bytes=") &&
-          line.includes("response.output_text.delta deltaChars=14") &&
-          !line.includes("sensitive text"),
+      transportLogs.some(
+        (record) =>
+          record.message.includes("<-") &&
+          record.message.includes("response.output_text.delta deltaChars=14") &&
+          !record.message.includes("sensitive text"),
       ),
     ).toBe(true);
     expect(
-      logs.some(
-        (line) =>
-          line.includes(`[llm:chatgpt-sse] <- bytes=${receivedBytes}`) &&
-          line.includes("response.completed status=completed in=3 out=2"),
+      transportLogs.some(
+        (record) =>
+          record.message.includes(`<- bytes=${receivedBytes}`) &&
+          record.message.includes("response.completed status=completed in=3 out=2"),
       ),
     ).toBe(true);
     expect(events.some((event) => event.type === "done")).toBe(true);
+  });
+
+  test("times out while waiting for ChatGPT HTTP response headers", async () => {
+    globalThis.fetch = ((_input, init) =>
+      new Promise<Response>((_resolve, reject) => {
+        const signal = init?.signal;
+        const fallback = setTimeout(() => reject(new Error("fetch was not aborted")), 50);
+        signal?.addEventListener(
+          "abort",
+          () => {
+            clearTimeout(fallback);
+            reject(signal.reason);
+          },
+          { once: true },
+        );
+      })) as typeof fetch;
+    const chatgptStream = createChatGPTStream(() => ({ access_token: "token", refresh_token: "refresh" }), {
+      httpHeaderTimeoutMs: 5,
+    });
+
+    const events = await collectEvents(
+      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, { effort: "medium" }),
+    );
+
+    const error = events.find((event): event is Extract<ProviderEvent, { type: "error" }> => event.type === "error");
+    expect(error?.error.message).toBe("ChatGPT HTTP response header timeout after 5ms");
+    expect((error?.error as { errorType?: string }).errorType).toBe("network");
+    expect((error?.error as { isRetryable?: boolean }).isRetryable).toBe(true);
+  });
+
+  test("clears the ChatGPT HTTP header timeout before streaming the SSE body", async () => {
+    globalThis.fetch = (async () => {
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          setTimeout(() => {
+            controller.enqueue(
+              new TextEncoder().encode(
+                'data: {"type":"response.completed","response":{"status":"completed","usage":{"input_tokens":1,"output_tokens":1}}}\n',
+              ),
+            );
+            controller.close();
+          }, 15);
+        },
+      });
+      return new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } });
+    }) as typeof fetch;
+    const chatgptStream = createChatGPTStream(() => ({ access_token: "token", refresh_token: "refresh" }), {
+      httpHeaderTimeoutMs: 5,
+    });
+
+    const events = await collectEvents(
+      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, { effort: "medium" }),
+    );
+
+    expect(events.some((event) => event.type === "done")).toBe(true);
+    expect(events.some((event) => event.type === "error")).toBe(false);
   });
 
   test("can explicitly use WebSocket + Lite for ChatGPT GPT-5.6", async () => {
