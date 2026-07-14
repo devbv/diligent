@@ -27,10 +27,12 @@ const CHATGPT_COMPACT_URL = "https://chatgpt.com/backend-api/codex/responses/com
 const RESPONSES_LITE_HEADER = "x-openai-internal-codex-responses-lite";
 // Pinned to the Codex client version used to verify the GPT-5.6 transport contract.
 const CHATGPT_CODEX_CLIENT_VERSION = "0.144.1";
+const CHATGPT_WEBSOCKET_IDLE_TIMEOUT_MS = 300_000;
 const USER_AGENT = `diligent (${platform()} ${release()}; ${arch()})`;
 
 export interface ChatGPTStreamOptions {
   webSocketFactory?: (url: string, headers: Record<string, string>) => WebSocket;
+  webSocketIdleTimeoutMs?: number;
 }
 
 type QueueWaiter<T> = {
@@ -102,20 +104,118 @@ async function webSocketMessageToString(data: unknown): Promise<string> {
   return String(data);
 }
 
+function webSocketMessageToImmediateString(data: unknown): string | undefined {
+  if (typeof data === "string") return data;
+  if (data instanceof ArrayBuffer) return new TextDecoder().decode(data);
+  if (ArrayBuffer.isView(data)) return new TextDecoder().decode(data);
+  return undefined;
+}
+
+function webSocketMessageByteLength(data: unknown): number | undefined {
+  if (typeof data === "string") return new TextEncoder().encode(data).byteLength;
+  if (data instanceof ArrayBuffer) return data.byteLength;
+  if (ArrayBuffer.isView(data)) return data.byteLength;
+  if (typeof Blob !== "undefined" && data instanceof Blob) return data.size;
+  return undefined;
+}
+
+function truncateWebSocketLogValue(value: string, maxLength = 120): string {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  return normalized.length <= maxLength ? normalized : `${normalized.slice(0, maxLength)}…`;
+}
+
+export function summarizeChatGPTWebSocketPayload(payload: Record<string, unknown>): string {
+  const type = typeof payload.type === "string" ? payload.type : "unknown";
+  if (type === "response.create") {
+    const model = typeof payload.model === "string" ? payload.model : undefined;
+    const inputItems = Array.isArray(payload.input) ? payload.input.length : undefined;
+    return [type, model && `model=${model}`, inputItems !== undefined && `inputItems=${inputItems}`]
+      .filter(Boolean)
+      .join(" ");
+  }
+  if (typeof payload.delta === "string") return `${type} deltaChars=${payload.delta.length}`;
+
+  if (type === "response.completed" || type === "response.failed") {
+    const response =
+      payload.response && typeof payload.response === "object"
+        ? (payload.response as Record<string, unknown>)
+        : undefined;
+    const status = typeof response?.status === "string" ? response.status : undefined;
+    const usage =
+      response?.usage && typeof response.usage === "object" ? (response.usage as Record<string, unknown>) : undefined;
+    const inputTokens = typeof usage?.input_tokens === "number" ? usage.input_tokens : undefined;
+    const outputTokens = typeof usage?.output_tokens === "number" ? usage.output_tokens : undefined;
+    return [
+      type,
+      status && `status=${status}`,
+      inputTokens !== undefined && `in=${inputTokens}`,
+      outputTokens !== undefined && `out=${outputTokens}`,
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  if (type === "error") {
+    const rawError = payload.error;
+    const error = rawError && typeof rawError === "object" ? (rawError as Record<string, unknown>) : undefined;
+    const status =
+      typeof payload.status === "number"
+        ? payload.status
+        : typeof payload.status_code === "number"
+          ? payload.status_code
+          : undefined;
+    const code = typeof error?.code === "string" ? error.code : undefined;
+    const errorType = typeof error?.type === "string" ? error.type : undefined;
+    const message =
+      (typeof error?.message === "string" && error.message) || (typeof rawError === "string" && rawError) || undefined;
+    return [
+      type,
+      status !== undefined && `status=${status}`,
+      code && `code=${code}`,
+      errorType && `errorType=${errorType}`,
+      message && `message=${truncateWebSocketLogValue(message)}`,
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  const item = payload.item && typeof payload.item === "object" ? (payload.item as Record<string, unknown>) : undefined;
+  const itemType = typeof item?.type === "string" ? item.type : undefined;
+  return itemType ? `${type} item=${itemType}` : type;
+}
+
+function debugChatGPTWebSocket(direction: "->" | "<-", byteLength: number | undefined, summary: string): void {
+  if (process.env.DILIGENT_DEBUG_CHATGPT_WEBSOCKET !== "1") return;
+  console.debug(`[llm:chatgpt-ws] ${direction} bytes=${byteLength ?? "unknown"} ${summary}`);
+}
+
 function toChatGPTWebSocketError(payload: Record<string, unknown>): ProviderError {
-  const status = typeof payload.status === "number" ? payload.status : undefined;
+  const status =
+    typeof payload.status === "number"
+      ? payload.status
+      : typeof payload.status_code === "number"
+        ? payload.status_code
+        : undefined;
   const rawError = payload.error;
   const error = rawError && typeof rawError === "object" ? (rawError as Record<string, unknown>) : undefined;
   const message =
     (typeof error?.message === "string" && error.message) ||
     (typeof rawError === "string" && rawError) ||
     "ChatGPT WebSocket request failed";
-  const errorType = typeof error?.type === "string" ? error.type : "";
-  const isUsageLimit = errorType.includes("usage_limit") || message.includes("usage_limit_reached");
+  const errorType = typeof error?.type === "string" ? error.type : undefined;
+  const errorCode = typeof error?.code === "string" ? error.code : undefined;
+  const normalizedMessage = message.toLowerCase();
+  const isUsageLimit =
+    errorType?.includes("usage_limit") === true ||
+    errorCode?.includes("usage_limit") === true ||
+    message.includes("usage_limit_reached") ||
+    normalizedMessage.includes("usage limit");
+  const isConnectionLimit = errorCode === "websocket_connection_limit_reached";
+  const details = [errorCode, errorType, message].filter((value): value is string => Boolean(value)).join(" | ");
   const displayMessage =
     status === 429 && isUsageLimit
       ? "AI usage limit reached. Please try again later or upgrade your plan."
-      : `ChatGPT API error${status ? ` (${status})` : ""}: ${message}`;
+      : `ChatGPT API error${status ? ` (${status})` : ""}: ${details || message}`;
 
   return new ProviderError(
     displayMessage,
@@ -128,7 +228,8 @@ function toChatGPTWebSocketError(payload: Record<string, unknown>): ProviderErro
           : status === 401 || status === 403
             ? "auth"
             : "unknown",
-    status !== 429 && ((status !== undefined && status >= 500) || isTransientOpenAIErrorMessage(displayMessage)),
+    isConnectionLimit ||
+      (status !== 429 && ((status !== undefined && status >= 500) || isTransientOpenAIErrorMessage(displayMessage))),
     undefined,
     status,
   );
@@ -139,11 +240,16 @@ function createChatGPTWebSocketEvents(input: {
   request: Record<string, unknown>;
   signal?: AbortSignal;
   webSocketFactory: (url: string, headers: Record<string, string>) => WebSocket;
+  idleTimeoutMs?: number;
 }): { opened: Promise<void>; events: AsyncIterable<Record<string, unknown>> } {
   const queue = new AsyncEventQueue<Record<string, unknown>>();
   const socket = input.webSocketFactory(CHATGPT_CODEX_WEBSOCKET_URL, input.headers);
+  const idleTimeoutMs = input.idleTimeoutMs ?? CHATGPT_WEBSOCKET_IDLE_TIMEOUT_MS;
   let opened = false;
   let settled = false;
+  let terminalSeen = false;
+  let idleTimer: ReturnType<typeof setTimeout> | undefined;
+  let pendingMessageCount = 0;
   let messageWork = Promise.resolve();
   let resolveOpened!: () => void;
   let rejectOpened!: (error: Error) => void;
@@ -153,6 +259,10 @@ function createChatGPTWebSocketEvents(input: {
   });
 
   const cleanup = () => {
+    if (idleTimer) {
+      clearTimeout(idleTimer);
+      idleTimer = undefined;
+    }
     socket.removeEventListener("open", handleOpen);
     socket.removeEventListener("message", handleMessage);
     socket.removeEventListener("error", handleError);
@@ -170,6 +280,16 @@ function createChatGPTWebSocketEvents(input: {
     }
   };
 
+  const resetIdleTimeout = (message: string) => {
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      if (process.env.DILIGENT_DEBUG_CHATGPT_WEBSOCKET === "1") {
+        console.debug(`[llm:chatgpt-ws] state=timeout pendingDecode=${pendingMessageCount} message=${message}`);
+      }
+      fail(new ProviderError(message, "network", true));
+    }, idleTimeoutMs);
+  };
+
   const fail = (error: Error) => {
     if (!settled) {
       settled = true;
@@ -182,44 +302,96 @@ function createChatGPTWebSocketEvents(input: {
 
   function handleOpen(): void {
     opened = true;
+    if (process.env.DILIGENT_DEBUG_CHATGPT_WEBSOCKET === "1") {
+      console.debug("[llm:chatgpt-ws] state=open");
+    }
+    resetIdleTimeout("ChatGPT WebSocket idle timeout sending request");
     try {
-      socket.send(JSON.stringify(input.request));
+      const requestText = JSON.stringify(input.request);
+      if (process.env.DILIGENT_DEBUG_CHATGPT_WEBSOCKET === "1") {
+        debugChatGPTWebSocket(
+          "->",
+          new TextEncoder().encode(requestText).byteLength,
+          summarizeChatGPTWebSocketPayload(input.request),
+        );
+      }
+      socket.send(requestText);
       settled = true;
       resolveOpened();
+      resetIdleTimeout("ChatGPT WebSocket idle timeout waiting for response");
     } catch (error) {
-      fail(error instanceof Error ? error : new Error(String(error)));
+      const message = error instanceof Error ? error.message : String(error);
+      fail(new ProviderError(`ChatGPT WebSocket send failed: ${message}`, "network", true));
     }
   }
 
   function handleMessage(event: MessageEvent): void {
+    pendingMessageCount++;
+    const debugEnabled = process.env.DILIGENT_DEBUG_CHATGPT_WEBSOCKET === "1";
+    const byteLength = debugEnabled ? webSocketMessageByteLength(event.data) : undefined;
+    const immediateText = debugEnabled ? webSocketMessageToImmediateString(event.data) : undefined;
+    if (debugEnabled) {
+      if (immediateText !== undefined) {
+        try {
+          const payload = JSON.parse(immediateText) as Record<string, unknown>;
+          debugChatGPTWebSocket("<-", byteLength, summarizeChatGPTWebSocketPayload(payload));
+        } catch {
+          debugChatGPTWebSocket("<-", byteLength, "invalid_json");
+        }
+      } else {
+        debugChatGPTWebSocket("<-", byteLength, "pending_decode");
+      }
+    }
     messageWork = messageWork
       .then(async () => {
         const text = await webSocketMessageToString(event.data);
         const payload = JSON.parse(text) as Record<string, unknown>;
+        if (debugEnabled && immediateText === undefined) {
+          debugChatGPTWebSocket("<-", byteLength, `decoded ${summarizeChatGPTWebSocketPayload(payload)}`);
+        }
+        resetIdleTimeout("ChatGPT WebSocket idle timeout waiting for response");
         if (payload.type === "error") {
+          terminalSeen = true;
           fail(toChatGPTWebSocketError(payload));
           return;
         }
 
         queue.push(payload);
         if (payload.type === "response.completed" || payload.type === "response.failed") {
+          terminalSeen = true;
           queue.end();
           cleanup();
           if (socket.readyState !== WebSocket.CLOSED) socket.close(1000);
         }
       })
+      .finally(() => {
+        pendingMessageCount--;
+      })
       .catch((error) => fail(error instanceof Error ? error : new Error(String(error))));
   }
 
   function handleError(): void {
+    if (process.env.DILIGENT_DEBUG_CHATGPT_WEBSOCKET === "1") {
+      console.debug(`[llm:chatgpt-ws] state=error opened=${opened} pendingDecode=${pendingMessageCount}`);
+    }
     fail(new ProviderError("ChatGPT WebSocket connection failed", "network", true));
   }
 
-  function handleClose(event: CloseEvent): void {
+  function finalizeClose(code: number, reason: string): void {
     if (!opened) {
       fail(
         new ProviderError(
-          `ChatGPT WebSocket connection closed before opening (${event.code}${event.reason ? `: ${event.reason}` : ""})`,
+          `ChatGPT WebSocket connection closed before opening (${code}${reason ? `: ${reason}` : ""})`,
+          "network",
+          true,
+        ),
+      );
+      return;
+    }
+    if (!terminalSeen) {
+      fail(
+        new ProviderError(
+          `ChatGPT WebSocket closed before response.completed (${code}${reason ? `: ${reason}` : ""})`,
           "network",
           true,
         ),
@@ -232,6 +404,19 @@ function createChatGPTWebSocketEvents(input: {
     }
     queue.end();
     cleanup();
+  }
+
+  function handleClose(event: CloseEvent): void {
+    const code = event.code;
+    const reason = event.reason;
+    if (process.env.DILIGENT_DEBUG_CHATGPT_WEBSOCKET === "1") {
+      console.debug(
+        `[llm:chatgpt-ws] state=close code=${code} reason=${truncateWebSocketLogValue(reason || "none")} pendingDecode=${pendingMessageCount}`,
+      );
+    }
+    messageWork = messageWork
+      .then(() => finalizeClose(code, reason))
+      .catch((error) => fail(error instanceof Error ? error : new Error(String(error))));
   }
 
   function handleAbort(): void {
@@ -249,6 +434,7 @@ function createChatGPTWebSocketEvents(input: {
   socket.addEventListener("error", handleError);
   socket.addEventListener("close", handleClose);
   input.signal?.addEventListener("abort", handleAbort, { once: true });
+  resetIdleTimeout("ChatGPT WebSocket idle timeout waiting for connection");
   if (input.signal?.aborted) handleAbort();
 
   return { opened: openedPromise, events: queue };
@@ -333,6 +519,7 @@ export function createChatGPTStream(
             request: { type: "response.create", ...body },
             signal: options.signal,
             webSocketFactory: providerOptions.webSocketFactory ?? createDefaultWebSocket,
+            idleTimeoutMs: providerOptions.webSocketIdleTimeoutMs,
           });
           await connection.opened;
           stream.push({ type: "start" });
