@@ -22,6 +22,17 @@ function solidImage(width: number, height: number): { data: Uint8ClampedArray; w
   return { data, width, height };
 }
 
+// Deterministic pseudo-random noise (LCG) — incompressible pixels for byte-backstop fixtures.
+function noiseImage(width: number, height: number): { data: Uint8ClampedArray; width: number; height: number } {
+  const data = new Uint8ClampedArray(width * height * 4);
+  let seed = 0x12345678;
+  for (let i = 0; i < data.length; i++) {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    data[i] = seed & 0xff;
+  }
+  return { data, width, height };
+}
+
 let smallPng: ArrayBuffer;
 let largePng: ArrayBuffer;
 
@@ -36,45 +47,48 @@ beforeAll(async () => {
 describe("downscaleImageIfNeeded", () => {
   test("returns the original bytes unchanged when the long edge is under the cap", async () => {
     const result = await downscaleImageIfNeeded(smallPng, "image/png");
-    expect(result).toBe(smallPng);
+    expect(result.bytes).toBe(smallPng);
+    expect(result.mediaType).toBe("image/png");
   });
 
   test("downscales an oversized PNG so the long edge equals the cap", async () => {
     const result = await downscaleImageIfNeeded(largePng, "image/png");
-    expect(result).not.toBe(largePng);
-    const decoded = await decodePng(result);
+    expect(result.bytes).not.toBe(largePng);
+    expect(result.mediaType).toBe("image/png");
+    const decoded = await decodePng(result.bytes);
     expect(Math.max(decoded.width, decoded.height)).toBe(DEFAULT_MAX_LONG_EDGE);
   });
 
   test("preserves aspect ratio when downscaling (3000x2000 -> 1568x1045)", async () => {
     const result = await downscaleImageIfNeeded(largePng, "image/png");
-    const decoded = await decodePng(result);
+    const decoded = await decodePng(result.bytes);
     expect(decoded.width).toBe(1568);
     expect(decoded.height).toBe(1045);
   });
 
   test("honors a custom maxLongEdge", async () => {
     const result = await downscaleImageIfNeeded(largePng, "image/png", 800);
-    const decoded = await decodePng(result);
+    const decoded = await decodePng(result.bytes);
     expect(Math.max(decoded.width, decoded.height)).toBe(800);
   });
 
   test("passes GIF bytes through unchanged (no codec; preserve animation)", async () => {
     const gif = new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x10, 0x27, 0x10, 0x27]).buffer;
     const result = await downscaleImageIfNeeded(gif, "image/gif");
-    expect(result).toBe(gif);
+    expect(result.bytes).toBe(gif);
+    expect(result.mediaType).toBe("image/gif");
   });
 
   test("passes through bytes that the codec cannot decode", async () => {
     const garbage = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x00, 0x00, 0x00, 0x00]).buffer;
     const result = await downscaleImageIfNeeded(garbage, "image/png");
-    expect(result).toBe(garbage);
+    expect(result.bytes).toBe(garbage);
   });
 
   test("does not crash on an extreme aspect ratio (short edge clamps to 1, not 0)", async () => {
     const wide = await encodePng(solidImage(3200, 1));
     const result = await downscaleImageIfNeeded(wide, "image/png");
-    const decoded = await decodePng(result);
+    const decoded = await decodePng(result.bytes);
     expect(decoded.width).toBe(DEFAULT_MAX_LONG_EDGE);
     expect(decoded.height).toBe(1); // clamped up from round(0.49)=0
   });
@@ -84,7 +98,24 @@ describe("downscaleImageIfNeeded", () => {
     // return it untouched WITHOUT attempting a (here impossible, otherwise OOM-y) decode.
     const header = pngHeaderOnly(20000, 20000);
     const result = await downscaleImageIfNeeded(header, "image/png");
-    expect(result).toBe(header);
+    expect(result.bytes).toBe(header);
+  });
+
+  test("byte backstop: converts an in-cap but multi-MB PNG to lossy WebP", async () => {
+    // Deterministic noise defeats PNG compression: 1200x1200 RGBA noise encodes to ~5.7 MB while
+    // staying within the 1568px pixel cap, so only the byte trigger can catch it.
+    const noise = await encodePng(noiseImage(1200, 1200));
+    expect(noise.byteLength).toBeGreaterThan(2 * 1024 * 1024);
+
+    const result = await downscaleImageIfNeeded(noise, "image/png");
+    expect(result.mediaType).toBe("image/webp");
+    expect(result.bytes.byteLength).toBeLessThan(2 * 1024 * 1024);
+  });
+
+  test("byte backstop: keeps the original when a re-encode cannot shrink it", async () => {
+    // A small solid PNG is already tiny; nothing to do on either trigger.
+    const result = await downscaleImageIfNeeded(smallPng, "image/png");
+    expect(result.bytes).toBe(smallPng);
   });
 });
 

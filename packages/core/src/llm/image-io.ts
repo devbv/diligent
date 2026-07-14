@@ -35,7 +35,7 @@ export async function localImageToBase64(
   // re-materialized on EVERY request, so an oversized stored file otherwise re-inflates each turn
   // and can breach Anthropic's 32 MB request cap long before token-based compaction triggers.
   // Header fast-path makes this a no-op for images already within the cap.
-  let downscaled = bytes;
+  let downscaled = { bytes, mediaType: block.mediaType };
   try {
     downscaled = await downscaleImageIfNeeded(bytes, block.mediaType);
   } catch {
@@ -46,8 +46,8 @@ export async function localImageToBase64(
     type: "image",
     source: {
       type: "base64",
-      media_type: block.mediaType,
-      data: Buffer.from(downscaled).toString("base64"),
+      media_type: downscaled.mediaType,
+      data: Buffer.from(downscaled.bytes).toString("base64"),
     },
   };
 }

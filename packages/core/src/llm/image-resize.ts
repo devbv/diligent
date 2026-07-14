@@ -47,6 +47,12 @@ const MAX_DECODE_PIXELS = 64 * 1024 * 1024; // 64 MP ≈ 256 MB RGBA
 const JPEG_QUALITY = 80;
 const WEBP_QUALITY = 80;
 
+// Byte backstop: outputs above this get force-recompressed even when their pixel dimensions are
+// within the long-edge cap. The pixel cap bounds bytes for normal photos/screenshots, but not for
+// pathological cases (e.g. a noise-heavy PNG that stays multi-MB at 1568px). 2 MB keeps the worst
+// case comfortably under Anthropic's ~5 MB per-image and 32 MB per-request transport limits.
+const MAX_ENCODED_BYTES = 2 * 1024 * 1024;
+
 type ImageDataLike = { data: Uint8ClampedArray; width: number; height: number };
 
 async function wasmBytes(path: string): Promise<ArrayBuffer> {
@@ -212,47 +218,65 @@ export function imageDimensionsFromHeader(
 }
 
 /**
- * Return image bytes whose long edge does not exceed `maxLongEdge`, re-encoding in the same format.
+ * Return image bytes whose long edge does not exceed `maxLongEdge` and whose encoded size stays
+ * under the byte backstop, along with the (possibly changed) media type: an output that is still
+ * over the byte cap in lossless PNG is re-encoded as lossy WebP instead.
  * Returns the ORIGINAL bytes unchanged when no downscale is warranted:
  *   - format has no jsquash codec (e.g. GIF) — also preserves animation
  *   - bytes the codec cannot decode — let the provider deal with the original
- *   - already within the cap — avoid a needless (lossy, for JPEG/WebP) re-encode
+ *   - within both the pixel cap and the byte cap — avoid a needless (lossy, for JPEG/WebP) re-encode
  */
-export async function downscaleImageIfNeeded(
+export async function downscaleImageIfNeeded<T extends string>(
   bytes: ArrayBuffer,
-  mediaType: string,
+  mediaType: T,
   maxLongEdge: number = DEFAULT_MAX_LONG_EDGE,
-): Promise<ArrayBuffer> {
-  if (!isResizable(mediaType)) return bytes;
+): Promise<{ bytes: ArrayBuffer; mediaType: T | "image/webp" }> {
+  const original = { bytes, mediaType };
+  if (!isResizable(mediaType)) return original;
+
+  const withinByteCap = bytes.byteLength <= MAX_ENCODED_BYTES;
 
   // Header-only fast path: read dimensions without decoding. In-spec images skip the decode
   // entirely, and images whose pixel count would blow the decode-memory ceiling are passed through
   // untouched rather than risking an OOM. A null result (truncated/odd header) falls back to decode.
   const headerDims = imageDimensionsFromHeader(new Uint8Array(bytes), mediaType);
   if (headerDims) {
-    if (Math.max(headerDims.width, headerDims.height) <= maxLongEdge) return bytes;
-    if (headerDims.width * headerDims.height > MAX_DECODE_PIXELS) return bytes;
+    if (Math.max(headerDims.width, headerDims.height) <= maxLongEdge && withinByteCap) return original;
+    if (headerDims.width * headerDims.height > MAX_DECODE_PIXELS) return original;
   }
 
   let image: ImageDataLike;
   try {
     image = await decodeImage(bytes, mediaType);
   } catch {
-    return bytes;
+    return original;
   }
 
   const longEdge = Math.max(image.width, image.height);
-  if (longEdge <= maxLongEdge) return bytes;
+  if (longEdge <= maxLongEdge && withinByteCap) return original;
 
-  const scale = maxLongEdge / longEdge;
-  // Clamp to >= 1: an extreme aspect ratio (e.g. 6272×1) would otherwise round the short edge to 0,
-  // and the resize codec throws on a zero dimension.
-  const width = Math.max(1, Math.round(image.width * scale));
-  const height = Math.max(1, Math.round(image.height * scale));
+  if (longEdge > maxLongEdge) {
+    const scale = maxLongEdge / longEdge;
+    // Clamp to >= 1: an extreme aspect ratio (e.g. 6272×1) would otherwise round the short edge to 0,
+    // and the resize codec throws on a zero dimension.
+    const width = Math.max(1, Math.round(image.width * scale));
+    const height = Math.max(1, Math.round(image.height * scale));
+    await ensureResize();
+    image = await resize(image as unknown as ImageData, { width, height });
+  }
 
-  await ensureResize();
-  const resized = await resize(image as unknown as ImageData, { width, height });
-  return await encodeImage(resized, mediaType);
+  let encoded = await encodeImage(image, mediaType);
+  let outType: T | "image/webp" = mediaType;
+  // Lossless PNG cannot be forced under the byte cap by re-encoding in place; switch to lossy WebP.
+  if (encoded.byteLength > MAX_ENCODED_BYTES && mediaType === "image/png") {
+    encoded = await encodeImage(image, "image/webp");
+    outType = "image/webp";
+  }
+  // A byte-cap-only pass (no resize) can fail to shrink — e.g. a JPEG already at our quality
+  // setting. Keep the original rather than swapping in a same-size-or-larger re-encode.
+  if (longEdge <= maxLongEdge && encoded.byteLength >= bytes.byteLength) return original;
+
+  return { bytes: encoded, mediaType: outType };
 }
 
 /** Downscale a single base64 image block, returning the original block when no resize is warranted. */
@@ -260,14 +284,17 @@ async function downscaleImageBlock(image: ImageBlock): Promise<ImageBlock> {
   if (image.source.type !== "base64" || !isResizable(image.source.media_type)) return image;
   const u8 = Buffer.from(image.source.data, "base64");
   const input = u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength);
-  let output: ArrayBuffer;
+  let output: { bytes: ArrayBuffer; mediaType: ImageBlock["source"]["media_type"] };
   try {
     output = await downscaleImageIfNeeded(input, image.source.media_type);
   } catch {
     return image;
   }
-  if (output === input) return image;
-  return { ...image, source: { ...image.source, data: Buffer.from(output).toString("base64") } };
+  if (output.bytes === input) return image;
+  return {
+    ...image,
+    source: { ...image.source, media_type: output.mediaType, data: Buffer.from(output.bytes).toString("base64") },
+  };
 }
 
 /**
