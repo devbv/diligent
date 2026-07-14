@@ -9,6 +9,7 @@ import { createRollbackTool } from "../../src/tools/studiorpc/tools/rollback-too
 import {
   captureSnapshot,
   findLatestSnapshot,
+  findSnapshotById,
   listSnapshots,
   nextRequestIndex,
   restoreSnapshot,
@@ -128,6 +129,32 @@ describe("findLatestSnapshot", () => {
   test("throws when no snapshot exists", () => {
     const cwd = projectDir();
     expect(() => findLatestSnapshot(cwd)).toThrow();
+  });
+
+  test("skips pre-rollback snapshots so repeated default rollback stays idempotent", () => {
+    const cwd = projectDir();
+    captureSnapshot(cwd, "sess", 0, { label: "edit" });
+    captureSnapshot(cwd, "sess", 1, { kind: "pre-rollback" });
+    const dir = snapshotsDir(cwd);
+    utimesSync(join(dir, "sess_0.ovdrjm"), new Date(2020, 0, 1), new Date(2020, 0, 1));
+    utimesSync(join(dir, "sess_1.ovdrjm"), new Date(2020, 0, 2), new Date(2020, 0, 2));
+
+    expect(findLatestSnapshot(cwd).id).toBe("sess_0"); // newest non-pre-rollback
+  });
+});
+
+describe("findSnapshotById", () => {
+  test("returns the entry for an existing id", () => {
+    const cwd = projectDir();
+    captureSnapshot(cwd, "sess", 0, { label: "edit" });
+    const entry = findSnapshotById(cwd, "sess_0");
+    expect(entry.id).toBe("sess_0");
+    expect(entry.path).toBe(join(snapshotsDir(cwd), "sess_0.ovdrjm"));
+  });
+
+  test("throws with a helpful message for an unknown id", () => {
+    const cwd = projectDir();
+    expect(() => findSnapshotById(cwd, "nope_9")).toThrow(/not found/);
   });
 });
 

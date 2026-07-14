@@ -157,29 +157,27 @@ export function listSnapshots(cwd: string): SnapshotEntry[] {
 }
 
 /**
- * Most recent snapshot in the project, by file mtime (matching the last agent
- * request). Throws if no snapshot exists.
+ * Most recent restorable snapshot: the newest entry whose kind is not
+ * "pre-rollback". Pre-rollback safety snapshots are excluded so a
+ * parameterless rollback stays idempotent (calling it twice restores the same
+ * baseline instead of undoing itself); they remain reachable via
+ * findSnapshotById. Throws if no snapshot exists.
  */
-export function findLatestSnapshot(cwd: string): { id: string; path: string } {
-  const dir = snapshotsDir(cwd);
-  let entries: string[];
-  try {
-    entries = readdirSync(dir);
-  } catch {
-    entries = [];
-  }
-  let newest: { name: string; mtimeMs: number } | undefined;
-  for (const name of entries) {
-    // The agent-done baseline is rewritten every turn, so by mtime it would
-    // always win — it is a diff baseline, never a rollback target.
-    if (!name.endsWith(".ovdrjm") || name === BASELINE_FILENAME) continue;
-    const mtimeMs = statSync(join(dir, name)).mtimeMs;
-    if (!newest || mtimeMs > newest.mtimeMs) newest = { name, mtimeMs };
-  }
-  if (!newest) {
+export function findLatestSnapshot(cwd: string): SnapshotEntry {
+  const latest = listSnapshots(cwd).find((entry) => entry.kind !== "pre-rollback");
+  if (!latest) {
     throw new Error("No rollback snapshot found. Nothing to roll back.");
   }
-  return { id: newest.name.slice(0, -".ovdrjm".length), path: join(dir, newest.name) };
+  return latest;
+}
+
+/** Snapshot with the given id. Throws when it does not exist. */
+export function findSnapshotById(cwd: string, id: string): SnapshotEntry {
+  const entry = listSnapshots(cwd).find((candidate) => candidate.id === id);
+  if (!entry) {
+    throw new Error(`Snapshot "${id}" not found. Use studiorpc_snapshot_list to see available snapshots.`);
+  }
+  return entry;
 }
 
 /** Overwrite the project's current ovdrjm with the snapshot bytes. */
