@@ -9,6 +9,7 @@
 // the Creator Hub token (same as the records transmitter); user identity is derived server-side
 // from the bearer token.
 
+import { createLogger } from "@diligent/logging";
 import {
   type ConsentConfigManager,
   type ConsentSetParams,
@@ -18,6 +19,7 @@ import {
 import { DEBUG, resolveEndpoint, resolveToken } from "./shared";
 
 const GATEWAY_CONSENT_TIMEOUT_MS = 5_000;
+const logger = createLogger({ scope: "sidecar/gateway", context: { component: "consent" } });
 
 type ConsentStatus = "granted" | "withdrawn" | "none";
 
@@ -99,7 +101,7 @@ export function createGatewayConsentBackend(): ConsentConfigManager {
       try {
         status = await fetchConsentStatus(token);
       } catch (err) {
-        if (DEBUG) console.warn("[gateway] consent refresh failed:", err);
+        if (DEBUG) logger.warn("consent.refresh_failed", { message: "[gateway] consent refresh failed", error: err });
       }
     },
     set: async (params) => {
@@ -109,9 +111,14 @@ export function createGatewayConsentBackend(): ConsentConfigManager {
       try {
         const result = await postConsent(token, granted);
         status = granted ? "granted" : "withdrawn";
-        if (DEBUG) console.debug(`[gateway] consent set granted=${granted}`, result);
+        if (DEBUG) {
+          logger.debug("consent.set", {
+            message: `[gateway] consent set granted=${granted}`,
+            fields: { granted, result },
+          });
+        }
       } catch (err) {
-        if (DEBUG) console.warn("[gateway] consent set failed:", err);
+        if (DEBUG) logger.warn("consent.set_failed", { message: "[gateway] consent set failed", error: err });
       }
       return statusToState(status);
     },
