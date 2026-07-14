@@ -78,6 +78,13 @@ describe("captureSnapshot", () => {
     expect(meta.kind).toBe("turn");
     expect("label" in meta).toBe(false);
   });
+
+  test("records transcriptPath in the metadata sidecar when given", () => {
+    const cwd = projectDir();
+    captureSnapshot(cwd, "sess1", 0, { transcriptPath: "/tmp/sessions/abc.jsonl" });
+    const meta = JSON.parse(readFileSync(join(snapshotsDir(cwd), "sess1_0.json"), "utf-8"));
+    expect(meta.transcriptPath).toBe("/tmp/sessions/abc.jsonl");
+  });
 });
 
 describe("listSnapshots", () => {
@@ -289,6 +296,17 @@ describe("snapshot capture on first edit", () => {
     const meta = JSON.parse(readFileSync(join(snapshotsDir(cwd), "sess_0.json"), "utf-8"));
     expect(meta.label).toBe("go");
     expect(meta.kind).toBe("turn");
+  });
+
+  test("stores the turn's transcript path in the snapshot metadata", async () => {
+    const cwd = projectDir();
+    const { tools } = await setup(cwd, "sess");
+    const importTool = tools.find((t) => t.name === "studiorpc_asset_drawer_import")!;
+
+    await importTool.execute(importArgs as never, toolCtx());
+
+    const meta = JSON.parse(readFileSync(join(snapshotsDir(cwd), "sess_0.json"), "utf-8"));
+    expect(meta.transcriptPath).toBe("/tmp/s.jsonl");
   });
 
   test("surfaces a warning in the tool output when baseline capture fails", async () => {

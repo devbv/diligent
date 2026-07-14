@@ -15,6 +15,8 @@ export interface SnapshotMeta {
   createdAt: string;
   label?: string;
   kind: SnapshotKind;
+  /** Session transcript the labeled request came from; enables read-time context lookup. */
+  transcriptPath?: string;
 }
 
 /** A snapshot on disk: sidecar metadata plus the path to the .ovdrjm copy. */
@@ -25,6 +27,7 @@ export interface SnapshotEntry extends SnapshotMeta {
 export interface CaptureOptions {
   label?: string;
   kind?: SnapshotKind;
+  transcriptPath?: string;
 }
 
 /**
@@ -103,6 +106,7 @@ export function captureSnapshot(cwd: string, sessionId: string, index: number, o
     index,
     createdAt: new Date().toISOString(),
     ...(options.label !== undefined ? { label: options.label } : {}),
+    ...(options.transcriptPath !== undefined ? { transcriptPath: options.transcriptPath } : {}),
     kind: options.kind ?? "turn",
   };
   writeFileSync(join(dir, `${id}.json`), JSON.stringify(meta));
@@ -153,6 +157,7 @@ export function listSnapshots(cwd: string): SnapshotEntry[] {
       index: parsed.index,
       createdAt: meta?.createdAt ?? new Date(mtimeMs).toISOString(),
       ...(meta?.label !== undefined ? { label: meta.label } : {}),
+      ...(meta?.transcriptPath !== undefined ? { transcriptPath: meta.transcriptPath } : {}),
       kind: meta?.kind ?? "turn",
       mtimeMs,
     });

@@ -44,6 +44,8 @@ interface TurnSnapshotState {
   promptLabel?: string;
   /** First capture failure this turn; set so the warning is reported only once. */
   captureError?: string;
+  /** Session transcript path for the current turn; recorded into snapshot metadata. */
+  transcriptPath?: string;
 }
 
 export function createStudioRpcToolProvider(options: StudioRpcToolProviderOptions = {}): BundledToolProvider {
@@ -82,6 +84,7 @@ export function createStudioRpcToolProvider(options: StudioRpcToolProviderOption
     // full text local means no transcript lookups are ever needed.
     turnState.promptLabel = typeof input.prompt === "string" ? input.prompt.slice(0, 2000) : undefined;
     turnState.captureError = undefined;
+    turnState.transcriptPath = typeof input.transcript_path === "string" ? input.transcript_path : undefined;
     turnState.humanEdits = computeHumanEdits(input.cwd);
     // Surface detected human edits without requiring a tool call: the summary
     // is prepended to the user message (LLM context) and the web client splits
@@ -137,7 +140,11 @@ export async function createStudioRpcTools(ctx: {
     if (!ts || ts.taken || !ts.sessionId) return undefined;
     try {
       const index = nextRequestIndex(snapshotsDir(ctx.cwd), ts.sessionId);
-      captureSnapshot(ctx.cwd, ts.sessionId, index, { label: ts.promptLabel, kind: "turn" });
+      captureSnapshot(ctx.cwd, ts.sessionId, index, {
+        label: ts.promptLabel,
+        kind: "turn",
+        transcriptPath: ts.transcriptPath,
+      });
       pruneSnapshots(ctx.cwd, ts.sessionId);
       ts.taken = true;
       return undefined;
