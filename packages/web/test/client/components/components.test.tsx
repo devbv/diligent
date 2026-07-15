@@ -17,6 +17,7 @@ import { CollabGroup } from "../../../src/client/components/CollabGroup";
 import { ContextMessage } from "../../../src/client/components/ContextMessage";
 import { EmptyState } from "../../../src/client/components/EmptyState";
 import { ErrorBanner } from "../../../src/client/components/ErrorBanner";
+import { HumanEditsNotice } from "../../../src/client/components/HumanEditsNotice";
 import { Input } from "../../../src/client/components/Input";
 import {
   extractPastedImageFiles,
@@ -1064,6 +1065,28 @@ test("context message renders a subtle collapsed compaction divider", () => {
   expect(html).not.toContain("Context checkpoint");
   expect(html).not.toContain("Older conversation was compressed to keep the thread efficient.");
   expect(html).not.toContain("Ship transcript-aware compaction UI");
+});
+
+test("human edits notice renders a visible banner with counts and collapsed diff", () => {
+  const summary = [
+    "```",
+    "Human edits since the agent's last completed turn:",
+    "",
+    "Added (1):",
+    '+ Part "Ramp" (p2) under "Workspace" (ws-0)',
+    "",
+    "Removed (2):",
+    '- Part "Old" (p3) was under "Workspace" (ws-0)',
+    '- PointLight "Lamp" (l1) was under "Workspace" (ws-0)',
+    "```",
+  ].join("\n");
+  const html = renderToStaticMarkup(<HumanEditsNotice summary={summary} />);
+
+  expect(html).toContain("Continuing from your edits");
+  expect(html).toContain("3 changes");
+  expect(html).toContain("will keep your edits in mind");
+  expect(html).toContain('aria-expanded="false"');
+  expect(html).not.toContain("Ramp"); // diff details collapsed by default
 });
 
 test("app header exposes sidebar toggle state and target", () => {

@@ -144,7 +144,7 @@ function isUtf16Le(buf: Buffer): boolean {
   return buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xfe;
 }
 
-function decodeOvdrjm(buf: Buffer): string {
+export function decodeOvdrjm(buf: Buffer): string {
   return isUtf16Le(buf) ? new TextDecoder("utf-16le").decode(buf) : buf.toString("utf-8");
 }
 
