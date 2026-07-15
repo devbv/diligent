@@ -135,9 +135,10 @@ describe("read_image tool", () => {
   });
 
   test("rejects files exceeding 5 MB", async () => {
-    const filePath = join(tmpDir, "big.png");
-    // 5 MB + 1 byte of zeros — past the cap, but valid PNG header for media check.
-    await writeFile(filePath, Buffer.concat([TINY_PNG_BYTES, Buffer.alloc(5 * 1024 * 1024)]));
+    const filePath = join(tmpDir, "big.gif");
+    // GIF passes through the downscaler untouched (no codec), so it is the format that can still
+    // hit the transport cap — PNG/JPEG/WebP get salvaged by the byte backstop instead.
+    await writeFile(filePath, Buffer.concat([Buffer.from("GIF89a"), Buffer.alloc(5 * 1024 * 1024)]));
     const result = await tool.execute({ file_path: filePath }, makeCtx());
     expect(result.metadata?.error).toBe(true);
     expect(result.output).toContain("5 MB limit");

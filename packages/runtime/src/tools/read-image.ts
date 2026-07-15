@@ -2,12 +2,12 @@
 
 import { lstat, realpath } from "node:fs/promises";
 import { basename, extname } from "node:path";
+import { downscaleImageIfNeeded } from "@diligent/core/llm/image-resize";
 import type { Tool, ToolContext, ToolResult } from "@diligent/core/tool/types";
 import type { ImageBlock } from "@diligent/core/types";
 import { createLogger } from "@diligent/logging";
 import { z } from "zod";
 import { isAbsolute, stripExtendedLengthPrefix } from "../util/path";
-import { downscaleImageIfNeeded } from "./image-resize";
 import { createTextRenderPayload, summarizeRenderText } from "./render-payload";
 
 const logger = createLogger({ scope: "runtime.tools.read-image" });
@@ -179,9 +179,9 @@ export function createReadImageTool(): Tool<typeof ReadImageParams> {
       // Cap the long edge before encoding: vision token cost scales with pixel resolution, not
       // base64 length, so downscaling oversized images is what actually reduces token spend.
       // A resize failure must not block reading the image — fall back to the original bytes.
-      let encodedBytes = bytes;
+      let encoded = { bytes, mediaType: declaredMediaType };
       try {
-        encodedBytes = await downscaleImageIfNeeded(bytes, declaredMediaType);
+        encoded = await downscaleImageIfNeeded(bytes, declaredMediaType);
       } catch (err) {
         // Don't block the read on a resize failure — fall back to the original bytes. But log it:
         // a silently-failing resize path would otherwise look like success while never downscaling.
@@ -190,7 +190,6 @@ export function createReadImageTool(): Tool<typeof ReadImageParams> {
           error: err,
           fields: { filePath: file_path },
         });
-        encodedBytes = bytes;
       }
 
       if (ctx.signal.aborted) return errorResult("Aborted");
@@ -198,9 +197,9 @@ export function createReadImageTool(): Tool<typeof ReadImageParams> {
       // Enforce the provider transport cap on the FINAL bytes. After downscale this is rarely hit;
       // when it is (e.g. a modest-resolution image that is still >5 MB), there is nothing more we can
       // safely strip, so surface it rather than letting the provider reject the turn.
-      if (encodedBytes.byteLength > MAX_IMAGE_BYTES) {
+      if (encoded.bytes.byteLength > MAX_IMAGE_BYTES) {
         return errorResult(
-          `Error: Image exceeds 5 MB limit (${formatBytes(encodedBytes.byteLength)}): ${basename(file_path)}`,
+          `Error: Image exceeds 5 MB limit (${formatBytes(encoded.bytes.byteLength)}): ${basename(file_path)}`,
         );
       }
 
@@ -208,14 +207,14 @@ export function createReadImageTool(): Tool<typeof ReadImageParams> {
         type: "image",
         source: {
           type: "base64",
-          media_type: declaredMediaType,
-          data: Buffer.from(encodedBytes).toString("base64"),
+          media_type: encoded.mediaType,
+          data: Buffer.from(encoded.bytes).toString("base64"),
         },
       };
 
       const downscaledNote =
-        encodedBytes.byteLength < bytes.byteLength ? ` (downscaled from ${formatBytes(bytes.byteLength)})` : "";
-      const summary = `Loaded image ${basename(file_path)} (${formatBytes(encodedBytes.byteLength)}, ${declaredMediaType})${downscaledNote}`;
+        encoded.bytes.byteLength < bytes.byteLength ? ` (downscaled from ${formatBytes(bytes.byteLength)})` : "";
+      const summary = `Loaded image ${basename(file_path)} (${formatBytes(encoded.bytes.byteLength)}, ${encoded.mediaType})${downscaledNote}`;
 
       return {
         output: summary,

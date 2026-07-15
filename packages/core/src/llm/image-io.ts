@@ -1,5 +1,6 @@
 // @summary Reads persisted local image blocks into provider-ready base64 image blocks with validation
 import type { ContentBlock, ImageBlock, LocalImageBlock } from "../types";
+import { downscaleImageIfNeeded } from "./image-resize";
 import { resolvePersistedLocalImagePath } from "./local-image-paths";
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
@@ -30,12 +31,23 @@ export async function localImageToBase64(
     throw new Error(`Attached image exceeds 10 MB limit: ${fileNameFromPath(resolvedPath)}`);
   }
 
+  // Guards images persisted before upload-time downscaling existed: local_image blocks are
+  // re-materialized on EVERY request, so an oversized stored file otherwise re-inflates each turn
+  // and can breach Anthropic's 32 MB request cap long before token-based compaction triggers.
+  // Header fast-path makes this a no-op for images already within the cap.
+  let downscaled = { bytes, mediaType: block.mediaType };
+  try {
+    downscaled = await downscaleImageIfNeeded(bytes, block.mediaType);
+  } catch {
+    // Re-encode failure must not fail the whole request — send the original.
+  }
+
   return {
     type: "image",
     source: {
       type: "base64",
-      media_type: block.mediaType,
-      data: Buffer.from(bytes).toString("base64"),
+      media_type: downscaled.mediaType,
+      data: Buffer.from(downscaled.bytes).toString("base64"),
     },
   };
 }

@@ -3,6 +3,7 @@
 import { randomBytes } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
+import { downscaleImageIfNeeded } from "@diligent/core/llm/image-resize";
 import { PROVIDER_NAMES, type ProviderManager } from "@diligent/core/llm/provider-manager";
 import { createLogger } from "@diligent/logging";
 import {
@@ -287,11 +288,6 @@ export async function handleImageUpload(args: {
     : join(args.cwd, projectDirName, "images", "drafts");
   await mkdir(root, { recursive: true });
 
-  const ext = extname(args.params.fileName) || mediaTypeToExtension(args.params.mediaType);
-  const safeBase = sanitizeFileStem(basename(args.params.fileName, ext));
-  const fileName = `${Date.now()}-${randomBytes(4).toString("hex")}-${safeBase}${ext}`;
-  const absPath = join(root, fileName);
-
   let buffer: Buffer;
   try {
     buffer = Buffer.from(args.params.dataBase64, "base64");
@@ -302,13 +298,35 @@ export async function handleImageUpload(args: {
   if (buffer.length === 0) throw new Error("Empty image payload");
   if (buffer.length > 10 * 1024 * 1024) throw new Error("Image exceeds 10 MB limit");
 
-  await Bun.write(absPath, buffer);
+  // Downscale once at ingest so the stored file — re-read and base64'd on every subsequent
+  // request — stays small. A raw 4K screenshot is ~10 MB (~13 MB as base64); a few of them in one
+  // session breach Anthropic's 32 MB request cap while staying invisible to token accounting.
+  // The byte backstop may convert an oversized PNG to WebP, so the media type can change here.
+  let stored: { bytes: ArrayBuffer; mediaType: SupportedImageMediaType } = {
+    bytes: buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer,
+    mediaType: args.params.mediaType,
+  };
+  try {
+    stored = await downscaleImageIfNeeded(stored.bytes, stored.mediaType);
+  } catch {
+    // Re-encode failure must not reject the upload — store the original.
+  }
+
+  const ext =
+    stored.mediaType === args.params.mediaType
+      ? extname(args.params.fileName) || mediaTypeToExtension(args.params.mediaType)
+      : mediaTypeToExtension(stored.mediaType);
+  const safeBase = sanitizeFileStem(basename(args.params.fileName, extname(args.params.fileName)));
+  const fileName = `${Date.now()}-${randomBytes(4).toString("hex")}-${safeBase}${ext}`;
+  const absPath = join(root, fileName);
+
+  await Bun.write(absPath, stored.bytes);
 
   const webUrl = args.toImageUrl?.(absPath);
   return {
     type: "local_image",
     path: absPath,
-    mediaType: args.params.mediaType,
+    mediaType: stored.mediaType,
     fileName: args.params.fileName,
     webUrl,
   };
