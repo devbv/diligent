@@ -147,6 +147,11 @@ DILIGENT_UPDATE_URL=https://example.com/update-manifest.json cargo run --manifes
 - `start` forwards both `DILIGENT_ENV` and an env-correct `DILIGENT_STORAGE_NAMESPACE` to the runtime child so it routes to the same storage root
 - `init` downloads the runtime bundle shape used by OVERDARE CLI: sidecar binary, `dist/client`, optional `rg`, and runtime defaults (`bootstrap/` preferred, legacy `defaults/` fallback)
 - on first run, `init --skip-update` is rejected until the runtime exists locally at least once
+- when an update check/download fails but a bootable runtime is already installed, unpinned `init` warns and exits `0` with the existing runtime (Studio blocks agent start for the whole session on a non-zero init exit); pinned init and first-time bootstrap still fail hard
+- unpinned `init`'s network work (manifest + bundle download) is capped by `DILIGENT_INIT_NETWORK_BUDGET_SECS` (default 45, kept below Studio's 60 s init timeout); bootstrap installs are never budget-limited
+- `start` retries once on timeout-class failures (port line, health check) after killing the previous child; timeouts are tunable via `DILIGENT_START_PORT_TIMEOUT_SECS` (default 15) and `DILIGENT_START_HEALTH_TIMEOUT_SECS` (default 30)
+- `start --init-if-missing` runs a full init first when no runtime is installed (self-heal for wiped/corrupt installs), then proceeds to start
+- machine-readable result lines for consumers that capture the pipes (Studio): `init` ends stdout with `INIT_RESULT=updated|up-to-date|fallback|skipped` (+ `FALLBACK_REASON=<code>` on fallback); any failure ends stderr with `ERROR_CODE=<code>` and exits with that code — `10` network, `20` install/disk, `21` bundle verification, `30` config/args, `40` start boot failure
 - if `~/.overdare/config.jsonc` (or `~/.overdare-dev/config.jsonc` for dev) sets `"updateMode": "disabled"`, runtime update behavior follows that config
 - `init --skip-update` intentionally exits with code `1` when no runtime has been downloaded yet
 - repo root shortcuts:

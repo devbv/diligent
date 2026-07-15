@@ -1,12 +1,54 @@
 use crate::env::EnvSelection;
 use crate::init;
 use crate::storage::migrate_global_namespace_if_needed;
-use crate::update::{self, UpdateProgress};
+use crate::update::{self, FailureKind, UpdateError, UpdateProgress};
 use crate::webserver;
 
-pub fn run() -> Result<(), String> {
+/// CLI failure carrying the exit-code contract from P077 P4:
+/// 0 success (fallback included) / 10 network / 20 install·disk /
+/// 21 verify / 30 config·args / 40 start boot failure.
+/// Studio today only distinguishes zero vs non-zero; the specific codes are
+/// additive detail it can start consuming later.
+pub struct CliError {
+    pub code: i32,
+    pub message: String,
+}
+
+impl CliError {
+    fn config(message: impl Into<String>) -> Self {
+        CliError {
+            code: 30,
+            message: message.into(),
+        }
+    }
+
+    fn install(message: impl Into<String>) -> Self {
+        CliError {
+            code: FailureKind::Disk.code(),
+            message: message.into(),
+        }
+    }
+
+    fn start(message: impl Into<String>) -> Self {
+        CliError {
+            code: 40,
+            message: message.into(),
+        }
+    }
+}
+
+impl From<UpdateError> for CliError {
+    fn from(err: UpdateError) -> Self {
+        CliError {
+            code: err.kind.code(),
+            message: err.message,
+        }
+    }
+}
+
+pub fn run() -> Result<(), CliError> {
     let raw_args: Vec<String> = std::env::args().skip(1).collect();
-    let (env_flag, remaining) = extract_env_flag(&raw_args)?;
+    let (env_flag, remaining) = extract_env_flag(&raw_args).map_err(CliError::config)?;
 
     let mut args = remaining.into_iter();
     let Some(command) = args.next() else {
@@ -22,12 +64,12 @@ pub fn run() -> Result<(), String> {
         return Ok(());
     }
 
-    let selection = EnvSelection::resolve(env_flag.as_deref())?;
+    let selection = EnvSelection::resolve(env_flag.as_deref()).map_err(CliError::config)?;
 
     match command.as_str() {
         "init" => run_init(&selection, args.collect()),
         "start" => run_webserver(&selection, args.collect()),
-        other => Err(format!("Unknown command: {other}")),
+        other => Err(CliError::config(format!("Unknown command: {other}"))),
     }
 }
 
@@ -76,35 +118,60 @@ fn extract_env_flag(args: &[String]) -> Result<(Option<String>, Vec<String>), St
     Ok((env_flag, remaining))
 }
 
-fn run_update(selection: &EnvSelection) -> Result<(), String> {
+/// Runs the update and reports `(updated, disabled)` — `disabled` marks the
+/// `updateMode: disabled` no-op so init can report `INIT_RESULT=skipped`
+/// instead of a misleading `up-to-date`.
+fn run_update(
+    selection: &EnvSelection,
+    deadline: Option<std::time::Instant>,
+) -> Result<(bool, bool), UpdateError> {
     // Migration is owned by the entry point (run_init / start_foreground); this
     // function trusts that it already ran. Calling it here would be idempotent
     // but wasteful — and obscures who is responsible for ordering.
     let mut log = String::new();
-    let mut progress = |event: UpdateProgress| match event {
-        UpdateProgress::Disabled => println!("update disabled"),
-        UpdateProgress::BootstrapRequired => println!("runtime bootstrap required"),
-        UpdateProgress::Checking { current_version } => {
-            println!("checking updates (current: v{current_version})")
-        }
-        UpdateProgress::Downloading { target_version } => println!("downloading v{target_version}"),
-        UpdateProgress::Verifying { target_version } => println!("verifying v{target_version}"),
-        UpdateProgress::Extracting { target_version } => println!("extracting v{target_version}"),
-        UpdateProgress::Applying { target_version } => println!("applying v{target_version}"),
-        UpdateProgress::UpToDate => println!("already up-to-date"),
-        UpdateProgress::Updated { target_version } => println!("updated to v{target_version}"),
+    let mut disabled = false;
+    let result = {
+        let mut progress = |event: UpdateProgress| match event {
+            UpdateProgress::Disabled => {
+                disabled = true;
+                println!("update disabled")
+            }
+            UpdateProgress::BootstrapRequired => println!("runtime bootstrap required"),
+            UpdateProgress::Checking { current_version } => {
+                println!("checking updates (current: v{current_version})")
+            }
+            UpdateProgress::Downloading { target_version } => {
+                println!("downloading v{target_version}")
+            }
+            UpdateProgress::Verifying { target_version } => println!("verifying v{target_version}"),
+            UpdateProgress::Extracting { target_version } => {
+                println!("extracting v{target_version}")
+            }
+            UpdateProgress::Applying { target_version } => println!("applying v{target_version}"),
+            UpdateProgress::UpToDate => println!("already up-to-date"),
+            UpdateProgress::Updated { target_version } => println!("updated to v{target_version}"),
+        };
+        update::run_with_progress(&mut log, Some(&mut progress), selection, deadline)
     };
-
-    let updated = update::run_with_progress(&mut log, Some(&mut progress), selection)?;
     if !log.is_empty() {
         eprint!("{log}");
     }
-    init::run(selection.env, updated)?;
-    Ok(())
+    result.map(|updated| (updated, disabled))
 }
 
-fn run_init(selection: &EnvSelection, args: Vec<String>) -> Result<(), String> {
-    migrate_global_namespace_if_needed(selection.env).map(|_| ())?;
+/// Whether a failed update may fall back to the already-installed runtime.
+///
+/// Never for a pinned init — the pin is an "exactly this version" contract
+/// (mirrors resolve_runtime_dir's no-fallback rule). Never without a bootable
+/// runtime — there is nothing to fall back to.
+fn can_fall_back_to_installed(selection: &EnvSelection) -> bool {
+    selection.pinned_version.is_none() && update::runtime_installed(selection.env)
+}
+
+fn run_init(selection: &EnvSelection, args: Vec<String>) -> Result<(), CliError> {
+    migrate_global_namespace_if_needed(selection.env)
+        .map(|_| ())
+        .map_err(CliError::install)?;
     let skip_update = args.iter().any(|arg| arg == "--skip-update");
 
     // Echo the resolved env/pin before doing any network work so a user
@@ -128,39 +195,135 @@ fn run_init(selection: &EnvSelection, args: Vec<String>) -> Result<(), String> {
         // which turned a flaky network into a hard `init --skip-update`
         // failure even when a runtime was already installed.
         if !update::runtime_installed(selection.env) {
-            return Err("--skip-update cannot be used before the runtime has been downloaded at least once.".to_string());
+            return Err(CliError::config("--skip-update cannot be used before the runtime has been downloaded at least once."));
         }
         println!("Current version: {}", current_display());
         println!("Skipping update as requested.");
-        init::run(selection.env, false)?;
+        init::run(selection.env, false).map_err(CliError::install)?;
+        println!("INIT_RESULT=skipped");
         return Ok(());
     }
 
-    let (_, latest) = update::init_status(selection)?;
-    println!("Current version: {}", current_display());
-    println!("Latest version: {latest}");
-    run_update(selection)
+    // Update failures (manifest fetch, download, install) fall back to the
+    // installed runtime instead of failing init: Studio blocks agent start for
+    // the whole editor session on a non-zero init exit, so a transient network
+    // blip must not outrank a bootable install (P077). The deadline caps all
+    // network work below Studio's 60 s init timeout — and exists only when a
+    // fallback target does.
+    let deadline = update::init_network_deadline(selection.env);
+    let update_result = update::init_status(selection, deadline).and_then(|(_, latest)| {
+        println!("Current version: {}", current_display());
+        println!("Latest version: {latest}");
+        run_update(selection, deadline)
+    });
+    let (updated, result_line, fallback_reason) = match update_result {
+        Ok((updated, disabled)) => {
+            let line = if disabled {
+                "skipped"
+            } else if updated {
+                "updated"
+            } else {
+                "up-to-date"
+            };
+            (updated, line, None)
+        }
+        Err(err) => {
+            if !can_fall_back_to_installed(selection) {
+                return Err(err.into());
+            }
+            eprintln!(
+                "[init] Update failed; continuing with installed runtime (current: {}). Reason: {}",
+                current_display(),
+                err.message
+            );
+            (false, "fallback", Some(err.kind.code()))
+        }
+    };
+    init::run(selection.env, updated).map_err(CliError::install)?;
+    // Machine-readable result lines, last on stdout (P077 P4). Studio's init
+    // monitor already captures this pipe; parsing them is additive on its side.
+    println!("INIT_RESULT={result_line}");
+    if let Some(code) = fallback_reason {
+        println!("FALLBACK_REASON={code}");
+    }
+    Ok(())
 }
 
-fn run_webserver(selection: &EnvSelection, args: Vec<String>) -> Result<(), String> {
-    let options = webserver::parse_args(&args, selection)?;
+fn run_webserver(selection: &EnvSelection, args: Vec<String>) -> Result<(), CliError> {
+    // Opt-in self-heal (P077 P7): a wiped or corrupt install turns start into
+    // init-then-start instead of the "run init first" error. Uses the same
+    // resolution as the actual launch, so the check and the launch agree.
+    if args.iter().any(|arg| arg == "--init-if-missing")
+        && update::resolve_runtime_dir(selection).is_err()
+    {
+        eprintln!("[start] Runtime missing; running init first (--init-if-missing)");
+        run_init(selection, Vec::new())?;
+    }
+    let options = webserver::parse_args(&args, selection).map_err(CliError::config)?;
     let runtime = tokio::runtime::Runtime::new()
-        .map_err(|e| format!("failed to create tokio runtime: {e}"))?;
-    let running = runtime.block_on(webserver::start_foreground(options))?;
+        .map_err(|e| CliError::start(format!("failed to create tokio runtime: {e}")))?;
+    let running = runtime
+        .block_on(webserver::start_foreground(options))
+        .map_err(CliError::start)?;
     println!("WEBSERVER_PORT={}", running.port);
-    runtime.block_on(running.wait())?;
+    runtime.block_on(running.wait()).map_err(CliError::start)?;
     Ok(())
 }
 
 fn print_help() {
     println!(
-        "overdare-ai-agent\n\nGlobal flags:\n  --agent-env=<env>[@<version>]   Select release env (prod|dev). Optionally pin a version, e.g. prod@1.2.3 or dev@1.4.0-beta.2. Defaults to prod.\n\nCommands:\n  init [--skip-update]   Ensure runtime exists, print current/latest, and update unless skipped\n  start [options]        Run updated runtime diligent-web-server as a subprocess"
+        "overdare-ai-agent\n\nGlobal flags:\n  --agent-env=<env>[@<version>]   Select release env (prod|dev). Optionally pin a version, e.g. prod@1.2.3 or dev@1.4.0-beta.2. Defaults to prod.\n\nCommands:\n  init [--skip-update]   Ensure runtime exists, print current/latest, and update unless skipped\n  start [options]        Run updated runtime diligent-web-server as a subprocess\n                         (--init-if-missing runs init first when no runtime is installed)"
     );
 }
 
 #[cfg(test)]
 mod tests {
-    use super::extract_env_flag;
+    use super::{can_fall_back_to_installed, extract_env_flag};
+    use crate::env::{Env, EnvSelection};
+    use crate::testutil::with_temp_home;
+    use std::fs;
+
+    #[test]
+    fn cli_error_codes_follow_the_p077_table() {
+        use super::CliError;
+        use crate::update::{FailureKind, UpdateError};
+        assert_eq!(CliError::config("x").code, 30);
+        assert_eq!(CliError::install("x").code, 20);
+        assert_eq!(CliError::start("x").code, 40);
+        let network = CliError::from(UpdateError {
+            kind: FailureKind::Network,
+            message: "x".to_string(),
+        });
+        assert_eq!(network.code, 10);
+    }
+
+    #[test]
+    fn update_failure_falls_back_only_unpinned_with_installed_runtime() {
+        with_temp_home("cli-fallback", |home| {
+            let unpinned = EnvSelection::latest(Env::Prod);
+            assert!(
+                !can_fall_back_to_installed(&unpinned),
+                "no runtime installed yet — nothing to fall back to"
+            );
+
+            let runtime = home.join(".overdare/updates/runtime");
+            fs::create_dir_all(runtime.join("dist/client")).expect("create dist/client");
+            let bin = if cfg!(windows) {
+                "diligent-web-server.exe"
+            } else {
+                "diligent-web-server"
+            };
+            fs::write(runtime.join(bin), b"#!/bin/sh\n").expect("write sidecar");
+
+            assert!(can_fall_back_to_installed(&unpinned));
+
+            let pinned = EnvSelection::parse("prod@1.2.3").expect("parse pin");
+            assert!(
+                !can_fall_back_to_installed(&pinned),
+                "a pin is an exact-version contract — never substitute another version"
+            );
+        });
+    }
 
     #[test]
     fn skip_update_requires_existing_runtime_message_is_stable() {

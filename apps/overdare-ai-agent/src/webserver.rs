@@ -103,7 +103,7 @@ pub fn parse_args(args: &[String], selection: &EnvSelection) -> Result<WebServer
         }
         if matches!(arg.as_str(), "--help" | "-h") {
             return Err(
-                "Usage: overdare-ai-agent [--agent-env=prod|dev[@version]] start --cwd=/path/to/project [--userid=abc] [--project-id=project] [--studio-rpc-port=12345] [--web-server-port=3000] [--hub-domain=hub.example.com]"
+                "Usage: overdare-ai-agent [--agent-env=prod|dev[@version]] start --cwd=/path/to/project [--userid=abc] [--project-id=project] [--studio-rpc-port=12345] [--web-server-port=3000] [--hub-domain=hub.example.com] [--init-if-missing]"
                     .to_string(),
             );
         }
@@ -171,6 +171,18 @@ fn resolve_installed_runtime_version(runtime_dir: &Path) -> Option<String> {
     Some(trimmed.to_string())
 }
 
+/// Positive whole-second duration from an env var, else `default_secs`.
+/// Lets slow machines (first-boot AV scans) extend the start timeouts without
+/// a rebuild and without touching the Studio-facing CLI signature.
+fn env_secs(key: &str, default_secs: u64) -> Duration {
+    std::env::var(key)
+        .ok()
+        .and_then(|raw| raw.trim().parse::<u64>().ok())
+        .filter(|secs| *secs > 0)
+        .map(Duration::from_secs)
+        .unwrap_or(Duration::from_secs(default_secs))
+}
+
 async fn wait_for_health(port: u16) -> Result<(), String> {
     use tokio::time::{sleep, timeout};
     let url = format!("http://127.0.0.1:{}/health", port);
@@ -178,7 +190,7 @@ async fn wait_for_health(port: u16) -> Result<(), String> {
         .timeout(Duration::from_secs(2))
         .build()
         .map_err(|e| format!("Cannot build HTTP client: {e}"))?;
-    let deadline = Duration::from_secs(30);
+    let deadline = env_secs("DILIGENT_START_HEALTH_TIMEOUT_SECS", 30);
     timeout(deadline, async {
         loop {
             if client
@@ -194,7 +206,13 @@ async fn wait_for_health(port: u16) -> Result<(), String> {
         }
     })
     .await
-    .map_err(|_| format!("Server at :{} did not become healthy within 30 s", port))?
+    .map_err(|_| {
+        format!(
+            "Server at :{} did not become healthy within {} s",
+            port,
+            deadline.as_secs()
+        )
+    })?
 }
 
 fn format_child_exit(status: std::process::ExitStatus) -> String {
@@ -234,6 +252,31 @@ impl RunningWebServer {
     }
 }
 
+/// One failed start attempt. Timeout-class failures are retryable (a first
+/// boot can be slowed by an AV scan of the fresh binary); a sidecar that
+/// crashed on its own is not — a respawn would crash the same way and only
+/// delay the diagnostics.
+struct StartFailure {
+    message: String,
+    retryable: bool,
+}
+
+impl StartFailure {
+    fn terminal(message: impl Into<String>) -> Self {
+        StartFailure {
+            message: message.into(),
+            retryable: false,
+        }
+    }
+
+    fn transient(message: impl Into<String>) -> Self {
+        StartFailure {
+            message: message.into(),
+            retryable: true,
+        }
+    }
+}
+
 pub async fn start_foreground(options: WebServerOptions) -> Result<RunningWebServer, String> {
     migrate_global_namespace_if_needed(options.env).map(|_| ())?;
     migrate_local_namespace_if_needed(&options.cwd, options.env).map(|_| ())?;
@@ -250,7 +293,44 @@ pub async fn start_foreground(options: WebServerOptions) -> Result<RunningWebSer
     let dist_dir = dist_dir_path(&runtime_dir);
     let log_path = default_web_log_path(options.env)?;
     let rg_path = rg_bin_path(&runtime_dir);
+    let runtime_version = resolve_installed_runtime_version(&runtime_dir);
 
+    const ATTEMPTS: u32 = 2;
+    for attempt in 1..=ATTEMPTS {
+        match start_once(
+            &options,
+            &binary,
+            &dist_dir,
+            &log_path,
+            rg_path.as_deref(),
+            runtime_version.as_deref(),
+        )
+        .await
+        {
+            Ok(running) => return Ok(running),
+            Err(failure) => {
+                if !failure.retryable || attempt == ATTEMPTS {
+                    return Err(failure.message);
+                }
+                // start_once killed (and reaped) its child before returning a
+                // retryable failure, so the respawn never races a half-alive
+                // sidecar for the same fixed --web-server-port.
+                eprintln!("[start] {}; retrying...", failure.message);
+                tokio::time::sleep(Duration::from_secs(2)).await;
+            }
+        }
+    }
+    unreachable!("start attempt loop always returns");
+}
+
+async fn start_once(
+    options: &WebServerOptions,
+    binary: &Path,
+    dist_dir: &Path,
+    log_path: &Path,
+    rg_path: Option<&Path>,
+    runtime_version: Option<&str>,
+) -> Result<RunningWebServer, StartFailure> {
     let desired_port = options.web_server_port.unwrap_or(0);
 
     let mut args = vec![
@@ -260,11 +340,11 @@ pub async fn start_foreground(options: WebServerOptions) -> Result<RunningWebSer
         format!("--log-file={}", log_path.to_string_lossy()),
         format!("--parent-pid={}", std::process::id()),
     ];
-    if let Some(userid) = options.userid.filter(|value| !value.is_empty()) {
+    if let Some(userid) = options.userid.as_deref().filter(|value| !value.is_empty()) {
         args.push(format!("--userid={userid}"));
     }
 
-    let mut cmd = tokio::process::Command::new(&binary);
+    let mut cmd = tokio::process::Command::new(binary);
     #[cfg(windows)]
     {
         const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
@@ -273,8 +353,12 @@ pub async fn start_foreground(options: WebServerOptions) -> Result<RunningWebSer
     }
     cmd.args(&args)
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::inherit());
-    if let Some(rg) = rg_path.as_deref() {
+        .stderr(std::process::Stdio::inherit())
+        // Belt-and-braces for early-return paths: the sidecar's own
+        // --parent-pid watchdog only fires after this launcher exits, which is
+        // too late when a retry respawns within the same process.
+        .kill_on_drop(true);
+    if let Some(rg) = rg_path {
         cmd.env("DILIGENT_RG_PATH", rg.to_string_lossy().as_ref());
     }
     if let Some(studio_rpc_port) = options.studio_rpc_port {
@@ -288,53 +372,77 @@ pub async fn start_foreground(options: WebServerOptions) -> Result<RunningWebSer
     }
     cmd.env("DILIGENT_STORAGE_NAMESPACE", storage_namespace(options.env));
     cmd.env("DILIGENT_ENV", options.env.as_str());
-    if let Some(version) = resolve_installed_runtime_version(&runtime_dir) {
+    if let Some(version) = runtime_version {
         cmd.env("DILIGENT_SERVER_VERSION", version);
     }
 
     let mut child = cmd
         .spawn()
-        .map_err(|e| format!("Failed to spawn updated sidecar: {e}"))?;
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or("No stdout from updated sidecar")?;
+        .map_err(|e| StartFailure::terminal(format!("Failed to spawn updated sidecar: {e}")))?;
+    let Some(stdout) = child.stdout.take() else {
+        let _ = child.kill().await;
+        return Err(StartFailure::terminal("No stdout from updated sidecar"));
+    };
 
-    let port = {
+    let port_result = {
         let mut reader = BufReader::new(stdout);
-        let deadline = Duration::from_secs(15);
+        let deadline = env_secs("DILIGENT_START_PORT_TIMEOUT_SECS", 15);
         let mut line_buf = String::new();
         tokio::time::timeout(deadline, async {
             loop {
                 line_buf.clear();
-                let n = reader.read_line(&mut line_buf).await.map_err(|e| format!("read stdout: {e}"))?;
+                let n = reader
+                    .read_line(&mut line_buf)
+                    .await
+                    .map_err(|e| StartFailure::terminal(format!("read stdout: {e}")))?;
                 if n == 0 {
                     let status = child
                         .wait()
                         .await
-                        .map_err(|e| format!("wait sidecar exit: {e}"))?;
-                    return Err::<u16, String>(format!(
+                        .map_err(|e| StartFailure::terminal(format!("wait sidecar exit: {e}")))?;
+                    return Err::<u16, StartFailure>(StartFailure::terminal(format!(
                         "Sidecar exited before emitting WEBSERVER_PORT ({})\nBinary: {}\nLog file: {}",
                         format_child_exit(status),
                         binary.display(),
                         log_path.display()
-                    ));
+                    )));
                 }
                 if let Some(port_str) = line_buf.trim().strip_prefix("DILIGENT_PORT=") {
-                    let port: u16 = port_str.trim().parse().map_err(|_| format!("Invalid port value: {}", port_str.trim()))?;
+                    let port: u16 = port_str.trim().parse().map_err(|_| {
+                        StartFailure::terminal(format!("Invalid port value: {}", port_str.trim()))
+                    })?;
                     return Ok(port);
                 }
                 if let Some(port_str) = line_buf.trim().strip_prefix("WEBSERVER_PORT=") {
-                    let port: u16 = port_str.trim().parse().map_err(|_| format!("Invalid port value: {}", port_str.trim()))?;
+                    let port: u16 = port_str.trim().parse().map_err(|_| {
+                        StartFailure::terminal(format!("Invalid port value: {}", port_str.trim()))
+                    })?;
                     return Ok(port);
                 }
             }
         })
         .await
-        .map_err(|_| "Timed out waiting for WEBSERVER_PORT from updated sidecar".to_string())?
-    }?;
+        .unwrap_or_else(|_| {
+            Err(StartFailure::transient(
+                "Timed out waiting for WEBSERVER_PORT from updated sidecar",
+            ))
+        })
+    };
 
-    wait_for_health(port).await?;
+    let port = match port_result {
+        Ok(port) => port,
+        Err(failure) => {
+            // Kill and reap before surfacing the failure — a retry (or the
+            // caller's next action) must never race a still-alive child.
+            let _ = child.kill().await;
+            return Err(failure);
+        }
+    };
+
+    if let Err(err) = wait_for_health(port).await {
+        let _ = child.kill().await;
+        return Err(StartFailure::transient(err));
+    }
     Ok(RunningWebServer { port, child })
 }
 
@@ -391,6 +499,31 @@ mod tests {
             super::normalize_cwd("/Users/devbv/git/diligent"),
             r"C:\Users\devbv\git\diligent"
         );
+    }
+
+    #[test]
+    fn env_secs_parses_override_and_falls_back() {
+        use super::env_secs;
+        use std::time::Duration;
+        let _guard = crate::testutil::HOME_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        std::env::remove_var("TEST_START_TIMEOUT_SECS");
+        assert_eq!(
+            env_secs("TEST_START_TIMEOUT_SECS", 15),
+            Duration::from_secs(15)
+        );
+        std::env::set_var("TEST_START_TIMEOUT_SECS", "45");
+        assert_eq!(
+            env_secs("TEST_START_TIMEOUT_SECS", 15),
+            Duration::from_secs(45)
+        );
+        std::env::set_var("TEST_START_TIMEOUT_SECS", "0");
+        assert_eq!(
+            env_secs("TEST_START_TIMEOUT_SECS", 15),
+            Duration::from_secs(15)
+        );
+        std::env::remove_var("TEST_START_TIMEOUT_SECS");
     }
 
     #[test]

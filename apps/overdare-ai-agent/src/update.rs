@@ -2,7 +2,7 @@ use std::fmt::Write as FmtWrite;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -37,6 +37,81 @@ pub struct InstalledVersion {
     pub version: String,
     pub applied_at: String,
     pub sha256: String,
+}
+
+/// Failure classification behind the machine-readable init lines
+/// (`ERROR_CODE=` / `FALLBACK_REASON=`, P077 P4). Buckets answer "what should
+/// the consumer do", not "what exactly happened" — details stay in the
+/// human-readable message.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FailureKind {
+    /// Transient network trouble — retrying later is likely to work.
+    Network,
+    /// Local filesystem / install trouble — check disk space or AV locks.
+    Disk,
+    /// Download stayed corrupt across retries — a release-side problem.
+    Verify,
+    /// Manifest invalid or mismatched — a release-pipeline/config problem;
+    /// retrying fails the same way.
+    Manifest,
+}
+
+impl FailureKind {
+    pub fn code(self) -> i32 {
+        match self {
+            FailureKind::Network => 10,
+            FailureKind::Disk => 20,
+            FailureKind::Verify => 21,
+            FailureKind::Manifest => 30,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct UpdateError {
+    pub kind: FailureKind,
+    pub message: String,
+}
+
+impl UpdateError {
+    fn network(message: impl Into<String>) -> Self {
+        UpdateError {
+            kind: FailureKind::Network,
+            message: message.into(),
+        }
+    }
+
+    fn verify(message: impl Into<String>) -> Self {
+        UpdateError {
+            kind: FailureKind::Verify,
+            message: message.into(),
+        }
+    }
+
+    fn manifest(message: impl Into<String>) -> Self {
+        UpdateError {
+            kind: FailureKind::Manifest,
+            message: message.into(),
+        }
+    }
+}
+
+/// Untagged String errors inside the update path are filesystem/install work
+/// (write, extract, rename, pointer) — everything network/manifest/verify is
+/// tagged explicitly at its source.
+impl From<String> for UpdateError {
+    fn from(message: String) -> Self {
+        UpdateError {
+            kind: FailureKind::Disk,
+            message,
+        }
+    }
+}
+
+impl From<&str> for UpdateError {
+    fn from(message: &str) -> Self {
+        UpdateError::from(message.to_string())
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -89,6 +164,44 @@ fn bundle_zip_path(updates: &Path, version: &str, platform: &str, token: u32) ->
 
 /// Crash-orphaned update scratch older than this is reclaimed at update start.
 const SCRATCH_MAX_AGE: Duration = Duration::from_secs(24 * 60 * 60);
+
+/// Total wall-clock budget for init's network work (manifest fetch + bundle
+/// download) when a bootable runtime already exists to fall back to. Must stay
+/// comfortably below Studio's init monitor timeout (60 s) so the fallback exit
+/// lands before Studio gives up on init entirely (P077).
+const DEFAULT_INIT_NETWORK_BUDGET_SECS: u64 = 45;
+
+fn init_network_budget() -> Duration {
+    let secs = nonempty_env("DILIGENT_INIT_NETWORK_BUDGET_SECS")
+        .and_then(|raw| raw.parse::<u64>().ok())
+        .filter(|secs| *secs > 0)
+        .unwrap_or(DEFAULT_INIT_NETWORK_BUDGET_SECS);
+    Duration::from_secs(secs)
+}
+
+/// Network deadline for this init run. `Some` only when a bootable runtime is
+/// already installed — the fallback target. Bootstrap installs (no runtime
+/// yet) are never budget-limited: there is nothing to fall back to, and a
+/// first download legitimately takes longer than any sane budget.
+pub fn init_network_deadline(env: Env) -> Option<Instant> {
+    runtime_installed(env).then(|| Instant::now() + init_network_budget())
+}
+
+/// Time left before `deadline`. `Err` once the budget is exhausted — callers
+/// abort their network work so init can fall back to the installed runtime.
+fn remaining_budget(deadline: Option<Instant>) -> Result<Option<Duration>, String> {
+    let Some(deadline) = deadline else {
+        return Ok(None);
+    };
+    let now = Instant::now();
+    if now >= deadline {
+        return Err(
+            "init network budget exhausted (override with DILIGENT_INIT_NETWORK_BUDGET_SECS)"
+                .to_string(),
+        );
+    }
+    Ok(Some(deadline - now))
+}
 
 /// Freshly modified runtime-v* dirs are exempt from cleanup: a concurrent
 /// process may have renamed its staging in but not yet written its pointer,
@@ -852,40 +965,66 @@ fn is_retryable_manifest_status(status: reqwest::StatusCode) -> bool {
     status.is_server_error() || status == reqwest::StatusCode::NOT_FOUND
 }
 
-fn fetch_manifest(manifest_url: &str) -> Result<UpdateManifest, String> {
+const BASE_BACKOFF_MS: u64 = 500;
+
+fn http_client(total_timeout: Option<Duration>) -> Result<reqwest::blocking::Client, String> {
+    let mut builder = reqwest::blocking::Client::builder()
+        .connect_timeout(Duration::from_secs(10))
+        .user_agent(format!("overdare-ai-agent/{BUNDLED_RUNTIME_VERSION}"));
+    if let Some(timeout) = total_timeout {
+        builder = builder.timeout(timeout);
+    }
+    builder.build().map_err(|e| format!("http client: {e}"))
+}
+
+fn fetch_manifest(
+    manifest_url: &str,
+    deadline: Option<Instant>,
+) -> Result<UpdateManifest, UpdateError> {
     // Retry transient failures: network errors, 5xx, 404 (dev-latest swap),
     // and body-read errors (truncated body during CDN swap). Parse errors are
     // terminal because a malformed JSON document does not become valid on
     // retry — repeating it just delays the failure.
     const ATTEMPTS: u32 = 3;
-    const BASE_BACKOFF_MS: u64 = 500;
+    const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
-    let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .user_agent(format!("overdare-ai-agent/{BUNDLED_RUNTIME_VERSION}"))
-        .build()
-        .map_err(|e| format!("http client: {e}"))?;
+    let client = http_client(None).map_err(UpdateError::network)?;
 
-    let mut last_err = String::new();
+    let mut last_err = UpdateError::network("fetch manifest: no attempt ran");
     for attempt in 1..=ATTEMPTS {
-        let outcome: Result<UpdateManifest, (String, bool)> = (|| {
+        // Cap each attempt at the remaining init budget so retries never push
+        // the launcher past the point where the fallback exit stops mattering.
+        let timeout = match remaining_budget(deadline) {
+            Ok(remaining) => remaining.map_or(REQUEST_TIMEOUT, |r| REQUEST_TIMEOUT.min(r)),
+            Err(budget_err) => {
+                return Err(UpdateError::network(if attempt == 1 {
+                    budget_err
+                } else {
+                    format!("{budget_err}; last error: {}", last_err.message)
+                }));
+            }
+        };
+        let outcome: Result<UpdateManifest, (UpdateError, bool)> = (|| {
             let response = client
                 .get(manifest_url)
+                .timeout(timeout)
                 .send()
-                .map_err(|e| (format!("fetch manifest: {e}"), true))?;
+                .map_err(|e| (UpdateError::network(format!("fetch manifest: {e}")), true))?;
             let status = response.status();
             if !status.is_success() {
                 let retryable = is_retryable_manifest_status(status);
                 return Err((
-                    format!("fetch manifest failed: HTTP {status} ({manifest_url})"),
+                    UpdateError::network(format!(
+                        "fetch manifest failed: HTTP {status} ({manifest_url})"
+                    )),
                     retryable,
                 ));
             }
             let body = response
                 .text()
-                .map_err(|e| (format!("read manifest body: {e}"), true))?;
+                .map_err(|e| (UpdateError::network(format!("read manifest body: {e}")), true))?;
             serde_json::from_str::<UpdateManifest>(&body)
-                .map_err(|e| (format!("parse manifest: {e}"), false))
+                .map_err(|e| (UpdateError::manifest(format!("parse manifest: {e}")), false))
         })();
 
         match outcome {
@@ -904,16 +1043,22 @@ fn fetch_manifest(manifest_url: &str) -> Result<UpdateManifest, String> {
     Err(last_err)
 }
 
-pub fn fetch_latest_version(selection: &EnvSelection) -> Result<String, String> {
-    let manifest = fetch_manifest(&resolve_manifest_url(selection))?;
-    validate_manifest_env(&manifest, selection.env)?;
-    validate_pinned_version(&manifest, selection)?;
+pub fn fetch_latest_version(
+    selection: &EnvSelection,
+    deadline: Option<Instant>,
+) -> Result<String, UpdateError> {
+    let manifest = fetch_manifest(&resolve_manifest_url(selection), deadline)?;
+    validate_manifest_env(&manifest, selection.env).map_err(UpdateError::manifest)?;
+    validate_pinned_version(&manifest, selection).map_err(UpdateError::manifest)?;
     Ok(manifest.version)
 }
 
-pub fn init_status(selection: &EnvSelection) -> Result<(Option<String>, String), String> {
+pub fn init_status(
+    selection: &EnvSelection,
+    deadline: Option<Instant>,
+) -> Result<(Option<String>, String), UpdateError> {
     let current = installed_version(selection.env).map(|item| item.version);
-    let latest = fetch_latest_version(selection)?;
+    let latest = fetch_latest_version(selection, deadline)?;
     Ok((current, latest))
 }
 
@@ -922,11 +1067,12 @@ fn fetch_update(
     manifest_url: &str,
     effective_version: String,
     bootstrap_required: bool,
+    deadline: Option<Instant>,
     progress: &mut Option<&mut dyn FnMut(UpdateProgress)>,
-) -> Result<UpdateOutcome, String> {
-    let manifest = fetch_manifest(manifest_url)?;
-    validate_manifest_env(&manifest, selection.env)?;
-    validate_pinned_version(&manifest, selection)?;
+) -> Result<UpdateOutcome, UpdateError> {
+    let manifest = fetch_manifest(manifest_url, deadline)?;
+    validate_manifest_env(&manifest, selection.env).map_err(UpdateError::manifest)?;
+    validate_pinned_version(&manifest, selection).map_err(UpdateError::manifest)?;
     if !should_download_update(&manifest.version, &effective_version, bootstrap_required) {
         return Ok(UpdateOutcome::UpToDate);
     }
@@ -950,7 +1096,9 @@ fn fetch_update(
     let bundle = manifest
         .platforms
         .get(current_platform())
-        .ok_or_else(|| format!("no bundle for platform {}", current_platform()))?
+        .ok_or_else(|| {
+            UpdateError::manifest(format!("no bundle for platform {}", current_platform()))
+        })?
         .clone();
     report_progress(
         progress,
@@ -958,26 +1106,81 @@ fn fetch_update(
             target_version: manifest.version.clone(),
         },
     );
-    let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .user_agent(format!("overdare-ai-agent/{BUNDLED_RUNTIME_VERSION}"))
-        .build()
-        .map_err(|e| format!("http client: {e}"))?;
-    let response = client
-        .get(&bundle.url)
-        .send()
-        .map_err(|e| format!("download bundle: {e}"))?;
-    if !response.status().is_success() {
-        return Err(format!("download failed: HTTP {}", response.status()));
-    }
-    let bytes = response
-        .bytes()
-        .map_err(|e| format!("read bundle bytes: {e}"))?;
+    let bytes = download_bundle(&bundle, deadline)?;
     Ok(UpdateOutcome::Fetched(FetchedUpdate {
         version: manifest.version,
         sha256: bundle.sha256,
-        bytes: bytes.to_vec(),
+        bytes,
     }))
+}
+
+/// Download the bundle with the same retry policy as `fetch_manifest`
+/// (network / 5xx / 404 / truncated body are transient). A SHA256 mismatch is
+/// also retried once within the attempt budget — a CDN swap can serve a
+/// truncated-but-complete-looking body. The per-request timeout is generous
+/// (a bundle is hundreds of MB; the old 30 s total timeout failed legitimate
+/// slow downloads) but always capped at the remaining init network budget.
+fn download_bundle(
+    bundle: &PlatformBundle,
+    deadline: Option<Instant>,
+) -> Result<Vec<u8>, UpdateError> {
+    const ATTEMPTS: u32 = 3;
+    const MAX_DOWNLOAD_TIME: Duration = Duration::from_secs(10 * 60);
+
+    let client = http_client(None).map_err(UpdateError::network)?;
+
+    let mut last_err = UpdateError::network("download bundle: no attempt ran");
+    for attempt in 1..=ATTEMPTS {
+        let timeout = match remaining_budget(deadline) {
+            Ok(remaining) => remaining.map_or(MAX_DOWNLOAD_TIME, |r| MAX_DOWNLOAD_TIME.min(r)),
+            Err(budget_err) => {
+                return Err(UpdateError::network(if attempt == 1 {
+                    budget_err
+                } else {
+                    format!("{budget_err}; last error: {}", last_err.message)
+                }));
+            }
+        };
+        let outcome: Result<Vec<u8>, (UpdateError, bool)> = (|| {
+            let response = client
+                .get(&bundle.url)
+                .timeout(timeout)
+                .send()
+                .map_err(|e| (UpdateError::network(format!("download bundle: {e}")), true))?;
+            let status = response.status();
+            if !status.is_success() {
+                return Err((
+                    UpdateError::network(format!("download failed: HTTP {status}")),
+                    is_retryable_manifest_status(status),
+                ));
+            }
+            let bytes = response
+                .bytes()
+                .map_err(|e| (UpdateError::network(format!("read bundle bytes: {e}")), true))?;
+            let actual = format!("{:x}", Sha256::digest(&bytes));
+            if actual != bundle.sha256 {
+                return Err((
+                    UpdateError::verify("Downloaded bundle failed SHA256 verification"),
+                    true,
+                ));
+            }
+            Ok(bytes.to_vec())
+        })();
+
+        match outcome {
+            Ok(bytes) => return Ok(bytes),
+            Err((err, retryable)) => {
+                last_err = err;
+                if !retryable || attempt == ATTEMPTS {
+                    return Err(last_err);
+                }
+            }
+        }
+        thread::sleep(Duration::from_millis(
+            BASE_BACKOFF_MS * (1u64 << (attempt - 1)),
+        ));
+    }
+    Err(last_err)
 }
 
 fn extract_zip(zip_path: &Path, out_dir: &Path) -> Result<(), String> {
@@ -1030,7 +1233,8 @@ pub fn run_with_progress(
     log: &mut String,
     mut progress: Option<&mut dyn FnMut(UpdateProgress)>,
     selection: &EnvSelection,
-) -> Result<bool, String> {
+    deadline: Option<Instant>,
+) -> Result<bool, UpdateError> {
     if is_update_disabled(selection.env) {
         let _ = writeln!(log, "[update] auto-update disabled via config");
         report_progress(&mut progress, UpdateProgress::Disabled);
@@ -1077,6 +1281,7 @@ pub fn run_with_progress(
         &manifest_url,
         effective_version.clone(),
         bootstrap_required,
+        deadline,
         &mut progress,
     )? {
         UpdateOutcome::UpToDate => {
@@ -1150,7 +1355,13 @@ pub fn run_with_progress(
                 target_version: fetched.version.clone(),
             },
         );
-        extract_zip(&zip_path, &staging)?;
+        // One retry absorbs a transient AV/indexer lock on the freshly written
+        // zip or extract dir; extract_zip re-creates the staging dir itself so
+        // the retry is idempotent. A second failure is terminal.
+        if extract_zip(&zip_path, &staging).is_err() {
+            thread::sleep(Duration::from_secs(2));
+            extract_zip(&zip_path, &staging)?;
+        }
 
         #[cfg(unix)]
         {
@@ -1333,6 +1544,72 @@ mod tests {
         assert!(!is_retryable_manifest_status(StatusCode::BAD_REQUEST));
         assert!(!is_retryable_manifest_status(StatusCode::UNAUTHORIZED));
         assert!(!is_retryable_manifest_status(StatusCode::FORBIDDEN));
+    }
+
+    #[test]
+    fn failure_kind_codes_match_line_protocol_table() {
+        use super::{FailureKind, UpdateError};
+        assert_eq!(FailureKind::Network.code(), 10);
+        assert_eq!(FailureKind::Disk.code(), 20);
+        assert_eq!(FailureKind::Verify.code(), 21);
+        assert_eq!(FailureKind::Manifest.code(), 30);
+        // Untagged String errors in the update path are filesystem/install work.
+        assert_eq!(
+            UpdateError::from("boom".to_string()).kind,
+            FailureKind::Disk
+        );
+    }
+
+    #[test]
+    fn init_network_budget_env_override_and_default() {
+        use std::time::Duration;
+        // Serialize process-wide env mutation with the other env-touching tests.
+        let _guard = crate::testutil::HOME_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        std::env::remove_var("DILIGENT_INIT_NETWORK_BUDGET_SECS");
+        assert_eq!(super::init_network_budget(), Duration::from_secs(45));
+        std::env::set_var("DILIGENT_INIT_NETWORK_BUDGET_SECS", "90");
+        assert_eq!(super::init_network_budget(), Duration::from_secs(90));
+        // Zero / garbage fall back to the default rather than disabling the budget.
+        std::env::set_var("DILIGENT_INIT_NETWORK_BUDGET_SECS", "0");
+        assert_eq!(super::init_network_budget(), Duration::from_secs(45));
+        std::env::set_var("DILIGENT_INIT_NETWORK_BUDGET_SECS", "abc");
+        assert_eq!(super::init_network_budget(), Duration::from_secs(45));
+        std::env::remove_var("DILIGENT_INIT_NETWORK_BUDGET_SECS");
+    }
+
+    #[test]
+    fn init_network_deadline_only_with_installed_runtime() {
+        // Bootstrap (no runtime) must never be budget-limited — there is no
+        // fallback target, and a first download can legitimately run long.
+        with_temp_home("net-deadline", |home| {
+            assert!(super::init_network_deadline(Env::Prod).is_none());
+
+            let runtime = home.join(".overdare/updates/runtime");
+            fs::create_dir_all(runtime.join("dist/client")).expect("create dist/client");
+            let bin = if cfg!(windows) {
+                "diligent-web-server.exe"
+            } else {
+                "diligent-web-server"
+            };
+            fs::write(runtime.join(bin), b"#!/bin/sh\n").expect("write sidecar");
+
+            assert!(super::init_network_deadline(Env::Prod).is_some());
+        });
+    }
+
+    #[test]
+    fn remaining_budget_reports_exhaustion() {
+        use std::time::{Duration, Instant};
+        assert!(super::remaining_budget(None).expect("no deadline").is_none());
+        let future = Instant::now() + Duration::from_secs(60);
+        assert!(super::remaining_budget(Some(future))
+            .expect("not exhausted")
+            .is_some());
+        if let Some(past) = Instant::now().checked_sub(Duration::from_secs(1)) {
+            assert!(super::remaining_budget(Some(past)).is_err());
+        }
     }
 
     #[test]
