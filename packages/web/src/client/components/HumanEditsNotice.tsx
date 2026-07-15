@@ -40,7 +40,7 @@ export function HumanEditsNotice({ summary }: HumanEditsNoticeProps) {
           {counts ? <span className="text-xs leading-5 text-muted">{counts}</span> : null}
           <ChevronDown
             aria-hidden="true"
-            className={`ml-auto h-3.5 w-3.5 shrink-0 text-muted transition-transform duration-150 group-hover:text-text ${open ? "rotate-180" : "rotate-0"}`}
+            className={`h-3.5 w-3.5 shrink-0 text-muted transition-transform duration-150 group-hover:text-text ${open ? "rotate-180" : "rotate-0"}`}
             strokeWidth="2"
           />
         </button>
