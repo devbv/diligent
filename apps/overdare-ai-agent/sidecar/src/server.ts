@@ -1,11 +1,14 @@
 // @summary OVERDARE Studio product web-server runner that injects product-owned bundled tools.
 
+import { createLogger } from "@diligent/logging";
 import { createWebServer, enableProcessLogFile, parseArgs } from "@diligent/web/server";
 import { OVERDARE_EXPERIMENTS } from "./experiments";
+import { configureSidecarLogging } from "./logging";
 import { runMcpServerMain } from "./mcp-server";
 import { createStudioBundledToolProviders } from "./tools";
 import { createGatewayConsentBackend } from "./tools/gateway/consent";
-import { installConsoleSystemErrorForwarder } from "./tools/gateway/system-errors";
+
+const logger = createLogger({ scope: "sidecar/server" });
 
 function parseEnvPort(value: string | undefined): number | undefined {
   if (!value) return undefined;
@@ -22,7 +25,10 @@ function startParentWatchdog(parentPid?: number): (() => void) | null {
     try {
       process.kill(parentPid, 0);
     } catch {
-      console.error(`[Studio Server] Parent process ${parentPid} is gone. Exiting sidecar.`);
+      logger.error("parent.exited", {
+        message: `[Studio Server] Parent process ${parentPid} is gone. Exiting sidecar.`,
+        fields: { parentPid },
+      });
       process.exit(0);
     }
   }, 2000);
@@ -81,14 +87,24 @@ export async function startStudioServer(argv: string[] = process.argv.slice(2)):
       process.exit(0);
     });
 
+    // Launcher contract: this exact, undecorated stdout line is machine-parsed by the Rust host.
     console.info(`DILIGENT_PORT=${server.port}`);
-    console.info(`Diligent Web CLI server running at http://localhost:${server.port}`);
-    console.info(`RPC endpoint: ws://localhost:${server.port}/rpc`);
+    logger.info("server.ready", {
+      message: `Diligent Web CLI server running at http://localhost:${server.port}`,
+      fields: { port: server.port },
+    });
+    logger.info("rpc.ready", {
+      message: `RPC endpoint: ws://localhost:${server.port}/rpc`,
+      fields: { port: server.port },
+    });
   } catch (error) {
     cleanupParentWatchdog?.();
     cleanupLogFile?.();
     const message = error instanceof Error ? error.message : String(error);
-    console.error(`Failed to start studio web server: ${message}`);
+    logger.error("startup.failed", {
+      message: `Failed to start studio web server: ${message}`,
+      error,
+    });
     process.exit(1);
   }
 }
@@ -104,7 +120,7 @@ if (import.meta.main) {
     await runMcpServerMain();
   } else {
     const startupArgs = parseArgs(process.argv.slice(2));
-    installConsoleSystemErrorForwarder({
+    configureSidecarLogging({
       source: "overdare-ai-agent",
       component: "sidecar/server",
       version: process.env.OVERDARE_AI_AGENT_VERSION,
@@ -113,11 +129,17 @@ if (import.meta.main) {
     });
 
     process.on("uncaughtException", (err) => {
-      console.error("[Studio Server] Uncaught exception (swallowed to keep server alive):", err?.message ?? err);
+      logger.error("process.uncaught_exception", {
+        message: `[Studio Server] Uncaught exception (swallowed to keep server alive): ${err?.message ?? err}`,
+        error: err,
+      });
     });
     process.on("unhandledRejection", (reason) => {
       const message = reason instanceof Error ? reason.message : String(reason);
-      console.error("[Studio Server] Unhandled promise rejection (swallowed to keep server alive):", message);
+      logger.error("process.unhandled_rejection", {
+        message: `[Studio Server] Unhandled promise rejection (swallowed to keep server alive): ${message}`,
+        error: reason,
+      });
     });
 
     await startStudioServer();

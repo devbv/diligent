@@ -5,9 +5,12 @@ import { basename, extname } from "node:path";
 import { downscaleImageIfNeeded } from "@diligent/core/llm/image-resize";
 import type { Tool, ToolContext, ToolResult } from "@diligent/core/tool/types";
 import type { ImageBlock } from "@diligent/core/types";
+import { createLogger } from "@diligent/logging";
 import { z } from "zod";
 import { isAbsolute, stripExtendedLengthPrefix } from "../util/path";
 import { createTextRenderPayload, summarizeRenderText } from "./render-payload";
+
+const logger = createLogger({ scope: "runtime.tools.read-image" });
 
 const ReadImageParams = z.object({
   file_path: z.string().describe("Absolute path to the image file to read"),
@@ -182,9 +185,11 @@ export function createReadImageTool(): Tool<typeof ReadImageParams> {
       } catch (err) {
         // Don't block the read on a resize failure — fall back to the original bytes. But log it:
         // a silently-failing resize path would otherwise look like success while never downscaling.
-        console.warn(
-          `read_image: downscale failed for ${basename(file_path)}, sending original resolution: ${err instanceof Error ? err.message : String(err)}`,
-        );
+        logger.warn("downscale_failed", {
+          message: `read_image: downscale failed for ${basename(file_path)}, sending original resolution: ${err instanceof Error ? err.message : String(err)}`,
+          error: err,
+          fields: { filePath: file_path },
+        });
       }
 
       if (ctx.signal.aborted) return errorResult("Aborted");

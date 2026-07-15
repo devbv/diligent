@@ -1,3 +1,4 @@
+import { createLogger } from "@diligent/logging";
 import { existsSync } from "fs";
 import { dirname, isAbsolute, join, resolve } from "path";
 import { createApiHandler } from "./api.js";
@@ -5,6 +6,11 @@ import { findDiligentDir } from "./find-diligent-dir.js";
 import { extractSessionMeta, parseSessionFile } from "./parser.js";
 import { SessionWatcher } from "./watcher.js";
 import { WebSocketManager, type WsData } from "./websocket.js";
+
+const logger = createLogger({
+  scope: "debug-viewer",
+  context: { component: "server" },
+});
 
 // Parse CLI args
 const args = process.argv.slice(2);
@@ -64,7 +70,7 @@ if (!dataDir) {
 
 console.log(`Data directory: ${dataDir}`);
 
-const handleApi = createApiHandler(dataDir);
+const handleApi = createApiHandler(dataDir, logger.child({ component: "server.api" }));
 const wsManager = new WebSocketManager();
 
 // Start file watcher
@@ -79,8 +85,13 @@ const watcher = new SessionWatcher(sessionsDir, {
       const entries = await parseSessionFile(filePath);
       const meta = extractSessionMeta(filePath, entries);
       wsManager.broadcastSessionCreated(meta);
-    } catch {
-      // file may not be fully written yet
+    } catch (error) {
+      logger.debug("session_metadata_load_retry", {
+        message: "Failed to load new session metadata; the file may still be writing.",
+        sessionId,
+        error,
+        fields: { filePath },
+      });
     }
   },
 });

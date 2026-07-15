@@ -6,6 +6,7 @@ import { AssistantMessage } from "../AssistantMessage";
 import { CollabGroup } from "../CollabGroup";
 import { CompactingIndicator } from "../CompactingIndicator";
 import { ContextMessage } from "../ContextMessage";
+import { HumanEditsNotice } from "../HumanEditsNotice";
 import { AgentLogo } from "../icons";
 import { QuestionCard } from "../QuestionCard";
 import { StreamingIndicator } from "../StreamingIndicator";
@@ -31,7 +32,11 @@ export function MessageListRowContent({
     case "message":
       switch (row.item.kind) {
         case "context":
-          return <ContextMessage summary={row.item.summary} />;
+          return row.item.variant === "human-edits" ? (
+            <HumanEditsNotice summary={row.item.summary} />
+          ) : (
+            <ContextMessage summary={row.item.summary} />
+          );
         case "tool":
           return <ToolBlock item={row.item} threadCwd={threadCwd} />;
         case "user":

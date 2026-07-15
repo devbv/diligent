@@ -60,8 +60,9 @@ export function createUpdateKnowledgeTool(
     name: "update_knowledge",
     description:
       "Create, update, or delete persistent knowledge entries across sessions. " +
-      "Store only durable cross-session value such as preferences, patterns, discoveries, corrections, or real backlog items. " +
-      "When the user says they want to do or build something, think carefully about whether that is durable knowledge or simply the work to do right now; in most cases it is immediate task intent, not knowledge. " +
+      "Store only durable user preferences and use type='preference' for upserts. " +
+      "Do not create entries for patterns, discoveries, corrections, or backlog items. " +
+      "When the user says they want to do or build something, think carefully about whether it expresses a durable preference or is simply the work to do right now; in most cases it is immediate task intent, not knowledge. " +
       "Do not store transient current-turn intent or immediate implementation plans. " +
       "Use action='upsert' to save/update an entry, optionally with a stable caller-defined id, or action='delete' with id to remove one.",
     parameters: updateKnowledgeSchema,

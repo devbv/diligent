@@ -15,6 +15,26 @@ export function snapshotsDir(cwd: string): string {
 }
 
 /**
+ * Fixed per-project baseline captured when the agent finishes a turn. Diffing
+ * it against the current .ovdrjm reveals what the human edited in between.
+ * Lives in the snapshots dir but is excluded from rollback selection.
+ */
+const BASELINE_FILENAME = "agent-done-baseline.ovdrjm";
+
+export function baselinePath(cwd: string): string {
+  return join(snapshotsDir(cwd), BASELINE_FILENAME);
+}
+
+/** Copy the current .ovdrjm to the fixed agent-done baseline (raw bytes, overwrite). */
+export function captureBaseline(cwd: string): string {
+  const { ovdrjmPath } = resolveOvdrjmPathFromUmap(cwd);
+  mkdirSync(snapshotsDir(cwd), { recursive: true });
+  const dest = baselinePath(cwd);
+  copyFileSync(ovdrjmPath, dest);
+  return dest;
+}
+
+/**
  * Next request index for a session, derived by scanning the snapshots dir.
  * Filesystem is the source of truth so the counter survives agent restarts.
  * Snapshots are named `{sessionId}_{index}.ovdrjm`.
@@ -65,7 +85,9 @@ export function findLatestSnapshot(cwd: string): { id: string; path: string } {
   }
   let newest: { name: string; mtimeMs: number } | undefined;
   for (const name of entries) {
-    if (!name.endsWith(".ovdrjm")) continue;
+    // The agent-done baseline is rewritten every turn, so by mtime it would
+    // always win — it is a diff baseline, never a rollback target.
+    if (!name.endsWith(".ovdrjm") || name === BASELINE_FILENAME) continue;
     const mtimeMs = statSync(join(dir, name)).mtimeMs;
     if (!newest || mtimeMs > newest.mtimeMs) newest = { name, mtimeMs };
   }

@@ -1,6 +1,7 @@
 // @summary REST API endpoint handlers for sessions, search, and knowledge queries
 
 import { DEFAULT_ANTHROPIC_MODEL_ID, resolveModel } from "@diligent/core/llm/models";
+import { createLogger, type Logger } from "@diligent/logging";
 import { readdirSync } from "fs";
 import { join } from "path";
 import type {
@@ -14,6 +15,11 @@ import type {
 } from "../shared/protocol.js";
 import type { AssistantMessageEntry, KnowledgeEntry, SessionEntry, UsageSummary } from "../shared/types.js";
 import { buildTree, extractSessionMeta, parseSessionFile } from "./parser.js";
+
+const apiLogger = createLogger({
+  scope: "debug-viewer",
+  context: { component: "server.api" },
+});
 
 function calculateUsageCost(
   usage: { inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number },
@@ -40,7 +46,7 @@ function calculateUsageCost(
   return inputCost + outputCost + cacheReadCost + cacheWriteCost;
 }
 
-export function createApiHandler(dataDir: string) {
+export function createApiHandler(dataDir: string, logger: Logger = apiLogger) {
   const sessionsDir = join(dataDir, "sessions");
   const knowledgeDir = join(dataDir, "knowledge");
 
@@ -104,8 +110,12 @@ export function createApiHandler(dataDir: string) {
         if (!trimmed) continue;
         try {
           entries.push(JSON.parse(trimmed));
-        } catch {
-          // skip malformed
+        } catch (error) {
+          logger.warn("knowledge_jsonl_line_parse_failed", {
+            message: "Failed to parse knowledge JSONL line.",
+            error,
+            fields: { line: trimmed.slice(0, 80), filePath },
+          });
         }
       }
       return { entries };

@@ -1,10 +1,12 @@
 import net from "node:net";
 import readline from "node:readline";
+import { createLogger } from "@diligent/logging";
 import { loadOverdareConfig } from "./config";
 
 const DEFAULT_HOST = "localhost";
 const DEFAULT_PORT = 13377;
 const DEFAULT_TIMEOUT_MS = 10_000;
+const logger = createLogger({ scope: "sidecar/studiorpc", context: { component: "rpc" } });
 
 export interface StudioRpcCallOptions {
   timeoutMs?: number;
@@ -94,7 +96,10 @@ export async function call(
     // connection attempt so our error handler is reliably invoked.
     const connectHost = host === "localhost" ? "127.0.0.1" : host;
     const rawRequest = JSON.stringify(request);
-    console.debug(`[RPC →] ${rawRequest}`);
+    logger.debug("request.sent", {
+      message: `[RPC →] ${rawRequest}`,
+      fields: { id, method },
+    });
     const socket = net.createConnection({ host: connectHost, port }, () => {
       socket.write(`${rawRequest}\n`);
     });
@@ -124,7 +129,10 @@ export async function call(
         cleanup();
         try {
           const response = JSON.parse(line) as JsonRpcResponse;
-          console.debug(`[RPC ←] ${line}`);
+          logger.debug("response.received", {
+            message: `[RPC ←] ${line}`,
+            fields: { id, method },
+          });
           if (response.error) {
             let errorMsg = `Studio RPC error [${response.error.code}]: ${response.error.message}`;
             errorMsg += `\n\nRequest was:\n${rawRequest}`;

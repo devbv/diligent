@@ -22,6 +22,7 @@
   },
   "dependencies": {
     "@diligent/core": "workspace:*",
+    "@diligent/logging": "workspace:*",
     "@diligent/protocol": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "jsonc-parser": "^3.3.1",

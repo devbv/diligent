@@ -1,9 +1,12 @@
 // @summary Loads and merges DiligentConfig from global (~/.diligent/config.jsonc), project (.diligent/config.jsonc), and environment layers
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { createLogger } from "@diligent/logging";
 import { parse as parseJsonc } from "jsonc-parser";
 import { resolveProjectDirName } from "../infrastructure/diligent-dir";
 import { DEFAULT_CONFIG, type DiligentConfig, DiligentConfigSchema } from "./schema";
+
+const logger = createLogger({ scope: "runtime.config" });
 
 /** Load and merge config from all sources (D033: global < project < env) */
 export interface DiligentConfigLayers {
@@ -60,7 +63,11 @@ async function loadConfigFile(path: string): Promise<DiligentConfig | null> {
     const substituted = substituteTemplates(parsed);
     const result = DiligentConfigSchema.safeParse(substituted);
     if (!result.success) {
-      console.warn(`Config warning: ${path}\n${result.error.message}`);
+      logger.warn("invalid_config", {
+        message: `Config warning: ${path}\n${result.error.message}`,
+        error: result.error,
+        fields: { path },
+      });
       return null;
     }
     return result.data;

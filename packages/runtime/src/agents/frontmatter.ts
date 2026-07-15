@@ -1,5 +1,6 @@
 // @summary Parses and validates AGENT.md frontmatter metadata
 import type { ModelClass } from "@diligent/core/llm/models";
+import { createLogger } from "@diligent/logging";
 import { parseYamlFrontmatter } from "../frontmatter/yaml";
 import { TOOL_CAPABILITIES } from "../tools/tool-metadata";
 import type { AgentFrontmatter } from "./types";
@@ -8,6 +9,7 @@ const NAME_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
 const MAX_NAME_LENGTH = 64;
 const MAX_DESCRIPTION_LENGTH = 1024;
 const MODEL_CLASSES = new Set<ModelClass>(["pro", "general", "lite"]);
+const logger = createLogger({ scope: "runtime.agents.frontmatter" });
 
 function parseToolList(rawValue: unknown): string[] | { error: string } {
   if (Array.isArray(rawValue)) {
@@ -37,7 +39,10 @@ function normalizeToolNames(
   const knownNames = knownToolNames ?? new Set(Object.keys(TOOL_CAPABILITIES));
   for (const tool of tools) {
     if (!knownNames.has(tool)) {
-      console.warn(`${filePath}: unknown tool in frontmatter: ${tool}`);
+      logger.warn("unknown_tool", {
+        message: `${filePath}: unknown tool in frontmatter: ${tool}`,
+        fields: { filePath, tool },
+      });
     }
     normalized.add(tool);
   }

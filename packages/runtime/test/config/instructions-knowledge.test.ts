@@ -15,6 +15,9 @@ describe("buildSystemPromptWithKnowledge", () => {
     expect(flat).toContain("Knowledge ids may be stable caller-defined keys or generated UUIDs");
     expect(flat).toContain("use stable ids for recurring entries");
     expect(flat).toContain("update_knowledge tool");
+    expect(flat).toContain("Persist only user preferences");
+    expect(flat).toContain("type `preference`");
+    expect(flat).toContain("Do not create knowledge entries for patterns, discoveries, corrections, or backlog items");
     expect(flat).toContain("Do not save transient current-turn intent");
     expect(flat).toContain("in most cases it is immediate task intent, not knowledge");
   });

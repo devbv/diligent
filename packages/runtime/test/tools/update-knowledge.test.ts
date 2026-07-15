@@ -132,11 +132,15 @@ describe("update_knowledge tool", () => {
     expect(entries).toHaveLength(1);
   });
 
-  it("describes durable knowledge and forbids transient intent", async () => {
+  it("describes preference-only recording and forbids transient intent", async () => {
     tmpDir = await mkdtemp(join(tmpdir(), "knowledge-"));
     const tool = createUpdateKnowledgeTool(tmpDir);
 
-    expect(tool.description).toContain("durable cross-session value");
+    expect(tool.description).toContain("Store only durable user preferences");
+    expect(tool.description).toContain("type='preference'");
+    expect(tool.description).toContain(
+      "Do not create entries for patterns, discoveries, corrections, or backlog items",
+    );
     expect(tool.description).toContain("in most cases it is immediate task intent, not knowledge");
     expect(tool.description).toContain("Do not store transient current-turn intent");
     expect(tool.description).toContain("stable caller-defined id");

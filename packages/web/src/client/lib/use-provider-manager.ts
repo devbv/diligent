@@ -1,11 +1,14 @@
 // @summary React hook for provider authentication state, available models, and OAuth
 
+import { createLogger } from "@diligent/logging";
 import type { AuthOAuthStartResponse, ModelInfo, ProviderAuthStatus } from "@diligent/protocol";
 import { DILIGENT_CLIENT_REQUEST_METHODS } from "@diligent/protocol";
 import type { RefObject } from "react";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { cancelOAuthFlow, fetchProviderStatus, removeProviderKey, setProviderKey, startOAuthFlow } from "./auth-api";
 import type { WebRpcClient } from "./rpc-client";
+
+const logger = createLogger({ scope: "web.client.providers" });
 
 export function resolveDraftModel({
   initialModel,
@@ -75,7 +78,10 @@ export function useProviderManager(rpcRef: RefObject<WebRpcClient | null>) {
           currentModelRef.current = first.id;
         }
       } catch (error) {
-        console.error(error);
+        logger.error("providers.refresh_failed", {
+          message: "Failed to refresh provider status",
+          error,
+        });
       } finally {
         setProviderStatusResolved(true);
       }
@@ -105,7 +111,12 @@ export function useProviderManager(rpcRef: RefObject<WebRpcClient | null>) {
       try {
         await rpc.webRequest(DILIGENT_CLIENT_REQUEST_METHODS.CONFIG_SET, { model: modelId, threadId });
       } catch (error) {
-        console.error(error);
+        logger.error("model.change_failed", {
+          message: "Failed to change model",
+          error,
+          threadId,
+          fields: { modelId },
+        });
       }
     },
     [rpcRef],
@@ -157,7 +168,11 @@ export function useProviderManager(rpcRef: RefObject<WebRpcClient | null>) {
   const onAccountLoginCompleted = useCallback(
     (params: { loginId: string | null; success: boolean; error: string | null }): void => {
       if (!params.success && params.error) {
-        console.error("OAuth login failed:", params.error);
+        logger.error("oauth.login_failed", {
+          message: `OAuth login failed: ${params.error}`,
+          error: params.error,
+          fields: { loginId: params.loginId },
+        });
       }
       // Provider list update comes via onAccountUpdated
     },

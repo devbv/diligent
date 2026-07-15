@@ -1,6 +1,9 @@
 // @summary Plan-reminder helpers — parse plan tool output and build a recitation message
 
+import { createLogger, type Logger } from "@diligent/logging";
 import type { Message } from "../../types";
+
+const defaultLogger = createLogger({ scope: "agent:plan-reminder" });
 
 /**
  * The runtime `plan` tool's registered name. This is the single coupling point where
@@ -123,6 +126,7 @@ export class PlanReminder {
   constructor(
     private readonly intervalTurns: number,
     seed?: PlanReminderState,
+    private readonly logger: Logger = defaultLogger,
   ) {
     this.plan = seed?.plan;
     this.turnsSinceSurfaced = seed?.turnsSinceSurfaced ?? 0;
@@ -150,9 +154,14 @@ export class PlanReminder {
   reminderForTurn(opts: { compactedThisTurn: boolean; goal?: string }): string | null {
     if (!this.shouldRemind(opts.compactedThisTurn)) return null;
     const remaining = remainingPlanSteps(this.plan ?? []);
-    console.info(
-      `[agent:plan-reminder] injected remaining=${remaining.length} compacted=${opts.compactedThisTurn} turnsSince=${this.turnsSinceSurfaced}`,
-    );
+    this.logger.info("plan_reminder_injected", {
+      message: `[agent:plan-reminder] injected remaining=${remaining.length} compacted=${opts.compactedThisTurn} turnsSince=${this.turnsSinceSurfaced}`,
+      fields: {
+        remaining: remaining.length,
+        compacted: opts.compactedThisTurn,
+        turnsSince: this.turnsSinceSurfaced,
+      },
+    });
     const message = buildPlanReminderMessage(remaining, { goal: opts.goal });
     this.turnsSinceSurfaced = 0;
     return message;

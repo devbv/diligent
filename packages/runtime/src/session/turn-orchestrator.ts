@@ -9,7 +9,9 @@ import {
   toSerializableError,
   updateUserMessageContent,
 } from "@diligent/core/agent";
+import { createStreamTurnScope, type StreamTurnScope } from "@diligent/core/llm";
 import type { Message } from "@diligent/core/types";
+import { createLogger } from "@diligent/logging";
 import type { PendingSteer } from "@diligent/protocol";
 import type { AgentEvent } from "../agent-event";
 import { calculateUsageCost } from "../cost";
@@ -21,6 +23,8 @@ import type { SessionStateStore } from "./state-store";
 import { TurnStager } from "./turn-stager";
 import type { CompactionEntry, ErrorEntry, SessionEntry, SessionManagerConfig } from "./types";
 import { generateEntryId } from "./types";
+
+const logger = createLogger({ scope: "runtime.session" });
 
 export interface TurnOrchestratorContext {
   state: SessionStateStore;
@@ -61,12 +65,17 @@ export class TurnOrchestrator {
    * Persists user message and agent response to session.
    */
   async run(userMessage: Message, opts?: { signal?: AbortSignal }): Promise<void> {
-    await this.runInternal(userMessage, opts, false);
+    const turnScope = createStreamTurnScope();
+    try {
+      await this.runInternal(userMessage, { ...opts, turnScope }, false);
+    } finally {
+      await turnScope.dispose();
+    }
   }
 
   private async runInternal(
     userMessage: Message,
-    opts: { signal?: AbortSignal } | undefined,
+    opts: { signal?: AbortSignal; turnScope: StreamTurnScope },
     isRerun: boolean,
   ): Promise<void> {
     this.emitBusyStatus();
@@ -76,7 +85,7 @@ export class TurnOrchestrator {
 
     let normalCompletion = false;
     try {
-      await this.executeRun(prepared.agent, userMessage, opts?.signal);
+      await this.executeRun(prepared.agent, userMessage, opts.signal, opts.turnScope);
       this.commitRun(prepared.turnStager);
       normalCompletion = true;
     } catch (err) {
@@ -85,11 +94,11 @@ export class TurnOrchestrator {
       this.finishRun(unsubscribe);
     }
 
-    this.throwIfAborted(opts?.signal);
+    this.throwIfAborted(opts.signal);
 
     if (normalCompletion && this.ctx.config.onStop) {
       const result = await this.ctx.config.onStop(this.ctx.getContext(), isRerun);
-      if (result?.continueWith && !opts?.signal?.aborted) {
+      if (result?.continueWith && !opts.signal?.aborted) {
         await this.runInternal(result.continueWith, opts, true);
       }
     }
@@ -300,8 +309,13 @@ export class TurnOrchestrator {
     };
   }
 
-  private async executeRun(agent: Agent, userMessage: Message, signal?: AbortSignal): Promise<void> {
-    await agent.prompt(userMessage, signal);
+  private async executeRun(
+    agent: Agent,
+    userMessage: Message,
+    signal: AbortSignal | undefined,
+    turnScope: StreamTurnScope,
+  ): Promise<void> {
+    await agent.prompt(userMessage, signal, { turnScope });
   }
 
   private commitRun(turnStager: TurnStager): void {
@@ -317,12 +331,14 @@ export class TurnOrchestrator {
     const pendingEntries = turnStager.flushPendingEntries();
     this.ctx.appendEntries(pendingEntries);
     const serializable = agentError?.error ?? toSerializableError(err);
-    console.error(
-      "[SessionManager] Run error session=%s %s lastPersisted=%s",
-      this.ctx.persistence.sessionId,
-      formatSerializableErrorForLog(serializable),
-      summarizeLastPersistedMessage(this.ctx.state.getCommittedEntries()),
-    );
+    const lastPersisted = summarizeLastPersistedMessage(this.ctx.state.getCommittedEntries());
+    logger.error("run_failed", {
+      sessionId: this.ctx.persistence.sessionId,
+      turnId,
+      message: `[SessionManager] Run error session=${this.ctx.persistence.sessionId} ${formatSerializableErrorForLog(serializable)} lastPersisted=${lastPersisted}`,
+      error: err,
+      fields: { lastPersisted, serializedError: serializable },
+    });
     this.ctx.appendError(serializable, { fatal: false, turnId, persist: true });
   }
 

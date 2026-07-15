@@ -5,6 +5,7 @@ export { updateUserMessageContent } from "./message-content";
 export type {
   AgentListener,
   AgentOptions,
+  AgentPromptOptions,
   CoreAgentEvent,
   MessageDelta,
   QueuedSteeringMessage,

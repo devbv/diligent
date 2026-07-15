@@ -16,6 +16,8 @@
     "types": ["bun"],
     "baseUrl": ".",
     "paths": {
+      "@diligent/logging": ["packages/logging/src/index.ts"],
+      "@diligent/logging/*": ["packages/logging/src/*"],
       "@diligent/core": ["packages/core/src/index.ts"],
       "@diligent/core/*": ["packages/core/src/*"],
       "@diligent/plugin-sdk": ["packages/plugin-sdk/src/index.ts"],

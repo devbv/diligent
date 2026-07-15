@@ -5,6 +5,7 @@ import { mkdir } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
 import { downscaleImageIfNeeded } from "@diligent/core/llm/image-resize";
 import { PROVIDER_NAMES, type ProviderManager } from "@diligent/core/llm/provider-manager";
+import { createLogger } from "@diligent/logging";
 import {
   type AuthStoreOptions,
   createChatGPTOAuthBinding,
@@ -30,6 +31,8 @@ import {
 import type { ThreadRuntime } from "./thread-handlers";
 
 type EmitFn = (notification: DiligentServerNotification) => Promise<void>;
+
+const logger = createLogger({ scope: "runtime.app-server.auth" });
 
 /**
  * Reads/writes the resolved AI-data consent state (OVDR-11475 §3.A).
@@ -139,13 +142,23 @@ export async function handleAuthSet(
   // Verify the key against the provider before persisting, so an invalid key is reported at save
   // time instead of turning the status green and only failing on the first chat. This call is made
   // by the server (not the browser), so it won't appear in the browser DevTools network tab.
-  console.info(`[auth] verifying ${params.provider} API key with provider...`);
+  logger.info("api_key_verification_started", {
+    message: `[auth] verifying ${params.provider} API key with provider...`,
+    fields: { provider: params.provider },
+  });
   try {
     await providerManager.validateApiKey(params.provider, params.apiKey);
-    console.info(`[auth] ${params.provider} API key verified`);
+    logger.info("api_key_verified", {
+      message: `[auth] ${params.provider} API key verified`,
+      fields: { provider: params.provider },
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Invalid API key";
-    console.warn(`[auth] ${params.provider} API key verification failed: ${message}`);
+    logger.warn("api_key_verification_failed", {
+      message: `[auth] ${params.provider} API key verification failed: ${message}`,
+      error: err,
+      fields: { provider: params.provider },
+    });
     throw Object.assign(new Error(message), { code: -32602 });
   }
 

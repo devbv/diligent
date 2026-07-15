@@ -1,6 +1,7 @@
 // @summary MCP connection manager — signature-keyed connect/list/call with per-server isolation
 
 import { createHash } from "node:crypto";
+import { createLogger } from "@diligent/logging";
 import { DILIGENT_VERSION } from "@diligent/protocol";
 import { auth, type OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -34,6 +35,8 @@ import {
   type McpTransportKind,
 } from "./types";
 
+const logger = createLogger({ scope: "runtime.mcp.client" });
+
 interface ActiveConnection {
   signature: string;
   client: Client;
@@ -63,7 +66,9 @@ function transportKind(config: McpServerConfig): McpTransportKind {
 
 /** Opt-in connect/refresh tracing (`DILIGENT_DEBUG_MCP=1`) for diagnosing OAuth token issues. */
 function mcpDiag(message: string): void {
-  if (process.env.DILIGENT_DEBUG_MCP === "1") console.warn(`[mcp:diag] ${message}`);
+  if (process.env.DILIGENT_DEBUG_MCP === "1") {
+    logger.warn("diagnostic", { message: `[mcp:diag] ${message}` });
+  }
 }
 
 function errText(error: unknown): string {

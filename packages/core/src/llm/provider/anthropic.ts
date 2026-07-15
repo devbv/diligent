@@ -1,5 +1,6 @@
 // @summary Anthropic provider implementation with thinking, streaming, and message conversion
 import Anthropic from "@anthropic-ai/sdk";
+import { createLogger } from "@diligent/logging";
 import { EventStream } from "../../event-stream";
 import type { AssistantMessage, ContentBlock, Message, StopReason, Usage } from "../../types";
 import { isNetworkError } from "../errors";
@@ -18,6 +19,8 @@ import type {
 import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError } from "../types";
 import type { NativeCompactFn } from "./native-compaction";
 
+const anthropicLogger = createLogger({ scope: "llm:anthropic" });
+
 type TextBlock = Extract<ContentBlock, { type: "text" }>;
 type TextCitation = NonNullable<TextBlock["citations"]>[number];
 type ProviderToolUseBlock = Extract<ContentBlock, { type: "provider_tool_use" }>;
@@ -28,7 +31,12 @@ export function createAnthropicStream(apiKey?: string, baseUrl?: string): Stream
   const resolvedApiKey = resolveAnthropicApiKey(apiKey);
   const resolvedSdkBaseUrl = resolveAnthropicSdkBaseUrl(baseUrl);
   const debugEndpoint = `${resolvedSdkBaseUrl.replace(/\/+$/, "")}/v1/messages`;
-  const client = new Anthropic({ apiKey: resolvedApiKey, baseURL: resolvedSdkBaseUrl });
+  const client = new Anthropic({
+    apiKey: resolvedApiKey,
+    baseURL: resolvedSdkBaseUrl,
+    timeout: 15_000,
+    maxRetries: 0,
+  });
 
   return (model: Model, context: StreamContext, options: StreamOptions): EventStream<ProviderEvent, ProviderResult> => {
     const stream = new EventStream<ProviderEvent, ProviderResult>(
@@ -78,8 +86,13 @@ export function createAnthropicStream(apiKey?: string, baseUrl?: string): Stream
         }
 
         if (process.env.ANTHROPIC_DEBUG_REQUEST === "1") {
-          console.error("[anthropic.endpoint]", debugEndpoint);
-          console.error("[anthropic.request]", JSON.stringify(requestParams, null, 2));
+          anthropicLogger.error("request_endpoint", {
+            message: `[anthropic.endpoint] ${debugEndpoint}`,
+            fields: { endpoint: debugEndpoint },
+          });
+          anthropicLogger.error("request_payload", {
+            message: `[anthropic.request] ${JSON.stringify(requestParams, null, 2)}`,
+          });
         }
 
         const sdkStream = client.messages.stream(

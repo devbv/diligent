@@ -1,5 +1,6 @@
 // @summary React hook for steering queue state: pending steers, abort-restart, and suppress-injected logic
 
+import { createLogger } from "@diligent/logging";
 import type { PendingSteer } from "@diligent/protocol";
 import { DILIGENT_CLIENT_REQUEST_METHODS } from "@diligent/protocol";
 import type { RefObject } from "react";
@@ -8,6 +9,8 @@ import { type AgentContextItem, prependContextToMessage } from "./agent-native-b
 import type { PendingImage } from "./app-state";
 import type { WebRpcClient } from "./rpc-client";
 import type { ThreadState } from "./thread-store";
+
+const logger = createLogger({ scope: "web.client.steering" });
 
 type SteeringAction =
   | { type: "local_steer"; payload: PendingSteer }
@@ -59,7 +62,12 @@ export async function executeSteer({
     });
   } catch (error) {
     dispatch({ type: "cancel_pending_steer", payload: { steerId } });
-    console.error(error);
+    logger.error("steer.send_failed", {
+      message: "Failed to send steer",
+      error,
+      threadId,
+      fields: { steerId },
+    });
   }
 }
 
@@ -222,7 +230,12 @@ export function useSteeringQueue({
       const rpc = rpcRef.current;
       if (!rpc || !activeThreadId) return;
       void executeCancelSteer({ rpc, threadId: activeThreadId, steerId, dispatch }).catch((error) => {
-        console.error(error);
+        logger.error("steer.cancel_failed", {
+          message: "Failed to cancel steer",
+          error,
+          threadId: activeThreadId,
+          fields: { steerId },
+        });
       });
     },
     [rpcRef, activeThreadId, dispatch],
@@ -233,7 +246,12 @@ export function useSteeringQueue({
       const rpc = rpcRef.current;
       if (!rpc || !activeThreadId) return;
       void executeUpdateSteer({ rpc, threadId: activeThreadId, steerId, content, dispatch }).catch((error) => {
-        console.error(error);
+        logger.error("steer.update_failed", {
+          message: "Failed to update steer",
+          error,
+          threadId: activeThreadId,
+          fields: { steerId },
+        });
       });
     },
     [rpcRef, activeThreadId, dispatch],

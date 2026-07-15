@@ -11,9 +11,9 @@
   // step resets the counter before 6, so good behavior almost never triggers it. Tune per
   // session: lower (3-4) if drift still slips through, raise (8) if noisy. 0 disables.
   "planReminderIntervalTurns": 6,
-  "tools": {
-    "builtin": {
-      "bash": false
+  "experiments": {
+    "overrides": {
+      "procedural": true
     }
   }
 }

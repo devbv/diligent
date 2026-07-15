@@ -4,7 +4,11 @@ import { join } from "node:path";
 import type { OpenAIOAuthTokens } from "@diligent/core/auth";
 import { refreshOAuthTokens, shouldRefresh } from "@diligent/core/auth/chatgpt-oauth";
 import { EventStream } from "@diligent/core/event-stream";
-import { createChatGPTNativeCompaction, createChatGPTStream } from "@diligent/core/llm/provider/chatgpt";
+import {
+  type ChatGPTStreamOptions,
+  createChatGPTNativeCompaction,
+  createChatGPTStream,
+} from "@diligent/core/llm/provider/chatgpt";
 import { createVertexStream } from "@diligent/core/llm/provider/vertex";
 import type { ExternalProviderAuth } from "@diligent/core/llm/provider-manager";
 import type { ProviderEvent, ProviderResult, StreamFunction } from "@diligent/core/llm/types";
@@ -36,6 +40,7 @@ export interface VertexAccessTokenBinding {
 export function createChatGPTOAuthBinding(args?: {
   initialTokens?: OpenAIOAuthTokens;
   onTokensRefreshed?: (tokens: OpenAIOAuthTokens) => Promise<void>;
+  streamOptions?: ChatGPTStreamOptions;
 }): ChatGPTOAuthBinding {
   let oauthTokens = args?.initialTokens;
   let refreshLock: Promise<void> | undefined;
@@ -68,10 +73,12 @@ export function createChatGPTOAuthBinding(args?: {
     await refreshLock;
   };
 
+  const stream = createChatGPTStream(() => oauthTokens!, args?.streamOptions);
+
   const auth: ExternalProviderAuth = {
     isConfigured: () => oauthTokens !== undefined,
     getMaskedKey: () => (oauthTokens ? "ChatGPT OAuth" : undefined),
-    getStream: () => createChatGPTStream(() => oauthTokens!),
+    getStream: () => stream,
     getNativeCompaction: () => createChatGPTNativeCompaction(() => oauthTokens!),
     ensureFresh,
   };
