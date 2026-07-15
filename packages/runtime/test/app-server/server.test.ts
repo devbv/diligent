@@ -495,6 +495,87 @@ describe("DiligentAppServer", () => {
     ]);
   });
 
+  it("echoes the initiator's own user message only when it carries human edits", async () => {
+    const projectRoot = await mkdtemp(join(process.env.TMPDIR ?? "/tmp", "diligent-app-server-"));
+
+    const server = new DiligentAppServer({
+      cwd: projectRoot,
+      resolvePaths: async (cwd) => ensureDiligentDir(cwd),
+      createAgent: () =>
+        new RuntimeAgent(FAKE_MODEL, [{ label: "base", content: "test" }], [], {
+          effort: "medium",
+          ...fakeConfig(() => {
+            const stream = new EventStream(
+              (event) => event.type === "done",
+              (event) => ({ message: (event as { message: unknown }).message }),
+            );
+
+            queueMicrotask(() => {
+              stream.push({ type: "start" });
+              stream.push({
+                type: "done",
+                stopReason: "end_turn",
+                message: {
+                  role: "assistant",
+                  content: [{ type: "text", text: "ok" }],
+                  model: "fake-model",
+                  usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
+                  stopReason: "end_turn",
+                  timestamp: Date.now(),
+                },
+              });
+            });
+
+            return stream as never;
+          }),
+        }),
+    });
+
+    const initiator = connectTestPeer(server, "initiator");
+    const observer = connectTestPeer(server, "observer");
+
+    const runTurn = async (id: number, threadId: string, message: string): Promise<void> => {
+      // Wait for idle (emitted after turn-state cleanup) so a follow-up
+      // turn/start on the same thread is not rejected as already running.
+      const turnCompleted = new Promise<void>((resolve) => {
+        initiator.setNotificationListener((notification) => {
+          if (
+            notification.method === DILIGENT_SERVER_NOTIFICATION_METHODS.THREAD_STATUS_CHANGED &&
+            (notification.params as { status?: string }).status === "idle"
+          ) {
+            resolve();
+          }
+        });
+      });
+      const turnStart = await server.handleRequest("initiator", {
+        id,
+        method: "turn/start",
+        params: { threadId, message },
+      });
+      expect((readResult(turnStart) as { accepted: boolean }).accepted).toBe(true);
+      await turnCompleted;
+    };
+
+    const isUserMessage = (n: DiligentServerNotification) =>
+      n.method === DILIGENT_SERVER_NOTIFICATION_METHODS.AGENT_EVENT &&
+      (n.params as { event?: { type?: string } }).event?.type === "user_message";
+
+    const start = await server.handleRequest("initiator", {
+      id: 200,
+      method: "thread/start",
+      params: { cwd: projectRoot },
+    });
+    const { threadId } = readResult(start) as { threadId: string };
+
+    await runTurn(201, threadId, "plain message");
+    expect(initiator.notifications.some(isUserMessage)).toBe(false); // echo skipped for initiator
+    expect(observer.notifications.some(isUserMessage)).toBe(true); // other clients still receive it
+
+    initiator.notifications.length = 0;
+    await runTurn(202, threadId, "<HumanEdits>\ndiff summary\n</HumanEdits>\n\nmove it up");
+    expect(initiator.notifications.some(isUserMessage)).toBe(true); // human edits need the echo
+  });
+
   it("restores thread effort from resumed sessions and uses it for new threads", async () => {
     const projectRoot = await mkdtemp(join(process.env.TMPDIR ?? "/tmp", "diligent-app-server-"));
 
