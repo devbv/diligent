@@ -17,7 +17,9 @@ import { createScriptDeleteTool } from "./tools/script-delete-tool";
 import { createScriptEditTool } from "./tools/script-edit-tool";
 import { createScriptGrepTool } from "./tools/script-grep-tool";
 import { createScriptReadTool } from "./tools/script-read-tool";
-import { captureBaseline, captureSnapshot, nextRequestIndex, snapshotsDir } from "./tools/snapshot";
+import { captureBaseline, captureSnapshot, nextRequestIndex, pruneSnapshots, snapshotsDir } from "./tools/snapshot";
+import { createSnapshotContextTool } from "./tools/snapshot-context-tool";
+import { createSnapshotListTool } from "./tools/snapshot-list-tool";
 import type { Tool, ToolResult } from "./types";
 import { createWriteLock } from "./write-lock";
 
@@ -39,6 +41,12 @@ interface TurnSnapshotState {
    * the agent's own edits to the human.
    */
   humanEdits?: ToolResult;
+  /** Truncated user prompt; becomes the snapshot's label (its rollback-point summary). */
+  promptLabel?: string;
+  /** First capture failure this turn; set so the warning is reported only once. */
+  captureError?: string;
+  /** Session transcript path for the current turn; recorded into snapshot metadata. */
+  transcriptPath?: string;
 }
 
 export function createStudioRpcToolProvider(options: StudioRpcToolProviderOptions = {}): BundledToolProvider {
@@ -73,6 +81,11 @@ export function createStudioRpcToolProvider(options: StudioRpcToolProviderOption
     await callRpc("level.save.file", {});
     turnState.sessionId = input.session_id;
     turnState.taken = false;
+    // Store generously (2000 chars); display sites truncate to 120. Keeping the
+    // full text local means no transcript lookups are ever needed.
+    turnState.promptLabel = typeof input.prompt === "string" ? input.prompt.slice(0, 2000) : undefined;
+    turnState.captureError = undefined;
+    turnState.transcriptPath = typeof input.transcript_path === "string" ? input.transcript_path : undefined;
     turnState.humanEdits = computeHumanEdits(input.cwd);
     // Surface detected human edits without requiring a tool call: the summary
     // is prepended to the user message (LLM context) and the web client splits
@@ -120,25 +133,48 @@ export async function createStudioRpcTools(ctx: {
   const applyLevelChanges = () => callRpc("level.apply", {});
 
   // Capture the pre-edit rollback baseline once per turn, lazily on the first
-  // map-editing tool. Best-effort: failures (e.g. cwd is not a Studio project)
-  // are swallowed and surface later as "nothing to roll back".
-  const ensureSnapshot = (): void => {
+  // map-editing tool. On failure, returns a one-time warning for the wrapping
+  // tool to surface — a silently missing baseline would make a later rollback
+  // restore an older snapshot than the user expects.
+  const ensureSnapshot = (): string | undefined => {
     const ts = ctx.turnState;
-    if (!ts || ts.taken || !ts.sessionId) return;
+    if (!ts || ts.taken || !ts.sessionId) return undefined;
     try {
       const index = nextRequestIndex(snapshotsDir(ctx.cwd), ts.sessionId);
-      captureSnapshot(ctx.cwd, ts.sessionId, index);
+      captureSnapshot(ctx.cwd, ts.sessionId, index, {
+        label: ts.promptLabel,
+        kind: "turn",
+        transcriptPath: ts.transcriptPath,
+      });
+      pruneSnapshots(ctx.cwd, ts.sessionId);
       ts.taken = true;
-    } catch {
-      // not a Studio project / save not yet flushed — skip
+      return undefined;
+    } catch (error) {
+      if (ts.captureError) return undefined; // already reported this turn
+      ts.captureError = (error as Error).message;
+      return (
+        `[warning] Rollback baseline could not be captured (${ts.captureError}). ` +
+        `studiorpc_rollback would restore an older snapshot; check studiorpc_snapshot_list before rolling back.`
+      );
     }
   };
-  // Wrap a map-editing tool so it snapshots the baseline before it runs.
+  // Wrap a map-editing tool so it snapshots the baseline before it runs and
+  // surfaces a capture failure in its output.
   const withSnapshot = (tool: Tool): Tool => ({
     ...tool,
-    execute: (args, toolCtx) => {
-      ensureSnapshot();
-      return tool.execute(args, toolCtx);
+    execute: async (args, toolCtx) => {
+      const warning = ensureSnapshot();
+      let result: Awaited<ReturnType<Tool["execute"]>>;
+      try {
+        result = await tool.execute(args, toolCtx);
+      } catch (error) {
+        // The warning was generated but never delivered (execute threw before
+        // returning). Un-mark it as reported so the next edit tool regenerates
+        // and delivers it, instead of the failure permanently swallowing it.
+        if (warning && ctx.turnState) ctx.turnState.captureError = undefined;
+        throw error;
+      }
+      return warning ? { ...result, output: `${warning}\n${result.output}` } : result;
     },
   });
   const isCollisionEdit = (name: string) => name === "create_collision_profile" || name === "edit_collision_profile";
@@ -158,6 +194,8 @@ export async function createStudioRpcTools(ctx: {
       wrapTool(isCollisionEdit(tool.name) ? withSnapshot(tool) : tool, ctx.host),
     ),
     wrapTool(createRollbackTool(ctx.cwd, callRpc), ctx.host),
+    wrapTool(createSnapshotListTool(ctx.cwd), ctx.host),
+    wrapTool(createSnapshotContextTool(ctx.cwd), ctx.host),
     wrapTool(
       createHumanEditsTool(ctx.cwd, () => ctx.turnState?.humanEdits),
       ctx.host,
@@ -176,7 +214,7 @@ export async function createStudioRpcTools(ctx: {
       description,
       parameters: params,
       async execute(args, toolCtx) {
-        if (capturesBeforeRun) ensureSnapshot();
+        const warning = capturesBeforeRun ? ensureSnapshot() : undefined;
         const bundledToolCtx = withApproval(toolCtx, ctx.host);
         const rpcMethod = mod.resolveMethod ? mod.resolveMethod(args as Record<string, unknown>) : method;
 
@@ -189,7 +227,7 @@ export async function createStudioRpcTools(ctx: {
 
         if (approval === "reject") {
           return {
-            output: "[Rejected by user]",
+            output: warning ? `${warning}\n[Rejected by user]` : "[Rejected by user]",
             metadata: { error: true, method: rpcMethod },
           };
         }
@@ -197,26 +235,33 @@ export async function createStudioRpcTools(ctx: {
         const isMutating = mutatingMethods.has(method);
         const release = isMutating ? await writeLock.acquire() : undefined;
         try {
-          const normalizedArgs = mod.normalizeArgs
-            ? mod.normalizeArgs(args as Record<string, unknown>)
-            : (args as Record<string, unknown>);
-          let result: unknown = await callRpc(rpcMethod, normalizedArgs, { timeoutMs: mod.timeoutMs });
-          if (mod.postProcess) {
-            result = mod.postProcess(result, args as Record<string, unknown>);
-          }
-          // Persist editor-state changes to file immediately on success.
-          if (savingMethods.has(method)) {
-            await callRpc("level.save.file", {});
-          }
-          const output = typeof result === "string" ? result : JSON.stringify(result, null, 2);
-          const renderBuilder = renderBuilders[toolName];
-          const render = renderBuilder?.({ args: args as Record<string, unknown>, normalizedArgs, output, result });
+          try {
+            const normalizedArgs = mod.normalizeArgs
+              ? mod.normalizeArgs(args as Record<string, unknown>)
+              : (args as Record<string, unknown>);
+            let result: unknown = await callRpc(rpcMethod, normalizedArgs, { timeoutMs: mod.timeoutMs });
+            if (mod.postProcess) {
+              result = mod.postProcess(result, args as Record<string, unknown>);
+            }
+            // Persist editor-state changes to file immediately on success.
+            if (savingMethods.has(method)) {
+              await callRpc("level.save.file", {});
+            }
+            const output = typeof result === "string" ? result : JSON.stringify(result, null, 2);
+            const renderBuilder = renderBuilders[toolName];
+            const render = renderBuilder?.({ args: args as Record<string, unknown>, normalizedArgs, output, result });
 
-          return {
-            output,
-            render,
-            metadata: { method: rpcMethod, result },
-          };
+            return {
+              output: warning ? `${warning}\n${output}` : output,
+              render,
+              metadata: { method: rpcMethod, result },
+            };
+          } catch (error) {
+            // Same rationale as withSnapshot's catch: a warning generated but
+            // lost to a thrown error must be regenerated on the next edit tool.
+            if (warning && ctx.turnState) ctx.turnState.captureError = undefined;
+            throw error;
+          }
         } finally {
           release?.();
         }

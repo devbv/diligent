@@ -1,7 +1,7 @@
 // @summary Tests Studio rollback snapshot helpers and the (full-restore) rollback tool.
 
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createStudioRpcToolProvider } from "../../src/tools/studiorpc";
@@ -9,10 +9,15 @@ import { createRollbackTool } from "../../src/tools/studiorpc/tools/rollback-too
 import {
   captureSnapshot,
   findLatestSnapshot,
+  findSnapshotById,
+  listSnapshots,
   nextRequestIndex,
+  pruneSnapshots,
   restoreSnapshot,
   snapshotsDir,
 } from "../../src/tools/studiorpc/tools/snapshot";
+import { createSnapshotContextTool } from "../../src/tools/studiorpc/tools/snapshot-context-tool";
+import { createSnapshotListTool } from "../../src/tools/studiorpc/tools/snapshot-list-tool";
 
 function projectDir(): string {
   const cwd = mkdtempSync(join(tmpdir(), "proj-"));
@@ -52,6 +57,68 @@ describe("captureSnapshot", () => {
     expect(path).toBe(join(snapshotsDir(cwd), "sess1_2.ovdrjm"));
     expect(readFileSync(path, "utf-8")).toBe('{"Root":{"x":1}}');
   });
+
+  test("writes a metadata sidecar with label and kind", () => {
+    const cwd = projectDir();
+    captureSnapshot(cwd, "sess1", 0, { label: "make the tree bigger", kind: "turn" });
+    const meta = JSON.parse(readFileSync(join(snapshotsDir(cwd), "sess1_0.json"), "utf-8"));
+    expect(meta).toMatchObject({
+      id: "sess1_0",
+      sessionId: "sess1",
+      index: 0,
+      label: "make the tree bigger",
+      kind: "turn",
+    });
+    expect(typeof meta.createdAt).toBe("string");
+  });
+
+  test("defaults kind to 'turn' and omits label when not given", () => {
+    const cwd = projectDir();
+    captureSnapshot(cwd, "sess1", 0);
+    const meta = JSON.parse(readFileSync(join(snapshotsDir(cwd), "sess1_0.json"), "utf-8"));
+    expect(meta.kind).toBe("turn");
+    expect("label" in meta).toBe(false);
+  });
+
+  test("records transcriptPath in the metadata sidecar when given", () => {
+    const cwd = projectDir();
+    captureSnapshot(cwd, "sess1", 0, { transcriptPath: "/tmp/sessions/abc.jsonl" });
+    const meta = JSON.parse(readFileSync(join(snapshotsDir(cwd), "sess1_0.json"), "utf-8"));
+    expect(meta.transcriptPath).toBe("/tmp/sessions/abc.jsonl");
+  });
+});
+
+describe("listSnapshots", () => {
+  test("returns entries newest-first with metadata merged in", () => {
+    const cwd = projectDir();
+    captureSnapshot(cwd, "sess", 0, { label: "first edit" });
+    captureSnapshot(cwd, "sess", 1, { label: "second edit", kind: "pre-rollback" });
+    const dir = snapshotsDir(cwd);
+    utimesSync(join(dir, "sess_0.ovdrjm"), new Date(2020, 0, 1), new Date(2020, 0, 1));
+    utimesSync(join(dir, "sess_1.ovdrjm"), new Date(2020, 0, 2), new Date(2020, 0, 2));
+
+    const entries = listSnapshots(cwd);
+    expect(entries.map((e) => e.id)).toEqual(["sess_1", "sess_0"]);
+    expect(entries[0]).toMatchObject({ label: "second edit", kind: "pre-rollback", index: 1 });
+    expect(entries[1]).toMatchObject({ label: "first edit", kind: "turn", sessionId: "sess" });
+  });
+
+  test("legacy snapshots without a metadata file get kind 'turn' and mtime-based createdAt", () => {
+    const cwd = projectDir();
+    const dir = snapshotsDir(cwd);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "old_3.ovdrjm"), "{}"); // pre-metadata snapshot
+    const entries = listSnapshots(cwd);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({ id: "old_3", sessionId: "old", index: 3, kind: "turn" });
+    expect(entries[0].label).toBeUndefined();
+    expect(typeof entries[0].createdAt).toBe("string");
+  });
+
+  test("returns an empty array when the snapshots dir does not exist", () => {
+    const cwd = projectDir();
+    expect(listSnapshots(cwd)).toEqual([]);
+  });
 });
 
 describe("findLatestSnapshot", () => {
@@ -73,6 +140,32 @@ describe("findLatestSnapshot", () => {
     const cwd = projectDir();
     expect(() => findLatestSnapshot(cwd)).toThrow();
   });
+
+  test("skips pre-rollback snapshots so repeated default rollback stays idempotent", () => {
+    const cwd = projectDir();
+    captureSnapshot(cwd, "sess", 0, { label: "edit" });
+    captureSnapshot(cwd, "sess", 1, { kind: "pre-rollback" });
+    const dir = snapshotsDir(cwd);
+    utimesSync(join(dir, "sess_0.ovdrjm"), new Date(2020, 0, 1), new Date(2020, 0, 1));
+    utimesSync(join(dir, "sess_1.ovdrjm"), new Date(2020, 0, 2), new Date(2020, 0, 2));
+
+    expect(findLatestSnapshot(cwd).id).toBe("sess_0"); // newest non-pre-rollback
+  });
+});
+
+describe("findSnapshotById", () => {
+  test("returns the entry for an existing id", () => {
+    const cwd = projectDir();
+    captureSnapshot(cwd, "sess", 0, { label: "edit" });
+    const entry = findSnapshotById(cwd, "sess_0");
+    expect(entry.id).toBe("sess_0");
+    expect(entry.path).toBe(join(snapshotsDir(cwd), "sess_0.ovdrjm"));
+  });
+
+  test("throws with a helpful message for an unknown id", () => {
+    const cwd = projectDir();
+    expect(() => findSnapshotById(cwd, "nope_9")).toThrow(/not found/);
+  });
 });
 
 describe("restoreSnapshot", () => {
@@ -84,6 +177,33 @@ describe("restoreSnapshot", () => {
     writeFileSync(snap, '{"Root":{"restored":true}}');
     restoreSnapshot(cwd, snap);
     expect(readFileSync(join(cwd, "world.ovdrjm"), "utf-8")).toBe('{"Root":{"restored":true}}');
+  });
+});
+
+describe("pruneSnapshots", () => {
+  test("keeps only the newest N snapshots for the session, removing files and sidecars", () => {
+    const cwd = projectDir();
+    captureSnapshot(cwd, "sess", 0);
+    captureSnapshot(cwd, "sess", 1);
+    captureSnapshot(cwd, "sess", 2);
+    captureSnapshot(cwd, "other", 0); // different session untouched
+
+    pruneSnapshots(cwd, "sess", 2);
+
+    const dir = snapshotsDir(cwd);
+    expect(existsSync(join(dir, "sess_0.ovdrjm"))).toBe(false);
+    expect(existsSync(join(dir, "sess_0.json"))).toBe(false);
+    expect(existsSync(join(dir, "sess_1.ovdrjm"))).toBe(true);
+    expect(existsSync(join(dir, "sess_2.ovdrjm"))).toBe(true);
+    expect(existsSync(join(dir, "other_0.ovdrjm"))).toBe(true);
+  });
+
+  test("is a no-op when under the cap or when the dir does not exist", () => {
+    const cwd = projectDir();
+    expect(() => pruneSnapshots(cwd, "sess", 2)).not.toThrow(); // no dir yet
+    captureSnapshot(cwd, "sess", 0);
+    pruneSnapshots(cwd, "sess", 2);
+    expect(existsSync(join(snapshotsDir(cwd), "sess_0.ovdrjm"))).toBe(true);
   });
 });
 
@@ -102,13 +222,20 @@ describe("snapshot capture on first edit", () => {
   // so it exercises the "first edit" capture path without touching the ovdrjm.
   const importArgs = { assetid: "ovdrassetid://1", assetName: "Tree", assetType: "MODEL" };
 
-  async function setup(cwd: string, sessionId: string) {
-    const provider = createStudioRpcToolProvider({ callRpc: async () => ({}) });
+  async function setup(
+    cwd: string,
+    sessionId: string,
+    options: {
+      callRpc?: (method: string, params?: Record<string, unknown>) => Promise<unknown>;
+      approve?: () => Promise<"once" | "always" | "reject">;
+    } = {},
+  ) {
+    const provider = createStudioRpcToolProvider({ callRpc: options.callRpc ?? (async () => ({})) });
     const p = provider as typeof provider & {
       onUserPromptSubmit: NonNullable<typeof provider.onUserPromptSubmit>;
     };
     await p.onUserPromptSubmit(hookInput(cwd, sessionId)); // begins the turn
-    const tools = await provider.createTools({ cwd, host: { approve: async () => "once" } });
+    const tools = await provider.createTools({ cwd, host: { approve: options.approve ?? (async () => "once") } });
     return { provider: p, tools };
   }
 
@@ -140,8 +267,8 @@ describe("snapshot capture on first edit", () => {
     expect(existsSync(join(snapshotsDir(cwd), "sess_0.ovdrjm"))).toBe(false);
   });
 
-  test("the rollback tool does not create a snapshot of the state being rolled back", async () => {
-    const cwd = projectDir();
+  test("the rollback turn leaves no 'turn' snapshot but saves a pre-rollback safety snapshot", async () => {
+    const cwd = projectDir(); // current ovdrjm = {"Root":{"x":1}}
     const dir = snapshotsDir(cwd);
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "sess_0.ovdrjm"), '{"Root":{"original":true}}'); // prior edit's baseline
@@ -150,9 +277,104 @@ describe("snapshot capture on first edit", () => {
 
     await rollbackTool.execute({} as never, toolCtx());
 
-    // No new snapshot from the rollback turn, and the baseline was restored.
-    expect(existsSync(join(dir, "sess_1.ovdrjm"))).toBe(false);
+    // Baseline restored; the discarded state was preserved as a pre-rollback snapshot.
     expect(readFileSync(join(cwd, "world.ovdrjm"), "utf-8")).toBe('{"Root":{"original":true}}');
+    const safetyMeta = JSON.parse(readFileSync(join(dir, "sess_1.json"), "utf-8"));
+    expect(safetyMeta.kind).toBe("pre-rollback");
+    expect(readFileSync(join(dir, "sess_1.ovdrjm"), "utf-8")).toBe('{"Root":{"x":1}}');
+    // A second parameterless rollback still targets sess_0 (idempotent).
+    await rollbackTool.execute({} as never, toolCtx());
+    expect(readFileSync(join(cwd, "world.ovdrjm"), "utf-8")).toBe('{"Root":{"original":true}}');
+  });
+
+  test("stores the user prompt as the snapshot label", async () => {
+    const cwd = projectDir();
+    const { tools } = await setup(cwd, "sess");
+    const importTool = tools.find((t) => t.name === "studiorpc_asset_drawer_import")!;
+
+    await importTool.execute(importArgs as never, toolCtx());
+
+    const meta = JSON.parse(readFileSync(join(snapshotsDir(cwd), "sess_0.json"), "utf-8"));
+    expect(meta.label).toBe("go");
+    expect(meta.kind).toBe("turn");
+  });
+
+  test("stores the turn's transcript path in the snapshot metadata", async () => {
+    const cwd = projectDir();
+    const { tools } = await setup(cwd, "sess");
+    const importTool = tools.find((t) => t.name === "studiorpc_asset_drawer_import")!;
+
+    await importTool.execute(importArgs as never, toolCtx());
+
+    const meta = JSON.parse(readFileSync(join(snapshotsDir(cwd), "sess_0.json"), "utf-8"));
+    expect(meta.transcriptPath).toBe("/tmp/s.jsonl");
+  });
+
+  test("surfaces a warning in the tool output when baseline capture fails", async () => {
+    // A cwd with a umap but no ovdrjm makes resolveOvdrjmPathFromUmap throw,
+    // so captureSnapshot fails while the RPC tool itself still succeeds.
+    const cwd = mkdtempSync(join(tmpdir(), "proj-"));
+    writeFileSync(join(cwd, "world.umap"), "umap");
+    const { tools } = await setup(cwd, "sess");
+    const importTool = tools.find((t) => t.name === "studiorpc_asset_drawer_import")!;
+
+    const first = await importTool.execute(importArgs as never, toolCtx());
+    expect(first.output).toContain("[warning] Rollback baseline could not be captured");
+
+    // Reported once per turn, not on every subsequent edit.
+    const second = await importTool.execute(importArgs as never, toolCtx());
+    expect(second.output).not.toContain("[warning]");
+  });
+
+  test("delivers the capture warning on a rejected edit tool, not just a successful one", async () => {
+    // Same broken cwd as above: capture fails while the RPC tool would succeed.
+    const cwd = mkdtempSync(join(tmpdir(), "proj-"));
+    writeFileSync(join(cwd, "world.umap"), "umap");
+    const { tools } = await setup(cwd, "sess", { approve: async () => "reject" });
+    const importTool = tools.find((t) => t.name === "studiorpc_asset_drawer_import")!;
+
+    const result = await importTool.execute(importArgs as never, toolCtx());
+
+    expect(result.output).toContain("[warning] Rollback baseline could not be captured");
+    expect(result.output).toContain("[Rejected by user]");
+  });
+
+  test("regenerates the capture warning on the next edit when the first edit's execute throws", async () => {
+    // Same broken cwd: capture fails. The mock RPC also throws for the import
+    // method itself, so the warning is generated but the whole call rejects.
+    const cwd = mkdtempSync(join(tmpdir(), "proj-"));
+    writeFileSync(join(cwd, "world.umap"), "umap");
+    let shouldThrow = true;
+    const { tools } = await setup(cwd, "sess", {
+      callRpc: async (method) => {
+        if (method === "asset_drawer.import" && shouldThrow) throw new Error("rpc down");
+        return {};
+      },
+    });
+    const importTool = tools.find((t) => t.name === "studiorpc_asset_drawer_import")!;
+
+    await expect(importTool.execute(importArgs as never, toolCtx())).rejects.toThrow("rpc down");
+
+    shouldThrow = false;
+    const second = await importTool.execute(importArgs as never, toolCtx());
+    expect(second.output).toContain("[warning] Rollback baseline could not be captured");
+  });
+
+  test("prunes old snapshots after capturing", async () => {
+    const cwd = projectDir();
+    const dir = snapshotsDir(cwd);
+    mkdirSync(dir, { recursive: true });
+    // Pre-existing snapshots 0..20 for this session (21 files, cap is 20).
+    for (let i = 0; i <= 20; i++) writeFileSync(join(dir, `sess_${i}.ovdrjm`), "{}");
+    const { tools } = await setup(cwd, "sess");
+    const importTool = tools.find((t) => t.name === "studiorpc_asset_drawer_import")!;
+
+    await importTool.execute(importArgs as never, toolCtx()); // captures sess_21
+
+    expect(existsSync(join(dir, "sess_21.ovdrjm"))).toBe(true);
+    expect(existsSync(join(dir, "sess_0.ovdrjm"))).toBe(false); // pruned
+    expect(existsSync(join(dir, "sess_1.ovdrjm"))).toBe(false); // pruned (22 - 20 = 2 oldest)
+    expect(existsSync(join(dir, "sess_2.ovdrjm"))).toBe(true);
   });
 });
 
@@ -197,5 +419,271 @@ describe("createRollbackTool", () => {
       host: { approve: async () => "once" },
     });
     expect(tools.map((tool) => tool.name)).toContain("studiorpc_rollback");
+  });
+
+  test("restores a specific snapshot when snapshotId is given", async () => {
+    const cwd = projectDir();
+    captureSnapshot(cwd, "sess", 0, { label: "first edit" }); // {"Root":{"x":1}}
+    writeFileSync(join(cwd, "world.ovdrjm"), '{"Root":{"x":2}}');
+    captureSnapshot(cwd, "sess", 1, { label: "second edit" }); // {"Root":{"x":2}}
+    writeFileSync(join(cwd, "world.ovdrjm"), '{"Root":{"x":3}}');
+    const tool = createRollbackTool(cwd, async () => ({}));
+
+    const result = await tool.execute({ snapshotId: "sess_0" } as never, toolCtx());
+
+    expect(readFileSync(join(cwd, "world.ovdrjm"), "utf-8")).toBe('{"Root":{"x":1}}');
+    expect(result.metadata?.restored).toBe("sess_0");
+    expect(result.output).toContain("first edit");
+  });
+
+  test("reports an error for an unknown snapshotId without touching the map", async () => {
+    const cwd = projectDir();
+    captureSnapshot(cwd, "sess", 0);
+    const calls: string[] = [];
+    const tool = createRollbackTool(cwd, async (method) => {
+      calls.push(method);
+      return {};
+    });
+
+    const result = await tool.execute({ snapshotId: "missing_1" } as never, toolCtx());
+
+    expect(result.metadata?.error).toBe(true);
+    expect(calls).not.toContain("level.apply");
+    expect(readFileSync(join(cwd, "world.ovdrjm"), "utf-8")).toBe('{"Root":{"x":1}}');
+  });
+
+  test("restores the pre-rollback state when level.apply fails", async () => {
+    const cwd = projectDir(); // current = {"Root":{"x":1}} — the pre-rollback state
+    const dir = snapshotsDir(cwd);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "sess_0.ovdrjm"), '{"Root":{"original":true}}');
+    const calls: string[] = [];
+    const tool = createRollbackTool(cwd, async (method) => {
+      calls.push(method);
+      if (method === "level.apply") throw new Error("editor busy");
+      return {};
+    });
+
+    const result = await tool.execute({} as never, toolCtx());
+
+    expect(result.metadata?.error).toBe(true);
+    expect(result.output).toContain("level.apply");
+    // Disk was put back to the pre-rollback state, so it matches the editor again
+    // and the turn-end save cannot silently clobber a half-applied rollback.
+    expect(readFileSync(join(cwd, "world.ovdrjm"), "utf-8")).toBe('{"Root":{"x":1}}');
+    expect(calls).toEqual(["level.save.file", "level.apply"]); // no final persist save
+  });
+
+  test("re-saves the editor state when both the safety snapshot and level.apply fail", async () => {
+    const cwd = projectDir(); // current = {"Root":{"x":1}} — the pre-rollback state
+    const dir = snapshotsDir(cwd);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "sess_0.ovdrjm"), '{"Root":{"original":true}}');
+    chmodSync(dir, 0o555); // safety snapshot capture fails: dir is read-only
+    try {
+      const calls: string[] = [];
+      const tool = createRollbackTool(cwd, async (method) => {
+        calls.push(method);
+        if (method === "level.apply") throw new Error("editor busy");
+        return {};
+      });
+
+      const result = await tool.execute({} as never, toolCtx());
+
+      expect(result.metadata?.error).toBe(true);
+      // No safety copy existed, so the recovery is an editor re-save.
+      expect(calls).toEqual(["level.save.file", "level.apply", "level.save.file"]);
+      expect(result.output).toContain("left unchanged");
+    } finally {
+      chmodSync(dir, 0o755); // let temp cleanup remove the dir
+    }
+  });
+
+  test("reports the inconsistency honestly when safety snapshot, apply, and re-save all fail", async () => {
+    const cwd = projectDir();
+    const dir = snapshotsDir(cwd);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "sess_0.ovdrjm"), '{"Root":{"original":true}}');
+    chmodSync(dir, 0o555); // safety snapshot capture fails: dir is read-only
+    try {
+      let saveCalls = 0;
+      const tool = createRollbackTool(cwd, async (method) => {
+        if (method === "level.apply") throw new Error("editor busy");
+        if (method === "level.save.file" && ++saveCalls > 1) throw new Error("editor gone");
+        return {};
+      });
+
+      const result = await tool.execute({} as never, toolCtx());
+
+      expect(result.metadata?.error).toBe(true);
+      expect(result.output).toContain("verify the map state");
+      expect(result.output).not.toContain("left unchanged");
+    } finally {
+      chmodSync(dir, 0o755); // let temp cleanup remove the dir
+    }
+  });
+
+  test("success output names the restored point and warns about stale references", async () => {
+    const cwd = projectDir();
+    captureSnapshot(cwd, "sess", 0, { label: "build a castle" });
+    writeFileSync(join(cwd, "world.ovdrjm"), '{"Root":{"x":9}}');
+    const tool = createRollbackTool(cwd, async () => ({}));
+
+    const result = await tool.execute({} as never, toolCtx());
+
+    expect(result.output).toContain("sess_0");
+    expect(result.output).toContain("build a castle");
+    expect(result.output).toContain("no longer exist");
+  });
+
+  test("flags a successful rollback as un-undoable when the safety snapshot could not be saved", async () => {
+    const cwd = projectDir();
+    const dir = snapshotsDir(cwd);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "sess_0.ovdrjm"), '{"Root":{"original":true}}');
+    chmodSync(dir, 0o555); // safety snapshot capture fails: dir is read-only
+    try {
+      const tool = createRollbackTool(cwd, async () => ({})); // level.save.file / level.apply all succeed
+
+      const result = await tool.execute({} as never, toolCtx());
+
+      expect(result.metadata?.error).toBeUndefined();
+      expect(result.output).toContain("cannot be undone");
+    } finally {
+      chmodSync(dir, 0o755); // let temp cleanup remove the dir
+    }
+  });
+});
+
+describe("createSnapshotListTool", () => {
+  test("lists snapshots newest-first without exposing paths", async () => {
+    const cwd = projectDir();
+    captureSnapshot(cwd, "sess", 0, { label: "first edit" });
+    captureSnapshot(cwd, "sess", 1, { label: "state before rollback", kind: "pre-rollback" });
+    const dir = snapshotsDir(cwd);
+    utimesSync(join(dir, "sess_0.ovdrjm"), new Date(2020, 0, 1), new Date(2020, 0, 1));
+    utimesSync(join(dir, "sess_1.ovdrjm"), new Date(2020, 0, 2), new Date(2020, 0, 2));
+
+    const tool = createSnapshotListTool(cwd);
+    const result = await tool.execute({} as never, toolCtx());
+
+    const entries = JSON.parse(result.output);
+    expect(entries.map((e: { id: string }) => e.id)).toEqual(["sess_1", "sess_0"]);
+    expect(entries[0].kind).toBe("pre-rollback");
+    expect(entries[0].path).toBeUndefined();
+    expect(result.metadata?.count).toBe(2);
+  });
+
+  test("reports when no snapshots exist", async () => {
+    const cwd = projectDir();
+    const tool = createSnapshotListTool(cwd);
+    const result = await tool.execute({} as never, toolCtx());
+    expect(result.output).toBe("No snapshots found.");
+  });
+
+  test("is registered as a tool on the provider", async () => {
+    const provider = createStudioRpcToolProvider({ callRpc: async () => ({}) });
+    const tools = await provider.createTools({ cwd: "/tmp/project", host: { approve: async () => "once" } });
+    expect(tools.map((tool) => tool.name)).toContain("studiorpc_snapshot_list");
+  });
+});
+
+describe("createSnapshotContextTool", () => {
+  function writeTranscript(path: string, entries: Array<{ role: string; content: unknown; at: string }>) {
+    const lines = [
+      JSON.stringify({ type: "session", version: 1, id: "s", timestamp: "2026-01-01T00:00:00Z", cwd: "/x" }),
+    ];
+    for (const [i, e] of entries.entries()) {
+      lines.push(
+        JSON.stringify({
+          type: "message",
+          id: String(i),
+          parentId: null,
+          timestamp: e.at,
+          message: { role: e.role, content: e.content },
+        }),
+      );
+    }
+    writeFileSync(path, `${lines.join("\n")}\n`);
+  }
+
+  test("returns the matched request and the entries that follow it", async () => {
+    const cwd = projectDir();
+    const transcriptPath = join(cwd, "session.jsonl");
+    writeTranscript(transcriptPath, [
+      { role: "user", content: "make a castle", at: "2026-01-01T00:01:00Z" },
+      { role: "assistant", content: [{ type: "text", text: "Building the castle now." }], at: "2026-01-01T00:02:00Z" },
+      { role: "user", content: "make it bigger", at: "2026-01-01T00:03:00Z" },
+    ]);
+    captureSnapshot(cwd, "sess", 0, { label: "make a castle", transcriptPath });
+    const tool = createSnapshotContextTool(cwd);
+
+    const result = await tool.execute({ snapshotId: "sess_0" } as never, toolCtx());
+
+    expect(result.output).toContain("[user] make a castle");
+    expect(result.output).toContain("[assistant] Building the castle now.");
+    expect(result.output).toContain("[user] make it bigger");
+    expect(result.metadata?.error).toBeUndefined();
+  });
+
+  test("prefers the occurrence closest before the snapshot when the same prompt repeats", async () => {
+    const cwd = projectDir();
+    const transcriptPath = join(cwd, "session.jsonl");
+    writeTranscript(transcriptPath, [
+      { role: "user", content: "fix it", at: "2026-01-01T00:01:00Z" },
+      { role: "assistant", content: "first attempt", at: "2026-01-01T00:02:00Z" },
+      { role: "user", content: "fix it", at: "2026-01-01T00:05:00Z" },
+    ]);
+    captureSnapshot(cwd, "sess", 0, { label: "fix it", transcriptPath });
+    // Pin the capture time between the two occurrences.
+    const sidecar = join(snapshotsDir(cwd), "sess_0.json");
+    const meta = JSON.parse(readFileSync(sidecar, "utf-8"));
+    meta.createdAt = "2026-01-01T00:03:00Z";
+    writeFileSync(sidecar, JSON.stringify(meta));
+    const tool = createSnapshotContextTool(cwd);
+
+    const result = await tool.execute({ snapshotId: "sess_0" } as never, toolCtx());
+
+    expect(result.output).toContain("first attempt"); // matched the 00:01 occurrence, not 00:05
+  });
+
+  test("reports when the snapshot has no transcript reference", async () => {
+    const cwd = projectDir();
+    captureSnapshot(cwd, "sess", 0, { label: "x" });
+    const tool = createSnapshotContextTool(cwd);
+    const result = await tool.execute({ snapshotId: "sess_0" } as never, toolCtx());
+    expect(result.output).toContain("no transcript reference");
+    expect(result.metadata?.error).toBeUndefined();
+  });
+
+  test("reports when the transcript file cannot be read", async () => {
+    const cwd = projectDir();
+    captureSnapshot(cwd, "sess", 0, { label: "x", transcriptPath: join(cwd, "gone.jsonl") });
+    const tool = createSnapshotContextTool(cwd);
+    const result = await tool.execute({ snapshotId: "sess_0" } as never, toolCtx());
+    expect(result.output).toContain("could not be read");
+  });
+
+  test("reports when the request is not found in the transcript", async () => {
+    const cwd = projectDir();
+    const transcriptPath = join(cwd, "session.jsonl");
+    writeTranscript(transcriptPath, [{ role: "user", content: "something else", at: "2026-01-01T00:01:00Z" }]);
+    captureSnapshot(cwd, "sess", 0, { label: "make a castle", transcriptPath });
+    const tool = createSnapshotContextTool(cwd);
+    const result = await tool.execute({ snapshotId: "sess_0" } as never, toolCtx());
+    expect(result.output).toContain("not found in the transcript");
+  });
+
+  test("errors on an unknown snapshotId", async () => {
+    const cwd = projectDir();
+    const tool = createSnapshotContextTool(cwd);
+    const result = await tool.execute({ snapshotId: "nope_9" } as never, toolCtx());
+    expect(result.metadata?.error).toBe(true);
+  });
+
+  test("is registered as a tool on the provider", async () => {
+    const provider = createStudioRpcToolProvider({ callRpc: async () => ({}) });
+    const tools = await provider.createTools({ cwd: "/tmp/project", host: { approve: async () => "once" } });
+    expect(tools.map((tool) => tool.name)).toContain("studiorpc_snapshot_context");
   });
 });

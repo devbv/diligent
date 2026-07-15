@@ -1,9 +1,34 @@
-// @summary Rollback snapshot helpers: capture/restore .ovdrjm level snapshots.
+// @summary Rollback snapshot helpers: capture/restore .ovdrjm level snapshots with metadata.
 
-import { copyFileSync, mkdirSync, readdirSync, statSync } from "node:fs";
+import { copyFileSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { resolvePaths } from "@diligent/runtime";
 import { resolveOvdrjmPathFromUmap } from "./ovdrjm-utils";
+
+export type SnapshotKind = "turn" | "pre-rollback";
+
+/** Metadata stored in the `{id}.json` sidecar next to each snapshot. */
+export interface SnapshotMeta {
+  id: string;
+  sessionId: string;
+  index: number;
+  createdAt: string;
+  label?: string;
+  kind: SnapshotKind;
+  /** Session transcript the labeled request came from; enables read-time context lookup. */
+  transcriptPath?: string;
+}
+
+/** A snapshot on disk: sidecar metadata plus the path to the .ovdrjm copy. */
+export interface SnapshotEntry extends SnapshotMeta {
+  path: string;
+}
+
+export interface CaptureOptions {
+  label?: string;
+  kind?: SnapshotKind;
+  transcriptPath?: string;
+}
 
 /**
  * Directory holding rollback snapshots, under the project's storage-namespace
@@ -19,6 +44,11 @@ export function snapshotsDir(cwd: string): string {
  * it against the current .ovdrjm reveals what the human edited in between.
  * Lives in the snapshots dir but is excluded from rollback selection.
  */
+// Invariant: this stem must never contain an underscore. listSnapshots relies
+// on parseSnapshotName rejecting underscore-less stems to implicitly exclude
+// the baseline from rollback selection — an underscore would make it parse as
+// a `{sessionId}_{index}` rollback snapshot, becoming a rollback target and
+// prunable by pruneSnapshots.
 const BASELINE_FILENAME = "agent-done-baseline.ovdrjm";
 
 export function baselinePath(cwd: string): string {
@@ -58,47 +88,134 @@ export function nextRequestIndex(snapshotsDir: string, sessionId: string): numbe
 
 /**
  * Copy the project's current .ovdrjm into the snapshots dir as
- * `{sessionId}_{index}.ovdrjm`. Raw byte copy preserves the original
+ * `{sessionId}_{index}.ovdrjm` and write a `{sessionId}_{index}.json` metadata
+ * sidecar (label, kind, createdAt). Raw byte copy preserves the original
  * UTF-16/UTF-8 encoding. Caller must ensure the level was saved to file first.
  * Returns the snapshot path.
  */
-export function captureSnapshot(cwd: string, sessionId: string, index: number): string {
+export function captureSnapshot(cwd: string, sessionId: string, index: number, options: CaptureOptions = {}): string {
   const { ovdrjmPath } = resolveOvdrjmPathFromUmap(cwd);
   const dir = snapshotsDir(cwd);
   mkdirSync(dir, { recursive: true });
-  const dest = join(dir, `${sessionId}_${index}.ovdrjm`);
+  const id = `${sessionId}_${index}`;
+  const dest = join(dir, `${id}.ovdrjm`);
   copyFileSync(ovdrjmPath, dest);
+  const meta: SnapshotMeta = {
+    id,
+    sessionId,
+    index,
+    createdAt: new Date().toISOString(),
+    ...(options.label !== undefined ? { label: options.label } : {}),
+    ...(options.transcriptPath !== undefined ? { transcriptPath: options.transcriptPath } : {}),
+    kind: options.kind ?? "turn",
+  };
+  writeFileSync(join(dir, `${id}.json`), JSON.stringify(meta));
   return dest;
 }
 
+/** Parse `{sessionId}_{index}` from a snapshot filename; sessionId may itself contain underscores. */
+function parseSnapshotName(name: string): { sessionId: string; index: number } | undefined {
+  const stem = name.slice(0, -".ovdrjm".length);
+  const sep = stem.lastIndexOf("_");
+  if (sep <= 0) return undefined;
+  const index = Number(stem.slice(sep + 1));
+  if (!Number.isInteger(index)) return undefined;
+  return { sessionId: stem.slice(0, sep), index };
+}
+
 /**
- * Most recent snapshot in the project, by file mtime (matching the last agent
- * request). Throws if no snapshot exists.
+ * All snapshots in the project, newest first (by file mtime). Snapshots
+ * predating the metadata sidecar are listed with kind "turn", no label, and an
+ * mtime-derived createdAt so old projects keep working.
  */
-export function findLatestSnapshot(cwd: string): { id: string; path: string } {
+export function listSnapshots(cwd: string): SnapshotEntry[] {
   const dir = snapshotsDir(cwd);
-  let entries: string[];
+  let names: string[];
   try {
-    entries = readdirSync(dir);
+    names = readdirSync(dir);
   } catch {
-    entries = [];
+    return [];
   }
-  let newest: { name: string; mtimeMs: number } | undefined;
-  for (const name of entries) {
-    // The agent-done baseline is rewritten every turn, so by mtime it would
-    // always win — it is a diff baseline, never a rollback target.
-    if (!name.endsWith(".ovdrjm") || name === BASELINE_FILENAME) continue;
-    const mtimeMs = statSync(join(dir, name)).mtimeMs;
-    if (!newest || mtimeMs > newest.mtimeMs) newest = { name, mtimeMs };
+  const entries: Array<SnapshotEntry & { mtimeMs: number }> = [];
+  for (const name of names) {
+    if (!name.endsWith(".ovdrjm")) continue;
+    const parsed = parseSnapshotName(name);
+    if (!parsed) continue;
+    const path = join(dir, name);
+    const mtimeMs = statSync(path).mtimeMs;
+    const id = name.slice(0, -".ovdrjm".length);
+    let meta: SnapshotMeta | undefined;
+    try {
+      meta = JSON.parse(readFileSync(join(dir, `${id}.json`), "utf-8")) as SnapshotMeta;
+    } catch {
+      // legacy snapshot without metadata sidecar
+    }
+    entries.push({
+      id,
+      path,
+      sessionId: parsed.sessionId,
+      index: parsed.index,
+      createdAt: meta?.createdAt ?? new Date(mtimeMs).toISOString(),
+      ...(meta?.label !== undefined ? { label: meta.label } : {}),
+      ...(meta?.transcriptPath !== undefined ? { transcriptPath: meta.transcriptPath } : {}),
+      kind: meta?.kind ?? "turn",
+      mtimeMs,
+    });
   }
-  if (!newest) {
+  entries.sort((a, b) => b.mtimeMs - a.mtimeMs);
+  return entries.map(({ mtimeMs: _mtimeMs, ...entry }) => entry);
+}
+
+/**
+ * Most recent restorable snapshot: the newest entry whose kind is not
+ * "pre-rollback". Pre-rollback safety snapshots are excluded so a
+ * parameterless rollback stays idempotent (calling it twice restores the same
+ * baseline instead of undoing itself); they remain reachable via
+ * findSnapshotById. Throws if no snapshot exists.
+ */
+export function findLatestSnapshot(cwd: string): SnapshotEntry {
+  const latest = listSnapshots(cwd).find((entry) => entry.kind !== "pre-rollback");
+  if (!latest) {
     throw new Error("No rollback snapshot found. Nothing to roll back.");
   }
-  return { id: newest.name.slice(0, -".ovdrjm".length), path: join(dir, newest.name) };
+  return latest;
+}
+
+/** Snapshot with the given id. Throws when it does not exist. */
+export function findSnapshotById(cwd: string, id: string): SnapshotEntry {
+  const entry = listSnapshots(cwd).find((candidate) => candidate.id === id);
+  if (!entry) {
+    throw new Error(`Snapshot "${id}" not found. Use studiorpc_snapshot_list to see available snapshots.`);
+  }
+  return entry;
 }
 
 /** Overwrite the project's current ovdrjm with the snapshot bytes. */
 export function restoreSnapshot(cwd: string, snapshotPath: string): void {
   const { ovdrjmPath } = resolveOvdrjmPathFromUmap(cwd);
   copyFileSync(snapshotPath, ovdrjmPath);
+}
+
+// ponytail: fixed cap; make configurable only if a real project needs it.
+export const MAX_SNAPSHOTS_PER_SESSION = 20;
+
+/**
+ * Delete the oldest snapshots (and their metadata sidecars) beyond `keep` for
+ * one session. Ordered by index — within a session the index is monotonic, so
+ * it is a more reliable age signal than mtime.
+ */
+export function pruneSnapshots(cwd: string, sessionId: string, keep = MAX_SNAPSHOTS_PER_SESSION): void {
+  const dir = snapshotsDir(cwd);
+  const sessionEntries = listSnapshots(cwd)
+    .filter((entry) => entry.sessionId === sessionId)
+    .sort((a, b) => b.index - a.index);
+  for (const entry of sessionEntries.slice(keep)) {
+    rmSync(entry.path, { force: true });
+    rmSync(join(dir, `${entry.id}.json`), { force: true });
+  }
+}
+
+/** Labels store the full prompt (up to 2000 chars); keep human-facing output compact. */
+export function truncateLabel(label: string): string {
+  return label.length > 120 ? `${label.slice(0, 120)}…` : label;
 }
