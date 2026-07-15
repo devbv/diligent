@@ -1,10 +1,13 @@
 // @summary Responses API SSE event state machine and handleResponsesAPIEvents for OpenAI-format providers
+import { createLogger } from "@diligent/logging";
 import type { EventStream } from "../../event-stream";
 import type { AssistantMessage, ContentBlock, StopReason, Usage } from "../../types";
 import type { Model, ProviderEvent, ProviderResult } from "../types";
 import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError } from "../types";
 import { isContextOverflow, mapStopReason, mapUsage } from "./openai-responses";
 import { isTransientOpenAIErrorMessage } from "./openai-shared";
+
+const webToolsLogger = createLogger({ scope: "llm:web-tools" });
 
 type ResponseToolBuffer = { id: string; name: string; args: string };
 
@@ -424,7 +427,10 @@ function debugWebSearchPayload(
     actionKeys: getWebAction(item ?? {}) ? Object.keys(getWebAction(item ?? {})!).slice(0, 20) : [],
     sourcesLen: normalizeSources(item ?? {}).length,
   };
-  console.debug(`[llm:web-tools] ${JSON.stringify(summary)}`);
+  webToolsLogger.debug("web_tool_payload", {
+    message: `[llm:web-tools] ${JSON.stringify(summary)}`,
+    fields: summary,
+  });
 }
 
 function collectCompletedWebSearchCalls(response: Record<string, unknown> | undefined): Record<string, unknown>[] {

@@ -19,6 +19,7 @@
       "version": "0.0.1",
       "dependencies": {
         "@diligent/core": "workspace:*",
+        "@diligent/logging": "workspace:*",
         "@diligent/runtime": "workspace:*",
         "@diligent/web": "workspace:*",
         "@modelcontextprotocol/sdk": "^1.29.0",
@@ -69,8 +70,13 @@
       "version": "0.0.1",
       "dependencies": {
         "@anthropic-ai/sdk": "^0.78.0",
+        "@diligent/logging": "workspace:*",
         "@diligent/protocol": "workspace:*",
         "@google/genai": "^2.3.0",
+        "@jsquash/jpeg": "^1.6.0",
+        "@jsquash/png": "^3.1.1",
+        "@jsquash/resize": "^2.1.1",
+        "@jsquash/webp": "^1.5.0",
         "jsonc-parser": "^3.3.1",
         "openai": "^6.25.0",
         "zod": "^3.24.0",
@@ -85,6 +91,7 @@
       "name": "@diligent/debug-viewer",
       "version": "0.0.1",
       "dependencies": {
+        "@diligent/logging": "workspace:*",
         "marked": "^15.0.0",
         "react": "^19.0.0",
         "react-dom": "^19.0.0",
@@ -110,6 +117,14 @@
       },
       "devDependencies": {
         "@types/bun": "^1.3.0",
+      },
+    },
+    "packages/logging": {
+      "name": "@diligent/logging",
+      "version": "0.0.1",
+      "devDependencies": {
+        "@types/bun": "^1.3.0",
+        "typescript": "^5.7.0",
       },
     },
     "packages/plugin-sdk": {
@@ -140,11 +155,8 @@
       "version": "0.0.1",
       "dependencies": {
         "@diligent/core": "workspace:*",
+        "@diligent/logging": "workspace:*",
         "@diligent/protocol": "workspace:*",
-        "@jsquash/jpeg": "^1.6.0",
-        "@jsquash/png": "^3.1.1",
-        "@jsquash/resize": "^2.1.1",
-        "@jsquash/webp": "^1.5.0",
         "@modelcontextprotocol/sdk": "^1.29.0",
         "jsonc-parser": "^3.3.1",
         "keytar": "^7.9.0",
@@ -152,6 +164,7 @@
         "zod": "^3.24.0",
       },
       "devDependencies": {
+        "@jsquash/png": "^3.1.1",
         "@types/bun": "^1.3.0",
         "typescript": "^5.7.0",
       },
@@ -161,6 +174,7 @@
       "version": "0.0.1",
       "dependencies": {
         "@diligent/core": "workspace:*",
+        "@diligent/logging": "workspace:*",
         "@diligent/protocol": "workspace:*",
         "@diligent/runtime": "workspace:*",
         "@tauri-apps/plugin-notification": "^2",
@@ -431,6 +445,8 @@
     "@diligent/debug-viewer": ["@diligent/debug-viewer@workspace:packages/debug-viewer"],
 
     "@diligent/e2e": ["@diligent/e2e@workspace:packages/e2e"],
+
+    "@diligent/logging": ["@diligent/logging@workspace:packages/logging"],
 
     "@diligent/plugin-sdk": ["@diligent/plugin-sdk@workspace:packages/plugin-sdk"],
 

@@ -10,10 +10,13 @@
 // bubo/analytics uses (shared `readHubToken`, cached). `DILIGENT_GATEWAY_TOKEN` is honoured as a
 // local-dev override when set.
 
+import { createLogger } from "@diligent/logging";
 import type { BundledToolProvider, HookInput, PluginHookFn } from "@diligent/runtime";
 import type { StudioToolProviderOptions } from "../hello-world";
 import { maskValue } from "./masking";
 import { DEBUG, resolveEndpoint, resolveToken } from "./shared";
+
+const logger = createLogger({ scope: "sidecar/gateway", context: { component: "records" } });
 
 /** POST /v1/records body — see ~/git/diligent-gateway/contract/envelope.schema.json. */
 interface RecordEnvelope {
@@ -82,12 +85,22 @@ async function postRecord(input: HookInput, projectId: string, userId: string, t
     if (DEBUG) {
       const body = await res.text().catch(() => "");
       const message = `[gateway] ${envelope.session_id}#${envelope.seq} → ${res.status} ${body}`.trim();
-      if (res.ok) console.debug(message);
-      else console.warn(message);
+      const input = {
+        message,
+        sessionId: envelope.session_id,
+        fields: { seq: envelope.seq, status: res.status },
+      };
+      if (res.ok) logger.debug("record.sent", input);
+      else logger.warn("record.rejected", input);
     }
   } catch (err) {
     if (DEBUG) {
-      console.warn(`[gateway] ${envelope.session_id}#${envelope.seq} failed:`, err);
+      logger.warn("record.failed", {
+        message: `[gateway] ${envelope.session_id}#${envelope.seq} failed`,
+        sessionId: envelope.session_id,
+        fields: { seq: envelope.seq },
+        error: err,
+      });
     }
   }
 }

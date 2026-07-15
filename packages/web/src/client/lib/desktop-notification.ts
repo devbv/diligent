@@ -1,5 +1,6 @@
 // @summary Desktop-only OS notification helpers for background turn completion and pending prompts
 
+import { createLogger, type Logger } from "@diligent/logging";
 import type { DiligentServerNotification, DiligentServerRequest } from "@diligent/protocol";
 import { DILIGENT_SERVER_NOTIFICATION_METHODS, DILIGENT_SERVER_REQUEST_METHODS } from "@diligent/protocol";
 import { APP_PROJECT_NAME } from "./app-config";
@@ -50,6 +51,21 @@ const NOTIFICATION_THREAD_ID_KEY = "threadId";
 const NOTIFICATION_ACTION_TYPE_ID = "diligent-open";
 export const DESKTOP_NOTIFICATIONS_STORAGE_KEY = "diligent.desktopNotifications.enabled";
 const MAX_NOTIFICATION_ID = 2_147_483_647;
+
+const defaultLogger = createLogger({ scope: "web.client.desktop-notification" });
+
+const NOTIFICATION_LOG_EVENTS = {
+  "skip:no-payload": "notification.skipped_no_payload",
+  "skip:disabled": "notification.skipped_disabled",
+  "skip:not-desktop": "notification.skipped_not_desktop",
+  "skip:foreground": "notification.skipped_foreground",
+  "skip:deduped": "notification.skipped_deduplicated",
+  "skip:no-api": "notification.skipped_no_api",
+  "skip:permission-denied": "notification.skipped_permission_denied",
+  sent: "notification.sent",
+} as const;
+
+type NotificationLogMessage = keyof typeof NOTIFICATION_LOG_EVENTS;
 
 let lastNotificationId = 0;
 
@@ -155,6 +171,7 @@ export class DesktopNotificationController {
       isBackgrounded: isAppBackgrounded,
       createApi: createTauriNotificationApi,
     },
+    private readonly logger: Logger = defaultLogger,
   ) {}
 
   setEnabled(enabled: boolean): void {
@@ -194,7 +211,10 @@ export class DesktopNotificationController {
       });
     } catch (error) {
       this.actionListenerRegistered = false;
-      console.warn("[desktop-notification] action-listener-unavailable", error);
+      this.logger.warn("action_listener.unavailable", {
+        message: "[desktop-notification] action-listener-unavailable",
+        error,
+      });
     }
   }
 
@@ -278,11 +298,14 @@ export class DesktopNotificationController {
     }
   }
 
-  private log(event: string, context: NotifyContext, details?: Record<string, unknown>): void {
-    console.debug("[desktop-notification]", event, {
-      source: context.source,
-      enabled: this.enabled,
-      ...details,
+  private log(event: NotificationLogMessage, context: NotifyContext, details?: Record<string, unknown>): void {
+    this.logger.debug(NOTIFICATION_LOG_EVENTS[event], {
+      message: `[desktop-notification] ${event}`,
+      fields: {
+        source: context.source,
+        enabled: this.enabled,
+        ...details,
+      },
     });
   }
 }

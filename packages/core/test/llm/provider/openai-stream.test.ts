@@ -1,9 +1,10 @@
 // @summary Tests for OpenAI Responses request construction, usage mapping, and streaming edge cases
 import { afterEach, describe, expect, test } from "bun:test";
+import { type LogRecord, resetDefaultLogSinkForTests, setDefaultLogSink } from "@diligent/logging";
 import { toSerializableError } from "../../../src/agent/util/errors";
 import type { EventStream } from "../../../src/event-stream";
 import { resolveModel } from "../../../src/llm/models";
-import { createChatGPTStream } from "../../../src/llm/provider/chatgpt";
+import { createChatGPTStream, summarizeChatGPTWebSocketPayload } from "../../../src/llm/provider/chatgpt";
 import {
   buildResponsesRequestBody,
   isGpt56Model,
@@ -12,6 +13,7 @@ import {
 } from "../../../src/llm/provider/openai-responses";
 import { handleResponsesAPIEvents } from "../../../src/llm/provider/openai-sse";
 import { withRetry } from "../../../src/llm/retry";
+import { createStreamTurnScope } from "../../../src/llm/turn-scope";
 import type { Model, ProviderEvent, ProviderResult, StreamContext } from "../../../src/llm/types";
 
 const TEST_MODEL: Model = {
@@ -28,8 +30,17 @@ const TEST_CONTEXT: StreamContext = {
 };
 
 const originalFetch = globalThis.fetch;
+const originalConsoleDebug = console.debug;
+const originalChatGPTWebSocketDebug = process.env.DILIGENT_DEBUG_CHATGPT_WEBSOCKET;
+const originalChatGPTHttpSseDebug = process.env.DILIGENT_DEBUG_CHATGPT_HTTP_SSE;
 
 type ChatGPTWebSocketFactory = (url: string, headers: Record<string, string>) => WebSocket;
+
+interface FakeChatGPTWebSocketOptions {
+  autoOpen?: boolean;
+  onSend?: (body: Record<string, unknown>, socket: FakeChatGPTWebSocket) => void;
+  sendError?: Error;
+}
 
 class FakeChatGPTWebSocket extends EventTarget {
   readonly sent: string[] = [];
@@ -37,22 +48,31 @@ class FakeChatGPTWebSocket extends EventTarget {
   closed = false;
   terminated = false;
 
-  constructor(private readonly onSend?: (body: Record<string, unknown>, socket: FakeChatGPTWebSocket) => void) {
+  constructor(private readonly options: FakeChatGPTWebSocketOptions = {}) {
     super();
-    queueMicrotask(() => {
-      this.readyState = WebSocket.OPEN;
-      this.dispatchEvent(new Event("open"));
-    });
+    if (options.autoOpen ?? true) {
+      queueMicrotask(() => this.open());
+    }
+  }
+
+  open(): void {
+    this.readyState = WebSocket.OPEN;
+    this.dispatchEvent(new Event("open"));
   }
 
   send(data: string | ArrayBufferLike | ArrayBufferView): void {
+    if (this.options.sendError) throw this.options.sendError;
     const text = String(data);
     this.sent.push(text);
-    this.onSend?.(JSON.parse(text) as Record<string, unknown>, this);
+    this.options.onSend?.(JSON.parse(text) as Record<string, unknown>, this);
   }
 
   emit(payload: Record<string, unknown>): void {
     this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify(payload) }));
+  }
+
+  emitRaw(data: unknown): void {
+    this.dispatchEvent(new MessageEvent("message", { data }));
   }
 
   close(): void {
@@ -71,7 +91,10 @@ class FakeChatGPTWebSocket extends EventTarget {
   }
 }
 
-function createWebSocketHarness(onSend?: (body: Record<string, unknown>, socket: FakeChatGPTWebSocket) => void): {
+function createWebSocketHarness(
+  onSend?: (body: Record<string, unknown>, socket: FakeChatGPTWebSocket) => void,
+  options: Omit<FakeChatGPTWebSocketOptions, "onSend"> = {},
+): {
   factory: ChatGPTWebSocketFactory;
   requests: Array<{ url: string; headers: Record<string, string>; socket: FakeChatGPTWebSocket }>;
 } {
@@ -79,7 +102,7 @@ function createWebSocketHarness(onSend?: (body: Record<string, unknown>, socket:
   return {
     requests,
     factory(url, headers) {
-      const socket = new FakeChatGPTWebSocket(onSend);
+      const socket = new FakeChatGPTWebSocket({ ...options, onSend });
       requests.push({ url, headers, socket });
       return socket as unknown as WebSocket;
     },
@@ -124,6 +147,18 @@ function createRetriedChatGPTStream(): EventStream<ProviderEvent, ProviderResult
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  console.debug = originalConsoleDebug;
+  resetDefaultLogSinkForTests();
+  if (originalChatGPTWebSocketDebug === undefined) {
+    delete process.env.DILIGENT_DEBUG_CHATGPT_WEBSOCKET;
+  } else {
+    process.env.DILIGENT_DEBUG_CHATGPT_WEBSOCKET = originalChatGPTWebSocketDebug;
+  }
+  if (originalChatGPTHttpSseDebug === undefined) {
+    delete process.env.DILIGENT_DEBUG_CHATGPT_HTTP_SSE;
+  } else {
+    process.env.DILIGENT_DEBUG_CHATGPT_HTTP_SSE = originalChatGPTHttpSseDebug;
+  }
 });
 
 describe("handleResponsesAPIEvents", () => {
@@ -201,16 +236,44 @@ describe("handleResponsesAPIEvents", () => {
 });
 
 describe("createChatGPTStream retry classification", () => {
-  test("uses Responses WebSocket + Lite for every ChatGPT GPT-5.6 model", async () => {
-    let fetchCalled = false;
-    globalThis.fetch = (async () => {
-      fetchCalled = true;
-      throw new Error("GPT-5.6 must not use HTTP");
+  test("summarizes ChatGPT WebSocket payloads without logging content", () => {
+    expect(
+      summarizeChatGPTWebSocketPayload({
+        type: "response.create",
+        model: "gpt-5.6-luna",
+        input: [{ type: "message" }, { type: "message" }],
+      }),
+    ).toBe("response.create model=gpt-5.6-luna inputItems=2");
+    expect(summarizeChatGPTWebSocketPayload({ type: "response.output_text.delta", delta: "sensitive text" })).toBe(
+      "response.output_text.delta deltaChars=14",
+    );
+    expect(
+      summarizeChatGPTWebSocketPayload({
+        type: "error",
+        status_code: 429,
+        error: { code: "rate_limit", message: "try again" },
+      }),
+    ).toBe("error status=429 code=rate_limit message=try again");
+  });
+
+  test("uses HTTP/SSE + Lite for every ChatGPT GPT-5.6 model by default", async () => {
+    const requests: Array<{ headers: Headers; body: Record<string, unknown> }> = [];
+    globalThis.fetch = (async (_input, init) => {
+      requests.push({
+        headers: new Headers(init?.headers),
+        body: JSON.parse(String(init?.body)) as Record<string, unknown>,
+      });
+      return chatGPTSuccessResponse();
     }) as typeof fetch;
-    const harness = createWebSocketHarness((_body, socket) => completeWebSocketResponse(socket));
+    let webSocketCalled = false;
     const chatgptStream = createChatGPTStream(
       () => ({ access_token: "token", refresh_token: "refresh", account_id: "acct_1" }),
-      { webSocketFactory: harness.factory },
+      {
+        webSocketFactory() {
+          webSocketCalled = true;
+          throw new Error("GPT-5.6 must use HTTP by default");
+        },
+      },
     );
 
     for (const [modelId, effort] of [
@@ -218,32 +281,33 @@ describe("createChatGPTStream retry classification", () => {
       ["chatgpt-5.6-terra", "max"],
       ["chatgpt-5.6-luna", "medium"],
     ] as const) {
-      const events = await collectEvents(chatgptStream(resolveModel(modelId), TEST_CONTEXT, { effort }));
+      const events = await collectEvents(
+        chatgptStream(resolveModel(modelId), TEST_CONTEXT, { effort, sessionId: "session_1" }),
+      );
       expect(events.some((event) => event.type === "done")).toBe(true);
     }
 
-    expect(fetchCalled).toBe(false);
-    expect(harness.requests.map((request) => request.url)).toEqual([
-      "wss://chatgpt.com/backend-api/codex/responses",
-      "wss://chatgpt.com/backend-api/codex/responses",
-      "wss://chatgpt.com/backend-api/codex/responses",
-    ]);
-    expect(harness.requests.map((request) => request.headers["x-openai-internal-codex-responses-lite"])).toEqual([
+    expect(webSocketCalled).toBe(false);
+    expect(requests.map((request) => request.headers.get("x-openai-internal-codex-responses-lite"))).toEqual([
       "true",
       "true",
       "true",
     ]);
-    expect(harness.requests.map((request) => request.headers.version)).toEqual(["0.144.1", "0.144.1", "0.144.1"]);
-    expect(harness.requests.map((request) => request.headers["ChatGPT-Account-ID"])).toEqual([
+    expect(requests.map((request) => request.headers.get("version"))).toEqual(["0.144.1", "0.144.1", "0.144.1"]);
+    expect(requests.map((request) => request.headers.get("ChatGPT-Account-ID"))).toEqual([
       "acct_1",
       "acct_1",
       "acct_1",
     ]);
+    expect(requests.map((request) => request.headers.get("session-id"))).toEqual([
+      "session_1",
+      "session_1",
+      "session_1",
+    ]);
+    expect(requests.map((request) => request.headers.get("session_id"))).toEqual([null, null, null]);
 
-    const requestBodies = harness.requests.map(
-      (request) => JSON.parse(request.socket.sent[0] ?? "{}") as Record<string, unknown>,
-    );
-    expect(requestBodies.map((body) => body.type)).toEqual(["response.create", "response.create", "response.create"]);
+    const requestBodies = requests.map((request) => request.body);
+    expect(requestBodies.map((body) => body.type)).toEqual([undefined, undefined, undefined]);
     expect(requestBodies.map((body) => body.model)).toEqual(["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]);
     expect(requestBodies.map((body) => (body.reasoning as { effort: string }).effort)).toEqual([
       "xhigh",
@@ -263,11 +327,182 @@ describe("createChatGPTStream retry classification", () => {
     }
   });
 
-  test("moves ChatGPT GPT-5.6 instructions, tools, and compacted history into Lite input items", async () => {
+  test("logs ChatGPT HTTP/SSE payloads with byte sizes and content-safe summaries", async () => {
+    process.env.DILIGENT_DEBUG_CHATGPT_HTTP_SSE = "1";
+    const logs: LogRecord[] = [];
+    setDefaultLogSink((record) => logs.push(record));
+    let requestBytes = 0;
+    const completedPayload =
+      '{"type":"response.completed","response":{"status":"completed","usage":{"input_tokens":3,"output_tokens":2}}}';
+    const receivedBytes = new TextEncoder().encode(completedPayload).byteLength;
+    globalThis.fetch = (async (_input, init) => {
+      requestBytes = new TextEncoder().encode(String(init?.body)).byteLength;
+      return new Response(
+        ['data: {"type":"response.output_text.delta","delta":"sensitive text"}', `data: ${completedPayload}`, ""].join(
+          "\n",
+        ),
+        { status: 200, headers: { "content-type": "text/event-stream" } },
+      );
+    }) as typeof fetch;
+    const chatgptStream = createChatGPTStream(() => ({ access_token: "token", refresh_token: "refresh" }));
+
+    const events = await collectEvents(
+      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, {
+        effort: "medium",
+        sessionId: "session-http-debug",
+      }),
+    );
+
+    const transportLogs = logs.filter((record) => record.scope === "llm:chatgpt-sse");
+    expect(transportLogs.every((record) => record.sessionId === "session-http-debug")).toBe(true);
+    const outgoingLogs = transportLogs.map((record) => record.message).filter((line) => line.includes("->"));
+    expect(outgoingLogs).toHaveLength(2);
+    expect(outgoingLogs[0]).toContain(`state=sending bytes=${requestBytes}`);
+    expect(outgoingLogs[1]).toContain(`state=sent bytes=${requestBytes} status=200`);
+    expect(outgoingLogs.every((line) => line.includes("response.create model=gpt-5.6-luna"))).toBe(true);
+    expect(outgoingLogs.every((line) => !line.includes("sensitive text"))).toBe(true);
+    expect(
+      transportLogs.some(
+        (record) =>
+          record.message.includes("<-") &&
+          record.message.includes("response.output_text.delta deltaChars=14") &&
+          !record.message.includes("sensitive text"),
+      ),
+    ).toBe(true);
+    expect(
+      transportLogs.some(
+        (record) =>
+          record.message.includes(`<- bytes=${receivedBytes}`) &&
+          record.message.includes("response.completed status=completed in=3 out=2"),
+      ),
+    ).toBe(true);
+    expect(events.some((event) => event.type === "done")).toBe(true);
+  });
+
+  test("times out while waiting for ChatGPT HTTP response headers", async () => {
+    globalThis.fetch = ((_input, init) =>
+      new Promise<Response>((_resolve, reject) => {
+        const signal = init?.signal;
+        const fallback = setTimeout(() => reject(new Error("fetch was not aborted")), 50);
+        signal?.addEventListener(
+          "abort",
+          () => {
+            clearTimeout(fallback);
+            reject(signal.reason);
+          },
+          { once: true },
+        );
+      })) as typeof fetch;
+    const chatgptStream = createChatGPTStream(() => ({ access_token: "token", refresh_token: "refresh" }), {
+      httpHeaderTimeoutMs: 5,
+    });
+
+    const events = await collectEvents(
+      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, { effort: "medium" }),
+    );
+
+    const error = events.find((event): event is Extract<ProviderEvent, { type: "error" }> => event.type === "error");
+    expect(error?.error.message).toBe("ChatGPT HTTP response header timeout after 5ms");
+    expect((error?.error as { errorType?: string }).errorType).toBe("network");
+    expect((error?.error as { isRetryable?: boolean }).isRetryable).toBe(true);
+  });
+
+  test("clears the ChatGPT HTTP header timeout before streaming the SSE body", async () => {
+    globalThis.fetch = (async () => {
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          setTimeout(() => {
+            controller.enqueue(
+              new TextEncoder().encode(
+                'data: {"type":"response.completed","response":{"status":"completed","usage":{"input_tokens":1,"output_tokens":1}}}\n',
+              ),
+            );
+            controller.close();
+          }, 15);
+        },
+      });
+      return new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } });
+    }) as typeof fetch;
+    const chatgptStream = createChatGPTStream(() => ({ access_token: "token", refresh_token: "refresh" }), {
+      httpHeaderTimeoutMs: 5,
+    });
+
+    const events = await collectEvents(
+      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, { effort: "medium" }),
+    );
+
+    expect(events.some((event) => event.type === "done")).toBe(true);
+    expect(events.some((event) => event.type === "error")).toBe(false);
+  });
+
+  test("can explicitly use WebSocket + Lite for ChatGPT GPT-5.6", async () => {
     const harness = createWebSocketHarness((_body, socket) => completeWebSocketResponse(socket));
     const chatgptStream = createChatGPTStream(() => ({ access_token: "token", refresh_token: "refresh" }), {
+      useWebSocketForGpt56: true,
       webSocketFactory: harness.factory,
     });
+
+    const events = await collectEvents(
+      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, { effort: "medium" }),
+    );
+
+    expect(events.some((event) => event.type === "done")).toBe(true);
+    expect(harness.requests[0]?.url).toBe("wss://chatgpt.com/backend-api/codex/responses");
+  });
+
+  test("reuses one WebSocket for sequential scoped requests and closes it with the scope", async () => {
+    const harness = createWebSocketHarness((_body, socket) => completeWebSocketResponse(socket));
+    const chatgptStream = createChatGPTStream(() => ({ access_token: "token", refresh_token: "refresh" }), {
+      useWebSocketForGpt56: true,
+      webSocketFactory: harness.factory,
+    });
+    const scope = createStreamTurnScope();
+    const model = resolveModel("chatgpt-5.6-luna");
+
+    await collectEvents(chatgptStream(model, TEST_CONTEXT, { effort: "medium", turnScope: scope }));
+    expect(harness.requests).toHaveLength(1);
+    expect(harness.requests[0]?.socket.closed).toBe(false);
+    await collectEvents(chatgptStream(model, TEST_CONTEXT, { effort: "medium", turnScope: scope }));
+
+    expect(harness.requests).toHaveLength(1);
+    expect(harness.requests[0]?.socket.sent).toHaveLength(2);
+    await scope.dispose();
+    expect(harness.requests[0]?.socket.closed).toBe(true);
+  });
+
+  test("falls back to HTTP after two scoped WebSocket transport failures", async () => {
+    const harness = createWebSocketHarness((_body, socket) => queueMicrotask(() => socket.emitClose()));
+    let httpRequests = 0;
+    globalThis.fetch = (async () => {
+      httpRequests += 1;
+      return chatGPTSuccessResponse("fallback");
+    }) as typeof fetch;
+    const stream = withRetry(
+      createChatGPTStream(() => ({ access_token: "token", refresh_token: "refresh" }), {
+        useWebSocketForGpt56: true,
+        webSocketFactory: harness.factory,
+      }),
+      { maxAttempts: 3, baseDelayMs: 1, maxDelayMs: 1 },
+    );
+    const scope = createStreamTurnScope();
+
+    const events = await collectEvents(
+      stream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, { effort: "medium", turnScope: scope }),
+    );
+
+    expect(events.some((event) => event.type === "done")).toBe(true);
+    expect(harness.requests).toHaveLength(2);
+    expect(httpRequests).toBe(1);
+    await scope.dispose();
+  });
+
+  test("moves ChatGPT GPT-5.6 instructions, tools, and compacted history into Lite HTTP input items", async () => {
+    let requestBody: Record<string, unknown> = {};
+    globalThis.fetch = (async (_input, init) => {
+      requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return chatGPTSuccessResponse();
+    }) as typeof fetch;
+    const chatgptStream = createChatGPTStream(() => ({ access_token: "token", refresh_token: "refresh" }));
     const context: StreamContext = {
       systemPrompt: [{ label: "base", content: "System instructions" }],
       messages: [{ role: "user", content: "hello", timestamp: 1 }],
@@ -286,8 +521,7 @@ describe("createChatGPTStream retry classification", () => {
     const events = await collectEvents(chatgptStream(resolveModel("chatgpt-5.6-luna"), context, { effort: "low" }));
     expect(events.some((event) => event.type === "done")).toBe(true);
 
-    const body = JSON.parse(harness.requests[0]?.socket.sent[0] ?? "{}") as Record<string, unknown>;
-    const input = body.input as Array<Record<string, unknown>>;
+    const input = requestBody.input as Array<Record<string, unknown>>;
     expect(input[0]).toEqual({
       type: "additional_tools",
       role: "developer",
@@ -345,6 +579,7 @@ describe("createChatGPTStream retry classification", () => {
       queueMicrotask(() => socket.emitClose());
     });
     const chatgptStream = createChatGPTStream(() => ({ access_token: "token", refresh_token: "refresh" }), {
+      useWebSocketForGpt56: true,
       webSocketFactory: harness.factory,
     });
 
@@ -358,6 +593,161 @@ describe("createChatGPTStream retry classification", () => {
     expect((error?.error as { isRetryable?: boolean }).isRetryable).toBe(true);
   });
 
+  test("times out when a GPT-5.6 WebSocket never opens", async () => {
+    const harness = createWebSocketHarness(undefined, { autoOpen: false });
+    const chatgptStream = createChatGPTStream(() => ({ access_token: "token", refresh_token: "refresh" }), {
+      useWebSocketForGpt56: true,
+      webSocketFactory: harness.factory,
+      webSocketIdleTimeoutMs: 1,
+    });
+
+    const events = await collectEvents(
+      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, { effort: "medium" }),
+    );
+
+    const error = events.find((event): event is Extract<ProviderEvent, { type: "error" }> => event.type === "error");
+    expect(error?.error.message).toBe("ChatGPT WebSocket idle timeout waiting for connection");
+    expect((error?.error as { errorType?: string }).errorType).toBe("network");
+    expect((error?.error as { isRetryable?: boolean }).isRetryable).toBe(true);
+    expect(harness.requests[0]?.socket.terminated).toBe(true);
+  });
+
+  test("times out after GPT-5.6 WebSocket open while waiting for response", async () => {
+    const harness = createWebSocketHarness();
+    const chatgptStream = createChatGPTStream(() => ({ access_token: "token", refresh_token: "refresh" }), {
+      useWebSocketForGpt56: true,
+      webSocketFactory: harness.factory,
+      webSocketIdleTimeoutMs: 1,
+    });
+
+    const events = await collectEvents(
+      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, { effort: "medium" }),
+    );
+
+    const error = events.find((event): event is Extract<ProviderEvent, { type: "error" }> => event.type === "error");
+    expect(harness.requests[0]?.socket.sent.length).toBe(1);
+    expect(error?.error.message).toBe("ChatGPT WebSocket idle timeout waiting for response");
+    expect((error?.error as { errorType?: string }).errorType).toBe("network");
+    expect((error?.error as { isRetryable?: boolean }).isRetryable).toBe(true);
+  });
+
+  test("maps GPT-5.6 WebSocket send throws to retryable network errors", async () => {
+    const harness = createWebSocketHarness(undefined, { sendError: new Error("send failed") });
+    const chatgptStream = createChatGPTStream(() => ({ access_token: "token", refresh_token: "refresh" }), {
+      useWebSocketForGpt56: true,
+      webSocketFactory: harness.factory,
+      webSocketIdleTimeoutMs: 100,
+    });
+
+    const events = await collectEvents(
+      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, { effort: "medium" }),
+    );
+
+    const error = events.find((event): event is Extract<ProviderEvent, { type: "error" }> => event.type === "error");
+    expect(error?.error.message).toBe("ChatGPT WebSocket send failed: send failed");
+    expect((error?.error as { errorType?: string }).errorType).toBe("network");
+    expect((error?.error as { isRetryable?: boolean }).isRetryable).toBe(true);
+  });
+
+  test("preserves GPT-5.6 WebSocket close code and reason before completion", async () => {
+    const harness = createWebSocketHarness((_body, socket) => {
+      queueMicrotask(() => socket.emitClose(1011, "upstream unavailable"));
+    });
+    const chatgptStream = createChatGPTStream(() => ({ access_token: "token", refresh_token: "refresh" }), {
+      useWebSocketForGpt56: true,
+      webSocketFactory: harness.factory,
+    });
+
+    const events = await collectEvents(
+      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, { effort: "medium" }),
+    );
+
+    const error = events.find((event): event is Extract<ProviderEvent, { type: "error" }> => event.type === "error");
+    expect(error?.error.message).toContain(
+      "ChatGPT WebSocket closed before response.completed (1011: upstream unavailable)",
+    );
+    expect((error?.error as { errorType?: string }).errorType).toBe("network");
+    expect((error?.error as { isRetryable?: boolean }).isRetryable).toBe(true);
+  });
+
+  test("processes a delayed terminal WebSocket message before close", async () => {
+    const harness = createWebSocketHarness((_body, socket) => {
+      const payload = JSON.stringify({
+        type: "response.completed",
+        response: { status: "completed", usage: { input_tokens: 1, output_tokens: 1 } },
+      });
+      const delayedBlob = new Blob([payload]);
+      Object.defineProperty(delayedBlob, "text", {
+        value: async () => {
+          await new Promise((resolve) => setTimeout(resolve, 1));
+          return payload;
+        },
+      });
+
+      queueMicrotask(() => {
+        socket.emitRaw(delayedBlob);
+        socket.emitClose(1000, "normal closure");
+      });
+    });
+    const chatgptStream = createChatGPTStream(() => ({ access_token: "token", refresh_token: "refresh" }), {
+      useWebSocketForGpt56: true,
+      webSocketFactory: harness.factory,
+    });
+
+    const events = await collectEvents(
+      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, { effort: "medium" }),
+    );
+
+    expect(events.some((event) => event.type === "done")).toBe(true);
+    expect(events.some((event) => event.type === "error")).toBe(false);
+  });
+
+  test("logs ChatGPT WebSocket frames immediately with byte sizes and summaries", async () => {
+    process.env.DILIGENT_DEBUG_CHATGPT_WEBSOCKET = "1";
+    const logs: string[] = [];
+    console.debug = (...args: unknown[]) => logs.push(args.map(String).join(" "));
+    let receiveLogSeenBeforeDecode = false;
+    let receivedBytes = 0;
+    const harness = createWebSocketHarness((_body, socket) => {
+      const payload = JSON.stringify({
+        type: "response.completed",
+        response: { status: "completed", usage: { input_tokens: 3, output_tokens: 2 } },
+      });
+      const delayedBlob = new Blob([payload]);
+      Object.defineProperty(delayedBlob, "text", {
+        value: async () => {
+          await new Promise((resolve) => setTimeout(resolve, 1));
+          return payload;
+        },
+      });
+
+      receivedBytes = delayedBlob.size;
+      socket.emitRaw(delayedBlob);
+      receiveLogSeenBeforeDecode = logs.some((line) => line.includes(`<- bytes=${receivedBytes} pending_decode`));
+    });
+    const chatgptStream = createChatGPTStream(() => ({ access_token: "token", refresh_token: "refresh" }), {
+      useWebSocketForGpt56: true,
+      webSocketFactory: harness.factory,
+    });
+
+    const events = await collectEvents(
+      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, { effort: "medium" }),
+    );
+
+    expect(receiveLogSeenBeforeDecode).toBe(true);
+    expect(logs.some((line) => line.includes("[llm:chatgpt-ws] -> bytes=") && line.includes("response.create"))).toBe(
+      true,
+    );
+    expect(
+      logs.some(
+        (line) =>
+          line.includes(`[llm:chatgpt-ws] <- bytes=${receivedBytes}`) &&
+          line.includes("decoded response.completed status=completed in=3 out=2"),
+      ),
+    ).toBe(true);
+    expect(events.some((event) => event.type === "done")).toBe(true);
+  });
+
   test("maps top-level GPT-5.6 WebSocket errors and terminates on abort", async () => {
     const errorHarness = createWebSocketHarness((_body, socket) => {
       queueMicrotask(() =>
@@ -369,6 +759,7 @@ describe("createChatGPTStream retry classification", () => {
       );
     });
     const errorStream = createChatGPTStream(() => ({ access_token: "token", refresh_token: "refresh" }), {
+      useWebSocketForGpt56: true,
       webSocketFactory: errorHarness.factory,
     });
     const errorEvents = await collectEvents(
@@ -382,6 +773,7 @@ describe("createChatGPTStream retry classification", () => {
     const abortHarness = createWebSocketHarness();
     const abortController = new AbortController();
     const abortStream = createChatGPTStream(() => ({ access_token: "token", refresh_token: "refresh" }), {
+      useWebSocketForGpt56: true,
       webSocketFactory: abortHarness.factory,
     })(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, {
       effort: "medium",
@@ -392,6 +784,81 @@ describe("createChatGPTStream retry classification", () => {
     await abortStream.result().catch(() => {});
 
     expect(abortHarness.requests[0]?.socket.terminated).toBe(true);
+  });
+
+  test("maps GPT-5.6 WebSocket usage-limit errors as non-retryable non-network", async () => {
+    const harness = createWebSocketHarness((_body, socket) => {
+      queueMicrotask(() =>
+        socket.emit({
+          type: "error",
+          status: 429,
+          error: { type: "usage_limit_reached", message: "The usage limit has been reached" },
+        }),
+      );
+    });
+    const chatgptStream = createChatGPTStream(() => ({ access_token: "token", refresh_token: "refresh" }), {
+      useWebSocketForGpt56: true,
+      webSocketFactory: harness.factory,
+    });
+
+    const events = await collectEvents(
+      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, { effort: "medium" }),
+    );
+
+    const error = events.find((event): event is Extract<ProviderEvent, { type: "error" }> => event.type === "error");
+    expect(error?.error.message).toBe("AI usage limit reached. Please try again later or upgrade your plan.");
+    expect((error?.error as { errorType?: string }).errorType).not.toBe("network");
+    expect((error?.error as { isRetryable?: boolean }).isRetryable).toBe(false);
+  });
+
+  test("maps GPT-5.6 WebSocket status_code alias as rate limit", async () => {
+    const harness = createWebSocketHarness((_body, socket) => {
+      queueMicrotask(() =>
+        socket.emit({
+          type: "error",
+          status_code: 429,
+          error: { message: "rate limited" },
+        }),
+      );
+    });
+    const chatgptStream = createChatGPTStream(() => ({ access_token: "token", refresh_token: "refresh" }), {
+      useWebSocketForGpt56: true,
+      webSocketFactory: harness.factory,
+    });
+
+    const events = await collectEvents(
+      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, { effort: "medium" }),
+    );
+
+    const error = events.find((event): event is Extract<ProviderEvent, { type: "error" }> => event.type === "error");
+    expect(error?.error.message).toContain("ChatGPT API error (429): rate limited");
+    expect((error?.error as { errorType?: string }).errorType).toBe("rate_limit");
+    expect((error?.error as { statusCode?: number }).statusCode).toBe(429);
+    expect((error?.error as { isRetryable?: boolean }).isRetryable).toBe(false);
+  });
+
+  test("maps GPT-5.6 WebSocket connection-limit code as retryable", async () => {
+    const harness = createWebSocketHarness((_body, socket) => {
+      queueMicrotask(() =>
+        socket.emit({
+          type: "error",
+          status: 400,
+          error: { code: "websocket_connection_limit_reached", message: "Too many WebSocket connections" },
+        }),
+      );
+    });
+    const chatgptStream = createChatGPTStream(() => ({ access_token: "token", refresh_token: "refresh" }), {
+      useWebSocketForGpt56: true,
+      webSocketFactory: harness.factory,
+    });
+
+    const events = await collectEvents(
+      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, { effort: "medium" }),
+    );
+
+    const error = events.find((event): event is Extract<ProviderEvent, { type: "error" }> => event.type === "error");
+    expect(error?.error.message).toContain("websocket_connection_limit_reached");
+    expect((error?.error as { isRetryable?: boolean }).isRetryable).toBe(true);
   });
 
   test("does not retry HTTP 429 without usage limit body", async () => {

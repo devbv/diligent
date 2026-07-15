@@ -2830,6 +2830,41 @@ test("user_message splits hook-injected human edits into a labeled context card"
   expect(users[0] && users[0].kind === "user" ? users[0].text : "").toBe("move it up");
 });
 
+test("user_message with human edits replaces the optimistic local echo", () => {
+  resetAdapter();
+  const seeded = {
+    ...initialThreadState,
+    items: [
+      {
+        id: "local-user-123",
+        kind: "user" as const,
+        text: "move it up",
+        images: [],
+        timestamp: 1,
+      },
+    ],
+  };
+  const text =
+    "<HumanEdits>\nHuman edits since the agent's last completed turn:\n\nAdded (1):\n+ x\n</HumanEdits>\n\nmove it up";
+  const event = {
+    type: "user_message",
+    itemId: "u3",
+    message: { role: "user", content: text, timestamp: 2 },
+  } as const;
+  const notification: DiligentServerNotification = {
+    method: "agent/event",
+    params: { threadId: "t1", turnId: "turn1", event },
+  };
+
+  const next = reduceServerNotification(seeded, notification, [event]);
+
+  const users = next.items.filter((item) => item.kind === "user");
+  expect(users).toHaveLength(1); // local echo replaced, not duplicated
+  expect(users[0]?.id).toBe("remote-user-u3");
+  const kinds = next.items.map((item) => item.kind);
+  expect(kinds).toEqual(["user", "context"]); // notice sits right below the prompt
+});
+
 test("user_message without human edits produces no context card", () => {
   resetAdapter();
   const event = {

@@ -1,5 +1,6 @@
 // @summary Tests for provider stream retry wrapper behavior
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, mock, test } from "bun:test";
+import type { Logger } from "@diligent/logging";
 import { EventStream } from "../../../src/event-stream";
 import { withRetry } from "../../../src/llm/retry";
 import type {
@@ -75,9 +76,62 @@ const testOptions: StreamOptions = {
 
 afterEach(() => {
   console.warn = originalConsoleWarn;
+  console.info = originalConsoleInfo;
+  console.error = originalConsoleError;
+  mock.restore();
 });
 
 const originalConsoleWarn = console.warn;
+const originalConsoleInfo = console.info;
+const originalConsoleError = console.error;
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function expectRetryLogContext(line: string, sessionId: string): void {
+  const pattern = new RegExp(
+    `^\\[llm:retry\\] timestamp=\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z sessionId=${escapeRegex(sessionId)} `,
+  );
+  expect(line).toMatch(pattern);
+}
+
+type LoggedCall = {
+  level: "debug" | "info" | "warn" | "error";
+  event: string;
+  message: string;
+  fields?: Record<string, unknown>;
+};
+
+function recordingLogger(
+  calls: LoggedCall[],
+  context: { sessionId?: string; fields?: Readonly<Record<string, unknown>> } = {},
+): Logger {
+  const write =
+    (level: LoggedCall["level"]) =>
+    (event: string, input: string | { message?: string; fields?: Readonly<Record<string, unknown>> }) =>
+      calls.push({
+        level,
+        event,
+        message: typeof input === "string" ? input : (input.message ?? event),
+        fields: {
+          ...(context.sessionId !== undefined && { sessionId: context.sessionId }),
+          ...context.fields,
+          ...(typeof input === "string" ? {} : input.fields),
+        },
+      });
+  return {
+    child: (childContext) =>
+      recordingLogger(calls, {
+        sessionId: childContext.sessionId ?? context.sessionId,
+        fields: { ...context.fields, ...childContext.fields },
+      }),
+    debug: write("debug"),
+    info: write("info"),
+    warn: write("warn"),
+    error: write("error"),
+  } as Logger;
+}
 
 describe("withRetry", () => {
   test("succeeds on first attempt without retrying", async () => {
@@ -140,7 +194,114 @@ describe("withRetry", () => {
     }
     await stream.result().catch(() => {});
 
-    expect(logs).toContain("[llm:provider-error] status=503 message=server unavailable");
+    expect(logs.some((line) => line.includes("[llm:provider-error] status=503 message=server unavailable"))).toBe(true);
+  });
+
+  test("includes timestamp and sessionId in retry logs when sessionId is present", async () => {
+    const failures = [new ProviderError("server unavailable", "server_error", true, undefined, 503)];
+    const { streamFn } = createFailingStreamFn(failures);
+    const logs: string[] = [];
+    console.warn = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+    console.info = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+
+    const retried = withRetry(streamFn, { maxAttempts: 2, baseDelayMs: 1, maxDelayMs: 10 });
+
+    const stream = retried(testModel, testContext, { ...testOptions, sessionId: "session-123" });
+    for await (const _event of stream) {
+      /* consume */
+    }
+    await stream.result().catch(() => {});
+
+    const retryLogs = logs.filter((line) => line.startsWith("[llm:retry]"));
+    expect(retryLogs.length).toBeGreaterThan(0);
+    expectRetryLogContext(retryLogs[0], "session-123");
+    const streamErrorLog = retryLogs.find((line) => line.includes("stream error attempt=1/2"));
+    expect(streamErrorLog).toBeDefined();
+    expect((streamErrorLog?.match(/timestamp=/g) ?? []).length).toBe(1);
+    expect(streamErrorLog).not.toContain("requestStartedAt=");
+    expect(retryLogs.some((line) => line.includes("retrying nextAttempt=2/2 delayMs=1 type=server_error"))).toBe(true);
+    expect(retryLogs.some((line) => line.includes("recovered on attempt=2/2"))).toBe(true);
+  });
+
+  test("emits stable structured retry records with session, retry, and model metadata", async () => {
+    const failures = [new ProviderError("server unavailable", "server_error", true, 2, 503)];
+    const { streamFn } = createFailingStreamFn(failures);
+    const calls: LoggedCall[] = [];
+    const retried = withRetry(
+      streamFn,
+      { maxAttempts: 2, baseDelayMs: 1, maxDelayMs: 10 },
+      undefined,
+      recordingLogger(calls),
+    );
+
+    const stream = retried(testModel, testContext, { ...testOptions, sessionId: "session-structured" });
+    for await (const _event of stream) {
+      /* consume */
+    }
+    await stream.result().catch(() => {});
+
+    expect(calls.map((call) => call.event)).toEqual([
+      "provider_error",
+      "stream_error",
+      "retry_scheduled",
+      "retry_recovered",
+    ]);
+    expect(calls.find((call) => call.event === "stream_error")?.fields).toMatchObject({
+      sessionId: "session-structured",
+      attempt: 1,
+      maxAttempts: 2,
+      errorType: "server_error",
+      retryAfterMs: 2,
+      statusCode: 503,
+      provider: "test",
+      model: "test-model",
+    });
+    expect(calls.find((call) => call.event === "retry_scheduled")?.fields).toMatchObject({
+      sessionId: "session-structured",
+      attempt: 1,
+      nextAttempt: 2,
+      maxAttempts: 2,
+      delayMs: 2,
+      errorType: "server_error",
+      provider: "test",
+      model: "test-model",
+    });
+    for (const call of calls) {
+      expect(call.fields).not.toHaveProperty("timestamp");
+      expect(call.message).not.toContain("timestamp=");
+      expect(call.message).not.toContain("requestStartedAt=");
+    }
+  });
+
+  test("includes timestamp and n/a sessionId in retry logs when sessionId is missing", async () => {
+    const streamFn: StreamFunction = () => {
+      throw new ProviderError("fatal", "unknown", false, undefined, 500);
+    };
+    const logs: string[] = [];
+    console.warn = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+    console.error = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+
+    const retried = withRetry(streamFn, { maxAttempts: 1, baseDelayMs: 1, maxDelayMs: 10 });
+
+    const stream = retried(testModel, testContext, testOptions);
+    for await (const _event of stream) {
+      /* consume */
+    }
+    await stream.result().catch(() => {});
+
+    const retryLogs = logs.filter((line) => line.startsWith("[llm:retry]"));
+    expect(retryLogs.length).toBeGreaterThan(0);
+    expectRetryLogContext(retryLogs[0], "n/a");
+    expect(retryLogs.some((line) => line.includes("stream exception attempt=1/1"))).toBe(true);
+    expect(retryLogs.some((line) => line.includes("giving up attempt=1/1 reason=not_retryable"))).toBe(true);
   });
 
   test("stops on non-retryable error", async () => {

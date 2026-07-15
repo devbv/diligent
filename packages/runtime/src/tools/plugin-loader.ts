@@ -6,6 +6,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Tool as HostTool, ToolResult as HostToolResult } from "@diligent/core/tool/types";
+import { createLogger } from "@diligent/logging";
 import type {
   Tool as PluginTool,
   ToolContext as PluginToolContext,
@@ -18,6 +19,8 @@ import type { PluginHookFn } from "../hooks/runner";
 import { resolveProjectDirName } from "../infrastructure/diligent-dir";
 import type { RuntimeToolHost } from "./capabilities";
 import type { UserInputRequest } from "./user-input-types";
+
+const logger = createLogger({ scope: "runtime.tools.plugin-loader" });
 
 export interface PluginManifest {
   name: string;
@@ -295,9 +298,11 @@ function normalizePluginToolRenderPayload(args: {
   const parsed = ToolRenderPayloadSchema.safeParse(args.render);
   if (parsed.success) return parsed.data;
 
-  console.warn(
-    `[plugin-loader] Invalid tool render payload package=${args.packageName} tool=${args.toolName}: ${parsed.error.message}`,
-  );
+  logger.warn("invalid_render_payload", {
+    message: `[plugin-loader] Invalid tool render payload package=${args.packageName} tool=${args.toolName}: ${parsed.error.message}`,
+    error: parsed.error,
+    fields: { packageName: args.packageName, toolName: args.toolName },
+  });
   return undefined;
 }
 

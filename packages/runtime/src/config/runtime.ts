@@ -5,6 +5,7 @@ import { dirname, isAbsolute, resolve } from "node:path";
 import { KNOWN_MODELS, resolveModel } from "@diligent/core/llm/models";
 import { ProviderManager } from "@diligent/core/llm/provider-manager";
 import type { Model, ProviderName, StreamFunction, SystemSection, ThinkingEffort } from "@diligent/core/llm/types";
+import { createLogger } from "@diligent/logging";
 import { getBuiltinAgentDefinitions } from "../agent/agent-types";
 import type { Mode } from "../agent/mode";
 import { type ResolvedAgentDefinition, resolveCustomAgentDefinitions } from "../agent/resolved-agent";
@@ -35,6 +36,8 @@ import type { DiligentConfigLayers } from "./loader";
 import { loadDiligentConfig } from "./loader";
 import type { DiligentConfig } from "./schema";
 import { resolveConfiguredUserId } from "./user-id";
+
+const logger = createLogger({ scope: "runtime.config" });
 
 export interface RuntimeConfig {
   model: Model | undefined;
@@ -103,13 +106,20 @@ export async function loadRuntimeConfig(
     const chatgptAuth = createChatGPTOAuthBinding({
       initialTokens: oauthTokens,
       onTokensRefreshed: (tokens) => saveOAuthTokens(tokens, authStore),
+      streamOptions: {
+        useWebSocketForGpt56: process.env.DILIGENT_CHATGPT_WEBSOCKET === "1",
+      },
     });
     try {
       await chatgptAuth.auth.ensureFresh?.();
       providerManager.setExternalAuth("chatgpt", chatgptAuth.auth);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.warn(`[auth] ChatGPT OAuth refresh failed during startup; sign in again to use ChatGPT: ${message}`);
+      logger.warn("oauth_refresh_failed", {
+        message: `[auth] ChatGPT OAuth refresh failed during startup; sign in again to use ChatGPT: ${message}`,
+        error,
+        fields: { provider: "chatgpt" },
+      });
       await removeOAuthTokens(authStore).catch(() => {});
     }
   }
@@ -221,7 +231,10 @@ export async function loadRuntimeConfig(
         .replace(/\{\{cwd\}\}/g, cwd)
         .replace(/\{\{platform\}\}/g, process.platform);
     } else {
-      console.warn(`[config] systemPromptFile "${config.systemPromptFile}" not found, using default`);
+      logger.warn("system_prompt_file_not_found", {
+        message: `[config] systemPromptFile "${config.systemPromptFile}" not found, using default`,
+        fields: { systemPromptFile: config.systemPromptFile },
+      });
       basePrompt = buildBaseSystemPrompt({
         currentDate: new Date().toISOString().split("T")[0],
         cwd,

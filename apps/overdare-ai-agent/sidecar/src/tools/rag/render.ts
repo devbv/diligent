@@ -1,4 +1,7 @@
+import { createLogger } from "@diligent/logging";
 import { z } from "zod";
+
+const logger = createLogger({ scope: "sidecar/rag", context: { component: "render" } });
 
 type RenderBlock = Record<string, unknown>;
 
@@ -304,9 +307,12 @@ export function buildSearchRender(args: { source: string; query: string }, resul
     const assetResults = rawAssets.map((raw) => {
       const parsed = AssetResultSchema.safeParse(raw);
       if (!parsed.success) {
-        console.warn("[overdaresearch] asset schema drift", {
-          assetId: raw.assetId ?? "(unknown)",
-          issues: parsed.error.issues,
+        logger.warn("asset.schema_drift", {
+          message: "[overdaresearch] asset schema drift",
+          fields: {
+            assetId: raw.assetId ?? "(unknown)",
+            issues: parsed.error.issues,
+          },
         });
       }
       return normalizeAssetForRender(raw);

@@ -2,6 +2,7 @@
 import { createWriteStream, existsSync, mkdirSync, realpathSync, type WriteStream } from "node:fs";
 import { appendFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
+import { type ConsoleLike, createConsoleSink, createLogger, type Logger } from "@diligent/logging";
 import {
   type AgentRegistry,
   type BundledToolProvider,
@@ -20,6 +21,22 @@ import {
   resolveConsentState,
 } from "@diligent/runtime";
 import { decodeWebImageRelativePath, toWebImageUrl, WEB_IMAGE_ROUTE_PREFIX } from "../shared/image-routes";
+
+const logger = createLogger({ scope: "web.server" });
+
+function createStreamLogger(
+  scope: string,
+  stdoutWrite: (value: string) => unknown,
+  stderrWrite: (value: string) => unknown,
+): Logger {
+  const console: ConsoleLike = {
+    debug: (value) => stdoutWrite(`${String(value)}\n`),
+    info: (value) => stdoutWrite(`${String(value)}\n`),
+    warn: (value) => stderrWrite(`${String(value)}\n`),
+    error: (value) => stderrWrite(`${String(value)}\n`),
+  };
+  return createLogger({ scope, sink: createConsoleSink({ console }) });
+}
 
 interface WsData {
   connectionId: string;
@@ -85,7 +102,10 @@ function startParentWatchdog(parentPid?: number): (() => void) | null {
       return;
     }
 
-    console.error(`[Server] Parent process ${parentPid} is gone. Exiting sidecar.`);
+    logger.error("parent.exited", {
+      message: `[Server] Parent process ${parentPid} is gone. Exiting sidecar.`,
+      fields: { parentPid },
+    });
     process.exit(0);
   }, 2000);
 
@@ -312,6 +332,7 @@ export function enableProcessLogFile(logFile: string, baseDir: string): () => vo
   const resolvedPath = resolve(baseDir, logFile);
   const originalStdoutWrite = process.stdout.write.bind(process.stdout) as typeof process.stdout.write;
   const originalStderrWrite = process.stderr.write.bind(process.stderr) as typeof process.stderr.write;
+  const streamLogger = createStreamLogger("web.server.process-log", originalStdoutWrite, originalStderrWrite);
 
   let mirrorEnabled = true;
   let reportedStreamError = false;
@@ -336,8 +357,11 @@ export function enableProcessLogFile(logFile: string, baseDir: string): () => vo
     if (reportedStreamError) return;
     reportedStreamError = true;
     mirrorEnabled = false;
-    const message = error instanceof Error ? error.message : String(error);
-    originalStderrWrite(`[webserver-log] Failed to write log file ${resolvedPath}: ${message}\n`);
+    streamLogger.error("log_file.write_failed", {
+      message: `[webserver-log] Failed to write log file ${resolvedPath}`,
+      error,
+      fields: { path: resolvedPath },
+    });
   };
 
   const mirrorWrite = (chunk: unknown, encoding?: unknown): void => {
@@ -373,7 +397,10 @@ export function enableProcessLogFile(logFile: string, baseDir: string): () => vo
     return originalStderrWrite(chunk as never, encoding as never, cb as never);
   }) as typeof process.stderr.write;
 
-  originalStdoutWrite(`[webserver-log] Mirroring stdout/stderr to ${resolvedPath}\n`);
+  streamLogger.info("mirroring.started", {
+    message: `[webserver-log] Mirroring stdout/stderr to ${resolvedPath}`,
+    fields: { path: resolvedPath },
+  });
 
   return () => {
     process.stdout.write = originalStdoutWrite;
@@ -388,6 +415,7 @@ export function enableThreadAppServerLogFile(paths: Pick<DiligentPaths, "root">)
 } {
   const originalStdoutWrite = process.stdout.write.bind(process.stdout) as typeof process.stdout.write;
   const originalStderrWrite = process.stderr.write.bind(process.stderr) as typeof process.stderr.write;
+  const streamLogger = createStreamLogger("web.server.thread-log", originalStdoutWrite, originalStderrWrite);
   const pendingLines: string[] = [];
 
   let currentThreadId: string | null = null;
@@ -411,8 +439,12 @@ export function enableThreadAppServerLogFile(paths: Pick<DiligentPaths, "root">)
 
     const logPath = join(logsDir, `${currentThreadId}.app-server.log`);
     appendFile(logPath, `${new Date().toISOString()} ${trimmed}\n`).catch((error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      originalStderrWrite(`[webserver-log] Failed to write app-server log file ${logPath}: ${message}\n`);
+      streamLogger.error("log_file.write_failed", {
+        message: `[webserver-log] Failed to write app-server log file ${logPath}`,
+        error,
+        threadId: currentThreadId ?? undefined,
+        fields: { path: logPath },
+      });
     });
   };
 
@@ -494,11 +526,16 @@ if (isDirect) {
   // unhandled promise rejections (e.g. Bun happy-eyeballs socket errors that
   // bypass user-level handlers).  Log and swallow — never crash the server.
   process.on("uncaughtException", (err) => {
-    console.error("[Server] Uncaught exception (swallowed to keep server alive):", err?.message ?? err);
+    logger.error("process.uncaught_exception", {
+      message: "[Server] Uncaught exception (swallowed to keep server alive):",
+      error: err,
+    });
   });
   process.on("unhandledRejection", (reason) => {
-    const message = reason instanceof Error ? reason.message : String(reason);
-    console.error("[Server] Unhandled promise rejection (swallowed to keep server alive):", message);
+    logger.error("process.unhandled_rejection", {
+      message: "[Server] Unhandled promise rejection (swallowed to keep server alive):",
+      error: reason,
+    });
   });
 
   (async () => {
@@ -533,14 +570,24 @@ if (isDirect) {
         });
 
         console.info(`DILIGENT_PORT=${server.port}`);
-        console.info(`Diligent Web CLI server running at http://localhost:${server.port}`);
-        console.info(`RPC endpoint: ws://localhost:${server.port}/rpc`);
+        logger.info("server.ready", {
+          message: `Diligent Web CLI server running at http://localhost:${server.port}`,
+          fields: { port: server.port, url: `http://localhost:${server.port}` },
+        });
+        logger.info("rpc.ready", {
+          message: `RPC endpoint: ws://localhost:${server.port}/rpc`,
+          fields: { port: server.port, url: `ws://localhost:${server.port}/rpc` },
+        });
       })
       .catch((error) => {
         cleanupParentWatchdog?.();
         cleanupLogFile?.();
         const message = error instanceof Error ? error.message : String(error);
-        console.error(`Failed to start web server: ${message}`);
+        logger.error("startup.failed", {
+          message: `Failed to start web server: ${message}`,
+          error,
+          fields: { port: args.port, cwd: serverCwd },
+        });
         process.exit(1);
       });
   })();

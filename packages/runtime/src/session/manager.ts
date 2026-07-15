@@ -1,6 +1,7 @@
 // @summary Session manager orchestrating agent loop, persistence, compaction, and steering
 
 import type { Message } from "@diligent/core/types";
+import { createLogger, type Logger } from "@diligent/logging";
 import type { PendingSteer, ThinkingEffort } from "@diligent/protocol";
 import type { Mode } from "../agent/mode";
 import type { AgentEvent } from "../agent-event";
@@ -24,6 +25,8 @@ import { generateEntryId } from "./types";
 
 export type { ResumeSessionOptions, SessionManagerConfig };
 
+const logger = createLogger({ scope: "runtime.session" });
+
 export class SessionManager {
   private state = new SessionStateStore();
   private persistence: SessionPersistence;
@@ -32,6 +35,7 @@ export class SessionManager {
   private memoryErrors: ErrorEntry[] = [];
   private collabHandler: CollabSessionHandler;
   private orchestrator: TurnOrchestrator;
+  private logger: Logger;
 
   constructor(config: SessionManagerConfig) {
     this.persistence = new SessionPersistence({
@@ -42,6 +46,7 @@ export class SessionManager {
       sessionId: config.sessionId,
       onEntryAppended: config.onEntryAppended,
     });
+    this.logger = logger.child({ component: "SessionManager" });
     this.collabHandler = new CollabSessionHandler(() => this.state.getCommittedEntries());
     this.orchestrator = new TurnOrchestrator({
       state: this.state,
@@ -313,12 +318,12 @@ export class SessionManager {
     this.state.appendCommitted([entry]);
     this.persistence.append(entry, (error) => {
       const detail = entry.type === "message" ? entry.message.role : entry.type;
-      console.error(
-        "[SessionManager] Failed to persist %s for session=%s: %s",
-        detail,
-        this.persistence.sessionId,
-        error instanceof Error ? error.message : String(error),
-      );
+      this.logger.error("persist_entry_failed", {
+        sessionId: this.persistence.sessionId,
+        message: `[SessionManager] Failed to persist ${detail} for session=${this.persistence.sessionId}: ${error instanceof Error ? error.message : String(error)}`,
+        error,
+        fields: { entryType: detail },
+      });
     });
   }
 
@@ -327,12 +332,12 @@ export class SessionManager {
     this.state.appendCommitted(entries);
     this.persistence.appendMany(entries, (error, entry) => {
       const detail = entry.type === "message" ? entry.message.role : entry.type;
-      console.error(
-        "[SessionManager] Failed to persist %s for session=%s: %s",
-        detail,
-        this.persistence.sessionId,
-        error instanceof Error ? error.message : String(error),
-      );
+      this.logger.error("persist_entry_failed", {
+        sessionId: this.persistence.sessionId,
+        message: `[SessionManager] Failed to persist ${detail} for session=${this.persistence.sessionId}: ${error instanceof Error ? error.message : String(error)}`,
+        error,
+        fields: { entryType: detail },
+      });
     });
   }
 

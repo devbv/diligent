@@ -507,6 +507,7 @@ When changing the system, these boundaries matter most:
 - **Core vs Runtime** — reusable engine logic belongs in core; Diligent product assembly belongs in runtime.
 - **Runtime vs Protocol** — protocol defines transport-facing schemas; runtime owns mapping and behavior.
 - **Runtime vs Frontends** — frontends should render and collect input, not duplicate backend business logic.
+- **Logging vs Protocol** — first-party diagnostics use the leaf `@diligent/logging` package. Records carry structured context, while hosts own console, file, or remote sinks. Logs are not protocol messages, and user-facing or machine-readable stdout must not be routed through the diagnostic logger.
 - **Web vs Desktop** — desktop should reuse web/server behavior rather than fork it.
 
 ## Current Architectural Realities

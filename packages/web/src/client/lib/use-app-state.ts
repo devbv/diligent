@@ -1,4 +1,5 @@
 // @summary Composition hook: assembles consent, notification, modal, and thread state sub-hooks
+import { createLogger } from "@diligent/logging";
 import type { SkillInfo, ThinkingEffort, ThreadReadResponse } from "@diligent/protocol";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { AgentContextItem } from "./agent-native-bridge";
@@ -22,6 +23,8 @@ import { clearDraftThreadInput, DRAFT_INPUT_KEY, useThreadManager } from "./use-
 
 type RpcClientResult = ReturnType<typeof useRpcClient>;
 type ProviderMgrResult = ReturnType<typeof useProviderManager>;
+
+const logger = createLogger({ scope: "web.client.state" });
 
 export function useAppState({
   rpcRef,
@@ -108,7 +111,10 @@ export function useAppState({
   useEffect(() => {
     if (!state.toast) return;
     if (state.toast.kind === "error") {
-      console.error("[diligent]", state.toast.message);
+      logger.error("toast.error", {
+        message: `[diligent] ${state.toast.message}`,
+        fields: { fatal: state.toast.fatal },
+      });
     }
     if (state.toast.fatal) return;
     const id = setTimeout(() => dispatch({ type: "clear_toast" }), 4000);

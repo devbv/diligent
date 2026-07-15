@@ -1,5 +1,6 @@
 // @summary React hook for thread CRUD, switching, and per-thread input state
 
+import { createLogger } from "@diligent/logging";
 import type { Mode, SessionSummary, ThinkingEffort, ThreadReadResponse } from "@diligent/protocol";
 import { DILIGENT_CLIENT_REQUEST_METHODS } from "@diligent/protocol";
 import type { RefObject } from "react";
@@ -7,6 +8,8 @@ import { useCallback, useRef, useState } from "react";
 import { type AgentContextItem, getAgentContextItemKey, mergeAgentContextItems } from "./agent-native-bridge";
 import { replaceDraftUrl, replaceThreadUrl } from "./app-utils";
 import type { WebRpcClient } from "./rpc-client";
+
+const logger = createLogger({ scope: "web.client.threads" });
 
 export const DRAFT_INPUT_KEY = "__draft__";
 
@@ -85,7 +88,12 @@ export async function switchThreadSubscription({
     try {
       await rpc.unsubscribe(activeSubscription.subscriptionId);
     } catch (error) {
-      console.error(error);
+      logger.warn("subscription.unsubscribe_failed", {
+        message: "Failed to unsubscribe from previous thread",
+        error,
+        threadId: activeSubscription.threadId,
+        fields: { subscriptionId: activeSubscription.subscriptionId },
+      });
     }
   }
 
@@ -159,7 +167,12 @@ export function useThreadManager({
     try {
       await rpc.unsubscribe(activeSubscription.subscriptionId);
     } catch (error) {
-      console.error(error);
+      logger.warn("subscription.unsubscribe_failed", {
+        message: "Failed to unsubscribe from active thread",
+        error,
+        threadId: activeSubscription.threadId,
+        fields: { subscriptionId: activeSubscription.subscriptionId },
+      });
     }
   }, [rpcRef]);
 
@@ -189,7 +202,10 @@ export function useThreadManager({
         const list = await rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.THREAD_LIST, { limit: 100 });
         dispatch({ type: "set_threads", payload: list.data });
       } catch (error) {
-        console.error(error);
+        logger.error("thread.list_failed", {
+          message: "Failed to refresh thread list",
+          error,
+        });
       }
     },
     [rpcRef, dispatch],
@@ -225,7 +241,11 @@ export function useThreadManager({
         await applySessionModel(history.currentModel);
         clearAttention(resumedId);
       } catch (error) {
-        console.error(error);
+        logger.error("thread.open_failed", {
+          message: "Failed to open thread",
+          error,
+          threadId,
+        });
       }
     },
     [
@@ -269,7 +289,11 @@ export function useThreadManager({
       }
       await refreshThreadList(rpc);
     } catch (error) {
-      console.error(error);
+      logger.error("thread.delete_failed", {
+        message: "Failed to delete thread",
+        error,
+        threadId,
+      });
     }
   }, [
     pendingDeleteThreadId,

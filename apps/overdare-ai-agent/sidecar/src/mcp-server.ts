@@ -8,6 +8,7 @@ import { existsSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import type { Tool, ToolContext, ToolResult } from "@diligent/core/tool/types";
+import { createLogger } from "@diligent/logging";
 import type { BundledToolProvider, ResolvedExperiment } from "@diligent/runtime";
 import { loadDiligentConfig, resolveExperimentGates, resolveExperimentStates } from "@diligent/runtime";
 import { discoverSkills, extractBody, parseFrontmatter } from "@diligent/runtime/skills";
@@ -22,11 +23,13 @@ import {
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { OVERDARE_EXPERIMENTS } from "./experiments";
+import { configureSidecarLogging } from "./logging";
 import { createRagToolProvider } from "./tools/rag";
 import { createStudioRpcToolProvider } from "./tools/studiorpc";
 import { createValidatorToolProvider } from "./tools/validator";
 
 const SERVER_INFO = { name: "overdare-ai-agent", version: "0.0.1" } as const;
+const logger = createLogger({ scope: "sidecar/mcp" });
 
 /** Server-level guidance surfaced to the client on `initialize`. */
 const SERVER_INSTRUCTIONS =
@@ -336,14 +339,27 @@ export async function runMcpServerMain(): Promise<void> {
   console.debug = routeToStderr as typeof console.debug;
   console.warn = routeToStderr as typeof console.warn;
 
+  configureSidecarLogging({
+    source: "overdare-ai-agent",
+    component: "sidecar/mcp",
+    version: process.env.OVERDARE_AI_AGENT_VERSION,
+    projectId: process.env.OVERDARE_PROJECT_ID,
+  });
+
   // Keep the server alive across stray async faults (e.g. a Studio socket 'error' with no listener)
   // rather than letting an uncaught error kill the process and drop the client. Mirrors the
   // web-server path's guards in server.ts.
   process.on("uncaughtException", (err) => {
-    console.error("[mcp] uncaught exception (kept alive):", err instanceof Error ? err.message : err);
+    logger.error("process.uncaught_exception", {
+      message: `[mcp] uncaught exception (kept alive): ${err instanceof Error ? err.message : err}`,
+      error: err,
+    });
   });
   process.on("unhandledRejection", (reason) => {
-    console.error("[mcp] unhandled rejection (kept alive):", reason instanceof Error ? reason.message : reason);
+    logger.error("process.unhandled_rejection", {
+      message: `[mcp] unhandled rejection (kept alive): ${reason instanceof Error ? reason.message : reason}`,
+      error: reason,
+    });
   });
 
   const cwd = process.env.OVERDARE_MCP_CWD ?? process.cwd();
@@ -352,10 +368,13 @@ export async function runMcpServerMain(): Promise<void> {
     const { config } = await loadDiligentConfig(cwd);
     const experiments = resolveExperimentStates(OVERDARE_EXPERIMENTS, config.experiments?.overrides);
     await startMcpServer({ cwd, bootstrapDir, experiments });
-    console.info("OVERDARE MCP server ready on stdio");
+    logger.info("server.ready", "OVERDARE MCP server ready on stdio");
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error(`Failed to start OVERDARE MCP server: ${message}`);
+    logger.error("startup.failed", {
+      message: `Failed to start OVERDARE MCP server: ${message}`,
+      error,
+    });
     process.exit(1);
   }
 }

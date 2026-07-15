@@ -4,6 +4,7 @@ import type {
 } from "@diligent/protocol";
 import type { EventStream } from "../event-stream";
 import type { AssistantMessage, ContentBlock, Message, StopReason, Usage } from "../types";
+import type { StreamTurnScope } from "./turn-scope";
 
 export interface SystemSection {
   tag?: string; // XML wrapper: "knowledge", "user_instructions", "collaboration_mode"
@@ -84,6 +85,8 @@ export interface StreamOptions {
   /** Sticky routing token shared across retries within a single turn. Set once from the
    *  first successful response header; replayed on subsequent requests in the same turn. */
   turnStateRef?: { value: string | undefined };
+  /** Ephemeral provider resource lifetime shared by every sample in one user turn. */
+  turnScope?: StreamTurnScope;
 }
 
 export interface WebToolUserLocation {

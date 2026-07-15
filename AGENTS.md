@@ -38,6 +38,7 @@ Most source files include a `@summary` annotation on the first line: `// @summar
 ## Rules
 
 - English only in all files
+- Do not spawn more than one subagent for a task.
 - Clarify requirements fully before implementing — no assumptions
 - When implementing new features or modifying existing behavior, write or strengthen tests first whenever possible.
 - Run tests after code changes
