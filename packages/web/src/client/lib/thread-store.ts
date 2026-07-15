@@ -464,7 +464,7 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent, turnId?: string
       if (humanEdits) {
         // The initiator normally never receives its own user_message echo; the
         // server sends it only when human edits were injected. Drop the
-        // optimistic local echo so the notice sits above the canonical message.
+        // optimistic local echo so the canonical message takes its place.
         const localEchoIndex = nextState.items.findLastIndex(
           (item) => item.kind === "user" && item.id.startsWith("local-user-") && item.text === remainingText,
         );
@@ -473,6 +473,18 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent, turnId?: string
           items.splice(localEchoIndex, 1);
           nextState = { ...nextState, items };
         }
+      }
+      nextState = withItem(nextState, `remote-user-${event.itemId}`, {
+        id: `remote-user-${event.itemId}`,
+        kind: "user",
+        text: remainingText,
+        contextItems,
+        images,
+        timestamp: event.message.timestamp,
+      });
+      if (humanEdits) {
+        // The notice reads as the agent picking the edits up, so it sits
+        // right below the prompt it belongs to.
         const humanEditsKey = `remote-user-${event.itemId}-human-edits`;
         nextState = withItem(nextState, humanEditsKey, {
           id: humanEditsKey,
@@ -482,14 +494,7 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent, turnId?: string
           timestamp: event.message.timestamp,
         });
       }
-      return withItem(nextState, `remote-user-${event.itemId}`, {
-        id: `remote-user-${event.itemId}`,
-        kind: "user",
-        text: remainingText,
-        contextItems,
-        images,
-        timestamp: event.message.timestamp,
-      });
+      return nextState;
     }
 
     case "status_change":

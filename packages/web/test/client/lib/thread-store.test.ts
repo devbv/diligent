@@ -2862,7 +2862,7 @@ test("user_message with human edits replaces the optimistic local echo", () => {
   expect(users).toHaveLength(1); // local echo replaced, not duplicated
   expect(users[0]?.id).toBe("remote-user-u3");
   const kinds = next.items.map((item) => item.kind);
-  expect(kinds).toEqual(["context", "user"]); // notice sits above the message
+  expect(kinds).toEqual(["user", "context"]); // notice sits right below the prompt
 });
 
 test("user_message without human edits produces no context card", () => {
