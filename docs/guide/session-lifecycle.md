@@ -139,6 +139,9 @@ may perform asynchronous I/O. Separately, trusted bundled product code can regis
 main or child Agent; these hooks can observe sampling-loop phases and return structured internal
 user-context injections, but cannot run tools, mutate Agent history directly, or cross the client
 protocol. A throwing loop hook is logged and disabled for that Agent without failing the turn.
+The built-in main-Agent plan reminder is enabled by default with a six-turn cadence. Set
+`planReminderIntervalTurns` to `0` to disable it or to another non-negative integer to tune the
+cadence.
 
 Shell lifecycle hooks support two execution modes:
 

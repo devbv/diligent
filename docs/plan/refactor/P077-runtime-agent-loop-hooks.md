@@ -73,9 +73,10 @@ clients
     the remaining Agent lifetime.
 11. **Deterministic order:** built-in runtime hooks run first, followed by
     bundled-provider hooks in provider registration order and hook return order.
-12. **Behavior preservation:** the built-in plan reminder remains enabled only
-    where it is enabled today. Product factories receive Agent-kind context and
-    explicitly choose whether to apply to main or child agents.
+12. **Default behavior:** the built-in plan reminder is enabled for main Agents
+    with a six-turn default cadence. `0` explicitly disables it. Product
+    factories receive Agent-kind context and explicitly choose whether to apply
+    to main or child agents.
 
 ## Why existing hooks are insufficient
 
@@ -763,8 +764,9 @@ Manual verification:
 7. A failing hook is logged and disabled without failing the user turn.
 8. Hooks can inject user context before provider sampling but cannot mutate
    history or inject assistant/tool-result roles.
-9. Plan-reminder behavior, cadence, compaction response, prompt wording, and
-   config semantics remain unchanged for main Agents.
+9. Plan-reminder behavior, compaction response, and prompt wording remain
+   unchanged for main Agents; its default cadence is six turns and `0`
+   explicitly disables it.
 10. Reminder injections no longer use `steering_injected` and cannot consume or
     clear client steering queues.
 11. Internal context is durably persisted, replayed to providers, excluded from

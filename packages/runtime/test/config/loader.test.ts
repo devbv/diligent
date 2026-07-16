@@ -102,6 +102,7 @@ describe("loadDiligentConfig", () => {
     await mkdir(TEST_ROOT, { recursive: true });
     const { config, sources } = await loadDiligentConfig(TEST_ROOT);
     expect(config.model).toBe("gemini-3.1-pro-preview");
+    expect(config.planReminderIntervalTurns).toBe(6);
     expect(sources).toEqual([]);
   });
 

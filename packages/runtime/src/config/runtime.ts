@@ -34,7 +34,7 @@ import { buildDefaultTools } from "../tools/defaults";
 import { buildSystemPromptWithKnowledge, discoverInstructions } from "./instructions";
 import type { DiligentConfigLayers } from "./loader";
 import { loadDiligentConfig } from "./loader";
-import type { DiligentConfig } from "./schema";
+import { DEFAULT_PLAN_REMINDER_INTERVAL_TURNS, type DiligentConfig } from "./schema";
 import { resolveConfiguredUserId } from "./user-id";
 
 const logger = createLogger({ scope: "runtime.config" });
@@ -261,7 +261,7 @@ export async function loadRuntimeConfig(
     model,
     mode: (config.mode ?? "default") as Mode,
     effort: (config.effort ?? "medium") as ThinkingEffort,
-    planReminderIntervalTurns: config.planReminderIntervalTurns ?? 0,
+    planReminderIntervalTurns: config.planReminderIntervalTurns ?? DEFAULT_PLAN_REMINDER_INTERVAL_TURNS,
     systemPrompt,
     streamFunction,
     diligent: {

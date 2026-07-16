@@ -193,7 +193,7 @@ export const DiligentConfigSchema = z
     effort: ThinkingEffortSchema.optional(),
 
     // Soft plan reminder cadence: re-inject unfinished plan steps into context after this
-    // many agent turns without the plan being surfaced. 0/undefined disables the feature.
+    // many agent turns without the plan being surfaced. Unset defaults to 6; 0 disables.
     planReminderIntervalTurns: z.number().int().nonnegative().optional(),
 
     // Permission rules
@@ -268,7 +268,10 @@ export const DiligentConfigSchema = z
 
 export type DiligentConfig = z.infer<typeof DiligentConfigSchema>;
 
+export const DEFAULT_PLAN_REMINDER_INTERVAL_TURNS = 6;
+
 export const DEFAULT_CONFIG: DiligentConfig = {
   model: "gemini-3.1-pro-preview",
   effort: "medium",
+  planReminderIntervalTurns: DEFAULT_PLAN_REMINDER_INTERVAL_TURNS,
 };

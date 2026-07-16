@@ -73,6 +73,10 @@ describe("DEFAULT_CONFIG", () => {
     expect(DEFAULT_CONFIG.model).toBe("gemini-3.1-pro-preview");
   });
 
+  it("enables plan reminders with a six-turn cadence", () => {
+    expect(DEFAULT_CONFIG.planReminderIntervalTurns).toBe(6);
+  });
+
   it("validates against schema", () => {
     const result = DiligentConfigSchema.safeParse(DEFAULT_CONFIG);
     expect(result.success).toBe(true);
