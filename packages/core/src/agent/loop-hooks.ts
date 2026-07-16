@@ -8,6 +8,8 @@ export interface AgentContextInjection {
   source: string;
   /** Only user content may be inserted between provider sampling rounds. */
   content: UserMessage["content"];
+  /** Opaque trusted-extension metadata. Core forwards it without interpretation. */
+  metadata?: Record<string, unknown>;
 }
 
 export interface AgentLoopHookRestoreContext {
@@ -82,7 +84,7 @@ export class AgentLoopHookDispatcher {
         if (typeof injection.source !== "string" || injection.source.trim().length === 0) {
           throw new Error("Agent context injection source must be non-empty");
         }
-        hookInjections.push({ source: injection.source, content: injection.content });
+        hookInjections.push({ source: injection.source, content: injection.content, metadata: injection.metadata });
       }
       injections.push(...hookInjections);
     });

@@ -308,9 +308,11 @@ Runtime derives two different views from session data:
 - **context view** for future model calls, including replayable internal messages
 - **transcript view** for human-facing UI/history rendering
 
-Message entries may carry `visibility: "internal"` and an opaque `source`. They remain in the
-session parent chain and provider replay, but runtime excludes them from transcripts, thread
-snapshots, previews, and visible message counts. This split is important because raw persisted
+Message entries may carry `visibility: "internal"`, an opaque `source`, and optional runtime-owned
+presentation metadata. Their model message remains in the session parent chain and provider replay
+without becoming a user bubble or visible message count. When presentation metadata is present,
+runtime derives a structured context notice for live clients and thread snapshots; otherwise the
+entry is omitted from human transcripts entirely. This split is important because raw persisted
 entries are not identical to the display-oriented event stream used during live turns.
 
 ## Agent-loop and external lifecycle hooks
@@ -327,8 +329,10 @@ Diligent has two intentionally separate hook tiers:
   prompts, stops, and durable appends. They may perform I/O and are never run in the sampling loop.
 
 Core does not know runtime tool names, persisted visibility rules, bundled-provider types, or
-client behavior. The core-only context-injection event is consumed by runtime and never added to
-the shared protocol.
+client behavior. The raw core `context_injected` event is consumed by runtime and never added to
+the shared protocol. Runtime may validate opaque injection metadata and emit a separate structured
+`context_notice`; this is the common path used by Studio human-edit detection in Web, TUI, and
+non-interactive clients.
 
 ## Prompt Construction
 

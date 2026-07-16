@@ -28,9 +28,12 @@ Runtime can reconstruct multiple views from the same file:
 - **transcript/snapshot view** for UI rendering
 
 Runtime message entries may be marked `visibility: "internal"` with an opaque `source`. Internal
-messages stay replayable in provider context and in the append-only parent chain, but are excluded
-from transcripts, snapshots, previews, and visible message counts. Older untagged reminder
-messages remain visible because only explicit entry metadata controls visibility.
+messages stay replayable in provider context and in the append-only parent chain without becoming
+user messages or visible message counts. Most are excluded from transcripts, snapshots, and
+previews. A trusted runtime hook may attach validated presentation metadata; runtime then exposes a
+structured context notice in both live events and `thread/read` while keeping the injected model
+message internal. Older untagged reminder messages remain visible because only explicit entry
+metadata controls visibility.
 
 ## Starting and resuming threads
 
@@ -139,7 +142,10 @@ may perform asynchronous I/O. Separately, trusted bundled product code can regis
 main or child Agent; these hooks can observe sampling-loop phases and return structured internal
 user-context injections, but cannot run tools, mutate Agent history directly, or cross the client
 protocol. A throwing loop hook is logged and disabled for that Agent without failing the turn.
-The built-in main-Agent plan reminder is enabled by default with a six-turn cadence. Set
+The built-in main-Agent plan reminder is enabled by default with a six-turn cadence. Studio human
+edit detection uses the outer hook only to flush and freeze the asynchronous diff, then a main-Agent
+loop hook injects that diff through the same context-injection path with a structured client notice.
+Set
 `planReminderIntervalTurns` to `0` to disable it or to another non-negative integer to tune the
 cadence.
 

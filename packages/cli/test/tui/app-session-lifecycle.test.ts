@@ -182,6 +182,29 @@ describe("AppSessionLifecycle", () => {
     });
   });
 
+  test("hydrateThreadHistory restores structured context notices", async () => {
+    const { lifecycle, addLines } = createLifecycleWithThreadRead({
+      items: [
+        {
+          type: "contextMessage",
+          itemId: "ctx-1",
+          source: "studiorpc-human-edits",
+          presentation: {
+            kind: "human-edits",
+            title: "Human edits detected",
+            content: "Added: Ramp",
+          },
+          timestamp: 1,
+        },
+      ],
+    });
+
+    await (lifecycle as never).hydrateThreadHistory();
+
+    expect(addLines.mock.calls.flat(2).join("\n")).toContain("Human edits detected");
+    expect(addLines.mock.calls.flat(2).join("\n")).toContain("Added: Ramp");
+  });
+
   test("hydrateThreadHistory restores provider-native web blocks as plain transcript lines", async () => {
     const { lifecycle, addAssistantMessage, addStructuredItem, addLines } = createLifecycleWithThreadRead({
       items: [

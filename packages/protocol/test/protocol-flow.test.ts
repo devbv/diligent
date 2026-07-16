@@ -16,6 +16,7 @@ import {
   SkillsListResponseSchema,
   SubagentDescriptorSchema,
   SubagentsListResponseSchema,
+  ThreadItemSchema,
   ToolDescriptorSchema,
   ToolRenderPayloadSchema,
   ToolResultMessageSchema,
@@ -25,6 +26,33 @@ import {
 const TEST_MODEL_ID = "claude-sonnet-4-6";
 
 describe("protocol/flow", () => {
+  it("accepts structured context notices for live events and thread snapshots", () => {
+    const presentation = {
+      kind: "human-edits",
+      title: "Human edits detected",
+      content: "Added: Ramp",
+    };
+    expect(
+      DiligentServerNotificationSchema.safeParse({
+        method: DILIGENT_SERVER_NOTIFICATION_METHODS.AGENT_EVENT,
+        params: {
+          threadId: "th-1",
+          turnId: "turn-1",
+          event: { type: "context_notice", source: "studiorpc-human-edits", presentation },
+        },
+      }).success,
+    ).toBe(true);
+    expect(
+      ThreadItemSchema.safeParse({
+        type: "contextMessage",
+        itemId: "ctx-1",
+        source: "studiorpc-human-edits",
+        presentation,
+        timestamp: 1,
+      }).success,
+    ).toBe(true);
+  });
+
   it("accepts thread and turn client requests", () => {
     expect(
       DiligentClientRequestSchema.safeParse({

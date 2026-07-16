@@ -3,6 +3,7 @@
 import type { CoreAgentEvent } from "@diligent/core/agent";
 import { buildMessagesFromCompaction, selectForCompaction } from "@diligent/core/agent";
 import type { Message } from "@diligent/core/types";
+import { readContextPresentation } from "../agent/context-presentation";
 import type { CompactionEntry, SessionEntry } from "./types";
 import { generateEntryId } from "./types";
 
@@ -52,7 +53,11 @@ export class TurnStager {
 
     if (event.type === "context_injected") {
       for (const injection of event.injections) {
-        this.stageMessage(injection.message, { visibility: "internal", source: injection.source });
+        this.stageMessage(injection.message, {
+          visibility: "internal",
+          source: injection.source,
+          presentation: readContextPresentation(injection.metadata),
+        });
       }
       return;
     }
@@ -87,7 +92,14 @@ export class TurnStager {
     return entries;
   }
 
-  private stageMessage(message: Message, metadata?: { visibility: "internal"; source: string }): void {
+  private stageMessage(
+    message: Message,
+    metadata?: {
+      visibility: "internal";
+      source: string;
+      presentation?: import("@diligent/protocol").ContextPresentation;
+    },
+  ): void {
     if (!metadata) this.stagedConversation.push(message);
     this.stageEntry({
       type: "message",

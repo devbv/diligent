@@ -142,16 +142,6 @@ export interface DiligentAppServerConfig {
   reloadConfig?: () => Promise<ConfigReloadResult>;
 }
 
-/**
- * Marker the studiorpc provider wraps around human-edit diffs it injects into
- * user messages via the UserPromptSubmit hook. Clients render it as a notice.
- */
-const HUMAN_EDITS_MARKER = "<HumanEdits>";
-
-function userMessageCarriesHumanEdits(content: unknown): boolean {
-  return typeof content === "string" && content.includes(HUMAN_EDITS_MARKER);
-}
-
 async function resolveProviderPlanType(
   provider: string | undefined,
   authStore: AuthStoreOptions | undefined,
@@ -508,10 +498,8 @@ export class DiligentAppServer {
     const targets = subscribers.length > 0 ? subscribers : [...this.connections.values()];
 
     for (const conn of targets) {
-      // Skip turn initiator for echo of their own user message events — except
-      // when a hook injected human edits into the message: the initiator's
-      // client only has its optimistic local echo, so it needs the augmented
-      // message to render the human-edits notice.
+      // Skip the turn initiator's own user-message echo. Structured context
+      // notices are separate events, so they still reach every subscriber.
       if (notification.method === DILIGENT_SERVER_NOTIFICATION_METHODS.AGENT_EVENT) {
         const params = notification.params as {
           event?: { type?: string; message?: { content?: unknown } };
@@ -520,8 +508,7 @@ export class DiligentAppServer {
         if (
           params.event?.type === "user_message" &&
           params.threadId &&
-          this.turnInitiators.get(params.threadId) === conn.id &&
-          !userMessageCarriesHumanEdits(params.event.message?.content)
+          this.turnInitiators.get(params.threadId) === conn.id
         ) {
           continue;
         }

@@ -2823,30 +2823,27 @@ test("hydrateFromThreadRead keeps sub-agent running when truncated wait summary 
   expect(collabWait && collabWait.kind === "collab" ? collabWait.status : "").toBe("running");
 });
 
-test("user_message splits hook-injected human edits into a labeled context card", () => {
+test("context_notice renders a structured human-edits card without replacing the optimistic user message", () => {
   resetAdapter();
-  const text = [
-    "<HumanEdits>",
-    "Human edits since the agent's last completed turn:",
-    "",
-    "Added (1):",
-    '+ Part "Ramp" (p2) under "Workspace" (ws-0)',
-    "</HumanEdits>",
-    "",
-    "move it up",
-  ].join("\n");
-
+  const seeded = {
+    ...initialThreadState,
+    items: [{ id: "local-user-123", kind: "user" as const, text: "move it up", images: [], timestamp: 1 }],
+  };
   const event = {
-    type: "user_message",
-    itemId: "u1",
-    message: { role: "user", content: text, timestamp: 1 },
+    type: "context_notice",
+    source: "studiorpc-human-edits",
+    presentation: {
+      kind: "human-edits",
+      title: "Human edits detected",
+      content: 'Added (1):\n+ Part "Ramp" (p2) under "Workspace" (ws-0)',
+    },
   } as const;
   const notification: DiligentServerNotification = {
     method: "agent/event",
     params: { threadId: "t1", turnId: "turn1", event },
   };
 
-  const next = reduceServerNotification(initialThreadState, notification, [event]);
+  const next = reduceServerNotification(seeded, notification, [event]);
 
   const contextCards = next.items.filter((item) => item.kind === "context");
   expect(contextCards).toHaveLength(1);
@@ -2860,55 +2857,29 @@ test("user_message splits hook-injected human edits into a labeled context card"
   expect(users[0] && users[0].kind === "user" ? users[0].text : "").toBe("move it up");
 });
 
-test("user_message with human edits replaces the optimistic local echo", () => {
-  resetAdapter();
-  const seeded = {
-    ...initialThreadState,
+test("hydrateFromThreadRead restores structured context notices", () => {
+  const hydrated = hydrateFromThreadRead(initialThreadState, {
+    threadId: "t1",
+    cwd: "/tmp",
     items: [
       {
-        id: "local-user-123",
-        kind: "user" as const,
-        text: "move it up",
-        images: [],
-        timestamp: 1,
+        type: "contextMessage",
+        itemId: "ctx-1",
+        source: "studiorpc-human-edits",
+        presentation: { kind: "human-edits", title: "Human edits detected", content: "Added: Ramp" },
+        timestamp: 2,
       },
     ],
-  };
-  const text =
-    "<HumanEdits>\nHuman edits since the agent's last completed turn:\n\nAdded (1):\n+ x\n</HumanEdits>\n\nmove it up";
-  const event = {
-    type: "user_message",
-    itemId: "u3",
-    message: { role: "user", content: text, timestamp: 2 },
-  } as const;
-  const notification: DiligentServerNotification = {
-    method: "agent/event",
-    params: { threadId: "t1", turnId: "turn1", event },
-  };
-
-  const next = reduceServerNotification(seeded, notification, [event]);
-
-  const users = next.items.filter((item) => item.kind === "user");
-  expect(users).toHaveLength(1); // local echo replaced, not duplicated
-  expect(users[0]?.id).toBe("remote-user-u3");
-  const kinds = next.items.map((item) => item.kind);
-  expect(kinds).toEqual(["user", "context"]); // notice sits right below the prompt
-});
-
-test("user_message without human edits produces no context card", () => {
-  resetAdapter();
-  const event = {
-    type: "user_message",
-    itemId: "u2",
-    message: { role: "user", content: "just a message", timestamp: 1 },
-  } as const;
-  const notification: DiligentServerNotification = {
-    method: "agent/event",
-    params: { threadId: "t1", turnId: "turn1", event },
-  };
-
-  const next = reduceServerNotification(initialThreadState, notification, [event]);
-  expect(next.items.filter((item) => item.kind === "context")).toHaveLength(0);
-  const users = next.items.filter((item) => item.kind === "user");
-  expect(users[0] && users[0].kind === "user" ? users[0].text : "").toBe("just a message");
+    isRunning: false,
+    hasFollowUp: false,
+    entryCount: 1,
+    currentEffort: "medium",
+  });
+  expect(hydrated.items).toEqual([
+    expect.objectContaining({
+      kind: "context",
+      variant: "human-edits",
+      summary: expect.stringContaining("Added: Ramp"),
+    }),
+  ]);
 });

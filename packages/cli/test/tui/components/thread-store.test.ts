@@ -104,6 +104,25 @@ describe("ThreadStore", () => {
     expect(rendered).not.toContain("raw auth detail");
   });
 
+  test("renders structured context notices from the shared protocol", () => {
+    const store = new ThreadStore({ requestRender: () => {} });
+
+    store.handleEvent({
+      type: "context_notice",
+      source: "studiorpc-human-edits",
+      presentation: {
+        kind: "human-edits",
+        title: "Human edits detected",
+        content: "Added (1):\n+ Part Ramp",
+      },
+    });
+
+    const rendered = renderCommittedTranscriptItems(store.getItems(), 100).map(stripAnsi).join("\n");
+    expect(rendered).toContain("Human edits detected");
+    expect(rendered).toContain("Added (1):");
+    expect(rendered).toContain("+ Part Ramp");
+  });
+
   test("tracks active question independently from transcript items", () => {
     const store = new ThreadStore({ requestRender: () => {} });
     const question = {

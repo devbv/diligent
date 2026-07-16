@@ -335,6 +335,32 @@ describe("buildSessionContext", () => {
     expect(buildSessionTranscript(entries).filter((entry) => entry.type === "message")).toHaveLength(2);
   });
 
+  it("replays presentable internal messages to providers and exposes only their structured notice", () => {
+    const internal = {
+      ...makeMsg("a2", "a1", "user", "human edit model context"),
+      visibility: "internal" as const,
+      source: "studiorpc-human-edits",
+      presentation: {
+        kind: "human-edits",
+        title: "Human edits detected",
+        content: "Added: Ramp",
+      },
+    };
+    const entries: SessionEntry[] = [makeMsg("a1", null, "user", "move it"), internal];
+
+    const context = buildSessionContext(entries);
+    expect(context.messages.map(msgContent)).toEqual(["move it"]);
+    expect(context.providerMessages.map(msgContent)).toEqual(["move it", "human edit model context"]);
+    expect(buildSessionTranscript(entries)).toEqual([
+      expect.objectContaining({ type: "message" }),
+      expect.objectContaining({
+        type: "context",
+        source: "studiorpc-human-edits",
+        presentation: internal.presentation,
+      }),
+    ]);
+  });
+
   it("keeps legacy untagged reminder messages visible", () => {
     const entries: SessionEntry[] = [
       makeMsg("a1", null, "user", "visible"),

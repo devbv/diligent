@@ -109,17 +109,30 @@ describe("TurnStager", () => {
     }
   });
 
-  test("stages context injections as internal entries with their opaque source", () => {
+  test("stages context injections as internal entries with source and runtime metadata", () => {
     const stager = new TurnStager(null, [], makeUser("hello"));
     stager.handleEvent(
       {
         type: "context_injected",
-        injections: [{ source: "test-hook", message: makeUser("internal") }],
+        injections: [
+          {
+            source: "test-hook",
+            message: makeUser("internal"),
+            metadata: {
+              presentation: { kind: "human-edits", title: "Human edits detected", content: "Added: Ramp" },
+            },
+          },
+        ],
       },
       20_000,
     );
 
     const entry = stager.getSnapshot().entries[1];
-    expect(entry).toMatchObject({ type: "message", visibility: "internal", source: "test-hook" });
+    expect(entry).toMatchObject({
+      type: "message",
+      visibility: "internal",
+      source: "test-hook",
+      presentation: { kind: "human-edits", title: "Human edits detected", content: "Added: Ramp" },
+    });
   });
 });

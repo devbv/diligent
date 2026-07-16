@@ -117,6 +117,7 @@ export async function runAgentLoop(
         const injections = contextInjections.map((injection) => ({
           source: injection.source,
           message: { role: "user" as const, content: injection.content, timestamp: Date.now() },
+          metadata: injection.metadata,
         }));
         conversation.push(...injections.map((injection) => injection.message));
         stream.emit({ type: "context_injected", injections });

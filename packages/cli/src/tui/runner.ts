@@ -199,6 +199,10 @@ export class NonInteractiveRunner {
         this.writeStderr(`[knowledge] ${event.content}`, isTTY);
         return hasText;
 
+      case "context_notice":
+        this.writeStderr(`[context] ${event.presentation.title}\n${event.presentation.content}`, isTTY);
+        return hasText;
+
       case "error":
         this.writeStderr(`[error] ${formatClientErrorText(event.error)}`, isTTY);
         if (event.fatal) {

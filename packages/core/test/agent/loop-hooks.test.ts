@@ -96,7 +96,7 @@ describe("Agent loop hooks", () => {
       id,
       beforeTurn() {
         order.push(id);
-        return [{ source: id, content: `injected-${id}` }];
+        return [{ source: id, content: `injected-${id}`, metadata: { order: id } }];
       },
     }));
     const stream = streamFor([assistant([{ type: "text", text: "ok" }], "end_turn")]);
@@ -114,6 +114,10 @@ describe("Agent loop hooks", () => {
     expect(injected[0]?.type === "context_injected" && injected[0].injections.map(({ source }) => source)).toEqual([
       "a",
       "b",
+    ]);
+    expect(injected[0]?.type === "context_injected" && injected[0].injections.map(({ metadata }) => metadata)).toEqual([
+      { order: "a" },
+      { order: "b" },
     ]);
   });
 

@@ -13,6 +13,7 @@ import { createStreamTurnScope, type StreamTurnScope } from "@diligent/core/llm"
 import type { Message } from "@diligent/core/types";
 import { createLogger } from "@diligent/logging";
 import type { PendingSteer } from "@diligent/protocol";
+import { readContextPresentation } from "../agent/context-presentation";
 import type { AgentEvent } from "../agent-event";
 import { calculateUsageCost } from "../cost";
 import { createToolStartRenderPayload } from "../tools/render-strategies";
@@ -294,7 +295,14 @@ export class TurnOrchestrator {
 
       const keepRecentTokens = this.ctx.config.compaction?.keepRecentTokens ?? 20_000;
       turnStager.handleEvent(event, keepRecentTokens);
-      if (event.type !== "context_injected") {
+      if (event.type === "context_injected") {
+        for (const injection of event.injections) {
+          const presentation = readContextPresentation(injection.metadata);
+          if (presentation) {
+            this.ctx.emit({ type: "context_notice", source: injection.source, presentation });
+          }
+        }
+      } else {
         this.ctx.emit(this.enrichEvent(event, agent));
       }
 

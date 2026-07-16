@@ -1,6 +1,6 @@
 ---
 id: P077
-status: backlog
+status: implemented
 created: 2026-07-15
 ---
 
@@ -65,9 +65,11 @@ clients
    `beforeTurn` hook may return structured user-context injections only.
 8. **Internal persistence:** runtime persists injected context as internal
    message entries. Provider replay includes them; human transcripts exclude
-   them.
-9. **No protocol event:** the core context-injection event is consumed inside
-   runtime and is not added to `AgentEventSchema` or broadcast to clients.
+   their model message. Trusted hooks may attach runtime-validated presentation
+   metadata that becomes a separate context notice.
+9. **No raw core protocol event:** the core context-injection event is consumed
+   inside runtime and is not added to `AgentEventSchema`. Runtime may derive a
+   separate structured `context_notice` for intentionally visible context.
 10. **Failure isolation:** a throwing in-process hook does not fail the user
     turn. Core logs a structured warning and disables that hook instance for
     the remaining Agent lifetime.
@@ -183,9 +185,9 @@ Agent loop iteration
 | Core loop | Dispatch hook lifecycle points without knowing runtime policy names or payloads |
 | Runtime hooks | Extend bundled-provider assembly with per-Agent loop-hook factories |
 | Plan reminder | Move parsing, cadence, prompt text, and `plan` tool coupling from core to runtime |
-| Session format | Mark injected message entries as internal and preserve their opaque source |
-| Session context | Include internal messages in provider replay but exclude them from visible transcript and counts |
-| App-server events | Consume core context-injection events server-side without protocol broadcast |
+| Session format | Mark injected message entries as internal and preserve source plus optional presentation |
+| Session context | Include internal messages in provider replay; expose only validated context notices to clients |
+| App-server events | Consume raw core context-injection events and emit runtime-owned context notices |
 | Collaboration | Pass hook factories through child-agent assembly with explicit `agentKind` context |
 | Web | Remove the plan-reminder marker heuristic after runtime transcript filtering owns visibility |
 | Documentation | Document coarse external hooks versus trusted in-process loop hooks |
@@ -773,8 +775,9 @@ Manual verification:
     visible transcripts/counts, and tagged with an opaque source.
 12. Legacy untagged reminder entries remain visible; only explicit metadata
     controls visibility.
-13. `context_injected` never crosses `AgentEventSchema` or requires a protocol
-    version change.
+13. Raw `context_injected` never crosses `AgentEventSchema`. Runtime may emit a
+    separate `context_notice` when trusted injection metadata explicitly
+    requests a visible counterpart.
 14. Web and TUI contain no new plan-specific logic; Web's existing marker
     heuristic is removed.
 15. Existing `@diligent/core` import paths remain valid.

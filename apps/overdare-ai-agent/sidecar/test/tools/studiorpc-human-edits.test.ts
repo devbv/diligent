@@ -261,7 +261,7 @@ describe("turn-start diff cache", () => {
   });
 });
 
-describe("human-edits context injection at prompt submit", () => {
+describe("human-edits unified loop-hook context injection", () => {
   function promptProvider() {
     const provider = createStudioRpcToolProvider({ callRpc: async () => ({}) });
     return provider as typeof provider & {
@@ -270,7 +270,7 @@ describe("human-edits context injection at prompt submit", () => {
     };
   }
 
-  test("returns additionalContext wrapped in <HumanEdits> when edits exist", async () => {
+  test("freezes edits in the outer hook and injects them through an Agent loop hook", async () => {
     const cwd = projectDir(
       JSON.stringify({ Root: node("Workspace", "ws-0", "Workspace", {}, [node("Part", "p1", "Floor")]) }),
     );
@@ -284,9 +284,20 @@ describe("human-edits context injection at prompt submit", () => {
     );
 
     const result = await p.onUserPromptSubmit({ ...stopInput(cwd), hook_event_name: "UserPromptSubmit" });
-    expect(result.additionalContext).toStartWith("<HumanEdits>\n");
-    expect(result.additionalContext).toEndWith("\n</HumanEdits>");
-    expect(result.additionalContext).toContain('+ Part "Ramp" (p2)');
+    expect(result.additionalContext).toBeUndefined();
+
+    const hook = p.createAgentLoopHooks?.({ agentKind: "main" } as never)[0];
+    expect(hook).toBeDefined();
+    hook?.onPromptStart?.({ messages: [] });
+    const injections = hook?.beforeTurn?.({ messages: [], turnId: "turn-1", compactedThisTurn: false });
+    expect(injections).toHaveLength(1);
+    expect(injections?.[0]).toMatchObject({
+      source: "studiorpc-human-edits",
+      metadata: {
+        presentation: { kind: "human-edits", title: "Human edits detected" },
+      },
+    });
+    expect(injections?.[0]?.content).toContain('+ Part "Ramp" (p2)');
   });
 
   test("returns no additionalContext when nothing changed", async () => {
@@ -298,6 +309,9 @@ describe("human-edits context injection at prompt submit", () => {
 
     const result = await p.onUserPromptSubmit({ ...stopInput(cwd), hook_event_name: "UserPromptSubmit" });
     expect(result.additionalContext).toBeUndefined();
+    const hook = p.createAgentLoopHooks?.({ agentKind: "main" } as never)[0];
+    hook?.onPromptStart?.({ messages: [] });
+    expect(hook?.beforeTurn?.({ messages: [], turnId: "turn-1", compactedThisTurn: false })).toBeUndefined();
   });
 
   test("returns no additionalContext when no baseline exists", async () => {
@@ -306,5 +320,10 @@ describe("human-edits context injection at prompt submit", () => {
 
     const result = await p.onUserPromptSubmit({ ...stopInput(cwd), hook_event_name: "UserPromptSubmit" });
     expect(result.additionalContext).toBeUndefined();
+  });
+
+  test("does not register the Studio human-edits loop hook for child agents", () => {
+    const p = promptProvider();
+    expect(p.createAgentLoopHooks?.({ agentKind: "child" } as never)).toEqual([]);
   });
 });

@@ -45,6 +45,7 @@ interface ThreadEventReducerDeps<TItem> {
   ) => string;
   buildCompactionItem: (event: Extract<AgentEvent, { type: "compaction_end" }>) => TItem;
   buildKnowledgeSavedItem: () => TItem;
+  buildContextNoticeItem: (event: Extract<AgentEvent, { type: "context_notice" }>) => TItem;
   buildErrorItem: (error: ClientError) => TItem;
   buildThinkingItem: (text: string, elapsedMs?: number) => TItem;
   buildAssistantChunkItem: (text: string, continued: boolean) => TItem;
@@ -326,6 +327,14 @@ export function reduceThreadEvent<TItem>(
     case "turn_start":
     case "user_message":
       return { handled: true, requestRender: false, state: base, effects: [] };
+
+    case "context_notice":
+      return {
+        handled: true,
+        requestRender: true,
+        state: { ...base, items: [...state.items, deps.buildContextNoticeItem(event)] },
+        effects: [],
+      };
 
     case "status_change": {
       if (event.status === "busy") {

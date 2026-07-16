@@ -111,7 +111,14 @@ export type CoreAgentEvent =
   // Steering (1) — P1
   | { type: "steering_injected"; messageCount: number; messages: Message[]; steerIds: string[] }
   // Trusted in-process context injection (runtime consumes this; protocol does not)
-  | { type: "context_injected"; injections: Array<{ source: string; message: import("../types").UserMessage }> }
+  | {
+      type: "context_injected";
+      injections: Array<{
+        source: string;
+        message: import("../types").UserMessage;
+        metadata?: Record<string, unknown>;
+      }>;
+    }
   // Compaction (2)
   | { type: "compaction_start"; estimatedTokens: number }
   | {

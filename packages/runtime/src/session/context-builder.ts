@@ -20,6 +20,13 @@ export type BuildSessionContextOptions = {
 
 export type SessionTranscriptEntry =
   | {
+      type: "context";
+      id: string;
+      timestamp: string;
+      source: string;
+      presentation: import("@diligent/protocol").ContextPresentation;
+    }
+  | {
       type: "message";
       id: string;
       timestamp: string;
@@ -205,7 +212,18 @@ export function buildSessionTranscript(entries: SessionEntry[], leafId?: string 
   for (const entry of path) {
     switch (entry.type) {
       case "message":
-        if (entry.visibility === "internal") break;
+        if (entry.visibility === "internal") {
+          if (entry.source && entry.presentation) {
+            transcript.push({
+              type: "context",
+              id: entry.id,
+              timestamp: entry.timestamp,
+              source: entry.source,
+              presentation: entry.presentation,
+            });
+          }
+          break;
+        }
         transcript.push({
           type: "message",
           id: entry.id,

@@ -495,7 +495,7 @@ describe("DiligentAppServer", () => {
     ]);
   });
 
-  it("echoes the initiator's own user message only when it carries human edits", async () => {
+  it("keeps user-message echo suppression while routing structured context notices to the initiator", async () => {
     const projectRoot = await mkdtemp(join(process.env.TMPDIR ?? "/tmp", "diligent-app-server-"));
 
     const server = new DiligentAppServer({
@@ -528,6 +528,28 @@ describe("DiligentAppServer", () => {
 
             return stream as never;
           }),
+          loopHooks: [
+            {
+              id: "presented-context",
+              beforeTurn({ messages }) {
+                const latest = messages.at(-1);
+                if (latest?.role !== "user" || latest.content !== "move it up") return;
+                return [
+                  {
+                    source: "studiorpc-human-edits",
+                    content: "Added: Ramp",
+                    metadata: {
+                      presentation: {
+                        kind: "human-edits",
+                        title: "Human edits detected",
+                        content: "Added: Ramp",
+                      },
+                    },
+                  },
+                ];
+              },
+            },
+          ],
         }),
     });
 
@@ -559,6 +581,9 @@ describe("DiligentAppServer", () => {
     const isUserMessage = (n: DiligentServerNotification) =>
       n.method === DILIGENT_SERVER_NOTIFICATION_METHODS.AGENT_EVENT &&
       (n.params as { event?: { type?: string } }).event?.type === "user_message";
+    const isContextNotice = (n: DiligentServerNotification) =>
+      n.method === DILIGENT_SERVER_NOTIFICATION_METHODS.AGENT_EVENT &&
+      (n.params as { event?: { type?: string } }).event?.type === "context_notice";
 
     const start = await server.handleRequest("initiator", {
       id: 200,
@@ -572,8 +597,10 @@ describe("DiligentAppServer", () => {
     expect(observer.notifications.some(isUserMessage)).toBe(true); // other clients still receive it
 
     initiator.notifications.length = 0;
-    await runTurn(202, threadId, "<HumanEdits>\ndiff summary\n</HumanEdits>\n\nmove it up");
-    expect(initiator.notifications.some(isUserMessage)).toBe(true); // human edits need the echo
+    await runTurn(202, threadId, "move it up");
+    expect(initiator.notifications.some(isUserMessage)).toBe(false);
+    expect(initiator.notifications.some(isContextNotice)).toBe(true);
+    expect(observer.notifications.some(isContextNotice)).toBe(true);
   });
 
   it("restores thread effort from resumed sessions and uses it for new threads", async () => {

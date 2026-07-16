@@ -249,6 +249,14 @@ export class ThreadStore {
         kind: "plain" as const,
         lines: [`${t.success}⏺${t.reset} ${t.dim}knowledge saved${t.reset}`],
       }),
+      buildContextNoticeItem: (event: Extract<AgentEvent, { type: "context_notice" }>) => ({
+        kind: "plain" as const,
+        separateBefore: true,
+        lines: [
+          `${t.success}✎ ${event.presentation.title}${t.reset}`,
+          ...event.presentation.content.split("\n").map((line) => `${t.dim}  ${line}${t.reset}`),
+        ],
+      }),
       buildErrorItem: (error: Extract<AgentEvent, { type: "error" }>["error"]) => {
         const { message, hint } = formatClientError(error);
         return {

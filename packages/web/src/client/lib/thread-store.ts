@@ -66,25 +66,14 @@ export interface UsageState {
   totalCost: number;
 }
 
-/**
- * The studiorpc provider prepends a human-edit summary to the user message
- * (via the UserPromptSubmit hook) wrapped in this marker. Split it out of the
- * visible user text and surface it as a collapsible context item instead.
- */
-const HUMAN_EDITS_PATTERN = /<HumanEdits>\n([\s\S]*?)\n<\/HumanEdits>\n*/;
-export function parseHumanEditsFromText(text: string): { humanEdits?: string; remainingText: string } {
-  const match = text.match(HUMAN_EDITS_PATTERN);
-  if (!match) return { remainingText: text };
-  return { humanEdits: match[1], remainingText: text.replace(HUMAN_EDITS_PATTERN, "") };
-}
-
 export type RenderItem =
   | {
       id: string;
       kind: "context";
       summary: string;
-      /** Distinguishes the human-edits notice from the default compaction divider. */
-      variant?: "human-edits";
+      title?: string;
+      /** Selects a specialized presentation while retaining a generic fallback. */
+      variant?: string;
       timestamp: number;
     }
   | {
@@ -442,27 +431,12 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent, turnId?: string
 
     case "user_message": {
       const { text, images } = extractUserTextAndImages(event.message.content);
-      // Hook-injected human edits precede the AttachedContext block; split them off first.
-      const { humanEdits, remainingText: textWithoutHumanEdits } = parseHumanEditsFromText(text);
-      const { contextItems, remainingText } = parseContextFromText(textWithoutHumanEdits);
+      const { contextItems, remainingText } = parseContextFromText(text);
       let nextState = merged;
       if (nextState.pendingSteers.length > 0) {
         const joinedSteers = nextState.pendingSteers.map((steer) => steer.content).join("\n");
         if (remainingText === joinedSteers || text === joinedSteers) {
           nextState = { ...nextState, pendingSteers: [] };
-        }
-      }
-      if (humanEdits) {
-        // The initiator normally never receives its own user_message echo; the
-        // server sends it only when human edits were injected. Drop the
-        // optimistic local echo so the canonical message takes its place.
-        const localEchoIndex = nextState.items.findLastIndex(
-          (item) => item.kind === "user" && item.id.startsWith("local-user-") && item.text === remainingText,
-        );
-        if (localEchoIndex !== -1) {
-          const items = [...nextState.items];
-          items.splice(localEchoIndex, 1);
-          nextState = { ...nextState, items };
         }
       }
       nextState = withItem(nextState, `remote-user-${event.itemId}`, {
@@ -473,19 +447,19 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent, turnId?: string
         images,
         timestamp: event.message.timestamp,
       });
-      if (humanEdits) {
-        // The notice reads as the agent picking the edits up, so it sits
-        // right below the prompt it belongs to.
-        const humanEditsKey = `remote-user-${event.itemId}-human-edits`;
-        nextState = withItem(nextState, humanEditsKey, {
-          id: humanEditsKey,
-          kind: "context",
-          variant: "human-edits",
-          summary: `\`\`\`\n${humanEdits}\n\`\`\``,
-          timestamp: event.message.timestamp,
-        });
-      }
       return nextState;
+    }
+
+    case "context_notice": {
+      const key = `context-notice-${event.source}-${merged.items.length}`;
+      return withItem(merged, key, {
+        id: key,
+        kind: "context",
+        title: event.presentation.title,
+        variant: event.presentation.kind,
+        summary: `\`\`\`\n${event.presentation.content}\n\`\`\``,
+        timestamp: Date.now(),
+      });
     }
 
     case "status_change":

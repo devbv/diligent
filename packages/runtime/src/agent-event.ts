@@ -11,6 +11,11 @@ export type RuntimeAgentEvent =
   | RuntimeToolEndEvent
   | { type: "usage"; usage: Usage; cost: number }
   | { type: "knowledge_saved"; knowledgeId: string; content: string }
+  | {
+      type: "context_notice";
+      source: string;
+      presentation: import("@diligent/protocol").ContextPresentation;
+    }
   | { type: "collab_spawn_begin"; callId: string; prompt: string; agentType: string }
   | {
       type: "collab_spawn_end";

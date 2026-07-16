@@ -1,5 +1,12 @@
+import type { AgentLoopHook } from "@diligent/core/agent";
 import type { Tool as CoreTool, ToolContext as CoreToolContext } from "@diligent/core/tool/types";
-import type { BundledToolProvider, HookInput, PluginHookFn, RuntimeToolHost } from "@diligent/runtime";
+import {
+  type BundledToolProvider,
+  createPresentableContextInjection,
+  type HookInput,
+  type PluginHookFn,
+  type RuntimeToolHost,
+} from "@diligent/runtime";
 import { call } from "./rpc";
 import { methodModules, mutatingMethods, renderBuilders, savingMethods } from "./tool-registry";
 import { createCollisionProfileTools } from "./tools/collision-profile-tool";
@@ -49,6 +56,33 @@ interface TurnSnapshotState {
   transcriptPath?: string;
 }
 
+function createHumanEditsLoopHook(turnState: TurnSnapshotState): AgentLoopHook {
+  let pendingHumanEdits: ToolResult | undefined;
+
+  return {
+    id: "studiorpc-human-edits",
+    onPromptStart() {
+      pendingHumanEdits = turnState.humanEdits;
+    },
+    beforeTurn() {
+      const humanEdits = pendingHumanEdits;
+      pendingHumanEdits = undefined;
+      if (humanEdits?.metadata?.humanEditsDetected !== true) return;
+      return [
+        createPresentableContextInjection({
+          source: "studiorpc-human-edits",
+          content: humanEdits.output,
+          presentation: {
+            kind: "human-edits",
+            title: "Human edits detected",
+            content: humanEdits.output,
+          },
+        }),
+      ];
+    },
+  };
+}
+
 export function createStudioRpcToolProvider(options: StudioRpcToolProviderOptions = {}): BundledToolProvider {
   const callRpc = options.callRpc ?? call;
 
@@ -87,15 +121,6 @@ export function createStudioRpcToolProvider(options: StudioRpcToolProviderOption
     turnState.captureError = undefined;
     turnState.transcriptPath = typeof input.transcript_path === "string" ? input.transcript_path : undefined;
     turnState.humanEdits = computeHumanEdits(input.cwd);
-    // Surface detected human edits without requiring a tool call: the summary
-    // is prepended to the user message (LLM context) and the web client splits
-    // the <HumanEdits> block out into a visible context card.
-    if (turnState.humanEdits.metadata?.humanEditsDetected === true) {
-      return {
-        blocked: false,
-        additionalContext: `<HumanEdits>\n${turnState.humanEdits.output}\n</HumanEdits>`,
-      };
-    }
     return { blocked: false };
   };
   beginTurn.mode = "sync";
@@ -108,6 +133,7 @@ export function createStudioRpcToolProvider(options: StudioRpcToolProviderOption
       createCoreTools(await createStudioRpcTools({ cwd, host, callRpc, turnState })),
     onUserPromptSubmit: beginTurn,
     onStop: saveLevel,
+    createAgentLoopHooks: ({ agentKind }) => (agentKind === "main" ? [createHumanEditsLoopHook(turnState)] : []),
   };
 }
 

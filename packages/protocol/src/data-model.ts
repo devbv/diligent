@@ -128,6 +128,13 @@ export const CollabAgentStatusEntrySchema = z.object({
 });
 export type CollabAgentStatusEntry = z.infer<typeof CollabAgentStatusEntrySchema>;
 
+export const ContextPresentationSchema = z.object({
+  kind: z.string().min(1),
+  title: z.string().min(1),
+  content: z.string(),
+});
+export type ContextPresentation = z.infer<typeof ContextPresentationSchema>;
+
 export const AgentEventSchema = z.union([
   z.object({ type: z.literal("agent_start") }),
   z.object({ type: z.literal("agent_end"), messages: z.array(MessageSchema) }),
@@ -184,6 +191,11 @@ export const AgentEventSchema = z.union([
     type: z.literal("user_message"),
     itemId: z.string(),
     message: UserMessageSchema,
+  }),
+  z.object({
+    type: z.literal("context_notice"),
+    source: z.string().min(1),
+    presentation: ContextPresentationSchema,
   }),
   z.object({
     type: z.literal("tool_start"),
@@ -311,6 +323,13 @@ export const ThreadItemSchema = z.union([
     type: z.literal("userMessage"),
     itemId: z.string(),
     message: UserMessageSchema,
+    timestamp: z.number().int().optional(),
+  }),
+  z.object({
+    type: z.literal("contextMessage"),
+    itemId: z.string(),
+    source: z.string().min(1),
+    presentation: ContextPresentationSchema,
     timestamp: z.number().int().optional(),
   }),
   z.object({

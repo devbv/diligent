@@ -1,11 +1,12 @@
 import type { Agent, SerializableError } from "@diligent/core/agent";
 import type { ThinkingEffort } from "@diligent/core/llm/types";
 import type { Message } from "@diligent/core/types";
+import type { ContextPresentation } from "@diligent/protocol";
 import type { Mode } from "../agent/mode";
 import type { DiligentPaths } from "../infrastructure";
 
 /** Session file format version. Increment when entry schema changes. */
-export const SESSION_VERSION = 10;
+export const SESSION_VERSION = 11;
 
 /** Unique entry ID — 8-char hex */
 export function generateEntryId(): string {
@@ -56,6 +57,7 @@ export interface SessionMessageEntry {
   message: Message;
   visibility?: "internal";
   source?: string;
+  presentation?: ContextPresentation;
 }
 
 export interface ModelChangeEntry {
