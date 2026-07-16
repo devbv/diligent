@@ -1,6 +1,9 @@
 // @summary In-process product-owned tool provider contract for bundled runtime tools
 
+import type { AgentLoopHook } from "@diligent/core/agent";
+import type { Model } from "@diligent/core/llm/types";
 import type { Tool } from "@diligent/core/tool/types";
+import type { Logger } from "@diligent/logging";
 import type { PluginHookFn } from "../hooks/runner";
 import type { RuntimeToolHost } from "./capabilities";
 
@@ -8,6 +11,17 @@ export interface BundledToolProviderContext {
   cwd: string;
   host?: RuntimeToolHost;
 }
+
+export interface AgentLoopHookFactoryContext {
+  cwd: string;
+  agentKind: "main" | "child";
+  model: Model;
+  tools: readonly Tool[];
+  parentSessionId?: string;
+  logger: Logger;
+}
+
+export type AgentLoopHookFactory = (context: AgentLoopHookFactoryContext) => readonly AgentLoopHook[];
 
 export interface BundledToolProvider {
   id: string;
@@ -22,6 +36,14 @@ export interface BundledToolProvider {
    * runner detaches async hooks so they never block the write/turn path. Cannot block a write.
    */
   onEntryAppended?: PluginHookFn;
+  createAgentLoopHooks?: AgentLoopHookFactory;
+}
+
+export function createBundledAgentLoopHooks(
+  providers: readonly BundledToolProvider[] = [],
+  context: AgentLoopHookFactoryContext,
+): AgentLoopHook[] {
+  return providers.flatMap((provider) => provider.createAgentLoopHooks?.(context) ?? []);
 }
 
 export interface CollectedBundledHooks {

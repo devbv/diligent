@@ -5,7 +5,7 @@ import type { Mode } from "../agent/mode";
 import type { DiligentPaths } from "../infrastructure";
 
 /** Session file format version. Increment when entry schema changes. */
-export const SESSION_VERSION = 9;
+export const SESSION_VERSION = 10;
 
 /** Unique entry ID — 8-char hex */
 export function generateEntryId(): string {
@@ -54,6 +54,8 @@ export interface SessionMessageEntry {
   parentId: string | null;
   timestamp: string;
   message: Message;
+  visibility?: "internal";
+  source?: string;
 }
 
 export interface ModelChangeEntry {

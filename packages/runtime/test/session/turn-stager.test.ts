@@ -108,4 +108,18 @@ describe("TurnStager", () => {
       expect(snapshot.entries[1].compactionSummary).toEqual({ type: "compaction", encrypted_content: "opaque" });
     }
   });
+
+  test("stages context injections as internal entries with their opaque source", () => {
+    const stager = new TurnStager(null, [], makeUser("hello"));
+    stager.handleEvent(
+      {
+        type: "context_injected",
+        injections: [{ source: "test-hook", message: makeUser("internal") }],
+      },
+      20_000,
+    );
+
+    const entry = stager.getSnapshot().entries[1];
+    expect(entry).toMatchObject({ type: "message", visibility: "internal", source: "test-hook" });
+  });
 });

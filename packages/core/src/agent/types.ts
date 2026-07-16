@@ -13,6 +13,7 @@ import type {
   ToolResultMessage,
   Usage,
 } from "../types";
+import type { AgentLoopHook } from "./loop-hooks";
 
 export type MessageDelta =
   | { type: "text_delta"; delta: string }
@@ -108,6 +109,8 @@ export type CoreAgentEvent =
   | { type: "error"; error: SerializableError; fatal: boolean }
   // Steering (1) — P1
   | { type: "steering_injected"; messageCount: number; messages: Message[]; steerIds: string[] }
+  // Trusted in-process context injection (runtime consumes this; protocol does not)
+  | { type: "context_injected"; injections: Array<{ source: string; message: import("../types").UserMessage }> }
   // Compaction (2)
   | { type: "compaction_start"; estimatedTokens: number }
   | {
@@ -164,13 +167,8 @@ export interface AgentOptions {
   llmMsgStreamFn?: StreamFunction;
   /** Explicit native compaction function — overrides the global compaction resolver. */
   llmCompactionFn?: NativeCompactFn;
-  /**
-   * Soft plan reminder: re-inject the unfinished plan steps into the conversation tail
-   * after this many agent loop iterations ("turns") without the plan being surfaced.
-   * Resets whenever the model calls the `plan` tool (its update is itself a recite) or a
-   * reminder fires. 0/undefined disables the feature (no behavior change).
-   */
-  planReminderIntervalTurns?: number;
+  /** Trusted synchronous hooks scoped to this Agent instance. */
+  loopHooks?: readonly AgentLoopHook[];
 }
 
 export interface AgentPromptOptions {

@@ -9,6 +9,7 @@ import {
   type Mode,
   PLAN_MODE_DISALLOWED_TOOLS,
 } from "../agent/mode";
+import { createPlanReminderHook } from "../agent/plan-reminder-hook";
 import { RuntimeAgent } from "../agent/runtime-agent";
 import { openBrowser as defaultOpenBrowser } from "../auth";
 import { applyConsentPatch, refreshPrivacyPolicyUrl, resolveConsentState } from "../config/consent";
@@ -18,7 +19,7 @@ import { getGlobalConfigPath, saveGlobalConsent, saveGlobalModel } from "../conf
 import { type DiligentPaths, ensureDiligentDir } from "../infrastructure";
 import { buildKnowledgeSection, readKnowledge } from "../knowledge";
 import { discoverSkills } from "../skills";
-import type { BundledToolProvider } from "../tools/bundled-provider";
+import { type BundledToolProvider, createBundledAgentLoopHooks } from "../tools/bundled-provider";
 import { buildDefaultTools } from "../tools/defaults";
 import { buildMcpNeedsAuthNote, getMcpManager } from "../tools/mcp";
 import type { ConfigReloadResult, ConsentConfigManager } from "./config-handlers";
@@ -134,6 +135,9 @@ async function createRuntimeAgent(args: {
       streamFn: runtimeConfig.streamFunction,
       onChildStop,
       userId,
+      agentLoopHookFactories: bundledToolProviders
+        ?.map((provider) => provider.createAgentLoopHooks)
+        .filter((factory) => factory !== undefined),
     },
     toolsConfig: runtimeConfig.diligent.tools,
     skills: runtimeConfig.skills,
@@ -179,6 +183,19 @@ async function createRuntimeAgent(args: {
       userId,
     });
   }
+  const loopHookLogger = logger.child({ scope: "runtime.agent.loop-hooks" });
+  const loopHooks = [
+    ...(runtimeConfig.planReminderIntervalTurns > 0
+      ? [createPlanReminderHook({ intervalTurns: runtimeConfig.planReminderIntervalTurns, logger: loopHookLogger })]
+      : []),
+    ...createBundledAgentLoopHooks(bundledToolProviders, {
+      cwd,
+      agentKind: "main",
+      model,
+      tools: filteredTools,
+      logger: loopHookLogger,
+    }),
+  ];
   return new RuntimeAgent(
     model,
     applyModeToPrompt(activeMode, promptSections),
@@ -193,7 +210,7 @@ async function createRuntimeAgent(args: {
         keepRecentTokens: runtimeConfig.compaction.keepRecentTokens,
         timeoutMs: runtimeConfig.compaction.timeoutMs,
       },
-      planReminderIntervalTurns: runtimeConfig.planReminderIntervalTurns,
+      loopHooks,
     },
     toolsResult.registry,
   );

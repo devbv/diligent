@@ -27,6 +27,11 @@ Runtime can reconstruct multiple views from the same file:
 - **context view** for future model calls
 - **transcript/snapshot view** for UI rendering
 
+Runtime message entries may be marked `visibility: "internal"` with an opaque `source`. Internal
+messages stay replayable in provider context and in the append-only parent chain, but are excluded
+from transcripts, snapshots, previews, and visible message counts. Older untagged plan-reminder
+messages are classified during runtime reads for backward compatibility.
+
 ## Starting and resuming threads
 
 ### `thread/start`
@@ -127,6 +132,13 @@ Related operations:
 - `turn/steer`: queues steering in session manager for a subsequent run boundary
 
 ## Lifecycle hook modes
+
+Diligent has two hook tiers. The shell/plugin hooks below are coarse external lifecycle hooks and
+may perform asynchronous I/O. Separately, trusted bundled product code can register synchronous
+`AgentLoopHook` factories through `BundledToolProvider`. Runtime creates fresh hook instances per
+main or child Agent; these hooks can observe sampling-loop phases and return structured internal
+user-context injections, but cannot run tools, mutate Agent history directly, or cross the client
+protocol. A throwing loop hook is logged and disabled for that Agent without failing the turn.
 
 Shell lifecycle hooks support two execution modes:
 

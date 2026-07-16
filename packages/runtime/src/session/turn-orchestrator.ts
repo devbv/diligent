@@ -133,7 +133,9 @@ export class TurnOrchestrator {
     let tokensAfter = 0;
     let summary = "";
     const unsub = agent.agentStream.subscribe((event: CoreAgentEvent) => {
-      this.ctx.emit(this.enrichEvent(event, agent));
+      if (event.type !== "context_injected") {
+        this.ctx.emit(this.enrichEvent(event, agent));
+      }
       if (event.type === "compaction_end") {
         tokensBefore = event.tokensBefore;
         tokensAfter = event.tokensAfter;
@@ -292,7 +294,9 @@ export class TurnOrchestrator {
 
       const keepRecentTokens = this.ctx.config.compaction?.keepRecentTokens ?? 20_000;
       turnStager.handleEvent(event, keepRecentTokens);
-      this.ctx.emit(this.enrichEvent(event, agent));
+      if (event.type !== "context_injected") {
+        this.ctx.emit(this.enrichEvent(event, agent));
+      }
 
       if (shouldFlushTurnProgress(event)) {
         this.flushTurnProgress(turnStager);

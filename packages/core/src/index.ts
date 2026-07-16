@@ -1,5 +1,12 @@
 export type {
+  AgentContextInjection,
   AgentListener,
+  AgentLoopHook,
+  AgentLoopHookAfterTurnContext,
+  AgentLoopHookBeforeTurnContext,
+  AgentLoopHookPromptStartContext,
+  AgentLoopHookRestoreContext,
+  AgentLoopHookToolResultContext,
   AgentOptions,
   CoreAgentEvent,
   MessageDelta,

@@ -744,3 +744,11 @@ Decisions made during synthesis reviews, with rationale.
 - **Consequence**: There is no way to spawn a tool-less sub-agent via `allowed_tools: []`. Collab tools (`spawn_agent`, `wait`, `close_agent`) are always excluded from child agents unless `allow_nested_agents: true` is set — this is a separate mechanism and is unaffected by this normalization.
 - **References**: `packages/runtime/src/collab/spawn-agent.ts` (`normalizeAllowedTools`, `allowed_tools` schema description)
 - **Date**: 2026-07-01
+
+### D104: Separate trusted agent-loop hooks from coarse external lifecycle hooks
+- **Decision**: Core exposes a small synchronous `AgentLoopHook` contract for trusted in-process extensions at restore, prompt-start, before-turn, tool-result, and after-turn boundaries. Runtime owns policy implementations, creates fresh hook instances per Agent through bundled-provider factories, and persists returned context injections as internal session messages. Existing shell/plugin hooks remain coarse outer-turn hooks and are not executed inside the sampling loop.
+- **Rationale**: Sampling-loop policies need deterministic, low-latency access to loop state without introducing a core-to-runtime dependency or process/async plugin work on every model round. Agent-scoped factories prevent state sharing, while failure isolation disables a throwing hook without failing user work. Runtime-owned visibility keeps replayable policy context out of all clients without adding protocol concepts.
+- **Alternatives considered**: Reuse shell/plugin hook functions inside the loop (I/O and dependency-boundary violations); keep plan policy in core (product coupling); emit injected messages through the shared protocol and let clients hide them (duplicated frontend policy and visibility leaks).
+- **Consequence**: Loop hooks must remain synchronous and trusted; they can return only structured user-context injections. Internal messages stay in provider replay and the append-only session chain but are excluded from transcripts and visible counts. The core-only injection event never crosses the shared protocol.
+- **References**: `packages/core/src/agent/loop-hooks.ts`, `packages/runtime/src/agent/plan-reminder-hook.ts`, `packages/runtime/src/tools/bundled-provider.ts`, `packages/runtime/src/session/context-builder.ts`
+- **Date**: 2026-07-16

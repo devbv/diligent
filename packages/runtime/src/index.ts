@@ -164,6 +164,8 @@ export {
 export type { DiscoveryOptions, SkillFrontmatter, SkillLoadError, SkillLoadResult, SkillMetadata } from "./skills";
 export { discoverSkills, extractBody, renderSkillsSection } from "./skills";
 export type {
+  AgentLoopHookFactory,
+  AgentLoopHookFactoryContext,
   BuildDefaultToolsResult,
   BuildToolCatalogOptions,
   BundledToolProvider,
@@ -188,6 +190,7 @@ export {
   collectBundledHooks,
   createApplyPatchTool,
   createBashTool,
+  createBundledAgentLoopHooks,
   createEditTool,
   createGlobTool,
   createGrepTool,

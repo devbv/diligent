@@ -50,6 +50,13 @@ export class TurnStager {
       return;
     }
 
+    if (event.type === "context_injected") {
+      for (const injection of event.injections) {
+        this.stageMessage(injection.message, { visibility: "internal", source: injection.source });
+      }
+      return;
+    }
+
     if (event.type === "compaction_end") {
       const recentUserMessages = selectForCompaction(this.stagedConversation, keepRecentTokens).recentUserMessages;
       this.stagedConversation = event.compactionSummary
@@ -80,14 +87,15 @@ export class TurnStager {
     return entries;
   }
 
-  private stageMessage(message: Message): void {
-    this.stagedConversation.push(message);
+  private stageMessage(message: Message, metadata?: { visibility: "internal"; source: string }): void {
+    if (!metadata) this.stagedConversation.push(message);
     this.stageEntry({
       type: "message",
       id: generateEntryId(),
       parentId: this.currentLeafId,
       timestamp: new Date().toISOString(),
       message,
+      ...metadata,
     });
   }
 

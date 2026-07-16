@@ -52,6 +52,19 @@ describe("Session entry serialization roundtrip", () => {
     expect(JSON.parse(JSON.stringify(entry))).toEqual(entry);
   });
 
+  it("internal SessionMessageEntry metadata roundtrips", () => {
+    const entry: SessionMessageEntry = {
+      type: "message",
+      id: "abcdef02",
+      parentId: null,
+      timestamp: "2026-02-25T10:00:00.000Z",
+      message: { role: "user", content: "internal", timestamp: 1708900000000 },
+      visibility: "internal",
+      source: "plan-reminder",
+    };
+    expect(JSON.parse(JSON.stringify(entry))).toEqual(entry);
+  });
+
   it("All SessionEntry variants roundtrip", () => {
     const entries: SessionEntry[] = [
       {

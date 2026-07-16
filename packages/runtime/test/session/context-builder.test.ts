@@ -316,6 +316,35 @@ describe("buildSessionContext", () => {
     expect(ctx.messages[0].role).toBe("user");
     expect(ctx.messages[1].role).toBe("assistant");
   });
+
+  it("replays internal messages to providers while excluding them from visible context and transcript", () => {
+    const internal = {
+      ...makeMsg("a2", "a1", "user", "internal policy"),
+      visibility: "internal" as const,
+      source: "test-hook",
+    };
+    const entries: SessionEntry[] = [
+      makeMsg("a1", null, "user", "visible"),
+      internal,
+      makeMsg("a3", "a2", "assistant", "done"),
+    ];
+    const context = buildSessionContext(entries);
+
+    expect(context.messages.map(msgContent)).toEqual(["visible", "done"]);
+    expect(context.providerMessages.map(msgContent)).toEqual(["visible", "internal policy", "done"]);
+    expect(buildSessionTranscript(entries).filter((entry) => entry.type === "message")).toHaveLength(2);
+  });
+
+  it("hides legacy untagged reminder messages in every visible view", () => {
+    const entries: SessionEntry[] = [
+      makeMsg("a1", null, "user", "visible"),
+      makeMsg("a2", "a1", "user", "<system-reminder>\nlegacy\n</system-reminder>"),
+    ];
+    const context = buildSessionContext(entries);
+    expect(context.messages.map(msgContent)).toEqual(["visible"]);
+    expect(context.providerMessages).toHaveLength(2);
+    expect(buildSessionTranscript(entries)).toHaveLength(1);
+  });
 });
 
 describe("buildSessionTranscript", () => {

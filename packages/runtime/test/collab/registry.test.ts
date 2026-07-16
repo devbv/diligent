@@ -678,6 +678,51 @@ describe("AgentRegistry", () => {
     expect(observedModels).toEqual(["gpt-5.4-mini"]);
     expect(observedEfforts).toEqual(["low"]);
   });
+
+  it("creates distinct bundled loop-hook instances for each child with child context", async () => {
+    const instances: object[] = [];
+    const kinds: string[] = [];
+    const registry = new AgentRegistry(
+      makeCollabDeps({
+        agentLoopHookFactories: [
+          (context) => {
+            kinds.push(context.agentKind);
+            const hook = { id: `child-${instances.length}` };
+            instances.push(hook);
+            return [hook];
+          },
+        ],
+        sessionManagerFactory: makeInspectingSessionManagerFactory(() => {}),
+      }),
+    );
+
+    const first = registry.spawn({ prompt: "one", description: "", agentType: "general" });
+    const second = registry.spawn({ prompt: "two", description: "", agentType: "general" });
+    await registry.wait([first.threadId, second.threadId], 5000);
+
+    expect(kinds).toEqual(["child", "child"]);
+    expect(instances).toHaveLength(2);
+    expect(instances[0]).not.toBe(instances[1]);
+  });
+
+  it("lets main-only loop-hook factories opt out of child agents", async () => {
+    let createdHooks = 0;
+    const registry = new AgentRegistry(
+      makeCollabDeps({
+        agentLoopHookFactories: [
+          (context) => {
+            if (context.agentKind !== "main") return [];
+            createdHooks++;
+            return [{ id: "main-only" }];
+          },
+        ],
+        sessionManagerFactory: makeInspectingSessionManagerFactory(() => {}),
+      }),
+    );
+    const child = registry.spawn({ prompt: "one", description: "", agentType: "general" });
+    await registry.wait([child.threadId], 5000);
+    expect(createdHooks).toBe(0);
+  });
 });
 
 // ─── resolveChildToolAccess (pure function) edge-case tests ────────────────────

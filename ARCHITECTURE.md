@@ -141,6 +141,7 @@ Detailed guidance for the current structured tool-rendering flow lives in `docs/
 - provider abstraction and model resolution
 - `ProviderManager` and stream proxying
 - agent loop and core event stream
+- synchronous, trusted in-process agent-loop hook contracts and failure-isolated dispatch
 - tool interfaces and execution contracts
 - shared LLM message types
 - provider/auth primitives used by runtime wiring
@@ -160,6 +161,7 @@ Core should not know about project-local persistence, `.diligent/`, JSON-RPC tra
 - knowledge store and prompt injection
 - skill discovery and rendering
 - collaboration/sub-agent orchestration
+- Agent-scoped hook policy assembly and internal-context persistence/visibility
 - infrastructure around `.diligent/` paths
 - transport-neutral RPC helpers and bindings
 
@@ -295,10 +297,30 @@ Child sessions created by collaboration flows carry explicit parent linkage and 
 
 Runtime derives two different views from session data:
 
-- **context view** for future model calls
+- **context view** for future model calls, including replayable internal messages
 - **transcript view** for human-facing UI/history rendering
 
-This split is important because raw persisted entries are not identical to the display-oriented event stream used during live turns.
+Message entries may carry `visibility: "internal"` and an opaque `source`. They remain in the
+session parent chain and provider replay, but runtime excludes them from transcripts, thread
+snapshots, previews, and visible message counts. This split is important because raw persisted
+entries are not identical to the display-oriented event stream used during live turns.
+
+## Agent-loop and external lifecycle hooks
+
+Diligent has two intentionally separate hook tiers:
+
+- Core `AgentLoopHook` instances are synchronous, trusted in-process extensions. Core dispatches
+  restore, prompt-start, before-turn, tool-result, and after-turn phases, isolates failures by
+  disabling the throwing instance, and only permits structured user-context injections.
+- Runtime owns hook policies, constructs a fresh hook set for each main or child Agent, and uses
+  bundled tool providers as the product registration path. Built-in runtime hooks run before
+  bundled-provider hooks.
+- Shell and filesystem-plugin lifecycle hooks remain coarse-grained runtime hooks around outer
+  prompts, stops, and durable appends. They may perform I/O and are never run in the sampling loop.
+
+Core does not know runtime tool names, persisted visibility rules, bundled-provider types, or
+client behavior. The core-only context-injection event is consumed by runtime and never added to
+the shared protocol.
 
 ## Prompt Construction
 

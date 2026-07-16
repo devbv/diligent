@@ -64,16 +64,6 @@ export interface UsageState {
 }
 
 /**
- * The runtime injects plan reminders as plain user messages (persisted for transcript/audit
- * fidelity and accurate resume), wrapped in this marker tag. They are an internal mechanism to
- * keep the model working and must never render in the chat.
- */
-const INJECTED_REMINDER_PREFIX = "<system-reminder>";
-function isInjectedReminderText(text: string): boolean {
-  return text.startsWith(INJECTED_REMINDER_PREFIX);
-}
-
-/**
  * The studiorpc provider prepends a human-edit summary to the user message
  * (via the UserPromptSubmit hook) wrapped in this marker. Split it out of the
  * visible user text and surface it as a collapsible context item instead.
@@ -452,8 +442,6 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent, turnId?: string
       // Hook-injected human edits precede the AttachedContext block; split them off first.
       const { humanEdits, remainingText: textWithoutHumanEdits } = parseHumanEditsFromText(text);
       const { contextItems, remainingText } = parseContextFromText(textWithoutHumanEdits);
-      // Persisted plan reminders rehydrate as user messages; keep them out of the transcript.
-      if (isInjectedReminderText(remainingText)) return merged;
       let nextState = merged;
       if (nextState.pendingSteers.length > 0) {
         const joinedSteers = nextState.pendingSteers.map((steer) => steer.content).join("\n");
@@ -568,10 +556,7 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent, turnId?: string
       const fallbackFromEvent = event.messages
         .filter((message) => message.role === "user")
         .map((message) => extractUserTextAndImages(message.content))
-        .filter(({ text, images }) => text.length > 0 || images.length > 0)
-        // Runtime-injected plan reminders ride the steering event for persistence but are an
-        // internal mechanism — never render them as user messages.
-        .filter(({ text }) => !isInjectedReminderText(text));
+        .filter(({ text, images }) => text.length > 0 || images.length > 0);
       const steerIds = event.steerIds ?? [];
       const steerIdSet = new Set(steerIds);
       const drainedFromQueue =

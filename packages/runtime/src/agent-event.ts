@@ -50,4 +50,6 @@ export type RuntimeAgentEvent =
       status: CollabAgentStatus;
     };
 
-export type AgentEvent = Exclude<CoreAgentEvent, { type: "usage" | "tool_start" | "tool_end" }> | RuntimeAgentEvent;
+export type AgentEvent =
+  | Exclude<CoreAgentEvent, { type: "usage" | "tool_start" | "tool_end" | "context_injected" }>
+  | RuntimeAgentEvent;

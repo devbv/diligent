@@ -182,6 +182,7 @@ export class AgentRegistry {
       onCollabEvent: next.onCollabEvent,
       onChildStop: next.onChildStop,
       userId: next.userId,
+      agentLoopHookFactories: next.agentLoopHookFactories,
     };
     // Sync the collab event handler if it was updated
     if (next.onCollabEvent !== undefined) {
@@ -320,12 +321,23 @@ export class AgentRegistry {
         });
 
         const filteredTools = result.tools.filter((tool) => allowedChildToolNames.has(tool.name));
+        const loopHooks =
+          this.deps.agentLoopHookFactories?.flatMap((createHooks) =>
+            createHooks({
+              cwd: this.deps.cwd,
+              agentKind: "child",
+              model: childModel,
+              tools: filteredTools,
+              parentSessionId: this.deps.getParentSessionId?.(),
+              logger: logger.child({ scope: "runtime.collab.agent-loop-hooks" }),
+            }),
+          ) ?? [];
 
         return new RuntimeAgent(
           childModel.id,
           childSystemPrompt,
           filteredTools,
-          { cwd: this.deps.cwd, effort: childEffort, llmMsgStreamFn: this.deps.streamFn },
+          { cwd: this.deps.cwd, effort: childEffort, llmMsgStreamFn: this.deps.streamFn, loopHooks },
           result.registry,
         );
       },

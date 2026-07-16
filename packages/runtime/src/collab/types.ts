@@ -8,6 +8,7 @@ import type { AgentEvent } from "../agent-event";
 import type { ApprovalRequest, ApprovalResponse } from "../approval/types";
 import type { DiligentPaths } from "../infrastructure";
 import type { SessionManager } from "../session/manager";
+import type { AgentLoopHookFactory } from "../tools/bundled-provider";
 import type { UserInputRequest, UserInputResponse } from "../tools/user-input-types";
 
 export interface ChildStopInfo {
@@ -87,4 +88,6 @@ export interface CollabToolDeps {
   /** User ID to propagate into child stop hook inputs. */
   userId?: string;
   onChildStop?: (info: ChildStopInfo) => Promise<{ continueWith?: Message } | undefined>;
+  /** Product hook factories are retained through nesting; each child receives fresh hook instances. */
+  agentLoopHookFactories?: readonly AgentLoopHookFactory[];
 }

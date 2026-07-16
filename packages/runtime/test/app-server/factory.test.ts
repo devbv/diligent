@@ -245,6 +245,40 @@ describe("createAppServerConfig", () => {
     expect(agent.tools.map((tool) => tool.name)).toContain("factory_bundled_tool");
   });
 
+  it("constructs built-in-first Agent-scoped loop hooks once per new Agent", async () => {
+    const hookCalls: string[] = [];
+    let factoryCalls = 0;
+    const runtimeConfig = makeRuntimeConfig({
+      planReminderIntervalTurns: 2,
+      streamFunction: makeStreamFn([makeAssistant("one"), makeAssistant("two")]),
+    });
+    const bundledToolProviders: BundledToolProvider[] = [
+      {
+        id: "loop-hooks",
+        createTools: () => [],
+        createAgentLoopHooks: (context) => {
+          factoryCalls++;
+          expect(context.agentKind).toBe("main");
+          return [{ id: "product-hook", onPromptStart: () => hookCalls.push("product") }];
+        },
+      },
+    ];
+    const config = createAppServerConfig({ cwd: "/tmp/test", runtimeConfig, bundledToolProviders });
+    const agent = await config.createAgent({
+      cwd: "/tmp/test",
+      mode: "default",
+      effort: "medium",
+      modelId: DEFAULT_ANTHROPIC_MODEL_ID,
+      approve: async () => "once",
+      ask: async () => null,
+    });
+
+    await agent.prompt({ role: "user", content: "first", timestamp: Date.now() });
+    await agent.prompt({ role: "user", content: "second", timestamp: Date.now() });
+    expect(factoryCalls).toBe(1);
+    expect(hookCalls).toEqual(["product", "product"]);
+  });
+
   it("reads the latest persisted knowledge whenever it creates an agent", async () => {
     const projectRoot = await mkdtemp(join(tmpdir(), "diligent-factory-knowledge-"));
     tempHomes.push(projectRoot);
