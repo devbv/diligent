@@ -311,6 +311,41 @@ test("respondServerRequest sends response and clears retry after resolved notifi
   client.disconnect();
 });
 
+test("re-delivered unanswered server request does not re-notify the listener", async () => {
+  globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+
+  const client = new WebRpcClient("ws://example.test/rpc");
+  await client.connect();
+
+  const seen: Array<{ id: number; method: string }> = [];
+  client.onServerRequest((id, request) => {
+    seen.push({ id, method: request.method });
+  });
+
+  const deliver = () =>
+    FakeWebSocket.instances[0]!.onmessage?.({
+      data: JSON.stringify({
+        id: 42,
+        method: DILIGENT_SERVER_REQUEST_METHODS.USER_INPUT_REQUEST,
+        params: {
+          threadId: "thread-1",
+          request: {
+            questions: [{ id: "q1", header: "Next", question: "Continue?", options: [] }],
+          },
+        },
+      }),
+    });
+
+  deliver();
+  // The server re-delivers the same durable prompt (e.g. after a reconnect) while the user is
+  // still answering. Re-notifying the listener would reset in-progress input in the UI (a
+  // half-typed custom answer), so an already-pending, unanswered request must be ignored.
+  deliver();
+
+  expect(seen).toEqual([{ id: 42, method: DILIGENT_SERVER_REQUEST_METHODS.USER_INPUT_REQUEST }]);
+  client.disconnect();
+});
+
 test("returns expected reconnect delays", () => {
   expect(getReconnectDelay(0)).toBe(1000);
   expect(getReconnectDelay(1)).toBe(2000);

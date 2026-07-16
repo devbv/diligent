@@ -1,7 +1,7 @@
 // @summary Inline chat card for agent user-input questions with text/password fields and always-on custom input
 
 import type { UserInputRequest } from "@diligent/protocol";
-import type { KeyboardEvent as ReactKeyboardEvent } from "react";
+import { memo, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { cn } from "../lib/cn";
 import { isUserInputComplete } from "../lib/user-input-completeness";
 import { AssetThumbnail } from "./AssetThumbnail";
@@ -71,7 +71,17 @@ function ChoiceMarker({ checked, allowMultiple }: { checked: boolean; allowMulti
   );
 }
 
-export function QuestionCard({ request, answers, onAnswerChange, onSubmit, onCancel }: QuestionCardProps) {
+// Memoized so the streaming agent's per-token MessageList re-renders don't re-render the focused
+// custom-answer input. Re-rendering a focused controlled input mid-typing makes the browser
+// re-select its text (Ctrl+A-like) and breaks IME composition. QuestionCard's props are
+// referentially stable during streaming, so a shallow prop comparison isolates it correctly.
+export const QuestionCard = memo(function QuestionCard({
+  request,
+  answers,
+  onAnswerChange,
+  onSubmit,
+  onCancel,
+}: QuestionCardProps) {
   const canSubmit = isUserInputComplete(request, answers);
   const submitIfComplete = () => {
     if (!canSubmit) return;
@@ -227,4 +237,4 @@ export function QuestionCard({ request, answers, onAnswerChange, onSubmit, onCan
       </div>
     </SystemCard>
   );
-}
+});
