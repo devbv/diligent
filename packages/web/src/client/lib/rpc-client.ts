@@ -348,12 +348,15 @@ export class WebRpcClient {
     } as DiligentServerRequest;
 
     // The server may re-deliver a durable request (e.g. an unanswered user-input prompt) after
-    // a reconnect/reload. If we already captured the user's answer for this id, just re-send it
-    // instead of re-prompting; otherwise (re)show the prompt.
+    // a reconnect/reload. If we've already seen this id in this session, don't re-notify the
+    // listener: re-prompting resets in-progress UI state (a half-typed custom answer). Re-send
+    // the captured answer if we have one; otherwise the prompt is already on screen — ignore it.
     const existing = this.pendingServerRequests.get(requestId);
-    if (existing?.response) {
-      this.ensureServerResponseRetry();
-      this.sendServerResponse(requestId, existing.response);
+    if (existing) {
+      if (existing.response) {
+        this.ensureServerResponseRetry();
+        this.sendServerResponse(requestId, existing.response);
+      }
       return;
     }
 
