@@ -1,49 +1,38 @@
 // @summary Tests that OpenAI SDK clients are constructed with explicit timeout and no retries.
-import { describe, expect, mock, test } from "bun:test";
+
+import { describe, expect, test } from "bun:test";
+import type OpenAI from "openai";
+import { createOpenAIStream, type OpenAIClientFactory } from "../../../src/llm/provider/openai";
 import type { Model, StreamContext } from "../../../src/llm/types";
 
 const openAIConstructorOptions: unknown[] = [];
 const openAICreateCalls: unknown[] = [];
 
-class MockOpenAI {
-  static APIError = class APIError extends Error {
-    status?: number;
-    headers?: Headers;
-  };
-
-  constructor(options: unknown) {
-    openAIConstructorOptions.push(options);
-  }
-
-  responses = {
-    create: async (params: unknown) => {
-      openAICreateCalls.push(params);
-      return {
-        async *[Symbol.asyncIterator]() {
-          yield {
-            type: "response.completed",
-            response: {
-              status: "completed",
-              usage: { input_tokens: 1, output_tokens: 1 },
-              output: [
-                {
-                  type: "message",
-                  content: [{ type: "output_text", text: "ok" }],
-                },
-              ],
-            },
-          };
-        },
-      };
+// Inject a fake client instead of mock.module()-ing "openai". A module mock is process-global and
+// leaks its stub OpenAI (whose APIError has a different class identity) into other test files,
+// which intermittently broke classifyOpenAIError's `instanceof OpenAI.APIError` checks.
+const fakeClientFactory: OpenAIClientFactory = (options) => {
+  openAIConstructorOptions.push(options);
+  return {
+    responses: {
+      create: async (params: unknown) => {
+        openAICreateCalls.push(params);
+        return {
+          async *[Symbol.asyncIterator]() {
+            yield {
+              type: "response.completed",
+              response: {
+                status: "completed",
+                usage: { input_tokens: 1, output_tokens: 1 },
+                output: [{ type: "message", content: [{ type: "output_text", text: "ok" }] }],
+              },
+            };
+          },
+        };
+      },
     },
-  };
-}
-
-mock.module("openai", () => ({
-  default: MockOpenAI,
-}));
-
-const { createOpenAIStream } = await import("../../../src/llm/provider/openai");
+  } as unknown as OpenAI;
+};
 
 const MODEL: Model = {
   id: "gpt-test",
@@ -61,7 +50,7 @@ const CONTEXT: StreamContext = {
 async function runStream(baseUrl?: string) {
   openAIConstructorOptions.length = 0;
   openAICreateCalls.length = 0;
-  const stream = createOpenAIStream("test-key", baseUrl)(MODEL, CONTEXT, {});
+  const stream = createOpenAIStream("test-key", baseUrl, undefined, fakeClientFactory)(MODEL, CONTEXT, {});
   await stream.result();
 }
 

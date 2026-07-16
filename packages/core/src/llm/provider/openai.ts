@@ -20,9 +20,18 @@ import {
 } from "./openai-shared";
 import { handleResponsesAPIEvents } from "./openai-sse";
 
-export function createOpenAIStream(apiKey?: string, baseUrl?: string, imageDetail?: OpenAIImageDetail): StreamFunction {
+// Injectable so tests can capture the constructor options and stub `responses.create` without
+// mock.module()-ing "openai" — a process-global replacement that leaks into unrelated test files.
+export type OpenAIClientFactory = (options: ConstructorParameters<typeof OpenAI>[0]) => OpenAI;
+
+export function createOpenAIStream(
+  apiKey?: string,
+  baseUrl?: string,
+  imageDetail?: OpenAIImageDetail,
+  createClient: OpenAIClientFactory = (options) => new OpenAI(options),
+): StreamFunction {
   const resolvedApiKey = resolveOpenAIApiKey(apiKey);
-  const client = new OpenAI({
+  const client = createClient({
     apiKey: resolvedApiKey,
     baseURL: baseUrl,
     timeout: 15_000,
