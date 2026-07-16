@@ -1,11 +1,11 @@
-// @summary Runtime-owned plan reminder hook and legacy reminder classification
+// @summary Runtime-owned plan reminder parsing, cadence, and loop hook
 
 import type { AgentLoopHook } from "@diligent/core/agent";
 import type { Message } from "@diligent/core/types";
 import { createLogger, type Logger } from "@diligent/logging";
 
 export const PLAN_TOOL_NAME = "plan";
-const LEGACY_REMINDER_PREFIX = "<system-reminder>";
+const PLAN_REMINDER_PREFIX = "<system-reminder>";
 
 export type PlanStepStatus = "pending" | "in_progress" | "done" | "cancelled";
 
@@ -53,9 +53,7 @@ export function remainingPlanSteps(steps: readonly PlanStepLike[]): PlanStepLike
 export function latestUserGoal(messages: readonly Message[], maxChars = 200): string | undefined {
   for (let index = messages.length - 1; index >= 0; index--) {
     const message = messages[index];
-    if (message.role !== "user" || typeof message.content !== "string" || isLegacyPlanReminderMessage(message)) {
-      continue;
-    }
+    if (message.role !== "user" || typeof message.content !== "string") continue;
     const text = message.content.trim();
     if (!text) continue;
     return text.length > maxChars ? `${text.slice(0, maxChars)}…` : text;
@@ -65,18 +63,12 @@ export function latestUserGoal(messages: readonly Message[], maxChars = 200): st
 
 export function buildPlanReminderMessage(remaining: readonly PlanStepLike[], opts?: { goal?: string }): string {
   const lines = [
-    LEGACY_REMINDER_PREFIX,
+    PLAN_REMINDER_PREFIX,
     "The plan still has unfinished steps. Keep working through them and update the plan as each is done — do not tell the user the work is complete while steps remain.",
   ];
   if (opts?.goal) lines.push(`Goal: ${opts.goal}`);
   lines.push("Remaining:", ...remaining.map((step) => `- (${step.status}) ${step.text}`), "</system-reminder>");
   return lines.join("\n");
-}
-
-export function isLegacyPlanReminderMessage(message: Message): boolean {
-  return (
-    message.role === "user" && typeof message.content === "string" && message.content.startsWith(LEGACY_REMINDER_PREFIX)
-  );
 }
 
 export function createPlanReminderHook(options: { intervalTurns: number; logger?: Logger }): AgentLoopHook {

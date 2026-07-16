@@ -335,15 +335,15 @@ describe("buildSessionContext", () => {
     expect(buildSessionTranscript(entries).filter((entry) => entry.type === "message")).toHaveLength(2);
   });
 
-  it("hides legacy untagged reminder messages in every visible view", () => {
+  it("keeps legacy untagged reminder messages visible", () => {
     const entries: SessionEntry[] = [
       makeMsg("a1", null, "user", "visible"),
       makeMsg("a2", "a1", "user", "<system-reminder>\nlegacy\n</system-reminder>"),
     ];
     const context = buildSessionContext(entries);
-    expect(context.messages.map(msgContent)).toEqual(["visible"]);
+    expect(context.messages.map(msgContent)).toEqual(["visible", "<system-reminder>\nlegacy\n</system-reminder>"]);
     expect(context.providerMessages).toHaveLength(2);
-    expect(buildSessionTranscript(entries)).toHaveLength(1);
+    expect(buildSessionTranscript(entries)).toHaveLength(2);
   });
 });
 

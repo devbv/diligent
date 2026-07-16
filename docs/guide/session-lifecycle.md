@@ -29,8 +29,8 @@ Runtime can reconstruct multiple views from the same file:
 
 Runtime message entries may be marked `visibility: "internal"` with an opaque `source`. Internal
 messages stay replayable in provider context and in the append-only parent chain, but are excluded
-from transcripts, snapshots, previews, and visible message counts. Older untagged plan-reminder
-messages are classified during runtime reads for backward compatibility.
+from transcripts, snapshots, previews, and visible message counts. Older untagged reminder
+messages remain visible because only explicit entry metadata controls visibility.
 
 ## Starting and resuming threads
 

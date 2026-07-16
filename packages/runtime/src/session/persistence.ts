@@ -1,7 +1,6 @@
 // @summary Session file persistence with JSONL format, immediate writing, and session listing
 import { appendFile, unlink } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
-import { isLegacyPlanReminderMessage } from "../agent/plan-reminder-hook";
 import { externalizeEntryImages, materializeEntryImages } from "./image-sidecar";
 import type {
   AppendedEntryInfo,
@@ -109,8 +108,7 @@ export async function listSessions(sessionsDir: string): Promise<SessionInfo[]> 
       const { header, entries } = await readSessionFile(path, { materializeImages: false });
 
       const messageEntries = entries.filter(
-        (e): e is SessionMessageEntry =>
-          e.type === "message" && e.visibility !== "internal" && !isLegacyPlanReminderMessage(e.message),
+        (e): e is SessionMessageEntry => e.type === "message" && e.visibility !== "internal",
       );
       const firstUserEntry = messageEntries.find((e) => e.message.role === "user");
       const lastEntry = entries[entries.length - 1];

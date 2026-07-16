@@ -6,7 +6,6 @@ import {
   buildPlanReminderMessage,
   createPlanReminderHook,
   findLatestPlanSteps,
-  isLegacyPlanReminderMessage,
   latestUserGoal,
   parsePlanSteps,
   remainingPlanSteps,
@@ -43,18 +42,15 @@ describe("plan reminder helpers", () => {
     ).toEqual([{ text: "B", status: "in_progress" }]);
   });
 
-  test("builds the established model-facing text and classifies legacy entries", () => {
+  test("builds the established model-facing text", () => {
     const content = buildPlanReminderMessage([{ text: "A", status: "pending" }], { goal: "ship" });
     expect(content).toContain("<system-reminder>");
     expect(content).toContain("Goal: ship");
     expect(content).toContain("- (pending) A");
-    expect(isLegacyPlanReminderMessage(user(content))).toBe(true);
-    expect(isLegacyPlanReminderMessage(user("ordinary"))).toBe(false);
   });
 
-  test("captures the latest real user goal while skipping an internal legacy reminder", () => {
-    const reminder = buildPlanReminderMessage([{ text: "A", status: "pending" }]);
-    expect(latestUserGoal([user("real goal"), user(reminder)])).toBe("real goal");
+  test("captures the latest user goal", () => {
+    expect(latestUserGoal([user("earlier"), user("real goal")])).toBe("real goal");
   });
 });
 

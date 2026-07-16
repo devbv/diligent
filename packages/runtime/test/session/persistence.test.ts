@@ -176,7 +176,7 @@ describe("listSessions", () => {
     expect(sessions[0].firstUserMessage).toBe("find all TODO comments");
   });
 
-  it("excludes internal and legacy reminder entries from visible counts and previews", async () => {
+  it("excludes internal entries but keeps legacy reminder entries visible", async () => {
     const dir = await setupDir();
     const { path } = await createSessionFile(dir, "/project");
     const internal = { ...makeUserEntry(), visibility: "internal" as const, source: "plan-reminder" };
@@ -194,8 +194,8 @@ describe("listSessions", () => {
     await appendEntry(path, visible);
 
     const [session] = await listSessions(dir);
-    expect(session.messageCount).toBe(1);
-    expect(session.firstUserMessage).toBe("visible");
+    expect(session.messageCount).toBe(2);
+    expect(session.firstUserMessage).toBe("<system-reminder>\nlegacy\n</system-reminder>");
   });
 
   it("returns empty array when no sessions", async () => {

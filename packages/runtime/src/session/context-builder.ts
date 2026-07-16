@@ -3,7 +3,6 @@ import { buildMessagesFromCompaction } from "@diligent/core/agent/compaction";
 import { resolveModel } from "@diligent/core/llm/models";
 import type { Message } from "@diligent/core/types";
 import type { AssistantMessage, Mode, ThinkingEffort } from "@diligent/protocol";
-import { isLegacyPlanReminderMessage } from "../agent/plan-reminder-hook";
 import type { CompactionEntry, SessionEntry } from "./types";
 
 export interface SessionContext {
@@ -123,7 +122,7 @@ export function buildSessionContext(
       switch (entry.type) {
         case "message":
           providerMessages.push(entry.message);
-          if (entry.visibility !== "internal" && !isLegacyPlanReminderMessage(entry.message)) {
+          if (entry.visibility !== "internal") {
             messages.push(entry.message);
           }
           if (entry.message.role === "assistant") {
@@ -146,7 +145,7 @@ export function buildSessionContext(
       switch (entry.type) {
         case "message":
           providerMessages.push(entry.message);
-          if (entry.visibility !== "internal" && !isLegacyPlanReminderMessage(entry.message)) {
+          if (entry.visibility !== "internal") {
             messages.push(entry.message);
           }
           if (entry.message.role === "assistant") {
@@ -206,7 +205,7 @@ export function buildSessionTranscript(entries: SessionEntry[], leafId?: string 
   for (const entry of path) {
     switch (entry.type) {
       case "message":
-        if (entry.visibility === "internal" || isLegacyPlanReminderMessage(entry.message)) break;
+        if (entry.visibility === "internal") break;
         transcript.push({
           type: "message",
           id: entry.id,

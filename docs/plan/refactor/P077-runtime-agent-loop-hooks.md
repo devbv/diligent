@@ -368,11 +368,9 @@ Semantics:
 - Increment `SESSION_VERSION` from 9 to 10 for newly created sessions and
   retain backward reading support.
 
-Legacy sessions may already contain untagged plan-reminder user messages. Move
-the existing `<system-reminder>` compatibility check from Web into a runtime
-legacy classifier so old reminders remain hidden in every client. New writes
-must use `visibility: "internal"`; marker parsing must not be the new storage
-contract.
+Legacy sessions may already contain untagged plan-reminder user messages. They
+remain visible because missing `visibility` means visible. New writes must use
+`visibility: "internal"`; marker parsing is not a storage contract.
 
 ## File Manifest
 
@@ -397,7 +395,7 @@ contract.
 
 | File | Action | Description |
 |------|--------|-------------|
-| `plan-reminder-hook.ts` | CREATE | Runtime plan parsing, cadence state, prompt construction, legacy-message classification, and hook factory |
+| `plan-reminder-hook.ts` | CREATE | Runtime plan parsing, cadence state, prompt construction, and hook factory |
 
 ### packages/runtime/src/tools/
 
@@ -425,7 +423,7 @@ contract.
 |------|--------|-------------|
 | `types.ts` | MODIFY | Add internal visibility/source fields and increment session version |
 | `turn-stager.ts` | MODIFY | Persist `context_injected` messages as internal entries without treating them as steering |
-| `context-builder.ts` | MODIFY | Separate provider context from visible transcript and apply legacy reminder filtering |
+| `context-builder.ts` | MODIFY | Separate provider context from visible transcript using explicit visibility metadata |
 | `persistence.ts` | MODIFY | Exclude internal entries from visible message counts while preserving append observers |
 | `turn-orchestrator.ts` | MODIFY | Stage internal events and suppress them from runtime/client event emission |
 
@@ -452,7 +450,7 @@ contract.
 | `packages/runtime/test/agent/plan-reminder-hook.test.ts` | CREATE | Plan parsing, cadence, compaction, restore, and generated injection tests |
 | `packages/runtime/test/app-server/factory.test.ts` | MODIFY | Main Agent built-in/bundled hook assembly and stable cached-Agent behavior |
 | `packages/runtime/test/collab/registry.test.ts` | MODIFY | Fresh child hook instances and Agent-kind filtering |
-| `packages/runtime/test/session/context-builder.test.ts` | MODIFY | Internal provider replay, visible transcript exclusion, and legacy sessions |
+| `packages/runtime/test/session/context-builder.test.ts` | MODIFY | Internal provider replay and visible transcript exclusion |
 | `packages/runtime/test/session/turn-stager.test.ts` | MODIFY | Context injection persists as internal rather than steering |
 | `packages/runtime/test/session/manager.test.ts` | MODIFY | End-to-end persistence/resume behavior for injected context |
 | `packages/runtime/test/session/persistence.test.ts` | MODIFY | Visible counts and version-9 resume append compatibility |
@@ -660,7 +658,6 @@ Write tests first, then:
 - prevent `context_injected` from reaching `ctx.emit()` and clients;
 - preserve `EntryAppended` delivery with explicit metadata;
 - keep compaction retained-user history visible-only;
-- classify legacy untagged plan reminders inside runtime for read compatibility.
 
 Do not add `visibility` to the protocol `Message` schema. Visibility describes a
 runtime session entry, not an LLM message or wire message.
@@ -772,8 +769,8 @@ Manual verification:
     clear client steering queues.
 11. Internal context is durably persisted, replayed to providers, excluded from
     visible transcripts/counts, and tagged with an opaque source.
-12. Legacy untagged reminder entries remain hidden through runtime
-    compatibility handling.
+12. Legacy untagged reminder entries remain visible; only explicit metadata
+    controls visibility.
 13. `context_injected` never crosses `AgentEventSchema` or requires a protocol
     version change.
 14. Web and TUI contain no new plan-specific logic; Web's existing marker
@@ -805,7 +802,6 @@ Manual verification:
 | Internal message reaches clients | Fake user bubble or steering queue corruption | Runtime-only event consumption; visibility metadata; thread snapshot tests |
 | Internal message is dropped on resume | Model loses injected policy context | Provider-message replay includes internal entries; round-trip tests |
 | Internal message leaks through compaction tail | Reminder appears as retained user text | Visible-only `recentUserMessages`; compaction/resume tests |
-| Legacy sessions reveal old reminders | Existing chats regress after Web heuristic removal | Runtime legacy classifier and version-9 fixture |
 | New event widens runtime AgentEvent accidentally | Protocol safe-parse silently hides a typing bug | Explicit `Exclude<..., { type: "context_injected" }>` and compile-time test |
 | Hook order changes behavior | Product policies produce inconsistent prompts | Built-in-first and provider-order contract with tests |
 | Child behavior changes unexpectedly | Sub-agents receive plan reminders they did not receive before | Preserve main-only built-in hook; explicit `agentKind` filtering |
@@ -837,7 +833,6 @@ Session migration is read-compatible and append-only:
 - downgrading and reopening a session after newer entries were appended is not
   supported, consistent with the repository's current non-negotiated format
   policy;
-- legacy marker filtering remains runtime-only compatibility behavior.
 
 ## Deferred follow-ups
 
