@@ -704,6 +704,27 @@ export function useAppActions({
     })();
   }, [rpcRef, state.activeThreadId, stateRef, steeringControl]);
 
+  const handleRetryLastTurn = useCallback(() => {
+    void (async () => {
+      const rpc = rpcRef.current;
+      const snapshot = stateRef.current;
+      const threadId = snapshot.activeThreadId;
+      if (!rpc || !threadId || snapshot.threadStatus === "busy") return;
+      const lastUser = [...snapshot.items].reverse().find((item) => item.kind === "user");
+      if (!lastUser || lastUser.kind !== "user" || !lastUser.text.trim()) return;
+      try {
+        await rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.TURN_START, {
+          threadId,
+          message: lastUser.text,
+          content: [{ type: "text", text: lastUser.text }],
+          model: currentModelRef.current || undefined,
+        });
+      } catch (error) {
+        logger.error("turn.retry_failed", { message: "Failed to retry the last turn", error, threadId });
+      }
+    })();
+  }, [currentModelRef, rpcRef, stateRef]);
+
   const handleModeChange = useCallback(
     (mode: Mode) => {
       void setMode(mode);
@@ -735,6 +756,7 @@ export function useAppActions({
   return {
     handleSend,
     handleInterrupt,
+    handleRetryLastTurn,
     handleModeChange,
     handleEffortChange,
     handleModelChange,

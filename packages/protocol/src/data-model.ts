@@ -17,6 +17,9 @@ export type Mode = z.infer<typeof ModeSchema>;
 export const ThinkingEffortSchema = z.enum(["none", "low", "medium", "high", "xhigh", "max"]);
 export type ThinkingEffort = z.infer<typeof ThinkingEffortSchema>;
 
+export const ProviderNameSchema = z.enum(["anthropic", "openai", "chatgpt", "gemini", "vertex", "zai-coding-plan"]);
+export type ProviderName = z.infer<typeof ProviderNameSchema>;
+
 export const StopReasonSchema = z.enum(["end_turn", "tool_use", "max_tokens", "error", "aborted"]);
 export type StopReason = z.infer<typeof StopReasonSchema>;
 
@@ -82,11 +85,30 @@ export const SerializableErrorSchema = z.object({
   providerErrorType: z
     .enum(["rate_limit", "server_error", "context_overflow", "auth", "network", "unknown"])
     .optional(),
+  providerErrorReason: z.enum(["credentials_missing", "credentials_rejected", "context_window_exceeded"]).optional(),
   isRetryable: z.boolean().optional(),
   retryAfterMs: z.number().int().nonnegative().optional(),
   statusCode: z.number().int().optional(),
 });
 export type SerializableError = z.infer<typeof SerializableErrorSchema>;
+
+export const ErrorRecoverySchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("configure_provider"), provider: ProviderNameSchema.optional() }),
+  z.object({ kind: z.literal("start_new_thread") }),
+  z.object({ kind: z.literal("retry") }),
+]);
+export type ErrorRecovery = z.infer<typeof ErrorRecoverySchema>;
+
+export const ErrorPresentationSchema = z.object({
+  message: z.string(),
+  recovery: ErrorRecoverySchema.optional(),
+});
+export type ErrorPresentation = z.infer<typeof ErrorPresentationSchema>;
+
+export const ClientErrorSchema = SerializableErrorSchema.extend({
+  presentation: ErrorPresentationSchema.optional(),
+});
+export type ClientError = z.infer<typeof ClientErrorSchema>;
 
 export const CollabAgentStatusSchema = z.enum(["pending", "running", "completed", "errored", "shutdown"]);
 export type CollabAgentStatus = z.infer<typeof CollabAgentStatusSchema>;
@@ -204,7 +226,7 @@ export const AgentEventSchema = z.union([
     status: z.enum(["idle", "busy"]),
   }),
   z.object({ type: z.literal("usage"), usage: UsageSchema, cost: z.number() }),
-  z.object({ type: z.literal("error"), error: SerializableErrorSchema, fatal: z.boolean() }),
+  z.object({ type: z.literal("error"), error: ClientErrorSchema, fatal: z.boolean() }),
   z.object({ type: z.literal("compaction_start"), estimatedTokens: z.number().int().nonnegative() }),
   z.object({
     type: z.literal("compaction_end"),
@@ -465,9 +487,6 @@ export const SessionSummarySchema = z.object({
   parentSession: z.string().optional(),
 });
 export type SessionSummary = z.infer<typeof SessionSummarySchema>;
-
-export const ProviderNameSchema = z.enum(["anthropic", "openai", "chatgpt", "gemini", "vertex", "zai-coding-plan"]);
-export type ProviderName = z.infer<typeof ProviderNameSchema>;
 
 export const ProviderAuthStatusSchema = z.object({
   provider: ProviderNameSchema,

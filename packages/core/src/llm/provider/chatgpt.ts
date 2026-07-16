@@ -258,8 +258,7 @@ function toChatGPTWebSocketError(payload: Record<string, unknown>): ProviderErro
       ? "AI usage limit reached. Please try again later or upgrade your plan."
       : `ChatGPT API error${status ? ` (${status})` : ""}: ${details || message}`;
 
-  return new ProviderError(
-    displayMessage,
+  const providerErrorType =
     status === 429 && isUsageLimit
       ? "unknown"
       : status === 429
@@ -268,12 +267,15 @@ function toChatGPTWebSocketError(payload: Record<string, unknown>): ProviderErro
           ? "server_error"
           : status === 401 || status === 403
             ? "auth"
-            : "unknown",
-    isConnectionLimit ||
+            : "unknown";
+  return new ProviderError(displayMessage, {
+    errorType: providerErrorType,
+    isRetryable:
+      isConnectionLimit ||
       (status !== 429 && ((status !== undefined && status >= 500) || isTransientOpenAIErrorMessage(displayMessage))),
-    undefined,
-    status,
-  );
+    statusCode: status,
+    reason: providerErrorType === "auth" ? "credentials_rejected" : undefined,
+  });
 }
 
 function createChatGPTWebSocketEvents(input: {
@@ -672,8 +674,7 @@ export function createChatGPTStream(
             is429 && isUsageLimit
               ? "AI usage limit reached. Please try again later or upgrade your plan."
               : `ChatGPT API error (${response.status}): ${errText || "no body"}`;
-          throw new ProviderError(
-            message,
+          const providerErrorType =
             is429 && isUsageLimit
               ? "unknown"
               : is429
@@ -682,11 +683,13 @@ export function createChatGPTStream(
                   ? "server_error"
                   : response.status === 401 || response.status === 403
                     ? "auth"
-                    : "unknown",
-            !is429 && (response.status >= 500 || isTransientOpenAIErrorMessage(message)),
-            undefined,
-            response.status,
-          );
+                    : "unknown";
+          throw new ProviderError(message, {
+            errorType: providerErrorType,
+            isRetryable: !is429 && (response.status >= 500 || isTransientOpenAIErrorMessage(message)),
+            statusCode: response.status,
+            reason: providerErrorType === "auth" ? "credentials_rejected" : undefined,
+          });
         }
 
         // Capture sticky routing token on first successful response

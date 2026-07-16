@@ -721,6 +721,54 @@ describe("protocol/flow", () => {
     ).toBe(true);
   });
 
+  it("accepts old and presentation-aware error notifications", () => {
+    const legacy = DiligentServerNotificationSchema.safeParse({
+      method: DILIGENT_SERVER_NOTIFICATION_METHODS.ERROR,
+      params: {
+        threadId: "th-1",
+        error: { message: "legacy failure", name: "Error" },
+        fatal: false,
+      },
+    });
+    const presented = DiligentServerNotificationSchema.safeParse({
+      method: DILIGENT_SERVER_NOTIFICATION_METHODS.ERROR,
+      params: {
+        threadId: "th-1",
+        error: {
+          message: "Invalid API key",
+          name: "ProviderError",
+          code: "invalid_api_key",
+          providerErrorType: "auth",
+          providerErrorReason: "credentials_rejected",
+          presentation: {
+            message: "The provider rejected the saved credentials. Reconnect to continue.",
+            recovery: { kind: "configure_provider", provider: "openai" },
+          },
+        },
+        fatal: false,
+      },
+    });
+
+    expect(legacy.success).toBe(true);
+    expect(presented.success).toBe(true);
+  });
+
+  it("rejects unknown recovery actions", () => {
+    const result = DiligentServerNotificationSchema.safeParse({
+      method: DILIGENT_SERVER_NOTIFICATION_METHODS.ERROR,
+      params: {
+        error: {
+          message: "failure",
+          name: "Error",
+          presentation: { message: "failure", recovery: { kind: "reload_page" } },
+        },
+        fatal: false,
+      },
+    });
+
+    expect(result.success).toBe(false);
+  });
+
   it("rejects malformed flow payloads", () => {
     const bad = DiligentServerNotificationSchema.safeParse({
       method: DILIGENT_SERVER_NOTIFICATION_METHODS.ITEM_DELTA,

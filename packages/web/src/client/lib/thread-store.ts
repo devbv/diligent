@@ -7,6 +7,7 @@ import type {
   ContentBlock,
   ConversationLiveState,
   DiligentServerNotification,
+  ErrorRecovery,
   Mode,
   PendingSteer,
   SessionSummary,
@@ -53,6 +54,8 @@ export interface ActiveErrorState {
   turnId?: string;
   timestamp: number;
   providerErrorType?: ProviderErrorType;
+  recovery?: ErrorRecovery;
+  presented?: boolean;
 }
 
 export interface UsageState {
@@ -523,6 +526,8 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent, turnId?: string
           ...(eventTurnId ? { turnId: eventTurnId } : {}),
           timestamp: now,
           providerErrorType: event.error.providerErrorType,
+          recovery: event.error.presentation?.recovery,
+          presented: event.error.presentation !== undefined,
         },
       });
       return settled;

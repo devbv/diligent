@@ -62,6 +62,7 @@ export type {
   FunctionToolDefinition,
   Model,
   ProviderBuiltinToolDefinition,
+  ProviderErrorReason,
   ProviderErrorType,
   ProviderEvent,
   ProviderResult,

@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { EventStream } from "@diligent/core/event-stream";
 import { DEFAULT_ANTHROPIC_MODEL_ID, resolveModel } from "@diligent/core/llm/models";
 import { ProviderManager } from "@diligent/core/llm/provider-manager";
-import type { Model, StreamFunction } from "@diligent/core/llm/types";
+import { type Model, ProviderError, type StreamFunction } from "@diligent/core/llm/types";
 import type {
   DiligentServerNotification,
   DiligentServerRequest,
@@ -2323,7 +2323,10 @@ describe("DiligentAppServer", () => {
         new RuntimeAgent(FAKE_MODEL, [{ label: "base", content: "test" }], [], {
           effort: "medium",
           ...fakeConfig(() => {
-            throw new Error("invalid model for provider");
+            throw new ProviderError("socket closed unexpectedly", {
+              errorType: "network",
+              isRetryable: false,
+            });
           }),
         }),
     });
@@ -2353,7 +2356,11 @@ describe("DiligentAppServer", () => {
     );
     expect(errorEventNotification).toBeDefined();
     if (errorEventNotification?.method === DILIGENT_SERVER_NOTIFICATION_METHODS.AGENT_EVENT) {
-      expect(errorEventNotification.params.event.error.message).toContain("invalid model for provider");
+      expect(errorEventNotification.params.event.error.message).toContain("socket closed unexpectedly");
+      expect(errorEventNotification.params.event.error.presentation).toEqual({
+        message: "A network problem occurred. Please try again.",
+        recovery: { kind: "retry" },
+      });
     }
 
     const read = await server.handleRequest(TEST_CONNECTION_ID, {
@@ -2365,7 +2372,8 @@ describe("DiligentAppServer", () => {
       errors?: Array<{ error: { message: string; name: string }; fatal: boolean; turnId?: string }>;
     };
     expect(result.errors?.length).toBe(1);
-    expect(result.errors?.[0]?.error.message).toContain("invalid model for provider");
+    expect(result.errors?.[0]?.error.message).toContain("socket closed unexpectedly");
+    expect(result.errors?.[0]?.error).not.toHaveProperty("presentation");
     expect(result.errors?.[0]?.fatal).toBe(false);
     expect(result.errors?.[0]?.turnId).toBeDefined();
   });
@@ -2891,7 +2899,7 @@ describe("DiligentAppServer", () => {
       ).threads.get(startResult.threadId);
       if (!runtime) throw new Error("missing runtime");
       runtime.manager.compactNow = mock(async () => {
-        throw new Error("Estimated Token is below 50000");
+        throw new ProviderError("compaction network failed", { errorType: "network", isRetryable: true });
       });
 
       const compactResponse = await server.handleRequest(TEST_CONNECTION_ID, {
@@ -2899,7 +2907,7 @@ describe("DiligentAppServer", () => {
         method: "thread/compact/start",
         params: { threadId: startResult.threadId },
       });
-      expect(() => readResult(compactResponse)).toThrow("Estimated Token is below 50000");
+      expect(() => readResult(compactResponse)).toThrow("compaction network failed");
 
       const threadNotifications = connection.notifications.filter(
         (notification) => "threadId" in notification.params && notification.params.threadId === startResult.threadId,
@@ -2915,6 +2923,12 @@ describe("DiligentAppServer", () => {
 
       expect(errorIndex).toBeGreaterThan(-1);
       expect(idleIndex).toBeGreaterThan(errorIndex);
+      const errorNotification = threadNotifications[errorIndex];
+      if (errorNotification?.method === DILIGENT_SERVER_NOTIFICATION_METHODS.ERROR) {
+        expect(errorNotification.params.error.presentation).toEqual({
+          message: "A network problem occurred. Please try again.",
+        });
+      }
     } finally {
       await rm(projectRoot, { recursive: true, force: true });
     }

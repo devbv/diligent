@@ -128,20 +128,58 @@ export type ProviderErrorType =
   | "network" // ECONNREFUSED, timeout — retryable
   | "unknown"; // everything else — NOT retryable
 
-export const CONTEXT_OVERFLOW_ERROR_MESSAGE =
-  "This conversation has exceeded the AI model's context limit. To continue, open the menu in the top-left corner and start a new chat.";
+export type ProviderErrorReason = "credentials_missing" | "credentials_rejected" | "context_window_exceeded";
+
+export const CONTEXT_OVERFLOW_ERROR_MESSAGE = "The model context window was exceeded.";
+
+export interface ProviderErrorOptions {
+  errorType: ProviderErrorType;
+  isRetryable: boolean;
+  retryAfterMs?: number;
+  statusCode?: number;
+  cause?: Error;
+  reason?: ProviderErrorReason;
+}
 
 export class ProviderError extends Error {
+  public readonly errorType: ProviderErrorType;
+  public readonly isRetryable: boolean;
+  public readonly retryAfterMs?: number;
+  public readonly statusCode?: number;
+  public readonly cause?: Error;
+  public readonly reason?: ProviderErrorReason;
+
+  constructor(message: string, options: ProviderErrorOptions);
   constructor(
     message: string,
-    public readonly errorType: ProviderErrorType,
-    public readonly isRetryable: boolean,
-    public readonly retryAfterMs?: number,
-    public readonly statusCode?: number,
-    public readonly cause?: Error,
+    errorType: ProviderErrorType,
+    isRetryable: boolean,
+    retryAfterMs?: number,
+    statusCode?: number,
+    cause?: Error,
+    reason?: ProviderErrorReason,
+  );
+  constructor(
+    message: string,
+    optionsOrType: ProviderErrorOptions | ProviderErrorType,
+    isRetryable?: boolean,
+    retryAfterMs?: number,
+    statusCode?: number,
+    cause?: Error,
+    reason?: ProviderErrorReason,
   ) {
     super(message);
     this.name = "ProviderError";
+    const options =
+      typeof optionsOrType === "string"
+        ? { errorType: optionsOrType, isRetryable: isRetryable ?? false, retryAfterMs, statusCode, cause, reason }
+        : optionsOrType;
+    this.errorType = options.errorType;
+    this.isRetryable = options.isRetryable;
+    this.retryAfterMs = options.retryAfterMs;
+    this.statusCode = options.statusCode;
+    this.cause = options.cause;
+    this.reason = options.reason;
   }
 }
 

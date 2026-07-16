@@ -1,5 +1,6 @@
 // @summary App-server thread lifecycle handlers: start, read, compact, mode/effort
 
+import { toSerializableError } from "@diligent/core/agent";
 import { resolveModel } from "@diligent/core/llm/models";
 import {
   normalizeThinkingEffort,
@@ -206,10 +207,7 @@ export async function handleThreadCompactStart(
       method: DILIGENT_SERVER_NOTIFICATION_METHODS.ERROR,
       params: {
         threadId: runtime.id,
-        error: {
-          message: error instanceof Error ? error.message : String(error),
-          name: error instanceof Error ? error.name : "Error",
-        },
+        error: toSerializableError(error),
         fatal: false,
       },
     });

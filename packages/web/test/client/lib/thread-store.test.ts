@@ -446,6 +446,36 @@ test("network error event shows a user-facing message instead of raw transport d
   expect(next.toast).toBeNull();
 });
 
+test("runtime presentation takes precedence and preserves semantic recovery", () => {
+  resetAdapter();
+
+  const next = reduce(
+    { ...initialThreadState, activeThreadId: "t1", threadStatus: "busy" },
+    {
+      method: DILIGENT_SERVER_NOTIFICATION_METHODS.ERROR,
+      params: {
+        threadId: "t1",
+        error: {
+          message: "raw upstream detail",
+          name: "ProviderError",
+          providerErrorType: "context_overflow",
+          providerErrorReason: "context_window_exceeded",
+          presentation: {
+            message: "This conversation is too long for the selected model. Start a new chat to continue.",
+            recovery: { kind: "start_new_thread" },
+          },
+        },
+        fatal: false,
+      },
+    },
+  );
+
+  expect(next.activeError?.message).toBe(
+    "This conversation is too long for the selected model. Start a new chat to continue.",
+  );
+  expect(next.activeError?.recovery).toEqual({ kind: "start_new_thread" });
+});
+
 test("hydrateFromThreadRead keeps history error entries out of visible items", () => {
   const hydrated = hydrateFromThreadRead(initialThreadState, {
     threadId: "t1",

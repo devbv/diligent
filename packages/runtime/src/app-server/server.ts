@@ -1,7 +1,8 @@
 // @summary JSON-RPC app server mapping SessionManager/AgentEvent to shared protocol requests and notifications
 
 import { userInfo } from "node:os";
-import { KNOWN_MODELS } from "@diligent/core/llm/models";
+import { toSerializableError } from "@diligent/core/agent";
+import { KNOWN_MODELS, resolveModel } from "@diligent/core/llm/models";
 import type { NativeCompactFn } from "@diligent/core/llm/provider/native-compaction";
 import type { ProviderManager } from "@diligent/core/llm/provider-manager";
 import type { ProviderName, StreamFunction } from "@diligent/core/llm/types";
@@ -11,6 +12,7 @@ import type { ApprovalRequest, ApprovalResponse, PermissionEngine } from "../app
 import { type AuthStoreOptions, loadOAuthTokens } from "../auth/auth-store";
 import type { ChildStopInfo } from "../collab/types";
 import type { DiligentConfig } from "../config/schema";
+import { presentRuntimeError } from "../errors/presentation";
 import { resolveExperimentGates } from "../experiments";
 import {
   getLastAssistantMessage,
@@ -33,6 +35,7 @@ import {
   type JSONRPCResponse,
   JSONRPCResponseSchema,
   type Mode,
+  ProviderNameSchema,
   type ThinkingEffort,
 } from "../protocol/index";
 import { isRpcNotification, isRpcRequest, isRpcResponse, type RpcPeer } from "../rpc/channel";
@@ -396,10 +399,7 @@ export class DiligentAppServer {
           method: DILIGENT_SERVER_NOTIFICATION_METHODS.ERROR,
           params: {
             threadId: runtime.id,
-            error: {
-              message: error instanceof Error ? error.message : String(error),
-              name: error instanceof Error ? error.name : "Error",
-            },
+            error: toSerializableError(error),
             fatal: false,
           },
         });
@@ -424,7 +424,18 @@ export class DiligentAppServer {
 
   private async emitFromAgentEvent(threadId: string, turnId: string, event: AgentEvent): Promise<void> {
     const runtime = this.threads.get(threadId);
-    const parsedAgentEvent = AgentEventSchema.safeParse(event);
+    const outboundEvent =
+      event.type === "error"
+        ? {
+            ...event,
+            error: presentRuntimeError(event.error, {
+              provider: this.resolveRuntimeProvider(runtime),
+              operation: "agent_turn",
+              retrySafe: true,
+            }),
+          }
+        : event;
+    const parsedAgentEvent = AgentEventSchema.safeParse(outboundEvent);
     if (parsedAgentEvent.success) {
       await this.emit({
         method: DILIGENT_SERVER_NOTIFICATION_METHODS.AGENT_EVENT,
@@ -441,6 +452,21 @@ export class DiligentAppServer {
   // ─── Notification routing ───────────────────────────────────────────────────
 
   private async emit(notification: DiligentServerNotification): Promise<void> {
+    if (notification.method === DILIGENT_SERVER_NOTIFICATION_METHODS.ERROR) {
+      const runtime = notification.params.threadId ? this.threads.get(notification.params.threadId) : undefined;
+      notification = {
+        ...notification,
+        params: {
+          ...notification.params,
+          error: presentRuntimeError(notification.params.error, {
+            provider: this.resolveRuntimeProvider(runtime),
+            operation: runtime?.currentTurnId ? "agent_turn" : "app_server",
+            retrySafe: runtime?.currentTurnId != null,
+          }),
+        },
+      };
+    }
+
     // Collab debugging: always-on server-side log for collab/* notifications.
     // Intentionally redact large prompt fields to avoid noisy logs.
     if (notification.method.startsWith("collab/")) {
@@ -501,6 +527,20 @@ export class DiligentAppServer {
         }
       }
       await conn.peer.send(notification);
+    }
+  }
+
+  private resolveRuntimeProvider(runtime: ThreadRuntime | undefined): ProviderName | undefined {
+    const provider = runtime?.agent?.model?.provider;
+    const parsedProvider = ProviderNameSchema.safeParse(provider);
+    if (parsedProvider.success) return parsedProvider.data;
+    const modelId = runtime?.runningModelIdSnapshot ?? runtime?.modelId;
+    if (!modelId) return undefined;
+    try {
+      const resolved = ProviderNameSchema.safeParse(resolveModel(modelId).provider);
+      return resolved.success ? resolved.data : undefined;
+    } catch {
+      return undefined;
     }
   }
 

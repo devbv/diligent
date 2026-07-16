@@ -82,6 +82,28 @@ describe("ThreadStore", () => {
     expect(rendered).toContain("Reconnecting… 2/5");
   });
 
+  test("renders runtime presentation with a client-owned recovery hint", () => {
+    const store = new ThreadStore({ requestRender: () => {} });
+
+    store.handleEvent({
+      type: "error",
+      error: {
+        name: "ProviderError",
+        message: "raw auth detail",
+        presentation: {
+          message: "OpenAI rejected the saved credentials. Reconnect to continue.",
+          recovery: { kind: "configure_provider", provider: "openai" },
+        },
+      },
+      fatal: false,
+    });
+
+    const rendered = renderCommittedTranscriptItems(store.getItems(), 100).map(stripAnsi).join("\n");
+    expect(rendered).toContain("OpenAI rejected the saved credentials. Reconnect to continue.");
+    expect(rendered).toContain("Run /provider set openai to reconnect.");
+    expect(rendered).not.toContain("raw auth detail");
+  });
+
   test("tracks active question independently from transcript items", () => {
     const store = new ThreadStore({ requestRender: () => {} });
     const question = {

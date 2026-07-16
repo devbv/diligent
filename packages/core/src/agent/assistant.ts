@@ -35,16 +35,10 @@ function toFunctionToolDefinition(
   };
 }
 
-function toToolDefinition(tool: Pick<Tool, "name" | "description" | "parameters" | "inputSchema">): ToolDefinition {
-  if (tool.name === "web_action") {
-    return {
-      kind: "provider_builtin",
-      capability: "web",
-      options: { citationsEnabled: true },
-    };
-  }
-
-  return toFunctionToolDefinition(tool);
+function toToolDefinition(
+  tool: Pick<Tool, "name" | "description" | "parameters" | "inputSchema" | "modelExposure">,
+): ToolDefinition {
+  return tool.modelExposure ?? toFunctionToolDefinition(tool);
 }
 
 function createAssistantMessage(model: string): AssistantMessage {

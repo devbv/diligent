@@ -29,6 +29,11 @@ export function useModalState({ providerMgr }: { providerMgr: ProviderMgrResult 
     setShowProviderModal(true);
   }, []);
 
+  const handleOpenProvider = useCallback((provider: string) => {
+    setFocusedProvider(provider);
+    setShowProviderModal(true);
+  }, []);
+
   const handleProviderModalClose = useCallback(() => {
     setShowProviderModal(false);
     setFocusedProvider(null);
@@ -85,6 +90,7 @@ export function useModalState({ providerMgr }: { providerMgr: ProviderMgrResult 
     setOauthError,
     closeModals,
     handleOpenProviders,
+    handleOpenProvider,
     handleProviderModalClose,
     handleProviderOAuthStart,
     handleProviderOAuthCancel,

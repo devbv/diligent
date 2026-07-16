@@ -2,6 +2,7 @@
 
 import type { ToolResultMessage } from "@diligent/core";
 import type { AgentEvent, ThreadReadResponse, ToolRenderPayload } from "@diligent/protocol";
+import { formatClientError } from "../error-presentation";
 import type { Component } from "../framework/types";
 import { renderToolPayload } from "../render-blocks";
 import { t } from "../theme";
@@ -248,10 +249,13 @@ export class ThreadStore {
         kind: "plain" as const,
         lines: [`${t.success}⏺${t.reset} ${t.dim}knowledge saved${t.reset}`],
       }),
-      buildErrorItem: (message: string) => ({
-        kind: "plain" as const,
-        lines: [`${t.error}✗ ${message}${t.reset}`],
-      }),
+      buildErrorItem: (error: Extract<AgentEvent, { type: "error" }>["error"]) => {
+        const { message, hint } = formatClientError(error);
+        return {
+          kind: "plain" as const,
+          lines: [`${t.error}✗ ${message}${t.reset}`, ...(hint ? [`${t.dim}  ${hint}${t.reset}`] : [])],
+        };
+      },
       buildThinkingItem,
       buildAssistantChunkItem: (text: string, continued: boolean) => ({
         kind: "assistant_chunk" as const,

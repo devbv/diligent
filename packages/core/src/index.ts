@@ -46,6 +46,7 @@ export type {
   NativeCompactFn,
   NativeCompactionLookup,
   ProviderBuiltinToolDefinition,
+  ProviderErrorReason,
   ProviderErrorType,
   ProviderEvent,
   ProviderName,

@@ -2,7 +2,6 @@
 import { describe, expect, test } from "bun:test";
 import type { ToolContext } from "@diligent/core/tool/types";
 import { createWebTool } from "@diligent/runtime/tools";
-import { TOOL_CAPABILITIES } from "../../src/tools/tool-metadata";
 
 function makeCtx(): ToolContext {
   return {
@@ -13,17 +12,15 @@ function makeCtx(): ToolContext {
 }
 
 describe("provider-native web built-ins", () => {
-  test("tool metadata marks web as a provider built-in", () => {
-    expect(TOOL_CAPABILITIES.web_action).toMatchObject({
-      executionMode: "provider_builtin",
-      providerCapability: "web",
-    });
-  });
-
   test("web placeholder tool is exposed for catalog/config flows", async () => {
     const tool = createWebTool();
     expect(tool.name).toBe("web_action");
     expect(tool.description).toContain("native web capability");
+    expect(tool.modelExposure).toEqual({
+      kind: "provider_builtin",
+      capability: "web",
+      options: { citationsEnabled: true },
+    });
 
     const result = await tool.execute({ query: "diligent" }, makeCtx());
     expect(result.output).toContain("should not execute locally");

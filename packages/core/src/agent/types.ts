@@ -3,7 +3,7 @@
 import type { Logger } from "@diligent/logging";
 import type { NativeCompactFn } from "../llm/provider/native-compaction";
 import type { StreamTurnScope } from "../llm/turn-scope";
-import type { ProviderErrorType, StreamFunction, ThinkingEffort } from "../llm/types";
+import type { ProviderErrorReason, ProviderErrorType, StreamFunction, ThinkingEffort } from "../llm/types";
 import type {
   AssistantMessage,
   ContentBlock,
@@ -27,6 +27,7 @@ export interface SerializableError {
   stack?: string;
   code?: string;
   providerErrorType?: ProviderErrorType;
+  providerErrorReason?: ProviderErrorReason;
   isRetryable?: boolean;
   retryAfterMs?: number;
   statusCode?: number;

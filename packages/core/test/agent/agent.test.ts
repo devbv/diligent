@@ -402,11 +402,16 @@ describe("Agent", () => {
       BASE_CONFIG.systemPrompt,
       [
         {
-          name: "web_action",
+          name: "browse",
           description: "Use the web",
           parameters: z.object({ url: z.string().url(), prompt: z.string().optional() }),
+          modelExposure: {
+            kind: "provider_builtin",
+            capability: "web",
+            options: { citationsEnabled: true },
+          },
           async execute() {
-            return { output: "unused" };
+            throw new Error("provider-native tools must not execute locally");
           },
         },
         {

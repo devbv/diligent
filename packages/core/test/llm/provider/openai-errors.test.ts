@@ -1,6 +1,7 @@
 // @summary Tests for OpenAI and ChatGPT error classification retryability
 import { describe, expect, test } from "bun:test";
 import OpenAI from "openai";
+import { toSerializableError } from "../../../src/agent/util/errors";
 import { isNetworkError } from "../../../src/llm/errors";
 import { classifyOpenAIError } from "../../../src/llm/provider/openai";
 import { CONTEXT_OVERFLOW_ERROR_MESSAGE } from "../../../src/llm/types";
@@ -27,6 +28,7 @@ describe("classifyOpenAIError", () => {
     const result = classifyOpenAIError(makeOpenAIAPIError(401, "Invalid API key"));
 
     expect(result.errorType).toBe("auth");
+    expect(result.reason).toBe("credentials_rejected");
     expect(result.isRetryable).toBe(false);
   });
 
@@ -35,7 +37,17 @@ describe("classifyOpenAIError", () => {
 
     expect(result.errorType).toBe("context_overflow");
     expect(result.message).toBe(CONTEXT_OVERFLOW_ERROR_MESSAGE);
+    expect(result.reason).toBe("context_window_exceeded");
+    expect(result.message).not.toMatch(/menu|modal|top-left|screen|\/provider/i);
     expect(result.isRetryable).toBe(false);
+  });
+
+  test("preserves upstream code independently from the stable reason", () => {
+    const result = classifyOpenAIError(makeOpenAIAPIErrorWithCode(401, "invalid_api_key", "Invalid API key"));
+    const serialized = toSerializableError(result);
+
+    expect(serialized.code).toBe("invalid_api_key");
+    expect(serialized.providerErrorReason).toBe("credentials_rejected");
   });
 
   test("classifies network errors", () => {

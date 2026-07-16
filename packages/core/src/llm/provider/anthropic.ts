@@ -618,10 +618,22 @@ export function classifyAnthropicError(err: unknown): ProviderError {
       return new ProviderError(err.message, "server_error", true, undefined, status, err);
     }
     if (status === 400 && err.message.includes("context length")) {
-      return new ProviderError(CONTEXT_OVERFLOW_ERROR_MESSAGE, "context_overflow", false, undefined, status, err);
+      return new ProviderError(CONTEXT_OVERFLOW_ERROR_MESSAGE, {
+        errorType: "context_overflow",
+        isRetryable: false,
+        statusCode: status,
+        cause: err,
+        reason: "context_window_exceeded",
+      });
     }
     if (status === 401 || status === 403) {
-      return new ProviderError(err.message, "auth", false, undefined, status, err);
+      return new ProviderError(err.message, {
+        errorType: "auth",
+        isRetryable: false,
+        statusCode: status,
+        cause: err,
+        reason: "credentials_rejected",
+      });
     }
     return new ProviderError(err.message, "unknown", false, undefined, status, err);
   }

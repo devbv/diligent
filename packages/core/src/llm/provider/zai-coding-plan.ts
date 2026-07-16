@@ -124,11 +124,22 @@ export function classifyZaiCodingPlanError(err: unknown): ProviderError {
     const message =
       typeof record.message === "string" ? record.message : err instanceof Error ? err.message : String(err);
     if (status === 429) return new ProviderError(message, "rate_limit", false, undefined, status);
-    if (status === 401 || status === 403) return new ProviderError(message, "auth", false, undefined, status);
+    if (status === 401 || status === 403)
+      return new ProviderError(message, {
+        errorType: "auth",
+        isRetryable: false,
+        statusCode: status,
+        reason: "credentials_rejected",
+      });
     if (status !== undefined && status >= 500)
       return new ProviderError(message, "server_error", true, undefined, status);
     if (status === 400 && isContextOverflow(message)) {
-      return new ProviderError(CONTEXT_OVERFLOW_ERROR_MESSAGE, "context_overflow", false, undefined, status);
+      return new ProviderError(CONTEXT_OVERFLOW_ERROR_MESSAGE, {
+        errorType: "context_overflow",
+        isRetryable: false,
+        statusCode: status,
+        reason: "context_window_exceeded",
+      });
     }
     return new ProviderError(message, "unknown", false, undefined, status, err instanceof Error ? err : undefined);
   }

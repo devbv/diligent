@@ -9,6 +9,7 @@ import {
 } from "@diligent/protocol";
 import type { DiligentPaths } from "@diligent/runtime";
 import type { AppConfig } from "../config";
+import { formatClientErrorText } from "./error-presentation";
 import type { SpawnedAppServer } from "./rpc-client";
 import { type SpawnRpcClientOptions, spawnCliAppServer } from "./rpc-framed-client";
 import { t } from "./theme";
@@ -79,14 +80,14 @@ export class NonInteractiveRunner {
         notification.method === DILIGENT_SERVER_NOTIFICATION_METHODS.ERROR &&
         (!notification.params.threadId || notification.params.threadId === threadId)
       ) {
-        pendingTurn?.reject(new Error(notification.params.error.message));
+        pendingTurn?.reject(new Error(formatClientErrorText(notification.params.error)));
       }
 
       if (
         notification.method === DILIGENT_SERVER_NOTIFICATION_METHODS.AGENT_EVENT &&
         notification.params.event.type === "error"
       ) {
-        pendingTurn?.reject(new Error(notification.params.event.error.message));
+        pendingTurn?.reject(new Error(formatClientErrorText(notification.params.event.error)));
       }
     });
 
@@ -199,7 +200,7 @@ export class NonInteractiveRunner {
         return hasText;
 
       case "error":
-        this.writeStderr(`[error] ${event.error.message}`, isTTY);
+        this.writeStderr(`[error] ${formatClientErrorText(event.error)}`, isTTY);
         if (event.fatal) {
           this.exitCode = 1;
         }

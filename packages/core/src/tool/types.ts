@@ -1,4 +1,5 @@
 import type { z } from "zod";
+import type { ProviderBuiltinToolDefinition } from "../llm/types";
 import type { ImageBlock } from "../types";
 
 // D013: Tool definition
@@ -12,6 +13,11 @@ export interface Tool<TParams extends z.ZodType = any> {
    * from `parameters`. Used by tools whose schema is not Zod-authored (e.g. MCP).
    */
   inputSchema?: Record<string, unknown>;
+  /**
+   * Overrides the default function-tool advertisement with a provider-native
+   * semantic capability. The catalog name remains independent.
+   */
+  modelExposure?: ProviderBuiltinToolDefinition;
   execute: (args: z.infer<TParams>, ctx: ToolContext) => Promise<ToolResult>;
   supportParallel?: boolean; // D015: When true, tool can run concurrently with other parallel tools
   /** Custom arg parser. When provided, executor uses this instead of parameters.safeParse(). */

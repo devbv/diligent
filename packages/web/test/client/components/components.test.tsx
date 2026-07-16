@@ -2479,6 +2479,36 @@ test("ErrorBanner does not show Reconnect button on non-auth error", () => {
   expect(html).not.toContain("Reconnect");
 });
 
+test("ErrorBanner renders runtime semantic recovery actions", () => {
+  const newThreadHtml = renderToStaticMarkup(
+    <ErrorBanner
+      error={{
+        id: "event:error:new-thread",
+        message: "Conversation too long",
+        recovery: { kind: "start_new_thread" },
+        fatal: false,
+        timestamp: 1715562000000,
+      }}
+      onStartNewThread={() => {}}
+    />,
+  );
+  const retryHtml = renderToStaticMarkup(
+    <ErrorBanner
+      error={{
+        id: "event:error:retry",
+        message: "Temporary failure",
+        recovery: { kind: "retry" },
+        fatal: false,
+        timestamp: 1715562000000,
+      }}
+      onRetry={() => {}}
+    />,
+  );
+
+  expect(newThreadHtml).toContain("New chat");
+  expect(retryHtml).toContain("Retry");
+});
+
 test("AssetThumbnail renders the image when a url is present", () => {
   const html = renderToStaticMarkup(
     <AssetThumbnail asset={{ title: "Katana", thumbnailUrl: "https://assets.example/k.png" }} />,

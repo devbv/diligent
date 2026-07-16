@@ -70,6 +70,7 @@ describe("classifyAnthropicError", () => {
 
     expect(result.errorType).toBe("context_overflow");
     expect(result.message).toBe(CONTEXT_OVERFLOW_ERROR_MESSAGE);
+    expect(result.reason).toBe("context_window_exceeded");
     expect(result.isRetryable).toBe(false);
     expect(result.statusCode).toBe(400);
   });
@@ -87,6 +88,7 @@ describe("classifyAnthropicError", () => {
     const result = classifyAnthropicError(err);
 
     expect(result.errorType).toBe("auth");
+    expect(result.reason).toBe("credentials_rejected");
     expect(result.isRetryable).toBe(false);
     expect(result.statusCode).toBe(401);
   });

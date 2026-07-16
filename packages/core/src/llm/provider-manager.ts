@@ -237,11 +237,11 @@ export class ProviderManager {
 
       const apiKey = this.authState.getApiKey(provider);
       if (!apiKey) {
-        throw new ProviderError(
-          `No authentication configured for ${provider}. Use /provider ${provider} to configure.`,
-          "auth",
-          false,
-        );
+        throw new ProviderError(`No authentication is configured for ${provider}.`, {
+          errorType: "auth",
+          isRetryable: false,
+          reason: "credentials_missing",
+        });
       }
 
       const imageDetail = provider === "openai" ? this.openaiImageDetail : undefined;

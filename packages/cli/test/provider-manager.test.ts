@@ -67,7 +67,7 @@ describe("ProviderManager", () => {
         { systemPrompt: [], messages: [], tools: [] },
         {},
       );
-    }).toThrow(/No authentication configured for anthropic/);
+    }).toThrow(/No authentication is configured for anthropic/);
   });
 
   test("PROVIDER_NAMES constant contains all providers", () => {

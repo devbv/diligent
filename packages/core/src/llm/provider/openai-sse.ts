@@ -261,14 +261,12 @@ function reduceResponsesAPIEvent(
         return [
           {
             type: "error",
-            error: new ProviderError(
-              CONTEXT_OVERFLOW_ERROR_MESSAGE,
-              "context_overflow",
-              false,
-              undefined,
-              undefined,
+            error: new ProviderError(CONTEXT_OVERFLOW_ERROR_MESSAGE, {
+              errorType: "context_overflow",
+              isRetryable: false,
               cause,
-            ),
+              reason: "context_window_exceeded",
+            }),
           },
         ];
       }

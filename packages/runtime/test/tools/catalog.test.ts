@@ -368,6 +368,27 @@ describe("buildToolCatalog", () => {
     });
   });
 
+  it("preserves provider-native exposure from trusted bundled providers", async () => {
+    const provider: BundledToolProvider = {
+      id: "@product/native-tools",
+      createTools: () => [
+        {
+          ...mockTool("browse"),
+          modelExposure: { kind: "provider_builtin", capability: "web" },
+        },
+      ],
+    };
+
+    const result = await buildToolCatalog(standardBuiltins(), undefined, "/tmp", undefined, {
+      bundledProviders: [provider],
+    });
+
+    expect(result.tools.find((tool) => tool.name === "browse")?.modelExposure).toEqual({
+      kind: "provider_builtin",
+      capability: "web",
+    });
+  });
+
   it("keeps experiment-disabled bundled tools in state but removes them from the agent", async () => {
     const provider: BundledToolProvider = {
       id: "@product/bundled-tools",

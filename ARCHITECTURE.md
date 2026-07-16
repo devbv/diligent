@@ -130,6 +130,14 @@ Practical consequences:
 3. **Transport adapters stay small.** Stdio and WebSocket layers only adapt messages; they should not own business logic.
 4. **New clients follow the same contract.** A VS Code plugin or any future client must compose shared `@diligent/protocol` payloads and must not introduce a parallel client-specific Diligent protocol.
 
+### Error diagnostics, presentation, and recovery
+
+Errors crossing the frontend boundary keep three responsibilities separate:
+
+- Core classifies provider failures and preserves raw diagnostics, retry metadata, status, upstream codes, and stable Diligent reasons. Core messages do not describe client commands, controls, or navigation.
+- Runtime adds a common user-facing message and, when applicable, one semantic recovery intent such as configuring a provider, starting a new thread, or explicitly retrying a turn. Persisted session errors remain raw diagnostics.
+- Web, TUI, and non-interactive clients render the runtime message and translate the recovery intent into their own button, picker, or command hint. Recovery never runs automatically, and clients fall back to the raw diagnostic when connected to an older server.
+
 Detailed guidance for the current structured tool-rendering flow lives in `docs/guide/tool-rendering.md`.
 
 ## Package Responsibilities

@@ -561,10 +561,22 @@ export function classifyGeminiError(err: unknown): ProviderError {
       return new ProviderError(msg, "server_error", true, undefined, httpStatus, err);
     }
     if (httpStatus === 401 || httpStatus === 403) {
-      return new ProviderError(msg, "auth", false, undefined, httpStatus, err);
+      return new ProviderError(msg, {
+        errorType: "auth",
+        isRetryable: false,
+        statusCode: httpStatus,
+        cause: err,
+        reason: "credentials_rejected",
+      });
     }
     if (isGeminiContextOverflow(msg)) {
-      return new ProviderError(CONTEXT_OVERFLOW_ERROR_MESSAGE, "context_overflow", false, undefined, httpStatus, err);
+      return new ProviderError(CONTEXT_OVERFLOW_ERROR_MESSAGE, {
+        errorType: "context_overflow",
+        isRetryable: false,
+        statusCode: httpStatus,
+        cause: err,
+        reason: "context_window_exceeded",
+      });
     }
     if (isNetworkError(err)) {
       return new ProviderError(msg, "network", true, undefined, undefined, err);
