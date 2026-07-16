@@ -235,7 +235,7 @@ async function compactIfNeeded(messages: Message[], request: LoopRequest, stream
   if (!decision.shouldCompact) return false;
 
   request.logger.info("compaction_triggered", {
-    message: `[agent:compaction] triggered source=${decision.source} estimatedTokens=${decision.estimatedTokens} thresholdTokens=${decision.thresholdTokens} reserveTokens=${decision.reserveTokens}`,
+    message: "Compaction triggered",
     sessionId: request.sessionId,
     fields: {
       source: decision.source,

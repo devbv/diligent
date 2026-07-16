@@ -1,7 +1,6 @@
 // @summary Wraps stream functions with exponential backoff retry logic
 
 import { createLogger, type Logger } from "@diligent/logging";
-import { formatSerializableErrorForLog, toSerializableError } from "../agent/util/errors";
 import { EventStream } from "../event-stream";
 import type { ProviderEvent, ProviderResult, StreamFunction } from "./types";
 import { ProviderError } from "./types";
@@ -42,7 +41,7 @@ function errorFields(error: ProviderError): Record<string, unknown> {
 function logIfProviderError(logger: Logger, error: unknown, attempt: number, maxAttempts: number): void {
   if (!(error instanceof ProviderError)) return;
   logger.warn("provider_error", {
-    message: `Provider error: [llm:provider-error] status=${error.statusCode ?? "n/a"} message=${error.message}`,
+    message: "[llm:provider-error] Provider error",
     error,
     fields: { attempt, maxAttempts, ...errorFields(error) },
   });
@@ -56,7 +55,7 @@ function logRetry(
   fields: Record<string, unknown>,
   error?: ProviderError,
 ): void {
-  logger[level](event, { message: `[llm:retry] ${message}`, fields, ...(error && { error }) });
+  logger[level](event, { message: `[llm:retry] ${message}`, fields, ...(error !== undefined && { error }) });
 }
 
 /**
@@ -86,7 +85,7 @@ export function withRetry(
     (async () => {
       for (let attempt = 1; attempt <= config.maxAttempts; attempt++) {
         if (signal?.aborted) {
-          logRetry(retryLogger, "info", "retry_aborted", `aborted before attempt=${attempt}/${config.maxAttempts}`, {
+          logRetry(retryLogger, "info", "retry_aborted", "Aborted", {
             attempt,
             maxAttempts: config.maxAttempts,
           });
@@ -115,7 +114,7 @@ export function withRetry(
                 retryLogger,
                 "warn",
                 "stream_error",
-                `stream error attempt=${attempt}/${config.maxAttempts} ${formatSerializableErrorForLog(toSerializableError(errorEvent))}`,
+                "Stream error",
                 { attempt, maxAttempts: config.maxAttempts, ...errorFields(errorEvent) },
                 errorEvent,
               );
@@ -129,7 +128,7 @@ export function withRetry(
                   retryLogger,
                   "info",
                   "retry_recovered",
-                  `recovered on attempt=${attempt}/${config.maxAttempts}`,
+                  "Recovered",
                   { attempt, maxAttempts: config.maxAttempts },
                 );
               }
@@ -153,7 +152,7 @@ export function withRetry(
             retryLogger,
             "warn",
             "stream_exception",
-            `stream exception attempt=${attempt}/${config.maxAttempts} ${formatSerializableErrorForLog(toSerializableError(errorEvent))}`,
+            "Stream exception",
             { attempt, maxAttempts: config.maxAttempts, ...errorFields(errorEvent) },
             errorEvent,
           );
@@ -169,7 +168,7 @@ export function withRetry(
             retryLogger,
             "warn",
             "stream_ended",
-            `stream ended without terminal event attempt=${attempt}/${config.maxAttempts}`,
+            "Stream ended without terminal event",
             { attempt, maxAttempts: config.maxAttempts, ...errorFields(errorEvent) },
             errorEvent,
           );
@@ -188,7 +187,7 @@ export function withRetry(
             retryLogger,
             "error",
             "retry_exhausted",
-            `giving up attempt=${attempt}/${config.maxAttempts} reason=${reason} ${formatSerializableErrorForLog(toSerializableError(errorEvent))}`,
+            "Retry exhausted",
             { attempt, maxAttempts: config.maxAttempts, reason, ...errorFields(errorEvent) },
             errorEvent,
           );
@@ -204,7 +203,7 @@ export function withRetry(
           retryLogger,
           "info",
           "retry_scheduled",
-          `retrying nextAttempt=${attempt + 1}/${config.maxAttempts} delayMs=${delayMs} type=${errorEvent.errorType}`,
+          "Retry scheduled",
           {
             attempt,
             nextAttempt: attempt + 1,
@@ -242,7 +241,7 @@ export function withRetry(
         retryLogger,
         "error",
         "wrapper_exception",
-        `wrapper exception ${formatSerializableErrorForLog(toSerializableError(providerErr))}`,
+        "Wrapper exception",
         errorFields(providerErr),
         providerErr,
       );

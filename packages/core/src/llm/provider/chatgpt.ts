@@ -201,7 +201,7 @@ export function summarizeChatGPTWebSocketPayload(payload: Record<string, unknown
 function debugChatGPTWebSocket(direction: "->" | "<-", byteLength: number | undefined, summary: string): void {
   if (process.env.DILIGENT_DEBUG_CHATGPT_WEBSOCKET !== "1") return;
   webSocketLogger.debug("websocket_payload", {
-    message: `ChatGPT WebSocket: [llm:chatgpt-ws] ${direction} bytes=${byteLength ?? "unknown"} ${summary}`,
+    message: "WebSocket payload",
     fields: { direction, ...(byteLength !== undefined && { byteLength }), summary },
   });
 }
@@ -209,7 +209,7 @@ function debugChatGPTWebSocket(direction: "->" | "<-", byteLength: number | unde
 function debugChatGPTHttpSse(direction: "->" | "<-", byteLength: number, summary: string, sessionId?: string): void {
   if (process.env.DILIGENT_DEBUG_CHATGPT_HTTP_SSE !== "1") return;
   httpSseLogger.debug("sse_payload", {
-    message: `ChatGPT HTTP/SSE: [llm:chatgpt-sse] ${direction} bytes=${byteLength} ${summary}`,
+    message: "HTTP/SSE payload",
     sessionId,
     fields: { direction, byteLength, summary },
   });
@@ -224,7 +224,7 @@ function debugChatGPTHttpRequest(
   if (process.env.DILIGENT_DEBUG_CHATGPT_HTTP_SSE !== "1") return;
   const status = context?.status;
   httpSseLogger.debug("http_request", {
-    message: `ChatGPT HTTP/SSE: [llm:chatgpt-sse] -> state=${state} bytes=${byteLength}${status !== undefined ? ` status=${status}` : ""} ${summary}`,
+    message: "HTTP request",
     sessionId: context?.sessionId,
     fields: { direction: "->", state, byteLength, ...(status !== undefined && { status }), summary },
   });
@@ -326,8 +326,8 @@ function createChatGPTWebSocketEvents(input: {
     idleTimer = setTimeout(() => {
       if (process.env.DILIGENT_DEBUG_CHATGPT_WEBSOCKET === "1") {
         webSocketLogger.debug("websocket_timeout", {
-          message: `[llm:chatgpt-ws] state=timeout pendingDecode=${pendingMessageCount} message=${message}`,
-          fields: { state: "timeout", pendingDecode: pendingMessageCount },
+          message: "WebSocket timeout",
+          fields: { state: "timeout", pendingDecode: pendingMessageCount, timeoutMessage: message },
         });
       }
       fail(new ProviderError(message, "network", true));
@@ -348,7 +348,7 @@ function createChatGPTWebSocketEvents(input: {
     opened = true;
     if (process.env.DILIGENT_DEBUG_CHATGPT_WEBSOCKET === "1") {
       webSocketLogger.debug("websocket_open", {
-        message: "[llm:chatgpt-ws] state=open",
+        message: "WebSocket opened",
         fields: { state: "open" },
       });
     }
@@ -420,7 +420,7 @@ function createChatGPTWebSocketEvents(input: {
   function handleError(): void {
     if (process.env.DILIGENT_DEBUG_CHATGPT_WEBSOCKET === "1") {
       webSocketLogger.debug("websocket_error", {
-        message: `[llm:chatgpt-ws] state=error opened=${opened} pendingDecode=${pendingMessageCount}`,
+        message: "WebSocket error",
         fields: { state: "error", opened, pendingDecode: pendingMessageCount },
       });
     }
@@ -461,7 +461,7 @@ function createChatGPTWebSocketEvents(input: {
     const reason = event.reason;
     if (process.env.DILIGENT_DEBUG_CHATGPT_WEBSOCKET === "1") {
       webSocketLogger.debug("websocket_close", {
-        message: `[llm:chatgpt-ws] state=close code=${code} reason=${truncateWebSocketLogValue(reason || "none")} pendingDecode=${pendingMessageCount}`,
+        message: "WebSocket closed",
         fields: { state: "close", code, reason: reason || "none", pendingDecode: pendingMessageCount },
       });
     }

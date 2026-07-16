@@ -194,7 +194,7 @@ describe("withRetry", () => {
     }
     await stream.result().catch(() => {});
 
-    expect(logs.some((line) => line.includes("[llm:provider-error] status=503 message=server unavailable"))).toBe(true);
+    expect(logs.some((line) => line.includes("[llm:provider-error]") && line.includes("statusCode=503"))).toBe(true);
   });
 
   test("includes timestamp and sessionId in retry logs when sessionId is present", async () => {
@@ -219,12 +219,12 @@ describe("withRetry", () => {
     const retryLogs = logs.filter((line) => line.startsWith("[llm:retry]"));
     expect(retryLogs.length).toBeGreaterThan(0);
     expectRetryLogContext(retryLogs[0], "session-123");
-    const streamErrorLog = retryLogs.find((line) => line.includes("stream error attempt=1/2"));
+    const streamErrorLog = retryLogs.find((line) => line.includes("Stream error"));
     expect(streamErrorLog).toBeDefined();
     expect((streamErrorLog?.match(/timestamp=/g) ?? []).length).toBe(1);
     expect(streamErrorLog).not.toContain("requestStartedAt=");
-    expect(retryLogs.some((line) => line.includes("retrying nextAttempt=2/2 delayMs=1 type=server_error"))).toBe(true);
-    expect(retryLogs.some((line) => line.includes("recovered on attempt=2/2"))).toBe(true);
+    expect(retryLogs.some((line) => line.includes("Retry scheduled") && line.includes("nextAttempt=2") && line.includes("delayMs=1") && line.includes("errorType=server_error"))).toBe(true);
+    expect(retryLogs.some((line) => line.includes("Recovered"))).toBe(true);
   });
 
   test("emits stable structured retry records with session, retry, and model metadata", async () => {
@@ -300,8 +300,8 @@ describe("withRetry", () => {
     const retryLogs = logs.filter((line) => line.startsWith("[llm:retry]"));
     expect(retryLogs.length).toBeGreaterThan(0);
     expectRetryLogContext(retryLogs[0], "n/a");
-    expect(retryLogs.some((line) => line.includes("stream exception attempt=1/1"))).toBe(true);
-    expect(retryLogs.some((line) => line.includes("giving up attempt=1/1 reason=not_retryable"))).toBe(true);
+    expect(retryLogs.some((line) => line.includes("Stream exception") && line.includes("attempt=1"))).toBe(true);
+    expect(retryLogs.some((line) => line.includes("Retry exhausted") && line.includes("reason=not_retryable"))).toBe(true);
   });
 
   test("stops on non-retryable error", async () => {

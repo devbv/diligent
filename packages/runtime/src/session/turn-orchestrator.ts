@@ -3,7 +3,6 @@
 import type { CoreAgentEvent } from "@diligent/core/agent";
 import {
   type Agent,
-  formatSerializableErrorForLog,
   type QueuedSteeringMessage,
   selectForCompaction,
   toSerializableError,
@@ -335,7 +334,7 @@ export class TurnOrchestrator {
     logger.error("run_failed", {
       sessionId: this.ctx.persistence.sessionId,
       turnId,
-      message: `[SessionManager] Run error session=${this.ctx.persistence.sessionId} ${formatSerializableErrorForLog(serializable)} lastPersisted=${lastPersisted}`,
+      message: "Run error",
       error: err,
       fields: { lastPersisted, serializedError: serializable },
     });

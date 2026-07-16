@@ -35,48 +35,19 @@ function textValue(value: unknown): string {
   return safeJson(value);
 }
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function messageContainsMetadata(message: string, key: string, value: unknown): boolean {
-  const token = `${key}=${textValue(value)}`;
-  return new RegExp(`(?:^|\\s)${escapeRegExp(token)}(?=\\s|$)`).test(message);
-}
-
-function appendMetadata(metadata: string[], message: string, key: string, value: unknown): void {
-  if (!messageContainsMetadata(message, key, value)) {
-    metadata.push(`${key}=${textValue(value)}`);
-  }
-}
-
 function appendTextMetadata(message: string, record: LogRecord): string {
   const metadata: string[] = [];
-  appendMetadata(metadata, message, "level", record.level);
-  appendMetadata(metadata, message, "scope", record.scope);
-  appendMetadata(metadata, message, "event", record.event);
-  if (record.threadId !== undefined) {
-    appendMetadata(metadata, message, "threadId", record.threadId);
-  }
-  if (record.turnId !== undefined) appendMetadata(metadata, message, "turnId", record.turnId);
-  if (record.component !== undefined) {
-    appendMetadata(metadata, message, "component", record.component);
-  }
-  if (record.error !== undefined && !message.includes(`error=${safeJson(record.error)}`)) {
-    metadata.push(`error=${safeJson(record.error)}`);
-  }
+  metadata.push(`level=${record.level}`);
+  metadata.push(`scope=${record.scope}`);
+  metadata.push(`event=${record.event}`);
+  if (record.threadId !== undefined) metadata.push(`threadId=${record.threadId}`);
+  if (record.turnId !== undefined) metadata.push(`turnId=${record.turnId}`);
+  if (record.component !== undefined) metadata.push(`component=${record.component}`);
+  if (record.error !== undefined) metadata.push(`error=${safeJson(record.error)}`);
   for (const [key, value] of Object.entries(record.fields)) {
-    appendMetadata(metadata, message, key, value);
+    metadata.push(`${key}=${textValue(value)}`);
   }
   return metadata.length === 0 ? message : `${message} ${metadata.join(" ")}`;
-}
-
-function removeLeadingLegacyContext(message: string): string {
-  return message
-    .replace(/^timestamp=\S+\s+sessionId=\S+(?:\s+|$)/, "")
-    .replace(/^timestamp=\S+(?:\s+|$)/, "")
-    .replace(/^sessionId=\S+(?:\s+|$)/, "")
-    .trimStart();
 }
 
 /** Formats a log record as text with optional timestamp and session prefixes. */
@@ -88,7 +59,7 @@ export function formatLogRecordText(record: LogRecord, options: FormatLogRecordT
     ...(includeSessionId ? [`sessionId=${record.sessionId ?? "n/a"}`] : []),
   ].join(" ");
   const prefix = /^(\[[^\]\r\n]+\])(?:\s*)([\s\S]*)$/.exec(record.message);
-  const body = removeLeadingLegacyContext(prefix?.[2] ?? record.message);
+  const body = prefix?.[2] ?? record.message;
   const message = prefix
     ? [prefix[1], requiredContext, body].filter((part) => part.length > 0).join(" ")
     : [requiredContext, body].filter((part) => part.length > 0).join(" ");

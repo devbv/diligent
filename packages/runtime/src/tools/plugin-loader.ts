@@ -299,7 +299,7 @@ function normalizePluginToolRenderPayload(args: {
   if (parsed.success) return parsed.data;
 
   logger.warn("invalid_render_payload", {
-    message: `[plugin-loader] Invalid tool render payload package=${args.packageName} tool=${args.toolName}: ${parsed.error.message}`,
+    message: "Invalid tool render payload",
     error: parsed.error,
     fields: { packageName: args.packageName, toolName: args.toolName },
   });

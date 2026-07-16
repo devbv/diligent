@@ -428,7 +428,7 @@ function debugWebSearchPayload(
     sourcesLen: normalizeSources(item ?? {}).length,
   };
   webToolsLogger.debug("web_tool_payload", {
-    message: `[llm:web-tools] ${JSON.stringify(summary)}`,
+    message: "Web tool payload",
     fields: summary,
   });
 }

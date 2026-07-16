@@ -320,7 +320,7 @@ export class SessionManager {
       const detail = entry.type === "message" ? entry.message.role : entry.type;
       this.logger.error("persist_entry_failed", {
         sessionId: this.persistence.sessionId,
-        message: `[SessionManager] Failed to persist ${detail} for session=${this.persistence.sessionId}: ${error instanceof Error ? error.message : String(error)}`,
+        message: "Failed to persist entry",
         error,
         fields: { entryType: detail },
       });
@@ -334,7 +334,7 @@ export class SessionManager {
       const detail = entry.type === "message" ? entry.message.role : entry.type;
       this.logger.error("persist_entry_failed", {
         sessionId: this.persistence.sessionId,
-        message: `[SessionManager] Failed to persist ${detail} for session=${this.persistence.sessionId}: ${error instanceof Error ? error.message : String(error)}`,
+        message: "Failed to persist entry",
         error,
         fields: { entryType: detail },
       });

@@ -155,7 +155,7 @@ export class PlanReminder {
     if (!this.shouldRemind(opts.compactedThisTurn)) return null;
     const remaining = remainingPlanSteps(this.plan ?? []);
     this.logger.info("plan_reminder_injected", {
-      message: `[agent:plan-reminder] injected remaining=${remaining.length} compacted=${opts.compactedThisTurn} turnsSince=${this.turnsSinceSurfaced}`,
+      message: "Plan reminder injected",
       fields: {
         remaining: remaining.length,
         compacted: opts.compactedThisTurn,

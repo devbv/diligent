@@ -74,48 +74,42 @@ describe("createConsoleSink", () => {
     expect(calls[0]?.value).toStartWith("timestamp=2026-01-02T03:04:05.006Z sessionId=n/a ");
   });
 
-  test("does not duplicate structured metadata already embedded in a retry message", () => {
+  test("appends all structured fields after the message body", () => {
     const calls: Array<{ method: keyof ConsoleLike; value: string; marked: boolean }> = [];
     createLogger({
       scope: "llm",
       sink: createConsoleSink({ console: recordingConsole(calls) }),
       clock: () => new Date("2026-01-02T03:04:05.006Z"),
-    }).info("retry", {
-      message:
-        "[llm:retry] timestamp=2025-01-01T00:00:00.000Z sessionId=legacy provider=openai attempt=2 retry scheduled",
-      fields: { provider: "openai", attempt: 2, delayMs: 100 },
+    }).info("retry_scheduled", {
+      message: "[llm:retry] Retry scheduled",
+      fields: { attempt: 1, nextAttempt: 2, maxAttempts: 5, delayMs: 100 },
     });
 
-    expect(calls[0]?.value.match(/timestamp=/g)).toHaveLength(1);
-    expect(calls[0]?.value.match(/sessionId=/g)).toHaveLength(1);
-    expect(calls[0]?.value).not.toContain("sessionId=legacy");
-    expect(calls[0]?.value.match(/provider=openai/g)).toHaveLength(1);
-    expect(calls[0]?.value.match(/attempt=2/g)).toHaveLength(1);
-    expect(calls[0]?.value).toContain("delayMs=100");
+    const line = calls[0]?.value ?? "";
+    expect(line).toStartWith("[llm:retry] timestamp=2026-01-02T03:04:05.006Z sessionId=n/a Retry scheduled");
+    expect(line).toContain("attempt=1");
+    expect(line).toContain("nextAttempt=2");
+    expect(line).toContain("maxAttempts=5");
+    expect(line).toContain("delayMs=100");
   });
 
-  test("formats retry messages without timestamps while preserving prefix, session, and metadata deduplication", () => {
+  test("formats log records without timestamp while preserving prefix and session", () => {
     const record: LogRecord = {
       timestamp: "2026-01-02T03:04:05.006Z",
       level: "info",
       scope: "llm",
-      event: "retry",
-      message:
-        "[llm:retry] timestamp=2025-01-01T00:00:00.000Z sessionId=session-7 provider=openai attempt=2 retry scheduled",
+      event: "retry_recovered",
+      message: "[llm:retry] Recovered",
       sessionId: "session-7",
-      fields: { provider: "openai", attempt: 2, delayMs: 100 },
+      fields: { attempt: 2, maxAttempts: 5 },
     };
 
     const formatted = formatLogRecordText(record, { includeTimestamp: false });
 
-    expect(formatted).toStartWith("[llm:retry] sessionId=session-7 ");
-    expect(formatted).not.toContain("timestamp=2026-01-02T03:04:05.006Z");
-    expect(formatted).not.toContain("timestamp=2025-01-01T00:00:00.000Z");
-    expect(formatted).toContain("retry scheduled");
-    expect(formatted).toContain("delayMs=100");
-    expect(formatted.match(/sessionId=/g)).toHaveLength(1);
-    expect(formatted.match(/provider=openai/g)).toHaveLength(1);
-    expect(formatted.match(/attempt=2/g)).toHaveLength(1);
+    expect(formatted).toStartWith("[llm:retry] sessionId=session-7 Recovered");
+    expect(formatted).not.toContain("timestamp=");
+    expect(formatted).toContain("attempt=2");
+    expect(formatted).toContain("maxAttempts=5");
   });
 
   test("clears the marker even when the injected console throws", () => {
