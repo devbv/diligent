@@ -4,8 +4,14 @@ import { describe, expect, test } from "bun:test";
 import type { AgentLoopHook, CoreAgentEvent } from "@diligent/core/agent";
 import { Agent } from "@diligent/core/agent";
 import { EventStream } from "@diligent/core/event-stream";
-import type { Model, ProviderEvent, ProviderResult, StreamContext, StreamFunction } from "@diligent/core/llm";
-import type { AssistantMessage, Message } from "@diligent/core/types";
+import type { AssistantMessage, Message } from "@diligent/core/message-contract";
+import type {
+  Model,
+  ProviderEvent,
+  ProviderResult,
+  StreamContext,
+  StreamFunction,
+} from "@diligent/core/provider-contract";
 import { createLogger, type LogRecord } from "@diligent/logging";
 import { z } from "zod";
 

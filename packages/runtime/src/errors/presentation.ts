@@ -1,6 +1,5 @@
 // @summary Runtime-owned mapping from core diagnostics to client-facing error presentation
 
-import { PROVIDER_DISPLAY_NAMES } from "@diligent/core/llm/provider-manager";
 import {
   type ClientError,
   type ErrorRecovery,
@@ -9,6 +8,7 @@ import {
   type ProviderName,
   type SerializableError,
 } from "@diligent/protocol";
+import { PROVIDER_DESCRIPTORS } from "../provider/descriptors";
 
 export interface RuntimeErrorPresentationContext {
   provider?: ProviderName;
@@ -18,7 +18,7 @@ export interface RuntimeErrorPresentationContext {
 
 export function presentRuntimeError(error: SerializableError, context: RuntimeErrorPresentationContext): ClientError {
   const provider = context.provider;
-  const providerLabel = provider ? PROVIDER_DISPLAY_NAMES[provider] : "The selected provider";
+  const providerLabel = provider ? PROVIDER_DESCRIPTORS[provider].displayName : "The selected provider";
 
   if (error.providerErrorReason === ProviderErrorReason.UsageLimitReached) {
     return withPresentation(error, "Your AI usage limit was reached. Please try again later or change your plan.");

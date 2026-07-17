@@ -37,15 +37,6 @@ export const DEFAULT_PROVIDER: ProviderName = "anthropic";
 
 export const PROVIDER_NAMES: ProviderName[] = ["anthropic", "openai", "chatgpt", "gemini", "vertex", "zai-coding-plan"];
 
-export const PROVIDER_DISPLAY_NAMES: Record<ProviderName, string> = {
-  anthropic: "Anthropic",
-  openai: "OpenAI",
-  chatgpt: "ChatGPT",
-  gemini: "Gemini",
-  vertex: "Vertex AI",
-  "zai-coding-plan": "z.ai Coding Plan",
-};
-
 export const DEFAULT_MODELS: Record<ProviderName, string> = {
   anthropic: DEFAULT_ANTHROPIC_MODEL_ID,
   openai: "gpt-5.5",
@@ -53,18 +44,6 @@ export const DEFAULT_MODELS: Record<ProviderName, string> = {
   gemini: "gemini-3.5-flash",
   vertex: "vertex-gemma-4-26b-it",
   "zai-coding-plan": "glm-5.2",
-};
-
-export const PROVIDER_HINTS: Record<ProviderName, { apiKeyUrl: string; apiKeyPlaceholder: string }> = {
-  anthropic: { apiKeyUrl: "https://console.anthropic.com/settings/keys", apiKeyPlaceholder: "sk-ant-..." },
-  openai: { apiKeyUrl: "https://platform.openai.com/api-keys", apiKeyPlaceholder: "sk-..." },
-  chatgpt: { apiKeyUrl: "https://chatgpt.com", apiKeyPlaceholder: "OAuth login required" },
-  gemini: { apiKeyUrl: "https://aistudio.google.com/apikey", apiKeyPlaceholder: "AIza..." },
-  vertex: {
-    apiKeyUrl: "https://cloud.google.com/vertex-ai/generative-ai/docs/migrate/openai/overview",
-    apiKeyPlaceholder: "Google Cloud access token",
-  },
-  "zai-coding-plan": { apiKeyUrl: "https://platform.z.ai/console/api-keys", apiKeyPlaceholder: "API key" },
 };
 
 // imageDetail is OpenAI-only; other factories have fewer params and remain assignable (a function

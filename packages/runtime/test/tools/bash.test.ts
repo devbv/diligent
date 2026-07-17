@@ -1,6 +1,6 @@
 // @summary Tests for bash tool execution, error handling, and env var filtering
 import { describe, expect, test } from "bun:test";
-import type { ToolContext } from "@diligent/core/tool/types";
+import type { ToolContext } from "@diligent/core/tool-contract";
 import { createBashTool, filterSensitiveEnv } from "@diligent/runtime/tools";
 
 const bashTool = createBashTool(process.cwd());

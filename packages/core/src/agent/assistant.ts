@@ -71,6 +71,7 @@ export async function streamAssistantMessage(
       cwd?: string;
       model: Model;
       effort: ThinkingEffort;
+      localImageLoader?: import("../llm/image-io").LocalImageLoader;
     };
     sessionId?: string;
     signal?: AbortSignal;
@@ -87,6 +88,7 @@ export async function streamAssistantMessage(
 ): Promise<AssistantMessage> {
   const context: StreamContext = {
     cwd: request.config.cwd,
+    localImageLoader: request.config.localImageLoader,
     systemPrompt: runtime.systemPrompt,
     messages,
     tools: runtime.tools.map(toToolDefinition),

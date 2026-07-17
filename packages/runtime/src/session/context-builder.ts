@@ -1,7 +1,7 @@
 // @summary Builds model context and raw transcript views from tree-structured session entries with compaction support
-import { buildMessagesFromCompaction } from "@diligent/core/agent/compaction";
-import { resolveModel } from "@diligent/core/llm/models";
-import type { Message } from "@diligent/core/types";
+import { buildMessagesFromCompaction } from "@diligent/core/agent";
+import type { Message } from "@diligent/core/message-contract";
+import { resolveModel } from "@diligent/core/model-registry";
 import type { AssistantMessage, Mode, ThinkingEffort } from "@diligent/protocol";
 import type { CompactionEntry, SessionEntry } from "./types";
 

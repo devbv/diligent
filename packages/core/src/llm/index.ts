@@ -37,8 +37,6 @@ export {
   createStreamForProvider,
   DEFAULT_MODELS,
   DEFAULT_PROVIDER,
-  PROVIDER_DISPLAY_NAMES,
-  PROVIDER_HINTS,
   PROVIDER_NAMES,
   ProviderManager,
 } from "./provider-manager";

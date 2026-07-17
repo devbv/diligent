@@ -3,9 +3,9 @@ import { describe, expect, test } from "bun:test";
 import type { CoreAgentEvent } from "@diligent/core/agent";
 import { Agent } from "@diligent/core/agent";
 import { EventStream } from "@diligent/core/event-stream";
-import type { Model, ProviderEvent, ProviderResult, ToolDefinition } from "@diligent/core/llm/types";
-import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError } from "@diligent/core/llm/types";
-import type { AssistantMessage } from "@diligent/core/types";
+import type { AssistantMessage } from "@diligent/core/message-contract";
+import type { Model, ProviderEvent, ProviderResult, ToolDefinition } from "@diligent/core/provider-contract";
+import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError } from "@diligent/core/provider-contract";
 import { z } from "zod";
 
 const TEST_MODEL: Model = {

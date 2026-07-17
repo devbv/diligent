@@ -1,6 +1,6 @@
 // @summary Structured status helpers for search tool contract failures
 
-import type { ToolResult } from "@diligent/core/tool/types";
+import type { ToolResult } from "@diligent/core/tool-contract";
 import { createTextRenderPayload } from "./render-payload";
 
 export type SearchScopeStatus =

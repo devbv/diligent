@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { flattenSections } from "@diligent/core/llm/system-sections";
+import { flattenSections } from "@diligent/core/prompt-contract";
 import { buildSystemPrompt, discoverInstructions } from "@diligent/runtime/config";
 
 const TEST_ROOT = join(tmpdir(), `diligent-instructions-test-${Date.now()}`);

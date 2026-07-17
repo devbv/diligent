@@ -1,6 +1,6 @@
 // @summary Proxy tools exposing MCP resources (list/read) and prompts (list/get) on demand
 
-import type { Tool, ToolResult } from "@diligent/core/tool/types";
+import type { Tool, ToolResult } from "@diligent/core/tool-contract";
 import { z } from "zod";
 import type { RuntimeToolHost } from "../capabilities";
 import { requestToolApproval } from "../capabilities";

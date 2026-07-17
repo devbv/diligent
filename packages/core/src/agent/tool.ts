@@ -1,5 +1,6 @@
 // @summary Tool-call runner for sequential and parallel execution batches
 
+import type { ToolOutputStore } from "../tool/executor";
 import { executeTool } from "../tool/executor";
 import type { ToolContext, ToolRegistry } from "../tool/types";
 import type { ToolCallBlock, ToolResultMessage } from "../types";
@@ -12,6 +13,7 @@ export async function runToolCalls(
   stream: AgentStream,
   generateItemId: () => string,
   onToolAbort: () => void,
+  outputStore?: ToolOutputStore,
 ): Promise<{
   executions: Array<{
     toolCall: ToolCallBlock;
@@ -58,7 +60,9 @@ export async function runToolCalls(
     }
 
     const results = await Promise.all(
-      toolCalls.map((toolCall, index) => executeTool(registry, toolCall, buildToolContext(toolCall, itemIds[index]))),
+      toolCalls.map((toolCall, index) =>
+        executeTool(registry, toolCall, buildToolContext(toolCall, itemIds[index]), { outputStore }),
+      ),
     );
 
     for (let index = 0; index < toolCalls.length; index++) {
@@ -85,7 +89,7 @@ export async function runToolCalls(
       input: toolCall.input,
     });
 
-    const result = await executeTool(registry, toolCall, buildToolContext(toolCall, itemIds[index]));
+    const result = await executeTool(registry, toolCall, buildToolContext(toolCall, itemIds[index]), { outputStore });
     executions.push(toToolCallExecution(toolCall, itemIds[index], result, stream));
 
     if (signal?.aborted) break;

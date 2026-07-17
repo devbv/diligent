@@ -5,7 +5,7 @@ import type {
   ToolContext as CoreToolContext,
   ToolRenderPayloadLike,
   ToolResult,
-} from "@diligent/core/tool/types";
+} from "@diligent/core/tool-contract";
 import type { RuntimeToolHost } from "@diligent/runtime";
 
 export type ToolContext = CoreToolContext & {

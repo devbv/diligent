@@ -1,8 +1,8 @@
 // @summary Tests for downscaleImageIfNeeded — caps long edge, preserves aspect, passes through
 // small/undecodable/GIF images unchanged.
 import { beforeAll, describe, expect, test } from "bun:test";
-import type { Tool, ToolContext } from "@diligent/core/tool/types";
-import type { ImageBlock } from "@diligent/core/types";
+import type { ImageBlock } from "@diligent/core/message-contract";
+import type { Tool, ToolContext } from "@diligent/core/tool-contract";
 // @ts-expect-error -- file import yields a path string at runtime
 import pngWasm from "@jsquash/png/codec/pkg/squoosh_png_bg.wasm" with { type: "file" };
 import decodePng, { init as initPngDecode } from "@jsquash/png/decode";

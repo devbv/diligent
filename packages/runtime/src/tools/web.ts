@@ -1,5 +1,5 @@
 // @summary Built-in provider-native web tool placeholder for catalog/config exposure
-import type { Tool } from "@diligent/core/tool/types";
+import type { Tool } from "@diligent/core/tool-contract";
 import { z } from "zod";
 
 const WebParams = z.object({

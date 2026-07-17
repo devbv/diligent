@@ -1,7 +1,7 @@
 // @summary Tests for MCP resources/prompts — manager methods, proxy tools, capability gating
 
 import { afterEach, describe, expect, test } from "bun:test";
-import type { ToolContext } from "@diligent/core/tool/types";
+import type { ToolContext } from "@diligent/core/tool-contract";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";

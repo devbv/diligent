@@ -1,6 +1,6 @@
 // @summary Lazy MCP exposure — a search tool + a run proxy so tool schemas load on demand
 
-import type { Tool, ToolResult } from "@diligent/core/tool/types";
+import type { Tool, ToolResult } from "@diligent/core/tool-contract";
 import { z } from "zod";
 import type { RuntimeToolHost } from "../capabilities";
 import type { McpConnectionManager } from "./client";

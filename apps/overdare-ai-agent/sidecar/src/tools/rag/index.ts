@@ -1,6 +1,6 @@
 // @summary OVERDARE RAG bundled tool provider for product-owned search tools.
 
-import type { Tool } from "@diligent/core/tool/types";
+import type { Tool } from "@diligent/core/tool-contract";
 import type { BundledToolProvider, RuntimeToolHost } from "@diligent/runtime";
 import type { z } from "zod";
 import * as overdaresearch from "./overdaresearch";

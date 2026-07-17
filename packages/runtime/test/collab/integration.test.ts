@@ -1,6 +1,6 @@
 // @summary Integration: spawn 2 agents, wait for both, verify parallel completion
 import { describe, expect, it } from "bun:test";
-import type { ToolContext } from "@diligent/core/tool/types";
+import type { ToolContext } from "@diligent/core/tool-contract";
 import { createCollabTools, isFinal } from "@diligent/runtime/collab";
 import { makeAssistant, makeCollabDeps, makeMockSessionManagerFactory } from "../helpers/collab";
 

@@ -1,17 +1,11 @@
-// @summary Resolves persisted local image paths from relative or legacy absolute storage
+// @summary Runtime filesystem adapter for persisted local-image blocks
 
+import { readFile } from "node:fs/promises";
 import { isAbsolute, normalize, posix, resolve } from "node:path";
+import type { LocalImageLoader } from "@diligent/core/image-contract";
 
 function normalizeSeparators(value: string): string {
   return value.replaceAll("\\", "/");
-}
-
-function isLegacyAbsolutePath(value: string): boolean {
-  return value.startsWith("/");
-}
-
-function isPosixStylePath(value: string): boolean {
-  return value.includes("/") && !value.includes("\\");
 }
 
 export function toPersistedLocalImagePath(absPath: string, cwd: string): string {
@@ -25,8 +19,20 @@ export function toPersistedLocalImagePath(absPath: string, cwd: string): string 
 }
 
 export function resolvePersistedLocalImagePath(path: string, cwd?: string): string {
-  if (isLegacyAbsolutePath(path)) return normalizeSeparators(path);
+  if (path.startsWith("/")) return normalizeSeparators(path);
   if (isAbsolute(path) || !cwd) return normalize(path);
-  if (isPosixStylePath(cwd)) return posix.resolve(cwd, normalizeSeparators(path));
+  if (cwd.includes("/") && !cwd.includes("\\")) return posix.resolve(cwd, normalizeSeparators(path));
   return resolve(cwd, path);
 }
+
+export const localImageLoader: LocalImageLoader = {
+  async load(block, cwd) {
+    try {
+      const bytes = await readFile(resolvePersistedLocalImagePath(block.path, cwd));
+      return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw error;
+    }
+  },
+};

@@ -1,8 +1,8 @@
 // @summary Shared default tool assembly used by both CLI and Web server
 
 import { dirname, join } from "node:path";
-import type { ProviderName } from "@diligent/core/llm/types";
-import type { Tool } from "@diligent/core/tool/types";
+import type { ProviderName } from "@diligent/core/provider-contract";
+import type { Tool } from "@diligent/core/tool-contract";
 import { openBrowser } from "../auth";
 import type { AgentRegistry, CollabToolDeps } from "../collab";
 import { createCollabTools } from "../collab";

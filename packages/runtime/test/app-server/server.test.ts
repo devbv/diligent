@@ -5,9 +5,8 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EventStream } from "@diligent/core/event-stream";
-import { DEFAULT_ANTHROPIC_MODEL_ID, resolveModel } from "@diligent/core/llm/models";
-import { ProviderManager } from "@diligent/core/llm/provider-manager";
-import { type Model, ProviderError, type StreamFunction } from "@diligent/core/llm/types";
+import { DEFAULT_ANTHROPIC_MODEL_ID, resolveModel } from "@diligent/core/model-registry";
+import { type Model, ProviderError, ProviderManager, type StreamFunction } from "@diligent/core/provider-contract";
 import type {
   DiligentServerNotification,
   DiligentServerRequest,

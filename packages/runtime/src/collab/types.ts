@@ -1,8 +1,8 @@
 // @summary AgentStatus, AgentEntry, CollabToolDeps, and CollabEvent types for non-blocking multi-agent collab
 
-import type { ThinkingEffort } from "@diligent/core/llm/types";
-import type { Tool } from "@diligent/core/tool/types";
-import type { Message } from "@diligent/core/types";
+import type { Message } from "@diligent/core/message-contract";
+import type { ThinkingEffort } from "@diligent/core/provider-contract";
+import type { Tool } from "@diligent/core/tool-contract";
 import type { ResolvedAgentDefinition } from "../agent/resolved-agent";
 import type { AgentEvent, ChildAgentEvent } from "../agent-event";
 import type { ApprovalRequest, ApprovalResponse } from "../approval/types";
@@ -71,7 +71,7 @@ export interface CollabToolDeps {
   /** Routes sub-agent approval requests up to the parent session's approval handler. */
   approve?: (request: ApprovalRequest) => Promise<ApprovalResponse>;
   /** Stream function for child agents — when omitted, falls back to the global stream resolver. */
-  streamFn?: import("@diligent/core/llm/types").StreamFunction;
+  streamFn?: import("@diligent/core/provider-contract").StreamFunction;
   /**
    * Called when a child agent's turn completes normally.
    * Return `{ continueWith }` to re-run the child (e.g. when a Stop hook blocks).

@@ -4,14 +4,18 @@ import { join } from "node:path";
 import type { OpenAIOAuthTokens } from "@diligent/core/auth";
 import { refreshOAuthTokens, shouldRefresh } from "@diligent/core/auth/chatgpt-oauth";
 import { EventStream } from "@diligent/core/event-stream";
+import type {
+  ExternalProviderAuth,
+  ProviderEvent,
+  ProviderResult,
+  StreamFunction,
+} from "@diligent/core/provider-contract";
 import {
   type ChatGPTStreamOptions,
   createChatGPTNativeCompaction,
   createChatGPTStream,
-} from "@diligent/core/llm/provider/chatgpt";
-import { createVertexStream } from "@diligent/core/llm/provider/vertex";
-import type { ExternalProviderAuth } from "@diligent/core/llm/provider-manager";
-import type { ProviderEvent, ProviderResult, StreamFunction } from "@diligent/core/llm/types";
+} from "@diligent/core/providers/chatgpt";
+import { createVertexStream } from "@diligent/core/providers/vertex";
 
 export interface ChatGPTOAuthBinding {
   auth: ExternalProviderAuth;

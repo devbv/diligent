@@ -76,6 +76,7 @@ export type StreamFunction = (
 
 export interface StreamContext {
   cwd?: string;
+  localImageLoader?: import("./image-io").LocalImageLoader;
   systemPrompt: SystemSection[];
   messages: Message[];
   tools: ToolDefinition[];

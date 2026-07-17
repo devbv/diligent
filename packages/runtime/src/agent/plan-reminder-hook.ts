@@ -1,7 +1,7 @@
 // @summary Runtime-owned plan reminder parsing, cadence, and loop hook
 
 import type { AgentLoopHook } from "@diligent/core/agent";
-import type { Message } from "@diligent/core/types";
+import type { Message } from "@diligent/core/message-contract";
 import { createLogger, type Logger } from "@diligent/logging";
 
 export const PLAN_TOOL_NAME = "plan";

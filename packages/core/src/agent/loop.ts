@@ -1,10 +1,12 @@
 // @summary Agent loop coordinating compaction, streaming, tools, and loop safety
 
 import type { Logger } from "@diligent/logging";
+import type { LocalImageLoader } from "../llm/image-io";
 import type { NativeCompactFn } from "../llm/provider/native-compaction";
 import type { StreamTurnScope } from "../llm/turn-scope";
 import type { Model, StreamFunction, SystemSection, ThinkingEffort } from "../llm/types";
 import { ProviderError, ProviderErrorType } from "../llm/types";
+import type { ToolOutputStore } from "../tool/executor";
 import type { Tool } from "../tool/types";
 import type { AssistantMessage, Message, ToolCallBlock } from "../types";
 import { streamAssistantMessage } from "./assistant";
@@ -23,6 +25,7 @@ interface LoopConfig {
   tools: Tool[];
   effort: ThinkingEffort;
   compaction?: CompactionConfig;
+  localImageLoader?: LocalImageLoader;
 }
 
 export interface LoopRuntime {
@@ -35,6 +38,7 @@ export interface LoopRuntime {
   sessionId?: string;
   compactionSummary?: Record<string, unknown>;
   loopHooks: AgentLoopHookDispatcher;
+  toolOutputStore?: ToolOutputStore;
   hooks: {
     drainSteeringMessages: () => QueuedSteeringMessage[];
     pendingSteeringCount: () => number;
@@ -150,8 +154,14 @@ export async function runAgentLoop(
       stream.emit({ type: "usage", usage: assistantMessage.usage });
 
       const toolCalls = assistantMessage.content.filter((block): block is ToolCallBlock => block.type === "tool_call");
-      const { executions } = await runToolCalls(toolCalls, signal, registry, stream, nextItemId, () =>
-        toolAbortController.abort(),
+      const { executions } = await runToolCalls(
+        toolCalls,
+        signal,
+        registry,
+        stream,
+        nextItemId,
+        () => toolAbortController.abort(),
+        runtime.toolOutputStore,
       );
 
       // Always record tool results — including when the turn was aborted. Every
@@ -265,6 +275,7 @@ async function applyCompaction(messages: Message[], request: LoopRequest, stream
     systemPrompt: request.config.systemPrompt,
     compactionSummary: request.compactionSummary,
     sessionId: request.sessionId,
+    localImageLoader: request.config.localImageLoader,
     compactionConfig: config,
     llmMsgStreamFn: request.streamFunction,
     llmCompactionFn: request.llmCompactionFn,

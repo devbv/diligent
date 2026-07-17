@@ -1,6 +1,6 @@
 // @summary Thread read snapshot builder — assembles ThreadItem[] from transcript and applies live collab state.
 
-import { resolveModel } from "@diligent/core/llm/models";
+import { resolveModel } from "@diligent/core/model-registry";
 import type { ToolRenderPayload } from "@diligent/protocol";
 import { calculateUsageCost } from "../cost";
 import type { AssistantMessage, ThreadItem, ToolResultMessage, UserMessage } from "../protocol/index";

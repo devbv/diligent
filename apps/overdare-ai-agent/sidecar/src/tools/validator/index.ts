@@ -1,6 +1,6 @@
 // @summary OVERDARE validator bundled tool provider for Luau validation.
 
-import type { Tool } from "@diligent/core/tool/types";
+import type { Tool } from "@diligent/core/tool-contract";
 import type { BundledToolProvider, RuntimeToolHost } from "@diligent/runtime";
 import type { z } from "zod";
 import * as validatelua from "./validatelua";

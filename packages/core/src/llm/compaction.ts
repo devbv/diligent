@@ -73,6 +73,7 @@ export interface LLMCompactInput {
   systemPrompt: SystemSection[];
   compactionSummary?: Record<string, unknown>;
   sessionId?: string;
+  localImageLoader?: import("./image-io").LocalImageLoader;
   config: LLMCompactConfig;
   signal?: AbortSignal;
   /** Optional stream function override — for tests and custom models. When omitted, resolveStream() is used. */
@@ -171,6 +172,7 @@ export async function compact(input: LLMCompactInput): Promise<LLMCompactResult>
       messages: input.messages,
       compactionSummary: input.compactionSummary,
       sessionId: input.sessionId,
+      localImageLoader: input.localImageLoader,
       signal: input.signal,
     });
     if (nativeResult.status === "ok") {

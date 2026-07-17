@@ -30,8 +30,6 @@ export {
   getThinkingEffortUsageValues,
   KNOWN_MODELS,
   normalizeThinkingEffort,
-  PROVIDER_DISPLAY_NAMES,
-  PROVIDER_HINTS,
   PROVIDER_NAMES,
   ProviderManager,
   resolveModel,
@@ -125,6 +123,7 @@ export { ProtocolNotificationAdapter } from "./notification-adapter";
 export type { SystemPromptVars } from "./prompt";
 export { buildBaseSystemPrompt } from "./prompt";
 export type { ConsentSetParams, ConsentState } from "./protocol";
+export { PROVIDER_DESCRIPTORS } from "./provider";
 export type { NdjsonParser, RpcMessageSink, RpcMessageSource, RpcPeer, WebSocketSender } from "./rpc";
 export {
   createNdjsonParser,

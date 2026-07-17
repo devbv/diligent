@@ -58,6 +58,7 @@ export function createOpenAIStream(apiKey?: string, baseUrl?: string, imageDetai
           useReasoning,
           effort: options.effort,
           imageDetail,
+          localImageLoader: context.localImageLoader,
         });
         const openaiStream = await client.responses.create(
           requestBody,
@@ -203,6 +204,7 @@ export function createOpenAINativeCompaction(
         cwd: input.cwd,
         compactionSummary: input.compactionSummary,
         imageDetail,
+        localImageLoader: input.localImageLoader,
       }),
     };
     if (input.systemPrompt.length > 0) body.instructions = flattenSections(input.systemPrompt);

@@ -1,6 +1,6 @@
 // @summary Search persistent knowledge entries by stable id and/or content for LM-friendly lookup before update/delete
 
-import type { Tool, ToolContext, ToolResult } from "@diligent/core/tool/types";
+import type { Tool, ToolContext, ToolResult } from "@diligent/core/tool-contract";
 import { z } from "zod";
 import { readKnowledge } from "../knowledge/store";
 import { createSearchKnowledgeRenderPayload } from "./render-payload";

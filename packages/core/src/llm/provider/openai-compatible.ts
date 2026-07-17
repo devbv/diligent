@@ -1,7 +1,7 @@
 // @summary Shared OpenAI-compatible Chat Completions utilities for non-Responses providers
 import type { EventStream } from "../../event-stream";
 import type { AssistantMessage, ContentBlock, Message, StopReason, Usage } from "../../types";
-import { materializeUserContentBlocks } from "../image-io";
+import { type LocalImageLoader, materializeUserContentBlocks } from "../image-io";
 import type { FunctionToolDefinition, Model, ProviderEvent, ProviderResult, ToolDefinition } from "../types";
 
 type OpenAICompatibleContentPart = { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } };
@@ -33,6 +33,7 @@ type OpenAICompatibleTool = {
 export async function buildOpenAICompatibleMessages(
   messages: Message[],
   cwd?: string,
+  localImageLoader?: LocalImageLoader,
 ): Promise<OpenAICompatibleMessage[]> {
   const result: OpenAICompatibleMessage[] = [];
 
@@ -43,7 +44,7 @@ export async function buildOpenAICompatibleMessages(
         continue;
       }
 
-      const blocks = await materializeUserContentBlocks(msg.content, { cwd });
+      const blocks = await materializeUserContentBlocks(msg.content, { cwd, loader: localImageLoader });
       const content: OpenAICompatibleContentPart[] = [];
       for (const block of blocks) {
         if (block.type === "text") {

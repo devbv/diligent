@@ -5,8 +5,7 @@ import { createChatGPTOAuthBinding, removeAuthKey, removeOAuthTokens, saveAuthKe
 import {
   DEFAULT_MODELS,
   DEFAULT_PROVIDER,
-  PROVIDER_DISPLAY_NAMES,
-  PROVIDER_HINTS,
+  PROVIDER_DESCRIPTORS,
   PROVIDER_NAMES,
   type ProviderName,
 } from "../../../provider-manager";
@@ -15,7 +14,7 @@ import { t } from "../../theme";
 import type { Command, CommandContext } from "../types";
 
 function providerDisplayName(provider: ProviderName): string {
-  return PROVIDER_DISPLAY_NAMES[provider];
+  return PROVIDER_DESCRIPTORS[provider].displayName;
 }
 
 export const providerCommand: Command = {
@@ -290,7 +289,7 @@ export function promptApiKey(provider: ProviderName, ctx: CommandContext): Promi
     return startChatGPTOAuthFlow(ctx);
   }
   return (async () => {
-    const { apiKeyUrl, apiKeyPlaceholder } = PROVIDER_HINTS[provider];
+    const { apiKeyUrl, apiKeyPlaceholder } = PROVIDER_DESCRIPTORS[provider];
     const value = await ctx.app.prompt({
       title: `${providerDisplayName(provider)} API Key`,
       message: `Enter your ${providerDisplayName(provider)} API key (${apiKeyUrl})`,

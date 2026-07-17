@@ -1,5 +1,5 @@
 import type { AgentLoopHook } from "@diligent/core/agent";
-import type { Tool as CoreTool, ToolContext as CoreToolContext } from "@diligent/core/tool/types";
+import type { Tool as CoreTool, ToolContext as CoreToolContext } from "@diligent/core/tool-contract";
 import {
   type BundledToolProvider,
   createPresentableContextInjection,

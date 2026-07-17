@@ -3,7 +3,7 @@ import { describe, expect, it } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { ToolRegistryBuilder } from "@diligent/core/tool/registry";
+import { ToolRegistryBuilder } from "@diligent/core/tool-contract";
 import type { SkillMetadata } from "../../src/skills";
 import { createSkillTool, registerSkillTool } from "../../src/tools/skill";
 

@@ -1,9 +1,12 @@
 // @summary Reads persisted local image blocks into provider-ready base64 image blocks with validation
 import type { ContentBlock, ImageBlock, LocalImageBlock } from "../types";
 import { downscaleImageIfNeeded } from "./image-resize";
-import { resolvePersistedLocalImagePath } from "./local-image-paths";
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+
+export interface LocalImageLoader {
+  load(block: LocalImageBlock, cwd?: string): Promise<ArrayBuffer | null>;
+}
 
 function fileNameFromPath(path: string): string {
   const normalizedPath = path.replaceAll("\\", "/");
@@ -13,22 +16,12 @@ function fileNameFromPath(path: string): string {
 
 export async function localImageToBase64(
   block: LocalImageBlock,
-  options?: { cwd?: string },
+  options: { loader: LocalImageLoader; cwd?: string },
 ): Promise<ImageBlock | null> {
-  const resolvedPath = resolvePersistedLocalImagePath(block.path, options?.cwd);
-  const file = Bun.file(resolvedPath);
-  if (!(await file.exists())) {
-    return null;
-  }
-
-  const size = file.size;
-  if (typeof size === "number" && size > MAX_IMAGE_BYTES) {
-    throw new Error(`Attached image exceeds 10 MB limit: ${fileNameFromPath(resolvedPath)}`);
-  }
-
-  const bytes = await file.arrayBuffer();
+  const bytes = await options.loader.load(block, options.cwd);
+  if (!bytes) return null;
   if (bytes.byteLength > MAX_IMAGE_BYTES) {
-    throw new Error(`Attached image exceeds 10 MB limit: ${fileNameFromPath(resolvedPath)}`);
+    throw new Error(`Attached image exceeds 10 MB limit: ${fileNameFromPath(block.path)}`);
   }
 
   // Guards images persisted before upload-time downscaling existed: local_image blocks are
@@ -54,13 +47,15 @@ export async function localImageToBase64(
 
 export async function materializeUserContentBlocks(
   blocks: ContentBlock[],
-  options?: { cwd?: string },
+  options: { loader?: LocalImageLoader; cwd?: string },
 ): Promise<ContentBlock[]> {
   const result: ContentBlock[] = [];
 
   for (const block of blocks) {
     if (block.type === "local_image") {
-      const imageBlock = await localImageToBase64(block, options);
+      const imageBlock = options.loader
+        ? await localImageToBase64(block, { ...options, loader: options.loader })
+        : null;
       if (imageBlock) result.push(imageBlock);
     } else {
       result.push(block);

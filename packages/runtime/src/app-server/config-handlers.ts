@@ -3,8 +3,13 @@
 import { randomBytes } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
-import { downscaleImageIfNeeded } from "@diligent/core/llm/image-resize";
-import { PROVIDER_NAMES, type ProviderManager } from "@diligent/core/llm/provider-manager";
+import { downscaleImageIfNeeded } from "@diligent/core/image-contract";
+import {
+  PROVIDER_NAMES,
+  ProviderError,
+  ProviderErrorReason,
+  type ProviderManager,
+} from "@diligent/core/provider-contract";
 import { createLogger } from "@diligent/logging";
 import {
   type AuthStoreOptions,
@@ -28,6 +33,7 @@ import {
   type ProviderName,
   type SupportedImageMediaType,
 } from "../protocol/index";
+import { PROVIDER_DESCRIPTORS } from "../provider/descriptors";
 import type { ThreadRuntime } from "./thread-handlers";
 
 type EmitFn = (notification: DiligentServerNotification) => Promise<void>;
@@ -110,6 +116,7 @@ export async function buildProviderList(
   const oauthTokens = await loadOAuthTokens(authStore);
   return PROVIDER_NAMES.map((provider) => ({
     provider,
+    descriptor: PROVIDER_DESCRIPTORS[provider],
     configured: providerManager
       ? providerManager.hasKeyFor(provider)
       : provider === "chatgpt"
@@ -153,7 +160,12 @@ export async function handleAuthSet(
       fields: { provider: params.provider },
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Invalid API key";
+    const rawMessage = err instanceof Error ? err.message : "Unknown validation error";
+    const displayName = PROVIDER_DESCRIPTORS[params.provider].displayName;
+    const message =
+      err instanceof ProviderError && err.reason === ProviderErrorReason.CredentialsRejected
+        ? `Invalid API key for ${displayName}. Please check the key and try again.`
+        : `Could not verify the ${displayName} API key: ${rawMessage}`;
     logger.warn("api_key_verification_failed", {
       message: `[auth] ${params.provider} API key verification failed: ${message}`,
       error: err,

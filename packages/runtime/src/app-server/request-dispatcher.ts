@@ -1,10 +1,7 @@
 // @summary Client request dispatch context, session defaults injection, and request router for DiligentAppServer
 
-import { resolveModel } from "@diligent/core/llm/models";
-import type { NativeCompactFn } from "@diligent/core/llm/provider/native-compaction";
-import type { ProviderManager } from "@diligent/core/llm/provider-manager";
-import { normalizeThinkingEffort } from "@diligent/core/llm/thinking-effort";
-import type { ProviderName, StreamFunction } from "@diligent/core/llm/types";
+import { normalizeThinkingEffort, resolveModel } from "@diligent/core/model-registry";
+import type { NativeCompactFn, ProviderManager, ProviderName, StreamFunction } from "@diligent/core/provider-contract";
 import type { AuthStoreOptions } from "../auth/auth-store";
 import type { DiligentConfig } from "../config/schema";
 import type { ModelInfo } from "../protocol/index";

@@ -1,8 +1,8 @@
 // @summary Tests for LLM-layer compaction — generateSummary, compactMessages, compact (native-first)
 import { describe, expect, it } from "bun:test";
 import { EventStream } from "@diligent/core/event-stream";
-import type { Model, ProviderEvent, ProviderResult, StreamFunction } from "@diligent/core/llm/types";
-import type { Message, UserMessage } from "@diligent/core/types";
+import type { Message, UserMessage } from "@diligent/core/message-contract";
+import type { Model, ProviderEvent, ProviderResult, StreamFunction } from "@diligent/core/provider-contract";
 import {
   compact,
   compactMessages,

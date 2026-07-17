@@ -4,7 +4,7 @@ import { chmod, mkdir, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import type { OpenAIOAuthTokens } from "@diligent/core/auth";
-import type { ProviderName } from "@diligent/core/llm/types";
+import type { ProviderName } from "@diligent/core/provider-contract";
 import { createLogger } from "@diligent/logging";
 import { parse as parseJsonc } from "jsonc-parser";
 import { z } from "zod";

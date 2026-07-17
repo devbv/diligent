@@ -1,7 +1,7 @@
 // @summary Runtime plan-reminder parsing, cadence, restore, and injection tests
 
 import { describe, expect, test } from "bun:test";
-import type { Message, ToolCallBlock, ToolResultMessage } from "@diligent/core/types";
+import type { Message, ToolCallBlock, ToolResultMessage } from "@diligent/core/message-contract";
 import {
   buildPlanReminderMessage,
   createPlanReminderHook,

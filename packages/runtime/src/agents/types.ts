@@ -1,4 +1,4 @@
-import type { ModelClass } from "@diligent/core/llm/models";
+import type { ModelClass } from "@diligent/core/model-registry";
 
 export interface AgentFrontmatter {
   name: string;

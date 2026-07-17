@@ -2,9 +2,15 @@
 
 import { access, readFile } from "node:fs/promises";
 import { dirname, isAbsolute, resolve } from "node:path";
-import { KNOWN_MODELS, resolveModel } from "@diligent/core/llm/models";
-import { ProviderManager } from "@diligent/core/llm/provider-manager";
-import type { Model, ProviderName, StreamFunction, SystemSection, ThinkingEffort } from "@diligent/core/llm/types";
+import { KNOWN_MODELS, resolveModel } from "@diligent/core/model-registry";
+import type {
+  Model,
+  ProviderName,
+  StreamFunction,
+  SystemSection,
+  ThinkingEffort,
+} from "@diligent/core/provider-contract";
+import { ProviderManager } from "@diligent/core/provider-contract";
 import { createLogger } from "@diligent/logging";
 import { getBuiltinAgentDefinitions } from "../agent/agent-types";
 import type { Mode } from "../agent/mode";

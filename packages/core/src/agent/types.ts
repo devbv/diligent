@@ -1,9 +1,11 @@
 // @summary Agent public types and event stream primitives for the core runner
 
 import type { Logger } from "@diligent/logging";
+import type { LocalImageLoader } from "../llm/image-io";
 import type { NativeCompactFn } from "../llm/provider/native-compaction";
 import type { StreamTurnScope } from "../llm/turn-scope";
 import type { ProviderErrorReason, ProviderErrorType, StreamFunction, ThinkingEffort } from "../llm/types";
+import type { ToolOutputStore } from "../tool/executor";
 import type {
   AssistantMessage,
   ContentBlock,
@@ -169,6 +171,10 @@ export interface AgentOptions {
   llmMsgStreamFn?: StreamFunction;
   /** Explicit native compaction function — overrides the global compaction resolver. */
   llmCompactionFn?: NativeCompactFn;
+  /** Caller-owned adapter for reading persisted local image blocks. */
+  localImageLoader?: LocalImageLoader;
+  /** Caller-owned adapter for storing full tool output when core truncates it. */
+  toolOutputStore?: ToolOutputStore;
   /** Trusted synchronous hooks scoped to this Agent instance. */
   loopHooks?: readonly AgentLoopHook[];
 }

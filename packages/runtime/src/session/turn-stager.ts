@@ -2,7 +2,7 @@
 
 import type { CoreAgentEvent } from "@diligent/core/agent";
 import { buildMessagesFromCompaction, selectForCompaction } from "@diligent/core/agent";
-import type { Message } from "@diligent/core/types";
+import type { Message } from "@diligent/core/message-contract";
 import { readContextPresentation } from "../agent/context-presentation";
 import type { CompactionEntry, SessionEntry } from "./types";
 import { generateEntryId } from "./types";

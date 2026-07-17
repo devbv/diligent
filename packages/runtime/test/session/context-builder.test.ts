@@ -1,6 +1,6 @@
 // @summary Tests for building context from session entries
 import { describe, expect, it } from "bun:test";
-import type { Message } from "@diligent/core/types";
+import type { Message } from "@diligent/core/message-contract";
 import type { CompactionEntry, SessionEntry } from "@diligent/runtime/session";
 import { buildSessionContext, buildSessionTranscript } from "@diligent/runtime/session";
 

@@ -17,7 +17,7 @@ mock.module("../../src/tools/studiorpc/rpc.ts", () => ({
   call: async () => ({ ok: true }),
 }));
 
-import type { Tool } from "@diligent/core/tool/types";
+import type { Tool } from "@diligent/core/tool-contract";
 import { runProceduralScript } from "../../src/procedural";
 import { createStudioRpcToolProvider } from "../../src/tools/studiorpc";
 import { findNodeByActorGuid, readOvdrjmRoot } from "../../src/tools/studiorpc/tools/ovdrjm-utils";

@@ -1,7 +1,7 @@
 // @summary Tests for the MCP tool -> Diligent Tool bridge (schema passthrough, approval, result map)
 
 import { describe, expect, test } from "bun:test";
-import type { ToolContext } from "@diligent/core/tool/types";
+import type { ToolContext } from "@diligent/core/tool-contract";
 import type { McpConnectionManager } from "@diligent/runtime/tools";
 import {
   mapMcpCallResult,

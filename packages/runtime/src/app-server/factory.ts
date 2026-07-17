@@ -1,7 +1,7 @@
 // @summary Factory that builds a DiligentAppServerConfig from a RuntimeConfig, eliminating Web/CLI duplication
 import { dirname, join } from "node:path";
-import { getModelInfoList, resolveModel } from "@diligent/core/llm/models";
-import type { ProviderName, SystemSection } from "@diligent/core/llm/types";
+import { getModelInfoList, resolveModel } from "@diligent/core/model-registry";
+import type { ProviderName, SystemSection } from "@diligent/core/provider-contract";
 import { createLogger } from "@diligent/logging";
 import {
   EXECUTE_MODE_DISALLOWED_TOOLS,
@@ -16,7 +16,7 @@ import { applyConsentPatch, refreshPrivacyPolicyUrl, resolveConsentState } from 
 import { loadDiligentConfig } from "../config/loader";
 import { loadRuntimeConfig, type RuntimeConfig } from "../config/runtime";
 import { getGlobalConfigPath, saveGlobalConsent, saveGlobalModel } from "../config/writer";
-import { type DiligentPaths, ensureDiligentDir } from "../infrastructure";
+import { type DiligentPaths, ensureDiligentDir, localImageLoader, toolOutputStore } from "../infrastructure";
 import { buildKnowledgeSection, readKnowledge } from "../knowledge";
 import { discoverSkills } from "../skills";
 import { type BundledToolProvider, createBundledAgentLoopHooks } from "../tools/bundled-provider";
@@ -205,6 +205,8 @@ async function createRuntimeAgent(args: {
       effort,
       llmMsgStreamFn: runtimeConfig.streamFunction,
       llmCompactionFn,
+      localImageLoader,
+      toolOutputStore,
       compaction: {
         reservePercent: runtimeConfig.compaction.reservePercent,
         keepRecentTokens: runtimeConfig.compaction.keepRecentTokens,

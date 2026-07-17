@@ -1,13 +1,13 @@
 // @summary Model selection command - allows switching between available LLM models
 import { getThinkingEffortLabel, KNOWN_MODELS, normalizeThinkingEffort, resolveModel } from "@diligent/runtime";
-import { DEFAULT_PROVIDER, PROVIDER_DISPLAY_NAMES, PROVIDER_NAMES, type ProviderName } from "../../../provider-manager";
+import { DEFAULT_PROVIDER, PROVIDER_DESCRIPTORS, PROVIDER_NAMES, type ProviderName } from "../../../provider-manager";
 import type { ListPickerItem } from "../../components/list-picker";
 import { t } from "../../theme";
 import type { Command } from "../types";
 import { promptApiKey } from "./provider";
 
 function providerDisplayName(provider: ProviderName): string {
-  return PROVIDER_DISPLAY_NAMES[provider];
+  return PROVIDER_DESCRIPTORS[provider].displayName;
 }
 
 export const modelCommand: Command = {

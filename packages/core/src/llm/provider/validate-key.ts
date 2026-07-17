@@ -4,15 +4,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { GoogleGenAI } from "@google/genai";
 import OpenAI from "openai";
 import { isAuthenticationStatus } from "../provider-errors";
-import type { ProviderName } from "../types";
+import { ProviderError, ProviderErrorReason, ProviderErrorType, type ProviderName } from "../types";
 import { resolveZaiCodingPlanBaseUrl } from "./zai-coding-plan";
-
-const PROVIDER_LABELS: Partial<Record<ProviderName, string>> = {
-  anthropic: "Anthropic",
-  openai: "OpenAI",
-  gemini: "Gemini",
-  "zai-coding-plan": "z.ai",
-};
 
 // z.ai has no reliable models-list endpoint, so validate with a 1-token chat completion —
 // the same endpoint the provider actually uses. A bad key returns 401/403; a valid one returns 200.
@@ -74,12 +67,22 @@ export async function validateProviderApiKey(
     }
     // Other providers (vertex, chatgpt): no validation (preserves prior save-anything behavior).
   } catch (err) {
-    const label = PROVIDER_LABELS[provider] ?? provider;
     const status = authStatus(err);
-    if (isAuthenticationStatus(status)) {
-      throw new Error(`Invalid API key for ${label}. Please check the key and try again.`);
-    }
     const message = err instanceof Error ? err.message : String(err);
-    throw new Error(`Could not verify the ${label} API key: ${message}`);
+    if (isAuthenticationStatus(status)) {
+      throw new ProviderError(message, {
+        errorType: ProviderErrorType.Auth,
+        isRetryable: false,
+        statusCode: status,
+        cause: err instanceof Error ? err : undefined,
+        reason: ProviderErrorReason.CredentialsRejected,
+      });
+    }
+    throw new ProviderError(message, {
+      errorType: ProviderErrorType.Unknown,
+      isRetryable: false,
+      statusCode: status,
+      cause: err instanceof Error ? err : undefined,
+    });
   }
 }

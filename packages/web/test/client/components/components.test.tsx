@@ -1,7 +1,7 @@
 // @summary Static render tests for core UI components and accessibility attributes
 
 import { expect, test } from "bun:test";
-import { DEFAULT_ANTHROPIC_MODEL_ID } from "@diligent/core/llm/models";
+import { DEFAULT_ANTHROPIC_MODEL_ID } from "@diligent/core/model-registry";
 import { renderToStaticMarkup } from "react-dom/server";
 import { AppHeader } from "../../../src/client/components/AppHeader";
 import { AssetThumbnail } from "../../../src/client/components/AssetThumbnail";
@@ -1224,7 +1224,13 @@ test("provider settings modal hides vertex from the connect list", () => {
   // hidden here and configured via provider.vertex in config.jsonc instead.
   const html = renderToStaticMarkup(
     <ProviderSettingsModal
-      providers={[{ provider: "vertex", configured: false }]}
+      providers={[
+        {
+          provider: "vertex",
+          descriptor: { provider: "vertex", displayName: "Vertex AI", authMethod: "access_token" },
+          configured: false,
+        },
+      ]}
       oauthPending={false}
       oauthError={null}
       onSet={async () => {}}
@@ -1240,7 +1246,15 @@ test("provider settings modal hides vertex from the connect list", () => {
 test("provider settings modal shows a single OAuth label for connected ChatGPT", () => {
   const html = renderToStaticMarkup(
     <ProviderSettingsModal
-      providers={[{ provider: "chatgpt", configured: true, maskedKey: "ChatGPT OAuth", oauthConnected: true }]}
+      providers={[
+        {
+          provider: "chatgpt",
+          descriptor: { provider: "chatgpt", displayName: "ChatGPT", authMethod: "oauth" },
+          configured: true,
+          maskedKey: "ChatGPT OAuth",
+          oauthConnected: true,
+        },
+      ]}
       oauthPending={false}
       oauthError={null}
       onSet={async () => {}}

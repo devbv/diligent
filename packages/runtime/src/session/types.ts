@@ -1,6 +1,6 @@
 import type { Agent, SerializableError } from "@diligent/core/agent";
-import type { ThinkingEffort } from "@diligent/core/llm/types";
-import type { Message } from "@diligent/core/types";
+import type { Message } from "@diligent/core/message-contract";
+import type { ThinkingEffort } from "@diligent/core/provider-contract";
 import type { ContextPresentation } from "@diligent/protocol";
 import type { Mode } from "../agent/mode";
 import type { DiligentPaths } from "../infrastructure";

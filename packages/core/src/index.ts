@@ -86,8 +86,6 @@ export {
   getThinkingEffortUsageValues,
   KNOWN_MODELS,
   normalizeThinkingEffort,
-  PROVIDER_DISPLAY_NAMES,
-  PROVIDER_HINTS,
   PROVIDER_NAMES,
   ProviderError,
   ProviderErrorReason,

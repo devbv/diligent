@@ -1,8 +1,8 @@
 // @summary In-process product-owned tool provider contract for bundled runtime tools
 
 import type { AgentLoopHook } from "@diligent/core/agent";
-import type { Model } from "@diligent/core/llm/types";
-import type { Tool } from "@diligent/core/tool/types";
+import type { Model } from "@diligent/core/provider-contract";
+import type { Tool } from "@diligent/core/tool-contract";
 import type { Logger } from "@diligent/logging";
 import type { PluginHookFn } from "../hooks/runner";
 import type { RuntimeToolHost } from "./capabilities";

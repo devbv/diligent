@@ -2,10 +2,8 @@
 
 import { userInfo } from "node:os";
 import { toSerializableError } from "@diligent/core/agent";
-import { KNOWN_MODELS, resolveModel } from "@diligent/core/llm/models";
-import type { NativeCompactFn } from "@diligent/core/llm/provider/native-compaction";
-import type { ProviderManager } from "@diligent/core/llm/provider-manager";
-import type { ProviderName, StreamFunction } from "@diligent/core/llm/types";
+import { KNOWN_MODELS, resolveModel } from "@diligent/core/model-registry";
+import type { NativeCompactFn, ProviderManager, ProviderName, StreamFunction } from "@diligent/core/provider-contract";
 import type { RuntimeAgent } from "../agent/runtime-agent";
 import type { AgentEvent } from "../agent-event";
 import type { ApprovalRequest, ApprovalResponse, PermissionEngine } from "../approval/types";
@@ -83,7 +81,9 @@ export interface CreateAgentArgs {
   /** The thread's current agent, if one already exists. Passed so createAgent can reuse the registry. */
   existingAgent?: RuntimeAgent;
   /** Called when a child agent's turn completes normally. Propagated to the collab registry. */
-  onChildStop?: (info: ChildStopInfo) => Promise<{ continueWith?: import("@diligent/core/types").Message } | undefined>;
+  onChildStop?: (
+    info: ChildStopInfo,
+  ) => Promise<{ continueWith?: import("@diligent/core/message-contract").Message } | undefined>;
   /** User ID propagated to child agent stop hooks. */
   userId?: string;
 }
@@ -818,7 +818,7 @@ export class DiligentAppServer {
    */
   private async runStopHooksFor(
     info: ChildStopInfo & { permissionMode?: string; userId?: string },
-  ): Promise<{ continueWith?: import("@diligent/core/types").Message } | undefined> {
+  ): Promise<{ continueWith?: import("@diligent/core/message-contract").Message } | undefined> {
     const stopShellHandlers = this.config.hooks?.Stop ?? [];
     const { onStop: stopPluginHandlers } = await collectPluginHooks(this.config.toolConfig?.getTools(), info.cwd);
     const { onStop: stopBundledHandlers } = collectBundledHooks(this.config.bundledToolProviders);

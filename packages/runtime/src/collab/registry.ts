@@ -1,15 +1,16 @@
 // @summary AgentRegistry — spawn/wait/send_input/close lifecycle for non-blocking multi-agent collab
 
-import type { ModelClass } from "@diligent/core/llm/models";
-import { agentTypeToModelClass, resolveModel, resolveModelForClass } from "@diligent/core/llm/models";
-import type { ThinkingEffort } from "@diligent/core/llm/types";
-import type { Tool } from "@diligent/core/tool/types";
-import type { TextBlock } from "@diligent/core/types";
+import type { TextBlock } from "@diligent/core/message-contract";
+import type { ModelClass } from "@diligent/core/model-registry";
+import { agentTypeToModelClass, resolveModel, resolveModelForClass } from "@diligent/core/model-registry";
+import type { ThinkingEffort } from "@diligent/core/provider-contract";
+import type { Tool } from "@diligent/core/tool-contract";
 import { createLogger } from "@diligent/logging";
 import { PLAN_MODE_DISALLOWED_TOOLS } from "../agent/mode";
 import type { ResolvedAgentDefinition } from "../agent/resolved-agent";
 import { resolveAgentDefinition } from "../agent/resolved-agent";
 import { RuntimeAgent } from "../agent/runtime-agent";
+import { localImageLoader, toolOutputStore } from "../infrastructure";
 import { SessionManager } from "../session/manager";
 import { buildDefaultTools } from "../tools/defaults";
 import { COLLAB_TOOL_NAMES } from "../tools/tool-metadata";
@@ -337,7 +338,14 @@ export class AgentRegistry {
           childModel.id,
           childSystemPrompt,
           filteredTools,
-          { cwd: this.deps.cwd, effort: childEffort, llmMsgStreamFn: this.deps.streamFn, loopHooks },
+          {
+            cwd: this.deps.cwd,
+            effort: childEffort,
+            llmMsgStreamFn: this.deps.streamFn,
+            localImageLoader,
+            toolOutputStore,
+            loopHooks,
+          },
           result.registry,
         );
       },

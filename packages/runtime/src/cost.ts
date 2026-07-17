@@ -1,7 +1,7 @@
 // @summary Runtime-only usage cost helper for UI and historical session totals
 
-import type { Model } from "@diligent/core/llm/types";
-import type { Usage } from "@diligent/core/types";
+import type { Usage } from "@diligent/core/message-contract";
+import type { Model } from "@diligent/core/provider-contract";
 
 export function calculateUsageCost(model: Model, usage: Usage): number {
   const inputCost = (usage.inputTokens / 1_000_000) * (model.inputCostPer1M ?? 0);

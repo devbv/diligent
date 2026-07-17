@@ -594,6 +594,7 @@ export function createChatGPTStream(
           useReasoning,
           effort,
           store: false,
+          localImageLoader: context.localImageLoader,
         });
 
         const requestBody = useResponsesLite ? toResponsesLiteRequestBody(standardBody) : standardBody;
@@ -857,6 +858,7 @@ export function createChatGPTNativeCompaction(getTokens: () => OpenAIOAuthTokens
         messages: input.messages,
         cwd: input.cwd,
         compactionSummary: input.compactionSummary,
+        localImageLoader: input.localImageLoader,
       }),
     };
     if (input.systemPrompt.length > 0) standardBody.instructions = flattenSections(input.systemPrompt);

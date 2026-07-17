@@ -538,8 +538,18 @@ export const SessionSummarySchema = z.object({
 });
 export type SessionSummary = z.infer<typeof SessionSummarySchema>;
 
+export const ProviderDescriptorSchema = z.object({
+  provider: ProviderNameSchema,
+  displayName: z.string(),
+  authMethod: z.enum(["api_key", "oauth", "access_token"]),
+  apiKeyUrl: z.string().url().optional(),
+  apiKeyPlaceholder: z.string().optional(),
+});
+export type ProviderDescriptor = z.infer<typeof ProviderDescriptorSchema>;
+
 export const ProviderAuthStatusSchema = z.object({
   provider: ProviderNameSchema,
+  descriptor: ProviderDescriptorSchema,
   configured: z.boolean(),
   maskedKey: z.string().optional(),
   oauthConnected: z.boolean().optional(),

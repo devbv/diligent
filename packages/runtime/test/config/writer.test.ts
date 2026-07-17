@@ -3,7 +3,7 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { DEFAULT_ANTHROPIC_MODEL_ID } from "@diligent/core/llm/models";
+import { DEFAULT_ANTHROPIC_MODEL_ID } from "@diligent/core/model-registry";
 
 import {
   applyToolConfigPatch,

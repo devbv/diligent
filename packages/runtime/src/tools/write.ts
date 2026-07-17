@@ -1,7 +1,7 @@
 // @summary Write file contents with directory auto-creation
 import { mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import type { Tool, ToolResult } from "@diligent/core/tool/types";
+import type { Tool, ToolResult } from "@diligent/core/tool-contract";
 import { z } from "zod";
 import { isAbsolute, stripExtendedLengthPrefix } from "../util/path";
 import { type RuntimeToolHost, requestToolApproval } from "./capabilities";

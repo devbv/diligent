@@ -1,7 +1,7 @@
 // @summary Tool catalog builder — phase-based pipeline that merges builtins and plugins with config toggles
 
-import { withImageDownscaling } from "@diligent/core/llm/image-resize";
-import type { Tool } from "@diligent/core/tool/types";
+import { withImageDownscaling } from "@diligent/core/image-contract";
+import type { Tool } from "@diligent/core/tool-contract";
 import { COLLAB_TOOL_NAMES } from "../collab";
 import type { DiligentConfig } from "../config/schema";
 import type { BundledToolProvider } from "./bundled-provider";

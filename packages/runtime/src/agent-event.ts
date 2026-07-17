@@ -1,6 +1,6 @@
 // @summary AgentEvent union — CoreAgentEvent extended with runtime-emitted events
-import type { CoreAgentEvent } from "@diligent/core/agent/types";
-import type { Usage } from "@diligent/core/types";
+import type { CoreAgentEvent } from "@diligent/core/agent";
+import type { Usage } from "@diligent/core/message-contract";
 import type { CollabAgentRef, CollabAgentStatus, CollabAgentStatusEntry, ToolRenderPayload } from "@diligent/protocol";
 
 type RuntimeToolStartEvent = Extract<CoreAgentEvent, { type: "tool_start" }> & { render?: ToolRenderPayload };

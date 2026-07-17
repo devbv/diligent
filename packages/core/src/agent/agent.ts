@@ -2,12 +2,14 @@
 
 import { createLogger, type Logger } from "@diligent/logging";
 import { resolveCompaction } from "../llm/compaction";
+import type { LocalImageLoader } from "../llm/image-io";
 import { resolveModel } from "../llm/models";
 import type { NativeCompactFn } from "../llm/provider/native-compaction";
 import { withRetry } from "../llm/retry";
 import { resolveStream } from "../llm/stream-resolver";
 import { createStreamTurnScope, type StreamTurnScope } from "../llm/turn-scope";
 import type { Model, ProviderName, StreamFunction, SystemSection, ThinkingEffort } from "../llm/types";
+import type { ToolOutputStore } from "../tool/executor";
 import type { Tool } from "../tool/types";
 import type { Message } from "../types";
 import { runCompaction } from "./compaction";
@@ -36,6 +38,8 @@ export class Agent {
   private nextSteeringId = 0;
   private _running = false;
   private sessionId?: string;
+  private localImageLoader?: LocalImageLoader;
+  private toolOutputStore?: ToolOutputStore;
   readonly agentStream = new AgentStream();
 
   constructor(model: string | Model, systemPrompt: SystemSection[], tools: Tool[], opts?: AgentOptions) {
@@ -47,6 +51,8 @@ export class Agent {
     this.logger = opts?.logger ?? createLogger({ scope: "agent" });
     this.loopHooks = new AgentLoopHookDispatcher(opts?.loopHooks ?? [], this.logger);
     this.sessionId = opts?.sessionId;
+    this.localImageLoader = opts?.localImageLoader;
+    this.toolOutputStore = opts?.toolOutputStore;
     this.compactionConfig = opts?.compaction ?? {
       reservePercent: 14,
       keepRecentTokens: 20_000,
@@ -129,6 +135,7 @@ export class Agent {
         tools: this.tools,
         effort: this.effort,
         compaction: this.compactionConfig,
+        localImageLoader: this.localImageLoader,
       },
       streamFunction: this.llmMsgStreamFn,
       llmCompactionFn: this.llmCompactionFn,
@@ -138,6 +145,7 @@ export class Agent {
       sessionId: this.sessionId,
       compactionSummary: this.compactionSummary,
       loopHooks: this.loopHooks,
+      toolOutputStore: this.toolOutputStore,
       hooks: {
         drainSteeringMessages: () => this.drainPendingMessages(),
         pendingSteeringCount: () => this.pendingSteeringMessages.length,
@@ -217,6 +225,7 @@ export class Agent {
       llmCompactionFn: this.llmCompactionFn,
       stream: this.agentStream,
       sessionId: this.sessionId,
+      localImageLoader: this.localImageLoader,
       signal,
     });
     this.messages = result.messages;

@@ -213,6 +213,7 @@ Payload highlights:
   - `availableModels: ModelInfo[]`
 - `ProviderAuthStatus` includes:
   - `provider`
+  - `descriptor` (`displayName`, `authMethod`, and optional API-key URL/placeholder)
   - `configured`
   - `maskedKey` (optional)
   - `oauthConnected` (optional, currently used for ChatGPT)
@@ -222,6 +223,11 @@ Current client behavior:
 - Web listens to both `account/login/completed` and `account/updated`
 - TUI waits for `account/login/completed` during `/provider set chatgpt`
 - app-server opens external browser server-side (important for Desktop/Tauri integration)
+
+Provider presentation metadata has one runtime source of truth in
+`packages/runtime/src/provider/descriptors.ts`. Core key validation never adds provider labels or recovery copy: it
+throws a classified `ProviderError`, and runtime maps that diagnostic to the shared user-facing message before the RPC
+error reaches a client.
 
 ## Practical notes
 

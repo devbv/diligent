@@ -9,8 +9,8 @@ import {
   toSerializableError,
   updateUserMessageContent,
 } from "@diligent/core/agent";
-import { createStreamTurnScope, type StreamTurnScope } from "@diligent/core/llm";
-import type { Message } from "@diligent/core/types";
+import type { Message } from "@diligent/core/message-contract";
+import { createStreamTurnScope, type StreamTurnScope } from "@diligent/core/provider-contract";
 import { createLogger } from "@diligent/logging";
 import type { PendingSteer } from "@diligent/protocol";
 import { readContextPresentation } from "../agent/context-presentation";

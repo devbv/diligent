@@ -1,7 +1,7 @@
 // @summary Unit tests for slash command parser, filter, prefix detection, and skill merging
 
 import { describe, expect, test } from "bun:test";
-import { DEFAULT_ANTHROPIC_MODEL_ID } from "@diligent/core/llm/models";
+import { DEFAULT_ANTHROPIC_MODEL_ID } from "@diligent/core/model-registry";
 import {
   BUILTIN_COMMANDS,
   buildCommandList,

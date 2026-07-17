@@ -1,6 +1,6 @@
 // @summary Tool that pauses the agent loop to ask the user clarifying questions — D088
 
-import type { Tool } from "@diligent/core/tool/types";
+import type { Tool } from "@diligent/core/tool-contract";
 import { z } from "zod";
 import { type RuntimeToolHost, requestToolUserInput } from "./capabilities";
 import type { UserInputRequest } from "./user-input-types";

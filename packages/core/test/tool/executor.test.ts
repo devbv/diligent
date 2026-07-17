@@ -83,11 +83,40 @@ describe("executeTool", () => {
     const registry = new ToolRegistryBuilder().register(bigTool).build();
     const toolCall: ToolCallBlock = { type: "tool_call", id: "tc_1", name: "big", input: {} };
 
-    const result = await executeTool(registry, toolCall, makeCtx());
+    const saved: string[] = [];
+    const result = await executeTool(registry, toolCall, makeCtx(), {
+      outputStore: {
+        save: async (output) => {
+          saved.push(output);
+          return "/runtime/tool-output/full-output.txt";
+        },
+      },
+    });
     expect(result.output).toContain("WARNING");
     expect(result.output).toContain("truncated");
     expect(result.metadata?.truncated).toBe(true);
-    expect(result.metadata?.fullOutputPath).toBeDefined();
+    expect(result.metadata?.fullOutputPath).toBe("/runtime/tool-output/full-output.txt");
+    expect(saved).toEqual(["x".repeat(60_000)]);
+  });
+
+  test("truncates without claiming persistence when no output store is injected", async () => {
+    const bigTool: Tool = {
+      name: "big_without_store",
+      description: "Returns big output",
+      parameters: z.object({}),
+      async execute() {
+        return { output: "x".repeat(60_000) };
+      },
+    };
+    const registry = new ToolRegistryBuilder().register(bigTool).build();
+    const result = await executeTool(
+      registry,
+      { type: "tool_call", id: "tc_1", name: "big_without_store", input: {} },
+      makeCtx(),
+    );
+
+    expect(result.metadata?.fullOutputPath).toBeUndefined();
+    expect(result.output).not.toContain("Full output saved to disk");
   });
 
   test("auto-truncates with head_tail direction", async () => {

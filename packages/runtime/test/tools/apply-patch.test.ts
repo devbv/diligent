@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ToolContext } from "@diligent/core/tool/types";
+import type { ToolContext } from "@diligent/core/tool-contract";
 import { createApplyPatchTool, parsePatch } from "@diligent/runtime/tools";
 
 function makeCtx(): ToolContext {

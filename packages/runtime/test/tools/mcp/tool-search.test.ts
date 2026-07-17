@@ -1,7 +1,7 @@
 // @summary Tests for lazy MCP tools — search filtering/index/limit and run proxy validation
 
 import { describe, expect, test } from "bun:test";
-import type { ToolContext } from "@diligent/core/tool/types";
+import type { ToolContext } from "@diligent/core/tool-contract";
 import type { McpConnectionManager } from "../../../src/tools/mcp/client";
 import { createMcpRunTool, createMcpSearchTool } from "../../../src/tools/mcp/tool-search";
 import type { McpCallResult, McpCatalogEntry, McpOutputLimit } from "../../../src/tools/mcp/types";

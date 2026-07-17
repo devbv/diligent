@@ -1,6 +1,6 @@
 // @summary Tests for agent mode definitions and tool allowlists
 import { describe, expect, test } from "bun:test";
-import type { Tool } from "@diligent/core/tool/types";
+import type { Tool } from "@diligent/core/tool-contract";
 import {
   EXECUTE_MODE_DISALLOWED_TOOLS,
   MODE_SYSTEM_PROMPT_SUFFIXES,

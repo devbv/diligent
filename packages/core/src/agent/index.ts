@@ -1,6 +1,11 @@
 export type { CompactionPrompts, CompactMessagesResult } from "../llm/compaction";
 export { Agent } from "./agent";
-export { buildMessagesFromCompaction, selectForCompaction, splitCompactionMessages } from "./compaction";
+export {
+  buildMessagesFromCompaction,
+  COMPACTION_SUMMARY_PREFIX,
+  selectForCompaction,
+  splitCompactionMessages,
+} from "./compaction";
 export type {
   AgentContextInjection,
   AgentLoopHook,

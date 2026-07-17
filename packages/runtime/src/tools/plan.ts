@@ -1,6 +1,6 @@
 // @summary Plan tool — create and update a visible task checklist during long-horizon execution
 
-import type { Tool, ToolContext, ToolResult } from "@diligent/core/tool/types";
+import type { Tool, ToolContext, ToolResult } from "@diligent/core/tool-contract";
 import { z } from "zod";
 import planDescription from "./default/plan-description.txt" with { type: "text" };
 import { createPlanRenderPayload } from "./render-payload";

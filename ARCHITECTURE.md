@@ -156,6 +156,15 @@ Detailed guidance for the current structured tool-rendering flow lives in `docs/
 
 Core should not know about project-local persistence, `.diligent/`, JSON-RPC transport, or frontend behavior.
 
+Core's public package surface uses explicit capability boundaries instead of source-layout wildcard exports. Consumers
+should use subpaths such as `@diligent/core/tool-contract`, `model-registry`, `provider-contract`,
+`message-contract`, and `providers/chatgpt`. Runtime lint rules reject imports outside the approved boundary list, so
+moving an internal core file does not implicitly change the package API.
+
+Provider authentication checks remain core mechanisms and report structured `ProviderError` diagnostics. Provider
+display names, onboarding hints, and client-facing validation messages are runtime-owned; the corresponding
+`ProviderDescriptor` is carried by the shared protocol so Web and TUI consume the same metadata.
+
 ### `@diligent/runtime`
 
 `packages/runtime` is the main integration layer. It composes core primitives into a working coding agent runtime:
@@ -174,6 +183,10 @@ Core should not know about project-local persistence, `.diligent/`, JSON-RPC tra
 - transport-neutral RPC helpers and bindings
 
 Runtime is where shared product behavior should be added when both Web and TUI must behave the same way.
+
+Filesystem-backed provider/tool infrastructure is also assembled here. Core keeps image conversion/downscaling and
+tool-output truncation policy, while runtime supplies `LocalImageLoader` and `ToolOutputStore` adapters for persisted
+image reads and full-output temp-file storage.
 
 ### `@diligent/protocol`
 

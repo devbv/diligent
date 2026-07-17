@@ -1,6 +1,6 @@
 // @summary Tests for plan tool: output format, step rendering, empty title default
 import { describe, expect, it } from "bun:test";
-import type { ToolContext } from "@diligent/core/tool/types";
+import type { ToolContext } from "@diligent/core/tool-contract";
 import { createPlanTool } from "@diligent/runtime/tools";
 
 function makeCtx(): ToolContext {

@@ -1,6 +1,6 @@
 // @summary Tests for AgentRegistry: spawn, maxAgents, status tracking, shutdownAll
 import { describe, expect, it, spyOn } from "bun:test";
-import type { Tool } from "@diligent/core/tool/types";
+import type { Tool } from "@diligent/core/tool-contract";
 import type { RuntimeAgent } from "@diligent/runtime/agent/runtime-agent";
 import { AgentRegistry, isFinal } from "@diligent/runtime/collab";
 import type { SessionManagerConfig } from "@diligent/runtime/session";

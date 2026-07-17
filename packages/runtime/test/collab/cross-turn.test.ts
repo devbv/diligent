@@ -1,6 +1,6 @@
 // @summary Tests verifying registry reuse across turns and get_agent_status mid-execution polling
 import { describe, expect, it } from "bun:test";
-import type { ToolContext } from "@diligent/core/tool/types";
+import type { ToolContext } from "@diligent/core/tool-contract";
 import { createCollabTools } from "@diligent/runtime/collab";
 import { makeAssistant, makeCollabDeps, makeMockSessionManagerFactory } from "../helpers/collab";
 

@@ -1,12 +1,12 @@
 // @summary App-server thread lifecycle handlers: start, read, compact, mode/effort
 
 import { toSerializableError } from "@diligent/core/agent";
-import { resolveModel } from "@diligent/core/llm/models";
 import {
   normalizeThinkingEffort,
+  resolveModel,
   supportsThinkingEffort,
   supportsThinkingNone,
-} from "@diligent/core/llm/thinking-effort";
+} from "@diligent/core/model-registry";
 import type { RuntimeAgent } from "../agent/runtime-agent";
 import type { DiligentConfig } from "../config/schema";
 import { calculateUsageCost } from "../cost";

@@ -5,7 +5,7 @@ import { readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { Tool as HostTool, ToolResult as HostToolResult } from "@diligent/core/tool/types";
+import type { Tool as HostTool, ToolResult as HostToolResult } from "@diligent/core/tool-contract";
 import { createLogger } from "@diligent/logging";
 import type {
   Tool as PluginTool,

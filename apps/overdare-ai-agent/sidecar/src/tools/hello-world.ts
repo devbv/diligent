@@ -1,6 +1,6 @@
 // @summary OVERDARE-owned hello-world bundled tool provider for runtime smoke testing.
 
-import type { Tool } from "@diligent/core/tool/types";
+import type { Tool } from "@diligent/core/tool-contract";
 import type { BundledToolProvider } from "@diligent/runtime";
 import { z } from "zod";
 

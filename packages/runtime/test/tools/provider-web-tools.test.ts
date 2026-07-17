@@ -1,6 +1,6 @@
 // @summary Tests for provider-native web built-in tools and metadata exposure
 import { describe, expect, test } from "bun:test";
-import type { ToolContext } from "@diligent/core/tool/types";
+import type { ToolContext } from "@diligent/core/tool-contract";
 import { createWebTool } from "@diligent/runtime/tools";
 
 function makeCtx(): ToolContext {

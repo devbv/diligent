@@ -12,7 +12,7 @@ import { GoogleGenAI } from "@google/genai";
 import { EventStream } from "../../event-stream";
 import type { AssistantMessage, ContentBlock, Message, StopReason, ToolCallBlock, Usage } from "../../types";
 import { isNetworkError } from "../errors";
-import { materializeUserContentBlocks } from "../image-io";
+import { type LocalImageLoader, materializeUserContentBlocks } from "../image-io";
 import { GEMINI_THINKING_BUDGETS } from "../models";
 import { classifyProviderHttpError } from "../provider-errors";
 import { flattenSections } from "../system-sections";
@@ -62,7 +62,7 @@ export function createGeminiStream(apiKey?: string, baseUrl?: string): StreamFun
 
         const responseStream = await client.models.generateContentStream({
           model: model.id,
-          contents: await convertToGeminiContents(context.messages, context.cwd),
+          contents: await convertToGeminiContents(context.messages, context.cwd, context.localImageLoader),
           config: buildGeminiGenerateConfig(context, options, useThinking ? budgetTokens : undefined),
         });
 
@@ -184,7 +184,11 @@ export function buildGeminiGenerateConfig(
   };
 }
 
-export async function convertToGeminiContents(messages: Message[], cwd?: string): Promise<GeminiContent[]> {
+export async function convertToGeminiContents(
+  messages: Message[],
+  cwd?: string,
+  localImageLoader?: LocalImageLoader,
+): Promise<GeminiContent[]> {
   const result: GeminiContent[] = [];
 
   for (const msg of messages) {
@@ -192,7 +196,9 @@ export async function convertToGeminiContents(messages: Message[], cwd?: string)
       const parts: Part[] =
         typeof msg.content === "string"
           ? [{ text: msg.content }]
-          : (await materializeUserContentBlocks(msg.content, { cwd })).flatMap(convertUserContentBlockToGeminiPart);
+          : (await materializeUserContentBlocks(msg.content, { cwd, loader: localImageLoader })).flatMap(
+              convertUserContentBlockToGeminiPart,
+            );
       result.push({ role: "user", parts: parts.length > 0 ? parts : [{ text: "" }] });
     } else if (msg.role === "assistant") {
       const parts: Part[] = [];

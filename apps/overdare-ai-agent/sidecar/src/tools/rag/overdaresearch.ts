@@ -1,4 +1,4 @@
-import type { ToolContext, ToolResult } from "@diligent/core/tool/types";
+import type { ToolContext, ToolResult } from "@diligent/core/tool-contract";
 import { type RuntimeToolHost, requestToolApproval, requestToolUserInput } from "@diligent/runtime";
 import { z } from "zod";
 import { buildSearchRender, normalizeAssetForRender } from "./render";

@@ -147,6 +147,7 @@ export interface RunCompactionInput {
   systemPrompt: SystemSection[];
   compactionSummary?: Record<string, unknown>;
   sessionId?: string;
+  localImageLoader?: import("../llm/image-io").LocalImageLoader;
   compactionConfig: CompactionConfig;
   llmMsgStreamFn: StreamFunction;
   llmCompactionFn?: NativeCompactFn;
@@ -208,6 +209,7 @@ export async function runCompaction(input: RunCompactionInput): Promise<RunCompa
     systemPrompt: input.systemPrompt,
     compactionSummary: input.compactionSummary,
     sessionId: input.sessionId,
+    localImageLoader: input.localImageLoader,
     config: input.compactionConfig,
     signal: compactionSignal,
     streamFn: input.llmMsgStreamFn,

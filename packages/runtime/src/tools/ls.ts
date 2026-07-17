@@ -1,6 +1,6 @@
 // @summary List directory contents with type indicators
 import { readdir } from "node:fs/promises";
-import type { Tool, ToolResult } from "@diligent/core/tool/types";
+import type { Tool, ToolResult } from "@diligent/core/tool-contract";
 import { z } from "zod";
 import { isAbsolute, stripExtendedLengthPrefix } from "../util/path";
 import { createListRenderPayload, createTextRenderPayload } from "./render-payload";

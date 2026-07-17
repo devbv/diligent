@@ -13,6 +13,12 @@ import { localImageToBase64 } from "../../src/llm/image-io";
 import { DEFAULT_MAX_LONG_EDGE, imageDimensionsFromHeader } from "../../src/llm/image-resize";
 
 let dir: string;
+const loader = {
+  async load(block: { path: string }) {
+    const file = Bun.file(block.path);
+    return (await file.exists()) ? file.arrayBuffer() : null;
+  },
+};
 
 beforeAll(async () => {
   const mod = await WebAssembly.compile(await Bun.file(pngWasm).arrayBuffer());
@@ -35,7 +41,7 @@ test("materializing an oversized stored image downscales it to the long-edge cap
   const path = join(dir, "large.png");
   await Bun.write(path, await solidPng(3000, 2000));
 
-  const block = await localImageToBase64({ type: "local_image", path, mediaType: "image/png" });
+  const block = await localImageToBase64({ type: "local_image", path, mediaType: "image/png" }, { loader });
   expect(block).not.toBeNull();
 
   const bytes = new Uint8Array(Buffer.from(block!.source.data, "base64"));
@@ -49,7 +55,7 @@ test("materializing an in-cap image returns its bytes unchanged", async () => {
   const original = await solidPng(100, 80);
   await Bun.write(path, original);
 
-  const block = await localImageToBase64({ type: "local_image", path, mediaType: "image/png" });
+  const block = await localImageToBase64({ type: "local_image", path, mediaType: "image/png" }, { loader });
   expect(block).not.toBeNull();
   expect(Buffer.from(block!.source.data, "base64").equals(Buffer.from(original))).toBe(true);
 });

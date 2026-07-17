@@ -2,7 +2,7 @@
 
 import { describe, expect, test } from "bun:test";
 import type { CoreAgentEvent } from "@diligent/core/agent";
-import type { Message } from "@diligent/core/types";
+import type { Message } from "@diligent/core/message-contract";
 import { TurnStager } from "@diligent/runtime/session";
 
 function makeUser(content: string): Message {

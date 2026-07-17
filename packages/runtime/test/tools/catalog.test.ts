@@ -3,7 +3,7 @@ import { afterAll, describe, expect, it, mock } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Tool } from "@diligent/core/tool/types";
+import type { Tool } from "@diligent/core/tool-contract";
 import { z } from "zod";
 import type { BundledToolProvider } from "../../src/tools/bundled-provider";
 import type {
