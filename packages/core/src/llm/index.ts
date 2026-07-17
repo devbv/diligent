@@ -50,13 +50,11 @@ export { resolveStream } from "./stream-resolver";
 export { flattenSections } from "./system-sections";
 export {
   findModelInfo,
-  getThinkingEffortLabel,
   getThinkingEffortOptions,
   getThinkingEffortUsage,
   getThinkingEffortUsageValues,
   normalizeThinkingEffort,
   supportsThinkingEffort,
-  supportsThinkingNone,
 } from "./thinking-effort";
 export type { StreamTurnResource, StreamTurnScope } from "./turn-scope";
 export { createStreamTurnScope } from "./turn-scope";

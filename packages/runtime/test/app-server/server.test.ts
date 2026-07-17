@@ -1069,7 +1069,7 @@ describe("DiligentAppServer", () => {
     expect((readResult(read) as { currentEffort: string }).currentEffort).toBe("high");
   });
 
-  it("rejects minimal effort for models without none support", async () => {
+  it("rejects removed none effort at the protocol boundary", async () => {
     const projectRoot = await mkdtemp(join(process.env.TMPDIR ?? "/tmp", "diligent-app-server-"));
 
     const server = new DiligentAppServer(
@@ -1093,7 +1093,7 @@ describe("DiligentAppServer", () => {
         method: "effort/set",
         params: { threadId, effort: "none" },
       }),
-    ).resolves.toMatchObject({ error: { message: "Minimal thinking is not supported for this model." } });
+    ).resolves.toMatchObject({ error: { code: -32602, message: "Invalid params" } });
   });
 
   it("accepts and restores xhigh effort for GPT-5.6", async () => {
@@ -1151,6 +1151,15 @@ describe("DiligentAppServer", () => {
       params: { threadId, effort: "xhigh" },
     });
     expect(readResult(changed)).toEqual({ effort: "xhigh" });
+
+    const rejected = await server.handleRequest(TEST_CONNECTION_ID, {
+      id: 1532,
+      method: "effort/set",
+      params: { threadId, effort: "max" },
+    });
+    expect(rejected).toMatchObject({
+      error: { code: -32602, message: 'Thinking effort "max" is not supported for this model.' },
+    });
   });
 
   it("preserves existing effort/set behavior for non-thinking models", async () => {
@@ -1212,33 +1221,6 @@ describe("DiligentAppServer", () => {
       params: { threadId },
     });
     expect((readResult(read) as { currentEffort: string }).currentEffort).toBe("xhigh");
-  });
-
-  it("rejects none effort for OpenAI models", async () => {
-    const projectRoot = await mkdtemp(join(process.env.TMPDIR ?? "/tmp", "diligent-app-server-"));
-
-    const server = new DiligentAppServer(
-      createAppServerConfig({
-        cwd: projectRoot,
-        runtimeConfig: makeFactoryRuntimeConfig({ modelId: "gpt-5.6-terra" }),
-      }),
-    );
-
-    connectTestPeer(server);
-    const started = await server.handleRequest(TEST_CONNECTION_ID, {
-      id: 1512,
-      method: "thread/start",
-      params: { cwd: projectRoot },
-    });
-    const threadId = (readResult(started) as { threadId: string }).threadId;
-
-    await expect(
-      server.handleRequest(TEST_CONNECTION_ID, {
-        id: 1513,
-        method: "effort/set",
-        params: { threadId, effort: "none" },
-      }),
-    ).resolves.toMatchObject({ error: { message: "Minimal thinking is not supported for this model." } });
   });
 
   it("lists a newly started thread before the first turn", async () => {

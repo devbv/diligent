@@ -14,7 +14,7 @@ export type ProtocolVersion = z.infer<typeof ProtocolVersionSchema>;
 export const ModeSchema = z.enum(["default", "plan", "execute"]);
 export type Mode = z.infer<typeof ModeSchema>;
 
-export const ThinkingEffortSchema = z.enum(["none", "low", "medium", "high", "xhigh", "max"]);
+export const ThinkingEffortSchema = z.enum(["low", "medium", "high", "xhigh", "max"]);
 export type ThinkingEffort = z.infer<typeof ThinkingEffortSchema>;
 
 export const ProviderNameSchema = z.enum(["anthropic", "openai", "chatgpt", "gemini", "vertex", "zai-coding-plan"]);

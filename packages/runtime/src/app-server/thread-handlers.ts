@@ -1,12 +1,7 @@
 // @summary App-server thread lifecycle handlers: start, read, compact, mode/effort
 
 import { toSerializableError } from "@diligent/core/agent";
-import {
-  normalizeThinkingEffort,
-  resolveModel,
-  supportsThinkingEffort,
-  supportsThinkingNone,
-} from "@diligent/core/model-registry";
+import { normalizeThinkingEffort, resolveModel, supportsThinkingEffort } from "@diligent/core/model-registry";
 import type { RuntimeAgent } from "../agent/runtime-agent";
 import type { DiligentConfig } from "../config/schema";
 import { calculateUsageCost } from "../cost";
@@ -241,14 +236,9 @@ export async function handleEffortSet(
   const runtime = await ctx.resolveThreadRuntime(threadId);
   const modelId = runtime.manager.getCurrentModel()?.modelId ?? runtime.modelId;
   const model = modelId ? resolveModel(modelId) : undefined;
-  const unsupportedMinimal = effort === "none" && model && !supportsThinkingNone(model);
-  const unsupportedXhigh = effort === "xhigh" && model && !supportsThinkingEffort(model, effort);
-  if (unsupportedMinimal || unsupportedXhigh) {
-    const message =
-      effort === "none"
-        ? "Minimal thinking is not supported for this model."
-        : `Thinking effort "${effort}" is not supported for this model.`;
-    throw Object.assign(new Error(message), { code: -32602 });
+  const unsupportedEffort = model?.supportsThinking && !supportsThinkingEffort(model, effort);
+  if (unsupportedEffort) {
+    throw Object.assign(new Error(`Thinking effort "${effort}" is not supported for this model.`), { code: -32602 });
   }
   runtime.effort = effort;
   runtime.agent?.setEffort(effort);

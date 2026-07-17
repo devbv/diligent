@@ -1,11 +1,6 @@
 // @summary Tests for GPT-5.6 Responses request and usage compatibility
 import { afterEach, describe, expect, test } from "bun:test";
-import {
-  buildResponsesRequestBody,
-  isGpt56Model,
-  mapUsage,
-  toResponsesReasoningEffort,
-} from "../../../../src/llm/provider/openai/responses";
+import { buildResponsesRequestBody, isGpt56Model, mapUsage } from "../../../../src/llm/provider/openai/responses";
 import { restoreChatGPTStreamTestState } from "../../../helpers/chatgpt-stream";
 
 afterEach(restoreChatGPTStreamTestState);
@@ -19,15 +14,15 @@ describe("GPT-5.6 Responses API compatibility", () => {
     expect(isGpt56Model("gpt-5.6-unknown")).toBe(false);
   });
 
-  test("keeps xhigh and max distinct for GPT-5.6", () => {
-    expect(toResponsesReasoningEffort("xhigh", "gpt-5.6-sol")).toBe("xhigh");
-    expect(toResponsesReasoningEffort("max", "gpt-5.6-sol")).toBe("max");
-    expect(toResponsesReasoningEffort("max", "gpt-5.6-terra")).toBe("max");
-    expect(toResponsesReasoningEffort("max", "gpt-5.6-luna")).toBe("max");
-  });
+  test("passes GPT-5.5 xhigh through without effort translation", async () => {
+    const body = await buildResponsesRequestBody({
+      model: "gpt-5.5",
+      messages: [],
+      useReasoning: true,
+      effort: "xhigh",
+    });
 
-  test("preserves the GPT-5.5 max to xhigh mapping", () => {
-    expect(toResponsesReasoningEffort("max", "gpt-5.5")).toBe("xhigh");
+    expect(body.reasoning).toEqual({ effort: "xhigh", summary: "auto" });
   });
 
   test("uses GPT-5.6 reasoning and prompt cache request fields", async () => {
@@ -49,7 +44,7 @@ describe("GPT-5.6 Responses API compatibility", () => {
       model: "gpt-5.5",
       messages: [],
       useReasoning: true,
-      effort: "max",
+      effort: "xhigh",
       enablePromptCaching: true,
     });
 

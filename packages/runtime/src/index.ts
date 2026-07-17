@@ -9,7 +9,6 @@ export { EventStream } from "@diligent/core/event-stream";
 export type { Message } from "@diligent/core/message-contract";
 export {
   getModelInfoList,
-  getThinkingEffortLabel,
   getThinkingEffortOptions,
   getThinkingEffortUsage,
   getThinkingEffortUsageValues,
@@ -17,7 +16,6 @@ export {
   normalizeThinkingEffort,
   resolveModel,
   supportsThinkingEffort,
-  supportsThinkingNone,
 } from "@diligent/core/model-registry";
 export { flattenSections } from "@diligent/core/prompt-contract";
 export type { Model, ProviderName, StreamFunction, SystemSection } from "@diligent/core/provider-contract";

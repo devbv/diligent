@@ -20,7 +20,6 @@ import {
   getThinkingEffortUsage,
   normalizeThinkingEffort,
   supportsThinkingEffort,
-  supportsThinkingNone,
 } from "./model-thinking-helpers";
 import type { WebRpcClient } from "./rpc-client";
 import { parseSlashCommand, type SlashCommand } from "./slash-commands";
@@ -356,17 +355,11 @@ export function useAppActions({
   const setEffort = useCallback(
     async (nextEffort: ThinkingEffort): Promise<void> => {
       const modelInfo = findModelInfo(availableModels, currentModel);
-      const unsupportedMinimal =
-        nextEffort === "none" && modelInfo?.supportsThinking === true && !supportsThinkingNone(modelInfo);
-      const unsupportedXhigh =
-        nextEffort === "xhigh" && modelInfo !== undefined && !supportsThinkingEffort(modelInfo, nextEffort);
-      if (unsupportedMinimal || unsupportedXhigh) {
+      const unsupportedEffort = modelInfo?.supportsThinking === true && !supportsThinkingEffort(modelInfo, nextEffort);
+      if (unsupportedEffort) {
         dispatch({
           type: "show_info_toast",
-          payload:
-            nextEffort === "none"
-              ? "This model does not support minimal thinking."
-              : `Thinking effort "${nextEffort}" is not supported for this model.`,
+          payload: `Thinking effort "${nextEffort}" is not supported for this model.`,
         });
         return;
       }
@@ -559,8 +552,8 @@ export function useAppActions({
             dispatch({ type: "show_info_toast", payload: `Usage: ${usage}` });
             return;
           }
-          const normalized = arg.toLowerCase() === "minimal" ? "none" : arg.toLowerCase();
-          if (!["none", "low", "medium", "high", "xhigh", "max"].includes(normalized)) {
+          const normalized = arg.toLowerCase();
+          if (!["low", "medium", "high", "xhigh", "max"].includes(normalized)) {
             dispatch({ type: "show_info_toast", payload: `Unknown effort: ${arg}. Usage: ${usage}` });
             return;
           }

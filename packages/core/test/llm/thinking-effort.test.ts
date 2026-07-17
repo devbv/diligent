@@ -9,14 +9,27 @@ import {
 } from "../../src/llm/thinking-effort";
 
 describe("thinking effort capabilities", () => {
-  it("exposes one fixed effort set for every native provider model", () => {
-    for (const model of MODEL_CARDS.filter(({ provider }) => ["anthropic", "openai", "chatgpt"].includes(provider))) {
+  it("exposes the full effort set for native provider models other than GPT-5.5", () => {
+    for (const model of MODEL_CARDS.filter(
+      ({ id, provider }) => !id.endsWith("5.5") && ["anthropic", "openai", "chatgpt"].includes(provider),
+    )) {
       expect(getThinkingEffortOptions(model).map((option) => option.value)).toEqual([
         "low",
         "medium",
         "high",
         "xhigh",
         "max",
+      ]);
+    }
+  });
+
+  it("exposes xhigh instead of max for GPT-5.5", () => {
+    for (const id of ["gpt-5.5", "chatgpt-5.5"]) {
+      expect(getThinkingEffortOptions(resolveModel(id)).map((option) => option.value)).toEqual([
+        "low",
+        "medium",
+        "high",
+        "xhigh",
       ]);
     }
   });
@@ -38,26 +51,21 @@ describe("thinking effort capabilities", () => {
     expect(supportsThinkingEffort(resolveModel("gpt-5.5"), "xhigh")).toBe(true);
     expect(supportsThinkingEffort(resolveModel("claude-sonnet-4-6"), "xhigh")).toBe(true);
     expect(supportsThinkingEffort(resolveModel("chatgpt-5.5"), "xhigh")).toBe(true);
-    expect(supportsThinkingEffort(resolveModel("gpt-5.5"), "none")).toBe(false);
-    expect(supportsThinkingEffort(resolveModel("claude-sonnet-4-6"), "none")).toBe(false);
-    expect(supportsThinkingEffort(resolveModel("chatgpt-5.5"), "none")).toBe(false);
+    expect(supportsThinkingEffort(resolveModel("gpt-5.5"), "max")).toBe(false);
+    expect(supportsThinkingEffort(resolveModel("chatgpt-5.5"), "max")).toBe(false);
   });
 
-  it("preserves xhigh and normalizes removed none effort to medium", () => {
+  it("preserves xhigh for native provider models", () => {
     expect(normalizeThinkingEffort(resolveModel("gpt-5.5"), "xhigh")).toBe("xhigh");
     expect(normalizeThinkingEffort(resolveModel("claude-sonnet-4-6"), "xhigh")).toBe("xhigh");
     expect(normalizeThinkingEffort(resolveModel("chatgpt-5.5"), "xhigh")).toBe("xhigh");
-    expect(normalizeThinkingEffort(resolveModel("gpt-5.5"), "none")).toBe("medium");
-    expect(normalizeThinkingEffort(resolveModel("claude-sonnet-4-6"), "none")).toBe("medium");
-    expect(normalizeThinkingEffort(resolveModel("chatgpt-5.5"), "none")).toBe("medium");
   });
 
-  it("preserves legacy effort state for non-thinking models while removing restricted values", () => {
+  it("preserves legacy effort state for non-thinking models while removing xhigh", () => {
     const model = resolveModel("vertex-gemma-4-26b-it");
 
     expect(normalizeThinkingEffort(model, "high")).toBe("high");
     expect(normalizeThinkingEffort(model, "max")).toBe("max");
-    expect(normalizeThinkingEffort(model, "none")).toBe("medium");
     expect(normalizeThinkingEffort(model, "xhigh")).toBe("medium");
   });
 });

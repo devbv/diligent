@@ -38,6 +38,7 @@ function defineModelCards(cards: ModelCardInput[]): ModelCard[] {
 
 export const GEMINI_THINKING_BUDGETS = { low: 2_048, medium: 8_192, high: 16_384, max: 24_576 } as const;
 const NATIVE_PROVIDER_THINKING_EFFORTS: ThinkingEffort[] = ["low", "medium", "high", "xhigh", "max"];
+const GPT_5_5_THINKING_EFFORTS: ThinkingEffort[] = ["low", "medium", "high", "xhigh"];
 
 export const MODEL_CARDS: ModelCard[] = defineModelCards([
   // Anthropic — Opus/Sonnet/Fable use adaptive thinking; Haiku uses manual budgets.
@@ -134,7 +135,7 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
     inputCostPer1M: 2.0,
     outputCostPer1M: 12.0,
     supportsThinking: true,
-    supportedEfforts: ["none", "low", "medium", "high", "max"],
+    supportedEfforts: ["low", "medium", "high", "max"],
     supportsVision: true,
     thinkingBudgets: GEMINI_THINKING_BUDGETS,
     aliases: ["gemini-pro"],
@@ -148,7 +149,7 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
     inputCostPer1M: 1.5,
     outputCostPer1M: 9.0,
     supportsThinking: true,
-    supportedEfforts: ["none", "low", "medium", "high", "max"],
+    supportedEfforts: ["low", "medium", "high", "max"],
     supportsVision: true,
     thinkingBudgets: GEMINI_THINKING_BUDGETS,
     aliases: ["gemini-flash", "gemini", "gemini-3-flash-preview"],
@@ -162,7 +163,7 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
     inputCostPer1M: 0.25,
     outputCostPer1M: 1.5,
     supportsThinking: true,
-    supportedEfforts: ["none", "low", "medium", "high", "max"],
+    supportedEfforts: ["low", "medium", "high", "max"],
     supportsVision: true,
     thinkingBudgets: GEMINI_THINKING_BUDGETS,
     aliases: ["gemini-flash-lite", "gemini-3.1-flash-lite-preview"],
@@ -209,7 +210,7 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
     cacheReadCostPer1M: 0.5,
     cacheWriteCostPer1M: 0,
     supportsThinking: true,
-    supportedEfforts: NATIVE_PROVIDER_THINKING_EFFORTS,
+    supportedEfforts: GPT_5_5_THINKING_EFFORTS,
     supportsVision: true,
     accessLevel: "standard",
   },
@@ -268,7 +269,7 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
     contextWindow: 300_000,
     maxOutputTokens: 128_000,
     supportsThinking: true,
-    supportedEfforts: NATIVE_PROVIDER_THINKING_EFFORTS,
+    supportedEfforts: GPT_5_5_THINKING_EFFORTS,
     supportsVision: true,
     aliases: ["chatgpt-5.5-pro"],
   },

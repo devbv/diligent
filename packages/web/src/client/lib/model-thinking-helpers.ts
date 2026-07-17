@@ -7,27 +7,12 @@ export function findModelInfo(models: ModelInfo[], modelId?: string): ModelInfo 
   return models.find((model) => model.id === modelId);
 }
 
-export function supportsThinkingNone(
-  model: Pick<ModelInfo, "supportsThinking" | "supportedEfforts"> | undefined,
-): boolean {
-  if (!model?.supportsThinking) return false;
-  return model.supportedEfforts?.includes("none") ?? false;
-}
-
 export function supportsThinkingEffort(
   model: Pick<ModelInfo, "supportsThinking" | "supportedEfforts"> | undefined,
   effort: ThinkingEffort,
 ): boolean {
   if (!model?.supportsThinking) return false;
-  return model.supportedEfforts?.includes(effort) ?? !["none", "xhigh"].includes(effort);
-}
-
-function getThinkingEffortLabel(
-  effort: ThinkingEffort,
-  model: Pick<ModelInfo, "supportsThinking" | "supportedEfforts"> | undefined,
-): string {
-  if (effort === "none" && supportsThinkingNone(model)) return "minimal";
-  return effort;
+  return model.supportedEfforts?.includes(effort) ?? effort !== "xhigh";
 }
 
 export function getThinkingEffortOptions(
@@ -37,7 +22,7 @@ export function getThinkingEffortOptions(
   if (model && !model.supportsThinking) return [];
   const supportedEfforts =
     model?.supportsThinking === true ? (model.supportedEfforts ?? fallbackEffortValues) : fallbackEffortValues;
-  return supportedEfforts.map((effort) => ({ value: effort, label: getThinkingEffortLabel(effort, model) }));
+  return supportedEfforts.map((effort) => ({ value: effort, label: effort }));
 }
 
 export function normalizeThinkingEffort(
@@ -46,7 +31,7 @@ export function normalizeThinkingEffort(
 ): ThinkingEffort {
   if (!model) return effort;
   if (!model.supportsThinking) {
-    return effort === "none" || effort === "xhigh" ? "medium" : effort;
+    return effort === "xhigh" ? "medium" : effort;
   }
   if (supportsThinkingEffort(model, effort)) return effort;
   if (

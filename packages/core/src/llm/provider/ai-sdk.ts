@@ -38,7 +38,7 @@ export interface AISDKStreamConfig<TState = undefined> extends AISDKStreamAdapte
   resolveReasoning?: (model: Model, options: StreamOptions) => AISDKReasoning | undefined;
 }
 
-type AISDKReasoning = "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "provider-default";
+type AISDKReasoning = "low" | "medium" | "high" | "xhigh" | "provider-default";
 type UserContent = Exclude<Extract<ModelMessage, { role: "user" }>["content"], string>;
 type AssistantContent = Exclude<Extract<ModelMessage, { role: "assistant" }>["content"], string>;
 type AISDKProviderOptions = NonNullable<Extract<AssistantContent[number], { type: "tool-call" }>["providerOptions"]>;

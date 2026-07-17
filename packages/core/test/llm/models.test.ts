@@ -154,8 +154,21 @@ describe("model cards", () => {
     ]);
   });
 
-  it("uses the fixed effort set for every Anthropic, OpenAI, and ChatGPT model card", () => {
-    for (const model of MODEL_CARDS.filter(({ provider }) => ["anthropic", "openai", "chatgpt"].includes(provider))) {
+  it("uses xhigh without max for the retained GPT-5.5 models", () => {
+    for (const id of ["gpt-5.5", "chatgpt-5.5"]) {
+      expect(MODEL_CARDS.find((model) => model.id === id)?.supportedEfforts).toEqual([
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+      ]);
+    }
+  });
+
+  it("uses the full native effort set for models other than GPT-5.5", () => {
+    for (const model of MODEL_CARDS.filter(
+      ({ id, provider }) => !id.endsWith("5.5") && ["anthropic", "openai", "chatgpt"].includes(provider),
+    )) {
       expect(model.supportedEfforts).toEqual(["low", "medium", "high", "xhigh", "max"]);
     }
   });

@@ -1531,7 +1531,7 @@ test("input dock renders pending image preview and add-images action", () => {
       threadStatus="idle"
       mode="default"
       onModeChange={() => {}}
-      effort="none"
+      effort="medium"
       onEffortChange={() => {}}
       currentModel="gpt-5.6-terra"
       availableModels={[
@@ -1542,7 +1542,7 @@ test("input dock renders pending image preview and add-images action", () => {
           maxOutputTokens: 64000,
           supportsVision: true,
           supportsThinking: true,
-          supportedEfforts: ["none", "low", "medium", "high", "max"],
+          supportedEfforts: ["low", "medium", "high", "max"],
         },
       ]}
       onModelChange={() => {}}
@@ -1568,8 +1568,7 @@ test("input dock renders pending image preview and add-images action", () => {
   expect(html).toContain("Ask anything or attach images…");
   expect(html).toContain('data-icon="agent-logo"');
   expect(html).toContain('class="relative z-20 bg-surface-dark');
-  expect(html).toContain("minimal");
-  expect(html).toContain("minimal");
+  expect(html).toContain("medium");
 });
 
 test("input dock renders GPT-5.6 xhigh as a distinct selected effort", () => {
@@ -1597,7 +1596,7 @@ test("input dock renders GPT-5.6 xhigh as a distinct selected effort", () => {
           maxOutputTokens: 128000,
           supportsVision: true,
           supportsThinking: true,
-          supportedEfforts: ["none", "low", "medium", "high", "xhigh", "max"],
+          supportedEfforts: ["low", "medium", "high", "xhigh", "max"],
         },
       ]}
       onModelChange={() => {}}

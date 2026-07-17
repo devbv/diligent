@@ -60,9 +60,6 @@ export function createAnthropicStream(apiKey?: string, baseUrl?: string): Stream
       try {
         const maxTokens = options.maxTokens ?? model.maxOutputTokens;
         const effort = options.effort ?? "medium";
-        if (effort === "none") {
-          throw new Error("Anthropic does not support effort 'none'; thinking must remain enabled");
-        }
 
         let thinkingConfig: Record<string, unknown>;
         if (!model.supportsThinking) {

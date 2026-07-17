@@ -80,7 +80,6 @@ export {
   getDefaultModelId,
   getModelClass,
   getModelInfoList,
-  getThinkingEffortLabel,
   getThinkingEffortOptions,
   getThinkingEffortUsage,
   getThinkingEffortUsageValues,
@@ -97,7 +96,6 @@ export {
   resolveModel,
   resolveModelForClass,
   supportsThinkingEffort,
-  supportsThinkingNone,
   withRetry,
 } from "./llm/index";
 export type {

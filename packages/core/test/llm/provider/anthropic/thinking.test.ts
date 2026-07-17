@@ -136,16 +136,6 @@ describe("createAnthropicStream", () => {
     expect(request.output_config).toEqual({ effort: "max" });
   });
 
-  test("rejects none effort without sending an Anthropic request", async () => {
-    anthropicCalls.length = 0;
-    const stream = createAnthropicStream("test-key")(baseModel({ supportsAdaptiveThinking: true }), EMPTY_CONTEXT, {
-      effort: "none",
-    });
-
-    await expect(stream.result()).rejects.toThrow("does not support effort 'none'");
-    expect(anthropicCalls).toHaveLength(0);
-  });
-
   test("defaults missing effort to medium adaptive thinking", async () => {
     const request = await collectRequest(baseModel({ supportsAdaptiveThinking: true }), {});
 

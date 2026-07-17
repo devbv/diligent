@@ -9,8 +9,6 @@ import type {
   ToolDefinition,
 } from "../../types";
 
-export type ResponsesReasoningEffort = "none" | "low" | "medium" | "high" | "xhigh" | "max";
-
 // OpenAI vision `detail`: "low" = fixed 512px (~85 tokens), "high" = tiled, "auto" = server picks by size.
 export type OpenAIImageDetail = "auto" | "low" | "high";
 
@@ -175,11 +173,6 @@ export function toResponsesLiteRequestBody(body: Record<string, unknown>): Recor
   };
 }
 
-export function toResponsesReasoningEffort(effort: ThinkingEffort, modelId: string): ResponsesReasoningEffort {
-  if (effort === "max" && !isGpt56Model(modelId)) return "xhigh";
-  return effort;
-}
-
 type OpenAIFunctionTool = {
   type: "function";
   name: string;
@@ -302,7 +295,7 @@ export async function buildResponsesRequestBody(input: {
   if (input.maxTokens !== undefined) body.max_output_tokens = input.maxTokens;
   if (input.temperature !== undefined) body.temperature = input.temperature;
   if (input.useReasoning && input.effort) {
-    body.reasoning = { effort: toResponsesReasoningEffort(input.effort, input.model), summary: "auto" };
+    body.reasoning = { effort: input.effort, summary: "auto" };
     body.include = ["reasoning.encrypted_content"];
   }
   if (input.tools?.some((tool) => tool.kind === "provider_builtin")) {

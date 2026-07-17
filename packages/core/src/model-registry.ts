@@ -18,12 +18,10 @@ export type { ProviderModelPolicy } from "./llm/provider-model-policy";
 export { getDefaultModelId, PROVIDER_MODEL_POLICIES } from "./llm/provider-model-policy";
 export {
   findModelInfo,
-  getThinkingEffortLabel,
   getThinkingEffortOptions,
   getThinkingEffortUsage,
   getThinkingEffortUsageValues,
   normalizeThinkingEffort,
   supportsThinkingEffort,
-  supportsThinkingNone,
   THINKING_EFFORT_VALUES,
 } from "./llm/thinking-effort";

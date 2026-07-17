@@ -1,5 +1,5 @@
 // @summary Model selection command - allows switching between available LLM models
-import { getThinkingEffortLabel, MODEL_CARDS, normalizeThinkingEffort, resolveModel } from "@diligent/runtime";
+import { MODEL_CARDS, normalizeThinkingEffort, resolveModel } from "@diligent/runtime";
 import { DEFAULT_PROVIDER, PROVIDER_DESCRIPTORS, PROVIDER_NAMES, type ProviderName } from "../../../provider-manager";
 import type { ListPickerItem } from "../../components/list-picker";
 import { t } from "../../theme";
@@ -37,7 +37,7 @@ export const modelCommand: Command = {
         const normalizedEffort = normalizeThinkingEffort(model, ctx.currentEffort);
         if (normalizedEffort !== ctx.currentEffort) {
           await ctx.setEffort(normalizedEffort);
-          ctx.onEffortChanged(normalizedEffort, getThinkingEffortLabel(normalizedEffort, model));
+          ctx.onEffortChanged(normalizedEffort, normalizedEffort);
         }
         ctx.displayLines([`  Model switched to ${t.bold}${model.id}${t.reset}`]);
       } catch {
@@ -103,7 +103,7 @@ export const modelCommand: Command = {
     const normalizedEffort = normalizeThinkingEffort(model, ctx.currentEffort);
     if (normalizedEffort !== ctx.currentEffort) {
       await ctx.setEffort(normalizedEffort);
-      ctx.onEffortChanged(normalizedEffort, getThinkingEffortLabel(normalizedEffort, model));
+      ctx.onEffortChanged(normalizedEffort, normalizedEffort);
     }
     ctx.displayLines([`  Model switched to ${t.bold}${model.id}${t.reset}`]);
   },

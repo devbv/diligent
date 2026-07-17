@@ -66,6 +66,17 @@ describe("effortCommand", () => {
     expect(displayError).not.toHaveBeenCalled();
   });
 
+  it("rejects max for GPT-5.5", async () => {
+    const setEffort = mock(async () => {});
+    const displayError = mock(() => {});
+    const ctx = makeContext("gpt-5.5", { setEffort, displayError });
+
+    await effortCommand.handler("max", ctx);
+
+    expect(setEffort).not.toHaveBeenCalled();
+    expect(displayError).toHaveBeenCalledWith('Thinking effort "max" is not supported for this model.');
+  });
+
   it("preserves the existing command behavior for non-thinking models", async () => {
     const setEffort = mock(async () => {});
     const displayError = mock(() => {});
@@ -75,6 +86,19 @@ describe("effortCommand", () => {
 
     expect(setEffort).toHaveBeenCalledWith("high");
     expect(displayError).not.toHaveBeenCalled();
+  });
+
+  it("rejects removed none and minimal aliases", async () => {
+    for (const value of ["none", "minimal"]) {
+      const setEffort = mock(async () => {});
+      const displayError = mock(() => {});
+      const ctx = makeContext("gpt-5.6-sol", { setEffort, displayError });
+
+      await effortCommand.handler(value, ctx);
+
+      expect(setEffort).not.toHaveBeenCalled();
+      expect(displayError).toHaveBeenCalledWith(`Unknown effort: ${value}. Usage: /effort <low|medium|high|xhigh|max>`);
+    }
   });
 
   it("shows the fixed OpenAI effort options in the picker", async () => {

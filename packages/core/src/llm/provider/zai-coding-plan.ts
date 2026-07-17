@@ -29,7 +29,7 @@ export function createZaiCodingPlanStream(apiKey?: string, baseUrl?: string): St
 }
 
 export function buildZaiCodingPlanProviderOptions(model: Model, options: StreamOptions) {
-  if (!model.supportsThinking || options.effort === undefined || options.effort === "none") return undefined;
+  if (!model.supportsThinking || options.effort === undefined) return undefined;
   return { zaiCodingPlan: { reasoningEffort: options.effort } };
 }
 

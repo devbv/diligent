@@ -1,7 +1,7 @@
 // @summary Session startup, resume/hydration, and active-thread synchronization helpers for the CLI TUI
 
 import { DILIGENT_CLIENT_NOTIFICATION_METHODS, DILIGENT_CLIENT_REQUEST_METHODS } from "@diligent/protocol";
-import { getThinkingEffortLabel, resolveModel } from "@diligent/runtime";
+import { resolveModel } from "@diligent/runtime";
 import type { AppConfig } from "../config";
 import { DEFAULT_PROVIDER, getDefaultModelId, type ProviderName } from "../provider-manager";
 import { buildWelcomeBanner } from "./app-presenter";
@@ -58,7 +58,7 @@ export class AppSessionLifecycle {
       cwd: process.cwd(),
       mode: this.deps.runtime.currentMode,
       effort: this.deps.runtime.currentEffort,
-      effortLabel: getThinkingEffortLabel(this.deps.runtime.currentEffort, this.deps.config.model),
+      effortLabel: this.deps.runtime.currentEffort,
     });
 
     const welcomeLines = buildWelcomeBanner({
@@ -138,7 +138,7 @@ export class AppSessionLifecycle {
       model: modelId,
       contextWindow,
       effort: thread.currentEffort,
-      effortLabel: getThinkingEffortLabel(thread.currentEffort, activeModel),
+      effortLabel: thread.currentEffort,
     });
     this.deps.renderer.requestRender();
   }

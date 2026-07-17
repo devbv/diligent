@@ -4,13 +4,14 @@ import { DiligentConfigSchema } from "../../src/config/schema.js";
 
 describe("DiligentConfigSchema — tools section", () => {
   it("accepts valid effort values", () => {
-    for (const effort of ["none", "low", "medium", "high", "xhigh", "max"] as const) {
+    for (const effort of ["low", "medium", "high", "xhigh", "max"] as const) {
       const result = DiligentConfigSchema.parse({ effort });
       expect(result.effort).toBe(effort);
     }
   });
 
   it("rejects invalid effort values", () => {
+    expect(() => DiligentConfigSchema.parse({ effort: "none" })).toThrow();
     expect(() => DiligentConfigSchema.parse({ effort: "ultra" })).toThrow();
   });
 

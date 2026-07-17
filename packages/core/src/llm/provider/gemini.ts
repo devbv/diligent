@@ -19,7 +19,7 @@ interface GeminiProviderState {
 
 export function resolveGeminiThinkingBudget(model: Model, effort: StreamOptions["effort"]): number | undefined {
   if (effort === undefined || !model.supportsThinking) return undefined;
-  const budgetKey = effort === "none" ? "low" : effort === "xhigh" ? "max" : effort;
+  const budgetKey = effort === "xhigh" ? "max" : effort;
   return model.thinkingBudgets?.[budgetKey] ?? GEMINI_THINKING_BUDGETS[budgetKey];
 }
 

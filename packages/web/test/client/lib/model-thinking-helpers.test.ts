@@ -20,35 +20,29 @@ function model(id: string, supportedEfforts: ModelInfo["supportedEfforts"], prov
 }
 
 describe("model thinking helpers", () => {
-  const gpt56 = model("gpt-5.6-sol", ["none", "low", "medium", "high", "xhigh", "max"]);
-  const gpt55 = model("gpt-5.5", ["none", "low", "medium", "high", "max"]);
+  const gpt56 = model("gpt-5.6-sol", ["low", "medium", "high", "xhigh", "max"]);
+  const gpt55 = model("gpt-5.5", ["low", "medium", "high", "xhigh"]);
 
   it("renders xhigh only when the model advertises it", () => {
     expect(getThinkingEffortOptions(gpt56).map((option) => option.value)).toEqual([
-      "none",
       "low",
       "medium",
       "high",
       "xhigh",
       "max",
     ]);
-    expect(getThinkingEffortOptions(gpt55).map((option) => option.value)).toEqual([
-      "none",
-      "low",
-      "medium",
-      "high",
-      "max",
-    ]);
+    expect(getThinkingEffortOptions(gpt55).map((option) => option.value)).toEqual(["low", "medium", "high", "xhigh"]);
   });
 
   it("validates and normalizes model-specific effort values", () => {
     expect(supportsThinkingEffort(gpt56, "xhigh")).toBe(true);
-    expect(supportsThinkingEffort(gpt55, "xhigh")).toBe(false);
-    expect(normalizeThinkingEffort(gpt55, "xhigh")).toBe("max");
-    expect(normalizeThinkingEffort(model("chatgpt-5.5", gpt55.supportedEfforts, "chatgpt"), "xhigh")).toBe("max");
+    expect(supportsThinkingEffort(gpt55, "xhigh")).toBe(true);
+    expect(supportsThinkingEffort(gpt55, "max")).toBe(false);
+    expect(normalizeThinkingEffort(gpt55, "xhigh")).toBe("xhigh");
+    expect(normalizeThinkingEffort(gpt55, "max")).toBe("medium");
   });
 
-  it("preserves legacy state for non-thinking models except restricted efforts", () => {
+  it("preserves legacy state for non-thinking models except xhigh", () => {
     const nonThinking: ModelInfo = {
       ...model("vertex-gemma-4-26b-it", undefined),
       provider: "vertex",
@@ -56,7 +50,6 @@ describe("model thinking helpers", () => {
     };
 
     expect(normalizeThinkingEffort(nonThinking, "high")).toBe("high");
-    expect(normalizeThinkingEffort(nonThinking, "none")).toBe("medium");
     expect(normalizeThinkingEffort(nonThinking, "xhigh")).toBe("medium");
   });
 });
