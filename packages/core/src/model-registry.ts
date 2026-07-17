@@ -1,14 +1,19 @@
-// @summary Public model catalog, resolution, and thinking-effort boundary
+// @summary Public model-card catalog, model-class policy, resolution, and thinking-effort boundary
 
-export type { ModelClass, ModelDefinition } from "./llm/models";
+export type { ModelClass, ModelClassDefinition } from "./llm/model-class-policy";
 export {
-  DEFAULT_ANTHROPIC_MODEL_ID,
   getDefaultEffortForClass,
   getModelClass,
-  getModelInfoList,
-  KNOWN_MODELS,
-  resolveModel,
+  MODEL_CLASSES,
   resolveModelForClass,
+} from "./llm/model-class-policy";
+export type { ModelCard, ModelCardLifecycle, ModelCardProvenance } from "./llm/models";
+export {
+  DEFAULT_ANTHROPIC_MODEL_ID,
+  getModelInfoList,
+  MODEL_CARD_SCHEMA_VERSION,
+  MODEL_CARDS,
+  resolveModel,
 } from "./llm/models";
 export {
   findModelInfo,

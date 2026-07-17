@@ -2,7 +2,7 @@
 
 import { userInfo } from "node:os";
 import { toSerializableError } from "@diligent/core/agent";
-import { KNOWN_MODELS, resolveModel } from "@diligent/core/model-registry";
+import { MODEL_CARDS, resolveModel } from "@diligent/core/model-registry";
 import type { NativeCompactFn, ProviderManager, ProviderName, StreamFunction } from "@diligent/core/provider-contract";
 import type { RuntimeAgent } from "../agent/runtime-agent";
 import type { AgentEvent } from "../agent-event";
@@ -595,7 +595,7 @@ export class DiligentAppServer {
       cwd,
       mode,
       effort,
-      modelId: modelId ?? this.currentModelId ?? KNOWN_MODELS[0].id,
+      modelId: modelId ?? this.currentModelId ?? MODEL_CARDS[0].id,
       runningEffortSnapshot: undefined,
       runningModelIdSnapshot: undefined,
       manager: null as unknown as SessionManager,

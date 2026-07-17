@@ -2,7 +2,7 @@
 
 import { access, readFile } from "node:fs/promises";
 import { dirname, isAbsolute, resolve } from "node:path";
-import { KNOWN_MODELS, resolveModel } from "@diligent/core/model-registry";
+import { MODEL_CARDS, resolveModel } from "@diligent/core/model-registry";
 import type {
   Model,
   ProviderName,
@@ -144,7 +144,7 @@ export async function loadRuntimeConfig(
 
   // Resolve model: use config.model if set, otherwise pick first available from configured providers
   const configured = providerManager.getConfiguredProviders();
-  const firstAvailable = KNOWN_MODELS.find((m) => configured.includes(m.provider as ProviderName));
+  const firstAvailable = MODEL_CARDS.find((m) => configured.includes(m.provider as ProviderName));
   const configuredModel = config.model ? resolveModel(config.model) : undefined;
   const modelId =
     configuredModel && configured.includes(configuredModel.provider as ProviderName)

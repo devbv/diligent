@@ -8,14 +8,19 @@ export type {
   LLMCompactInput,
 } from "./compaction";
 export { compact, compactMessages, generateSummary, resolveCompaction } from "./compaction";
-export type { ModelClass, ModelDefinition } from "./models";
+export type { ModelClass, ModelClassDefinition } from "./model-class-policy";
+export {
+  getModelClass,
+  MODEL_CLASSES,
+  resolveModelForClass,
+} from "./model-class-policy";
+export type { ModelCard, ModelCardLifecycle, ModelCardProvenance } from "./models";
 export {
   DEFAULT_ANTHROPIC_MODEL_ID,
-  getModelClass,
   getModelInfoList,
-  KNOWN_MODELS,
+  MODEL_CARD_SCHEMA_VERSION,
+  MODEL_CARDS,
   resolveModel,
-  resolveModelForClass,
 } from "./models";
 export { classifyAnthropicError, createAnthropicNativeCompaction, createAnthropicStream } from "./provider/anthropic";
 export { createChatGPTNativeCompaction, createChatGPTStream } from "./provider/chatgpt";

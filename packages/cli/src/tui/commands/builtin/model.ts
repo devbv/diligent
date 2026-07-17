@@ -1,5 +1,5 @@
 // @summary Model selection command - allows switching between available LLM models
-import { getThinkingEffortLabel, KNOWN_MODELS, normalizeThinkingEffort, resolveModel } from "@diligent/runtime";
+import { getThinkingEffortLabel, MODEL_CARDS, normalizeThinkingEffort, resolveModel } from "@diligent/runtime";
 import { DEFAULT_PROVIDER, PROVIDER_DESCRIPTORS, PROVIDER_NAMES, type ProviderName } from "../../../provider-manager";
 import type { ListPickerItem } from "../../components/list-picker";
 import { t } from "../../theme";
@@ -65,7 +65,7 @@ export const modelCommand: Command = {
     // Build grouped items with section headers
     const items: ListPickerItem[] = [];
     for (const prov of sortedProviders) {
-      const models = KNOWN_MODELS.filter((m) => (m.provider ?? DEFAULT_PROVIDER) === prov);
+      const models = MODEL_CARDS.filter((m) => (m.provider ?? DEFAULT_PROVIDER) === prov);
       if (models.length === 0) continue;
       items.push({ label: providerDisplayName(prov), value: "", header: true });
       for (const m of models) {

@@ -14,7 +14,7 @@ export {
   getThinkingEffortOptions,
   getThinkingEffortUsage,
   getThinkingEffortUsageValues,
-  KNOWN_MODELS,
+  MODEL_CARDS,
   normalizeThinkingEffort,
   resolveModel,
   supportsThinkingEffort,

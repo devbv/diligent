@@ -1,19 +1,42 @@
-// @summary Known models registry with resolution logic for aliases, inference, and model classes
+// @summary Versioned model-card catalog with intrinsic capabilities, metadata, and resolution
 import type { Model, ModelInfo, ThinkingEffort } from "./types";
 
-/**
- * Model class tiers — abstract capability levels independent of provider.
- * - pro:     Highest capability, most expensive. For complex reasoning tasks.
- * - general: Balanced cost/capability. Default for most work.
- * - lite:    Cheapest/fastest. Good for read-only exploration and simple tasks.
- */
-export type ModelClass = "pro" | "general" | "lite";
+export const MODEL_CARD_SCHEMA_VERSION = 1 as const;
 
-export interface ModelDefinition extends Model {
+export type ModelCardLifecycle = "preview" | "stable" | "deprecated";
+
+export interface ModelCardProvenance {
+  source: string;
+  sourceUrl?: string;
+  updatedAt?: string;
+}
+
+/**
+ * Canonical metadata for a concrete provider model.
+ *
+ * Runtime-required model capabilities remain flattened through `Model` for provider
+ * compatibility. Optional metadata and `extensions` allow richer catalogs (including
+ * AI SDK or gateway data) without leaking Diligent's model-class routing policy here.
+ */
+export interface ModelCard extends Model {
+  schemaVersion: typeof MODEL_CARD_SCHEMA_VERSION;
   aliases?: string[];
-  modelClass?: ModelClass;
   accessLevel?: string; // OpenAI tier requirement: "standard" | "tier3+" | "enterprise"
   display?: string; // Human-facing label for the picker; falls back to `id` when unset.
+  description?: string;
+  ownedBy?: string;
+  releasedAt?: string;
+  knowledgeCutoff?: string;
+  lifecycle?: ModelCardLifecycle;
+  tags?: string[];
+  provenance?: ModelCardProvenance;
+  extensions?: Record<string, unknown>;
+}
+
+type ModelCardInput = Omit<ModelCard, "schemaVersion">;
+
+function defineModelCards(cards: ModelCardInput[]): ModelCard[] {
+  return cards.map((card) => ({ schemaVersion: MODEL_CARD_SCHEMA_VERSION, ...card }));
 }
 
 export const GEMINI_THINKING_BUDGETS = { low: 2_048, medium: 8_192, high: 16_384, max: 24_576 } as const;
@@ -23,7 +46,7 @@ const GPT_56_THINKING_EFFORTS: ThinkingEffort[] = ["none", "low", "medium", "hig
 
 export const DEFAULT_ANTHROPIC_MODEL_ID = "claude-sonnet-4-6";
 
-export const KNOWN_MODELS: ModelDefinition[] = [
+export const MODEL_CARDS: ModelCard[] = defineModelCards([
   // Anthropic — opus/sonnet/fable use adaptive thinking (model decides budget within cap)
   {
     id: "claude-opus-4-8",
@@ -41,7 +64,6 @@ export const KNOWN_MODELS: ModelDefinition[] = [
     supportsAdaptiveThinking: true,
     thinkingBudgets: { low: 2_000, medium: 8_000, high: 16_000, max: 32_000 },
     aliases: ["claude-opus", "opus", "opus-4-8"],
-    modelClass: "pro",
   },
   {
     id: "claude-fable-5",
@@ -76,7 +98,6 @@ export const KNOWN_MODELS: ModelDefinition[] = [
     supportsAdaptiveThinking: true,
     thinkingBudgets: { low: 1_500, medium: 6_000, high: 12_000, max: 24_000 },
     aliases: ["sonnet-5"],
-    modelClass: "general",
   },
   {
     id: DEFAULT_ANTHROPIC_MODEL_ID,
@@ -94,7 +115,6 @@ export const KNOWN_MODELS: ModelDefinition[] = [
     supportsAdaptiveThinking: true,
     thinkingBudgets: { low: 1_500, medium: 6_000, high: 12_000, max: 24_000 },
     aliases: ["claude-sonnet", "sonnet", "sonnet-4-6"],
-    modelClass: "general",
   },
   {
     id: "claude-haiku-4-5-20251001",
@@ -111,7 +131,6 @@ export const KNOWN_MODELS: ModelDefinition[] = [
     supportsVision: true,
     thinkingBudgets: { low: 1_024, medium: 3_000, high: 8_000, max: 16_000 },
     aliases: ["claude-haiku", "haiku", "claude-haiku-4-5"],
-    modelClass: "lite",
   },
   // Gemini
   {
@@ -127,7 +146,6 @@ export const KNOWN_MODELS: ModelDefinition[] = [
     supportsVision: true,
     thinkingBudgets: GEMINI_THINKING_BUDGETS,
     aliases: ["gemini-pro"],
-    modelClass: "pro",
   },
   {
     id: "gemini-3.5-flash",
@@ -142,7 +160,6 @@ export const KNOWN_MODELS: ModelDefinition[] = [
     supportsVision: true,
     thinkingBudgets: GEMINI_THINKING_BUDGETS,
     aliases: ["gemini-flash", "gemini", "gemini-3-flash-preview"],
-    modelClass: "general",
   },
   {
     id: "gemini-3.1-flash-lite",
@@ -157,7 +174,6 @@ export const KNOWN_MODELS: ModelDefinition[] = [
     supportsVision: true,
     thinkingBudgets: GEMINI_THINKING_BUDGETS,
     aliases: ["gemini-flash-lite", "gemini-3.1-flash-lite-preview"],
-    modelClass: "lite",
   },
   {
     id: "vertex-gemma-4-26b-it",
@@ -167,7 +183,6 @@ export const KNOWN_MODELS: ModelDefinition[] = [
     maxOutputTokens: 8_192,
     supportsThinking: false,
     aliases: ["vertex-gemma", "vertex-gemma-4", "vertex-gemma-4-26b", "gemma-4-26b-vertex", "gemma-vertex"],
-    modelClass: "general",
   },
   {
     id: "glm-5.2",
@@ -179,7 +194,6 @@ export const KNOWN_MODELS: ModelDefinition[] = [
     supportedEfforts: THINKING_EFFORTS_WITHOUT_NONE,
     supportsVision: false,
     aliases: ["glm", "glm-5", "glm5.2"],
-    modelClass: "pro",
   },
   {
     id: "glm-5.1",
@@ -190,9 +204,8 @@ export const KNOWN_MODELS: ModelDefinition[] = [
     supportsThinking: false,
     supportsVision: false,
     aliases: ["glm5.1"],
-    modelClass: "general",
   },
-  // Existing OpenAI models remain first so default class routing is unchanged.
+  // Existing OpenAI models remain first to preserve catalog and picker order.
   {
     id: "gpt-5.5",
     display: "GPT-5.5",
@@ -207,7 +220,6 @@ export const KNOWN_MODELS: ModelDefinition[] = [
     supportedEfforts: THINKING_EFFORTS_WITH_NONE,
     supportsVision: true,
     accessLevel: "standard",
-    modelClass: "pro",
   },
   {
     id: "gpt-5.4",
@@ -224,7 +236,6 @@ export const KNOWN_MODELS: ModelDefinition[] = [
     supportsVision: true,
     accessLevel: "standard",
     aliases: ["gpt-5"],
-    modelClass: "general",
   },
   {
     id: "gpt-5.4-mini",
@@ -239,7 +250,6 @@ export const KNOWN_MODELS: ModelDefinition[] = [
     supportsThinking: true,
     supportedEfforts: THINKING_EFFORTS_WITH_NONE,
     supportsVision: true,
-    modelClass: "lite",
   },
   // GPT-5.6 is selectable without replacing existing defaults or class routes.
   {
@@ -256,7 +266,6 @@ export const KNOWN_MODELS: ModelDefinition[] = [
     supportedEfforts: GPT_56_THINKING_EFFORTS,
     supportsVision: true,
     aliases: ["gpt-5.6"],
-    modelClass: "pro",
   },
   {
     id: "gpt-5.6-terra",
@@ -271,7 +280,6 @@ export const KNOWN_MODELS: ModelDefinition[] = [
     supportsThinking: true,
     supportedEfforts: GPT_56_THINKING_EFFORTS,
     supportsVision: true,
-    modelClass: "general",
   },
   {
     id: "gpt-5.6-luna",
@@ -286,7 +294,6 @@ export const KNOWN_MODELS: ModelDefinition[] = [
     supportsThinking: true,
     supportedEfforts: GPT_56_THINKING_EFFORTS,
     supportsVision: true,
-    modelClass: "lite",
   },
   // ChatGPT subscription models map to upstream GPT slugs, but remain distinct in
   // Diligent so provider identity stays separate from the OpenAI API auth strategy.
@@ -302,7 +309,6 @@ export const KNOWN_MODELS: ModelDefinition[] = [
     supportedEfforts: THINKING_EFFORTS_WITH_NONE,
     supportsVision: true,
     aliases: ["chatgpt-5.5-pro"],
-    modelClass: "pro",
   },
   {
     id: "chatgpt-5.4",
@@ -316,7 +322,6 @@ export const KNOWN_MODELS: ModelDefinition[] = [
     supportsThinking: true,
     supportedEfforts: THINKING_EFFORTS_WITH_NONE,
     supportsVision: true,
-    modelClass: "general",
   },
   {
     id: "chatgpt-5.4-mini",
@@ -330,7 +335,6 @@ export const KNOWN_MODELS: ModelDefinition[] = [
     supportsThinking: true,
     supportedEfforts: THINKING_EFFORTS_WITH_NONE,
     supportsVision: true,
-    modelClass: "lite",
   },
   {
     id: "chatgpt-5.6-sol",
@@ -342,7 +346,6 @@ export const KNOWN_MODELS: ModelDefinition[] = [
     supportedEfforts: GPT_56_THINKING_EFFORTS,
     supportsVision: true,
     aliases: ["chatgpt-5.6"],
-    modelClass: "pro",
   },
   {
     id: "chatgpt-5.6-terra",
@@ -353,7 +356,6 @@ export const KNOWN_MODELS: ModelDefinition[] = [
     supportsThinking: true,
     supportedEfforts: GPT_56_THINKING_EFFORTS,
     supportsVision: true,
-    modelClass: "general",
   },
   {
     id: "chatgpt-5.6-luna",
@@ -364,51 +366,14 @@ export const KNOWN_MODELS: ModelDefinition[] = [
     supportsThinking: true,
     supportedEfforts: GPT_56_THINKING_EFFORTS,
     supportsVision: true,
-    modelClass: "lite",
   },
-];
-
-/**
- * Resolve a model for a given provider and model class.
- * Returns the first KNOWN_MODELS entry matching both provider and modelClass.
- * Falls back to the current model if no match is found.
- */
-export function resolveModelForClass(currentModel: Model, targetClass: ModelClass): Model {
-  const provider = currentModel.provider;
-
-  // If the current model already has this class, return as-is
-  const currentDef = KNOWN_MODELS.find((m) => m.id === currentModel.id);
-  if (currentDef?.modelClass === targetClass) return currentModel;
-
-  // Find the first known model matching both provider and class
-  const match = KNOWN_MODELS.find((m) => m.provider === provider && m.modelClass === targetClass);
-  return match ?? currentModel;
-}
-
-/**
- * Determine the model class of a given model.
- * Returns the modelClass from KNOWN_MODELS if found, otherwise infers "general".
- */
-export function getModelClass(model: Model): ModelClass {
-  const def = KNOWN_MODELS.find((m) => m.id === model.id);
-  return def?.modelClass ?? "general";
-}
-
-/**
- * Return the default thinking effort for a given model class.
- * pro → high, general → medium, lite → low
- */
-export function getDefaultEffortForClass(modelClass: ModelClass): ThinkingEffort {
-  if (modelClass === "pro") return "high";
-  if (modelClass === "lite") return "low";
-  return "medium";
-}
+]);
 
 /**
  * Map all known models to the protocol-facing ModelInfo shape.
  */
 export function getModelInfoList(): ModelInfo[] {
-  return KNOWN_MODELS.map((m) => ({
+  return MODEL_CARDS.map((m) => ({
     id: m.id,
     display: m.display,
     provider: m.provider,
@@ -428,11 +393,11 @@ export function getModelInfoList(): ModelInfo[] {
  */
 export function resolveModel(modelId: string): Model {
   // Exact match
-  const exact = KNOWN_MODELS.find((m) => m.id === modelId);
+  const exact = MODEL_CARDS.find((m) => m.id === modelId);
   if (exact) return exact;
 
   // Alias match
-  const aliased = KNOWN_MODELS.find((m) => m.aliases?.includes(modelId));
+  const aliased = MODEL_CARDS.find((m) => m.aliases?.includes(modelId));
   if (aliased) return aliased;
 
   // Infer provider from prefix

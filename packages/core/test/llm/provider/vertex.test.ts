@@ -1,6 +1,7 @@
 // @summary Tests for Vertex OpenAI-compatible model id resolution
 import { describe, expect, it } from "bun:test";
-import { resolveVertexModelId } from "../../../src/llm/provider/vertex";
+import { classifyVertexError, resolveVertexModelId } from "../../../src/llm/provider/vertex";
+import { ProviderErrorType } from "../../../src/llm/types";
 
 describe("resolveVertexModelId", () => {
   it("maps the internal Vertex Gemma model to the MAAS publisher model on openapi", () => {
@@ -29,5 +30,14 @@ describe("resolveVertexModelId", () => {
     );
 
     expect(resolved).toBe("vertex-gemma-4-26b-it");
+  });
+});
+
+describe("classifyVertexError", () => {
+  it("recognizes AI SDK statusCode errors", () => {
+    expect(classifyVertexError(Object.assign(new Error("unavailable"), { statusCode: 503 }))).toMatchObject({
+      errorType: ProviderErrorType.ServerError,
+      isRetryable: true,
+    });
   });
 });
