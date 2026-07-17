@@ -251,14 +251,19 @@ export function withRetry(
 
         // Wait with abort support
         await new Promise<void>((resolve) => {
-          const timer = setTimeout(resolve, delayMs);
-          if (signal) {
-            const onAbort = () => {
-              clearTimeout(timer);
-              resolve();
-            };
-            signal.addEventListener("abort", onAbort, { once: true });
+          if (signal?.aborted) {
+            resolve();
+            return;
           }
+          const onAbort = () => {
+            clearTimeout(timer);
+            resolve();
+          };
+          const timer = setTimeout(() => {
+            signal?.removeEventListener("abort", onAbort);
+            resolve();
+          }, delayMs);
+          signal?.addEventListener("abort", onAbort, { once: true });
         });
       }
     })().catch((err) => {

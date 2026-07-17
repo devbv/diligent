@@ -45,6 +45,7 @@ make dev
 - `apps/overdare-ai-agent` — terminal-only wrapper for runtime update and webserver launch
 - `packages/debug-viewer` — viewer for inspecting `.diligent/` project data
 - `packages/e2e` — end-to-end protocol/runtime tests
+- `packages/evals` — live-model behavioral evaluations for core capabilities
 
 ## Packaged OVERDARE storage namespace
 
