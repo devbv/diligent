@@ -69,8 +69,8 @@ describe("DiligentConfigSchema", () => {
 });
 
 describe("DEFAULT_CONFIG", () => {
-  it("has a model set", () => {
-    expect(DEFAULT_CONFIG.model).toBe("gemini-3.1-pro-preview");
+  it("leaves model selection to the runtime provider policy", () => {
+    expect(DEFAULT_CONFIG.model).toBeUndefined();
   });
 
   it("enables plan reminders with a six-turn cadence", () => {

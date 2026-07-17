@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { RuntimeConfig } from "../../src/config/runtime";
-import { loadRuntimeConfig } from "../../src/config/runtime";
+import { loadRuntimeConfig, resolveRuntimeModel } from "../../src/config/runtime";
 import type { DiligentPaths } from "../../src/infrastructure";
 
 let tmpRoot = "";
@@ -36,6 +36,22 @@ afterEach(async () => {
 });
 
 describe("loadRuntimeConfig", () => {
+  it("preserves the last selected model when its provider is configured", () => {
+    expect(resolveRuntimeModel("gpt-5.4", ["openai"]).id).toBe("gpt-5.4");
+  });
+
+  it("uses the configured provider default when there is no last selected model", () => {
+    expect(resolveRuntimeModel(undefined, ["openai"]).id).toBe("gpt-5.6-sol");
+  });
+
+  it("uses the configured provider default when the last selected provider is unavailable", () => {
+    expect(resolveRuntimeModel("claude-sonnet-4-6", ["openai"]).id).toBe("gpt-5.6-sol");
+  });
+
+  it("uses the default provider policy when neither a model nor provider is configured", () => {
+    expect(resolveRuntimeModel(undefined, []).id).toBe("claude-opus-4-8");
+  });
+
   it("loads discovered agents and adds an agents section to the system prompt", async () => {
     tmpRoot = await mkdtemp(join(tmpdir(), "diligent-runtime-config-"));
     const paths = makePaths(tmpRoot);
@@ -208,7 +224,7 @@ describe("loadRuntimeConfig", () => {
     }
   });
 
-  it("binds vertex config and selects the first available vertex model", async () => {
+  it("binds vertex config and selects the vertex provider default model", async () => {
     tmpRoot = await mkdtemp(join(tmpdir(), "diligent-runtime-vertex-"));
     const paths = makePaths(tmpRoot);
     const isolatedHome = join(tmpRoot, ".isolated-home");
@@ -242,6 +258,32 @@ describe("loadRuntimeConfig", () => {
       expect(config.providerAuthPresenter?.getStatus("vertex").maskedKey).toBe("Vertex access token");
       expect(config.model?.provider).toBe("vertex");
       expect(config.model?.id).toBe("vertex-gemma-4-26b-it");
+    } finally {
+      process.env.HOME = originalHome;
+      process.env.USERPROFILE = originalUserProfile;
+    }
+  });
+
+  it("selects the OpenAI provider default when no model was previously selected", async () => {
+    tmpRoot = await mkdtemp(join(tmpdir(), "diligent-runtime-openai-default-"));
+    const paths = makePaths(tmpRoot);
+    const isolatedHome = join(tmpRoot, ".isolated-home");
+    await mkdir(paths.sessions, { recursive: true });
+    await mkdir(paths.knowledge, { recursive: true });
+    await mkdir(paths.skills, { recursive: true });
+    await mkdir(paths.images, { recursive: true });
+    await mkdir(join(isolatedHome, ".diligent"), { recursive: true });
+    await writeFile(join(isolatedHome, ".diligent", "auth.jsonc"), JSON.stringify({ openai: "sk-openai-test" }));
+
+    const originalHome = process.env.HOME;
+    const originalUserProfile = process.env.USERPROFILE;
+    process.env.HOME = isolatedHome;
+    process.env.USERPROFILE = isolatedHome;
+    try {
+      const config = await loadRuntimeConfig(tmpRoot, paths);
+      expect(config.diligent.model).toBeUndefined();
+      expect(config.model?.provider).toBe("openai");
+      expect(config.model?.id).toBe("gpt-5.6-sol");
     } finally {
       process.env.HOME = originalHome;
       process.env.USERPROFILE = originalUserProfile;

@@ -37,8 +37,8 @@ describe("loadConfig", () => {
     await mkdir(dir, { recursive: true });
 
     const config = await loadConfig(dir);
-    expect(config.model.id).toBe("gemini-3.1-pro-preview");
-    expect(config.model.provider).toBe("gemini");
+    expect(config.model.id).toBe("claude-opus-4-8");
+    expect(config.model.provider).toBe("anthropic");
   });
 
   test("loads config from config.jsonc", async () => {

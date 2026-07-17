@@ -2,8 +2,14 @@
 
 import { userInfo } from "node:os";
 import { toSerializableError } from "@diligent/core/agent";
-import { MODEL_CARDS, resolveModel } from "@diligent/core/model-registry";
-import type { NativeCompactFn, ProviderManager, ProviderName, StreamFunction } from "@diligent/core/provider-contract";
+import { getDefaultModelId, resolveModel } from "@diligent/core/model-registry";
+import {
+  DEFAULT_PROVIDER,
+  type NativeCompactFn,
+  type ProviderManager,
+  type ProviderName,
+  type StreamFunction,
+} from "@diligent/core/provider-contract";
 import type { RuntimeAgent } from "../agent/runtime-agent";
 import type { AgentEvent } from "../agent-event";
 import type { ApprovalRequest, ApprovalResponse, PermissionEngine } from "../approval/types";
@@ -595,7 +601,7 @@ export class DiligentAppServer {
       cwd,
       mode,
       effort,
-      modelId: modelId ?? this.currentModelId ?? MODEL_CARDS[0].id,
+      modelId: modelId ?? this.currentModelId ?? getDefaultModelId(DEFAULT_PROVIDER),
       runningEffortSnapshot: undefined,
       runningModelIdSnapshot: undefined,
       manager: null as unknown as SessionManager,

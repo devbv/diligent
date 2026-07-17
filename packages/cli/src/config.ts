@@ -33,7 +33,7 @@ export interface AppConfig {
 export async function loadConfig(cwd: string = process.cwd(), paths?: DiligentPaths): Promise<AppConfig> {
   const resolvedPaths = paths ?? (await ensureDiligentDir(cwd));
   const runtime = await loadRuntimeConfig(cwd, resolvedPaths);
-  // CLI default: Anthropic Sonnet when no provider is configured
+  // Defensive fallback; runtime normally resolves this through the provider model policy.
   const model = runtime.model ?? resolveModel(getDefaultModelId(DEFAULT_PROVIDER));
   const provider = (model.provider ?? DEFAULT_PROVIDER) as ProviderName;
   const apiKey = runtime.providerManager.getApiKey(provider) ?? "";

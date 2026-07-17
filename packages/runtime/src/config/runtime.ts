@@ -2,7 +2,7 @@
 
 import { access, readFile } from "node:fs/promises";
 import { dirname, isAbsolute, resolve } from "node:path";
-import { MODEL_CARDS, resolveModel } from "@diligent/core/model-registry";
+import { getDefaultModelId, resolveModel } from "@diligent/core/model-registry";
 import type {
   Model,
   ProviderName,
@@ -10,7 +10,7 @@ import type {
   SystemSection,
   ThinkingEffort,
 } from "@diligent/core/provider-contract";
-import { ProviderManager } from "@diligent/core/provider-contract";
+import { DEFAULT_PROVIDER, ProviderManager } from "@diligent/core/provider-contract";
 import { createLogger } from "@diligent/logging";
 import { getBuiltinAgentDefinitions } from "../agent/agent-types";
 import type { Mode } from "../agent/mode";
@@ -45,6 +45,23 @@ import { DEFAULT_PLAN_REMINDER_INTERVAL_TURNS, type DiligentConfig } from "./sch
 import { resolveConfiguredUserId } from "./user-id";
 
 const logger = createLogger({ scope: "runtime.config" });
+
+/** Resolve startup selection from persisted state, then provider-level defaults. */
+export function resolveRuntimeModel(
+  lastSelectedModelId: string | undefined,
+  configuredProviders: ProviderName[],
+): Model {
+  const lastSelectedModel = lastSelectedModelId ? resolveModel(lastSelectedModelId) : undefined;
+  if (
+    lastSelectedModel &&
+    (configuredProviders.length === 0 || configuredProviders.includes(lastSelectedModel.provider as ProviderName))
+  ) {
+    return lastSelectedModel;
+  }
+
+  const provider = configuredProviders[0] ?? DEFAULT_PROVIDER;
+  return resolveModel(getDefaultModelId(provider));
+}
 
 export interface RuntimeConfig {
   model: Model | undefined;
@@ -142,15 +159,9 @@ export async function loadRuntimeConfig(
 
   const streamFunction = providerManager.createProxyStream();
 
-  // Resolve model: use config.model if set, otherwise pick first available from configured providers
+  // Preserve the last selection when usable; otherwise use the configured provider's policy default.
   const configured = providerManager.getConfiguredProviders();
-  const firstAvailable = MODEL_CARDS.find((m) => configured.includes(m.provider as ProviderName));
-  const configuredModel = config.model ? resolveModel(config.model) : undefined;
-  const modelId =
-    configuredModel && configured.includes(configuredModel.provider as ProviderName)
-      ? configuredModel.id
-      : (firstAvailable?.id ?? config.model);
-  const model = modelId ? resolveModel(modelId) : undefined;
+  const model = resolveRuntimeModel(config.model, configured);
 
   // Load knowledge for system prompt injection
   let knowledgeSection = "";

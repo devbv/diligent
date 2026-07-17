@@ -378,3 +378,16 @@ test("resolveDraftModel falls back to initial model when current model is unavai
 
   expect(next).toBe("gpt-5");
 });
+
+test("resolveDraftModel prefers the runtime default over catalog order", () => {
+  const next = resolveDraftModel({
+    initialModel: "gpt-5.6-sol",
+    currentModel: "",
+    availableModels: [
+      { id: "gpt-5.4", provider: "openai" },
+      { id: "gpt-5.6-sol", provider: "openai" },
+    ],
+  });
+
+  expect(next).toBe("gpt-5.6-sol");
+});

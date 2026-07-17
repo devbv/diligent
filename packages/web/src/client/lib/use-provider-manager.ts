@@ -73,9 +73,13 @@ export function useProviderManager(rpcRef: RefObject<WebRpcClient | null>) {
         const modelInvalid =
           result.availableModels.length > 0 && !result.availableModels.some((m) => m.id === currentModelRef.current);
         if (modelInvalid) {
-          const first = result.availableModels[0];
-          setCurrentModel(first.id);
-          currentModelRef.current = first.id;
+          const nextModel = resolveDraftModel({
+            initialModel: initialModelRef.current,
+            currentModel: currentModelRef.current,
+            availableModels: result.availableModels,
+          });
+          setCurrentModel(nextModel);
+          currentModelRef.current = nextModel;
         }
       } catch (error) {
         logger.error("providers.refresh_failed", {
@@ -192,9 +196,13 @@ export function useProviderManager(rpcRef: RefObject<WebRpcClient | null>) {
         const modelInvalid =
           result.availableModels.length > 0 && !result.availableModels.some((m) => m.id === currentModelRef.current);
         if (modelInvalid) {
-          const first = result.availableModels[0];
-          setCurrentModel(first.id);
-          currentModelRef.current = first.id;
+          const nextModel = resolveDraftModel({
+            initialModel: initialModelRef.current,
+            currentModel: currentModelRef.current,
+            availableModels: result.availableModels,
+          });
+          setCurrentModel(nextModel);
+          currentModelRef.current = nextModel;
         }
       } catch {
         // Non-critical: providers already updated via notification

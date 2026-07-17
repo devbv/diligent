@@ -271,7 +271,6 @@ export type DiligentConfig = z.infer<typeof DiligentConfigSchema>;
 export const DEFAULT_PLAN_REMINDER_INTERVAL_TURNS = 6;
 
 export const DEFAULT_CONFIG: DiligentConfig = {
-  model: "gemini-3.1-pro-preview",
   effort: "medium",
   planReminderIntervalTurns: DEFAULT_PLAN_REMINDER_INTERVAL_TURNS,
 };
