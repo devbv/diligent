@@ -23,6 +23,7 @@ import {
   saveAuthKey,
   saveOAuthTokens,
 } from "../auth/index";
+import type { ProviderAuthPresenter } from "../auth/provider-auth-presenter";
 import { resolveProjectDirName } from "../infrastructure/diligent-dir";
 import {
   type ConsentSetParams,
@@ -111,28 +112,37 @@ export async function handleConfigReload(
 export async function buildProviderList(
   providerManager?: ProviderManager,
   authStore?: AuthStoreOptions,
+  providerAuthPresenter?: ProviderAuthPresenter,
 ): Promise<ProviderAuthStatus[]> {
   const keys = providerManager ? undefined : await loadAuthStore(authStore);
   const oauthTokens = await loadOAuthTokens(authStore);
-  return PROVIDER_NAMES.map((provider) => ({
-    provider,
-    descriptor: PROVIDER_DESCRIPTORS[provider],
-    configured: providerManager
-      ? providerManager.hasKeyFor(provider)
-      : provider === "chatgpt"
-        ? Boolean(oauthTokens)
-        : Boolean(keys?.[provider]),
-    maskedKey:
-      providerManager?.getMaskedKey(provider) ??
-      (provider === "chatgpt"
-        ? oauthTokens
-          ? "ChatGPT OAuth"
-          : undefined
-        : keys?.[provider]
-          ? maskKey(keys[provider] as string)
-          : undefined),
-    oauthConnected: provider === "chatgpt" ? Boolean(oauthTokens) : undefined,
-  }));
+  return PROVIDER_NAMES.map((provider) => {
+    const presented = providerAuthPresenter?.getStatus(provider);
+    const apiKey = providerManager?.getApiKey(provider);
+    return {
+      provider,
+      descriptor: PROVIDER_DESCRIPTORS[provider],
+      configured:
+        presented?.configured ??
+        (providerManager
+          ? providerManager.hasKeyFor(provider)
+          : provider === "chatgpt"
+            ? Boolean(oauthTokens)
+            : Boolean(keys?.[provider])),
+      maskedKey:
+        presented?.maskedKey ??
+        (apiKey
+          ? maskKey(apiKey)
+          : provider === "chatgpt"
+            ? oauthTokens
+              ? "ChatGPT OAuth"
+              : undefined
+            : keys?.[provider]
+              ? maskKey(keys[provider] as string)
+              : undefined),
+      oauthConnected: presented?.oauthConnected ?? (provider === "chatgpt" ? Boolean(oauthTokens) : undefined),
+    };
+  });
 }
 
 export async function handleAuthSet(
@@ -140,6 +150,7 @@ export async function handleAuthSet(
   params: { provider: ProviderName; apiKey: string },
   emit: EmitFn,
   authStore?: AuthStoreOptions,
+  providerAuthPresenter?: ProviderAuthPresenter,
 ): Promise<{ ok: true }> {
   if (!providerManager) throw Object.assign(new Error("Auth not available"), { code: -32601 });
   if (params.provider === "chatgpt") {
@@ -176,7 +187,7 @@ export async function handleAuthSet(
 
   await saveAuthKey(params.provider, params.apiKey, authStore);
   providerManager.setApiKey(params.provider, params.apiKey);
-  const providers = await buildProviderList(providerManager, authStore);
+  const providers = await buildProviderList(providerManager, authStore, providerAuthPresenter);
   await emit({ method: DILIGENT_SERVER_NOTIFICATION_METHODS.ACCOUNT_UPDATED, params: { providers } });
   return { ok: true };
 }
@@ -186,6 +197,7 @@ export async function handleAuthRemove(
   params: { provider: ProviderName },
   emit: EmitFn,
   authStore?: AuthStoreOptions,
+  providerAuthPresenter?: ProviderAuthPresenter,
 ): Promise<{ ok: true }> {
   if (!providerManager) throw Object.assign(new Error("Auth not available"), { code: -32601 });
 
@@ -194,9 +206,10 @@ export async function handleAuthRemove(
   if (params.provider === "chatgpt") {
     await removeOAuthTokens(authStore);
     providerManager.removeExternalAuth("chatgpt");
+    providerAuthPresenter?.removeExternalAuth("chatgpt");
   }
 
-  const providers = await buildProviderList(providerManager, authStore);
+  const providers = await buildProviderList(providerManager, authStore, providerAuthPresenter);
   await emit({ method: DILIGENT_SERVER_NOTIFICATION_METHODS.ACCOUNT_UPDATED, params: { providers } });
   return { ok: true };
 }
@@ -210,6 +223,7 @@ export async function handleAuthOAuthStart(args: {
   openBrowser?: (url: string) => void;
   emit: EmitFn;
   authStore?: AuthStoreOptions;
+  providerAuthPresenter?: ProviderAuthPresenter;
 }): Promise<{ authUrl: string }> {
   if (args.params.provider !== "chatgpt") {
     throw Object.assign(new Error("Unsupported OAuth provider"), { code: -32602 });
@@ -243,11 +257,12 @@ export async function handleAuthOAuthStart(args: {
         onTokensRefreshed: (nextTokens) => saveOAuthTokens(nextTokens, args.authStore),
       });
       pm.setExternalAuth("chatgpt", authBinding.auth);
+      args.providerAuthPresenter?.setExternalAuth("chatgpt", authBinding.presentation);
       await args.emit({
         method: DILIGENT_SERVER_NOTIFICATION_METHODS.ACCOUNT_LOGIN_COMPLETED,
         params: { loginId, success: true, error: null },
       });
-      const providers = await buildProviderList(pm, args.authStore);
+      const providers = await buildProviderList(pm, args.authStore, args.providerAuthPresenter);
       await args.emit({
         method: DILIGENT_SERVER_NOTIFICATION_METHODS.ACCOUNT_UPDATED,
         params: { providers },

@@ -239,7 +239,7 @@ describe("loadRuntimeConfig", () => {
     try {
       const config = await loadRuntimeConfig(tmpRoot, paths);
       expect(config.providerManager.hasKeyFor("vertex")).toBe(true);
-      expect(config.providerManager.getMaskedKey("vertex")).toBe("Vertex access token");
+      expect(config.providerAuthPresenter?.getStatus("vertex").maskedKey).toBe("Vertex access token");
       expect(config.model?.provider).toBe("vertex");
       expect(config.model?.id).toBe("vertex-gemma-4-26b-it");
     } finally {
@@ -273,7 +273,7 @@ describe("loadRuntimeConfig", () => {
     try {
       const config = await loadRuntimeConfig(tmpRoot, paths);
       expect(config.providerManager.hasKeyFor("zai-coding-plan")).toBe(true);
-      expect(config.providerManager.getMaskedKey("zai-coding-plan")).toBe("zai-tes...");
+      expect(config.providerAuthPresenter?.getStatus("zai-coding-plan").maskedKey).toBe("zai-tes...");
       expect(config.model?.provider).toBe("zai-coding-plan");
       expect(config.model?.id).toBe("glm-5.2");
     } finally {

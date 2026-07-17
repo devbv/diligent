@@ -8,6 +8,7 @@ import type { RuntimeAgent } from "../agent/runtime-agent";
 import type { AgentEvent } from "../agent-event";
 import type { ApprovalRequest, ApprovalResponse, PermissionEngine } from "../approval/types";
 import { type AuthStoreOptions, loadOAuthTokens } from "../auth/auth-store";
+import type { ProviderAuthPresenter } from "../auth/provider-auth-presenter";
 import type { ChildStopInfo } from "../collab/types";
 import type { DiligentConfig } from "../config/schema";
 import { presentRuntimeError } from "../errors/presentation";
@@ -111,6 +112,8 @@ export interface DiligentAppServerConfig {
   consentConfig?: ConsentConfigManager;
   /** Provider manager — required for AUTH_* methods */
   providerManager?: ProviderManager;
+  /** Runtime-owned provider authentication presentation state. */
+  providerAuthPresenter?: ProviderAuthPresenter;
   /** Open a URL in the browser — defaults to the built-in openBrowser from @diligent/core */
   openBrowser?: (url: string) => void;
   /** Convert an absolute image path to a URL for web clients (omit if not needed) */
@@ -885,6 +888,7 @@ export class DiligentAppServer {
       lastUsedModelByCwd: this.lastUsedModelByCwd,
       lastUsedEffortByCwd: this.lastUsedEffortByCwd,
       providerManager: this.config.providerManager,
+      providerAuthPresenter: this.config.providerAuthPresenter,
       authStore: this.config.authStore,
       oauthPending: this.oauthPending,
       setOAuthPending: (value) => {

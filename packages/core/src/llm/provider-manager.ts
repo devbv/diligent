@@ -13,7 +13,6 @@ import { ProviderError, ProviderErrorReason, ProviderErrorType, type ProviderNam
 
 export interface ExternalProviderAuth {
   isConfigured: () => boolean;
-  getMaskedKey?: () => string | undefined;
   getStream: () => StreamFunction;
   getNativeCompaction?: () => import("./provider/native-compaction").NativeCompactFn | undefined;
   ensureFresh?: () => Promise<void>;
@@ -133,14 +132,6 @@ class AuthStateManager {
   getConfiguredProviders(): ProviderName[] {
     return PROVIDER_NAMES.filter((p) => this.hasKeyFor(p));
   }
-
-  getMaskedKey(provider: ProviderName): string | undefined {
-    const external = this.getExternalAuth(provider);
-    if (external) return external.getMaskedKey?.() ?? `${provider} external auth`;
-    const key = this.keys[provider];
-    if (!key) return undefined;
-    return key.length > 7 ? `${key.slice(0, 7)}...` : key;
-  }
 }
 
 function createCompactionRegistry(
@@ -193,10 +184,6 @@ export class ProviderManager {
   removeExternalAuth(provider: ProviderName): void {
     this.streamCache.invalidateProvider(provider);
     this.authState.removeExternalAuth(provider);
-  }
-
-  hasOAuthFor(provider: "chatgpt"): boolean {
-    return this.authState.getExternalAuth(provider) !== undefined;
   }
 
   // Verify an API key before persisting it. Throws with a user-facing message if the key is invalid.
@@ -259,9 +246,5 @@ export class ProviderManager {
 
   getConfiguredProviders(): ProviderName[] {
     return this.authState.getConfiguredProviders();
-  }
-
-  getMaskedKey(provider: ProviderName): string | undefined {
-    return this.authState.getMaskedKey(provider);
   }
 }

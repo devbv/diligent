@@ -383,6 +383,7 @@ export function createAppServerConfig(opts: CreateAppServerConfigOptions): Dilig
     },
     consentConfig,
     providerManager: runtimeConfig.providerManager,
+    providerAuthPresenter: runtimeConfig.providerAuthPresenter,
     authStore: runtimeConfig.authStore,
     permissionEngine: runtimeConfig.permissionEngine,
     skillNames: runtimeConfig.skills.map((skill) => skill.name),

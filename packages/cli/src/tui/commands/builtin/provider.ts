@@ -1,7 +1,13 @@
 // @summary Provider configuration command - configure LLM provider and API keys
 import { resolveModel } from "@diligent/core/model-registry";
 import { DILIGENT_CLIENT_REQUEST_METHODS } from "@diligent/protocol";
-import { createChatGPTOAuthBinding, removeAuthKey, removeOAuthTokens, saveAuthKey } from "@diligent/runtime";
+import {
+  createChatGPTOAuthBinding,
+  ProviderAuthPresenter,
+  removeAuthKey,
+  removeOAuthTokens,
+  saveAuthKey,
+} from "@diligent/runtime";
 import {
   DEFAULT_MODELS,
   DEFAULT_PROVIDER,
@@ -185,6 +191,7 @@ export async function disconnectProvider(provider: ProviderName, ctx: CommandCon
     ctx.config.providerManager.removeApiKey(provider);
     if (provider === "chatgpt") {
       ctx.config.providerManager.removeExternalAuth("chatgpt");
+      ctx.config.providerAuthPresenter?.removeExternalAuth("chatgpt");
     }
 
     ctx.displayLines([`  ${t.success}Disconnected ${providerDisplayName(provider)}.${t.reset}`]);
@@ -234,6 +241,10 @@ async function startChatGPTOAuthFlow(ctx: CommandContext): Promise<void> {
       },
     });
     ctx.config.providerManager.setExternalAuth("chatgpt", localOAuth.auth);
+    (ctx.config.providerAuthPresenter ??= new ProviderAuthPresenter(ctx.config.providerManager)).setExternalAuth(
+      "chatgpt",
+      localOAuth.presentation,
+    );
 
     // Switch to default Codex model
     const model = resolveModel(DEFAULT_MODELS.chatgpt);
@@ -248,13 +259,15 @@ async function startChatGPTOAuthFlow(ctx: CommandContext): Promise<void> {
 
 function showProviderStatus(ctx: CommandContext): void {
   const pm = ctx.config.providerManager;
+  const presenter = (ctx.config.providerAuthPresenter ??= new ProviderAuthPresenter(pm));
   const currentProvider = ctx.config.model.provider ?? DEFAULT_PROVIDER;
   const lines = ["", `  ${t.bold}Provider Status${t.reset}`, ""];
 
   for (const provider of PROVIDER_NAMES) {
-    const maskedKey = pm.getMaskedKey(provider);
+    const authStatus = presenter.getStatus(provider);
+    const maskedKey = authStatus?.maskedKey;
     const active = provider === currentProvider ? ` ${t.accent}(active)${t.reset}` : "";
-    const oauthNote = provider === "chatgpt" && pm.hasOAuthFor("chatgpt") ? ` ${t.dim}(OAuth)${t.reset}` : "";
+    const oauthNote = authStatus?.oauthConnected ? ` ${t.dim}(OAuth)${t.reset}` : "";
     const status = maskedKey ? `${t.success}configured${t.reset} (${maskedKey})` : `${t.dim}not configured${t.reset}`;
     const marker = pm.hasKeyFor(provider) ? "\u2713" : "\u2717";
     lines.push(`  ${marker} ${t.bold}${providerDisplayName(provider)}${t.reset}: ${status}${oauthNote}${active}`);

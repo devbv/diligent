@@ -8,7 +8,13 @@ import type {
   StreamFunction,
   SystemSection,
 } from "@diligent/runtime";
-import { DEFAULT_ANTHROPIC_MODEL_ID, ensureDiligentDir, loadRuntimeConfig, resolveModel } from "@diligent/runtime";
+import {
+  DEFAULT_ANTHROPIC_MODEL_ID,
+  ensureDiligentDir,
+  loadRuntimeConfig,
+  ProviderAuthPresenter,
+  resolveModel,
+} from "@diligent/runtime";
 import { DEFAULT_PROVIDER, type ProviderManager, type ProviderName } from "./provider-manager";
 
 export interface AppConfig {
@@ -27,6 +33,7 @@ export interface AppConfig {
     timeoutMs: number;
   };
   providerManager: ProviderManager;
+  providerAuthPresenter?: ProviderAuthPresenter;
 }
 
 export async function loadConfig(cwd: string = process.cwd(), paths?: DiligentPaths): Promise<AppConfig> {
@@ -53,5 +60,6 @@ export async function loadConfig(cwd: string = process.cwd(), paths?: DiligentPa
       timeoutMs: runtime.compaction.timeoutMs,
     },
     providerManager: runtime.providerManager,
+    providerAuthPresenter: runtime.providerAuthPresenter ?? new ProviderAuthPresenter(runtime.providerManager),
   };
 }

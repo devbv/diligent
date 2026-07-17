@@ -20,7 +20,6 @@ async function main(): Promise<void> {
     auth: {
       chatgpt: {
         isConfigured: () => true,
-        getMaskedKey: () => "ChatGPT OAuth",
         getStream: () => createChatGPTStream(() => tokens),
         getNativeCompaction: () => createChatGPTNativeCompaction(() => tokens),
       },

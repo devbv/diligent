@@ -3,6 +3,7 @@
 import { normalizeThinkingEffort, resolveModel } from "@diligent/core/model-registry";
 import type { NativeCompactFn, ProviderManager, ProviderName, StreamFunction } from "@diligent/core/provider-contract";
 import type { AuthStoreOptions } from "../auth/auth-store";
+import type { ProviderAuthPresenter } from "../auth/provider-auth-presenter";
 import type { DiligentConfig } from "../config/schema";
 import type { ModelInfo } from "../protocol/index";
 import {
@@ -120,6 +121,7 @@ export interface ClientRequestDispatchContext {
 
   // Auth state
   providerManager: ProviderManager | undefined;
+  providerAuthPresenter: ProviderAuthPresenter | undefined;
   authStore: AuthStoreOptions | undefined;
   oauthPending: Promise<void> | null;
   setOAuthPending(value: Promise<void> | null): void;
@@ -388,7 +390,7 @@ export async function dispatchClientRequest(
       const pm = ctx.providerManager;
       const mc = ctx.modelConfig;
       if (!pm || !mc) throw Object.assign(new Error("Auth not available"), { code: -32601 });
-      const providers = await buildProviderList(pm);
+      const providers = await buildProviderList(pm, ctx.authStore, ctx.providerAuthPresenter);
       return { providers, availableModels: mc.getAvailableModels() };
     }
 
@@ -398,6 +400,7 @@ export async function dispatchClientRequest(
         request.params,
         (notification) => ctx.emit(notification),
         ctx.authStore,
+        ctx.providerAuthPresenter,
       );
 
     case DILIGENT_CLIENT_REQUEST_METHODS.AUTH_REMOVE:
@@ -406,6 +409,7 @@ export async function dispatchClientRequest(
         request.params,
         (notification) => ctx.emit(notification),
         ctx.authStore,
+        ctx.providerAuthPresenter,
       );
 
     case DILIGENT_CLIENT_REQUEST_METHODS.AUTH_OAUTH_START:
@@ -418,6 +422,7 @@ export async function dispatchClientRequest(
         openBrowser: ctx.openBrowser,
         emit: (notification) => ctx.emit(notification),
         authStore: ctx.authStore,
+        providerAuthPresenter: ctx.providerAuthPresenter,
       });
 
     case DILIGENT_CLIENT_REQUEST_METHODS.AUTH_OAUTH_CANCEL:

@@ -55,7 +55,9 @@ export { createPermissionEngine, createYoloPermissionEngine } from "./approval";
 export type {
   AuthKeys,
   ChatGPTOAuthBinding,
+  ExternalProviderAuthPresentation,
   OAuthFlowOptions,
+  ProviderAuthPresentationStatus,
   VertexAccessTokenBinding,
   VertexProviderConfig,
 } from "./auth";
@@ -66,6 +68,7 @@ export {
   loadAuthStore,
   loadOAuthTokens,
   openBrowser,
+  ProviderAuthPresenter,
   removeAuthKey,
   removeOAuthTokens,
   runChatGPTOAuth,
