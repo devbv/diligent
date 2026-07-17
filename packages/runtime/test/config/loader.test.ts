@@ -4,11 +4,11 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DEFAULT_ANTHROPIC_MODEL_ID } from "@diligent/core/model-registry";
 import type { DiligentConfig } from "@diligent/runtime/config";
 import { loadDiligentConfig, mergeConfig } from "@diligent/runtime/config";
 
 const TEST_ROOT = join(tmpdir(), `diligent-config-test-${Date.now()}`);
+const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-4-6";
 /** Separate HOME dir so global (~/.diligent/config.jsonc) != project (.diligent/config.jsonc) */
 const TEST_HOME = join(TEST_ROOT, "home");
 let origHome: string | undefined;
@@ -130,7 +130,7 @@ describe("loadDiligentConfig", () => {
     const projectConfigFile = projectConfigPath(TEST_ROOT, ".overdare");
     await mkdir(join(TEST_HOME, ".overdare"), { recursive: true });
     await mkdir(join(TEST_ROOT, ".overdare"), { recursive: true });
-    await Bun.write(globalConfigFile, JSON.stringify({ model: DEFAULT_ANTHROPIC_MODEL_ID }));
+    await Bun.write(globalConfigFile, JSON.stringify({ model: TEST_ANTHROPIC_MODEL_ID }));
     await Bun.write(projectConfigFile, JSON.stringify({ model: "claude-opus-4-20250514" }));
 
     const { config, sources } = await loadDiligentConfig(TEST_ROOT);

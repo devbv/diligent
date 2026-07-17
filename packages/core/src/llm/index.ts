@@ -16,7 +16,6 @@ export {
 } from "./model-class-policy";
 export type { ModelCard, ModelCardLifecycle, ModelCardProvenance } from "./models";
 export {
-  DEFAULT_ANTHROPIC_MODEL_ID,
   getModelInfoList,
   MODEL_CARD_SCHEMA_VERSION,
   MODEL_CARDS,
@@ -39,11 +38,12 @@ export { classifyVertexError, createVertexStream } from "./provider/vertex";
 export type { ExternalProviderAuth, ProviderName } from "./provider-manager";
 export {
   createStreamForProvider,
-  DEFAULT_MODELS,
   DEFAULT_PROVIDER,
   PROVIDER_NAMES,
   ProviderManager,
 } from "./provider-manager";
+export type { ProviderModelPolicy } from "./provider-model-policy";
+export { getDefaultModelId, PROVIDER_MODEL_POLICIES } from "./provider-model-policy";
 export type { RetryConfig } from "./retry";
 export { withRetry } from "./retry";
 export { resolveStream } from "./stream-resolver";

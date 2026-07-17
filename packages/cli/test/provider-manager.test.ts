@@ -1,7 +1,9 @@
 // @summary Tests for provider manager configuration and model handling
 import { describe, expect, test } from "bun:test";
-import { createChatGPTOAuthBinding, DEFAULT_ANTHROPIC_MODEL_ID, ProviderAuthPresenter } from "@diligent/runtime";
-import { DEFAULT_MODELS, PROVIDER_NAMES, ProviderManager } from "../src/provider-manager";
+import { createChatGPTOAuthBinding, ProviderAuthPresenter } from "@diligent/runtime";
+import { getDefaultModelId, PROVIDER_MODEL_POLICIES, PROVIDER_NAMES, ProviderManager } from "../src/provider-manager";
+
+const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-4-6";
 
 describe("ProviderManager", () => {
   test("config does not provide API keys (auth-only)", () => {
@@ -65,7 +67,7 @@ describe("ProviderManager", () => {
     const proxy = pm.createProxyStream();
     expect(() => {
       proxy(
-        { id: DEFAULT_ANTHROPIC_MODEL_ID, provider: "anthropic", contextWindow: 1_000_000, maxOutputTokens: 64_000 },
+        { id: TEST_ANTHROPIC_MODEL_ID, provider: "anthropic", contextWindow: 1_000_000, maxOutputTokens: 64_000 },
         { systemPrompt: [], messages: [], tools: [] },
         {},
       );
@@ -76,15 +78,16 @@ describe("ProviderManager", () => {
     expect(PROVIDER_NAMES).toEqual(["anthropic", "openai", "chatgpt", "gemini", "vertex", "zai-coding-plan"]);
   });
 
-  test("DEFAULT_MODELS has entries for all providers", () => {
+  test("provider model policy has entries for all providers", () => {
     for (const provider of PROVIDER_NAMES) {
-      expect(DEFAULT_MODELS[provider]).toBeDefined();
+      expect(PROVIDER_MODEL_POLICIES[provider]).toBeDefined();
     }
   });
 
-  test("keeps GPT-5.5 as the default when newer models are registered", () => {
-    expect(DEFAULT_MODELS.openai).toBe("gpt-5.5");
-    expect(DEFAULT_MODELS.chatgpt).toBe("chatgpt-5.5");
+  test("uses the current flagship models as provider defaults", () => {
+    expect(getDefaultModelId("anthropic")).toBe("claude-opus-4-8");
+    expect(getDefaultModelId("openai")).toBe("gpt-5.6-sol");
+    expect(getDefaultModelId("chatgpt")).toBe("chatgpt-5.6-sol");
   });
 
   test("setApiKey allows subsequent proxy calls", () => {

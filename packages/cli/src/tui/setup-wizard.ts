@@ -2,8 +2,8 @@
 import { resolveModel } from "@diligent/runtime";
 import type { AppConfig } from "../config";
 import {
-  DEFAULT_MODELS,
   DEFAULT_PROVIDER,
+  getDefaultModelId,
   PROVIDER_DESCRIPTORS,
   PROVIDER_NAMES,
   type ProviderName,
@@ -95,7 +95,7 @@ export function createSetupWizard(deps: SetupWizardDeps): SetupWizard {
       // Switch model if the selected provider differs from current
       const currentProvider = deps.config.model.provider ?? DEFAULT_PROVIDER;
       if (currentProvider !== provider) {
-        const defaultModelId = DEFAULT_MODELS[provider];
+        const defaultModelId = getDefaultModelId(provider);
         deps.config.model = resolveModel(defaultModelId);
         deps.updateStatusBar({ model: deps.config.model.id });
       }

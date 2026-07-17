@@ -4,12 +4,12 @@ import { afterEach, describe, expect, it, mock } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DEFAULT_ANTHROPIC_MODEL_ID } from "@diligent/core/model-registry";
 import type { RuntimeConfig } from "../../src/config/runtime";
 import { loadRuntimeConfig } from "../../src/config/runtime";
 import type { DiligentPaths } from "../../src/infrastructure";
 
 let tmpRoot = "";
+const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-4-6";
 let originalStorageNamespace: string | undefined;
 
 function makePaths(base: string): DiligentPaths {
@@ -59,7 +59,7 @@ describe("loadRuntimeConfig", () => {
         "You are a code reviewer.",
       ].join("\n"),
     );
-    await writeFile(join(tmpRoot, ".diligent", "config.jsonc"), JSON.stringify({ model: DEFAULT_ANTHROPIC_MODEL_ID }));
+    await writeFile(join(tmpRoot, ".diligent", "config.jsonc"), JSON.stringify({ model: TEST_ANTHROPIC_MODEL_ID }));
 
     const originalHome = process.env.HOME;
     const originalUserProfile = process.env.USERPROFILE;

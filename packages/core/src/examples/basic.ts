@@ -1,14 +1,13 @@
 // @summary Minimal example: create an Agent with a tool and run it with a user message
 import { z } from "zod";
 import { Agent } from "../agent/agent";
-import { DEFAULT_ANTHROPIC_MODEL_ID } from "../llm/models";
 import type { Tool } from "../tool/types";
 import type { Message } from "../types";
 import { c, tag } from "./common/colors";
 
 const I1 = "  ";
 const I2 = "    ";
-const DEFAULT_MODEL = DEFAULT_ANTHROPIC_MODEL_ID;
+const DEFAULT_MODEL = "claude-sonnet-4-6";
 
 const calculatorTool: Tool<z.ZodObject<{ expression: z.ZodString }>> = {
   name: "calculator",

@@ -1,8 +1,9 @@
 // @summary Tests for Anthropic thinking payload assembly across adaptive and budget-based models
 import { describe, expect, mock, test } from "bun:test";
 import { APIError } from "@anthropic-ai/sdk/core/error.mjs";
-import { DEFAULT_ANTHROPIC_MODEL_ID } from "../../../../src/llm/models";
 import type { Model, StreamContext, StreamOptions, ToolDefinition } from "../../../../src/llm/types";
+
+const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-4-6";
 
 const anthropicCalls: unknown[] = [];
 const anthropicConstructorOptions: unknown[] = [];
@@ -16,7 +17,7 @@ class MockAnthropicStream {
     return {
       id: "msg_123",
       role: "assistant",
-      model: DEFAULT_ANTHROPIC_MODEL_ID,
+      model: TEST_ANTHROPIC_MODEL_ID,
       type: "message",
       stop_reason: "end_turn",
       usage: { input_tokens: 1, output_tokens: 1 },
@@ -55,7 +56,7 @@ const EMPTY_CONTEXT: StreamContext = {
 
 function baseModel(overrides: Partial<Model>): Model {
   return {
-    id: DEFAULT_ANTHROPIC_MODEL_ID,
+    id: TEST_ANTHROPIC_MODEL_ID,
     provider: "anthropic",
     contextWindow: 300_000,
     maxOutputTokens: 8_000,

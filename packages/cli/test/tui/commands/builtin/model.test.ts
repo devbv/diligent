@@ -1,11 +1,13 @@
 // @summary Tests for model command picker filtering behavior based on provider authentication
 
 import { describe, expect, it, mock } from "bun:test";
-import { DEFAULT_ANTHROPIC_MODEL_ID, resolveModel } from "@diligent/runtime";
+import { resolveModel } from "@diligent/runtime";
 import type { AppConfig } from "../../../../src/config";
 import { modelCommand } from "../../../../src/tui/commands/builtin/model";
 import type { CommandContext } from "../../../../src/tui/commands/types";
 import type { ListPickerItem } from "../../../../src/tui/components/list-picker";
+
+const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-4-6";
 
 function makeConfig(modelId: string, providerManager: AppConfig["providerManager"]): AppConfig {
   return {
@@ -103,7 +105,7 @@ describe("modelCommand picker", () => {
       hasKeyFor: mock((_provider: string) => false),
     };
 
-    const config = makeConfig(DEFAULT_ANTHROPIC_MODEL_ID, providerManager as unknown as AppConfig["providerManager"]);
+    const config = makeConfig(TEST_ANTHROPIC_MODEL_ID, providerManager as unknown as AppConfig["providerManager"]);
 
     const ctx = makeContext(config, {
       app: {
@@ -135,7 +137,7 @@ describe("modelCommand picker", () => {
     const setModel = mock(async (_modelId: string) => {});
     const onModelChanged = mock((_modelId: string) => {});
 
-    const config = makeConfig(DEFAULT_ANTHROPIC_MODEL_ID, providerManager as unknown as AppConfig["providerManager"]);
+    const config = makeConfig(TEST_ANTHROPIC_MODEL_ID, providerManager as unknown as AppConfig["providerManager"]);
     const ctx = makeContext(config, {
       threadId: "thread-child",
       setModel,
@@ -150,7 +152,7 @@ describe("modelCommand picker", () => {
     expect(config.model.id).toBe("claude-haiku-4-5-20251001");
   });
 
-  it("normalizes xhigh to max when switching from GPT-5.6 to GPT-5.5", async () => {
+  it("preserves xhigh when switching between OpenAI models", async () => {
     const providerManager = {
       hasKeyFor: mock((_provider: string) => true),
     };
@@ -165,7 +167,7 @@ describe("modelCommand picker", () => {
 
     await modelCommand.handler("gpt-5.5", ctx);
 
-    expect(setEffort).toHaveBeenCalledWith("max");
-    expect(onEffortChanged).toHaveBeenCalledWith("max", "max");
+    expect(setEffort).not.toHaveBeenCalled();
+    expect(onEffortChanged).not.toHaveBeenCalled();
   });
 });

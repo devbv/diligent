@@ -6,8 +6,10 @@ import {
   MODEL_CLASSES,
   resolveModelForClass,
 } from "../../src/llm/model-class-policy";
-import { DEFAULT_ANTHROPIC_MODEL_ID, MODEL_CARDS, resolveModel } from "../../src/llm/models";
+import { MODEL_CARDS, resolveModel } from "../../src/llm/models";
 import type { Model } from "../../src/llm/types";
+
+const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-4-6";
 
 describe("model class policy", () => {
   it("stores model classes outside model cards", () => {
@@ -39,7 +41,7 @@ describe("model class policy", () => {
         id: "general",
         defaultEffort: "medium",
         defaultModels: {
-          anthropic: DEFAULT_ANTHROPIC_MODEL_ID,
+          anthropic: TEST_ANTHROPIC_MODEL_ID,
           gemini: "gemini-3.5-flash",
           vertex: "vertex-gemma-4-26b-it",
           "zai-coding-plan": "glm-5.1",
@@ -65,7 +67,7 @@ describe("model class policy", () => {
   it("resolves each supported class within the current provider", () => {
     const cases = [
       ["claude-fable-5", "pro", "claude-opus-4-8"],
-      [DEFAULT_ANTHROPIC_MODEL_ID, "lite", "claude-haiku-4-5-20251001"],
+      [TEST_ANTHROPIC_MODEL_ID, "lite", "claude-haiku-4-5-20251001"],
       ["gpt-5.3-codex", "pro", "gpt-5.5"],
       ["gpt-5.3-codex", "general", "gpt-5.4"],
       ["gpt-5.3-codex", "lite", "gpt-5.4-mini"],
@@ -99,7 +101,7 @@ describe("model class policy", () => {
 
   it("derives class from defaults and additional membership without reading model cards", () => {
     expect(getModelClass(resolveModel("claude-opus-4-8"))).toBe("pro");
-    expect(getModelClass(resolveModel(DEFAULT_ANTHROPIC_MODEL_ID))).toBe("general");
+    expect(getModelClass(resolveModel(TEST_ANTHROPIC_MODEL_ID))).toBe("general");
     expect(getModelClass(resolveModel("claude-haiku-4-5"))).toBe("lite");
     expect(getModelClass(resolveModel("gpt-5.6-sol"))).toBe("pro");
     expect(getModelClass(resolveModel("gpt-5.6-terra"))).toBe("general");

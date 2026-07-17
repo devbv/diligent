@@ -9,8 +9,8 @@ import {
   saveAuthKey,
 } from "@diligent/runtime";
 import {
-  DEFAULT_MODELS,
   DEFAULT_PROVIDER,
+  getDefaultModelId,
   PROVIDER_DESCRIPTORS,
   PROVIDER_NAMES,
   type ProviderName,
@@ -152,7 +152,7 @@ async function switchProvider(provider: ProviderName, ctx: CommandContext): Prom
     }
   }
 
-  const defaultModelId = DEFAULT_MODELS[provider];
+  const defaultModelId = getDefaultModelId(provider);
   const model = resolveModel(defaultModelId);
   ctx.config.model = model;
   await ctx.setModel(model.id);
@@ -247,7 +247,7 @@ async function startChatGPTOAuthFlow(ctx: CommandContext): Promise<void> {
     );
 
     // Switch to default Codex model
-    const model = resolveModel(DEFAULT_MODELS.chatgpt);
+    const model = resolveModel(getDefaultModelId("chatgpt"));
     ctx.config.model = model;
     await ctx.setModel(model.id);
     ctx.onModelChanged(model.id);

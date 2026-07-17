@@ -1,6 +1,5 @@
 // @summary Tests for provider-native compaction adapters (OpenAI/ChatGPT/Anthropic)
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import { DEFAULT_ANTHROPIC_MODEL_ID } from "../../../src/llm/models";
 import { createAnthropicNativeCompaction } from "../../../src/llm/provider/anthropic";
 import { createChatGPTNativeCompaction } from "../../../src/llm/provider/chatgpt";
 import { createOpenAINativeCompaction } from "../../../src/llm/provider/openai";
@@ -11,6 +10,8 @@ import {
   extractCompactionSummaryItem,
 } from "../../../src/llm/provider/openai/shared";
 import type { Model } from "../../../src/llm/types";
+
+const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-4-6";
 
 const originalFetch = globalThis.fetch;
 
@@ -23,7 +24,7 @@ const OPENAI_MODEL: Model = {
 };
 
 const ANTHROPIC_MODEL: Model = {
-  id: DEFAULT_ANTHROPIC_MODEL_ID,
+  id: TEST_ANTHROPIC_MODEL_ID,
   provider: "anthropic",
   contextWindow: 300_000,
   maxOutputTokens: 16_000,
@@ -757,7 +758,7 @@ describe("native compaction adapters", () => {
     expect(capturedHeaders["x-api-key"]).toBe("sk-ant");
     expect(capturedHeaders["anthropic-version"]).toBe("2023-06-01");
     expect(capturedHeaders["anthropic-beta"]).toBe("compact-2026-01-12");
-    expect(capturedBody.model).toBe(DEFAULT_ANTHROPIC_MODEL_ID);
+    expect(capturedBody.model).toBe(TEST_ANTHROPIC_MODEL_ID);
     expect(capturedBody.max_tokens).toBe(4096);
     expect(capturedBody.context_management).toEqual({
       edits: [

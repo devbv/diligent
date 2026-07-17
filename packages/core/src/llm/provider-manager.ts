@@ -1,7 +1,6 @@
 // @summary Unified provider manager — provider stream dispatch with injected auth bindings
 
 import { EventStream } from "../event-stream";
-import { DEFAULT_ANTHROPIC_MODEL_ID } from "./models";
 import { createAnthropicNativeCompaction, createAnthropicStream } from "./provider/anthropic";
 import { createGeminiStream } from "./provider/gemini";
 import type { NativeCompactionLookup } from "./provider/native-compaction";
@@ -10,6 +9,7 @@ import type { OpenAIImageDetail } from "./provider/openai/responses";
 import { validateProviderApiKey } from "./provider/validate-key";
 import { createVertexStream } from "./provider/vertex";
 import { createZaiCodingPlanStream } from "./provider/zai-coding-plan";
+import { getDefaultModelId } from "./provider-model-policy";
 import {
   ProviderError,
   ProviderErrorReason,
@@ -44,15 +44,6 @@ export type { ProviderName };
 export const DEFAULT_PROVIDER: ProviderName = "anthropic";
 
 export const PROVIDER_NAMES: ProviderName[] = ["anthropic", "openai", "chatgpt", "gemini", "vertex", "zai-coding-plan"];
-
-export const DEFAULT_MODELS: Record<ProviderName, string> = {
-  anthropic: DEFAULT_ANTHROPIC_MODEL_ID,
-  openai: "gpt-5.5",
-  chatgpt: "chatgpt-5.5",
-  gemini: "gemini-3.5-flash",
-  vertex: "vertex-gemma-4-26b-it",
-  "zai-coding-plan": "glm-5.2",
-};
 
 // imageDetail is OpenAI-only; other factories have fewer params and remain assignable (a function
 // taking fewer args satisfies a type expecting more), so they simply ignore the extra argument.
@@ -242,7 +233,7 @@ export class ProviderManager {
 
   // Verify an API key before persisting it. Throws with a user-facing message if the key is invalid.
   async validateApiKey(provider: ProviderName, apiKey: string): Promise<void> {
-    await validateProviderApiKey(provider, apiKey, this.baseUrls[provider], DEFAULT_MODELS[provider]);
+    await validateProviderApiKey(provider, apiKey, this.baseUrls[provider], getDefaultModelId(provider));
   }
 
   createProxyStream(): StreamFunction {

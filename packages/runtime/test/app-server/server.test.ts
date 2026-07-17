@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EventStream } from "@diligent/core/event-stream";
-import { DEFAULT_ANTHROPIC_MODEL_ID, resolveModel } from "@diligent/core/model-registry";
+import { resolveModel } from "@diligent/core/model-registry";
 import { type Model, ProviderError, ProviderManager, type StreamFunction } from "@diligent/core/provider-contract";
 import type {
   DiligentServerNotification,
@@ -14,6 +14,7 @@ import type {
   JSONRPCMessage,
   ThinkingEffort,
 } from "@diligent/protocol";
+
 import {
   DILIGENT_SERVER_NOTIFICATION_METHODS,
   DILIGENT_SERVER_REQUEST_METHODS,
@@ -35,6 +36,8 @@ import { handleImageUpload } from "@diligent/runtime/app-server/config-handlers"
 import { ensureDiligentDir } from "@diligent/runtime/infrastructure";
 import { SessionWriter } from "@diligent/runtime/session";
 import { z } from "zod";
+
+const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-4-6";
 
 function readResult(response: JSONRPCResponse): unknown {
   if ("error" in response) {
@@ -158,7 +161,7 @@ function makeFactoryRuntimeConfig(overrides?: {
             supportsThinking: true,
           }
         : {
-            id: DEFAULT_ANTHROPIC_MODEL_ID,
+            id: TEST_ANTHROPIC_MODEL_ID,
             provider: "anthropic",
             contextWindow: 200_000,
             maxOutputTokens: 128_000,
@@ -778,7 +781,7 @@ describe("DiligentAppServer", () => {
       method: "thread/read",
       params: { threadId: threadB },
     });
-    expect((readResult(readB) as { currentModel?: string }).currentModel).toBe(DEFAULT_ANTHROPIC_MODEL_ID);
+    expect((readResult(readB) as { currentModel?: string }).currentModel).toBe(TEST_ANTHROPIC_MODEL_ID);
 
     const resumedServer = new DiligentAppServer(
       createAppServerConfig({
@@ -943,7 +946,7 @@ describe("DiligentAppServer", () => {
     const started = await server.handleRequest(TEST_CONNECTION_ID, {
       id: 610,
       method: "thread/start",
-      params: { cwd: projectRoot, model: DEFAULT_ANTHROPIC_MODEL_ID },
+      params: { cwd: projectRoot, model: TEST_ANTHROPIC_MODEL_ID },
     });
     const threadId = (readResult(started) as { threadId: string }).threadId;
 
@@ -1125,7 +1128,7 @@ describe("DiligentAppServer", () => {
     expect((readResult(read) as { currentEffort: string }).currentEffort).toBe("xhigh");
   });
 
-  it("rejects xhigh effort for GPT-5.5", async () => {
+  it("accepts xhigh effort for GPT-5.5", async () => {
     const projectRoot = await mkdtemp(join(process.env.TMPDIR ?? "/tmp", "diligent-app-server-"));
     const server = new DiligentAppServer(
       createAppServerConfig({
@@ -1142,13 +1145,12 @@ describe("DiligentAppServer", () => {
     });
     const threadId = (readResult(started) as { threadId: string }).threadId;
 
-    await expect(
-      server.handleRequest(TEST_CONNECTION_ID, {
-        id: 1531,
-        method: "effort/set",
-        params: { threadId, effort: "xhigh" },
-      }),
-    ).resolves.toMatchObject({ error: { message: 'Thinking effort "xhigh" is not supported for this model.' } });
+    const changed = await server.handleRequest(TEST_CONNECTION_ID, {
+      id: 1531,
+      method: "effort/set",
+      params: { threadId, effort: "xhigh" },
+    });
+    expect(readResult(changed)).toEqual({ effort: "xhigh" });
   });
 
   it("preserves existing effort/set behavior for non-thinking models", async () => {
@@ -1177,7 +1179,7 @@ describe("DiligentAppServer", () => {
     expect(readResult(changed)).toEqual({ effort: "high" });
   });
 
-  it("normalizes GPT-5.6 xhigh to legacy max when switching to GPT-5.5", async () => {
+  it("preserves xhigh when switching between OpenAI models", async () => {
     const projectRoot = await mkdtemp(join(process.env.TMPDIR ?? "/tmp", "diligent-app-server-"));
     const server = new DiligentAppServer(
       createAppServerConfig({
@@ -1209,10 +1211,10 @@ describe("DiligentAppServer", () => {
       method: "thread/read",
       params: { threadId },
     });
-    expect((readResult(read) as { currentEffort: string }).currentEffort).toBe("max");
+    expect((readResult(read) as { currentEffort: string }).currentEffort).toBe("xhigh");
   });
 
-  it("adjusts none effort to medium when switching from openai to anthropic", async () => {
+  it("rejects none effort for OpenAI models", async () => {
     const projectRoot = await mkdtemp(join(process.env.TMPDIR ?? "/tmp", "diligent-app-server-"));
 
     const server = new DiligentAppServer(
@@ -1230,25 +1232,13 @@ describe("DiligentAppServer", () => {
     });
     const threadId = (readResult(started) as { threadId: string }).threadId;
 
-    await server.handleRequest(TEST_CONNECTION_ID, {
-      id: 1513,
-      method: "effort/set",
-      params: { threadId, effort: "none" },
-    });
-
-    await server.handleRequest(TEST_CONNECTION_ID, {
-      id: 1514,
-      method: "config/set",
-      params: { threadId, model: DEFAULT_ANTHROPIC_MODEL_ID },
-    });
-
-    const read = await server.handleRequest(TEST_CONNECTION_ID, {
-      id: 1515,
-      method: "thread/read",
-      params: { threadId },
-    });
-
-    expect((readResult(read) as { currentEffort: string }).currentEffort).toBe("medium");
+    await expect(
+      server.handleRequest(TEST_CONNECTION_ID, {
+        id: 1513,
+        method: "effort/set",
+        params: { threadId, effort: "none" },
+      }),
+    ).resolves.toMatchObject({ error: { message: "Minimal thinking is not supported for this model." } });
   });
 
   it("lists a newly started thread before the first turn", async () => {

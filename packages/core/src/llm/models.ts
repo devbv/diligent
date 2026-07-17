@@ -40,11 +40,7 @@ function defineModelCards(cards: ModelCardInput[]): ModelCard[] {
 }
 
 export const GEMINI_THINKING_BUDGETS = { low: 2_048, medium: 8_192, high: 16_384, max: 24_576 } as const;
-const THINKING_EFFORTS_WITH_NONE: ThinkingEffort[] = ["none", "low", "medium", "high", "max"];
-const THINKING_EFFORTS_WITHOUT_NONE: ThinkingEffort[] = ["low", "medium", "high", "max"];
-const GPT_56_THINKING_EFFORTS: ThinkingEffort[] = ["none", "low", "medium", "high", "xhigh", "max"];
-
-export const DEFAULT_ANTHROPIC_MODEL_ID = "claude-sonnet-4-6";
+const NATIVE_PROVIDER_THINKING_EFFORTS: ThinkingEffort[] = ["low", "medium", "high", "xhigh", "max"];
 
 export const MODEL_CARDS: ModelCard[] = defineModelCards([
   // Anthropic — opus/sonnet/fable use adaptive thinking (model decides budget within cap)
@@ -59,7 +55,7 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
     cacheReadCostPer1M: 0.5,
     cacheWriteCostPer1M: 6.25,
     supportsThinking: true,
-    supportedEfforts: THINKING_EFFORTS_WITHOUT_NONE,
+    supportedEfforts: NATIVE_PROVIDER_THINKING_EFFORTS,
     supportsVision: true,
     supportsAdaptiveThinking: true,
     thinkingBudgets: { low: 2_000, medium: 8_000, high: 16_000, max: 32_000 },
@@ -76,7 +72,7 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
     cacheReadCostPer1M: 1.0,
     cacheWriteCostPer1M: 12.5,
     supportsThinking: true,
-    supportedEfforts: THINKING_EFFORTS_WITHOUT_NONE,
+    supportedEfforts: NATIVE_PROVIDER_THINKING_EFFORTS,
     supportsVision: true,
     supportsAdaptiveThinking: true,
     thinkingBudgets: { low: 2_000, medium: 8_000, high: 16_000, max: 32_000 },
@@ -93,14 +89,14 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
     cacheReadCostPer1M: 0.3,
     cacheWriteCostPer1M: 3.75,
     supportsThinking: true,
-    supportedEfforts: THINKING_EFFORTS_WITHOUT_NONE,
+    supportedEfforts: NATIVE_PROVIDER_THINKING_EFFORTS,
     supportsVision: true,
     supportsAdaptiveThinking: true,
     thinkingBudgets: { low: 1_500, medium: 6_000, high: 12_000, max: 24_000 },
     aliases: ["sonnet-5"],
   },
   {
-    id: DEFAULT_ANTHROPIC_MODEL_ID,
+    id: "claude-sonnet-4-6",
     display: "Claude Sonnet 4.6",
     provider: "anthropic",
     contextWindow: 1_000_000,
@@ -110,7 +106,7 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
     cacheReadCostPer1M: 0.3,
     cacheWriteCostPer1M: 3.75,
     supportsThinking: true,
-    supportedEfforts: THINKING_EFFORTS_WITHOUT_NONE,
+    supportedEfforts: NATIVE_PROVIDER_THINKING_EFFORTS,
     supportsVision: true,
     supportsAdaptiveThinking: true,
     thinkingBudgets: { low: 1_500, medium: 6_000, high: 12_000, max: 24_000 },
@@ -127,7 +123,7 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
     cacheReadCostPer1M: 0.1,
     cacheWriteCostPer1M: 1.25,
     supportsThinking: true,
-    supportedEfforts: THINKING_EFFORTS_WITHOUT_NONE,
+    supportedEfforts: NATIVE_PROVIDER_THINKING_EFFORTS,
     supportsVision: true,
     thinkingBudgets: { low: 1_024, medium: 3_000, high: 8_000, max: 16_000 },
     aliases: ["claude-haiku", "haiku", "claude-haiku-4-5"],
@@ -142,7 +138,7 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
     inputCostPer1M: 2.0,
     outputCostPer1M: 12.0,
     supportsThinking: true,
-    supportedEfforts: THINKING_EFFORTS_WITH_NONE,
+    supportedEfforts: ["none", "low", "medium", "high", "max"],
     supportsVision: true,
     thinkingBudgets: GEMINI_THINKING_BUDGETS,
     aliases: ["gemini-pro"],
@@ -156,7 +152,7 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
     inputCostPer1M: 1.5,
     outputCostPer1M: 9.0,
     supportsThinking: true,
-    supportedEfforts: THINKING_EFFORTS_WITH_NONE,
+    supportedEfforts: ["none", "low", "medium", "high", "max"],
     supportsVision: true,
     thinkingBudgets: GEMINI_THINKING_BUDGETS,
     aliases: ["gemini-flash", "gemini", "gemini-3-flash-preview"],
@@ -170,7 +166,7 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
     inputCostPer1M: 0.25,
     outputCostPer1M: 1.5,
     supportsThinking: true,
-    supportedEfforts: THINKING_EFFORTS_WITH_NONE,
+    supportedEfforts: ["none", "low", "medium", "high", "max"],
     supportsVision: true,
     thinkingBudgets: GEMINI_THINKING_BUDGETS,
     aliases: ["gemini-flash-lite", "gemini-3.1-flash-lite-preview"],
@@ -191,7 +187,7 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
     contextWindow: 1_000_000,
     maxOutputTokens: 128_000,
     supportsThinking: true,
-    supportedEfforts: THINKING_EFFORTS_WITHOUT_NONE,
+    supportedEfforts: ["low", "medium", "high", "max"],
     supportsVision: false,
     aliases: ["glm", "glm-5", "glm5.2"],
   },
@@ -217,7 +213,7 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
     cacheReadCostPer1M: 0.5,
     cacheWriteCostPer1M: 0,
     supportsThinking: true,
-    supportedEfforts: THINKING_EFFORTS_WITH_NONE,
+    supportedEfforts: NATIVE_PROVIDER_THINKING_EFFORTS,
     supportsVision: true,
     accessLevel: "standard",
   },
@@ -232,7 +228,7 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
     cacheReadCostPer1M: 0.25,
     cacheWriteCostPer1M: 0,
     supportsThinking: true,
-    supportedEfforts: THINKING_EFFORTS_WITH_NONE,
+    supportedEfforts: NATIVE_PROVIDER_THINKING_EFFORTS,
     supportsVision: true,
     accessLevel: "standard",
     aliases: ["gpt-5"],
@@ -248,7 +244,7 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
     cacheReadCostPer1M: 0.075,
     cacheWriteCostPer1M: 0,
     supportsThinking: true,
-    supportedEfforts: THINKING_EFFORTS_WITH_NONE,
+    supportedEfforts: NATIVE_PROVIDER_THINKING_EFFORTS,
     supportsVision: true,
   },
   // GPT-5.6 is selectable without replacing existing defaults or class routes.
@@ -263,7 +259,7 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
     cacheReadCostPer1M: 0.5,
     cacheWriteCostPer1M: 6.25,
     supportsThinking: true,
-    supportedEfforts: GPT_56_THINKING_EFFORTS,
+    supportedEfforts: NATIVE_PROVIDER_THINKING_EFFORTS,
     supportsVision: true,
     aliases: ["gpt-5.6"],
   },
@@ -278,7 +274,7 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
     cacheReadCostPer1M: 0.25,
     cacheWriteCostPer1M: 3.125,
     supportsThinking: true,
-    supportedEfforts: GPT_56_THINKING_EFFORTS,
+    supportedEfforts: NATIVE_PROVIDER_THINKING_EFFORTS,
     supportsVision: true,
   },
   {
@@ -292,7 +288,7 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
     cacheReadCostPer1M: 0.1,
     cacheWriteCostPer1M: 1.25,
     supportsThinking: true,
-    supportedEfforts: GPT_56_THINKING_EFFORTS,
+    supportedEfforts: NATIVE_PROVIDER_THINKING_EFFORTS,
     supportsVision: true,
   },
   // ChatGPT subscription models map to upstream GPT slugs, but remain distinct in
@@ -306,7 +302,7 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
     contextWindow: 300_000,
     maxOutputTokens: 128_000,
     supportsThinking: true,
-    supportedEfforts: THINKING_EFFORTS_WITH_NONE,
+    supportedEfforts: NATIVE_PROVIDER_THINKING_EFFORTS,
     supportsVision: true,
     aliases: ["chatgpt-5.5-pro"],
   },
@@ -320,7 +316,7 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
     outputCostPer1M: 15.0,
     cacheReadCostPer1M: 0.25,
     supportsThinking: true,
-    supportedEfforts: THINKING_EFFORTS_WITH_NONE,
+    supportedEfforts: NATIVE_PROVIDER_THINKING_EFFORTS,
     supportsVision: true,
   },
   {
@@ -333,7 +329,7 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
     outputCostPer1M: 4.5,
     cacheReadCostPer1M: 0.075,
     supportsThinking: true,
-    supportedEfforts: THINKING_EFFORTS_WITH_NONE,
+    supportedEfforts: NATIVE_PROVIDER_THINKING_EFFORTS,
     supportsVision: true,
   },
   {
@@ -343,7 +339,7 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
     contextWindow: 300_000,
     maxOutputTokens: 128_000,
     supportsThinking: true,
-    supportedEfforts: GPT_56_THINKING_EFFORTS,
+    supportedEfforts: NATIVE_PROVIDER_THINKING_EFFORTS,
     supportsVision: true,
     aliases: ["chatgpt-5.6"],
   },
@@ -354,7 +350,7 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
     contextWindow: 300_000,
     maxOutputTokens: 128_000,
     supportsThinking: true,
-    supportedEfforts: GPT_56_THINKING_EFFORTS,
+    supportedEfforts: NATIVE_PROVIDER_THINKING_EFFORTS,
     supportsVision: true,
   },
   {
@@ -364,7 +360,7 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
     contextWindow: 300_000,
     maxOutputTokens: 128_000,
     supportsThinking: true,
-    supportedEfforts: GPT_56_THINKING_EFFORTS,
+    supportedEfforts: NATIVE_PROVIDER_THINKING_EFFORTS,
     supportsVision: true,
   },
 ]);
@@ -435,6 +431,7 @@ export function resolveModel(modelId: string): Model {
       contextWindow: 300_000,
       maxOutputTokens: 16_384,
       supportsThinking: true,
+      supportedEfforts: NATIVE_PROVIDER_THINKING_EFFORTS,
     };
   }
   if (modelId.startsWith("chatgpt-")) {
@@ -444,10 +441,18 @@ export function resolveModel(modelId: string): Model {
       contextWindow: 128_000,
       maxOutputTokens: 16_384,
       supportsThinking: true,
+      supportedEfforts: NATIVE_PROVIDER_THINKING_EFFORTS,
     };
   }
   if (modelId.startsWith("gpt-") || modelId.match(/^o[1-9]/)) {
-    return { id: modelId, provider: "openai", contextWindow: 128_000, maxOutputTokens: 16_384, supportsThinking: true };
+    return {
+      id: modelId,
+      provider: "openai",
+      contextWindow: 128_000,
+      maxOutputTokens: 16_384,
+      supportsThinking: true,
+      supportedEfforts: NATIVE_PROVIDER_THINKING_EFFORTS,
+    };
   }
 
   // Default to anthropic
@@ -457,5 +462,6 @@ export function resolveModel(modelId: string): Model {
     contextWindow: 300_000,
     maxOutputTokens: 16_384,
     supportsThinking: true,
+    supportedEfforts: NATIVE_PROVIDER_THINKING_EFFORTS,
   };
 }

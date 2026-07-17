@@ -55,15 +55,15 @@ describe("effortCommand", () => {
     expect(onEffortChanged).toHaveBeenCalledWith("xhigh", "xhigh");
   });
 
-  it("rejects xhigh for GPT-5.5", async () => {
+  it("accepts xhigh for GPT-5.5", async () => {
     const setEffort = mock(async () => {});
     const displayError = mock(() => {});
     const ctx = makeContext("gpt-5.5", { setEffort, displayError });
 
     await effortCommand.handler("xhigh", ctx);
 
-    expect(setEffort).not.toHaveBeenCalled();
-    expect(displayError).toHaveBeenCalledWith('Thinking effort "xhigh" is not supported for this model.');
+    expect(setEffort).toHaveBeenCalledWith("xhigh");
+    expect(displayError).not.toHaveBeenCalled();
   });
 
   it("preserves the existing command behavior for non-thinking models", async () => {
@@ -77,7 +77,7 @@ describe("effortCommand", () => {
     expect(displayError).not.toHaveBeenCalled();
   });
 
-  it("shows all six GPT-5.6 effort options in the picker", async () => {
+  it("shows the fixed OpenAI effort options in the picker", async () => {
     let items: ListPickerItem[] = [];
     const ctx = makeContext("gpt-5.6-terra", {
       app: {
@@ -94,6 +94,6 @@ describe("effortCommand", () => {
 
     await effortCommand.handler(undefined, ctx);
 
-    expect(items.map((item) => item.value)).toEqual(["none", "low", "medium", "high", "xhigh", "max"]);
+    expect(items.map((item) => item.value)).toEqual(["low", "medium", "high", "xhigh", "max"]);
   });
 });

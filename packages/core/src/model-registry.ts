@@ -9,12 +9,13 @@ export {
 } from "./llm/model-class-policy";
 export type { ModelCard, ModelCardLifecycle, ModelCardProvenance } from "./llm/models";
 export {
-  DEFAULT_ANTHROPIC_MODEL_ID,
   getModelInfoList,
   MODEL_CARD_SCHEMA_VERSION,
   MODEL_CARDS,
   resolveModel,
 } from "./llm/models";
+export type { ProviderModelPolicy } from "./llm/provider-model-policy";
+export { getDefaultModelId, PROVIDER_MODEL_POLICIES } from "./llm/provider-model-policy";
 export {
   findModelInfo,
   getThinkingEffortLabel,

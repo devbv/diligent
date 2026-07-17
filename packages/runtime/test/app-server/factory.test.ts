@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { LocalImageLoader } from "@diligent/core/image-contract";
-import { DEFAULT_ANTHROPIC_MODEL_ID, getModelInfoList } from "@diligent/core/model-registry";
+import { getModelInfoList } from "@diligent/core/model-registry";
 import type { Model } from "@diligent/core/provider-contract";
 import { ProviderManager } from "@diligent/core/provider-contract";
 import { createAppServerConfig } from "@diligent/runtime/app-server";
@@ -12,9 +12,12 @@ import { z } from "zod";
 import { getBuiltinAgentDefinitions } from "../../src/agent/agent-types";
 import type { PermissionEngine } from "../../src/approval";
 import type { RuntimeConfig } from "../../src/config/runtime";
+
 import { writeKnowledge } from "../../src/knowledge/store";
 import type { BundledToolProvider } from "../../src/tools/bundled-provider";
 import { makeAssistant, makeStreamFn } from "../helpers/collab";
+
+const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-4-6";
 
 function makeRuntimeConfig(overrides?: Partial<RuntimeConfig>): RuntimeConfig {
   const providerManager = new ProviderManager({});
@@ -23,7 +26,7 @@ function makeRuntimeConfig(overrides?: Partial<RuntimeConfig>): RuntimeConfig {
     remember: () => {},
   };
   const model: Model = {
-    id: DEFAULT_ANTHROPIC_MODEL_ID,
+    id: TEST_ANTHROPIC_MODEL_ID,
     provider: "anthropic",
     contextWindow: 200_000,
     maxOutputTokens: 64_000,
@@ -77,7 +80,7 @@ describe("createAppServerConfig", () => {
     expect(config.authStore).toEqual(runtimeConfig.authStore);
     expect(config.permissionEngine).toBe(runtimeConfig.permissionEngine);
     expect(config.modelConfig).toBeDefined();
-    expect(config.modelConfig?.currentModelId).toBe(DEFAULT_ANTHROPIC_MODEL_ID);
+    expect(config.modelConfig?.currentModelId).toBe(TEST_ANTHROPIC_MODEL_ID);
     expect(config.defaultEffort).toBe("medium");
     expect(config.skillNames).toEqual([]);
   });
@@ -91,7 +94,7 @@ describe("createAppServerConfig", () => {
       cwd: projectRoot,
       mode: "default",
       effort: "medium",
-      modelId: DEFAULT_ANTHROPIC_MODEL_ID,
+      modelId: TEST_ANTHROPIC_MODEL_ID,
       approve: async () => "once",
       ask: async () => null,
     });
@@ -203,7 +206,7 @@ describe("createAppServerConfig", () => {
 
       config.modelConfig?.onModelChange("claude-haiku-4-5", "thread-child");
 
-      expect(runtimeConfig.model?.id).toBe(DEFAULT_ANTHROPIC_MODEL_ID);
+      expect(runtimeConfig.model?.id).toBe(TEST_ANTHROPIC_MODEL_ID);
       const configPath = join(fakeHome, ".diligent", "config.jsonc");
       expect(await Bun.file(configPath).exists()).toBe(false);
     } finally {
@@ -258,7 +261,7 @@ describe("createAppServerConfig", () => {
       cwd: "/tmp/test",
       mode: "default",
       effort: "medium",
-      modelId: DEFAULT_ANTHROPIC_MODEL_ID,
+      modelId: TEST_ANTHROPIC_MODEL_ID,
       approve: async () => "once",
       ask: async () => null,
     });
@@ -289,7 +292,7 @@ describe("createAppServerConfig", () => {
       cwd: "/tmp/test",
       mode: "default",
       effort: "medium",
-      modelId: DEFAULT_ANTHROPIC_MODEL_ID,
+      modelId: TEST_ANTHROPIC_MODEL_ID,
       approve: async () => "once",
       ask: async () => null,
     });
@@ -325,7 +328,7 @@ describe("createAppServerConfig", () => {
       cwd: projectRoot,
       mode: "default",
       effort: "medium",
-      modelId: DEFAULT_ANTHROPIC_MODEL_ID,
+      modelId: TEST_ANTHROPIC_MODEL_ID,
       approve: async () => "once",
       ask: async () => null,
     });
@@ -343,7 +346,7 @@ describe("createAppServerConfig", () => {
       cwd: projectRoot,
       mode: "default",
       effort: "medium",
-      modelId: DEFAULT_ANTHROPIC_MODEL_ID,
+      modelId: TEST_ANTHROPIC_MODEL_ID,
       approve: async () => "once",
       ask: async () => null,
     });
@@ -368,7 +371,7 @@ describe("createAppServerConfig", () => {
       cwd: "/tmp/test",
       mode: "execute",
       effort: "medium",
-      modelId: DEFAULT_ANTHROPIC_MODEL_ID,
+      modelId: TEST_ANTHROPIC_MODEL_ID,
       approve: async () => "once",
       ask: async () => null,
     });
@@ -397,7 +400,7 @@ describe("createAppServerConfig", () => {
       cwd: "/tmp/test",
       mode: "execute",
       effort: "medium",
-      modelId: DEFAULT_ANTHROPIC_MODEL_ID,
+      modelId: TEST_ANTHROPIC_MODEL_ID,
       approve: async () => "once",
       ask: async () => null,
     });

@@ -11,11 +11,11 @@ export type {
 export type { ExternalProviderAuth, ProviderManagerConfig } from "../llm/provider-manager";
 export {
   createStreamForProvider,
-  DEFAULT_MODELS,
   DEFAULT_PROVIDER,
   PROVIDER_NAMES,
   ProviderManager,
 } from "../llm/provider-manager";
+export { getDefaultModelId, PROVIDER_MODEL_POLICIES } from "../llm/provider-model-policy";
 export type { RetryConfig } from "../llm/retry";
 export { withRetry } from "../llm/retry";
 export type { StreamTurnResource, StreamTurnScope } from "../llm/turn-scope";

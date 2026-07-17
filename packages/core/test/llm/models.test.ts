@@ -1,6 +1,8 @@
 // @summary Tests for model-card metadata and model resolution inference
 import { describe, expect, it } from "bun:test";
-import { DEFAULT_ANTHROPIC_MODEL_ID, MODEL_CARD_SCHEMA_VERSION, MODEL_CARDS, resolveModel } from "../../src/llm/models";
+import { MODEL_CARD_SCHEMA_VERSION, MODEL_CARDS, resolveModel } from "../../src/llm/models";
+
+const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-4-6";
 
 describe("resolveModel", () => {
   it("infers anthropic from claude- prefix", () => {
@@ -35,7 +37,7 @@ describe("resolveModel", () => {
   });
 
   it("uses 1M context for known Sonnet and Opus models", () => {
-    expect(resolveModel(DEFAULT_ANTHROPIC_MODEL_ID).contextWindow).toBe(1_000_000);
+    expect(resolveModel(TEST_ANTHROPIC_MODEL_ID).contextWindow).toBe(1_000_000);
     expect(resolveModel("claude-opus-4-8").contextWindow).toBe(1_000_000);
   });
 
@@ -138,7 +140,7 @@ describe("model cards", () => {
       expect(model?.cacheReadCostPer1M).toBe(pricing.cached);
       expect(model?.cacheWriteCostPer1M).toBe(pricing.write);
       expect(model?.outputCostPer1M).toBe(pricing.output);
-      expect(model?.supportedEfforts).toEqual(["none", "low", "medium", "high", "xhigh", "max"]);
+      expect(model?.supportedEfforts).toEqual(["low", "medium", "high", "xhigh", "max"]);
     }
   });
 
@@ -151,6 +153,12 @@ describe("model cards", () => {
       "gpt-5.6-terra",
       "gpt-5.6-luna",
     ]);
+  });
+
+  it("uses the fixed effort set for every Anthropic, OpenAI, and ChatGPT model card", () => {
+    for (const model of MODEL_CARDS.filter(({ provider }) => ["anthropic", "openai", "chatgpt"].includes(provider))) {
+      expect(model.supportedEfforts).toEqual(["low", "medium", "high", "xhigh", "max"]);
+    }
   });
 
   it("keeps the ChatGPT catalog order stable", () => {
@@ -169,7 +177,7 @@ describe("model cards", () => {
       const model = MODEL_CARDS.find((candidate) => candidate.id === id);
       expect(model?.contextWindow).toBe(300_000);
       expect(model?.maxOutputTokens).toBe(128_000);
-      expect(model?.supportedEfforts).toEqual(["none", "low", "medium", "high", "xhigh", "max"]);
+      expect(model?.supportedEfforts).toEqual(["low", "medium", "high", "xhigh", "max"]);
       expect(model?.inputCostPer1M).toBeUndefined();
       expect(model?.outputCostPer1M).toBeUndefined();
     }
@@ -178,7 +186,6 @@ describe("model cards", () => {
   it("keeps effort and thinking support as intrinsic model-card capabilities", () => {
     expect(MODEL_CARDS.find((m) => m.id === "glm-5.2")?.supportsThinking).toBe(true);
     expect(MODEL_CARDS.find((m) => m.id === "gpt-5.6-sol")?.supportedEfforts).toEqual([
-      "none",
       "low",
       "medium",
       "high",

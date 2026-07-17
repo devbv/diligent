@@ -3,7 +3,7 @@
 import { DILIGENT_CLIENT_NOTIFICATION_METHODS, DILIGENT_CLIENT_REQUEST_METHODS } from "@diligent/protocol";
 import { getThinkingEffortLabel, resolveModel } from "@diligent/runtime";
 import type { AppConfig } from "../config";
-import { DEFAULT_MODELS, DEFAULT_PROVIDER, type ProviderName } from "../provider-manager";
+import { DEFAULT_PROVIDER, getDefaultModelId, type ProviderName } from "../provider-manager";
 import { buildWelcomeBanner } from "./app-presenter";
 import type { AppRuntimeState } from "./app-runtime-state";
 import type { ChatView } from "./components/chat-view";
@@ -105,7 +105,7 @@ export class AppSessionLifecycle {
 
     const fallbackProvider = this.deps.config.providerManager.getConfiguredProviders()[0];
     if (fallbackProvider) {
-      const fallbackModelId = DEFAULT_MODELS[fallbackProvider];
+      const fallbackModelId = getDefaultModelId(fallbackProvider);
       this.deps.config.model = resolveModel(fallbackModelId);
       return;
     }

@@ -1,6 +1,6 @@
 // @summary REST API endpoint handlers for sessions, search, and knowledge queries
 
-import { DEFAULT_ANTHROPIC_MODEL_ID, resolveModel } from "@diligent/core/model-registry";
+import { resolveModel } from "@diligent/core/model-registry";
 import { createLogger, type Logger } from "@diligent/logging";
 import { readdirSync } from "fs";
 import { join } from "path";
@@ -34,7 +34,7 @@ function calculateUsageCost(
     model.cacheWriteCostPer1M != null;
 
   if (!hasAnyPricing) {
-    if (modelId.startsWith("claude-sonnet-4-")) model = resolveModel(DEFAULT_ANTHROPIC_MODEL_ID);
+    if (modelId.startsWith("claude-sonnet-4-")) model = resolveModel("claude-sonnet-4-6");
     if (modelId.startsWith("claude-opus-4-")) model = resolveModel("claude-opus-4-8");
     if (modelId.startsWith("claude-haiku-4-")) model = resolveModel("claude-haiku-4-5-20251001");
   }

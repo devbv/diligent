@@ -1,5 +1,5 @@
 // @summary Provider-specific pro, general, and lite model selection policy
-import { DEFAULT_ANTHROPIC_MODEL_ID, resolveModel } from "./models";
+import { resolveModel } from "./models";
 import type { Model, ThinkingEffort } from "./types";
 
 /** Abstract capability levels used to select a provider-specific concrete model. */
@@ -34,7 +34,7 @@ export const MODEL_CLASSES: readonly ModelClassDefinition[] = [
     id: "general",
     defaultEffort: "medium",
     defaultModels: {
-      anthropic: DEFAULT_ANTHROPIC_MODEL_ID,
+      anthropic: "claude-sonnet-4-6",
       gemini: "gemini-3.5-flash",
       vertex: "vertex-gemma-4-26b-it",
       "zai-coding-plan": "glm-5.1",
