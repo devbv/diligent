@@ -23,6 +23,37 @@ export type ProviderName = z.infer<typeof ProviderNameSchema>;
 export const StopReasonSchema = z.enum(["end_turn", "tool_use", "max_tokens", "error", "aborted"]);
 export type StopReason = z.infer<typeof StopReasonSchema>;
 
+export const ProviderErrorType = {
+  RateLimit: "rate_limit",
+  ServerError: "server_error",
+  ContextOverflow: "context_overflow",
+  Auth: "auth",
+  Network: "network",
+  Unknown: "unknown",
+} as const;
+export type ProviderErrorType = (typeof ProviderErrorType)[keyof typeof ProviderErrorType];
+
+export const ProviderErrorReason = {
+  CredentialsMissing: "credentials_missing",
+  CredentialsRejected: "credentials_rejected",
+  ContextWindowExceeded: "context_window_exceeded",
+} as const;
+export type ProviderErrorReason = (typeof ProviderErrorReason)[keyof typeof ProviderErrorReason];
+
+const ProviderErrorTypeSchema = z.enum([
+  ProviderErrorType.RateLimit,
+  ProviderErrorType.ServerError,
+  ProviderErrorType.ContextOverflow,
+  ProviderErrorType.Auth,
+  ProviderErrorType.Network,
+  ProviderErrorType.Unknown,
+]);
+const ProviderErrorReasonSchema = z.enum([
+  ProviderErrorReason.CredentialsMissing,
+  ProviderErrorReason.CredentialsRejected,
+  ProviderErrorReason.ContextWindowExceeded,
+]);
+
 export const UsageSchema = z.object({
   inputTokens: z.number().int().nonnegative(),
   outputTokens: z.number().int().nonnegative(),
@@ -82,10 +113,8 @@ export const SerializableErrorSchema = z.object({
   name: z.string(),
   stack: z.string().optional(),
   code: z.string().optional(),
-  providerErrorType: z
-    .enum(["rate_limit", "server_error", "context_overflow", "auth", "network", "unknown"])
-    .optional(),
-  providerErrorReason: z.enum(["credentials_missing", "credentials_rejected", "context_window_exceeded"]).optional(),
+  providerErrorType: ProviderErrorTypeSchema.optional(),
+  providerErrorReason: ProviderErrorReasonSchema.optional(),
   isRetryable: z.boolean().optional(),
   retryAfterMs: z.number().int().nonnegative().optional(),
   statusCode: z.number().int().optional(),

@@ -1,6 +1,12 @@
 import type {
+  ProviderErrorReason as ProtocolProviderErrorReason,
+  ProviderErrorType as ProtocolProviderErrorType,
   ProviderName as ProtocolProviderName,
   ThinkingEffort as ProtocolThinkingEffort,
+} from "@diligent/protocol";
+import {
+  ProviderErrorReason as ProtocolProviderErrorReasonValues,
+  ProviderErrorType as ProtocolProviderErrorTypeValues,
 } from "@diligent/protocol";
 import type { EventStream } from "../event-stream";
 import type { AssistantMessage, ContentBlock, Message, StopReason, Usage } from "../types";
@@ -120,15 +126,11 @@ export interface ProviderBuiltinToolDefinition {
 export type ToolDefinition = FunctionToolDefinition | ProviderBuiltinToolDefinition;
 
 // Provider error classification (D010)
-export type ProviderErrorType =
-  | "rate_limit" // 429 — NOT retryable, retry-after is surfaced for diagnostics
-  | "server_error" // 5xx and transient provider server failures — retryable
-  | "context_overflow" // 400 with "context length" — NOT retryable, triggers compaction
-  | "auth" // 401/403 — NOT retryable, fatal
-  | "network" // ECONNREFUSED, timeout — retryable
-  | "unknown"; // everything else — NOT retryable
+export type ProviderErrorType = ProtocolProviderErrorType;
+export const ProviderErrorType = ProtocolProviderErrorTypeValues;
 
-export type ProviderErrorReason = "credentials_missing" | "credentials_rejected" | "context_window_exceeded";
+export type ProviderErrorReason = ProtocolProviderErrorReason;
+export const ProviderErrorReason = ProtocolProviderErrorReasonValues;
 
 export const CONTEXT_OVERFLOW_ERROR_MESSAGE = "The model context window was exceeded.";
 

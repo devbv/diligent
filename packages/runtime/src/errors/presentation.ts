@@ -1,7 +1,14 @@
 // @summary Runtime-owned mapping from core diagnostics to client-facing error presentation
 
 import { PROVIDER_DISPLAY_NAMES } from "@diligent/core/llm/provider-manager";
-import type { ClientError, ErrorRecovery, ProviderName, SerializableError } from "@diligent/protocol";
+import {
+  type ClientError,
+  type ErrorRecovery,
+  ProviderErrorReason,
+  ProviderErrorType,
+  type ProviderName,
+  type SerializableError,
+} from "@diligent/protocol";
 
 export interface RuntimeErrorPresentationContext {
   provider?: ProviderName;
@@ -14,8 +21,8 @@ export function presentRuntimeError(error: SerializableError, context: RuntimeEr
   const providerLabel = provider ? PROVIDER_DISPLAY_NAMES[provider] : "The selected provider";
 
   switch (error.providerErrorType) {
-    case "auth":
-      if (error.providerErrorReason === "credentials_missing") {
+    case ProviderErrorType.Auth:
+      if (error.providerErrorReason === ProviderErrorReason.CredentialsMissing) {
         return withPresentation(error, `Connect ${providerLabel} to continue.`, {
           kind: "configure_provider",
           provider,
@@ -26,7 +33,7 @@ export function presentRuntimeError(error: SerializableError, context: RuntimeEr
         provider,
       });
 
-    case "context_overflow":
+    case ProviderErrorType.ContextOverflow:
       return withPresentation(
         error,
         "This conversation is too long for the selected model. Start a new chat to continue.",
@@ -35,24 +42,24 @@ export function presentRuntimeError(error: SerializableError, context: RuntimeEr
         },
       );
 
-    case "network":
+    case ProviderErrorType.Network:
       return withPresentation(
         error,
         "A network problem occurred. Please try again.",
         context.retrySafe ? { kind: "retry" } : undefined,
       );
 
-    case "server_error":
+    case ProviderErrorType.ServerError:
       return withPresentation(
         error,
         "The provider is temporarily unavailable. Please try again.",
         context.retrySafe ? { kind: "retry" } : undefined,
       );
 
-    case "rate_limit":
+    case ProviderErrorType.RateLimit:
       return withPresentation(error, "The provider rate limit was reached. Please try again later.");
 
-    case "unknown":
+    case ProviderErrorType.Unknown:
     case undefined:
       return { ...error };
   }

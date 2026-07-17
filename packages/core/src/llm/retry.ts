@@ -4,7 +4,7 @@ import { createLogger, type Logger } from "@diligent/logging";
 import { formatSerializableErrorForLog, toSerializableError } from "../agent/util/errors";
 import { EventStream } from "../event-stream";
 import type { ProviderEvent, ProviderResult, StreamFunction } from "./types";
-import { ProviderError } from "./types";
+import { ProviderError, ProviderErrorType } from "./types";
 
 export interface RetryConfig {
   maxAttempts: number; // default: 5
@@ -27,7 +27,7 @@ function isVisibleProviderEvent(event: ProviderEvent): boolean {
 function toProviderError(err: unknown): ProviderError {
   return err instanceof ProviderError
     ? err
-    : new ProviderError(err instanceof Error ? err.message : String(err), "unknown", false);
+    : new ProviderError(err instanceof Error ? err.message : String(err), ProviderErrorType.Unknown, false);
 }
 
 function errorFields(error: ProviderError): Record<string, unknown> {
@@ -92,7 +92,7 @@ export function withRetry(
           });
           stream.push({
             type: "error",
-            error: new ProviderError("Aborted", "unknown", false),
+            error: new ProviderError("Aborted", ProviderErrorType.Unknown, false),
           });
           return;
         }
@@ -164,7 +164,11 @@ export function withRetry(
 
         // If no error captured from events, check if stream completed normally
         if (!errorEvent) {
-          errorEvent = new ProviderError("Provider stream ended without producing a terminal event", "network", true);
+          errorEvent = new ProviderError(
+            "Provider stream ended without producing a terminal event",
+            ProviderErrorType.Network,
+            true,
+          );
           logRetry(
             retryLogger,
             "warn",

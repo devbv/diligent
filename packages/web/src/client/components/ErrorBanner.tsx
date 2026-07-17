@@ -1,6 +1,6 @@
 // @summary Chat-top app error banner for provider and runtime failures outside transcript history
 
-import type { ProviderName } from "@diligent/protocol";
+import { ProviderErrorType, type ProviderName } from "@diligent/protocol";
 import type { ActiveErrorState } from "../lib/thread-store";
 
 interface ErrorBannerProps {
@@ -12,7 +12,8 @@ interface ErrorBannerProps {
 
 export function ErrorBanner({ error, onOpenProviders, onStartNewThread, onRetry }: ErrorBannerProps) {
   const recoveryKind = error.recovery?.kind;
-  const isAuthError = recoveryKind === "configure_provider" || (!error.recovery && error.providerErrorType === "auth");
+  const isAuthError =
+    recoveryKind === "configure_provider" || (!error.recovery && error.providerErrorType === ProviderErrorType.Auth);
   const title = error.presented
     ? error.message
     : isAuthError && !error.recovery

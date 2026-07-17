@@ -9,7 +9,7 @@ import type { OpenAIImageDetail } from "./provider/openai-responses";
 import { validateProviderApiKey } from "./provider/validate-key";
 import { createVertexStream } from "./provider/vertex";
 import { createZaiCodingPlanStream } from "./provider/zai-coding-plan";
-import { ProviderError, type ProviderName, type StreamFunction } from "./types";
+import { ProviderError, ProviderErrorReason, ProviderErrorType, type ProviderName, type StreamFunction } from "./types";
 
 export interface ExternalProviderAuth {
   isConfigured: () => boolean;
@@ -238,9 +238,9 @@ export class ProviderManager {
       const apiKey = this.authState.getApiKey(provider);
       if (!apiKey) {
         throw new ProviderError(`No authentication is configured for ${provider}.`, {
-          errorType: "auth",
+          errorType: ProviderErrorType.Auth,
           isRetryable: false,
-          reason: "credentials_missing",
+          reason: ProviderErrorReason.CredentialsMissing,
         });
       }
 

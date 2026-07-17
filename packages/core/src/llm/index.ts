@@ -62,8 +62,6 @@ export type {
   FunctionToolDefinition,
   Model,
   ProviderBuiltinToolDefinition,
-  ProviderErrorReason,
-  ProviderErrorType,
   ProviderEvent,
   ProviderResult,
   StreamContext,
@@ -73,4 +71,4 @@ export type {
   ToolDefinition,
   WebToolUserLocation,
 } from "./types";
-export { ProviderError } from "./types";
+export { ProviderError, ProviderErrorReason, ProviderErrorType } from "./types";

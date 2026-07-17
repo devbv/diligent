@@ -4,7 +4,7 @@ import type { Logger } from "@diligent/logging";
 import type { NativeCompactFn } from "../llm/provider/native-compaction";
 import type { StreamTurnScope } from "../llm/turn-scope";
 import type { Model, StreamFunction, SystemSection, ThinkingEffort } from "../llm/types";
-import { ProviderError } from "../llm/types";
+import { ProviderError, ProviderErrorType } from "../llm/types";
 import type { Tool } from "../tool/types";
 import type { AssistantMessage, Message, ToolCallBlock } from "../types";
 import { streamAssistantMessage } from "./assistant";
@@ -208,7 +208,7 @@ export async function runAgentLoop(
 }
 
 function isContextOverflowError(err: unknown): err is ProviderError {
-  return err instanceof ProviderError && err.errorType === "context_overflow";
+  return err instanceof ProviderError && err.errorType === ProviderErrorType.ContextOverflow;
 }
 
 async function compactIfNeeded(messages: Message[], request: LoopRequest, stream: AgentStream): Promise<boolean> {
