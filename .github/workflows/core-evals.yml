@@ -68,7 +68,7 @@ jobs:
   core-evals:
     name: Core eval suite
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 50
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -114,6 +114,19 @@ jobs:
             args+=(--seed "$EVAL_SEED")
           fi
           bun run eval "${args[@]}"
+
+      - name: Run candidate core evals in shadow mode
+        if: github.event_name == 'schedule'
+        continue-on-error: true
+        shell: bash
+        run: |
+          candidate_status=0
+          for task in structured-tool-args parallel-tools; do
+            if ! bun run eval core --task "$task" --report "artifacts/evals/core-candidate-$task.json"; then
+              candidate_status=1
+            fi
+          done
+          exit "$candidate_status"
 
       - name: Upload eval report
         if: always()

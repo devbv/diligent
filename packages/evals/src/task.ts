@@ -121,6 +121,7 @@ export interface EvalExecutionReport {
   passed: boolean;
   termination: EvalTerminationReason;
   failure?: EvalFailure;
+  failures: EvalFailure[];
   elapsedMs: number;
   usage: Usage;
   turnCount: number;

@@ -4,6 +4,7 @@ import { appendFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parseCliOptions } from "./cli-options";
 import {
+  CANONICAL_PROFILES,
   canonicalReason,
   createProfileStream,
   resolveProfileModel,
@@ -14,7 +15,7 @@ import { redactEvalText, writeEvalReport } from "./reporters/json";
 import { createGithubRootSeed, createRandomRootSeed } from "./runner/seed";
 import { runEvalSuite } from "./runner/suite";
 import type { AnyEvalTask, EvalExecutionResult } from "./task";
-import { CORE_EVAL_TASKS } from "./tasks/core";
+import { CORE_CANONICAL_TASKS, CORE_EVAL_TASKS } from "./tasks/core";
 
 const SUITE_VERSION = "core-v0";
 
@@ -45,6 +46,10 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
       profiles,
       rootSeed,
       metadata,
+      canonicalManifest: {
+        taskIds: CORE_CANONICAL_TASKS.map((task) => task.id),
+        profiles: CANONICAL_PROFILES,
+      },
       resolveModel: resolveProfileModel,
       createStream: createProfileStream,
       onExecutionStart: (task, profile) => {
@@ -66,7 +71,7 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
 }
 
 function selectTasks(taskId?: string): AnyEvalTask[] {
-  if (!taskId) return [...CORE_EVAL_TASKS];
+  if (!taskId) return [...CORE_CANONICAL_TASKS];
   const task = CORE_EVAL_TASKS.find((candidate) => candidate.id === taskId);
   if (!task) throw new Error(`Unknown core eval task "${taskId}".`);
   return [task];

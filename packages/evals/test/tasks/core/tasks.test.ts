@@ -2,12 +2,17 @@
 
 import { describe, expect, test } from "bun:test";
 import { runEvalExecution } from "../../../src/runner/execution";
-import { CORE_EVAL_TASKS } from "../../../src/tasks/core";
+import type { ParallelToolFragment } from "../../../src/tasks/core";
+import { CORE_CANDIDATE_TASKS, CORE_EVAL_TASKS } from "../../../src/tasks/core";
 import { assistantMessage, sequenceStream, TEST_MODEL } from "../../helpers/fake-stream";
 
 const PROFILE = { provider: "anthropic", model: TEST_MODEL.id, effort: "medium" } as const;
 
 describe("core eval tasks", () => {
+  test("registers structured arguments and parallel tools as candidates", () => {
+    expect(CORE_CANDIDATE_TASKS.map((task) => task.id)).toEqual(["structured-tool-args", "parallel-tools"]);
+  });
+
   test("direct-response requires matching streamed and final text", async () => {
     const task = CORE_EVAL_TASKS.find((candidate) => candidate.id === "direct-response")!;
     const world = task.createWorld("direct-seed");
@@ -128,5 +133,139 @@ describe("core eval tasks", () => {
           snapshot.event.type === "tool_end" && snapshot.event.toolCallId === "update-1" && snapshot.event.isError,
       ),
     ).toBe(true);
+  });
+
+  test("structured-tool-args verifies nested schema values and the hidden receipt", async () => {
+    const task = CORE_EVAL_TASKS.find((candidate) => candidate.id === "structured-tool-args")!;
+    const world = task.createWorld("structured-seed");
+    const result = await runEvalExecution({
+      task,
+      profile: PROFILE,
+      model: TEST_MODEL,
+      seed: "structured-seed",
+      streamFunction: sequenceStream([
+        assistantMessage(
+          [
+            {
+              type: "tool_call",
+              id: "job-1",
+              name: "submit_job",
+              input: {
+                target: { recordId: world.recordId, revision: world.revision },
+                operation: world.operation,
+                options: { dryRun: world.dryRun, priority: world.priority, labels: world.labels },
+              },
+            },
+          ],
+          "tool_use",
+        ),
+        assistantMessage([{ type: "text", text: `Receipt: ${world.receiptToken}` }]),
+      ]),
+    });
+
+    expect(result.passed).toBe(true);
+    expect(result.worldSnapshot).toMatchObject({ submitted: true });
+  });
+
+  test("structured-tool-args rejects a changed nested value", async () => {
+    const task = CORE_EVAL_TASKS.find((candidate) => candidate.id === "structured-tool-args")!;
+    const world = task.createWorld("structured-negative-seed");
+    const result = await runEvalExecution({
+      task,
+      profile: PROFILE,
+      model: TEST_MODEL,
+      seed: "structured-negative-seed",
+      streamFunction: sequenceStream([
+        assistantMessage(
+          [
+            {
+              type: "tool_call",
+              id: "job-wrong",
+              name: "submit_job",
+              input: {
+                target: { recordId: world.recordId, revision: world.revision },
+                operation: world.operation,
+                options: { dryRun: world.dryRun, priority: 1, labels: world.labels },
+              },
+            },
+          ],
+          "tool_use",
+        ),
+        assistantMessage([{ type: "text", text: "Done" }]),
+      ]),
+    });
+
+    expect(result.failure?.code).toBe("task_semantic.structured_tool_args.wrong_values");
+    expect(result.worldSnapshot).toMatchObject({ submitted: false });
+  });
+
+  test("parallel-tools requires one concurrent batch and all hidden fragments", async () => {
+    const task = CORE_EVAL_TASKS.find((candidate) => candidate.id === "parallel-tools")!;
+    const world = task.createWorld("parallel-seed");
+    const calls = world.fragments.map((fragment: ParallelToolFragment, index: number) => ({
+      type: "tool_call" as const,
+      id: `fragment-${index + 1}`,
+      name: "lookup_fragment",
+      input: { fragmentId: fragment.fragmentId },
+    }));
+    const result = await runEvalExecution({
+      task,
+      profile: PROFILE,
+      model: TEST_MODEL,
+      seed: "parallel-seed",
+      streamFunction: sequenceStream([
+        assistantMessage(calls, "tool_use"),
+        assistantMessage([
+          {
+            type: "text",
+            text: world.fragments.map((fragment: ParallelToolFragment) => fragment.code).join(" "),
+          },
+        ]),
+      ]),
+    });
+
+    expect(result.passed).toBe(true);
+    expect(result.worldSnapshot).toMatchObject({ maxConcurrentLookups: 3 });
+    const firstToolEnd = result.execution.events.findIndex(({ event }) => event.type === "tool_end");
+    const toolStartsBeforeEnd = result.execution.events
+      .slice(0, firstToolEnd)
+      .filter(({ event }) => event.type === "tool_start");
+    expect(toolStartsBeforeEnd).toHaveLength(3);
+  });
+
+  test("parallel-tools rejects sequential lookup turns", async () => {
+    const task = CORE_EVAL_TASKS.find((candidate) => candidate.id === "parallel-tools")!;
+    const world = task.createWorld("parallel-negative-seed");
+    const toolTurns = world.fragments.map((fragment: ParallelToolFragment, index: number) =>
+      assistantMessage(
+        [
+          {
+            type: "tool_call" as const,
+            id: `sequential-${index + 1}`,
+            name: "lookup_fragment",
+            input: { fragmentId: fragment.fragmentId },
+          },
+        ],
+        "tool_use",
+      ),
+    );
+    const result = await runEvalExecution({
+      task,
+      profile: PROFILE,
+      model: TEST_MODEL,
+      seed: "parallel-negative-seed",
+      streamFunction: sequenceStream([
+        ...toolTurns,
+        assistantMessage([
+          {
+            type: "text",
+            text: world.fragments.map((fragment: ParallelToolFragment) => fragment.code).join(" "),
+          },
+        ]),
+      ]),
+    });
+
+    expect(result.failure?.code).toBe("task_semantic.parallel_tools.not_parallel");
+    expect(result.worldSnapshot).toMatchObject({ maxConcurrentLookups: 1 });
   });
 });
