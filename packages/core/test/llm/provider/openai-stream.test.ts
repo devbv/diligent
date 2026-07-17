@@ -786,7 +786,7 @@ describe("createChatGPTStream retry classification", () => {
     expect(abortHarness.requests[0]?.socket.terminated).toBe(true);
   });
 
-  test("maps GPT-5.6 WebSocket usage-limit errors as non-retryable non-network", async () => {
+  test("preserves GPT-5.6 WebSocket usage-limit diagnostics with a stable reason", async () => {
     const harness = createWebSocketHarness((_body, socket) => {
       queueMicrotask(() =>
         socket.emit({
@@ -806,8 +806,11 @@ describe("createChatGPTStream retry classification", () => {
     );
 
     const error = events.find((event): event is Extract<ProviderEvent, { type: "error" }> => event.type === "error");
-    expect(error?.error.message).toBe("AI usage limit reached. Please try again later or upgrade your plan.");
-    expect((error?.error as { errorType?: string }).errorType).not.toBe("network");
+    expect(error?.error.message).toContain("usage_limit_reached");
+    expect(error?.error.message).toContain("The usage limit has been reached");
+    expect(error?.error.message).not.toContain("upgrade your plan");
+    expect((error?.error as { errorType?: string }).errorType).toBe("rate_limit");
+    expect((error?.error as { reason?: string }).reason).toBe("usage_limit_reached");
     expect((error?.error as { isRetryable?: boolean }).isRetryable).toBe(false);
   });
 
@@ -834,6 +837,30 @@ describe("createChatGPTStream retry classification", () => {
     expect(error?.error.message).toContain("ChatGPT API error (429): rate limited");
     expect((error?.error as { errorType?: string }).errorType).toBe("rate_limit");
     expect((error?.error as { statusCode?: number }).statusCode).toBe(429);
+    expect((error?.error as { isRetryable?: boolean }).isRetryable).toBe(false);
+  });
+
+  test("classifies a WebSocket usage-limit code even without an HTTP status", async () => {
+    const harness = createWebSocketHarness((_body, socket) => {
+      queueMicrotask(() =>
+        socket.emit({
+          type: "error",
+          error: { code: "usage_limit_reached", message: "The usage limit has been reached" },
+        }),
+      );
+    });
+    const chatgptStream = createChatGPTStream(() => ({ access_token: "token", refresh_token: "refresh" }), {
+      useWebSocketForGpt56: true,
+      webSocketFactory: harness.factory,
+    });
+
+    const events = await collectEvents(
+      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, { effort: "medium" }),
+    );
+    const error = events.find((event): event is Extract<ProviderEvent, { type: "error" }> => event.type === "error");
+
+    expect((error?.error as { errorType?: string }).errorType).toBe("rate_limit");
+    expect((error?.error as { reason?: string }).reason).toBe("usage_limit_reached");
     expect((error?.error as { isRetryable?: boolean }).isRetryable).toBe(false);
   });
 
@@ -877,6 +904,23 @@ describe("createChatGPTStream retry classification", () => {
     const errorEvent = events.find((event) => event.type === "error");
     expect(errorEvent).toBeDefined();
     expect(errorEvent?.type === "error" ? errorEvent.error.message : "").toContain("429");
+  });
+
+  test("preserves HTTP usage-limit diagnostics with a stable reason", async () => {
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({ error: { type: "usage_limit_reached", message: "The usage limit has been reached" } }),
+        { status: 429 },
+      )) as typeof fetch;
+
+    const events = await collectEvents(createRetriedChatGPTStream());
+    const error = events.find((event): event is Extract<ProviderEvent, { type: "error" }> => event.type === "error");
+
+    expect(error?.error.message).toContain("usage_limit_reached");
+    expect(error?.error.message).not.toContain("upgrade your plan");
+    expect((error?.error as { errorType?: string }).errorType).toBe("rate_limit");
+    expect((error?.error as { reason?: string }).reason).toBe("usage_limit_reached");
+    expect((error?.error as { isRetryable?: boolean }).isRetryable).toBe(false);
   });
 
   test("retries ChatGPT HTTP 500 and recovers", async () => {

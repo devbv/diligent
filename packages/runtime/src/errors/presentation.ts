@@ -20,6 +20,10 @@ export function presentRuntimeError(error: SerializableError, context: RuntimeEr
   const provider = context.provider;
   const providerLabel = provider ? PROVIDER_DISPLAY_NAMES[provider] : "The selected provider";
 
+  if (error.providerErrorReason === ProviderErrorReason.UsageLimitReached) {
+    return withPresentation(error, "Your AI usage limit was reached. Please try again later or change your plan.");
+  }
+
   switch (error.providerErrorType) {
     case ProviderErrorType.Auth:
       if (error.providerErrorReason === ProviderErrorReason.CredentialsMissing) {

@@ -40,6 +40,11 @@ describe("presentRuntimeError", () => {
       "The provider rate limit was reached. Please try again later.",
       undefined,
     ],
+    [
+      diagnostic({ providerErrorType: "rate_limit", providerErrorReason: "usage_limit_reached" }),
+      "Your AI usage limit was reached. Please try again later or change your plan.",
+      undefined,
+    ],
   ])("maps diagnostics to common presentation", (error, message, recovery) => {
     const result = presentRuntimeError(error, { provider: "openai", operation: "agent_turn", retrySafe: true });
 

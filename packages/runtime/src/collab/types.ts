@@ -4,7 +4,7 @@ import type { ThinkingEffort } from "@diligent/core/llm/types";
 import type { Tool } from "@diligent/core/tool/types";
 import type { Message } from "@diligent/core/types";
 import type { ResolvedAgentDefinition } from "../agent/resolved-agent";
-import type { AgentEvent } from "../agent-event";
+import type { AgentEvent, ChildAgentEvent } from "../agent-event";
 import type { ApprovalRequest, ApprovalResponse } from "../approval/types";
 import type { DiligentPaths } from "../infrastructure";
 import type { SessionManager } from "../session/manager";
@@ -47,16 +47,7 @@ export interface AgentEntry {
 }
 
 /** Events emitted by the collab layer — collab boundary events + child tool/turn events with childThreadId. */
-export type CollabAgentEvent =
-  | Extract<AgentEvent, { type: `collab_${string}` }>
-  | (Extract<AgentEvent, { type: "turn_start" }> & { childThreadId: string })
-  | (Extract<AgentEvent, { type: "message_start" }> & { childThreadId: string })
-  | (Extract<AgentEvent, { type: "message_discarded" }> & { childThreadId: string })
-  | (Extract<AgentEvent, { type: "message_delta" }> & { childThreadId: string })
-  | (Extract<AgentEvent, { type: "message_end" }> & { childThreadId: string })
-  | (Extract<AgentEvent, { type: "tool_start" }> & { childThreadId: string })
-  | (Extract<AgentEvent, { type: "tool_update" }> & { childThreadId: string })
-  | (Extract<AgentEvent, { type: "tool_end" }> & { childThreadId: string });
+export type CollabAgentEvent = Extract<AgentEvent, { type: `collab_${string}` }> | ChildAgentEvent;
 
 export interface CollabToolDeps {
   cwd: string;

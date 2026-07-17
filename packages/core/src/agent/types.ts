@@ -33,16 +33,16 @@ export interface SerializableError {
   statusCode?: number;
 }
 
-// D004: 15 CoreAgentEvent types emitted by loop.ts — D086: itemId on grouped subtypes, SerializableError
+// Core events emitted by the reusable agent engine — D086: itemId on grouped subtypes, SerializableError
 export type CoreAgentEvent =
   // Lifecycle (2)
   | { type: "agent_start" }
   | { type: "agent_end"; messages: Message[] }
   // Turn (2)
-  | { type: "turn_start"; turnId: string; childThreadId?: string; nickname?: string; turnNumber?: number }
+  | { type: "turn_start"; turnId: string }
   | { type: "turn_end"; turnId: string; message: AssistantMessage; toolResults: ToolResultMessage[] }
   // Message streaming (3) — D086: itemId groups related events
-  | { type: "message_start"; itemId: string; message: AssistantMessage; childThreadId?: string; nickname?: string }
+  | { type: "message_start"; itemId: string; message: AssistantMessage }
   | {
       type: "message_discarded";
       itemId: string;
@@ -50,18 +50,14 @@ export type CoreAgentEvent =
       nextAttempt: number;
       maxAttempts: number;
       delayMs: number;
-      childThreadId?: string;
-      nickname?: string;
     }
   | {
       type: "message_delta";
       itemId: string;
       message: AssistantMessage;
       delta: MessageDelta;
-      childThreadId?: string;
-      nickname?: string;
     }
-  | { type: "message_end"; itemId: string; message: AssistantMessage; childThreadId?: string; nickname?: string }
+  | { type: "message_end"; itemId: string; message: AssistantMessage }
   // Tool execution (3) — D086: itemId groups related events
   | {
       type: "tool_start";
@@ -69,8 +65,6 @@ export type CoreAgentEvent =
       toolCallId: string;
       toolName: string;
       input: unknown;
-      childThreadId?: string;
-      nickname?: string;
     }
   | {
       type: "tool_update";
@@ -78,8 +72,6 @@ export type CoreAgentEvent =
       toolCallId: string;
       toolName: string;
       partialResult: string;
-      childThreadId?: string;
-      nickname?: string;
     }
   | {
       type: "tool_end";
@@ -91,11 +83,7 @@ export type CoreAgentEvent =
       isError: boolean;
       render?: ToolRenderPayloadLike;
       metadata?: Record<string, unknown>;
-      childThreadId?: string;
-      nickname?: string;
     }
-  // Status (1)
-  | { type: "status_change"; status: "idle" | "busy" }
   // Usage (1)
   | { type: "usage"; usage: Usage }
   // Prompt debug (1)

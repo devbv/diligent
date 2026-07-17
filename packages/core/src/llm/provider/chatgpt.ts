@@ -4,10 +4,10 @@ import { createLogger } from "@diligent/logging";
 import type { OpenAIOAuthTokens } from "../../auth/types";
 import { EventStream } from "../../event-stream";
 import { isNetworkError } from "../errors";
-import { classifyProviderHttpError, isRateLimitStatus } from "../provider-errors";
+import { classifyProviderHttpError } from "../provider-errors";
 import { flattenSections } from "../system-sections";
 import type { Model, ProviderEvent, ProviderResult, StreamContext, StreamFunction, StreamOptions } from "../types";
-import { ProviderError, ProviderErrorType } from "../types";
+import { ProviderError, ProviderErrorReason, ProviderErrorType } from "../types";
 import { type ChatGPTWebSocketSession, createChatGPTWebSocketSession } from "./chatgpt-websocket-session";
 import type { NativeCompactFn } from "./native-compaction";
 import {
@@ -257,13 +257,9 @@ function toChatGPTWebSocketError(payload: Record<string, unknown>): ProviderErro
     normalizedMessage.includes("usage limit");
   const isConnectionLimit = errorCode === "websocket_connection_limit_reached";
   const details = [errorCode, errorType, message].filter((value): value is string => Boolean(value)).join(" | ");
-  const displayMessage =
-    isRateLimitStatus(status) && isUsageLimit
-      ? "AI usage limit reached. Please try again later or upgrade your plan."
-      : `ChatGPT API error${status ? ` (${status})` : ""}: ${details || message}`;
 
   return classifyChatGPTHttpError({
-    message: displayMessage,
+    message: `ChatGPT API error${status ? ` (${status})` : ""}: ${details || message}`,
     status,
     isUsageLimit,
     isConnectionLimit,
@@ -277,12 +273,13 @@ function classifyChatGPTHttpError(input: {
   isConnectionLimit?: boolean;
   cause?: Error;
 }): ProviderError {
-  if (isRateLimitStatus(input.status) && input.isUsageLimit) {
+  if (input.isUsageLimit) {
     return new ProviderError(input.message, {
-      errorType: ProviderErrorType.Unknown,
+      errorType: ProviderErrorType.RateLimit,
       isRetryable: false,
       statusCode: input.status,
       cause: input.cause,
+      reason: ProviderErrorReason.UsageLimitReached,
     });
   }
 
@@ -694,11 +691,7 @@ export function createChatGPTStream(
         if (!response.ok) {
           const errText = await response.text().catch(() => "");
           const isUsageLimit = errText.includes("usage_limit_reached");
-          const is429 = isRateLimitStatus(response.status);
-          const message =
-            is429 && isUsageLimit
-              ? "AI usage limit reached. Please try again later or upgrade your plan."
-              : `ChatGPT API error (${response.status}): ${errText || "no body"}`;
+          const message = `ChatGPT API error (${response.status}): ${errText || "no body"}`;
           throw classifyChatGPTHttpError({ message, status: response.status, isUsageLimit });
         }
 

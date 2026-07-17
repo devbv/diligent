@@ -45,7 +45,7 @@ export type { Mode } from "./agent/mode";
 export type { ResolvedAgentDefinition } from "./agent/resolved-agent";
 export { resolveAgentDefinition, resolveAvailableAgentDefinitions } from "./agent/resolved-agent";
 export { RuntimeAgent } from "./agent/runtime-agent";
-export type { AgentEvent, RuntimeAgentEvent } from "./agent-event";
+export type { AgentEvent, ChildAgentEvent, RuntimeAgentEvent } from "./agent-event";
 export type { AgentDiscoveryOptions, AgentFrontmatter, AgentLoadError, AgentLoadResult, AgentMetadata } from "./agents";
 export { discoverAgents, parseAgentFrontmatter, renderAgentsSection, validateAgentName } from "./agents";
 export type {

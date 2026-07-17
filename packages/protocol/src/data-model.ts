@@ -37,6 +37,7 @@ export const ProviderErrorReason = {
   CredentialsMissing: "credentials_missing",
   CredentialsRejected: "credentials_rejected",
   ContextWindowExceeded: "context_window_exceeded",
+  UsageLimitReached: "usage_limit_reached",
 } as const;
 export type ProviderErrorReason = (typeof ProviderErrorReason)[keyof typeof ProviderErrorReason];
 
@@ -52,6 +53,7 @@ const ProviderErrorReasonSchema = z.enum([
   ProviderErrorReason.CredentialsMissing,
   ProviderErrorReason.CredentialsRejected,
   ProviderErrorReason.ContextWindowExceeded,
+  ProviderErrorReason.UsageLimitReached,
 ]);
 
 export const UsageSchema = z.object({
