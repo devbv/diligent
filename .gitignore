@@ -13,6 +13,7 @@
 node_modules/
 dist/
 .bin/
+.overdare/
 *.tsbuildinfo
 
 # Secrets
@@ -26,6 +27,6 @@ jobs/
 # Test temp directories
 **/tmp-watcher-test/
 
-# Runtime logs
-**/.diligent/logs/
-
+# Runtime state outside the repository root
+**/.diligent/
+!/.diligent/
