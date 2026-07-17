@@ -13,6 +13,8 @@ import { EventStream } from "../../event-stream";
 import type { AssistantMessage, ContentBlock, Message, StopReason, ToolCallBlock, Usage } from "../../types";
 import { isNetworkError } from "../errors";
 import { materializeUserContentBlocks } from "../image-io";
+import { GEMINI_THINKING_BUDGETS } from "../models";
+import { classifyProviderHttpError } from "../provider-errors";
 import { flattenSections } from "../system-sections";
 import type {
   FunctionToolDefinition,
@@ -24,17 +26,15 @@ import type {
   StreamOptions,
   ToolDefinition,
 } from "../types";
-import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError } from "../types";
+import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError, ProviderErrorReason, ProviderErrorType } from "../types";
 
 type ProviderToolUseBlock = Extract<ContentBlock, { type: "provider_tool_use" }>;
 type WebSearchResultBlock = Extract<ContentBlock, { type: "web_search_result" }>;
 
-const DEFAULT_GEMINI_THINKING_BUDGETS = { low: 2_048, medium: 8_192, high: 16_384, max: 24_576 };
-
 export function resolveGeminiThinkingBudget(model: Model, effort: StreamOptions["effort"]): number | undefined {
   if (effort === undefined || !model.supportsThinking) return undefined;
   const budgetKey = effort === "none" ? "low" : effort === "xhigh" ? "max" : effort;
-  return model.thinkingBudgets?.[budgetKey] ?? DEFAULT_GEMINI_THINKING_BUDGETS[budgetKey];
+  return model.thinkingBudgets?.[budgetKey] ?? GEMINI_THINKING_BUDGETS[budgetKey];
 }
 
 export function createGeminiStream(apiKey?: string, baseUrl?: string): StreamFunction {
@@ -554,36 +554,23 @@ export function classifyGeminiError(err: unknown): ProviderError {
     const errObj = err as unknown as Record<string, unknown>;
     const httpStatus = (errObj.status as number | undefined) ?? (errObj.code as number | undefined);
 
-    if (httpStatus === 429) {
-      return new ProviderError(msg, "rate_limit", false, undefined, httpStatus, err);
-    }
-    if (httpStatus !== undefined && httpStatus >= 500) {
-      return new ProviderError(msg, "server_error", true, undefined, httpStatus, err);
-    }
-    if (httpStatus === 401 || httpStatus === 403) {
-      return new ProviderError(msg, {
-        errorType: "auth",
-        isRetryable: false,
-        statusCode: httpStatus,
-        cause: err,
-        reason: "credentials_rejected",
-      });
-    }
+    const httpError = classifyProviderHttpError({ message: msg, status: httpStatus, cause: err });
+    if (httpError) return httpError;
     if (isGeminiContextOverflow(msg)) {
       return new ProviderError(CONTEXT_OVERFLOW_ERROR_MESSAGE, {
-        errorType: "context_overflow",
+        errorType: ProviderErrorType.ContextOverflow,
         isRetryable: false,
         statusCode: httpStatus,
         cause: err,
-        reason: "context_window_exceeded",
+        reason: ProviderErrorReason.ContextWindowExceeded,
       });
     }
     if (isNetworkError(err)) {
-      return new ProviderError(msg, "network", true, undefined, undefined, err);
+      return new ProviderError(msg, ProviderErrorType.Network, true, undefined, undefined, err);
     }
-    return new ProviderError(msg, "unknown", false, undefined, httpStatus, err);
+    return new ProviderError(msg, ProviderErrorType.Unknown, false, undefined, httpStatus, err);
   }
-  return new ProviderError(String(err), "unknown", false);
+  return new ProviderError(String(err), ProviderErrorType.Unknown, false);
 }
 
 function isGeminiContextOverflow(message: string): boolean {

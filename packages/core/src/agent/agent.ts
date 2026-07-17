@@ -16,7 +16,7 @@ import { runAgentLoop } from "./loop";
 import { AgentLoopHookDispatcher } from "./loop-hooks";
 import { updateUserMessageContent } from "./message-content";
 import type { AgentOptions, AgentPromptOptions, CompactionConfig, QueuedSteeringMessage } from "./types";
-import { AgentStream, type LLMRetryConfig } from "./types";
+import { AgentStream, DEFAULT_LLM_RETRY_CONFIG, type LLMRetryConfig } from "./types";
 
 export class Agent {
   cwd?: string;
@@ -52,11 +52,7 @@ export class Agent {
       keepRecentTokens: 20_000,
       timeoutMs: 180_000,
     };
-    this.retryConfig = opts?.retry ?? {
-      maxRetries: 5,
-      baseDelayMs: 1_000,
-      maxDelayMs: 30_000,
-    };
+    this.retryConfig = opts?.retry ?? DEFAULT_LLM_RETRY_CONFIG;
     this.llmMsgStreamFn = this.wrapWithRetry(
       opts?.llmMsgStreamFn ?? resolveStream(this.model.provider as ProviderName),
     );

@@ -3,6 +3,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { GoogleGenAI } from "@google/genai";
 import OpenAI from "openai";
+import { isAuthenticationStatus } from "../provider-errors";
 import type { ProviderName } from "../types";
 import { resolveZaiCodingPlanBaseUrl } from "./zai-coding-plan";
 
@@ -75,7 +76,7 @@ export async function validateProviderApiKey(
   } catch (err) {
     const label = PROVIDER_LABELS[provider] ?? provider;
     const status = authStatus(err);
-    if (status === 401 || status === 403) {
+    if (isAuthenticationStatus(status)) {
       throw new Error(`Invalid API key for ${label}. Please check the key and try again.`);
     }
     const message = err instanceof Error ? err.message : String(err);

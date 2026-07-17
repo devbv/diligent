@@ -5,6 +5,7 @@ import { EventStream } from "../../event-stream";
 import type { AssistantMessage, ContentBlock, Message, StopReason, Usage } from "../../types";
 import { isNetworkError } from "../errors";
 import { materializeUserContentBlocks } from "../image-io";
+import { classifyProviderHttpError } from "../provider-errors";
 import type {
   FunctionToolDefinition,
   Model,
@@ -16,7 +17,7 @@ import type {
   SystemSection,
   ToolDefinition,
 } from "../types";
-import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError } from "../types";
+import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError, ProviderErrorReason, ProviderErrorType } from "../types";
 import type { NativeCompactFn } from "./native-compaction";
 
 const anthropicLogger = createLogger({ scope: "llm:anthropic" });
@@ -610,39 +611,30 @@ function extractAnthropicCompactionSummary(content: unknown): Record<string, unk
 export function classifyAnthropicError(err: unknown): ProviderError {
   if (err instanceof Anthropic.APIError) {
     const status = err.status;
-    if (status === 429) {
-      const retryAfter = parseRetryAfter(err.headers);
-      return new ProviderError(err.message, "rate_limit", false, retryAfter, status, err);
-    }
-    if (status >= 500) {
-      return new ProviderError(err.message, "server_error", true, undefined, status, err);
-    }
     if (status === 400 && err.message.includes("context length")) {
       return new ProviderError(CONTEXT_OVERFLOW_ERROR_MESSAGE, {
-        errorType: "context_overflow",
+        errorType: ProviderErrorType.ContextOverflow,
         isRetryable: false,
         statusCode: status,
         cause: err,
-        reason: "context_window_exceeded",
+        reason: ProviderErrorReason.ContextWindowExceeded,
       });
     }
-    if (status === 401 || status === 403) {
-      return new ProviderError(err.message, {
-        errorType: "auth",
-        isRetryable: false,
-        statusCode: status,
-        cause: err,
-        reason: "credentials_rejected",
-      });
-    }
-    return new ProviderError(err.message, "unknown", false, undefined, status, err);
+    const httpError = classifyProviderHttpError({
+      message: err.message,
+      status,
+      cause: err,
+      retryAfterMs: parseRetryAfter(err.headers),
+    });
+    if (httpError) return httpError;
+    return new ProviderError(err.message, ProviderErrorType.Unknown, false, undefined, status, err);
   }
   if (isNetworkError(err)) {
-    return new ProviderError(String(err), "network", true);
+    return new ProviderError(String(err), ProviderErrorType.Network, true);
   }
   return new ProviderError(
     err instanceof Error ? err.message : String(err),
-    "unknown",
+    ProviderErrorType.Unknown,
     false,
     undefined,
     undefined,

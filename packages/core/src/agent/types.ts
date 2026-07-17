@@ -156,10 +156,16 @@ export interface CompactionConfig {
 }
 
 export interface LLMRetryConfig {
-  maxRetries: number; // D010: default 5
-  baseDelayMs: number; // default: 1000
-  maxDelayMs: number; // default: 30_000
+  maxRetries: number;
+  baseDelayMs: number;
+  maxDelayMs: number;
 }
+
+export const DEFAULT_LLM_RETRY_CONFIG: Readonly<LLMRetryConfig> = {
+  maxRetries: 5,
+  baseDelayMs: 1_000,
+  maxDelayMs: 30_000,
+};
 
 // D008: Loop control configuration — timing and compaction knobs only
 export interface AgentOptions {

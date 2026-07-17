@@ -7,9 +7,9 @@ import type { ProviderEvent, ProviderResult, StreamFunction } from "./types";
 import { ProviderError, ProviderErrorType } from "./types";
 
 export interface RetryConfig {
-  maxAttempts: number; // default: 5
-  baseDelayMs: number; // default: 1000 (1s)
-  maxDelayMs: number; // default: 30_000 (30s)
+  maxAttempts: number;
+  baseDelayMs: number;
+  maxDelayMs: number;
 }
 
 const defaultRetryLogger = createLogger({ scope: "llm:retry" });

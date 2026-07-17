@@ -3,7 +3,7 @@ import { createLogger } from "@diligent/logging";
 import type { EventStream } from "../../event-stream";
 import type { AssistantMessage, ContentBlock, StopReason, Usage } from "../../types";
 import type { Model, ProviderEvent, ProviderResult } from "../types";
-import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError } from "../types";
+import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError, ProviderErrorReason, ProviderErrorType } from "../types";
 import { isContextOverflow, mapStopReason, mapUsage } from "./openai-responses";
 import { isTransientOpenAIErrorMessage } from "./openai-shared";
 
@@ -262,21 +262,27 @@ function reduceResponsesAPIEvent(
           {
             type: "error",
             error: new ProviderError(CONTEXT_OVERFLOW_ERROR_MESSAGE, {
-              errorType: "context_overflow",
+              errorType: ProviderErrorType.ContextOverflow,
               isRetryable: false,
               cause,
-              reason: "context_window_exceeded",
+              reason: ProviderErrorReason.ContextWindowExceeded,
             }),
           },
         ];
       }
       if (isTransientOpenAIErrorMessage(event.message)) {
         return [
-          { type: "error", error: new ProviderError(event.message, "server_error", true, undefined, undefined, cause) },
+          {
+            type: "error",
+            error: new ProviderError(event.message, ProviderErrorType.ServerError, true, undefined, undefined, cause),
+          },
         ];
       }
       return [
-        { type: "error", error: new ProviderError(event.message, "unknown", false, undefined, undefined, cause) },
+        {
+          type: "error",
+          error: new ProviderError(event.message, ProviderErrorType.Unknown, false, undefined, undefined, cause),
+        },
       ];
     }
   }
@@ -670,7 +676,7 @@ export async function handleResponsesAPIEvents(
   if (!sawCompleted) {
     stream.push({
       type: "error",
-      error: new ProviderError("stream closed before response.completed", "network", true),
+      error: new ProviderError("stream closed before response.completed", ProviderErrorType.Network, true),
     });
     return;
   }
