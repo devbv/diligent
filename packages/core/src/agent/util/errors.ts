@@ -29,6 +29,7 @@ export function toSerializableError(err: unknown): SerializableError {
       stack: err.stack,
       code: extractErrorCode(err.cause) ?? extractErrorCode(err),
       providerErrorType: err.errorType,
+      providerErrorReason: err.reason,
       isRetryable: err.isRetryable,
       retryAfterMs: err.retryAfterMs,
       statusCode: err.statusCode,
@@ -48,6 +49,7 @@ export function formatSerializableErrorForLog(error: SerializableError): string 
     `message=${error.message}`,
     `code=${error.code ?? "n/a"}`,
     `type=${error.providerErrorType ?? "n/a"}`,
+    `reason=${error.providerErrorReason ?? "n/a"}`,
     `status=${error.statusCode ?? "n/a"}`,
     `retryable=${error.isRetryable ?? "n/a"}`,
   ];

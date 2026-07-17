@@ -10,9 +10,28 @@ describe("createStreamTurnScope", () => {
     const second = Symbol("second");
     const disposed: string[] = [];
 
-    expect(scope.getOrCreate(first, () => ({ value: "one", dispose: () => disposed.push("one") }))).toBe("one");
-    expect(scope.getOrCreate(first, () => ({ value: "other", dispose: () => disposed.push("other") }))).toBe("one");
-    scope.getOrCreate(second, () => ({ value: "two", dispose: () => disposed.push("two") }));
+    expect(
+      scope.getOrCreate(first, () => ({
+        value: "one",
+        dispose: () => {
+          disposed.push("one");
+        },
+      })),
+    ).toBe("one");
+    expect(
+      scope.getOrCreate(first, () => ({
+        value: "other",
+        dispose: () => {
+          disposed.push("other");
+        },
+      })),
+    ).toBe("one");
+    scope.getOrCreate(second, () => ({
+      value: "two",
+      dispose: () => {
+        disposed.push("two");
+      },
+    }));
 
     await Promise.all([scope.dispose(), scope.dispose()]);
     expect(disposed).toEqual(["two", "one"]);
@@ -22,7 +41,12 @@ describe("createStreamTurnScope", () => {
   test("continues disposal after failures", async () => {
     const scope = createStreamTurnScope();
     const disposed: string[] = [];
-    scope.getOrCreate(Symbol("first"), () => ({ value: undefined, dispose: () => disposed.push("first") }));
+    scope.getOrCreate(Symbol("first"), () => ({
+      value: undefined,
+      dispose: () => {
+        disposed.push("first");
+      },
+    }));
     scope.getOrCreate(Symbol("bad"), () => ({
       value: undefined,
       dispose: () => {

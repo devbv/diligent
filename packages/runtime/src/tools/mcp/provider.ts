@@ -1,6 +1,6 @@
 // @summary MCP bundled tool provider — syncs connections and exposes enabled server tools
 
-import type { Tool } from "@diligent/core/tool/types";
+import type { Tool } from "@diligent/core/tool-contract";
 import { createLogger } from "@diligent/logging";
 import type { BundledToolProvider } from "../bundled-provider";
 import { getMcpManager } from "./client";

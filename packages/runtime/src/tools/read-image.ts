@@ -2,9 +2,9 @@
 
 import { lstat, realpath } from "node:fs/promises";
 import { basename, extname } from "node:path";
-import { downscaleImageIfNeeded } from "@diligent/core/llm/image-resize";
-import type { Tool, ToolContext, ToolResult } from "@diligent/core/tool/types";
-import type { ImageBlock } from "@diligent/core/types";
+import { downscaleImageIfNeeded } from "@diligent/core/image-contract";
+import type { ImageBlock } from "@diligent/core/message-contract";
+import type { Tool, ToolContext, ToolResult } from "@diligent/core/tool-contract";
 import { createLogger } from "@diligent/logging";
 import { z } from "zod";
 import { isAbsolute, stripExtendedLengthPrefix } from "../util/path";

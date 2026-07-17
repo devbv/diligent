@@ -51,5 +51,45 @@
   },
   "files": {
     "includes": ["**", "!**/node_modules", "!**/dist", "!**/*.d.ts", "!research"]
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["packages/runtime/**/*.{ts,tsx}"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": [
+                      "@diligent/core",
+                      "@diligent/core/*",
+                      "!@diligent/core/agent",
+                      "!@diligent/core/auth",
+                      "!@diligent/core/auth/chatgpt-oauth",
+                      "!@diligent/core/event-stream",
+                      "!@diligent/core/image-contract",
+                      "!@diligent/core/message-contract",
+                      "!@diligent/core/model-registry",
+                      "!@diligent/core/prompt-contract",
+                      "!@diligent/core/provider-contract",
+                      "!@diligent/core/providers/chatgpt",
+                      "!@diligent/core/providers/anthropic",
+                      "!@diligent/core/providers/gemini",
+                      "!@diligent/core/providers/openai",
+                      "!@diligent/core/providers/vertex",
+                      "!@diligent/core/tool-contract"
+                    ],
+                    "message": "Runtime may only import intentional @diligent/core public boundaries."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
 }

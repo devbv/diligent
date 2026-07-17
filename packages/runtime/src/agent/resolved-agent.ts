@@ -1,5 +1,5 @@
 // @summary Shared resolved agent definition helpers for built-in and user-defined agents
-import type { ModelClass } from "@diligent/core/llm/models";
+import type { ModelClass } from "@diligent/core/model-registry";
 import type { AgentMetadata } from "../agents/types";
 
 export interface ResolvedAgentDefinition {

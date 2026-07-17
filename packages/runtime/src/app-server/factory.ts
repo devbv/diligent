@@ -1,7 +1,7 @@
 // @summary Factory that builds a DiligentAppServerConfig from a RuntimeConfig, eliminating Web/CLI duplication
 import { dirname, join } from "node:path";
-import { getModelInfoList, resolveModel } from "@diligent/core/llm/models";
-import type { ProviderName, SystemSection } from "@diligent/core/llm/types";
+import { getModelInfoList, resolveModel } from "@diligent/core/model-registry";
+import type { ProviderName, SystemSection } from "@diligent/core/provider-contract";
 import { createLogger } from "@diligent/logging";
 import {
   EXECUTE_MODE_DISALLOWED_TOOLS,
@@ -9,16 +9,17 @@ import {
   type Mode,
   PLAN_MODE_DISALLOWED_TOOLS,
 } from "../agent/mode";
+import { createPlanReminderHook } from "../agent/plan-reminder-hook";
 import { RuntimeAgent } from "../agent/runtime-agent";
 import { openBrowser as defaultOpenBrowser } from "../auth";
 import { applyConsentPatch, refreshPrivacyPolicyUrl, resolveConsentState } from "../config/consent";
 import { loadDiligentConfig } from "../config/loader";
 import { loadRuntimeConfig, type RuntimeConfig } from "../config/runtime";
 import { getGlobalConfigPath, saveGlobalConsent, saveGlobalModel } from "../config/writer";
-import { type DiligentPaths, ensureDiligentDir } from "../infrastructure";
+import { createLocalImageLoader, type DiligentPaths, ensureDiligentDir, toolOutputStore } from "../infrastructure";
 import { buildKnowledgeSection, readKnowledge } from "../knowledge";
 import { discoverSkills } from "../skills";
-import type { BundledToolProvider } from "../tools/bundled-provider";
+import { type BundledToolProvider, createBundledAgentLoopHooks } from "../tools/bundled-provider";
 import { buildDefaultTools } from "../tools/defaults";
 import { buildMcpNeedsAuthNote, getMcpManager } from "../tools/mcp";
 import type { ConfigReloadResult, ConsentConfigManager } from "./config-handlers";
@@ -134,6 +135,9 @@ async function createRuntimeAgent(args: {
       streamFn: runtimeConfig.streamFunction,
       onChildStop,
       userId,
+      agentLoopHookFactories: bundledToolProviders
+        ?.map((provider) => provider.createAgentLoopHooks)
+        .filter((factory) => factory !== undefined),
     },
     toolsConfig: runtimeConfig.diligent.tools,
     skills: runtimeConfig.skills,
@@ -179,21 +183,35 @@ async function createRuntimeAgent(args: {
       userId,
     });
   }
+  const loopHookLogger = logger.child({ scope: "runtime.agent.loop-hooks" });
+  const loopHooks = [
+    ...(runtimeConfig.planReminderIntervalTurns > 0
+      ? [createPlanReminderHook({ intervalTurns: runtimeConfig.planReminderIntervalTurns, logger: loopHookLogger })]
+      : []),
+    ...createBundledAgentLoopHooks(bundledToolProviders, {
+      cwd,
+      agentKind: "main",
+      model,
+      tools: filteredTools,
+      logger: loopHookLogger,
+    }),
+  ];
   return new RuntimeAgent(
     model,
     applyModeToPrompt(activeMode, promptSections),
     filteredTools,
     {
-      cwd,
       effort,
       llmMsgStreamFn: runtimeConfig.streamFunction,
       llmCompactionFn,
+      localImageLoader: createLocalImageLoader(cwd),
+      toolOutputStore,
       compaction: {
         reservePercent: runtimeConfig.compaction.reservePercent,
         keepRecentTokens: runtimeConfig.compaction.keepRecentTokens,
         timeoutMs: runtimeConfig.compaction.timeoutMs,
       },
-      planReminderIntervalTurns: runtimeConfig.planReminderIntervalTurns,
+      loopHooks,
     },
     toolsResult.registry,
   );
@@ -365,6 +383,7 @@ export function createAppServerConfig(opts: CreateAppServerConfigOptions): Dilig
     },
     consentConfig,
     providerManager: runtimeConfig.providerManager,
+    providerAuthPresenter: runtimeConfig.providerAuthPresenter,
     authStore: runtimeConfig.authStore,
     permissionEngine: runtimeConfig.permissionEngine,
     skillNames: runtimeConfig.skills.map((skill) => skill.name),

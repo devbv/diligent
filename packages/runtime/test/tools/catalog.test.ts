@@ -3,7 +3,7 @@ import { afterAll, describe, expect, it, mock } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Tool } from "@diligent/core/tool/types";
+import type { Tool } from "@diligent/core/tool-contract";
 import { z } from "zod";
 import type { BundledToolProvider } from "../../src/tools/bundled-provider";
 import type {
@@ -365,6 +365,27 @@ describe("buildToolCatalog", () => {
       enabled: true,
       available: true,
       reason: "enabled",
+    });
+  });
+
+  it("preserves provider-native exposure from trusted bundled providers", async () => {
+    const provider: BundledToolProvider = {
+      id: "@product/native-tools",
+      createTools: () => [
+        {
+          ...mockTool("browse"),
+          modelExposure: { kind: "provider_builtin", capability: "web" },
+        },
+      ],
+    };
+
+    const result = await buildToolCatalog(standardBuiltins(), undefined, "/tmp", undefined, {
+      bundledProviders: [provider],
+    });
+
+    expect(result.tools.find((tool) => tool.name === "browse")?.modelExposure).toEqual({
+      kind: "provider_builtin",
+      capability: "web",
     });
   });
 

@@ -16,7 +16,7 @@ export interface ModelDefinition extends Model {
   display?: string; // Human-facing label for the picker; falls back to `id` when unset.
 }
 
-const GEMINI_THINKING_BUDGETS = { low: 2_048, medium: 8_192, high: 16_384, max: 24_576 } as const;
+export const GEMINI_THINKING_BUDGETS = { low: 2_048, medium: 8_192, high: 16_384, max: 24_576 } as const;
 const THINKING_EFFORTS_WITH_NONE: ThinkingEffort[] = ["none", "low", "medium", "high", "max"];
 const THINKING_EFFORTS_WITHOUT_NONE: ThinkingEffort[] = ["low", "medium", "high", "max"];
 const GPT_56_THINKING_EFFORTS: ThinkingEffort[] = ["none", "low", "medium", "high", "xhigh", "max"];
@@ -392,17 +392,6 @@ export function resolveModelForClass(currentModel: Model, targetClass: ModelClas
 export function getModelClass(model: Model): ModelClass {
   const def = KNOWN_MODELS.find((m) => m.id === model.id);
   return def?.modelClass ?? "general";
-}
-
-/**
- * Map agent type to a default model class.
- * - "explore" agents do read-only work → lite
- * - "general" agents need full capability → same class as parent
- */
-export function agentTypeToModelClass(agentType: string, parentModel: Model): ModelClass {
-  if (agentType === "explore") return "lite";
-  // general: keep the same class as parent
-  return getModelClass(parentModel);
 }
 
 /**

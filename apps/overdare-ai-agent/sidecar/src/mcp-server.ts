@@ -7,7 +7,7 @@ import type { Dirent } from "node:fs";
 import { existsSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import type { Tool, ToolContext, ToolResult } from "@diligent/core/tool/types";
+import type { Tool, ToolContext, ToolResult } from "@diligent/core/tool-contract";
 import { createLogger } from "@diligent/logging";
 import type { BundledToolProvider, ResolvedExperiment } from "@diligent/runtime";
 import { loadDiligentConfig, resolveExperimentGates, resolveExperimentStates } from "@diligent/runtime";

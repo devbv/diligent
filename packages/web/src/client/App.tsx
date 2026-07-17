@@ -105,6 +105,7 @@ export function App() {
     mcpLogout,
     loadChildThread,
     handleOpenProviders,
+    handleOpenProvider,
     handleQuickConnectChatGPT,
     handleProviderModalClose,
     handleProviderOAuthStart,
@@ -118,6 +119,7 @@ export function App() {
   const {
     handleSend,
     handleInterrupt,
+    handleRetryLastTurn,
     handleModeChange,
     handleEffortChange,
     handleModelChange,
@@ -217,7 +219,14 @@ export function App() {
             }}
           />
 
-          {state.activeError ? <ErrorBanner error={state.activeError} onOpenProviders={handleOpenProviders} /> : null}
+          {state.activeError ? (
+            <ErrorBanner
+              error={state.activeError}
+              onOpenProviders={(provider) => (provider ? handleOpenProvider(provider) : handleOpenProviders())}
+              onStartNewThread={() => void startNewThread()}
+              onRetry={handleRetryLastTurn}
+            />
+          ) : null}
 
           <MessageList
             items={state.items}

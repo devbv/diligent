@@ -17,8 +17,44 @@ export type Mode = z.infer<typeof ModeSchema>;
 export const ThinkingEffortSchema = z.enum(["none", "low", "medium", "high", "xhigh", "max"]);
 export type ThinkingEffort = z.infer<typeof ThinkingEffortSchema>;
 
+export const ProviderNameSchema = z.enum(["anthropic", "openai", "chatgpt", "gemini", "vertex", "zai-coding-plan"]);
+export type ProviderName = z.infer<typeof ProviderNameSchema>;
+
 export const StopReasonSchema = z.enum(["end_turn", "tool_use", "max_tokens", "error", "aborted"]);
 export type StopReason = z.infer<typeof StopReasonSchema>;
+
+export const ProviderErrorType = {
+  RateLimit: "rate_limit",
+  ServerError: "server_error",
+  ContextOverflow: "context_overflow",
+  Auth: "auth",
+  Network: "network",
+  Unknown: "unknown",
+} as const;
+export type ProviderErrorType = (typeof ProviderErrorType)[keyof typeof ProviderErrorType];
+
+export const ProviderErrorReason = {
+  CredentialsMissing: "credentials_missing",
+  CredentialsRejected: "credentials_rejected",
+  ContextWindowExceeded: "context_window_exceeded",
+  UsageLimitReached: "usage_limit_reached",
+} as const;
+export type ProviderErrorReason = (typeof ProviderErrorReason)[keyof typeof ProviderErrorReason];
+
+const ProviderErrorTypeSchema = z.enum([
+  ProviderErrorType.RateLimit,
+  ProviderErrorType.ServerError,
+  ProviderErrorType.ContextOverflow,
+  ProviderErrorType.Auth,
+  ProviderErrorType.Network,
+  ProviderErrorType.Unknown,
+]);
+const ProviderErrorReasonSchema = z.enum([
+  ProviderErrorReason.CredentialsMissing,
+  ProviderErrorReason.CredentialsRejected,
+  ProviderErrorReason.ContextWindowExceeded,
+  ProviderErrorReason.UsageLimitReached,
+]);
 
 export const UsageSchema = z.object({
   inputTokens: z.number().int().nonnegative(),
@@ -79,14 +115,31 @@ export const SerializableErrorSchema = z.object({
   name: z.string(),
   stack: z.string().optional(),
   code: z.string().optional(),
-  providerErrorType: z
-    .enum(["rate_limit", "server_error", "context_overflow", "auth", "network", "unknown"])
-    .optional(),
+  providerErrorType: ProviderErrorTypeSchema.optional(),
+  providerErrorReason: ProviderErrorReasonSchema.optional(),
   isRetryable: z.boolean().optional(),
   retryAfterMs: z.number().int().nonnegative().optional(),
   statusCode: z.number().int().optional(),
 });
 export type SerializableError = z.infer<typeof SerializableErrorSchema>;
+
+export const ErrorRecoverySchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("configure_provider"), provider: ProviderNameSchema.optional() }),
+  z.object({ kind: z.literal("start_new_thread") }),
+  z.object({ kind: z.literal("retry") }),
+]);
+export type ErrorRecovery = z.infer<typeof ErrorRecoverySchema>;
+
+export const ErrorPresentationSchema = z.object({
+  message: z.string(),
+  recovery: ErrorRecoverySchema.optional(),
+});
+export type ErrorPresentation = z.infer<typeof ErrorPresentationSchema>;
+
+export const ClientErrorSchema = SerializableErrorSchema.extend({
+  presentation: ErrorPresentationSchema.optional(),
+});
+export type ClientError = z.infer<typeof ClientErrorSchema>;
 
 export const CollabAgentStatusSchema = z.enum(["pending", "running", "completed", "errored", "shutdown"]);
 export type CollabAgentStatus = z.infer<typeof CollabAgentStatusSchema>;
@@ -105,6 +158,13 @@ export const CollabAgentStatusEntrySchema = z.object({
   message: z.string().optional(),
 });
 export type CollabAgentStatusEntry = z.infer<typeof CollabAgentStatusEntrySchema>;
+
+export const ContextPresentationSchema = z.object({
+  kind: z.string().min(1),
+  title: z.string().min(1),
+  content: z.string(),
+});
+export type ContextPresentation = z.infer<typeof ContextPresentationSchema>;
 
 export const AgentEventSchema = z.union([
   z.object({ type: z.literal("agent_start") }),
@@ -164,6 +224,11 @@ export const AgentEventSchema = z.union([
     message: UserMessageSchema,
   }),
   z.object({
+    type: z.literal("context_notice"),
+    source: z.string().min(1),
+    presentation: ContextPresentationSchema,
+  }),
+  z.object({
     type: z.literal("tool_start"),
     itemId: z.string(),
     toolCallId: z.string(),
@@ -204,7 +269,7 @@ export const AgentEventSchema = z.union([
     status: z.enum(["idle", "busy"]),
   }),
   z.object({ type: z.literal("usage"), usage: UsageSchema, cost: z.number() }),
-  z.object({ type: z.literal("error"), error: SerializableErrorSchema, fatal: z.boolean() }),
+  z.object({ type: z.literal("error"), error: ClientErrorSchema, fatal: z.boolean() }),
   z.object({ type: z.literal("compaction_start"), estimatedTokens: z.number().int().nonnegative() }),
   z.object({
     type: z.literal("compaction_end"),
@@ -289,6 +354,13 @@ export const ThreadItemSchema = z.union([
     type: z.literal("userMessage"),
     itemId: z.string(),
     message: UserMessageSchema,
+    timestamp: z.number().int().optional(),
+  }),
+  z.object({
+    type: z.literal("contextMessage"),
+    itemId: z.string(),
+    source: z.string().min(1),
+    presentation: ContextPresentationSchema,
     timestamp: z.number().int().optional(),
   }),
   z.object({
@@ -466,11 +538,18 @@ export const SessionSummarySchema = z.object({
 });
 export type SessionSummary = z.infer<typeof SessionSummarySchema>;
 
-export const ProviderNameSchema = z.enum(["anthropic", "openai", "chatgpt", "gemini", "vertex", "zai-coding-plan"]);
-export type ProviderName = z.infer<typeof ProviderNameSchema>;
+export const ProviderDescriptorSchema = z.object({
+  provider: ProviderNameSchema,
+  displayName: z.string(),
+  authMethod: z.enum(["api_key", "oauth", "access_token"]),
+  apiKeyUrl: z.string().url().optional(),
+  apiKeyPlaceholder: z.string().optional(),
+});
+export type ProviderDescriptor = z.infer<typeof ProviderDescriptorSchema>;
 
 export const ProviderAuthStatusSchema = z.object({
   provider: ProviderNameSchema,
+  descriptor: ProviderDescriptorSchema,
   configured: z.boolean(),
   maskedKey: z.string().optional(),
   oauthConnected: z.boolean().optional(),

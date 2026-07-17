@@ -1,7 +1,6 @@
 // @summary Skill tool that loads SKILL.md content into conversation context without exposing file-read tool calls
 
-import type { ToolRegistryBuilder } from "@diligent/core/tool/registry";
-import type { Tool, ToolResult } from "@diligent/core/tool/types";
+import type { Tool, ToolRegistryBuilder, ToolResult } from "@diligent/core/tool-contract";
 import { z } from "zod";
 import { extractBody, type SkillMetadata } from "../skills";
 

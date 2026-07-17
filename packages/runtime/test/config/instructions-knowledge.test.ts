@@ -1,6 +1,6 @@
 // @summary Tests for system prompt building with knowledge injection
 import { describe, expect, it } from "bun:test";
-import { flattenSections } from "@diligent/core/llm/system-sections";
+import { flattenSections } from "@diligent/core/prompt-contract";
 import { buildSystemPromptWithKnowledge } from "@diligent/runtime/config";
 
 describe("buildSystemPromptWithKnowledge", () => {

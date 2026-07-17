@@ -35,7 +35,7 @@ export function MessageListRowContent({
           return row.item.variant === "human-edits" ? (
             <HumanEditsNotice summary={row.item.summary} />
           ) : (
-            <ContextMessage summary={row.item.summary} />
+            <ContextMessage summary={row.item.summary} label={row.item.title} />
           );
         case "tool":
           return <ToolBlock item={row.item} threadCwd={threadCwd} />;

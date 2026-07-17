@@ -58,8 +58,11 @@ Bundled product tools are different from external plugins:
 - they do not require a `tools.plugins` config entry
 - they can supersede legacy first-party plugin packages so stale copied plugin folders are ignored by the catalog
 - their tool names, Zod schemas, approval prompts, user-input behavior, and render payloads should remain stable when migrated from a plugin
+- trusted bundled tools may explicitly declare a provider-native model capability; their catalog name still controls settings, filtering, conflict resolution, and local dispatch
 
 External user-installed plugins are still supported. Supersession only applies to package names declared by a bundled provider.
+
+Provider-native model exposure is intentionally unavailable to external plugin SDK v1 tools. External plugins always advertise locally executable function tools, even if a JavaScript object includes an unknown `modelExposure` property. Adding third-party provider-native capabilities requires a versioned plugin API with validation and user-consent semantics.
 
 ## Plugin packages
 

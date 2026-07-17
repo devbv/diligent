@@ -2,9 +2,10 @@
 import OpenAI from "openai";
 import { EventStream } from "../../event-stream";
 import { isNetworkError } from "../errors";
+import { classifyProviderHttpError } from "../provider-errors";
 import { flattenSections } from "../system-sections";
 import type { Model, ProviderEvent, ProviderResult, StreamContext, StreamFunction, StreamOptions } from "../types";
-import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError } from "../types";
+import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError, ProviderErrorReason, ProviderErrorType } from "../types";
 import type { NativeCompactFn } from "./native-compaction";
 import {
   buildResponsesRequestBody,
@@ -22,12 +23,7 @@ import { handleResponsesAPIEvents } from "./openai-sse";
 
 export function createOpenAIStream(apiKey?: string, baseUrl?: string, imageDetail?: OpenAIImageDetail): StreamFunction {
   const resolvedApiKey = resolveOpenAIApiKey(apiKey);
-  const client = new OpenAI({
-    apiKey: resolvedApiKey,
-    baseURL: baseUrl,
-    timeout: 15_000,
-    maxRetries: 0,
-  });
+  const client = createOpenAIClient(resolvedApiKey, baseUrl);
 
   return (model: Model, context: StreamContext, options: StreamOptions): EventStream<ProviderEvent, ProviderResult> => {
     const stream = new EventStream<ProviderEvent, ProviderResult>(
@@ -46,7 +42,6 @@ export function createOpenAIStream(apiKey?: string, baseUrl?: string, imageDetai
           model: model.id,
           systemInstructions: flattenSections(context.systemPrompt),
           messages: context.messages,
-          cwd: context.cwd,
           compactionSummary: context.compactionSummary,
           tools: context.tools,
           strictTools: false,
@@ -57,6 +52,7 @@ export function createOpenAIStream(apiKey?: string, baseUrl?: string, imageDetai
           useReasoning,
           effort: options.effort,
           imageDetail,
+          localImageLoader: context.localImageLoader,
         });
         const openaiStream = await client.responses.create(
           requestBody,
@@ -82,34 +78,46 @@ export function createOpenAIStream(apiKey?: string, baseUrl?: string, imageDetai
   };
 }
 
+export function createOpenAIClient(apiKey: string, baseUrl?: string): OpenAI {
+  return new OpenAI({
+    apiKey,
+    baseURL: baseUrl,
+    timeout: 15_000,
+    maxRetries: 0,
+  });
+}
+
 export function classifyOpenAIError(err: unknown): ProviderError {
   if (err instanceof OpenAI.APIError) {
     const status = err.status;
-    if (status === 429) {
-      const retryAfter = parseRetryAfterFromHeaders(err.headers);
-      return new ProviderError(err.message, "rate_limit", false, retryAfter, status, err);
-    }
-    if (status >= 500) {
-      return new ProviderError(err.message, "server_error", true, undefined, status, err);
-    }
     if (status === 400 && isContextOverflow(err.message)) {
-      return new ProviderError(CONTEXT_OVERFLOW_ERROR_MESSAGE, "context_overflow", false, undefined, status, err);
+      return new ProviderError(CONTEXT_OVERFLOW_ERROR_MESSAGE, {
+        errorType: ProviderErrorType.ContextOverflow,
+        isRetryable: false,
+        statusCode: status,
+        cause: err,
+        reason: ProviderErrorReason.ContextWindowExceeded,
+      });
     }
-    if (status === 401 || status === 403) {
-      return new ProviderError(err.message, "auth", false, undefined, status, err);
-    }
+    const httpError = classifyProviderHttpError({
+      message: err.message,
+      status,
+      cause: err,
+      retryAfterMs: parseRetryAfterFromHeaders(err.headers),
+    });
+    if (httpError) return httpError;
     if (isTransientOpenAIError(err)) {
-      return new ProviderError(err.message, "server_error", true, undefined, status, err);
+      return new ProviderError(err.message, ProviderErrorType.ServerError, true, undefined, status, err);
     }
-    return new ProviderError(err.message, "unknown", false, undefined, status, err);
+    return new ProviderError(err.message, ProviderErrorType.Unknown, false, undefined, status, err);
   }
   if (isNetworkError(err)) {
-    return new ProviderError(String(err), "network", true);
+    return new ProviderError(String(err), ProviderErrorType.Network, true);
   }
   if (isTransientOpenAIError(err)) {
     return new ProviderError(
       err instanceof Error ? err.message : String(err),
-      "server_error",
+      ProviderErrorType.ServerError,
       true,
       undefined,
       undefined,
@@ -118,7 +126,7 @@ export function classifyOpenAIError(err: unknown): ProviderError {
   }
   return new ProviderError(
     err instanceof Error ? err.message : String(err),
-    "unknown",
+    ProviderErrorType.Unknown,
     false,
     undefined,
     undefined,
@@ -196,9 +204,9 @@ export function createOpenAINativeCompaction(
       model: input.model.id,
       input: await toResponseInputItems({
         messages: input.messages,
-        cwd: input.cwd,
         compactionSummary: input.compactionSummary,
         imageDetail,
+        localImageLoader: input.localImageLoader,
       }),
     };
     if (input.systemPrompt.length > 0) body.instructions = flattenSections(input.systemPrompt);

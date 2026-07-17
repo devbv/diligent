@@ -1,7 +1,7 @@
 // @summary Bridge an MCP tool definition into a Diligent Tool (schema passthrough, approval, result map)
 
 import { createHash } from "node:crypto";
-import type { Tool, ToolContext, ToolResult } from "@diligent/core/tool/types";
+import type { Tool, ToolContext, ToolResult } from "@diligent/core/tool-contract";
 import { createLogger } from "@diligent/logging";
 import type { ImageBlock } from "@diligent/protocol";
 import { SUPPORTED_IMAGE_MEDIA_TYPES } from "@diligent/protocol";

@@ -8,7 +8,7 @@ const bigBase64 = "A".repeat(400_000); // ~100k "tokens" if counted as chars/4
 
 describe("estimateTokens", () => {
   test("counts plain text by chars/4", () => {
-    expect(estimateTokens([{ role: "user", content: "x".repeat(40) }])).toBe(10);
+    expect(estimateTokens([{ role: "user", content: "x".repeat(40), timestamp: 1 }])).toBe(10);
   });
 
   test("does NOT count a tool_result image's base64 length", () => {
@@ -16,8 +16,11 @@ describe("estimateTokens", () => {
       {
         role: "tool_result",
         toolCallId: "t1",
+        toolName: "image_tool",
         output: "ok",
         outputImages: [{ type: "image", source: { type: "base64", media_type: "image/png", data: bigBase64 } }],
+        isError: false,
+        timestamp: 1,
       },
     ];
     const tokens = estimateTokens(messages);
@@ -30,6 +33,7 @@ describe("estimateTokens", () => {
       {
         role: "user",
         content: [{ type: "image", source: { type: "base64", media_type: "image/png", data: bigBase64 } }],
+        timestamp: 1,
       },
     ];
     const tokens = estimateTokens(messages);
@@ -42,8 +46,16 @@ describe("estimateTokens", () => {
       type: "image" as const,
       source: { type: "base64" as const, media_type: "image/png" as const, data: bigBase64 },
     };
-    const one = estimateTokens([{ role: "tool_result", toolCallId: "t", output: "", outputImages: [img] }]);
-    const three = estimateTokens([{ role: "tool_result", toolCallId: "t", output: "", outputImages: [img, img, img] }]);
+    const baseToolResult = {
+      role: "tool_result" as const,
+      toolCallId: "t",
+      toolName: "image_tool",
+      output: "",
+      isError: false,
+      timestamp: 1,
+    };
+    const one = estimateTokens([{ ...baseToolResult, outputImages: [img] }]);
+    const three = estimateTokens([{ ...baseToolResult, outputImages: [img, img, img] }]);
     expect(three).toBeGreaterThan(one * 2); // roughly 3x the per-image estimate
   });
 

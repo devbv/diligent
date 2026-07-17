@@ -4,7 +4,8 @@ import { createLogger } from "@diligent/logging";
 import { EventStream } from "../../event-stream";
 import type { AssistantMessage, ContentBlock, Message, StopReason, Usage } from "../../types";
 import { isNetworkError } from "../errors";
-import { materializeUserContentBlocks } from "../image-io";
+import { type LocalImageLoader, materializeUserContentBlocks } from "../image-io";
+import { classifyProviderHttpError } from "../provider-errors";
 import type {
   FunctionToolDefinition,
   Model,
@@ -16,7 +17,7 @@ import type {
   SystemSection,
   ToolDefinition,
 } from "../types";
-import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError } from "../types";
+import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError, ProviderErrorReason, ProviderErrorType } from "../types";
 import type { NativeCompactFn } from "./native-compaction";
 
 const anthropicLogger = createLogger({ scope: "llm:anthropic" });
@@ -77,7 +78,7 @@ export function createAnthropicStream(apiKey?: string, baseUrl?: string): Stream
           model: model.id,
           max_tokens: options.maxTokens ?? model.maxOutputTokens,
           system: systemBlocks,
-          messages: await convertMessages(context.messages, context.cwd, context.compactionSummary),
+          messages: await convertMessages(context.messages, context.compactionSummary, context.localImageLoader),
           ...(context.tools.length > 0 && { tools: convertTools(context.tools) }),
           ...thinkingConfig,
         } as Anthropic.MessageCreateParams;
@@ -189,15 +190,12 @@ export function createAnthropicStream(apiKey?: string, baseUrl?: string): Stream
 
 export async function convertMessages(
   messages: Message[],
-  cwdOrCompactionSummary?: string | Record<string, unknown>,
   compactionSummary?: Record<string, unknown>,
+  localImageLoader?: LocalImageLoader,
 ): Promise<Anthropic.MessageParam[]> {
-  const cwd = typeof cwdOrCompactionSummary === "string" ? cwdOrCompactionSummary : undefined;
-  const effectiveCompactionSummary =
-    typeof cwdOrCompactionSummary === "string" ? compactionSummary : (cwdOrCompactionSummary ?? compactionSummary);
   const result: Anthropic.MessageParam[] = [];
 
-  const compactedUserMessage = toAnthropicCompactionUserMessage(effectiveCompactionSummary);
+  const compactedUserMessage = toAnthropicCompactionUserMessage(compactionSummary);
   if (compactedUserMessage) {
     result.push(compactedUserMessage);
   }
@@ -207,7 +205,7 @@ export async function convertMessages(
       const blocks =
         typeof msg.content === "string"
           ? [{ type: "text" as const, text: msg.content }]
-          : (await materializeUserContentBlocks(msg.content, { cwd })).map(convertContentBlock);
+          : (await materializeUserContentBlocks(msg.content, { loader: localImageLoader })).map(convertContentBlock);
       result.push({ role: "user", content: blocks });
     } else if (msg.role === "assistant") {
       result.push({
@@ -610,27 +608,30 @@ function extractAnthropicCompactionSummary(content: unknown): Record<string, unk
 export function classifyAnthropicError(err: unknown): ProviderError {
   if (err instanceof Anthropic.APIError) {
     const status = err.status;
-    if (status === 429) {
-      const retryAfter = parseRetryAfter(err.headers);
-      return new ProviderError(err.message, "rate_limit", false, retryAfter, status, err);
-    }
-    if (status >= 500) {
-      return new ProviderError(err.message, "server_error", true, undefined, status, err);
-    }
     if (status === 400 && err.message.includes("context length")) {
-      return new ProviderError(CONTEXT_OVERFLOW_ERROR_MESSAGE, "context_overflow", false, undefined, status, err);
+      return new ProviderError(CONTEXT_OVERFLOW_ERROR_MESSAGE, {
+        errorType: ProviderErrorType.ContextOverflow,
+        isRetryable: false,
+        statusCode: status,
+        cause: err,
+        reason: ProviderErrorReason.ContextWindowExceeded,
+      });
     }
-    if (status === 401 || status === 403) {
-      return new ProviderError(err.message, "auth", false, undefined, status, err);
-    }
-    return new ProviderError(err.message, "unknown", false, undefined, status, err);
+    const httpError = classifyProviderHttpError({
+      message: err.message,
+      status,
+      cause: err,
+      retryAfterMs: parseRetryAfter(err.headers),
+    });
+    if (httpError) return httpError;
+    return new ProviderError(err.message, ProviderErrorType.Unknown, false, undefined, status, err);
   }
   if (isNetworkError(err)) {
-    return new ProviderError(String(err), "network", true);
+    return new ProviderError(String(err), ProviderErrorType.Network, true);
   }
   return new ProviderError(
     err instanceof Error ? err.message : String(err),
-    "unknown",
+    ProviderErrorType.Unknown,
     false,
     undefined,
     undefined,
@@ -794,7 +795,7 @@ function toAnthropicBlocks(sections: SystemSection[]): AnthropicTextBlock[] {
 export function createAnthropicNativeCompaction(apiKey: string, baseUrl?: string): NativeCompactFn {
   const endpoint = `${resolveAnthropicBaseUrl(baseUrl)}/messages`;
   return async (input) => {
-    const rawMessages = await convertMessages(input.messages, input.cwd, input.compactionSummary);
+    const rawMessages = await convertMessages(input.messages, input.compactionSummary, input.localImageLoader);
     const normalizedMessages = ensureAnthropicCompactionConversationEndsWithUser(rawMessages);
     const body: Record<string, unknown> = {
       model: input.model.id,

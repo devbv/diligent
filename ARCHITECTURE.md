@@ -130,6 +130,14 @@ Practical consequences:
 3. **Transport adapters stay small.** Stdio and WebSocket layers only adapt messages; they should not own business logic.
 4. **New clients follow the same contract.** A VS Code plugin or any future client must compose shared `@diligent/protocol` payloads and must not introduce a parallel client-specific Diligent protocol.
 
+### Error diagnostics, presentation, and recovery
+
+Errors crossing the frontend boundary keep three responsibilities separate:
+
+- Core classifies provider failures and preserves raw diagnostics, retry metadata, status, upstream codes, and stable Diligent reasons. Core messages do not describe client commands, controls, or navigation.
+- Runtime adds a common user-facing message and, when applicable, one semantic recovery intent such as configuring a provider, starting a new thread, or explicitly retrying a turn. Persisted session errors remain raw diagnostics.
+- Web, TUI, and non-interactive clients render the runtime message and translate the recovery intent into their own button, picker, or command hint. Recovery never runs automatically, and clients fall back to the raw diagnostic when connected to an older server.
+
 Detailed guidance for the current structured tool-rendering flow lives in `docs/guide/tool-rendering.md`.
 
 ## Package Responsibilities
@@ -141,11 +149,21 @@ Detailed guidance for the current structured tool-rendering flow lives in `docs/
 - provider abstraction and model resolution
 - `ProviderManager` and stream proxying
 - agent loop and core event stream
+- synchronous, trusted in-process agent-loop hook contracts and failure-isolated dispatch
 - tool interfaces and execution contracts
 - shared LLM message types
 - provider/auth primitives used by runtime wiring
 
 Core should not know about project-local persistence, `.diligent/`, JSON-RPC transport, or frontend behavior.
+
+Core's public package surface uses explicit capability boundaries instead of source-layout wildcard exports. Consumers
+should use subpaths such as `@diligent/core/tool-contract`, `model-registry`, `provider-contract`,
+`message-contract`, and `providers/chatgpt`. Runtime lint rules reject imports outside the approved boundary list, so
+moving an internal core file does not implicitly change the package API.
+
+Provider authentication checks remain core mechanisms and report structured `ProviderError` diagnostics. Provider
+display names, onboarding hints, and client-facing validation messages are runtime-owned; the corresponding
+`ProviderDescriptor` is carried by the shared protocol so Web and TUI consume the same metadata.
 
 ### `@diligent/runtime`
 
@@ -160,10 +178,15 @@ Core should not know about project-local persistence, `.diligent/`, JSON-RPC tra
 - knowledge store and prompt injection
 - skill discovery and rendering
 - collaboration/sub-agent orchestration
+- Agent-scoped hook policy assembly and internal-context persistence/visibility
 - infrastructure around `.diligent/` paths
 - transport-neutral RPC helpers and bindings
 
 Runtime is where shared product behavior should be added when both Web and TUI must behave the same way.
+
+Filesystem-backed provider/tool infrastructure is also assembled here. Core keeps image conversion/downscaling and
+tool-output truncation policy, while runtime supplies `LocalImageLoader` and `ToolOutputStore` adapters for persisted
+image reads and full-output temp-file storage.
 
 ### `@diligent/protocol`
 
@@ -295,10 +318,34 @@ Child sessions created by collaboration flows carry explicit parent linkage and 
 
 Runtime derives two different views from session data:
 
-- **context view** for future model calls
+- **context view** for future model calls, including replayable internal messages
 - **transcript view** for human-facing UI/history rendering
 
-This split is important because raw persisted entries are not identical to the display-oriented event stream used during live turns.
+Message entries may carry `visibility: "internal"`, an opaque `source`, and optional runtime-owned
+presentation metadata. Their model message remains in the session parent chain and provider replay
+without becoming a user bubble or visible message count. When presentation metadata is present,
+runtime derives a structured context notice for live clients and thread snapshots; otherwise the
+entry is omitted from human transcripts entirely. This split is important because raw persisted
+entries are not identical to the display-oriented event stream used during live turns.
+
+## Agent-loop and external lifecycle hooks
+
+Diligent has two intentionally separate hook tiers:
+
+- Core `AgentLoopHook` instances are synchronous, trusted in-process extensions. Core dispatches
+  restore, prompt-start, before-turn, tool-result, and after-turn phases, isolates failures by
+  disabling the throwing instance, and only permits structured user-context injections.
+- Runtime owns hook policies, constructs a fresh hook set for each main or child Agent, and uses
+  bundled tool providers as the product registration path. Built-in runtime hooks run before
+  bundled-provider hooks.
+- Shell and filesystem-plugin lifecycle hooks remain coarse-grained runtime hooks around outer
+  prompts, stops, and durable appends. They may perform I/O and are never run in the sampling loop.
+
+Core does not know runtime tool names, persisted visibility rules, bundled-provider types, or
+client behavior. The raw core `context_injected` event is consumed by runtime and never added to
+the shared protocol. Runtime may validate opaque injection metadata and emit a separate structured
+`context_notice`; this is the common path used by Studio human-edit detection in Web, TUI, and
+non-interactive clients.
 
 ## Prompt Construction
 

@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DEFAULT_ANTHROPIC_MODEL_ID } from "@diligent/core/llm/models";
+import { DEFAULT_ANTHROPIC_MODEL_ID } from "@diligent/core/model-registry";
 import type { DiligentConfig } from "@diligent/runtime/config";
 import { loadDiligentConfig, mergeConfig } from "@diligent/runtime/config";
 
@@ -102,6 +102,7 @@ describe("loadDiligentConfig", () => {
     await mkdir(TEST_ROOT, { recursive: true });
     const { config, sources } = await loadDiligentConfig(TEST_ROOT);
     expect(config.model).toBe("gemini-3.1-pro-preview");
+    expect(config.planReminderIntervalTurns).toBe(6);
     expect(sources).toEqual([]);
   });
 

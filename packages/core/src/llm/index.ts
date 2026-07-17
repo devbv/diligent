@@ -10,7 +10,6 @@ export type {
 export { compact, compactMessages, generateSummary, resolveCompaction } from "./compaction";
 export type { ModelClass, ModelDefinition } from "./models";
 export {
-  agentTypeToModelClass,
   DEFAULT_ANTHROPIC_MODEL_ID,
   getModelClass,
   getModelInfoList,
@@ -37,8 +36,6 @@ export {
   createStreamForProvider,
   DEFAULT_MODELS,
   DEFAULT_PROVIDER,
-  PROVIDER_DISPLAY_NAMES,
-  PROVIDER_HINTS,
   PROVIDER_NAMES,
   ProviderManager,
 } from "./provider-manager";
@@ -62,7 +59,6 @@ export type {
   FunctionToolDefinition,
   Model,
   ProviderBuiltinToolDefinition,
-  ProviderErrorType,
   ProviderEvent,
   ProviderResult,
   StreamContext,
@@ -72,4 +68,4 @@ export type {
   ToolDefinition,
   WebToolUserLocation,
 } from "./types";
-export { ProviderError } from "./types";
+export { ProviderError, ProviderErrorReason, ProviderErrorType } from "./types";

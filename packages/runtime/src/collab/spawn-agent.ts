@@ -1,6 +1,6 @@
 // @summary spawn_agent tool — non-blocking sub-agent creation returning thread_id and nickname
 
-import type { Tool, ToolContext, ToolResult } from "@diligent/core/tool/types";
+import type { Tool, ToolContext, ToolResult } from "@diligent/core/tool-contract";
 import { z } from "zod";
 import { formatAgentTypeParameterDescription, formatSpawnAgentToolDescription } from "../agent/agent-types";
 import type { ResolvedAgentDefinition } from "../agent/resolved-agent";

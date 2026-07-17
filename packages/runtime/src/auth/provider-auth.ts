@@ -4,17 +4,23 @@ import { join } from "node:path";
 import type { OpenAIOAuthTokens } from "@diligent/core/auth";
 import { refreshOAuthTokens, shouldRefresh } from "@diligent/core/auth/chatgpt-oauth";
 import { EventStream } from "@diligent/core/event-stream";
+import type {
+  ExternalProviderAuth,
+  ProviderEvent,
+  ProviderResult,
+  StreamFunction,
+} from "@diligent/core/provider-contract";
 import {
   type ChatGPTStreamOptions,
   createChatGPTNativeCompaction,
   createChatGPTStream,
-} from "@diligent/core/llm/provider/chatgpt";
-import { createVertexStream } from "@diligent/core/llm/provider/vertex";
-import type { ExternalProviderAuth } from "@diligent/core/llm/provider-manager";
-import type { ProviderEvent, ProviderResult, StreamFunction } from "@diligent/core/llm/types";
+} from "@diligent/core/providers/chatgpt";
+import { createVertexStream } from "@diligent/core/providers/vertex";
+import type { ExternalProviderAuthPresentation } from "./provider-auth-presenter";
 
 export interface ChatGPTOAuthBinding {
   auth: ExternalProviderAuth;
+  presentation: ExternalProviderAuthPresentation;
   setTokens: (tokens: OpenAIOAuthTokens) => void;
   clearTokens: () => void;
   getTokens: () => OpenAIOAuthTokens | undefined;
@@ -33,6 +39,7 @@ export interface VertexProviderConfig {
 
 export interface VertexAccessTokenBinding {
   auth: ExternalProviderAuth;
+  presentation: ExternalProviderAuthPresentation;
   refresh: () => Promise<void>;
   getToken: () => string | undefined;
 }
@@ -77,13 +84,12 @@ export function createChatGPTOAuthBinding(args?: {
 
   const auth: ExternalProviderAuth = {
     isConfigured: () => oauthTokens !== undefined,
-    getMaskedKey: () => (oauthTokens ? "ChatGPT OAuth" : undefined),
     getStream: () => stream,
     getNativeCompaction: () => createChatGPTNativeCompaction(() => oauthTokens!),
     ensureFresh,
   };
 
-  return { auth, setTokens, clearTokens, getTokens };
+  return { auth, presentation: { maskedKey: "ChatGPT OAuth", oauth: true }, setTokens, clearTokens, getTokens };
 }
 
 export function createVertexAccessTokenBinding(config: VertexProviderConfig): VertexAccessTokenBinding {
@@ -131,11 +137,6 @@ export function createVertexAccessTokenBinding(config: VertexProviderConfig): Ve
 
   const auth: ExternalProviderAuth = {
     isConfigured: () => Boolean(accessToken || config.accessTokenCommand || config.authMode === "adc"),
-    getMaskedKey: () => {
-      if (config.authMode === "access_token" || (!config.authMode && accessToken)) return "Vertex access token";
-      if (config.authMode === "adc") return "Vertex ADC";
-      return config.accessTokenCommand ? "Vertex token command" : undefined;
-    },
     getStream: () =>
       createDeferredVertexStream(
         async () => {
@@ -153,6 +154,14 @@ export function createVertexAccessTokenBinding(config: VertexProviderConfig): Ve
 
   return {
     auth,
+    presentation: {
+      maskedKey:
+        config.authMode === "adc"
+          ? "Vertex ADC"
+          : config.authMode === "access_token" || (!config.authMode && accessToken)
+            ? "Vertex access token"
+            : "Vertex token command",
+    },
     refresh,
     getToken: () => accessToken,
   };

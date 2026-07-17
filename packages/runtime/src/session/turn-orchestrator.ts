@@ -9,10 +9,11 @@ import {
   toSerializableError,
   updateUserMessageContent,
 } from "@diligent/core/agent";
-import { createStreamTurnScope, type StreamTurnScope } from "@diligent/core/llm";
-import type { Message } from "@diligent/core/types";
+import type { Message } from "@diligent/core/message-contract";
+import { createStreamTurnScope, type StreamTurnScope } from "@diligent/core/provider-contract";
 import { createLogger } from "@diligent/logging";
 import type { PendingSteer } from "@diligent/protocol";
+import { readContextPresentation } from "../agent/context-presentation";
 import type { AgentEvent } from "../agent-event";
 import { calculateUsageCost } from "../cost";
 import { createToolStartRenderPayload } from "../tools/render-strategies";
@@ -133,7 +134,9 @@ export class TurnOrchestrator {
     let tokensAfter = 0;
     let summary = "";
     const unsub = agent.agentStream.subscribe((event: CoreAgentEvent) => {
-      this.ctx.emit(this.enrichEvent(event, agent));
+      if (event.type !== "context_injected") {
+        this.ctx.emit(this.enrichEvent(event, agent));
+      }
       if (event.type === "compaction_end") {
         tokensBefore = event.tokensBefore;
         tokensAfter = event.tokensAfter;
@@ -292,7 +295,16 @@ export class TurnOrchestrator {
 
       const keepRecentTokens = this.ctx.config.compaction?.keepRecentTokens ?? 20_000;
       turnStager.handleEvent(event, keepRecentTokens);
-      this.ctx.emit(this.enrichEvent(event, agent));
+      if (event.type === "context_injected") {
+        for (const injection of event.injections) {
+          const presentation = readContextPresentation(injection.metadata);
+          if (presentation) {
+            this.ctx.emit({ type: "context_notice", source: injection.source, presentation });
+          }
+        }
+      } else {
+        this.ctx.emit(this.enrichEvent(event, agent));
+      }
 
       if (shouldFlushTurnProgress(event)) {
         this.flushTurnProgress(turnStager);

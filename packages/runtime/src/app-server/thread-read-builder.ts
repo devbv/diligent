@@ -1,6 +1,6 @@
 // @summary Thread read snapshot builder — assembles ThreadItem[] from transcript and applies live collab state.
 
-import { resolveModel } from "@diligent/core/llm/models";
+import { resolveModel } from "@diligent/core/model-registry";
 import type { ToolRenderPayload } from "@diligent/protocol";
 import { calculateUsageCost } from "../cost";
 import type { AssistantMessage, ThreadItem, ToolResultMessage, UserMessage } from "../protocol/index";
@@ -9,6 +9,13 @@ import type { ThreadRuntime } from "./thread-handlers";
 
 export type ThreadReadTranscriptEntry =
   | { type: "compaction"; id: string; timestamp: string; summary: string; displaySummary?: string }
+  | {
+      type: "context";
+      id: string;
+      timestamp: string;
+      source: string;
+      presentation: import("@diligent/protocol").ContextPresentation;
+    }
   | { type: "message"; id: string; timestamp: string; message: UserMessage | AssistantMessage | ToolResultMessage };
 
 function toSnapshotCollabStatus(status: { kind: string }): "running" | "completed" | "errored" | "shutdown" {
@@ -121,6 +128,16 @@ export function buildThreadReadItems(transcript: ThreadReadTranscriptEntry[]): T
 
   for (const entry of transcript) {
     const entryTimestamp = parseEntryTimestamp(entry.timestamp);
+    if (entry.type === "context") {
+      items.push({
+        type: "contextMessage",
+        itemId: entry.id,
+        source: entry.source,
+        presentation: entry.presentation,
+        timestamp: entryTimestamp,
+      });
+      continue;
+    }
     if (entry.type === "compaction") {
       items.push({
         type: "compaction",

@@ -4,6 +4,28 @@ import { describe, expect, test } from "bun:test";
 import { buildThreadReadItems } from "../../src/app-server/thread-read-builder";
 
 describe("buildThreadReadItems", () => {
+  test("preserves presentable context injections as context snapshot items", () => {
+    const items = buildThreadReadItems([
+      {
+        type: "context",
+        id: "ctx-1",
+        timestamp: "2026-07-16T00:00:00.000Z",
+        source: "studiorpc-human-edits",
+        presentation: { kind: "human-edits", title: "Human edits detected", content: "Added: Ramp" },
+      },
+    ]);
+
+    expect(items).toEqual([
+      {
+        type: "contextMessage",
+        itemId: "ctx-1",
+        source: "studiorpc-human-edits",
+        presentation: { kind: "human-edits", title: "Human edits detected", content: "Added: Ramp" },
+        timestamp: Date.parse("2026-07-16T00:00:00.000Z"),
+      },
+    ]);
+  });
+
   test("preserves tool result metadata on tool call snapshots", () => {
     const items = buildThreadReadItems([
       {

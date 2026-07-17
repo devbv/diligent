@@ -3,9 +3,10 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DEFAULT_ANTHROPIC_MODEL_ID, getModelInfoList } from "@diligent/core/llm/models";
-import { ProviderManager } from "@diligent/core/llm/provider-manager";
-import type { Model } from "@diligent/core/llm/types";
+import type { LocalImageLoader } from "@diligent/core/image-contract";
+import { DEFAULT_ANTHROPIC_MODEL_ID, getModelInfoList } from "@diligent/core/model-registry";
+import type { Model } from "@diligent/core/provider-contract";
+import { ProviderManager } from "@diligent/core/provider-contract";
 import { createAppServerConfig } from "@diligent/runtime/app-server";
 import { z } from "zod";
 import { getBuiltinAgentDefinitions } from "../../src/agent/agent-types";
@@ -79,6 +80,26 @@ describe("createAppServerConfig", () => {
     expect(config.modelConfig?.currentModelId).toBe(DEFAULT_ANTHROPIC_MODEL_ID);
     expect(config.defaultEffort).toBe("medium");
     expect(config.skillNames).toEqual([]);
+  });
+
+  it("injects a local image loader bound to the main agent cwd", async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), "diligent-main-image-loader-"));
+    tempHomes.push(projectRoot);
+    await writeFile(join(projectRoot, "image.png"), "main-image");
+    const config = createAppServerConfig({ cwd: projectRoot, runtimeConfig: makeRuntimeConfig() });
+    const agent = await config.createAgent({
+      cwd: projectRoot,
+      mode: "default",
+      effort: "medium",
+      modelId: DEFAULT_ANTHROPIC_MODEL_ID,
+      approve: async () => "once",
+      ask: async () => null,
+    });
+    const loader = (agent as unknown as { localImageLoader?: LocalImageLoader }).localImageLoader;
+
+    const bytes = await loader?.load({ type: "local_image", path: "image.png", mediaType: "image/png" });
+
+    expect(Buffer.from(bytes!).toString("utf8")).toBe("main-image");
   });
 
   it("only exposes models for connected providers", () => {
@@ -243,6 +264,40 @@ describe("createAppServerConfig", () => {
     });
 
     expect(agent.tools.map((tool) => tool.name)).toContain("factory_bundled_tool");
+  });
+
+  it("constructs built-in-first Agent-scoped loop hooks once per new Agent", async () => {
+    const hookCalls: string[] = [];
+    let factoryCalls = 0;
+    const runtimeConfig = makeRuntimeConfig({
+      planReminderIntervalTurns: 2,
+      streamFunction: makeStreamFn([makeAssistant("one"), makeAssistant("two")]),
+    });
+    const bundledToolProviders: BundledToolProvider[] = [
+      {
+        id: "loop-hooks",
+        createTools: () => [],
+        createAgentLoopHooks: (context) => {
+          factoryCalls++;
+          expect(context.agentKind).toBe("main");
+          return [{ id: "product-hook", onPromptStart: () => hookCalls.push("product") }];
+        },
+      },
+    ];
+    const config = createAppServerConfig({ cwd: "/tmp/test", runtimeConfig, bundledToolProviders });
+    const agent = await config.createAgent({
+      cwd: "/tmp/test",
+      mode: "default",
+      effort: "medium",
+      modelId: DEFAULT_ANTHROPIC_MODEL_ID,
+      approve: async () => "once",
+      ask: async () => null,
+    });
+
+    await agent.prompt({ role: "user", content: "first", timestamp: Date.now() });
+    await agent.prompt({ role: "user", content: "second", timestamp: Date.now() });
+    expect(factoryCalls).toBe(1);
+    expect(hookCalls).toEqual(["product", "product"]);
   });
 
   it("reads the latest persisted knowledge whenever it creates an agent", async () => {

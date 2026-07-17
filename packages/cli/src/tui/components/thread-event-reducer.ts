@@ -1,6 +1,6 @@
 // @summary Pure event-to-state reducer for CLI ThreadStore transitions and lifecycle effects
 
-import type { AgentEvent, ConversationLiveState } from "@diligent/protocol";
+import type { AgentEvent, ClientError, ConversationLiveState } from "@diligent/protocol";
 import { applyAgentEvents } from "@diligent/protocol";
 import type { CollabToolState, ToolCallState } from "./thread-store-utils";
 
@@ -45,7 +45,8 @@ interface ThreadEventReducerDeps<TItem> {
   ) => string;
   buildCompactionItem: (event: Extract<AgentEvent, { type: "compaction_end" }>) => TItem;
   buildKnowledgeSavedItem: () => TItem;
-  buildErrorItem: (message: string) => TItem;
+  buildContextNoticeItem: (event: Extract<AgentEvent, { type: "context_notice" }>) => TItem;
+  buildErrorItem: (error: ClientError) => TItem;
   buildThinkingItem: (text: string, elapsedMs?: number) => TItem;
   buildAssistantChunkItem: (text: string, continued: boolean) => TItem;
   buildToolEndItem: (options: {
@@ -327,6 +328,14 @@ export function reduceThreadEvent<TItem>(
     case "user_message":
       return { handled: true, requestRender: false, state: base, effects: [] };
 
+    case "context_notice":
+      return {
+        handled: true,
+        requestRender: true,
+        state: { ...base, items: [...state.items, deps.buildContextNoticeItem(event)] },
+        effects: [],
+      };
+
     case "status_change": {
       if (event.status === "busy") {
         return {
@@ -423,7 +432,7 @@ export function reduceThreadEvent<TItem>(
           toolCalls: {},
           collabByToolCallId: {},
           hasCommittedAssistantChunkInMessage: false,
-          items: [...state.items, deps.buildErrorItem(event.error.message)],
+          items: [...state.items, deps.buildErrorItem(event.error)],
         },
       };
 

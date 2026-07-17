@@ -1,16 +1,17 @@
 // @summary JSON-RPC app server mapping SessionManager/AgentEvent to shared protocol requests and notifications
 
 import { userInfo } from "node:os";
-import { KNOWN_MODELS } from "@diligent/core/llm/models";
-import type { NativeCompactFn } from "@diligent/core/llm/provider/native-compaction";
-import type { ProviderManager } from "@diligent/core/llm/provider-manager";
-import type { ProviderName, StreamFunction } from "@diligent/core/llm/types";
+import { toSerializableError } from "@diligent/core/agent";
+import { KNOWN_MODELS, resolveModel } from "@diligent/core/model-registry";
+import type { NativeCompactFn, ProviderManager, ProviderName, StreamFunction } from "@diligent/core/provider-contract";
 import type { RuntimeAgent } from "../agent/runtime-agent";
 import type { AgentEvent } from "../agent-event";
 import type { ApprovalRequest, ApprovalResponse, PermissionEngine } from "../approval/types";
 import { type AuthStoreOptions, loadOAuthTokens } from "../auth/auth-store";
+import type { ProviderAuthPresenter } from "../auth/provider-auth-presenter";
 import type { ChildStopInfo } from "../collab/types";
 import type { DiligentConfig } from "../config/schema";
+import { presentRuntimeError } from "../errors/presentation";
 import { resolveExperimentGates } from "../experiments";
 import {
   getLastAssistantMessage,
@@ -33,6 +34,7 @@ import {
   type JSONRPCResponse,
   JSONRPCResponseSchema,
   type Mode,
+  ProviderNameSchema,
   type ThinkingEffort,
 } from "../protocol/index";
 import { isRpcNotification, isRpcRequest, isRpcResponse, type RpcPeer } from "../rpc/channel";
@@ -80,7 +82,9 @@ export interface CreateAgentArgs {
   /** The thread's current agent, if one already exists. Passed so createAgent can reuse the registry. */
   existingAgent?: RuntimeAgent;
   /** Called when a child agent's turn completes normally. Propagated to the collab registry. */
-  onChildStop?: (info: ChildStopInfo) => Promise<{ continueWith?: import("@diligent/core/types").Message } | undefined>;
+  onChildStop?: (
+    info: ChildStopInfo,
+  ) => Promise<{ continueWith?: import("@diligent/core/message-contract").Message } | undefined>;
   /** User ID propagated to child agent stop hooks. */
   userId?: string;
 }
@@ -108,6 +112,8 @@ export interface DiligentAppServerConfig {
   consentConfig?: ConsentConfigManager;
   /** Provider manager — required for AUTH_* methods */
   providerManager?: ProviderManager;
+  /** Runtime-owned provider authentication presentation state. */
+  providerAuthPresenter?: ProviderAuthPresenter;
   /** Open a URL in the browser — defaults to the built-in openBrowser from @diligent/core */
   openBrowser?: (url: string) => void;
   /** Convert an absolute image path to a URL for web clients (omit if not needed) */
@@ -137,16 +143,6 @@ export interface DiligentAppServerConfig {
    * `/reload` (which respawns its own app-server child process).
    */
   reloadConfig?: () => Promise<ConfigReloadResult>;
-}
-
-/**
- * Marker the studiorpc provider wraps around human-edit diffs it injects into
- * user messages via the UserPromptSubmit hook. Clients render it as a notice.
- */
-const HUMAN_EDITS_MARKER = "<HumanEdits>";
-
-function userMessageCarriesHumanEdits(content: unknown): boolean {
-  return typeof content === "string" && content.includes(HUMAN_EDITS_MARKER);
 }
 
 async function resolveProviderPlanType(
@@ -396,10 +392,7 @@ export class DiligentAppServer {
           method: DILIGENT_SERVER_NOTIFICATION_METHODS.ERROR,
           params: {
             threadId: runtime.id,
-            error: {
-              message: error instanceof Error ? error.message : String(error),
-              name: error instanceof Error ? error.name : "Error",
-            },
+            error: toSerializableError(error),
             fatal: false,
           },
         });
@@ -424,7 +417,18 @@ export class DiligentAppServer {
 
   private async emitFromAgentEvent(threadId: string, turnId: string, event: AgentEvent): Promise<void> {
     const runtime = this.threads.get(threadId);
-    const parsedAgentEvent = AgentEventSchema.safeParse(event);
+    const outboundEvent =
+      event.type === "error"
+        ? {
+            ...event,
+            error: presentRuntimeError(event.error, {
+              provider: this.resolveRuntimeProvider(runtime),
+              operation: "agent_turn",
+              retrySafe: true,
+            }),
+          }
+        : event;
+    const parsedAgentEvent = AgentEventSchema.safeParse(outboundEvent);
     if (parsedAgentEvent.success) {
       await this.emit({
         method: DILIGENT_SERVER_NOTIFICATION_METHODS.AGENT_EVENT,
@@ -441,6 +445,21 @@ export class DiligentAppServer {
   // ─── Notification routing ───────────────────────────────────────────────────
 
   private async emit(notification: DiligentServerNotification): Promise<void> {
+    if (notification.method === DILIGENT_SERVER_NOTIFICATION_METHODS.ERROR) {
+      const runtime = notification.params.threadId ? this.threads.get(notification.params.threadId) : undefined;
+      notification = {
+        ...notification,
+        params: {
+          ...notification.params,
+          error: presentRuntimeError(notification.params.error, {
+            provider: this.resolveRuntimeProvider(runtime),
+            operation: runtime?.currentTurnId ? "agent_turn" : "app_server",
+            retrySafe: runtime?.currentTurnId != null,
+          }),
+        },
+      };
+    }
+
     // Collab debugging: always-on server-side log for collab/* notifications.
     // Intentionally redact large prompt fields to avoid noisy logs.
     if (notification.method.startsWith("collab/")) {
@@ -482,10 +501,8 @@ export class DiligentAppServer {
     const targets = subscribers.length > 0 ? subscribers : [...this.connections.values()];
 
     for (const conn of targets) {
-      // Skip turn initiator for echo of their own user message events — except
-      // when a hook injected human edits into the message: the initiator's
-      // client only has its optimistic local echo, so it needs the augmented
-      // message to render the human-edits notice.
+      // Skip the turn initiator's own user-message echo. Structured context
+      // notices are separate events, so they still reach every subscriber.
       if (notification.method === DILIGENT_SERVER_NOTIFICATION_METHODS.AGENT_EVENT) {
         const params = notification.params as {
           event?: { type?: string; message?: { content?: unknown } };
@@ -494,13 +511,26 @@ export class DiligentAppServer {
         if (
           params.event?.type === "user_message" &&
           params.threadId &&
-          this.turnInitiators.get(params.threadId) === conn.id &&
-          !userMessageCarriesHumanEdits(params.event.message?.content)
+          this.turnInitiators.get(params.threadId) === conn.id
         ) {
           continue;
         }
       }
       await conn.peer.send(notification);
+    }
+  }
+
+  private resolveRuntimeProvider(runtime: ThreadRuntime | undefined): ProviderName | undefined {
+    const provider = runtime?.agent?.model?.provider;
+    const parsedProvider = ProviderNameSchema.safeParse(provider);
+    if (parsedProvider.success) return parsedProvider.data;
+    const modelId = runtime?.runningModelIdSnapshot ?? runtime?.modelId;
+    if (!modelId) return undefined;
+    try {
+      const resolved = ProviderNameSchema.safeParse(resolveModel(modelId).provider);
+      return resolved.success ? resolved.data : undefined;
+    } catch {
+      return undefined;
     }
   }
 
@@ -791,7 +821,7 @@ export class DiligentAppServer {
    */
   private async runStopHooksFor(
     info: ChildStopInfo & { permissionMode?: string; userId?: string },
-  ): Promise<{ continueWith?: import("@diligent/core/types").Message } | undefined> {
+  ): Promise<{ continueWith?: import("@diligent/core/message-contract").Message } | undefined> {
     const stopShellHandlers = this.config.hooks?.Stop ?? [];
     const { onStop: stopPluginHandlers } = await collectPluginHooks(this.config.toolConfig?.getTools(), info.cwd);
     const { onStop: stopBundledHandlers } = collectBundledHooks(this.config.bundledToolProviders);
@@ -858,6 +888,7 @@ export class DiligentAppServer {
       lastUsedModelByCwd: this.lastUsedModelByCwd,
       lastUsedEffortByCwd: this.lastUsedEffortByCwd,
       providerManager: this.config.providerManager,
+      providerAuthPresenter: this.config.providerAuthPresenter,
       authStore: this.config.authStore,
       oauthPending: this.oauthPending,
       setOAuthPending: (value) => {

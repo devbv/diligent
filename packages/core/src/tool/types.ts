@@ -1,5 +1,6 @@
 import type { z } from "zod";
-import type { ImageBlock } from "../types";
+import type { ProviderBuiltinToolDefinition } from "../llm/types";
+import type { ImageBlock, ToolRenderPayloadLike } from "../types";
 
 // D013: Tool definition
 // biome-ignore lint/suspicious/noExplicitAny: generic default requires any for unparameterized Tool references
@@ -12,6 +13,11 @@ export interface Tool<TParams extends z.ZodType = any> {
    * from `parameters`. Used by tools whose schema is not Zod-authored (e.g. MCP).
    */
   inputSchema?: Record<string, unknown>;
+  /**
+   * Overrides the default function-tool advertisement with a provider-native
+   * semantic capability. The catalog name remains independent.
+   */
+  modelExposure?: ProviderBuiltinToolDefinition;
   execute: (args: z.infer<TParams>, ctx: ToolContext) => Promise<ToolResult>;
   supportParallel?: boolean; // D015: When true, tool can run concurrently with other parallel tools
   /** Custom arg parser. When provided, executor uses this instead of parameters.safeParse(). */
@@ -26,12 +32,6 @@ export interface ToolContext {
 }
 
 // D020: Tool result
-export interface ToolRenderPayloadLike {
-  inputSummary?: string;
-  outputSummary?: string;
-  blocks: unknown[];
-}
-
 export interface ToolResult {
   output: string;
   /** Optional image content blocks returned alongside text. Provider support varies — Anthropic embeds them in tool_result content; other providers fall back to text-only. */

@@ -127,6 +127,18 @@ function hydrateFromSnapshotItems(state: ThreadState, payload: ThreadReadRespons
   };
 
   for (const item of payload.items) {
+    if (item.type === "contextMessage") {
+      current = withItem(current, `history:context:${item.itemId}`, {
+        id: `history:context:${item.itemId}`,
+        kind: "context",
+        title: item.presentation.title,
+        variant: item.presentation.kind,
+        summary: `\`\`\`\n${item.presentation.content}\n\`\`\``,
+        timestamp: item.timestamp ?? Date.now(),
+      });
+      continue;
+    }
+
     if (item.type === "userMessage") {
       const event = {
         type: "user_message" as const,

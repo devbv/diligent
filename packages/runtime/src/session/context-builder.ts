@@ -1,7 +1,7 @@
 // @summary Builds model context and raw transcript views from tree-structured session entries with compaction support
-import { buildMessagesFromCompaction } from "@diligent/core/agent/compaction";
-import { resolveModel } from "@diligent/core/llm/models";
-import type { Message } from "@diligent/core/types";
+import { buildMessagesFromCompaction } from "@diligent/core/agent";
+import type { Message } from "@diligent/core/message-contract";
+import { resolveModel } from "@diligent/core/model-registry";
 import type { AssistantMessage, Mode, ThinkingEffort } from "@diligent/protocol";
 import type { CompactionEntry, SessionEntry } from "./types";
 
@@ -19,6 +19,13 @@ export type BuildSessionContextOptions = {
 };
 
 export type SessionTranscriptEntry =
+  | {
+      type: "context";
+      id: string;
+      timestamp: string;
+      source: string;
+      presentation: import("@diligent/protocol").ContextPresentation;
+    }
   | {
       type: "message";
       id: string;
@@ -121,8 +128,10 @@ export function buildSessionContext(
       if (entry.type === "compaction") continue;
       switch (entry.type) {
         case "message":
-          messages.push(entry.message);
           providerMessages.push(entry.message);
+          if (entry.visibility !== "internal") {
+            messages.push(entry.message);
+          }
           if (entry.message.role === "assistant") {
             lastAssistantModelId = (entry.message as AssistantMessage).model;
           }
@@ -142,8 +151,10 @@ export function buildSessionContext(
     for (const entry of path) {
       switch (entry.type) {
         case "message":
-          messages.push(entry.message);
           providerMessages.push(entry.message);
+          if (entry.visibility !== "internal") {
+            messages.push(entry.message);
+          }
           if (entry.message.role === "assistant") {
             lastAssistantModelId = (entry.message as AssistantMessage).model;
           }
@@ -201,6 +212,18 @@ export function buildSessionTranscript(entries: SessionEntry[], leafId?: string 
   for (const entry of path) {
     switch (entry.type) {
       case "message":
+        if (entry.visibility === "internal") {
+          if (entry.source && entry.presentation) {
+            transcript.push({
+              type: "context",
+              id: entry.id,
+              timestamp: entry.timestamp,
+              source: entry.source,
+              presentation: entry.presentation,
+            });
+          }
+          break;
+        }
         transcript.push({
           type: "message",
           id: entry.id,

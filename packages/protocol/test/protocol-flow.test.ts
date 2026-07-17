@@ -16,6 +16,7 @@ import {
   SkillsListResponseSchema,
   SubagentDescriptorSchema,
   SubagentsListResponseSchema,
+  ThreadItemSchema,
   ToolDescriptorSchema,
   ToolRenderPayloadSchema,
   ToolResultMessageSchema,
@@ -25,6 +26,33 @@ import {
 const TEST_MODEL_ID = "claude-sonnet-4-6";
 
 describe("protocol/flow", () => {
+  it("accepts structured context notices for live events and thread snapshots", () => {
+    const presentation = {
+      kind: "human-edits",
+      title: "Human edits detected",
+      content: "Added: Ramp",
+    };
+    expect(
+      DiligentServerNotificationSchema.safeParse({
+        method: DILIGENT_SERVER_NOTIFICATION_METHODS.AGENT_EVENT,
+        params: {
+          threadId: "th-1",
+          turnId: "turn-1",
+          event: { type: "context_notice", source: "studiorpc-human-edits", presentation },
+        },
+      }).success,
+    ).toBe(true);
+    expect(
+      ThreadItemSchema.safeParse({
+        type: "contextMessage",
+        itemId: "ctx-1",
+        source: "studiorpc-human-edits",
+        presentation,
+        timestamp: 1,
+      }).success,
+    ).toBe(true);
+  });
+
   it("accepts thread and turn client requests", () => {
     expect(
       DiligentClientRequestSchema.safeParse({
@@ -719,6 +747,54 @@ describe("protocol/flow", () => {
         params: { server: "linear", success: false, error: "timed out" },
       }).success,
     ).toBe(true);
+  });
+
+  it("accepts old and presentation-aware error notifications", () => {
+    const legacy = DiligentServerNotificationSchema.safeParse({
+      method: DILIGENT_SERVER_NOTIFICATION_METHODS.ERROR,
+      params: {
+        threadId: "th-1",
+        error: { message: "legacy failure", name: "Error" },
+        fatal: false,
+      },
+    });
+    const presented = DiligentServerNotificationSchema.safeParse({
+      method: DILIGENT_SERVER_NOTIFICATION_METHODS.ERROR,
+      params: {
+        threadId: "th-1",
+        error: {
+          message: "Invalid API key",
+          name: "ProviderError",
+          code: "invalid_api_key",
+          providerErrorType: "auth",
+          providerErrorReason: "credentials_rejected",
+          presentation: {
+            message: "The provider rejected the saved credentials. Reconnect to continue.",
+            recovery: { kind: "configure_provider", provider: "openai" },
+          },
+        },
+        fatal: false,
+      },
+    });
+
+    expect(legacy.success).toBe(true);
+    expect(presented.success).toBe(true);
+  });
+
+  it("rejects unknown recovery actions", () => {
+    const result = DiligentServerNotificationSchema.safeParse({
+      method: DILIGENT_SERVER_NOTIFICATION_METHODS.ERROR,
+      params: {
+        error: {
+          message: "failure",
+          name: "Error",
+          presentation: { message: "failure", recovery: { kind: "reload_page" } },
+        },
+        fatal: false,
+      },
+    });
+
+    expect(result.success).toBe(false);
   });
 
   it("rejects malformed flow payloads", () => {

@@ -1,10 +1,10 @@
+export type { ExecuteToolOptions, ToolOutputFileStore } from "./executor";
 export { executeTool } from "./executor";
 
 export { ToolRegistryBuilder } from "./registry";
 export type { TruncationResult } from "./truncation";
 export {
   MAX_OUTPUT_BYTES,
-  persistFullOutput,
   shouldTruncate,
   TRUNCATION_WARNING,
   truncateHead,

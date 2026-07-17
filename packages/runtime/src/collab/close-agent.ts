@@ -1,6 +1,6 @@
 // @summary close_agent tool — abort a sub-agent and return its final status
 
-import type { Tool, ToolContext, ToolResult } from "@diligent/core/tool/types";
+import type { Tool, ToolContext, ToolResult } from "@diligent/core/tool-contract";
 import { z } from "zod";
 import type { AgentRegistry } from "./registry";
 

@@ -1,7 +1,9 @@
 // @summary Tests for Gemini provider request conversion and schema compatibility
 import { describe, expect, test } from "bun:test";
+import { GEMINI_THINKING_BUDGETS } from "../../../src/llm/models";
 import {
   buildGeminiGenerateConfig,
+  classifyGeminiError,
   convertToGeminiContents,
   convertToGeminiTools,
   extractGeminiWebBlocks,
@@ -9,6 +11,7 @@ import {
   toGeminiSchema,
 } from "../../../src/llm/provider/gemini";
 import type { Model, ToolDefinition } from "../../../src/llm/types";
+import { ProviderErrorReason, ProviderErrorType } from "../../../src/llm/types";
 
 describe("Gemini content conversion", () => {
   test("converts user image blocks to Gemini inline data parts", async () => {
@@ -85,6 +88,34 @@ describe("Gemini thinking budget", () => {
   test("maps xhigh to the model max budget", () => {
     expect(resolveGeminiThinkingBudget(model, "xhigh")).toBe(32_768);
   });
+
+  test("uses the model registry budgets as the runtime fallback", () => {
+    const modelWithoutBudgets = { ...model, thinkingBudgets: undefined };
+
+    expect(resolveGeminiThinkingBudget(modelWithoutBudgets, "low")).toBe(GEMINI_THINKING_BUDGETS.low);
+    expect(resolveGeminiThinkingBudget(modelWithoutBudgets, "medium")).toBe(GEMINI_THINKING_BUDGETS.medium);
+    expect(resolveGeminiThinkingBudget(modelWithoutBudgets, "high")).toBe(GEMINI_THINKING_BUDGETS.high);
+    expect(resolveGeminiThinkingBudget(modelWithoutBudgets, "max")).toBe(GEMINI_THINKING_BUDGETS.max);
+  });
+});
+
+describe("Gemini error classification", () => {
+  test("uses shared HTTP rules and preserves Gemini context overflow detection", () => {
+    expect(classifyGeminiError(Object.assign(new Error("bad credentials"), { status: 403 }))).toMatchObject({
+      errorType: ProviderErrorType.Auth,
+      reason: ProviderErrorReason.CredentialsRejected,
+      isRetryable: false,
+    });
+    expect(classifyGeminiError(Object.assign(new Error("unavailable"), { status: 503 }))).toMatchObject({
+      errorType: ProviderErrorType.ServerError,
+      isRetryable: true,
+    });
+    expect(classifyGeminiError(new Error("input token count exceeds token limit"))).toMatchObject({
+      errorType: ProviderErrorType.ContextOverflow,
+      reason: ProviderErrorReason.ContextWindowExceeded,
+      isRetryable: false,
+    });
+  });
 });
 
 describe("Gemini tool schema conversion", () => {
@@ -113,7 +144,7 @@ describe("Gemini tool schema conversion", () => {
       },
     ];
 
-    expect(convertToGeminiTools(tools)).toEqual([
+    expect(convertToGeminiTools(tools) as unknown).toEqual([
       {
         functionDeclarations: [
           {
@@ -219,7 +250,7 @@ describe("Gemini tool schema conversion", () => {
       },
     ];
 
-    expect(convertToGeminiTools(tools)).toEqual([
+    expect(convertToGeminiTools(tools) as unknown).toEqual([
       {
         functionDeclarations: [
           {
@@ -304,7 +335,7 @@ describe("Gemini web metadata normalization", () => {
           },
         ],
       },
-    });
+    } as unknown as Parameters<typeof extractGeminiWebBlocks>[0]);
 
     expect(blocks).toEqual([
       {

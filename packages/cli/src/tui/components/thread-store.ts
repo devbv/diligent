@@ -1,7 +1,8 @@
 // @summary Renderer-agnostic transcript state container for chat, tool results, thinking blocks, and active prompts
 
-import type { ToolResultMessage } from "@diligent/core";
+import type { ToolResultMessage } from "@diligent/core/message-contract";
 import type { AgentEvent, ThreadReadResponse, ToolRenderPayload } from "@diligent/protocol";
+import { formatClientError } from "../error-presentation";
 import type { Component } from "../framework/types";
 import { renderToolPayload } from "../render-blocks";
 import { t } from "../theme";
@@ -248,10 +249,21 @@ export class ThreadStore {
         kind: "plain" as const,
         lines: [`${t.success}⏺${t.reset} ${t.dim}knowledge saved${t.reset}`],
       }),
-      buildErrorItem: (message: string) => ({
+      buildContextNoticeItem: (event: Extract<AgentEvent, { type: "context_notice" }>) => ({
         kind: "plain" as const,
-        lines: [`${t.error}✗ ${message}${t.reset}`],
+        separateBefore: true,
+        lines: [
+          `${t.success}✎ ${event.presentation.title}${t.reset}`,
+          ...event.presentation.content.split("\n").map((line) => `${t.dim}  ${line}${t.reset}`),
+        ],
       }),
+      buildErrorItem: (error: Extract<AgentEvent, { type: "error" }>["error"]) => {
+        const { message, hint } = formatClientError(error);
+        return {
+          kind: "plain" as const,
+          lines: [`${t.error}✗ ${message}${t.reset}`, ...(hint ? [`${t.dim}  ${hint}${t.reset}`] : [])],
+        };
+      },
       buildThinkingItem,
       buildAssistantChunkItem: (text: string, continued: boolean) => ({
         kind: "assistant_chunk" as const,

@@ -2,7 +2,8 @@
 
 import type { CoreAgentEvent } from "@diligent/core/agent";
 import { buildMessagesFromCompaction, selectForCompaction } from "@diligent/core/agent";
-import type { Message } from "@diligent/core/types";
+import type { Message } from "@diligent/core/message-contract";
+import { readContextPresentation } from "../agent/context-presentation";
 import type { CompactionEntry, SessionEntry } from "./types";
 import { generateEntryId } from "./types";
 
@@ -50,6 +51,17 @@ export class TurnStager {
       return;
     }
 
+    if (event.type === "context_injected") {
+      for (const injection of event.injections) {
+        this.stageMessage(injection.message, {
+          visibility: "internal",
+          source: injection.source,
+          presentation: readContextPresentation(injection.metadata),
+        });
+      }
+      return;
+    }
+
     if (event.type === "compaction_end") {
       const recentUserMessages = selectForCompaction(this.stagedConversation, keepRecentTokens).recentUserMessages;
       this.stagedConversation = event.compactionSummary
@@ -80,14 +92,22 @@ export class TurnStager {
     return entries;
   }
 
-  private stageMessage(message: Message): void {
-    this.stagedConversation.push(message);
+  private stageMessage(
+    message: Message,
+    metadata?: {
+      visibility: "internal";
+      source: string;
+      presentation?: import("@diligent/protocol").ContextPresentation;
+    },
+  ): void {
+    if (!metadata) this.stagedConversation.push(message);
     this.stageEntry({
       type: "message",
       id: generateEntryId(),
       parentId: this.currentLeafId,
       timestamp: new Date().toISOString(),
       message,
+      ...metadata,
     });
   }
 

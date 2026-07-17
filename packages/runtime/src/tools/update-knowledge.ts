@@ -1,6 +1,6 @@
 // @summary Upsert or delete persistent knowledge entries across sessions
 
-import type { Tool, ToolContext, ToolResult } from "@diligent/core/tool/types";
+import type { Tool, ToolContext, ToolResult } from "@diligent/core/tool-contract";
 import { z } from "zod";
 import { readKnowledge, writeKnowledge } from "../knowledge/store";
 import type { KnowledgeEntry, KnowledgeType } from "../knowledge/types";

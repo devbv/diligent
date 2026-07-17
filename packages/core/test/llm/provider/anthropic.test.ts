@@ -13,6 +13,7 @@ const TEST_MODEL: Model = {
   provider: "anthropic",
   contextWindow: 300_000,
   maxOutputTokens: 16_384,
+  supportsThinking: true,
 };
 
 function makeAssistantMessage(overrides?: Partial<AssistantMessage>): AssistantMessage {
@@ -231,7 +232,14 @@ describe("Anthropic message conversion", () => {
         stopReason: "end_turn",
         timestamp: 1,
       },
-      { role: "tool_result", toolCallId: "tc_1", output: "ok", timestamp: 2 },
+      {
+        role: "tool_result",
+        toolCallId: "tc_1",
+        toolName: "test_tool",
+        output: "ok",
+        isError: false,
+        timestamp: 2,
+      },
     ]);
 
     expect(converted[0]).toEqual({

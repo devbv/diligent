@@ -15,6 +15,9 @@ describe("ProviderManager auth errors", () => {
     } catch (err) {
       expect(err).toBeInstanceOf(ProviderError);
       expect((err as ProviderError).errorType).toBe("auth");
+      expect((err as ProviderError).reason).toBe("credentials_missing");
+      expect((err as ProviderError).message).toBe("No authentication is configured for anthropic.");
+      expect((err as ProviderError).message).not.toContain("/provider");
     }
   });
 });

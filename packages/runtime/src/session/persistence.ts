@@ -107,7 +107,9 @@ export async function listSessions(sessionsDir: string): Promise<SessionInfo[]> 
       // listSessions only needs text content for previews — skip blob materialization.
       const { header, entries } = await readSessionFile(path, { materializeImages: false });
 
-      const messageEntries = entries.filter((e): e is SessionMessageEntry => e.type === "message");
+      const messageEntries = entries.filter(
+        (e): e is SessionMessageEntry => e.type === "message" && e.visibility !== "internal",
+      );
       const firstUserEntry = messageEntries.find((e) => e.message.role === "user");
       const lastEntry = entries[entries.length - 1];
       const nameEntry = entries.findLast((e): e is SessionInfoEntry => e.type === "session_info" && !!e.name);

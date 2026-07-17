@@ -1,6 +1,6 @@
 // @summary Session manager orchestrating agent loop, persistence, compaction, and steering
 
-import type { Message } from "@diligent/core/types";
+import type { Message } from "@diligent/core/message-contract";
 import { createLogger, type Logger } from "@diligent/logging";
 import type { PendingSteer, ThinkingEffort } from "@diligent/protocol";
 import type { Mode } from "../agent/mode";

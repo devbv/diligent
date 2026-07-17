@@ -2,11 +2,11 @@
 import { z } from "zod";
 import {
   AgentEventSchema,
+  ClientErrorSchema,
   CollabAgentRefSchema,
   CollabAgentStatusEntrySchema,
   CollabAgentStatusSchema,
   ProviderAuthStatusSchema,
-  SerializableErrorSchema,
   ThreadItemDeltaSchema,
   ThreadItemSchema,
   ThreadStatusSchema,
@@ -173,7 +173,7 @@ export const ErrorNotificationSchema = z.object({
   method: z.literal(DILIGENT_SERVER_NOTIFICATION_METHODS.ERROR),
   params: z.object({
     threadId: z.string().optional(),
-    error: SerializableErrorSchema,
+    error: ClientErrorSchema,
     fatal: z.boolean().default(false),
   }),
 });

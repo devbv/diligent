@@ -35,16 +35,10 @@ function toFunctionToolDefinition(
   };
 }
 
-function toToolDefinition(tool: Pick<Tool, "name" | "description" | "parameters" | "inputSchema">): ToolDefinition {
-  if (tool.name === "web_action") {
-    return {
-      kind: "provider_builtin",
-      capability: "web",
-      options: { citationsEnabled: true },
-    };
-  }
-
-  return toFunctionToolDefinition(tool);
+function toToolDefinition(
+  tool: Pick<Tool, "name" | "description" | "parameters" | "inputSchema" | "modelExposure">,
+): ToolDefinition {
+  return tool.modelExposure ?? toFunctionToolDefinition(tool);
 }
 
 function createAssistantMessage(model: string): AssistantMessage {
@@ -74,9 +68,9 @@ export async function streamAssistantMessage(
   messages: Message[],
   request: {
     config: {
-      cwd?: string;
       model: Model;
       effort: ThinkingEffort;
+      localImageLoader?: import("../llm/image-io").LocalImageLoader;
     };
     sessionId?: string;
     signal?: AbortSignal;
@@ -92,7 +86,7 @@ export async function streamAssistantMessage(
   generateItemId: () => string,
 ): Promise<AssistantMessage> {
   const context: StreamContext = {
-    cwd: request.config.cwd,
+    localImageLoader: request.config.localImageLoader,
     systemPrompt: runtime.systemPrompt,
     messages,
     tools: runtime.tools.map(toToolDefinition),

@@ -1,15 +1,15 @@
 // @summary AgentRegistry — spawn/wait/send_input/close lifecycle for non-blocking multi-agent collab
 
-import type { ModelClass } from "@diligent/core/llm/models";
-import { agentTypeToModelClass, resolveModel, resolveModelForClass } from "@diligent/core/llm/models";
-import type { ThinkingEffort } from "@diligent/core/llm/types";
-import type { Tool } from "@diligent/core/tool/types";
-import type { TextBlock } from "@diligent/core/types";
+import type { TextBlock } from "@diligent/core/message-contract";
+import { getModelClass, type ModelClass, resolveModel, resolveModelForClass } from "@diligent/core/model-registry";
+import type { ThinkingEffort } from "@diligent/core/provider-contract";
+import type { Tool } from "@diligent/core/tool-contract";
 import { createLogger } from "@diligent/logging";
 import { PLAN_MODE_DISALLOWED_TOOLS } from "../agent/mode";
 import type { ResolvedAgentDefinition } from "../agent/resolved-agent";
 import { resolveAgentDefinition } from "../agent/resolved-agent";
 import { RuntimeAgent } from "../agent/runtime-agent";
+import { createLocalImageLoader, toolOutputStore } from "../infrastructure";
 import { SessionManager } from "../session/manager";
 import { buildDefaultTools } from "../tools/defaults";
 import { COLLAB_TOOL_NAMES } from "../tools/tool-metadata";
@@ -182,6 +182,7 @@ export class AgentRegistry {
       onCollabEvent: next.onCollabEvent,
       onChildStop: next.onChildStop,
       userId: next.userId,
+      agentLoopHookFactories: next.agentLoopHookFactories,
     };
     // Sync the collab event handler if it was updated
     if (next.onCollabEvent !== undefined) {
@@ -264,10 +265,10 @@ export class AgentRegistry {
       },
     ];
 
-    // Resolve model class: explicit override > agent_type-based default
+    // Resolve model class: explicit override > resolved agent default > parent model class.
     const parentModel = resolveModel(this.deps.modelId);
     const targetClass: ModelClass =
-      params.modelClass ?? agentDefinition.defaultModelClass ?? agentTypeToModelClass(params.agentType, parentModel);
+      params.modelClass ?? agentDefinition.defaultModelClass ?? getModelClass(parentModel);
     const childModel = resolveModelForClass(parentModel, targetClass);
     const useClassDefaultEffort = params.modelClass !== undefined || agentDefinition.defaultModelClass !== undefined;
     const childEffort = resolveChildEffort(this.deps.effort, targetClass, childModel, useClassDefaultEffort);
@@ -320,12 +321,29 @@ export class AgentRegistry {
         });
 
         const filteredTools = result.tools.filter((tool) => allowedChildToolNames.has(tool.name));
+        const loopHooks =
+          this.deps.agentLoopHookFactories?.flatMap((createHooks) =>
+            createHooks({
+              cwd: this.deps.cwd,
+              agentKind: "child",
+              model: childModel,
+              tools: filteredTools,
+              parentSessionId: this.deps.getParentSessionId?.(),
+              logger: logger.child({ scope: "runtime.collab.agent-loop-hooks" }),
+            }),
+          ) ?? [];
 
         return new RuntimeAgent(
           childModel.id,
           childSystemPrompt,
           filteredTools,
-          { cwd: this.deps.cwd, effort: childEffort, llmMsgStreamFn: this.deps.streamFn },
+          {
+            effort: childEffort,
+            llmMsgStreamFn: this.deps.streamFn,
+            localImageLoader: createLocalImageLoader(this.deps.cwd),
+            toolOutputStore,
+            loopHooks,
+          },
           result.registry,
         );
       },

@@ -20,28 +20,6 @@ interface ProviderSettingsModalProps {
   onClose: () => void;
 }
 
-const PROVIDER_LABELS: Record<string, string> = {
-  anthropic: "Anthropic",
-  openai: "OpenAI",
-  chatgpt: "ChatGPT",
-  "gemini-3.1-pro": "Gemini 3.1 Pro",
-  "gemini-3-flash": "Gemini 3 Flash",
-  "gemini-3.1-flash-lite": "Gemini 3.1 Flash Lite",
-  vertex: "Vertex AI",
-  "zai-coding-plan": "z.ai Coding Plan",
-};
-
-const PROVIDER_INPUT_PLACEHOLDERS: Record<string, string> = {
-  anthropic: "API key",
-  openai: "API key",
-  chatgpt: "API key",
-  "gemini-3.1-pro": "API key",
-  "gemini-3-flash": "API key",
-  "gemini-3.1-flash-lite": "API key",
-  vertex: "Google Cloud access token",
-  "zai-coding-plan": "API key",
-};
-
 export function ProviderSettingsModal({
   providers,
   focusProvider,
@@ -143,9 +121,7 @@ export function ProviderSettingsModal({
             >
               <div className="flex items-center gap-2">
                 <StatusDot color={isConnected(p) ? "success" : "danger"} size="md" />
-                <span className="flex-1 text-sm font-medium text-text">
-                  {PROVIDER_LABELS[p.provider] ?? p.provider}
-                </span>
+                <span className="flex-1 text-sm font-medium text-text">{p.descriptor.displayName}</span>
                 {authLabel ? <span className="font-mono text-xs text-muted">{authLabel}</span> : null}
                 {editingProvider !== p.provider && !oauthPending ? (
                   isConnected(p) || isSaving ? (
@@ -191,7 +167,7 @@ export function ProviderSettingsModal({
                   <div className="flex items-center gap-2">
                     <Input
                       type="password"
-                      placeholder={PROVIDER_INPUT_PLACEHOLDERS[p.provider] ?? "API key"}
+                      placeholder={p.descriptor.apiKeyPlaceholder ?? "API key"}
                       className="h-8"
                       value={keyInput}
                       // API keys go into an HTTP header (X-Api-Key), which only accepts printable

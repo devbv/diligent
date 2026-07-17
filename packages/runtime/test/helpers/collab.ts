@@ -1,8 +1,14 @@
 // @summary Test helpers for collab tests: mock SessionManager and stream factories
 
 import { EventStream } from "@diligent/core/event-stream";
-import type { Model, ProviderEvent, ProviderResult, StreamFunction, SystemSection } from "@diligent/core/llm/types";
-import type { AssistantMessage, Message } from "@diligent/core/types";
+import type { AssistantMessage, Message } from "@diligent/core/message-contract";
+import type {
+  Model,
+  ProviderEvent,
+  ProviderResult,
+  StreamFunction,
+  SystemSection,
+} from "@diligent/core/provider-contract";
 import type { CollabToolDeps } from "@diligent/runtime/collab";
 import type { DiligentPaths } from "@diligent/runtime/infrastructure";
 import type { SessionManagerConfig } from "@diligent/runtime/session";

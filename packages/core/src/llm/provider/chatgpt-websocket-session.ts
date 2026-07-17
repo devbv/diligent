@@ -1,5 +1,5 @@
 // @summary Reusable, single-flight WebSocket transport for ChatGPT Responses Lite
-import { ProviderError } from "../types";
+import { ProviderError, ProviderErrorType } from "../types";
 
 export type ChatGPTWebSocketFactory = (url: string, headers: Record<string, string>) => WebSocket;
 
@@ -108,7 +108,7 @@ export class ChatGPTWebSocketSession {
       resolveOpened,
       rejectOpened,
       signal,
-      onAbort: () => this.invalidate(new ProviderError("Aborted", "unknown", false)),
+      onAbort: () => this.invalidate(new ProviderError("Aborted", ProviderErrorType.Unknown, false)),
     };
     this.active = active;
     if (signal) signal.addEventListener("abort", active.onAbort, { once: true });
@@ -121,7 +121,8 @@ export class ChatGPTWebSocketSession {
   async dispose(): Promise<void> {
     if (this.disposed) return;
     this.disposed = true;
-    if (this.active) this.invalidate(new ProviderError("ChatGPT WebSocket session disposed", "network", false));
+    if (this.active)
+      this.invalidate(new ProviderError("ChatGPT WebSocket session disposed", ProviderErrorType.Network, false));
     else if (this.socket && this.socket.readyState !== 3) this.socket.close(1000);
     this.socket = undefined;
   }
@@ -134,7 +135,9 @@ export class ChatGPTWebSocketSession {
         socket.send(JSON.stringify(request));
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        this.invalidate(new ProviderError(`ChatGPT WebSocket send failed: ${message}`, "network", true));
+        this.invalidate(
+          new ProviderError(`ChatGPT WebSocket send failed: ${message}`, ProviderErrorType.Network, true),
+        );
         return;
       }
       active.resolveOpened();
@@ -170,7 +173,7 @@ export class ChatGPTWebSocketSession {
         const onFailure = () => {
           cleanup();
           this.connecting = undefined;
-          const error = new ProviderError("ChatGPT WebSocket connection failed", "network", true);
+          const error = new ProviderError("ChatGPT WebSocket connection failed", ProviderErrorType.Network, true);
           if (this.socket === socket) this.socket = undefined;
           reject(error);
         };
@@ -194,7 +197,7 @@ export class ChatGPTWebSocketSession {
         const payload = JSON.parse(await messageToString(event.data)) as Record<string, unknown>;
         const active = this.active;
         if (payload.type === "error") {
-          this.invalidate(new ProviderError("ChatGPT WebSocket request failed", "unknown", false));
+          this.invalidate(new ProviderError("ChatGPT WebSocket request failed", ProviderErrorType.Unknown, false));
           return;
         }
         if (payload.type === "response.failed") {
@@ -221,13 +224,13 @@ export class ChatGPTWebSocketSession {
 
   private handleTransportFailure(socket: WebSocket, message: string): void {
     if (this.socket !== socket) return;
-    this.invalidate(new ProviderError(message, "network", true), false);
+    this.invalidate(new ProviderError(message, ProviderErrorType.Network, true), false);
   }
 
   private resetTimeout(active: ActiveExchange, message: string): void {
     if (active.timer) clearTimeout(active.timer);
     active.timer = setTimeout(
-      () => this.invalidate(new ProviderError(message, "network", true)),
+      () => this.invalidate(new ProviderError(message, ProviderErrorType.Network, true)),
       this.options.idleTimeoutMs,
     );
   }
@@ -256,7 +259,7 @@ export class ChatGPTWebSocketSession {
 
   private asNetworkError(error: unknown, prefix = "ChatGPT WebSocket connection failed"): ProviderError {
     const message = error instanceof Error ? error.message : String(error);
-    return new ProviderError(`${prefix}: ${message}`, "network", true);
+    return new ProviderError(`${prefix}: ${message}`, ProviderErrorType.Network, true);
   }
 }
 

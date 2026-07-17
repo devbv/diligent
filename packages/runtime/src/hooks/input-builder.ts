@@ -1,6 +1,6 @@
 // @summary Conversation data extraction utilities for building hook input payloads
 
-import type { AssistantMessage, Message } from "@diligent/core/types";
+import type { AssistantMessage, Message } from "@diligent/core/message-contract";
 
 export interface SessionUsage {
   inputTokens: number;

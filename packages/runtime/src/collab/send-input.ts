@@ -1,6 +1,6 @@
 // @summary send_input tool — inject a steering message into a running sub-agent
 
-import type { Tool, ToolContext, ToolResult } from "@diligent/core/tool/types";
+import type { Tool, ToolContext, ToolResult } from "@diligent/core/tool-contract";
 import { z } from "zod";
 import type { AgentRegistry } from "./registry";
 

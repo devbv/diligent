@@ -1,6 +1,6 @@
 // @summary Content search via ripgrep with regex support
 import { resolve } from "node:path";
-import type { Tool, ToolResult } from "@diligent/core/tool/types";
+import type { Tool, ToolResult } from "@diligent/core/tool-contract";
 import { z } from "zod";
 import { isAbsolute, stripExtendedLengthPrefix } from "../util/path";
 import { spawnCollect } from "../util/process";

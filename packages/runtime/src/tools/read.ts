@@ -1,6 +1,6 @@
 // @summary Read file with binary detection and line numbers
 
-import type { Tool, ToolResult } from "@diligent/core/tool/types";
+import type { Tool, ToolResult } from "@diligent/core/tool-contract";
 import { z } from "zod";
 import { isAbsolute, stripExtendedLengthPrefix } from "../util/path";
 import { createTextRenderPayload, summarizeRenderText } from "./render-payload";

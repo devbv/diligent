@@ -2,8 +2,8 @@
 
 import type { AgentOptions } from "@diligent/core/agent";
 import { Agent } from "@diligent/core/agent";
-import type { Model, SystemSection } from "@diligent/core/llm/types";
-import type { Tool } from "@diligent/core/tool/types";
+import type { Model, SystemSection } from "@diligent/core/provider-contract";
+import type { Tool } from "@diligent/core/tool-contract";
 // type-only import to avoid circular dependency: collab/registry → agent/runtime-agent → collab/registry
 import type { AgentRegistry } from "../collab/registry";
 

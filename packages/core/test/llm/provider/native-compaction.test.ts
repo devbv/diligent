@@ -88,6 +88,30 @@ describe("native compaction adapters", () => {
     );
   });
 
+  test("OpenAI adapter materializes local images with the injected loader", async () => {
+    let capturedBody: Record<string, unknown> = {};
+    globalThis.fetch = mock(async (_url: string | URL, init?: RequestInit) => {
+      capturedBody = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+      return new Response(JSON.stringify({ id: "resp_1", summary: "Compacted summary" }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const compact = createOpenAINativeCompaction("sk-openai", "https://api.openai.com/v1");
+    await compact({
+      model: OPENAI_MODEL,
+      systemPrompt: [],
+      messages: [
+        {
+          role: "user",
+          content: [{ type: "local_image", path: "image.png", mediaType: "image/png" }],
+          timestamp: Date.now(),
+        },
+      ],
+      localImageLoader: { load: async () => new TextEncoder().encode("image-bytes").buffer },
+    });
+
+    expect(JSON.stringify(capturedBody.input)).toContain("data:image/png;base64,aW1hZ2UtYnl0ZXM=");
+  });
+
   test("OpenAI adapter extracts summary from reasoning summary array", async () => {
     globalThis.fetch = mock(
       async () =>
@@ -409,7 +433,7 @@ describe("native compaction adapters", () => {
   test("ChatGPT GPT-5.6 compaction uses the Responses Lite HTTP contract", async () => {
     let capturedHeaders: Record<string, string> = {};
     let capturedBody: Record<string, unknown> = {};
-    globalThis.fetch = (async (_input, init) => {
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
       capturedHeaders = Object.fromEntries(new Headers(init?.headers).entries());
       capturedBody = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
       return new Response(JSON.stringify({ summary: "Compacted summary" }), { status: 200 });

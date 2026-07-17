@@ -18,7 +18,7 @@ function firstImageDetail(items: unknown[]): string | undefined {
 }
 
 describe("convertMessages image detail", () => {
-  const userMsg: Message[] = [{ role: "user", content: [imageBlock] }];
+  const userMsg: Message[] = [{ role: "user", content: [imageBlock], timestamp: 1 }];
 
   test("defaults to detail 'auto' for a user image", async () => {
     const items = await convertMessages(userMsg);
@@ -26,15 +26,23 @@ describe("convertMessages image detail", () => {
   });
 
   test("uses the provided detail for a user image", async () => {
-    const items = await convertMessages(userMsg, undefined, "low");
+    const items = await convertMessages(userMsg, "low");
     expect(firstImageDetail(items)).toBe("low");
   });
 
   test("applies detail to tool_result output images too", async () => {
     const messages: Message[] = [
-      { role: "tool_result", toolCallId: "tc_1", output: "see image", outputImages: [imageBlock] },
+      {
+        role: "tool_result",
+        toolCallId: "tc_1",
+        toolName: "image_tool",
+        output: "see image",
+        outputImages: [imageBlock],
+        isError: false,
+        timestamp: 1,
+      },
     ];
-    const items = await convertMessages(messages, undefined, "high");
+    const items = await convertMessages(messages, "high");
     expect(firstImageDetail(items)).toBe("high");
   });
 

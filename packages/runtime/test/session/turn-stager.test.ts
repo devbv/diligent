@@ -2,7 +2,7 @@
 
 import { describe, expect, test } from "bun:test";
 import type { CoreAgentEvent } from "@diligent/core/agent";
-import type { Message } from "@diligent/core/types";
+import type { Message } from "@diligent/core/message-contract";
 import { TurnStager } from "@diligent/runtime/session";
 
 function makeUser(content: string): Message {
@@ -107,5 +107,32 @@ describe("TurnStager", () => {
     if (snapshot.entries[1]?.type === "compaction") {
       expect(snapshot.entries[1].compactionSummary).toEqual({ type: "compaction", encrypted_content: "opaque" });
     }
+  });
+
+  test("stages context injections as internal entries with source and runtime metadata", () => {
+    const stager = new TurnStager(null, [], makeUser("hello"));
+    stager.handleEvent(
+      {
+        type: "context_injected",
+        injections: [
+          {
+            source: "test-hook",
+            message: makeUser("internal"),
+            metadata: {
+              presentation: { kind: "human-edits", title: "Human edits detected", content: "Added: Ramp" },
+            },
+          },
+        ],
+      },
+      20_000,
+    );
+
+    const entry = stager.getSnapshot().entries[1];
+    expect(entry).toMatchObject({
+      type: "message",
+      visibility: "internal",
+      source: "test-hook",
+      presentation: { kind: "human-edits", title: "Human edits detected", content: "Added: Ramp" },
+    });
   });
 });

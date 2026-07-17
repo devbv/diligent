@@ -1,14 +1,11 @@
 // @summary Tests for Anthropic API error classification and retry logic
 import { describe, expect, test } from "bun:test";
 import Anthropic from "@anthropic-ai/sdk";
+import type { APIError } from "@anthropic-ai/sdk/core/error.mjs";
 import { classifyAnthropicError } from "../../../src/llm/provider/anthropic";
 import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError } from "../../../src/llm/types";
 
-function makeAPIError(
-  status: number,
-  message: string,
-  headers?: Record<string, string | null | undefined>,
-): Anthropic.APIError {
+function makeAPIError(status: number, message: string, headers?: Record<string, string | null | undefined>): APIError {
   const sdkHeaders = new Headers();
   if (headers) {
     for (const [key, value] of Object.entries(headers)) {
@@ -70,6 +67,7 @@ describe("classifyAnthropicError", () => {
 
     expect(result.errorType).toBe("context_overflow");
     expect(result.message).toBe(CONTEXT_OVERFLOW_ERROR_MESSAGE);
+    expect(result.reason).toBe("context_window_exceeded");
     expect(result.isRetryable).toBe(false);
     expect(result.statusCode).toBe(400);
   });
@@ -87,6 +85,7 @@ describe("classifyAnthropicError", () => {
     const result = classifyAnthropicError(err);
 
     expect(result.errorType).toBe("auth");
+    expect(result.reason).toBe("credentials_rejected");
     expect(result.isRetryable).toBe(false);
     expect(result.statusCode).toBe(401);
   });
@@ -174,7 +173,7 @@ describe("classifyAnthropicError", () => {
   });
 
   test("preserves string API error code from cause", () => {
-    const err = makeAPIError(529, "Overloaded") as Anthropic.APIError & { code?: string };
+    const err = makeAPIError(529, "Overloaded") as APIError & { code?: string };
     err.code = "overloaded_error";
     const result = classifyAnthropicError(err);
 

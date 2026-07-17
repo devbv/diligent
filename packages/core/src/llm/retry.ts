@@ -1,15 +1,14 @@
 // @summary Wraps stream functions with exponential backoff retry logic
 
 import { createLogger, type Logger } from "@diligent/logging";
-import { formatSerializableErrorForLog, toSerializableError } from "../agent/util/errors";
 import { EventStream } from "../event-stream";
 import type { ProviderEvent, ProviderResult, StreamFunction } from "./types";
-import { ProviderError } from "./types";
+import { ProviderError, ProviderErrorType } from "./types";
 
 export interface RetryConfig {
-  maxAttempts: number; // default: 5
-  baseDelayMs: number; // default: 1000 (1s)
-  maxDelayMs: number; // default: 30_000 (30s)
+  maxAttempts: number;
+  baseDelayMs: number;
+  maxDelayMs: number;
 }
 
 const defaultRetryLogger = createLogger({ scope: "llm:retry" });
@@ -27,7 +26,7 @@ function isVisibleProviderEvent(event: ProviderEvent): boolean {
 function toProviderError(err: unknown): ProviderError {
   return err instanceof ProviderError
     ? err
-    : new ProviderError(err instanceof Error ? err.message : String(err), "unknown", false);
+    : new ProviderError(err instanceof Error ? err.message : String(err), ProviderErrorType.Unknown, false);
 }
 
 function errorFields(error: ProviderError): Record<string, unknown> {
@@ -37,6 +36,28 @@ function errorFields(error: ProviderError): Record<string, unknown> {
     ...(error.retryAfterMs !== undefined && { retryAfterMs: error.retryAfterMs }),
     ...(error.statusCode !== undefined && { statusCode: error.statusCode }),
   };
+}
+
+function providerErrorCode(error: ProviderError): string | undefined {
+  for (const candidate of [error.cause, error]) {
+    const code = (candidate as (Error & { code?: unknown }) | undefined)?.code;
+    if (typeof code === "string" && code.trim().length > 0) return code;
+  }
+  return undefined;
+}
+
+function formatProviderErrorForLog(error: ProviderError): string {
+  const fields = [
+    `name=${error.name}`,
+    `message=${error.message}`,
+    `code=${providerErrorCode(error) ?? "n/a"}`,
+    `type=${error.errorType}`,
+    `reason=${error.reason ?? "n/a"}`,
+    `status=${error.statusCode ?? "n/a"}`,
+    `retryable=${error.isRetryable}`,
+  ];
+  if (error.retryAfterMs !== undefined) fields.push(`retryAfterMs=${error.retryAfterMs}`);
+  return fields.join(" ");
 }
 
 function logIfProviderError(logger: Logger, error: unknown, attempt: number, maxAttempts: number): void {
@@ -92,7 +113,7 @@ export function withRetry(
           });
           stream.push({
             type: "error",
-            error: new ProviderError("Aborted", "unknown", false),
+            error: new ProviderError("Aborted", ProviderErrorType.Unknown, false),
           });
           return;
         }
@@ -115,7 +136,7 @@ export function withRetry(
                 retryLogger,
                 "warn",
                 "stream_error",
-                `stream error attempt=${attempt}/${config.maxAttempts} ${formatSerializableErrorForLog(toSerializableError(errorEvent))}`,
+                `stream error attempt=${attempt}/${config.maxAttempts} ${formatProviderErrorForLog(errorEvent)}`,
                 { attempt, maxAttempts: config.maxAttempts, ...errorFields(errorEvent) },
                 errorEvent,
               );
@@ -153,7 +174,7 @@ export function withRetry(
             retryLogger,
             "warn",
             "stream_exception",
-            `stream exception attempt=${attempt}/${config.maxAttempts} ${formatSerializableErrorForLog(toSerializableError(errorEvent))}`,
+            `stream exception attempt=${attempt}/${config.maxAttempts} ${formatProviderErrorForLog(errorEvent)}`,
             { attempt, maxAttempts: config.maxAttempts, ...errorFields(errorEvent) },
             errorEvent,
           );
@@ -164,7 +185,11 @@ export function withRetry(
 
         // If no error captured from events, check if stream completed normally
         if (!errorEvent) {
-          errorEvent = new ProviderError("Provider stream ended without producing a terminal event", "network", true);
+          errorEvent = new ProviderError(
+            "Provider stream ended without producing a terminal event",
+            ProviderErrorType.Network,
+            true,
+          );
           logRetry(
             retryLogger,
             "warn",
@@ -188,7 +213,7 @@ export function withRetry(
             retryLogger,
             "error",
             "retry_exhausted",
-            `giving up attempt=${attempt}/${config.maxAttempts} reason=${reason} ${formatSerializableErrorForLog(toSerializableError(errorEvent))}`,
+            `giving up attempt=${attempt}/${config.maxAttempts} reason=${reason} ${formatProviderErrorForLog(errorEvent)}`,
             { attempt, maxAttempts: config.maxAttempts, reason, ...errorFields(errorEvent) },
             errorEvent,
           );
@@ -242,7 +267,7 @@ export function withRetry(
         retryLogger,
         "error",
         "wrapper_exception",
-        `wrapper exception ${formatSerializableErrorForLog(toSerializableError(providerErr))}`,
+        `wrapper exception ${formatProviderErrorForLog(providerErr)}`,
         errorFields(providerErr),
         providerErr,
       );

@@ -1,6 +1,6 @@
 // @summary Tests for building context from session entries
 import { describe, expect, it } from "bun:test";
-import type { Message } from "@diligent/core/types";
+import type { Message } from "@diligent/core/message-contract";
 import type { CompactionEntry, SessionEntry } from "@diligent/runtime/session";
 import { buildSessionContext, buildSessionTranscript } from "@diligent/runtime/session";
 
@@ -315,6 +315,61 @@ describe("buildSessionContext", () => {
     expect(ctx.messages).toHaveLength(2);
     expect(ctx.messages[0].role).toBe("user");
     expect(ctx.messages[1].role).toBe("assistant");
+  });
+
+  it("replays internal messages to providers while excluding them from visible context and transcript", () => {
+    const internal = {
+      ...makeMsg("a2", "a1", "user", "internal policy"),
+      visibility: "internal" as const,
+      source: "test-hook",
+    };
+    const entries: SessionEntry[] = [
+      makeMsg("a1", null, "user", "visible"),
+      internal,
+      makeMsg("a3", "a2", "assistant", "done"),
+    ];
+    const context = buildSessionContext(entries);
+
+    expect(context.messages.map(msgContent)).toEqual(["visible", "done"]);
+    expect(context.providerMessages.map(msgContent)).toEqual(["visible", "internal policy", "done"]);
+    expect(buildSessionTranscript(entries).filter((entry) => entry.type === "message")).toHaveLength(2);
+  });
+
+  it("replays presentable internal messages to providers and exposes only their structured notice", () => {
+    const internal = {
+      ...makeMsg("a2", "a1", "user", "human edit model context"),
+      visibility: "internal" as const,
+      source: "studiorpc-human-edits",
+      presentation: {
+        kind: "human-edits",
+        title: "Human edits detected",
+        content: "Added: Ramp",
+      },
+    };
+    const entries: SessionEntry[] = [makeMsg("a1", null, "user", "move it"), internal];
+
+    const context = buildSessionContext(entries);
+    expect(context.messages.map(msgContent)).toEqual(["move it"]);
+    expect(context.providerMessages.map(msgContent)).toEqual(["move it", "human edit model context"]);
+    expect(buildSessionTranscript(entries)).toEqual([
+      expect.objectContaining({ type: "message" }),
+      expect.objectContaining({
+        type: "context",
+        source: "studiorpc-human-edits",
+        presentation: internal.presentation,
+      }),
+    ]);
+  });
+
+  it("keeps legacy untagged reminder messages visible", () => {
+    const entries: SessionEntry[] = [
+      makeMsg("a1", null, "user", "visible"),
+      makeMsg("a2", "a1", "user", "<system-reminder>\nlegacy\n</system-reminder>"),
+    ];
+    const context = buildSessionContext(entries);
+    expect(context.messages.map(msgContent)).toEqual(["visible", "<system-reminder>\nlegacy\n</system-reminder>"]);
+    expect(context.providerMessages).toHaveLength(2);
+    expect(buildSessionTranscript(entries)).toHaveLength(2);
   });
 });
 

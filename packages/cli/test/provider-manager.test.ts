@@ -1,6 +1,6 @@
 // @summary Tests for provider manager configuration and model handling
 import { describe, expect, test } from "bun:test";
-import { createChatGPTOAuthBinding, DEFAULT_ANTHROPIC_MODEL_ID } from "@diligent/runtime";
+import { createChatGPTOAuthBinding, DEFAULT_ANTHROPIC_MODEL_ID, ProviderAuthPresenter } from "@diligent/runtime";
 import { DEFAULT_MODELS, PROVIDER_NAMES, ProviderManager } from "../src/provider-manager";
 
 describe("ProviderManager", () => {
@@ -40,15 +40,17 @@ describe("ProviderManager", () => {
     expect(pm.getConfiguredProviders()).toEqual(["anthropic", "openai"]);
   });
 
-  test("getMaskedKey returns first 7 chars", () => {
+  test("runtime presenter masks configured API keys", () => {
     const pm = new ProviderManager({});
+    const presenter = new ProviderAuthPresenter(pm);
     pm.setApiKey("anthropic", "sk-ant-1234567890");
-    expect(pm.getMaskedKey("anthropic")).toBe("sk-ant-...");
+    expect(presenter.getStatus("anthropic").maskedKey).toBe("sk-ant-...");
   });
 
-  test("getMaskedKey returns undefined when no key", () => {
+  test("ProviderManager does not expose presentation methods", () => {
     const pm = new ProviderManager({});
-    expect(pm.getMaskedKey("anthropic")).toBeUndefined();
+    expect("getMaskedKey" in pm).toBe(false);
+    expect("hasOAuthFor" in pm).toBe(false);
   });
 
   test("createProxyStream returns a function", () => {
@@ -67,7 +69,7 @@ describe("ProviderManager", () => {
         { systemPrompt: [], messages: [], tools: [] },
         {},
       );
-    }).toThrow(/No authentication configured for anthropic/);
+    }).toThrow(/No authentication is configured for anthropic/);
   });
 
   test("PROVIDER_NAMES constant contains all providers", () => {
@@ -113,6 +115,7 @@ describe("ProviderManager", () => {
 
   test("oauth marks chatgpt as configured", () => {
     const pm = new ProviderManager({});
+    const presenter = new ProviderAuthPresenter(pm);
     const binding = createChatGPTOAuthBinding({
       initialTokens: {
         access_token: "at",
@@ -122,9 +125,13 @@ describe("ProviderManager", () => {
       },
     });
     pm.setExternalAuth("chatgpt", binding.auth);
+    presenter.setExternalAuth("chatgpt", binding.presentation);
     expect(pm.hasKeyFor("chatgpt")).toBe(true);
-    expect(pm.hasOAuthFor("chatgpt")).toBe(true);
-    expect(pm.getMaskedKey("chatgpt")).toBe("ChatGPT OAuth");
+    expect(presenter.getStatus("chatgpt")).toEqual({
+      configured: true,
+      maskedKey: "ChatGPT OAuth",
+      oauthConnected: true,
+    });
   });
 
   test("anthropic native compaction is enabled by default", () => {

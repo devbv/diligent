@@ -1,46 +1,27 @@
 // @summary Agent public types and event stream primitives for the core runner
 
 import type { Logger } from "@diligent/logging";
+import type { MessageDelta, SerializableError } from "@diligent/protocol";
+import type { LocalImageLoader } from "../llm/image-io";
 import type { NativeCompactFn } from "../llm/provider/native-compaction";
 import type { StreamTurnScope } from "../llm/turn-scope";
-import type { ProviderErrorType, StreamFunction, ThinkingEffort } from "../llm/types";
-import type {
-  AssistantMessage,
-  ContentBlock,
-  ImageBlock,
-  Message,
-  ToolRenderPayloadLike,
-  ToolResultMessage,
-  Usage,
-} from "../types";
+import type { StreamFunction, ThinkingEffort } from "../llm/types";
+import type { ToolOutputFileStore } from "../tool/executor";
+import type { AssistantMessage, ImageBlock, Message, ToolRenderPayloadLike, ToolResultMessage, Usage } from "../types";
+import type { AgentLoopHook } from "./loop-hooks";
 
-export type MessageDelta =
-  | { type: "text_delta"; delta: string }
-  | { type: "thinking_delta"; delta: string }
-  | { type: "content_block_delta"; block: ContentBlock };
+export type { MessageDelta, SerializableError } from "@diligent/protocol";
 
-// D086: Serializable error representation for events crossing core↔consumer boundary
-export interface SerializableError {
-  message: string;
-  name: string;
-  stack?: string;
-  code?: string;
-  providerErrorType?: ProviderErrorType;
-  isRetryable?: boolean;
-  retryAfterMs?: number;
-  statusCode?: number;
-}
-
-// D004: 15 CoreAgentEvent types emitted by loop.ts — D086: itemId on grouped subtypes, SerializableError
+// Core events emitted by the reusable agent engine — D086: itemId on grouped subtypes, SerializableError
 export type CoreAgentEvent =
   // Lifecycle (2)
   | { type: "agent_start" }
   | { type: "agent_end"; messages: Message[] }
   // Turn (2)
-  | { type: "turn_start"; turnId: string; childThreadId?: string; nickname?: string; turnNumber?: number }
+  | { type: "turn_start"; turnId: string }
   | { type: "turn_end"; turnId: string; message: AssistantMessage; toolResults: ToolResultMessage[] }
   // Message streaming (3) — D086: itemId groups related events
-  | { type: "message_start"; itemId: string; message: AssistantMessage; childThreadId?: string; nickname?: string }
+  | { type: "message_start"; itemId: string; message: AssistantMessage }
   | {
       type: "message_discarded";
       itemId: string;
@@ -48,18 +29,14 @@ export type CoreAgentEvent =
       nextAttempt: number;
       maxAttempts: number;
       delayMs: number;
-      childThreadId?: string;
-      nickname?: string;
     }
   | {
       type: "message_delta";
       itemId: string;
       message: AssistantMessage;
       delta: MessageDelta;
-      childThreadId?: string;
-      nickname?: string;
     }
-  | { type: "message_end"; itemId: string; message: AssistantMessage; childThreadId?: string; nickname?: string }
+  | { type: "message_end"; itemId: string; message: AssistantMessage }
   // Tool execution (3) — D086: itemId groups related events
   | {
       type: "tool_start";
@@ -67,8 +44,6 @@ export type CoreAgentEvent =
       toolCallId: string;
       toolName: string;
       input: unknown;
-      childThreadId?: string;
-      nickname?: string;
     }
   | {
       type: "tool_update";
@@ -76,8 +51,6 @@ export type CoreAgentEvent =
       toolCallId: string;
       toolName: string;
       partialResult: string;
-      childThreadId?: string;
-      nickname?: string;
     }
   | {
       type: "tool_end";
@@ -89,11 +62,7 @@ export type CoreAgentEvent =
       isError: boolean;
       render?: ToolRenderPayloadLike;
       metadata?: Record<string, unknown>;
-      childThreadId?: string;
-      nickname?: string;
     }
-  // Status (1)
-  | { type: "status_change"; status: "idle" | "busy" }
   // Usage (1)
   | { type: "usage"; usage: Usage }
   // Prompt debug (1)
@@ -108,6 +77,15 @@ export type CoreAgentEvent =
   | { type: "error"; error: SerializableError; fatal: boolean }
   // Steering (1) — P1
   | { type: "steering_injected"; messageCount: number; messages: Message[]; steerIds: string[] }
+  // Trusted in-process context injection (runtime consumes this; protocol does not)
+  | {
+      type: "context_injected";
+      injections: Array<{
+        source: string;
+        message: import("../types").UserMessage;
+        metadata?: Record<string, unknown>;
+      }>;
+    }
   // Compaction (2)
   | { type: "compaction_start"; estimatedTokens: number }
   | {
@@ -145,14 +123,19 @@ export interface CompactionConfig {
 }
 
 export interface LLMRetryConfig {
-  maxRetries: number; // D010: default 5
-  baseDelayMs: number; // default: 1000
-  maxDelayMs: number; // default: 30_000
+  maxRetries: number;
+  baseDelayMs: number;
+  maxDelayMs: number;
 }
+
+export const DEFAULT_LLM_RETRY_CONFIG: Readonly<LLMRetryConfig> = {
+  maxRetries: 5,
+  baseDelayMs: 1_000,
+  maxDelayMs: 30_000,
+};
 
 // D008: Loop control configuration — timing and compaction knobs only
 export interface AgentOptions {
-  cwd?: string;
   effort?: ThinkingEffort;
   /** Structured diagnostic logger. Defaults to the local console-compatible core logger. */
   logger?: Logger;
@@ -164,13 +147,12 @@ export interface AgentOptions {
   llmMsgStreamFn?: StreamFunction;
   /** Explicit native compaction function — overrides the global compaction resolver. */
   llmCompactionFn?: NativeCompactFn;
-  /**
-   * Soft plan reminder: re-inject the unfinished plan steps into the conversation tail
-   * after this many agent loop iterations ("turns") without the plan being surfaced.
-   * Resets whenever the model calls the `plan` tool (its update is itself a recite) or a
-   * reminder fires. 0/undefined disables the feature (no behavior change).
-   */
-  planReminderIntervalTurns?: number;
+  /** Caller-owned adapter for reading persisted local image blocks. */
+  localImageLoader?: LocalImageLoader;
+  /** Caller-owned adapter for storing full tool output when core truncates it. */
+  toolOutputStore?: ToolOutputFileStore;
+  /** Trusted synchronous hooks scoped to this Agent instance. */
+  loopHooks?: readonly AgentLoopHook[];
 }
 
 export interface AgentPromptOptions {

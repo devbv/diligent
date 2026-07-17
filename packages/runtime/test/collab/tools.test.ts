@@ -1,6 +1,6 @@
 // @summary Tests for spawn_agent, wait, send_input, close_agent tool execute() methods
 import { describe, expect, it } from "bun:test";
-import type { ToolContext } from "@diligent/core/tool/types";
+import type { ToolContext } from "@diligent/core/tool-contract";
 import { createCollabTools } from "@diligent/runtime/collab";
 import {
   formatAgentTypeParameterDescription,

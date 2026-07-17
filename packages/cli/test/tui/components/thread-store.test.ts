@@ -82,6 +82,47 @@ describe("ThreadStore", () => {
     expect(rendered).toContain("Reconnecting… 2/5");
   });
 
+  test("renders runtime presentation with a client-owned recovery hint", () => {
+    const store = new ThreadStore({ requestRender: () => {} });
+
+    store.handleEvent({
+      type: "error",
+      error: {
+        name: "ProviderError",
+        message: "raw auth detail",
+        presentation: {
+          message: "OpenAI rejected the saved credentials. Reconnect to continue.",
+          recovery: { kind: "configure_provider", provider: "openai" },
+        },
+      },
+      fatal: false,
+    });
+
+    const rendered = renderCommittedTranscriptItems(store.getItems(), 100).map(stripAnsi).join("\n");
+    expect(rendered).toContain("OpenAI rejected the saved credentials. Reconnect to continue.");
+    expect(rendered).toContain("Run /provider set openai to reconnect.");
+    expect(rendered).not.toContain("raw auth detail");
+  });
+
+  test("renders structured context notices from the shared protocol", () => {
+    const store = new ThreadStore({ requestRender: () => {} });
+
+    store.handleEvent({
+      type: "context_notice",
+      source: "studiorpc-human-edits",
+      presentation: {
+        kind: "human-edits",
+        title: "Human edits detected",
+        content: "Added (1):\n+ Part Ramp",
+      },
+    });
+
+    const rendered = renderCommittedTranscriptItems(store.getItems(), 100).map(stripAnsi).join("\n");
+    expect(rendered).toContain("Human edits detected");
+    expect(rendered).toContain("Added (1):");
+    expect(rendered).toContain("+ Part Ramp");
+  });
+
   test("tracks active question independently from transcript items", () => {
     const store = new ThreadStore({ requestRender: () => {} });
     const question = {

@@ -2,24 +2,25 @@
 
 import { createLogger, type Logger } from "@diligent/logging";
 import { resolveCompaction } from "../llm/compaction";
+import type { LocalImageLoader } from "../llm/image-io";
 import { resolveModel } from "../llm/models";
 import type { NativeCompactFn } from "../llm/provider/native-compaction";
 import { withRetry } from "../llm/retry";
 import { resolveStream } from "../llm/stream-resolver";
 import { createStreamTurnScope, type StreamTurnScope } from "../llm/turn-scope";
 import type { Model, ProviderName, StreamFunction, SystemSection, ThinkingEffort } from "../llm/types";
+import type { ToolOutputFileStore } from "../tool/executor";
 import type { Tool } from "../tool/types";
 import type { Message } from "../types";
 import { runCompaction } from "./compaction";
 import type { LoopRuntime } from "./loop";
 import { runAgentLoop } from "./loop";
+import { AgentLoopHookDispatcher } from "./loop-hooks";
 import { updateUserMessageContent } from "./message-content";
 import type { AgentOptions, AgentPromptOptions, CompactionConfig, QueuedSteeringMessage } from "./types";
-import { AgentStream, type LLMRetryConfig } from "./types";
-import { findLatestPlanSteps, type PlanReminderState } from "./util/plan-reminder";
+import { AgentStream, DEFAULT_LLM_RETRY_CONFIG, type LLMRetryConfig } from "./types";
 
 export class Agent {
-  cwd?: string;
   model: Model;
   systemPrompt: SystemSection[];
   tools: Tool[];
@@ -28,43 +29,38 @@ export class Agent {
   private llmCompactionFn?: NativeCompactFn;
   private retryConfig: LLMRetryConfig;
   private logger: Logger;
+  private loopHooks: AgentLoopHookDispatcher;
   private compactionConfig: CompactionConfig;
   private messages: Message[] = [];
   private compactionSummary?: Record<string, unknown>;
-  /** Session-level reminder state (plan steps + cadence counter), external to the conversation
-   *  so it survives compaction and re-prompts — the counter must persist across user inputs,
-   *  otherwise a "N-turn burst → user input → …" pattern would reset it and never remind. */
-  private planReminderState?: PlanReminderState;
-  private planReminderIntervalTurns?: number;
   private pendingSteeringMessages: QueuedSteeringMessage[] = [];
   private nextSteeringId = 0;
   private _running = false;
   private sessionId?: string;
+  private localImageLoader?: LocalImageLoader;
+  private toolOutputStore?: ToolOutputFileStore;
   readonly agentStream = new AgentStream();
 
   constructor(model: string | Model, systemPrompt: SystemSection[], tools: Tool[], opts?: AgentOptions) {
     this.model = typeof model === "string" ? resolveModel(model) : model;
-    this.cwd = opts?.cwd;
     this.systemPrompt = systemPrompt;
     this.tools = tools;
     this.effort = opts?.effort ?? "medium";
     this.logger = opts?.logger ?? createLogger({ scope: "agent" });
+    this.loopHooks = new AgentLoopHookDispatcher(opts?.loopHooks ?? [], this.logger);
     this.sessionId = opts?.sessionId;
+    this.localImageLoader = opts?.localImageLoader;
+    this.toolOutputStore = opts?.toolOutputStore;
     this.compactionConfig = opts?.compaction ?? {
       reservePercent: 14,
       keepRecentTokens: 20_000,
       timeoutMs: 180_000,
     };
-    this.retryConfig = opts?.retry ?? {
-      maxRetries: 5,
-      baseDelayMs: 1_000,
-      maxDelayMs: 30_000,
-    };
+    this.retryConfig = opts?.retry ?? DEFAULT_LLM_RETRY_CONFIG;
     this.llmMsgStreamFn = this.wrapWithRetry(
       opts?.llmMsgStreamFn ?? resolveStream(this.model.provider as ProviderName),
     );
     this.llmCompactionFn = opts?.llmCompactionFn ?? resolveCompaction(this.model.provider);
-    this.planReminderIntervalTurns = opts?.planReminderIntervalTurns;
   }
 
   private wrapWithRetry(fn: StreamFunction): StreamFunction {
@@ -89,13 +85,13 @@ export class Agent {
   restore(messages: Message[]): void {
     this.messages = [...messages];
     this.compactionSummary = undefined;
-    this.planReminderState = { plan: findLatestPlanSteps(this.messages), turnsSinceSurfaced: 0 };
+    this.loopHooks.restore(this.messages);
   }
 
   restoreCompactionState(messages: Message[], compactionSummary?: Record<string, unknown>): void {
     this.messages = [...messages];
     this.compactionSummary = compactionSummary;
-    this.planReminderState = { plan: findLatestPlanSteps(this.messages), turnsSinceSurfaced: 0 };
+    this.loopHooks.restore(this.messages);
   }
 
   /** Get the current conversation messages. */
@@ -120,7 +116,6 @@ export class Agent {
       if (result.compactionSummary !== undefined) {
         this.compactionSummary = result.compactionSummary;
       }
-      this.planReminderState = result.planReminderState;
       return result.messages;
     } finally {
       if (ownsTurnScope) await turnScope.dispose();
@@ -132,13 +127,12 @@ export class Agent {
   private createLoopRuntime(turnScope: StreamTurnScope): LoopRuntime {
     return {
       config: {
-        cwd: this.cwd,
         model: this.model,
         systemPrompt: this.systemPrompt,
         tools: this.tools,
         effort: this.effort,
         compaction: this.compactionConfig,
-        planReminderIntervalTurns: this.planReminderIntervalTurns,
+        localImageLoader: this.localImageLoader,
       },
       streamFunction: this.llmMsgStreamFn,
       llmCompactionFn: this.llmCompactionFn,
@@ -147,7 +141,8 @@ export class Agent {
       logger: this.logger,
       sessionId: this.sessionId,
       compactionSummary: this.compactionSummary,
-      planReminderState: this.planReminderState,
+      loopHooks: this.loopHooks,
+      toolOutputStore: this.toolOutputStore,
       hooks: {
         drainSteeringMessages: () => this.drainPendingMessages(),
         pendingSteeringCount: () => this.pendingSteeringMessages.length,
@@ -227,6 +222,7 @@ export class Agent {
       llmCompactionFn: this.llmCompactionFn,
       stream: this.agentStream,
       sessionId: this.sessionId,
+      localImageLoader: this.localImageLoader,
       signal,
     });
     this.messages = result.messages;

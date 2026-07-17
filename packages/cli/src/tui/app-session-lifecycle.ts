@@ -176,6 +176,14 @@ export class AppSessionLifecycle {
         this.deps.chatView.addLines([`  ${t.dim}[Compacted: ${item.displaySummary ?? item.summary}]${t.reset}`, ""]);
         continue;
       }
+      if (item.type === "contextMessage") {
+        this.deps.chatView.addLines([
+          `${t.success}✎ ${item.presentation.title}${t.reset}`,
+          ...item.presentation.content.split("\n").map((line) => `${t.dim}  ${line}${t.reset}`),
+          "",
+        ]);
+        continue;
+      }
       if (item.type === "userMessage") {
         const text =
           typeof item.message.content === "string"

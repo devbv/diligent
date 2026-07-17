@@ -3,12 +3,13 @@ import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { AgentLoopHook } from "@diligent/core/agent";
 import { Agent } from "@diligent/core/agent";
 import { EventStream } from "@diligent/core/event-stream";
-import type { Model, ProviderEvent, ProviderResult, StreamFunction } from "@diligent/core/llm/types";
-import { ProviderError } from "@diligent/core/llm/types";
-import type { Tool } from "@diligent/core/tool/types";
-import type { AssistantMessage, Message } from "@diligent/core/types";
+import type { AssistantMessage, Message } from "@diligent/core/message-contract";
+import type { Model, ProviderEvent, ProviderResult, StreamFunction } from "@diligent/core/provider-contract";
+import { ProviderError } from "@diligent/core/provider-contract";
+import type { Tool } from "@diligent/core/tool-contract";
 import { type LogRecord, resetDefaultLogSinkForTests, setDefaultLogSink } from "@diligent/logging";
 import { resolvePaths } from "@diligent/runtime/infrastructure";
 import type { SessionManagerConfig } from "@diligent/runtime/session";
@@ -154,6 +155,42 @@ describe("SessionManager", () => {
 
     // Events should include turn lifecycle
     expect(events.some((e) => e.type === "turn_start")).toBe(true);
+  });
+
+  test("persists loop-hook context internally without publishing or exposing it", async () => {
+    const dir = await setupDir();
+    const providerContexts: Message[][] = [];
+    const hook: AgentLoopHook = {
+      id: "test-context",
+      beforeTurn: () => [{ source: "test-context", content: "internal policy" }],
+    };
+    const mgr = new SessionManager({
+      cwd: dir,
+      paths: resolvePaths(dir),
+      agent: new Agent(TEST_MODEL, [{ label: "test", content: "test" }], [], {
+        effort: "medium",
+        loopHooks: [hook],
+        llmMsgStreamFn: (_model, context) => {
+          providerContexts.push([...context.messages]);
+          return createProviderEventStream(makeAssistant("done"));
+        },
+      }),
+    });
+    await mgr.create();
+
+    const events = await runCollecting(mgr, { role: "user", content: "visible", timestamp: Date.now() });
+    await mgr.waitForWrites();
+    const { entries } = await readSessionFile(mgr.sessionPath!);
+    const internal = entries.find(
+      (entry) => entry.type === "message" && entry.visibility === "internal" && entry.source === "test-context",
+    );
+
+    expect(internal?.type === "message" ? internal.message.content : undefined).toBe("internal policy");
+    expect(
+      providerContexts[0].some((message) => message.role === "user" && message.content === "internal policy"),
+    ).toBe(true);
+    expect(mgr.getContext().map((message) => message.role)).toEqual(["user", "assistant"]);
+    expect(events.some((event) => (event as { type: string }).type === "context_injected")).toBe(false);
   });
 
   test("run() preserves conversation context across turns", async () => {

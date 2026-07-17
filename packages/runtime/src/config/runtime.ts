@@ -2,9 +2,15 @@
 
 import { access, readFile } from "node:fs/promises";
 import { dirname, isAbsolute, resolve } from "node:path";
-import { KNOWN_MODELS, resolveModel } from "@diligent/core/llm/models";
-import { ProviderManager } from "@diligent/core/llm/provider-manager";
-import type { Model, ProviderName, StreamFunction, SystemSection, ThinkingEffort } from "@diligent/core/llm/types";
+import { KNOWN_MODELS, resolveModel } from "@diligent/core/model-registry";
+import type {
+  Model,
+  ProviderName,
+  StreamFunction,
+  SystemSection,
+  ThinkingEffort,
+} from "@diligent/core/provider-contract";
+import { ProviderManager } from "@diligent/core/provider-contract";
 import { createLogger } from "@diligent/logging";
 import { getBuiltinAgentDefinitions } from "../agent/agent-types";
 import type { Mode } from "../agent/mode";
@@ -22,6 +28,7 @@ import {
   saveOAuthTokens,
 } from "../auth/index";
 import { createChatGPTOAuthBinding, createVertexAccessTokenBinding } from "../auth/provider-auth";
+import { ProviderAuthPresenter } from "../auth/provider-auth-presenter";
 import type { ExperimentDefinition, ResolvedExperiment } from "../experiments";
 import { resolveExperimentGates, resolveExperimentStates } from "../experiments";
 import type { DiligentPaths } from "../infrastructure/index";
@@ -34,7 +41,7 @@ import { buildDefaultTools } from "../tools/defaults";
 import { buildSystemPromptWithKnowledge, discoverInstructions } from "./instructions";
 import type { DiligentConfigLayers } from "./loader";
 import { loadDiligentConfig } from "./loader";
-import type { DiligentConfig } from "./schema";
+import { DEFAULT_PLAN_REMINDER_INTERVAL_TURNS, type DiligentConfig } from "./schema";
 import { resolveConfiguredUserId } from "./user-id";
 
 const logger = createLogger({ scope: "runtime.config" });
@@ -64,6 +71,7 @@ export interface RuntimeConfig {
   };
   permissionEngine: PermissionEngine;
   providerManager: ProviderManager;
+  providerAuthPresenter?: ProviderAuthPresenter;
   authStore: AuthStoreOptions;
   experimentDefinitions: ExperimentDefinition[];
   experiments: ResolvedExperiment[];
@@ -91,6 +99,7 @@ export async function loadRuntimeConfig(
   const providerManager = new ProviderManager({
     ...config,
   });
+  const providerAuthPresenter = new ProviderAuthPresenter(providerManager);
 
   // Overlay auth.json keys
   const authKeys = await loadAuthStore(authStore);
@@ -113,6 +122,7 @@ export async function loadRuntimeConfig(
     try {
       await chatgptAuth.auth.ensureFresh?.();
       providerManager.setExternalAuth("chatgpt", chatgptAuth.auth);
+      providerAuthPresenter.setExternalAuth("chatgpt", chatgptAuth.presentation);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       logger.warn("oauth_refresh_failed", {
@@ -127,6 +137,7 @@ export async function loadRuntimeConfig(
   if (config.provider?.vertex) {
     const vertexAuth = createVertexAccessTokenBinding(config.provider.vertex);
     providerManager.setExternalAuth("vertex", vertexAuth.auth);
+    providerAuthPresenter.setExternalAuth("vertex", vertexAuth.presentation);
   }
 
   const streamFunction = providerManager.createProxyStream();
@@ -261,7 +272,7 @@ export async function loadRuntimeConfig(
     model,
     mode: (config.mode ?? "default") as Mode,
     effort: (config.effort ?? "medium") as ThinkingEffort,
-    planReminderIntervalTurns: config.planReminderIntervalTurns ?? 0,
+    planReminderIntervalTurns: config.planReminderIntervalTurns ?? DEFAULT_PLAN_REMINDER_INTERVAL_TURNS,
     systemPrompt,
     streamFunction,
     diligent: {
@@ -284,6 +295,7 @@ export async function loadRuntimeConfig(
     },
     permissionEngine: config.yolo ? createYoloPermissionEngine() : createPermissionEngine(config.permissions ?? []),
     providerManager,
+    providerAuthPresenter,
     authStore,
     experimentDefinitions,
     experiments,

@@ -80,6 +80,19 @@ mock.module("@test/async-plugin", () => ({
   ],
 }));
 
+mock.module("@test/native-exposure-plugin", () => ({
+  manifest: { name: "@test/native-exposure-plugin", apiVersion: "1.0", version: "0.1.0" },
+  createTools: () => [
+    {
+      name: "plugin_web",
+      description: "Must remain a local function tool",
+      parameters: z.object({}),
+      modelExposure: { kind: "provider_builtin", capability: "web" },
+      execute: async () => ({ output: "ok" }),
+    },
+  ],
+}));
+
 mock.module("@test/mixed-tools", () => ({
   manifest: { name: "@test/mixed-tools", apiVersion: "1.2", version: "0.2.0" },
   createTools: () => [
@@ -266,6 +279,14 @@ describe("loadPlugin", () => {
     expect(typeof result.tools[0].execute).toBe("function");
     expect(result.warnings).toEqual([]);
     expect(result.invalidTools).toEqual([]);
+  });
+
+  it("does not promote provider-native exposure from plugin SDK v1 tools", async () => {
+    const result = await loadPlugin("@test/native-exposure-plugin", CWD);
+
+    expect(result.error).toBeUndefined();
+    expect(result.tools).toHaveLength(1);
+    expect(result.tools[0]).not.toHaveProperty("modelExposure");
   });
 
   it("supports async createTools", async () => {

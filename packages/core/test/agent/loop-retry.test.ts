@@ -14,6 +14,7 @@ const testModel: Model = {
   provider: "test",
   contextWindow: 100000,
   maxOutputTokens: 4096,
+  supportsThinking: false,
   inputCostPer1M: 3.0,
   outputCostPer1M: 15.0,
 };
@@ -122,7 +123,12 @@ describe("agent loop retry + usage", () => {
     const { streamFn } = createMockStreamFn(1, "server_error");
     const records: LogRecord[] = [];
     await runAgent(streamFn, {
-      logger: createLogger({ scope: "test-agent", sink: (record) => records.push(record) }),
+      logger: createLogger({
+        scope: "test-agent",
+        sink: (record) => {
+          records.push(record);
+        },
+      }),
       sessionId: "agent-session",
       retry: { maxRetries: 2, baseDelayMs: 1, maxDelayMs: 1 },
     });

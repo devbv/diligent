@@ -1,6 +1,10 @@
 // @summary Tests for AgentRegistry: spawn, maxAgents, status tracking, shutdownAll
 import { describe, expect, it, spyOn } from "bun:test";
-import type { Tool } from "@diligent/core/tool/types";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { LocalImageLoader } from "@diligent/core/image-contract";
+import type { Tool } from "@diligent/core/tool-contract";
 import type { RuntimeAgent } from "@diligent/runtime/agent/runtime-agent";
 import { AgentRegistry, isFinal } from "@diligent/runtime/collab";
 import type { SessionManagerConfig } from "@diligent/runtime/session";
@@ -507,26 +511,90 @@ describe("AgentRegistry", () => {
     expect(typeof result.threadId).toBe("string");
   });
 
-  it("excludes collab tools from child agents by default", async () => {
-    let childToolNames: string[] = [];
-    let childCwd: string | undefined;
+  it("uses the built-in agent default model class", async () => {
+    const observedModels: string[] = [];
     const registry = new AgentRegistry(
       makeCollabDeps({
-        parentTools: [makeTool("read"), makeTool("spawn_agent"), makeTool("wait")],
-        sessionManagerFactory: makeInspectingSessionManagerFactory((agent) => {
-          childToolNames = agent.tools.map((tool) => tool.name);
-          childCwd = agent.cwd;
-        }),
+        modelId: "claude-opus-4-8",
+        sessionManagerFactory: makeInspectingSessionManagerFactory((agent) => observedModels.push(agent.model.id)),
       }),
     );
 
-    const { threadId } = registry.spawn({ prompt: "task", description: "", agentType: "general" });
+    const { threadId } = registry.spawn({ prompt: "explore", description: "", agentType: "explore" });
     await registry.wait([threadId], 5000);
 
-    expect(childToolNames).toContain("read");
-    expect(childToolNames).not.toContain("spawn_agent");
-    expect(childToolNames).not.toContain("wait");
-    expect(childCwd).toBe("/tmp/collab-test");
+    expect(observedModels).toEqual(["claude-haiku-4-5-20251001"]);
+  });
+
+  it("uses a custom agent default model class", async () => {
+    const observedModels: string[] = [];
+    const registry = new AgentRegistry(
+      makeCollabDeps({
+        modelId: "claude-opus-4-8",
+        agentDefinitions: resolveAvailableAgentDefinitions(getBuiltinAgentDefinitions(), [
+          {
+            name: "quick-reviewer",
+            description: "Reviews quickly",
+            filePath: "/tmp/quick-reviewer/AGENT.md",
+            content: "Review quickly.",
+            tools: ["read"],
+            defaultModelClass: "lite",
+            source: "project",
+          },
+        ]),
+        sessionManagerFactory: makeInspectingSessionManagerFactory((agent) => observedModels.push(agent.model.id)),
+      }),
+    );
+
+    const { threadId } = registry.spawn({ prompt: "review", description: "", agentType: "quick-reviewer" });
+    await registry.wait([threadId], 5000);
+
+    expect(observedModels).toEqual(["claude-haiku-4-5-20251001"]);
+  });
+
+  it("inherits the parent model class when an agent has no default", async () => {
+    const observedModels: string[] = [];
+    const registry = new AgentRegistry(
+      makeCollabDeps({
+        modelId: "claude-opus-4-8",
+        sessionManagerFactory: makeInspectingSessionManagerFactory((agent) => observedModels.push(agent.model.id)),
+      }),
+    );
+
+    const { threadId } = registry.spawn({ prompt: "work", description: "", agentType: "general" });
+    await registry.wait([threadId], 5000);
+
+    expect(observedModels).toEqual(["claude-opus-4-8"]);
+  });
+
+  it("excludes collab tools and binds the image loader to the child cwd", async () => {
+    let childToolNames: string[] = [];
+    let childImageLoader: LocalImageLoader | undefined;
+    const childCwd = await mkdtemp(join(tmpdir(), "diligent-child-image-loader-"));
+    try {
+      await writeFile(join(childCwd, "image.png"), "child-image");
+      const registry = new AgentRegistry(
+        makeCollabDeps({
+          cwd: childCwd,
+          parentTools: [makeTool("read"), makeTool("spawn_agent"), makeTool("wait")],
+          sessionManagerFactory: makeInspectingSessionManagerFactory((agent) => {
+            childToolNames = agent.tools.map((tool) => tool.name);
+            childImageLoader = (agent as unknown as { localImageLoader?: LocalImageLoader }).localImageLoader;
+          }),
+        }),
+      );
+
+      const { threadId } = registry.spawn({ prompt: "task", description: "", agentType: "general" });
+      await registry.wait([threadId], 5000);
+      const bytes = await childImageLoader?.load({ type: "local_image", path: "image.png", mediaType: "image/png" });
+
+      expect(childToolNames).toContain("read");
+      expect(childToolNames).not.toContain("spawn_agent");
+      expect(childToolNames).not.toContain("wait");
+      expect(Buffer.from(bytes!).toString("utf8")).toBe("child-image");
+    } finally {
+      await rm(childCwd, { recursive: true, force: true });
+    }
   });
 
   it("treats an empty per-spawn allowedTools list as inherit-all", async () => {
@@ -677,6 +745,51 @@ describe("AgentRegistry", () => {
 
     expect(observedModels).toEqual(["gpt-5.4-mini"]);
     expect(observedEfforts).toEqual(["low"]);
+  });
+
+  it("creates distinct bundled loop-hook instances for each child with child context", async () => {
+    const instances: object[] = [];
+    const kinds: string[] = [];
+    const registry = new AgentRegistry(
+      makeCollabDeps({
+        agentLoopHookFactories: [
+          (context) => {
+            kinds.push(context.agentKind);
+            const hook = { id: `child-${instances.length}` };
+            instances.push(hook);
+            return [hook];
+          },
+        ],
+        sessionManagerFactory: makeInspectingSessionManagerFactory(() => {}),
+      }),
+    );
+
+    const first = registry.spawn({ prompt: "one", description: "", agentType: "general" });
+    const second = registry.spawn({ prompt: "two", description: "", agentType: "general" });
+    await registry.wait([first.threadId, second.threadId], 5000);
+
+    expect(kinds).toEqual(["child", "child"]);
+    expect(instances).toHaveLength(2);
+    expect(instances[0]).not.toBe(instances[1]);
+  });
+
+  it("lets main-only loop-hook factories opt out of child agents", async () => {
+    let createdHooks = 0;
+    const registry = new AgentRegistry(
+      makeCollabDeps({
+        agentLoopHookFactories: [
+          (context) => {
+            if (context.agentKind !== "main") return [];
+            createdHooks++;
+            return [{ id: "main-only" }];
+          },
+        ],
+        sessionManagerFactory: makeInspectingSessionManagerFactory(() => {}),
+      }),
+    );
+    const child = registry.spawn({ prompt: "one", description: "", agentType: "general" });
+    await registry.wait([child.threadId], 5000);
+    expect(createdHooks).toBe(0);
   });
 });
 

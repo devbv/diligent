@@ -1,5 +1,5 @@
 // @summary Parses and validates AGENT.md frontmatter metadata
-import type { ModelClass } from "@diligent/core/llm/models";
+import type { ModelClass } from "@diligent/core/model-registry";
 import { createLogger } from "@diligent/logging";
 import { parseYamlFrontmatter } from "../frontmatter/yaml";
 import { TOOL_CAPABILITIES } from "../tools/tool-metadata";

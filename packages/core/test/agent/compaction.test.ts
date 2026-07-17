@@ -1,10 +1,17 @@
 // @summary Tests for agent-layer compaction helpers — token estimation, shouldCompact, selectForCompaction
 import { describe, expect, it } from "bun:test";
+import { NATIVE_COMPACTION_MIN_INPUT_TOKENS } from "@diligent/core/compaction-contract";
 import { EventStream } from "@diligent/core/event-stream";
-import { NATIVE_COMPACTION_MIN_INPUT_TOKENS } from "@diligent/core/llm/compaction";
-import type { Model, ProviderEvent, ProviderResult, StreamFunction } from "@diligent/core/llm/types";
-import { resolveMaxTokens } from "@diligent/core/llm/types";
-import type { Message, UserMessage } from "@diligent/core/types";
+import type { LocalImageLoader } from "@diligent/core/image-contract";
+import type { Message, UserMessage } from "@diligent/core/message-contract";
+import type {
+  Model,
+  ProviderEvent,
+  ProviderResult,
+  StreamContext,
+  StreamFunction,
+} from "@diligent/core/provider-contract";
+import { resolveMaxTokens } from "@diligent/core/provider-contract";
 import {
   buildMessagesFromCompaction,
   estimateTokens,
@@ -242,6 +249,36 @@ describe("selectForCompaction", () => {
 });
 
 describe("runCompaction", () => {
+  it("does not expose the image loader to local summary models", async () => {
+    let capturedContext: StreamContext | undefined;
+    const summaryStream: StreamFunction = (model, context, options) => {
+      capturedContext = context;
+      return makeStreamFn("local summary")(model, context, options);
+    };
+
+    await runCompaction({
+      messages: [
+        {
+          role: "user",
+          timestamp: 0,
+          content: [
+            { type: "text", text: "summarize this" },
+            { type: "local_image", path: "relative/image.png", mediaType: "image/png" },
+          ],
+        },
+      ],
+      model: TEST_MODEL,
+      systemPrompt: [],
+      localImageLoader: { load: async () => null },
+      compactionConfig: { reservePercent: 16, keepRecentTokens: 50 },
+      llmMsgStreamFn: summaryStream,
+      stream: new AgentStream(),
+    });
+
+    expect(capturedContext).toBeDefined();
+    expect("localImageLoader" in capturedContext!).toBe(false);
+  });
+
   it("rebuilds summary messages when native compaction returns only display summary", async () => {
     const messages: Message[] = [userMsg("x".repeat(NATIVE_COMPACTION_MIN_INPUT_TOKENS * 4))];
     const stream = new AgentStream();
@@ -288,11 +325,13 @@ describe("runCompaction", () => {
     expect(result.compactionSummary).toEqual({ type: "compaction", encrypted_content: "opaque" });
   });
 
-  it("forwards compactionSummary and sessionId to native compaction", async () => {
+  it("forwards compaction state and the caller-owned image loader to native compaction", async () => {
     const messages: Message[] = [{ role: "user", content: "x".repeat(200_001), timestamp: 0 }];
     const stream = new AgentStream();
     let capturedSessionId: string | undefined;
     let capturedCompactionSummary: Record<string, unknown> | undefined;
+    const localImageLoader = { load: async () => null };
+    let capturedLocalImageLoader: LocalImageLoader | undefined;
 
     await runCompaction({
       messages,
@@ -300,6 +339,7 @@ describe("runCompaction", () => {
       systemPrompt: [],
       compactionSummary: { type: "compaction", encrypted_content: "opaque" },
       sessionId: "session-123",
+      localImageLoader,
       compactionConfig: {
         reservePercent: 16,
         keepRecentTokens: 50,
@@ -308,6 +348,7 @@ describe("runCompaction", () => {
       llmCompactionFn: async (input) => {
         capturedSessionId = input.sessionId;
         capturedCompactionSummary = input.compactionSummary;
+        capturedLocalImageLoader = input.localImageLoader;
         return {
           status: "ok",
           compactionSummary: { type: "compaction", encrypted_content: "next-opaque" },
@@ -318,6 +359,7 @@ describe("runCompaction", () => {
 
     expect(capturedSessionId).toBe("session-123");
     expect(capturedCompactionSummary).toEqual({ type: "compaction", encrypted_content: "opaque" });
+    expect(capturedLocalImageLoader).toBe(localImageLoader);
   });
 });
 

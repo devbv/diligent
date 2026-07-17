@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import type { Tool, ToolContext, ToolResult } from "@diligent/core/tool/types";
+import type { Tool, ToolContext, ToolResult } from "@diligent/core/tool-contract";
 import type { BundledToolProvider } from "@diligent/runtime";
 import { createStudioRpcToolProvider } from "../../sidecar/src/tools/studiorpc";
 import { createValidatorToolProvider } from "../../sidecar/src/tools/validator";

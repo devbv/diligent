@@ -16,6 +16,7 @@ const TEST_MODEL: Model = {
   provider: "openai",
   contextWindow: 128_000,
   maxOutputTokens: 16_384,
+  supportsThinking: true,
 };
 
 function makeStream(): EventStream<ProviderEvent, ProviderResult> {
@@ -48,19 +49,39 @@ async function* makeAsyncIter(payloads: Record<string, unknown>[]): AsyncIterabl
 
 describe("buildOpenAICompatibleMessages", () => {
   test("converts a simple string user message", async () => {
-    const messages = await buildOpenAICompatibleMessages([{ role: "user", content: "hello world" }]);
+    const messages = await buildOpenAICompatibleMessages([{ role: "user", content: "hello world", timestamp: 1 }]);
     expect(messages).toEqual([{ role: "user", content: "hello world" }]);
   });
 
   test("converts a user message with text content block", async () => {
     const messages = await buildOpenAICompatibleMessages([
-      { role: "user", content: [{ type: "text", text: "hello" }] },
+      { role: "user", content: [{ type: "text", text: "hello" }], timestamp: 1 },
     ]);
     expect(messages).toHaveLength(1);
     expect(messages[0].role).toBe("user");
     expect(Array.isArray(messages[0].content)).toBe(true);
     const content = messages[0].content as Array<{ type: string; text?: string }>;
     expect(content[0]).toEqual({ type: "text", text: "hello" });
+  });
+
+  test("materializes local images through the injected loader", async () => {
+    const messages = await buildOpenAICompatibleMessages(
+      [
+        {
+          role: "user",
+          content: [{ type: "local_image", path: "image.png", mediaType: "image/png" }],
+          timestamp: 1,
+        },
+      ],
+      { load: async () => new TextEncoder().encode("image-bytes").buffer },
+    );
+
+    expect(messages).toEqual([
+      {
+        role: "user",
+        content: [{ type: "image_url", image_url: { url: "data:image/png;base64,aW1hZ2UtYnl0ZXM=" } }],
+      },
+    ]);
   });
 
   test("converts an assistant message with text only", async () => {
@@ -135,10 +156,12 @@ describe("buildOpenAICompatibleMessages", () => {
   test("converts a tool result message", async () => {
     const messages = await buildOpenAICompatibleMessages([
       {
-        role: "tool",
+        role: "tool_result",
         toolCallId: "tc_1",
         toolName: "bash",
         output: "total 12\ndrwxr-xr-x",
+        isError: false,
+        timestamp: 1,
       },
     ]);
     expect(messages).toEqual([
@@ -154,7 +177,7 @@ describe("buildOpenAICompatibleMessages", () => {
   test("converts a multi-turn conversation", async () => {
     const now = Date.now();
     const messages = await buildOpenAICompatibleMessages([
-      { role: "user", content: "run ls" },
+      { role: "user", content: "run ls", timestamp: now },
       {
         role: "assistant",
         content: [{ type: "tool_call", id: "tc_3", name: "bash", input: { command: "ls" } }],
@@ -163,7 +186,14 @@ describe("buildOpenAICompatibleMessages", () => {
         stopReason: "tool_use",
         timestamp: now,
       },
-      { role: "tool", toolCallId: "tc_3", toolName: "bash", output: "file.txt" },
+      {
+        role: "tool_result",
+        toolCallId: "tc_3",
+        toolName: "bash",
+        output: "file.txt",
+        isError: false,
+        timestamp: now,
+      },
     ]);
     expect(messages).toHaveLength(3);
     expect(messages[0].role).toBe("user");
@@ -237,7 +267,9 @@ describe("mapChatCompletionsStopReason", () => {
     [null, "end_turn"],
     [undefined, "end_turn"],
   ])("maps %s → %s", (input, expected) => {
-    expect(mapChatCompletionsStopReason(input as string | null | undefined)).toBe(expected);
+    expect(mapChatCompletionsStopReason(input as string | null | undefined)).toBe(
+      expected as ReturnType<typeof mapChatCompletionsStopReason>,
+    );
   });
 });
 

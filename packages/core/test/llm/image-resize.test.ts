@@ -1,8 +1,8 @@
 // @summary Tests for downscaleImageIfNeeded — caps long edge, preserves aspect, passes through
 // small/undecodable/GIF images unchanged.
 import { beforeAll, describe, expect, test } from "bun:test";
-import type { Tool, ToolContext } from "@diligent/core/tool/types";
-import type { ImageBlock } from "@diligent/core/types";
+import type { ImageBlock } from "@diligent/core/message-contract";
+import type { Tool, ToolContext } from "@diligent/core/tool-contract";
 // @ts-expect-error -- file import yields a path string at runtime
 import pngWasm from "@jsquash/png/codec/pkg/squoosh_png_bg.wasm" with { type: "file" };
 import decodePng, { init as initPngDecode } from "@jsquash/png/decode";
@@ -16,21 +16,21 @@ import {
 } from "../../src/llm/image-resize";
 
 // Build a solid-white image of the given size and encode it to a real PNG for use as a fixture.
-function solidImage(width: number, height: number): { data: Uint8ClampedArray; width: number; height: number } {
+function solidImage(width: number, height: number): ImageData {
   const data = new Uint8ClampedArray(width * height * 4);
   data.fill(255);
-  return { data, width, height };
+  return { data, width, height } as ImageData;
 }
 
 // Deterministic pseudo-random noise (LCG) — incompressible pixels for byte-backstop fixtures.
-function noiseImage(width: number, height: number): { data: Uint8ClampedArray; width: number; height: number } {
+function noiseImage(width: number, height: number): ImageData {
   const data = new Uint8ClampedArray(width * height * 4);
   let seed = 0x12345678;
   for (let i = 0; i < data.length; i++) {
     seed = (seed * 1664525 + 1013904223) >>> 0;
     data[i] = seed & 0xff;
   }
-  return { data, width, height };
+  return { data, width, height } as ImageData;
 }
 
 let smallPng: ArrayBuffer;

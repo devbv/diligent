@@ -6,3 +6,9 @@ export {
   resolveProjectDirName,
   resolveStorageNamespace,
 } from "./diligent-dir";
+export {
+  createLocalImageLoader,
+  resolvePersistedLocalImagePath,
+  toPersistedLocalImagePath,
+} from "./local-image-loader";
+export { toolOutputStore } from "./tool-output-store";

@@ -1,7 +1,7 @@
 // @summary Discovers and builds system prompts with AGENTS.md instructions and knowledge sections
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
-import type { SystemSection } from "@diligent/core/llm/types";
+import type { SystemSection } from "@diligent/core/provider-contract";
 
 const INSTRUCTION_FILES = ["AGENTS.md"];
 const MAX_INSTRUCTION_BYTES = 32_768; // 32 KiB

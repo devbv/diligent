@@ -5,7 +5,7 @@ import { readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { Tool as HostTool, ToolResult as HostToolResult } from "@diligent/core/tool/types";
+import type { Tool as HostTool, ToolResult as HostToolResult } from "@diligent/core/tool-contract";
 import { createLogger } from "@diligent/logging";
 import type {
   Tool as PluginTool,
@@ -263,7 +263,11 @@ export async function loadPlugin(packageName: string, cwd: string, host?: Runtim
 
 function wrapPluginTool(tool: PluginTool, packageName: string, host?: RuntimeToolHost): HostTool {
   return {
-    ...tool,
+    name: tool.name,
+    description: tool.description,
+    parameters: tool.parameters,
+    supportParallel: tool.supportParallel,
+    parseArgs: tool.parseArgs,
     execute: async (args, ctx) => {
       const pluginContext: PluginToolHostContext = Object.assign({}, ctx, {
         approve: async (request: ApprovalRequest) => {

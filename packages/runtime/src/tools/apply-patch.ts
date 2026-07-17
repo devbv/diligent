@@ -1,6 +1,6 @@
 // @summary Applies codex-style Begin/End patch envelopes with lenient/strict verification
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
-import type { Tool, ToolResult } from "@diligent/core/tool/types";
+import type { Tool, ToolResult } from "@diligent/core/tool-contract";
 import { z } from "zod";
 import { dirnameCrossPlatform, isAbsolute, relativeCrossPlatform, resolveCrossPlatformPath } from "../util/path";
 import { type RuntimeToolHost, requestToolApproval } from "./capabilities";

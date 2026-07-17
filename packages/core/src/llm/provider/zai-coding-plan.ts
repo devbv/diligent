@@ -1,9 +1,10 @@
 // @summary z.ai Coding Plan provider using the OpenAI-compatible Chat Completions endpoint
 import { EventStream } from "../../event-stream";
 import { isNetworkError } from "../errors";
+import { classifyProviderHttpError } from "../provider-errors";
 import { flattenSections } from "../system-sections";
 import type { Model, ProviderEvent, ProviderResult, StreamContext, StreamFunction, StreamOptions } from "../types";
-import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError } from "../types";
+import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError, ProviderErrorReason, ProviderErrorType } from "../types";
 import {
   buildOpenAICompatibleMessages,
   buildOpenAICompatibleTools,
@@ -29,7 +30,7 @@ export function createZaiCodingPlanStream(apiKey?: string, baseUrl?: string): St
         const resolvedApiKey = resolveZaiCodingPlanApiKey(apiKey);
         const body: Record<string, unknown> = {
           model: model.id,
-          messages: await buildOpenAICompatibleMessages(context.messages, context.cwd),
+          messages: await buildOpenAICompatibleMessages(context.messages, context.localImageLoader),
           stream: true,
           stream_options: { include_usage: true },
         };
@@ -111,7 +112,7 @@ export function classifyZaiCodingPlanError(err: unknown): ProviderError {
   if (isNetworkError(err)) {
     return new ProviderError(
       String(err),
-      "network",
+      ProviderErrorType.Network,
       true,
       undefined,
       undefined,
@@ -123,18 +124,32 @@ export function classifyZaiCodingPlanError(err: unknown): ProviderError {
     const status = typeof record.status === "number" ? record.status : undefined;
     const message =
       typeof record.message === "string" ? record.message : err instanceof Error ? err.message : String(err);
-    if (status === 429) return new ProviderError(message, "rate_limit", false, undefined, status);
-    if (status === 401 || status === 403) return new ProviderError(message, "auth", false, undefined, status);
-    if (status !== undefined && status >= 500)
-      return new ProviderError(message, "server_error", true, undefined, status);
     if (status === 400 && isContextOverflow(message)) {
-      return new ProviderError(CONTEXT_OVERFLOW_ERROR_MESSAGE, "context_overflow", false, undefined, status);
+      return new ProviderError(CONTEXT_OVERFLOW_ERROR_MESSAGE, {
+        errorType: ProviderErrorType.ContextOverflow,
+        isRetryable: false,
+        statusCode: status,
+        reason: ProviderErrorReason.ContextWindowExceeded,
+      });
     }
-    return new ProviderError(message, "unknown", false, undefined, status, err instanceof Error ? err : undefined);
+    const httpError = classifyProviderHttpError({
+      message,
+      status,
+      cause: err instanceof Error ? err : undefined,
+    });
+    if (httpError) return httpError;
+    return new ProviderError(
+      message,
+      ProviderErrorType.Unknown,
+      false,
+      undefined,
+      status,
+      err instanceof Error ? err : undefined,
+    );
   }
   return new ProviderError(
     err instanceof Error ? err.message : String(err),
-    "unknown",
+    ProviderErrorType.Unknown,
     false,
     undefined,
     undefined,

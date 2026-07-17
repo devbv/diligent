@@ -1,8 +1,8 @@
 // @summary Turn lifecycle request handlers: turn start, interrupt, and steer
 
-import { resolvePersistedLocalImagePath, toPersistedLocalImagePath } from "@diligent/core/llm/local-image-paths";
-import { resolveModel } from "@diligent/core/llm/models";
+import { resolveModel } from "@diligent/core/model-registry";
 import { runCombinedHooks } from "../hooks/runner";
+import { resolvePersistedLocalImagePath, toPersistedLocalImagePath } from "../infrastructure/local-image-loader";
 import {
   DILIGENT_SERVER_NOTIFICATION_METHODS,
   type SupportedImageMediaType,

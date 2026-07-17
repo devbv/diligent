@@ -4,8 +4,7 @@ import type { AppConfig } from "../config";
 import {
   DEFAULT_MODELS,
   DEFAULT_PROVIDER,
-  PROVIDER_DISPLAY_NAMES,
-  PROVIDER_HINTS,
+  PROVIDER_DESCRIPTORS,
   PROVIDER_NAMES,
   type ProviderName,
 } from "../provider-manager";
@@ -30,7 +29,7 @@ export function createSetupWizard(deps: SetupWizardDeps): SetupWizard {
   function wizardPickProvider(): Promise<ProviderName | null> {
     const ctx = deps.buildCommandContext();
     const items: ListPickerItem[] = PROVIDER_NAMES.map((p) => ({
-      label: PROVIDER_DISPLAY_NAMES[p],
+      label: PROVIDER_DESCRIPTORS[p].displayName,
       description: deps.config.providerManager.hasKeyFor(p) ? "configured" : "no key",
       value: p,
     }));
@@ -40,10 +39,10 @@ export function createSetupWizard(deps: SetupWizardDeps): SetupWizard {
   function wizardEnterApiKey(provider: ProviderName): Promise<string | null> {
     if (provider === "chatgpt") return Promise.resolve(null);
     const ctx = deps.buildCommandContext();
-    const { apiKeyUrl: hint, apiKeyPlaceholder: placeholder } = PROVIDER_HINTS[provider];
+    const { apiKeyUrl: hint, apiKeyPlaceholder: placeholder } = PROVIDER_DESCRIPTORS[provider];
     return ctx.app.prompt({
-      title: `${PROVIDER_DISPLAY_NAMES[provider]} API Key`,
-      message: `Enter your ${PROVIDER_DISPLAY_NAMES[provider]} API key (${hint})`,
+      title: `${PROVIDER_DESCRIPTORS[provider].displayName} API Key`,
+      message: `Enter your ${PROVIDER_DESCRIPTORS[provider].displayName} API key (${hint})`,
       placeholder,
       masked: true,
     });

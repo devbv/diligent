@@ -1,6 +1,6 @@
 // @summary wait tool — block until specified agents finish or timeout, returning final statuses
 
-import type { Tool, ToolContext, ToolResult } from "@diligent/core/tool/types";
+import type { Tool, ToolContext, ToolResult } from "@diligent/core/tool-contract";
 import { z } from "zod";
 import type { AgentRegistry } from "./registry";
 import type { AgentStatus } from "./types";

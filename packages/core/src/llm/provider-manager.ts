@@ -9,11 +9,10 @@ import type { OpenAIImageDetail } from "./provider/openai-responses";
 import { validateProviderApiKey } from "./provider/validate-key";
 import { createVertexStream } from "./provider/vertex";
 import { createZaiCodingPlanStream } from "./provider/zai-coding-plan";
-import { ProviderError, type ProviderName, type StreamFunction } from "./types";
+import { ProviderError, ProviderErrorReason, ProviderErrorType, type ProviderName, type StreamFunction } from "./types";
 
 export interface ExternalProviderAuth {
   isConfigured: () => boolean;
-  getMaskedKey?: () => string | undefined;
   getStream: () => StreamFunction;
   getNativeCompaction?: () => import("./provider/native-compaction").NativeCompactFn | undefined;
   ensureFresh?: () => Promise<void>;
@@ -37,15 +36,6 @@ export const DEFAULT_PROVIDER: ProviderName = "anthropic";
 
 export const PROVIDER_NAMES: ProviderName[] = ["anthropic", "openai", "chatgpt", "gemini", "vertex", "zai-coding-plan"];
 
-export const PROVIDER_DISPLAY_NAMES: Record<ProviderName, string> = {
-  anthropic: "Anthropic",
-  openai: "OpenAI",
-  chatgpt: "ChatGPT",
-  gemini: "Gemini",
-  vertex: "Vertex AI",
-  "zai-coding-plan": "z.ai Coding Plan",
-};
-
 export const DEFAULT_MODELS: Record<ProviderName, string> = {
   anthropic: DEFAULT_ANTHROPIC_MODEL_ID,
   openai: "gpt-5.5",
@@ -53,18 +43,6 @@ export const DEFAULT_MODELS: Record<ProviderName, string> = {
   gemini: "gemini-3.5-flash",
   vertex: "vertex-gemma-4-26b-it",
   "zai-coding-plan": "glm-5.2",
-};
-
-export const PROVIDER_HINTS: Record<ProviderName, { apiKeyUrl: string; apiKeyPlaceholder: string }> = {
-  anthropic: { apiKeyUrl: "https://console.anthropic.com/settings/keys", apiKeyPlaceholder: "sk-ant-..." },
-  openai: { apiKeyUrl: "https://platform.openai.com/api-keys", apiKeyPlaceholder: "sk-..." },
-  chatgpt: { apiKeyUrl: "https://chatgpt.com", apiKeyPlaceholder: "OAuth login required" },
-  gemini: { apiKeyUrl: "https://aistudio.google.com/apikey", apiKeyPlaceholder: "AIza..." },
-  vertex: {
-    apiKeyUrl: "https://cloud.google.com/vertex-ai/generative-ai/docs/migrate/openai/overview",
-    apiKeyPlaceholder: "Google Cloud access token",
-  },
-  "zai-coding-plan": { apiKeyUrl: "https://platform.z.ai/console/api-keys", apiKeyPlaceholder: "API key" },
 };
 
 // imageDetail is OpenAI-only; other factories have fewer params and remain assignable (a function
@@ -154,14 +132,6 @@ class AuthStateManager {
   getConfiguredProviders(): ProviderName[] {
     return PROVIDER_NAMES.filter((p) => this.hasKeyFor(p));
   }
-
-  getMaskedKey(provider: ProviderName): string | undefined {
-    const external = this.getExternalAuth(provider);
-    if (external) return external.getMaskedKey?.() ?? `${provider} external auth`;
-    const key = this.keys[provider];
-    if (!key) return undefined;
-    return key.length > 7 ? `${key.slice(0, 7)}...` : key;
-  }
 }
 
 function createCompactionRegistry(
@@ -216,10 +186,6 @@ export class ProviderManager {
     this.authState.removeExternalAuth(provider);
   }
 
-  hasOAuthFor(provider: "chatgpt"): boolean {
-    return this.authState.getExternalAuth(provider) !== undefined;
-  }
-
   // Verify an API key before persisting it. Throws with a user-facing message if the key is invalid.
   async validateApiKey(provider: ProviderName, apiKey: string): Promise<void> {
     await validateProviderApiKey(provider, apiKey, this.baseUrls[provider], DEFAULT_MODELS[provider]);
@@ -237,11 +203,11 @@ export class ProviderManager {
 
       const apiKey = this.authState.getApiKey(provider);
       if (!apiKey) {
-        throw new ProviderError(
-          `No authentication configured for ${provider}. Use /provider ${provider} to configure.`,
-          "auth",
-          false,
-        );
+        throw new ProviderError(`No authentication is configured for ${provider}.`, {
+          errorType: ProviderErrorType.Auth,
+          isRetryable: false,
+          reason: ProviderErrorReason.CredentialsMissing,
+        });
       }
 
       const imageDetail = provider === "openai" ? this.openaiImageDetail : undefined;
@@ -280,9 +246,5 @@ export class ProviderManager {
 
   getConfiguredProviders(): ProviderName[] {
     return this.authState.getConfiguredProviders();
-  }
-
-  getMaskedKey(provider: ProviderName): string | undefined {
-    return this.authState.getMaskedKey(provider);
   }
 }

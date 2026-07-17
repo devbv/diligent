@@ -3,7 +3,6 @@ import type { ZodIssue } from "zod";
 import type { ToolCallBlock } from "../types";
 import {
   MAX_OUTPUT_BYTES,
-  persistFullOutput,
   shouldTruncate,
   TRUNCATION_WARNING,
   truncateHead,
@@ -12,10 +11,20 @@ import {
 } from "./truncation";
 import type { ToolContext, ToolRegistry, ToolResult } from "./types";
 
+/** Filesystem adapter for persisting a full tool output when core truncates the returned payload. */
+export interface ToolOutputFileStore {
+  save(output: string): Promise<string>;
+}
+
+export interface ExecuteToolOptions {
+  outputStore?: ToolOutputFileStore;
+}
+
 export async function executeTool(
   registry: ToolRegistry,
   toolCall: ToolCallBlock,
   ctx: ToolContext,
+  options?: ExecuteToolOptions,
 ): Promise<ToolResult> {
   const tool = registry.get(toolCall.name);
   if (!tool) {
@@ -66,19 +75,25 @@ export async function executeTool(
           ? truncateHeadTail(result.output, maxBytes)
           : truncateTail(result.output, maxBytes);
 
-    const savedPath = await persistFullOutput(result.output);
+    let savedPath: string | undefined;
+    try {
+      savedPath = await options?.outputStore?.save(result.output);
+    } catch {
+      // Full-output persistence is optional diagnostics. A usable truncated result already exists.
+    }
 
     return {
       ...result,
       output:
         truncated.output +
         TRUNCATION_WARNING +
-        `\n(truncated from ${truncated.originalBytes} bytes. Full output at: ${savedPath})`,
+        (savedPath ? " Full output saved to disk." : "") +
+        `\n(truncated from ${truncated.originalBytes} bytes.${savedPath ? ` Full output at: ${savedPath}` : ""})`,
       metadata: {
         ...result.metadata,
         truncated: true,
         truncatedFrom: { bytes: truncated.originalBytes },
-        fullOutputPath: savedPath,
+        ...(savedPath ? { fullOutputPath: savedPath } : {}),
       },
       truncateDirection: direction,
     };

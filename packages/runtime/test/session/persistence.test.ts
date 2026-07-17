@@ -122,6 +122,20 @@ describe("readSessionFile validation", () => {
 
     expect(readSessionFile(path)).rejects.toThrow("newer than supported");
   });
+
+  it("reads version-9 sessions and accepts appended internal metadata", async () => {
+    const dir = await setupDir();
+    const path = join(dir, "legacy.jsonl");
+    await Bun.write(
+      path,
+      `${JSON.stringify({ type: "session", version: 9, id: "legacy", timestamp: new Date().toISOString(), cwd: "/" })}\n`,
+    );
+    const internal = { ...makeUserEntry(), visibility: "internal" as const, source: "test-hook" };
+    await appendEntry(path, internal);
+    const { header, entries } = await readSessionFile(path);
+    expect(header.version).toBe(9);
+    expect(entries[0]).toMatchObject({ visibility: "internal", source: "test-hook" });
+  });
 });
 
 describe("listSessions", () => {
@@ -160,6 +174,28 @@ describe("listSessions", () => {
 
     const sessions = await listSessions(dir);
     expect(sessions[0].firstUserMessage).toBe("find all TODO comments");
+  });
+
+  it("excludes internal entries but keeps legacy reminder entries visible", async () => {
+    const dir = await setupDir();
+    const { path } = await createSessionFile(dir, "/project");
+    const internal = { ...makeUserEntry(), visibility: "internal" as const, source: "plan-reminder" };
+    internal.message = { role: "user", content: "internal", timestamp: Date.now() };
+    const legacy = makeUserEntry(internal.id);
+    legacy.message = {
+      role: "user",
+      content: "<system-reminder>\nlegacy\n</system-reminder>",
+      timestamp: Date.now(),
+    };
+    const visible = makeUserEntry(legacy.id);
+    visible.message = { role: "user", content: "visible", timestamp: Date.now() };
+    await appendEntry(path, internal);
+    await appendEntry(path, legacy);
+    await appendEntry(path, visible);
+
+    const [session] = await listSessions(dir);
+    expect(session.messageCount).toBe(2);
+    expect(session.firstUserMessage).toBe("<system-reminder>\nlegacy\n</system-reminder>");
   });
 
   it("returns empty array when no sessions", async () => {

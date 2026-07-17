@@ -1,7 +1,7 @@
 // @summary Shell command execution with timeout and output truncation
 
-import { MAX_OUTPUT_BYTES } from "@diligent/core/tool/truncation";
-import type { Tool, ToolResult } from "@diligent/core/tool/types";
+import type { Tool, ToolResult } from "@diligent/core/tool-contract";
+import { MAX_OUTPUT_BYTES } from "@diligent/core/tool-contract";
 import { existsSync } from "fs";
 import { z } from "zod";
 import { spawnProcess } from "../util/process";

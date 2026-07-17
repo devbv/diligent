@@ -1,5 +1,5 @@
 // @summary Factory creating the four collab tools sharing a single AgentRegistry
-import type { Tool } from "@diligent/core/tool/types";
+import type { Tool } from "@diligent/core/tool-contract";
 import { createCloseAgentTool } from "./close-agent";
 import { AgentRegistry } from "./registry";
 import { createSendInputTool } from "./send-input";

@@ -20,3 +20,5 @@ export type { OAuthFlowOptions, OAuthProviderConfig, OAuthRequest } from "./oaut
 export { runOAuthFlow } from "./oauth-router";
 export type { ChatGPTOAuthBinding, VertexAccessTokenBinding, VertexProviderConfig } from "./provider-auth";
 export { createChatGPTOAuthBinding, createVertexAccessTokenBinding } from "./provider-auth";
+export type { ExternalProviderAuthPresentation, ProviderAuthPresentationStatus } from "./provider-auth-presenter";
+export { ProviderAuthPresenter } from "./provider-auth-presenter";

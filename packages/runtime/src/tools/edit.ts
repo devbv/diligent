@@ -1,7 +1,7 @@
 // @summary Edit file contents via exact string replacement
 import { mkdir, stat } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { Tool, ToolResult } from "@diligent/core/tool/types";
+import type { Tool, ToolResult } from "@diligent/core/tool-contract";
 import { z } from "zod";
 import { isAbsolute, stripExtendedLengthPrefix } from "../util/path";
 import { type RuntimeToolHost, requestToolApproval } from "./capabilities";

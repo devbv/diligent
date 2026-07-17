@@ -1,6 +1,6 @@
 // @summary REST API endpoint handlers for sessions, search, and knowledge queries
 
-import { DEFAULT_ANTHROPIC_MODEL_ID, resolveModel } from "@diligent/core/llm/models";
+import { DEFAULT_ANTHROPIC_MODEL_ID, resolveModel } from "@diligent/core/model-registry";
 import { createLogger, type Logger } from "@diligent/logging";
 import { readdirSync } from "fs";
 import { join } from "path";

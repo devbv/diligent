@@ -1,9 +1,7 @@
 // @summary Tests for tool output truncation strategies
 import { describe, expect, test } from "bun:test";
-import { readFile } from "node:fs/promises";
 import {
   MAX_OUTPUT_BYTES,
-  persistFullOutput,
   shouldTruncate,
   truncateHead,
   truncateHeadTail,
@@ -133,16 +131,6 @@ describe("truncation", () => {
       expect(result.output).toContain("H");
       // Tail portion should have T's
       expect(result.output).toContain("T");
-    });
-  });
-
-  describe("persistFullOutput", () => {
-    test("saves output to temp file and returns path", async () => {
-      const content = "full output content here";
-      const path = await persistFullOutput(content);
-      expect(path).toContain("diligent-");
-      const saved = await readFile(path, "utf-8");
-      expect(saved).toBe(content);
     });
   });
 });

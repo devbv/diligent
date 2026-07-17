@@ -4,8 +4,7 @@
 export const MAX_OUTPUT_BYTES = 50_000; // 50KB
 
 /** WARNING marker injected into truncated output so LLM knows data is missing */
-export const TRUNCATION_WARNING =
-  "\n\n⚠️ WARNING: Output truncated. Some data has been omitted. Full output saved to disk.";
+export const TRUNCATION_WARNING = "\n\n⚠️ WARNING: Output truncated. Some data has been omitted.";
 
 export interface TruncationResult {
   output: string;
@@ -94,17 +93,6 @@ export function truncateHeadTail(output: string, maxBytes: number = MAX_OUTPUT_B
   const combined = headPart + marker + tailPart;
 
   return { output: combined, truncated: true, originalBytes };
-}
-
-/** Save full output to temp file, return path */
-export async function persistFullOutput(output: string): Promise<string> {
-  const { mkdtemp, writeFile } = await import("node:fs/promises");
-  const { tmpdir } = await import("node:os");
-  const { join } = await import("node:path");
-  const dir = await mkdtemp(join(tmpdir(), "diligent-"));
-  const filePath = join(dir, "full-output.txt");
-  await writeFile(filePath, output, "utf-8");
-  return filePath;
 }
 
 function truncateStringToBytes(str: string, maxBytes: number): string {

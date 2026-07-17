@@ -1,6 +1,6 @@
 // @summary Tests for request_user_input tool — ctx.ask wiring and answer formatting
 import { describe, expect, it, setDefaultTimeout } from "bun:test";
-import type { ToolContext } from "@diligent/core/tool/types";
+import type { ToolContext } from "@diligent/core/tool-contract";
 import { createRequestUserInputTool } from "../../src/tools/request-user-input";
 import type { UserInputRequest, UserInputResponse } from "../../src/tools/user-input-types";
 

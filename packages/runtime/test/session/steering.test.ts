@@ -3,12 +3,11 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Agent } from "@diligent/core/agent";
-import { COMPACTION_SUMMARY_PREFIX } from "@diligent/core/agent/compaction";
+import { Agent, COMPACTION_SUMMARY_PREFIX } from "@diligent/core/agent";
 import { EventStream } from "@diligent/core/event-stream";
-import type { Model, ProviderEvent, ProviderResult, StreamFunction } from "@diligent/core/llm/types";
-import type { Tool } from "@diligent/core/tool/types";
-import type { AssistantMessage, UserMessage } from "@diligent/core/types";
+import type { AssistantMessage, UserMessage } from "@diligent/core/message-contract";
+import type { Model, ProviderEvent, ProviderResult, StreamFunction } from "@diligent/core/provider-contract";
+import type { Tool } from "@diligent/core/tool-contract";
 import { resolvePaths } from "@diligent/runtime/infrastructure";
 import type { SessionEntry, SessionManagerConfig } from "@diligent/runtime/session";
 import {

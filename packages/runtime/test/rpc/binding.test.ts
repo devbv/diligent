@@ -4,7 +4,7 @@ import { describe, expect, it } from "bun:test";
 import { mkdtemp } from "node:fs/promises";
 import { join } from "node:path";
 import { EventStream } from "@diligent/core/event-stream";
-import type { StreamFunction } from "@diligent/core/llm/types";
+import type { StreamFunction } from "@diligent/core/provider-contract";
 import {
   DILIGENT_CLIENT_REQUEST_METHODS,
   DILIGENT_SERVER_NOTIFICATION_METHODS,

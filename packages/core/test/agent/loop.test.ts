@@ -23,6 +23,7 @@ const TEST_MODEL: Model = {
   provider: "test",
   contextWindow: 100_000,
   maxOutputTokens: 4096,
+  supportsThinking: false,
 };
 
 function makeAssistant(
@@ -219,10 +220,13 @@ describe("Agent loop", () => {
     expect(streamFn.contexts.length).toBeGreaterThanOrEqual(1);
     const tools = streamFn.contexts[0].tools;
     expect(tools).toHaveLength(1);
-    expect(tools[0].name).toBe("echo");
-    expect(tools[0].description).toBe("Echo a message");
-    expect(tools[0].inputSchema).toHaveProperty("properties");
-    expect((tools[0].inputSchema as Record<string, unknown>).properties).toHaveProperty("message");
+    const tool = tools[0];
+    expect(tool.kind).toBe("function");
+    if (tool.kind !== "function") throw new Error("Expected a function tool definition");
+    expect(tool.name).toBe("echo");
+    expect(tool.description).toBe("Echo a message");
+    expect(tool.inputSchema).toHaveProperty("properties");
+    expect((tool.inputSchema as Record<string, unknown>).properties).toHaveProperty("message");
   });
 
   test("tool schemas: Zod types converted to valid JSON Schema in StreamContext", async () => {
@@ -254,7 +258,10 @@ describe("Agent loop", () => {
     const tools = streamFn.contexts[0].tools;
     expect(tools).toHaveLength(1);
 
-    const schema = tools[0].inputSchema as Record<string, unknown>;
+    const tool = tools[0];
+    expect(tool.kind).toBe("function");
+    if (tool.kind !== "function") throw new Error("Expected a function tool definition");
+    const schema = tool.inputSchema as Record<string, unknown>;
     const props = schema.properties as Record<string, Record<string, unknown>>;
     const required = schema.required as string[];
 
@@ -512,6 +519,7 @@ describe("Agent compactionSummary persistence", () => {
       provider: "test",
       contextWindow: 200_000,
       maxOutputTokens: 4096,
+      supportsThinking: false,
     };
 
     const assistantMsg = makeAssistant([{ type: "text", text: "ok" }]);
