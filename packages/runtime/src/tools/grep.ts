@@ -27,7 +27,7 @@ export function createGrepTool(cwd: string): Tool<typeof GrepParams> {
     name: "grep",
     description:
       "Search file contents using regex. Returns matching lines with file paths and line numbers. " +
-      "Use spawn_agent with agent_type='explore' for open-ended searches requiring multiple rounds.",
+      "For a multi-round symbol or reference lookup across naming variants, use spawn_agent with agent_type='explore'; do not use it for review, audit, or open-ended analysis.",
     parameters: GrepParams,
     supportParallel: true,
     async execute(args): Promise<ToolResult> {

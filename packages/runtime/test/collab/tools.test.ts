@@ -122,6 +122,20 @@ describe("spawn_agent tool", () => {
     expect(shape.message.description).toContain("expected deliverable or result shape");
   });
 
+  it("limits the built-in explore agent to code location lookups", () => {
+    const explore = getBuiltinAgentDefinitions().find((agent) => agent.name === "explore");
+    expect(explore).toBeDefined();
+    expect(explore?.description).toContain("codebase orientation agent");
+    expect(explore?.systemPromptPrefix).toContain("not an investigator or reviewer");
+    expect(explore?.systemPromptPrefix).toContain("Treat your findings as pointers");
+
+    const description = formatSpawnAgentToolDescription();
+    expect(description).toContain("file, symbol, definition, and reference lookups");
+    expect(description).toContain("Never delegate code review, audit, correctness analysis");
+    expect(description).not.toContain("authoritative codebase Q&A");
+    expect(description).not.toContain("Trust explorer results without re-verification");
+  });
+
   it("includes custom agents in tool description and schema description", () => {
     const agentDefinitions = resolveAvailableAgentDefinitions(getBuiltinAgentDefinitions(), [
       {
