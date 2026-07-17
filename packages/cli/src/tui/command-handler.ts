@@ -3,7 +3,7 @@
 import { randomUUID } from "node:crypto";
 import type { PendingSteer, Mode as ProtocolMode, ThinkingEffort } from "@diligent/protocol";
 import { DILIGENT_CLIENT_REQUEST_METHODS } from "@diligent/protocol";
-import type { SkillMetadata } from "@diligent/runtime";
+import type { ModelRef, SkillMetadata } from "@diligent/runtime";
 import type { AppConfig } from "../config";
 import { parseCommand } from "./commands/parser";
 import type { CommandRegistry } from "./commands/registry";
@@ -51,7 +51,7 @@ export interface CommandHandlerDeps {
     minimal?: boolean;
   }) => Promise<string | null>;
   shutdown: () => void;
-  onModelChanged: (modelId: string) => void;
+  onModelChanged: (model: ModelRef) => void;
   onEffortChanged: (effort: ThinkingEffort, label: string) => void;
   waitForOAuthComplete: () => Promise<{ success: boolean; error: string | null }>;
   waitForMcpLogin: (server: string) => Promise<{ success: boolean; toolCount?: number; error: string | null }>;
@@ -111,7 +111,7 @@ export function createCommandHandler(deps: CommandHandlerDeps): CommandHandler {
         await rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.TURN_START, {
           threadId,
           message: text,
-          model: deps.getConfig().model.id,
+          model: deps.getConfig().model,
         });
         await turnCompleted;
       } catch (err) {

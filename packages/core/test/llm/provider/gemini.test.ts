@@ -12,7 +12,7 @@ import type { Model, ToolDefinition } from "../../../src/llm/types";
 import { ProviderErrorReason, ProviderErrorType } from "../../../src/llm/types";
 
 const model: Model = {
-  id: "gemini-test",
+  modelId: "gemini-test",
   provider: "gemini",
   contextWindow: 1_000_000,
   maxOutputTokens: 64_000,

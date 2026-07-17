@@ -8,20 +8,23 @@ export type { OpenAIOAuthTokens } from "@diligent/core/auth";
 export { EventStream } from "@diligent/core/event-stream";
 export type { Message } from "@diligent/core/message-contract";
 export {
+  formatModelRef,
   getModelInfoList,
   getThinkingEffortOptions,
   getThinkingEffortUsage,
   getThinkingEffortUsageValues,
-  MODEL_CARDS,
+  listModels,
+  MODEL_CATALOG,
   normalizeThinkingEffort,
   resolveModel,
+  resolveModelSelector,
   supportsThinkingEffort,
 } from "@diligent/core/model-registry";
 export { flattenSections } from "@diligent/core/prompt-contract";
-export type { Model, ProviderName, StreamFunction, SystemSection } from "@diligent/core/provider-contract";
+export type { Model, ModelRef, ProviderName, StreamFunction, SystemSection } from "@diligent/core/provider-contract";
 export {
   DEFAULT_PROVIDER,
-  getDefaultModelId,
+  getDefaultModelRef,
   PROVIDER_MODEL_POLICIES,
   PROVIDER_NAMES,
   ProviderManager,

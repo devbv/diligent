@@ -50,7 +50,7 @@ function makeAssistantEntry(parentId: string): SessionMessageEntry {
     message: {
       role: "assistant",
       content: [{ type: "text", text: "hi" }],
-      model: "test",
+      model: { provider: "anthropic", modelId: "test" },
       usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 },
       stopReason: "end_turn",
       timestamp: Date.now(),

@@ -28,7 +28,13 @@ export function createTestServer(opts: {
       resolvePaths: async (cwd) => ensureDiligentDir(cwd),
       createAgent: () =>
         new RuntimeAgent(
-          { id: "fake", provider: "fake", contextWindow: 8192, maxOutputTokens: 4096, supportsThinking: false },
+          {
+            modelId: "claude-sonnet-4-6",
+            provider: "anthropic",
+            contextWindow: 8192,
+            maxOutputTokens: 4096,
+            supportsThinking: false,
+          },
           [],
           opts.tools ?? [],
           { effort: "medium", llmMsgStreamFn: streamFn },
@@ -42,7 +48,13 @@ export function createTestServer(opts: {
     opts.runtimeConfigOverrides?.agents ?? [],
   );
   const runtimeConfig: RuntimeConfig = {
-    model: { id: "fake", provider: "fake", contextWindow: 8192, maxOutputTokens: 4096, supportsThinking: false },
+    model: {
+      modelId: "claude-sonnet-4-6",
+      provider: "anthropic",
+      contextWindow: 8192,
+      maxOutputTokens: 4096,
+      supportsThinking: false,
+    },
     effort: "medium",
     mode: "default",
     planReminderIntervalTurns: 0,

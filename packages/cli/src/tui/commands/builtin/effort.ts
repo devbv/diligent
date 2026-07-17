@@ -24,7 +24,7 @@ export const effortCommand: Command = {
   description: "Set thinking level",
   supportsArgs: true,
   handler: async (args, ctx) => {
-    const model = resolveModel(ctx.config.model.id);
+    const model = resolveModel(ctx.config.model);
     const options = getThinkingEffortOptions(model);
 
     if (args) {

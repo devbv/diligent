@@ -15,7 +15,7 @@ export {
   PROVIDER_NAMES,
   ProviderManager,
 } from "../llm/provider-manager";
-export { getDefaultModelId, PROVIDER_MODEL_POLICIES } from "../llm/provider-model-policy";
+export { getDefaultModelRef, PROVIDER_MODEL_POLICIES } from "../llm/provider-model-policy";
 export type { RetryConfig } from "../llm/retry";
 export { withRetry } from "../llm/retry";
 export type { StreamTurnResource, StreamTurnScope } from "../llm/turn-scope";
@@ -24,6 +24,7 @@ export type {
   FunctionToolDefinition,
   Model,
   ModelInfo,
+  ModelRef,
   ProviderBuiltinToolDefinition,
   ProviderErrorOptions,
   ProviderEvent,

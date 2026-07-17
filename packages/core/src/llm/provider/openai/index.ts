@@ -41,7 +41,7 @@ export function createOpenAIStream(
       try {
         const useReasoning = model.supportsThinking;
         const requestBody = await buildResponsesRequestBody({
-          model: model.id,
+          model: model.modelId,
           systemInstructions: flattenSections(context.systemPrompt),
           messages: context.messages,
           compactionSummary: context.compactionSummary,

@@ -25,7 +25,7 @@ export function createOpenAINativeCompaction(
   const compactEndpoint = `${resolveOpenAIBaseUrl(baseUrl)}/responses/compact`;
   return async (input) => {
     const body: Record<string, unknown> = {
-      model: input.model.id,
+      model: input.model.modelId,
       input: await toResponseInputItems({
         messages: input.messages,
         compactionSummary: input.compactionSummary,

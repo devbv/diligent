@@ -9,7 +9,7 @@ import type { OpenAIImageDetail } from "./provider/openai/responses";
 import { validateProviderApiKey } from "./provider/validate-key";
 import { createVertexStream } from "./provider/vertex";
 import { createZaiCodingPlanStream } from "./provider/zai-coding-plan";
-import { getDefaultModelId } from "./provider-model-policy";
+import { getDefaultModelRef } from "./provider-model-policy";
 import {
   ProviderError,
   ProviderErrorReason,
@@ -230,7 +230,7 @@ export class ProviderManager {
 
   // Verify an API key before persisting it. Throws with a user-facing message if the key is invalid.
   async validateApiKey(provider: ProviderName, apiKey: string): Promise<void> {
-    await validateProviderApiKey(provider, apiKey, this.baseUrls[provider], getDefaultModelId(provider));
+    await validateProviderApiKey(provider, apiKey, this.baseUrls[provider], getDefaultModelRef(provider).modelId);
   }
 
   createProxyStream(): StreamFunction {

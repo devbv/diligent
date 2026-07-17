@@ -61,10 +61,14 @@ describe("ChatGPT HTTP transport", () => {
       ["chatgpt-5.6-luna", "medium"],
     ] as const) {
       const events = await collectEvents(
-        chatgptStream(resolveModel(modelId), TEST_CONTEXT, {
-          effort,
-          sessionId: "session_1",
-        }),
+        chatgptStream(
+          resolveModel({ provider: "chatgpt", modelId: modelId.replace(/^chatgpt-/, "gpt-") }),
+          TEST_CONTEXT,
+          {
+            effort,
+            sessionId: "session_1",
+          },
+        ),
       );
       expect(events.some((event) => event.type === "done")).toBe(true);
     }
@@ -117,9 +121,13 @@ describe("ChatGPT HTTP transport", () => {
       )) as unknown as typeof fetch;
 
     const events = await collectEvents(
-      createChatGPTStream(() => testTokens())(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, {
-        effort: "medium",
-      }),
+      createChatGPTStream(() => testTokens())(
+        resolveModel({ provider: "chatgpt", modelId: "gpt-5.6-luna" }),
+        TEST_CONTEXT,
+        {
+          effort: "medium",
+        },
+      ),
     );
 
     expect(events.at(-1)).toMatchObject({ type: "done", stopReason: "max_tokens" });
@@ -134,9 +142,13 @@ describe("ChatGPT HTTP transport", () => {
       )) as unknown as typeof fetch;
 
     const events = await collectEvents(
-      createChatGPTStream(() => testTokens())(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, {
-        effort: "medium",
-      }),
+      createChatGPTStream(() => testTokens())(
+        resolveModel({ provider: "chatgpt", modelId: "gpt-5.6-luna" }),
+        TEST_CONTEXT,
+        {
+          effort: "medium",
+        },
+      ),
     );
 
     expect(events.map((event) => event.type)).toEqual(["start", "usage", "error"]);
@@ -168,7 +180,7 @@ describe("ChatGPT HTTP transport", () => {
     const chatgptStream = createChatGPTStream(() => testTokens());
 
     const events = await collectEvents(
-      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, {
+      chatgptStream(resolveModel({ provider: "chatgpt", modelId: "gpt-5.6-luna" }), TEST_CONTEXT, {
         effort: "medium",
         sessionId: "session-http-debug",
       }),
@@ -219,7 +231,7 @@ describe("ChatGPT HTTP transport", () => {
     });
 
     const events = await collectEvents(
-      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, {
+      chatgptStream(resolveModel({ provider: "chatgpt", modelId: "gpt-5.6-luna" }), TEST_CONTEXT, {
         effort: "medium",
       }),
     );
@@ -254,7 +266,7 @@ describe("ChatGPT HTTP transport", () => {
     });
 
     const events = await collectEvents(
-      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, {
+      chatgptStream(resolveModel({ provider: "chatgpt", modelId: "gpt-5.6-luna" }), TEST_CONTEXT, {
         effort: "medium",
       }),
     );
@@ -280,7 +292,7 @@ describe("ChatGPT HTTP transport", () => {
     });
 
     const events = await collectEvents(
-      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, { effort: "medium" }),
+      chatgptStream(resolveModel({ provider: "chatgpt", modelId: "gpt-5.6-luna" }), TEST_CONTEXT, { effort: "medium" }),
     );
     const error = events.find((event): event is Extract<ProviderEvent, { type: "error" }> => event.type === "error");
 

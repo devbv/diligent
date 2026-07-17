@@ -2,9 +2,10 @@
 
 import { access, readFile } from "node:fs/promises";
 import { dirname, isAbsolute, resolve } from "node:path";
-import { getDefaultModelId, resolveModel } from "@diligent/core/model-registry";
+import { findModel, getDefaultModelRef, resolveModel } from "@diligent/core/model-registry";
 import type {
   Model,
+  ModelRef,
   ProviderName,
   StreamFunction,
   SystemSection,
@@ -48,10 +49,10 @@ const logger = createLogger({ scope: "runtime.config" });
 
 /** Resolve startup selection from persisted state, then provider-level defaults. */
 export function resolveRuntimeModel(
-  lastSelectedModelId: string | undefined,
+  lastSelectedModelRef: ModelRef | undefined,
   configuredProviders: ProviderName[],
 ): Model {
-  const lastSelectedModel = lastSelectedModelId ? resolveModel(lastSelectedModelId) : undefined;
+  const lastSelectedModel = lastSelectedModelRef ? findModel(lastSelectedModelRef) : undefined;
   if (
     lastSelectedModel &&
     (configuredProviders.length === 0 || configuredProviders.includes(lastSelectedModel.provider as ProviderName))
@@ -60,7 +61,7 @@ export function resolveRuntimeModel(
   }
 
   const provider = configuredProviders[0] ?? DEFAULT_PROVIDER;
-  return resolveModel(getDefaultModelId(provider));
+  return resolveModel(getDefaultModelRef(provider));
 }
 
 export interface RuntimeConfig {

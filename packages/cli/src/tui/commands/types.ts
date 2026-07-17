@@ -1,5 +1,5 @@
 import type { Mode, SessionSummary, ThinkingEffort, ThreadReadResponse } from "@diligent/protocol";
-import type { SkillMetadata } from "@diligent/runtime";
+import type { ModelRef, SkillMetadata } from "@diligent/runtime";
 import type { AppConfig } from "../../config";
 import type { ConfirmDialogOptions } from "../components/confirm-dialog";
 import type { ListPickerItem } from "../components/list-picker";
@@ -52,7 +52,7 @@ export interface CommandContext {
   /** Change thinking effort for the active thread */
   setEffort: (effort: ThinkingEffort) => Promise<void>;
   /** Change model for the active thread or global default when no thread is active */
-  setModel: (modelId: string) => Promise<void>;
+  setModel: (model: ModelRef) => Promise<void>;
   /** Clear chat view history (for new thread) */
   clearChatHistory: () => void;
   /** Clear terminal screen and reset renderer bookkeeping */
@@ -68,7 +68,7 @@ export interface CommandContext {
   /** Read active thread summary (messages count/follow-up) */
   readThread: () => Promise<ThreadReadResponse | null>;
   /** Notify status bar after changing ctx.config.model */
-  onModelChanged: (modelId: string) => void;
+  onModelChanged: (model: ModelRef) => void;
   /** Notify status bar after changing effort */
   onEffortChanged: (effort: ThinkingEffort, label: string) => void;
 }

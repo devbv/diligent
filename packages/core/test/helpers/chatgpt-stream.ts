@@ -9,7 +9,7 @@ import { createStreamTurnScope } from "../../src/llm/turn-scope";
 import type { Model, ProviderEvent, ProviderResult, StreamContext } from "../../src/llm/types";
 
 export const TEST_MODEL: Model = {
-  id: "gpt-test",
+  modelId: "gpt-test",
   provider: "openai",
   contextWindow: 128_000,
   maxOutputTokens: 16_384,
@@ -171,7 +171,7 @@ export async function collectScopedChatGPTEvents(
   const scope = createStreamTurnScope();
   try {
     return await collectEvents(
-      stream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, {
+      stream(resolveModel({ provider: "chatgpt", modelId: "gpt-5.6-luna" }), TEST_CONTEXT, {
         effort: "medium",
         turnScope: scope,
         ...options,
@@ -189,7 +189,7 @@ export function createRetriedChatGPTStream(): EventStream<ProviderEvent, Provide
     baseDelayMs: 1,
     maxDelayMs: 1,
   });
-  return retried({ ...TEST_MODEL, id: "chatgpt-5", provider: "chatgpt" }, TEST_CONTEXT, {});
+  return retried({ ...TEST_MODEL, modelId: "gpt-5", provider: "chatgpt" }, TEST_CONTEXT, {});
 }
 
 export function restoreChatGPTStreamTestState(): void {

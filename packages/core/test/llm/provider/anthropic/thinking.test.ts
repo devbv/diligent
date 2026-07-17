@@ -56,7 +56,7 @@ const EMPTY_CONTEXT: StreamContext = {
 
 function baseModel(overrides: Partial<Model>): Model {
   return {
-    id: TEST_ANTHROPIC_MODEL_ID,
+    modelId: TEST_ANTHROPIC_MODEL_ID,
     provider: "anthropic",
     contextWindow: 300_000,
     maxOutputTokens: 8_000,
@@ -146,7 +146,7 @@ describe("createAnthropicStream", () => {
   test("uses budget_tokens for non-adaptive thinking models", async () => {
     const request = await collectRequest(
       baseModel({
-        id: "claude-haiku-4-5",
+        modelId: "claude-haiku-4-5",
         supportsAdaptiveThinking: false,
         thinkingBudgets: { low: 1_024, medium: 3_000, high: 8_000, max: 16_000 },
       }),
@@ -174,7 +174,7 @@ describe("createAnthropicStream", () => {
   test("rejects manual thinking budgets that are not below max_tokens", async () => {
     const stream = createAnthropicStream("test-key")(
       baseModel({
-        id: "claude-haiku-4-5",
+        modelId: "claude-haiku-4-5",
         supportsAdaptiveThinking: false,
         thinkingBudgets: { low: 1_024, medium: 3_000, high: 8_000, max: 16_000 },
       }),
@@ -187,7 +187,7 @@ describe("createAnthropicStream", () => {
 
   test("rejects manual thinking models without explicit budgets", async () => {
     const stream = createAnthropicStream("test-key")(
-      baseModel({ id: "claude-unknown", supportsAdaptiveThinking: false }),
+      baseModel({ modelId: "claude-unknown", supportsAdaptiveThinking: false }),
       EMPTY_CONTEXT,
       { effort: "medium" },
     );

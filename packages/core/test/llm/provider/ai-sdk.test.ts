@@ -13,8 +13,8 @@ import type { Model, ProviderEvent, ProviderResult } from "../../../src/llm/type
 import { ProviderError, ProviderErrorType } from "../../../src/llm/types";
 
 const model: Model = {
-  id: "adapter-model",
-  provider: "adapter",
+  modelId: "adapter-model",
+  provider: "anthropic",
   contextWindow: 100_000,
   maxOutputTokens: 8_192,
   supportsThinking: true,
@@ -34,7 +34,7 @@ describe("AI SDK message conversion", () => {
       {
         role: "assistant",
         timestamp: 2,
-        model: "adapter-model",
+        model: model,
         stopReason: "tool_use",
         usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
         content: [
@@ -236,7 +236,7 @@ describe("AI SDK stream bridge", () => {
               providerMetadata: { adapter: { signature: "sig" } },
             },
           ],
-          model: "adapter-model",
+          model: model,
           usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 2, cacheWriteTokens: 1 },
           stopReason: "tool_use",
           timestamp: expect.any(Number),

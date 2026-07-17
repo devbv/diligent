@@ -1,6 +1,7 @@
 // @summary Minimal example: create an Agent with a tool and run it with a user message
 import { z } from "zod";
 import { Agent } from "../agent/agent";
+import { resolveModel } from "../llm/models";
 import type { Tool } from "../tool/types";
 import type { Message } from "../types";
 import { c, tag } from "./common/colors";
@@ -27,7 +28,7 @@ const calculatorTool: Tool<z.ZodObject<{ expression: z.ZodString }>> = {
 };
 
 const agent = new Agent(
-  DEFAULT_MODEL,
+  resolveModel({ provider: "anthropic", modelId: DEFAULT_MODEL }),
   [{ label: "system", content: "You are a helpful assistant. Use the calculator tool when asked to compute math." }],
   [calculatorTool],
 );

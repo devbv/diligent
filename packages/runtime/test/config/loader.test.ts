@@ -119,7 +119,7 @@ describe("loadDiligentConfig", () => {
     );
 
     const { config, sources } = await loadDiligentConfig(TEST_ROOT);
-    expect(config.model).toBe("claude-opus-4-20250514");
+    expect(config.model).toEqual({ provider: "anthropic", modelId: "claude-opus-4-20250514" });
     expect(config.tools).toBeUndefined();
     expect(sources).toHaveLength(1);
   });
@@ -131,10 +131,13 @@ describe("loadDiligentConfig", () => {
     await mkdir(join(TEST_HOME, ".overdare"), { recursive: true });
     await mkdir(join(TEST_ROOT, ".overdare"), { recursive: true });
     await Bun.write(globalConfigFile, JSON.stringify({ model: TEST_ANTHROPIC_MODEL_ID }));
-    await Bun.write(projectConfigFile, JSON.stringify({ model: "claude-opus-4-20250514" }));
+    await Bun.write(
+      projectConfigFile,
+      JSON.stringify({ model: { provider: "anthropic", modelId: "claude-opus-4-20250514" } }),
+    );
 
     const { config, sources } = await loadDiligentConfig(TEST_ROOT);
-    expect(config.model).toBe("claude-opus-4-20250514");
+    expect(config.model).toEqual({ provider: "anthropic", modelId: "claude-opus-4-20250514" });
     expect(sources).toContain(globalConfigFile);
     expect(sources).toContain(projectConfigFile);
   });

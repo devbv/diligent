@@ -43,7 +43,7 @@ describe("runEvalSuite", () => {
   test("continues after a failed execution and writes every selected result", async () => {
     const report = await runEvalSuite({
       tasks: [textTask("failing", false), textTask("passing", true)],
-      profiles: [{ provider: "anthropic", model: TEST_MODEL.id, effort: "medium" }],
+      profiles: [{ provider: "anthropic", model: TEST_MODEL.modelId, effort: "medium" }],
       rootSeed: "root",
       metadata: METADATA,
       resolveModel: () => TEST_MODEL,
@@ -77,7 +77,7 @@ describe("runEvalSuite", () => {
     await expect(
       runEvalSuite({
         tasks: [textTask("only-one", true)],
-        profiles: [{ provider: "anthropic", model: TEST_MODEL.id, effort: "medium" }],
+        profiles: [{ provider: "anthropic", model: TEST_MODEL.modelId, effort: "medium" }],
         rootSeed: "root",
         metadata: { ...METADATA, canonical: true },
         canonicalManifest: CANONICAL_MANIFEST,

@@ -5,6 +5,7 @@ import {
   KnowledgeEntrySchema,
   LocalImageBlockSchema,
   MessageSchema,
+  ModelRefSchema,
   ModeSchema,
   PendingSteerSchema,
   ProtocolCapabilitiesSchema,
@@ -27,9 +28,10 @@ export const InitializeParamsSchema = z.object({
 export type InitializeParams = z.infer<typeof InitializeParamsSchema>;
 
 export const ModelInfoSchema = z.object({
-  id: z.string(),
+  modelId: z.string().min(1),
   display: z.string().optional(),
-  provider: z.string(),
+  provider: ProviderNameSchema,
+  aliases: z.array(z.string()).optional(),
   contextWindow: z.number().int().positive(),
   maxOutputTokens: z.number().int().positive(),
   inputCostPer1M: z.number().optional(),
@@ -66,7 +68,7 @@ export const InitializeResponseSchema = z.object({
   cwd: z.string().optional(),
   mode: ModeSchema.optional(),
   effort: ThinkingEffortSchema.optional(),
-  currentModel: z.string().optional(),
+  currentModel: ModelRefSchema.optional(),
   availableModels: z.array(ModelInfoSchema).optional(),
   skills: z.array(SkillInfoSchema).optional(),
   consent: ConsentStateSchema.optional(),
@@ -77,7 +79,7 @@ export const ThreadStartParamsSchema = z.object({
   cwd: z.string(),
   mode: ModeSchema.optional(),
   effort: ThinkingEffortSchema.optional(),
-  model: z.string().optional(),
+  model: ModelRefSchema.optional(),
 });
 export type ThreadStartParams = z.infer<typeof ThreadStartParamsSchema>;
 
@@ -139,7 +141,7 @@ export const ThreadReadResponseSchema = z.object({
   isRunning: z.boolean(),
   currentMode: ModeSchema.optional(),
   currentEffort: ThinkingEffortSchema,
-  currentModel: z.string().optional(),
+  currentModel: ModelRefSchema.optional(),
   totalCost: z.number().nonnegative().optional(),
 });
 export type ThreadReadResponse = z.infer<typeof ThreadReadResponseSchema>;
@@ -171,7 +173,7 @@ export const TurnStartParamsSchema = z.object({
   message: z.string(),
   attachments: z.array(TurnAttachmentSchema).max(4).optional(),
   content: z.array(ContentBlockSchema).optional(),
-  model: z.string().optional(),
+  model: ModelRefSchema.optional(),
 });
 export type TurnStartParams = z.infer<typeof TurnStartParamsSchema>;
 
@@ -490,12 +492,12 @@ export type SubagentsSetResponse = z.infer<typeof SubagentsSetResponseSchema>;
 // --- config/set ---
 export const ConfigSetParamsSchema = z.object({
   threadId: z.string().optional(),
-  model: z.string().optional(),
+  model: ModelRefSchema.optional(),
 });
 export type ConfigSetParams = z.infer<typeof ConfigSetParamsSchema>;
 
 export const ConfigSetResponseSchema = z.object({
-  model: z.string().optional(),
+  model: ModelRefSchema.optional(),
 });
 export type ConfigSetResponse = z.infer<typeof ConfigSetResponseSchema>;
 

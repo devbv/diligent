@@ -2,7 +2,7 @@
 
 import type { Mode as ProtocolMode, ThinkingEffort } from "@diligent/protocol";
 import { DILIGENT_CLIENT_REQUEST_METHODS } from "@diligent/protocol";
-import type { DiligentPaths, SkillMetadata } from "@diligent/runtime";
+import { type DiligentPaths, formatModelRef, type ModelRef, type SkillMetadata } from "@diligent/runtime";
 import type { AppConfig } from "../config";
 import { loadConfig } from "../config";
 import { registerBuiltinCommands } from "./commands/builtin/index";
@@ -28,7 +28,7 @@ export interface ConfigManagerDeps {
 export interface ConfigManager {
   setMode: (mode: ProtocolMode) => void;
   setEffort: (effort: ThinkingEffort) => Promise<void>;
-  setModel: (modelId: string) => Promise<void>;
+  setModel: (model: ModelRef) => Promise<void>;
   reloadConfig: () => Promise<void>;
 }
 
@@ -55,12 +55,12 @@ export function createConfigManager(deps: ConfigManagerDeps): ConfigManager {
       deps.requestRender();
     },
 
-    async setModel(modelId: string): Promise<void> {
+    async setModel(model: ModelRef): Promise<void> {
       const rpc = deps.getRpcClient();
       if (!rpc) return;
       const threadId = deps.getCurrentThreadId() ?? undefined;
-      await rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.CONFIG_SET, { threadId, model: modelId });
-      deps.updateStatusBar({ model: modelId });
+      await rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.CONFIG_SET, { threadId, model });
+      deps.updateStatusBar({ model: formatModelRef(model) });
       deps.requestRender();
     },
 
@@ -76,7 +76,7 @@ export function createConfigManager(deps: ConfigManagerDeps): ConfigManager {
         registerBuiltinCommands(registry, newConfig.skills ?? []);
         deps.setCommandRegistry(registry);
 
-        deps.updateStatusBar({ model: newConfig.model.id, contextWindow: newConfig.model.contextWindow });
+        deps.updateStatusBar({ model: formatModelRef(newConfig.model), contextWindow: newConfig.model.contextWindow });
       } catch (err) {
         deps.displayError(`Reload error: ${err instanceof Error ? err.message : String(err)}`);
       }

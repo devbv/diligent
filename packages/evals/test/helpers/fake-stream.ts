@@ -12,7 +12,7 @@ import type {
 } from "@diligent/core/provider-contract";
 
 export const TEST_MODEL: Model = {
-  id: "test-model",
+  modelId: "test-model",
   provider: "anthropic",
   contextWindow: 100_000,
   maxOutputTokens: 16_384,
@@ -26,7 +26,7 @@ export function assistantMessage(
   return {
     role: "assistant",
     content,
-    model: TEST_MODEL.id,
+    model: TEST_MODEL,
     usage: { inputTokens: 10, outputTokens: 4, cacheReadTokens: 0, cacheWriteTokens: 0 },
     stopReason,
     timestamp: Date.now(),

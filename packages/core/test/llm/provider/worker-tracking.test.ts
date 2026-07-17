@@ -4,7 +4,7 @@ import type { OpenAIOAuthTokens } from "../../../src/auth/types";
 import { createAnthropicStream } from "../../../src/llm/provider/anthropic";
 import { createChatGPTStream } from "../../../src/llm/provider/chatgpt";
 import { createOpenAIStream } from "../../../src/llm/provider/openai";
-import type { Model, StreamContext, StreamFunction } from "../../../src/llm/types";
+import type { Model, ProviderName, StreamContext, StreamFunction } from "../../../src/llm/types";
 
 const originalFetch = globalThis.fetch;
 
@@ -14,9 +14,9 @@ const context: StreamContext = {
   tools: [],
 };
 
-function model(provider: string): Model {
+function model(provider: ProviderName): Model {
   return {
-    id: provider === "anthropic" ? "claude-test" : provider === "chatgpt" ? "chatgpt-5" : "gpt-test",
+    modelId: provider === "anthropic" ? "claude-test" : provider === "chatgpt" ? "gpt-5" : "gpt-test",
     provider,
     contextWindow: 100_000,
     maxOutputTokens: 4_096,

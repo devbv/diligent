@@ -3,7 +3,7 @@ import { resolveModel } from "@diligent/runtime";
 import type { AppConfig } from "../config";
 import {
   DEFAULT_PROVIDER,
-  getDefaultModelId,
+  getDefaultModelRef,
   PROVIDER_DESCRIPTORS,
   PROVIDER_NAMES,
   type ProviderName,
@@ -95,12 +95,14 @@ export function createSetupWizard(deps: SetupWizardDeps): SetupWizard {
       // Switch model if the selected provider differs from current
       const currentProvider = deps.config.model.provider ?? DEFAULT_PROVIDER;
       if (currentProvider !== provider) {
-        const defaultModelId = getDefaultModelId(provider);
-        deps.config.model = resolveModel(defaultModelId);
-        deps.updateStatusBar({ model: deps.config.model.id });
+        deps.config.model = resolveModel(getDefaultModelRef(provider));
+        deps.updateStatusBar({ model: `${deps.config.model.provider}/${deps.config.model.modelId}` });
       }
 
-      deps.addLines([`  ${t.success}Ready!${t.reset} Using ${t.bold}${deps.config.model.id}${t.reset}`, ""]);
+      deps.addLines([
+        `  ${t.success}Ready!${t.reset} Using ${t.bold}${deps.config.model.provider}/${deps.config.model.modelId}${t.reset}`,
+        "",
+      ]);
       deps.requestRender();
     },
   };

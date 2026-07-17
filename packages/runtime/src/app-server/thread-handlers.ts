@@ -10,6 +10,7 @@ import {
   DILIGENT_SERVER_NOTIFICATION_METHODS,
   type DiligentServerNotification,
   type Mode,
+  type ModelRef,
   type ThinkingEffort,
   type ThreadItem,
 } from "../protocol/index";
@@ -28,9 +29,9 @@ export interface ThreadRuntime {
   cwd: string;
   mode: Mode;
   effort: ThinkingEffort;
-  modelId: string;
+  model: ModelRef;
   runningEffortSnapshot?: ThinkingEffort;
-  runningModelIdSnapshot?: string;
+  runningModelSnapshot?: ModelRef;
   /** User ID of the connection that started the current turn (set at turn start, cleared on end). */
   currentTurnUserId?: string;
   manager: SessionManager;
@@ -51,7 +52,7 @@ export function resetTurnRuntimeState(runtime: ThreadRuntime): void {
   runtime.currentTurnId = null;
   runtime.currentTurnUserId = undefined;
   runtime.runningEffortSnapshot = undefined;
-  runtime.runningModelIdSnapshot = undefined;
+  runtime.runningModelSnapshot = undefined;
   runtime.isRunning = false;
 }
 
@@ -71,11 +72,11 @@ export interface ThreadHandlersContext {
     mode: Mode,
     createNew: boolean,
     effort?: ThinkingEffort,
-    modelId?: string,
+    model?: ModelRef,
   ) => Promise<ThreadRuntime>;
   resolveThreadRuntime: (threadId?: string) => Promise<ThreadRuntime>;
   getLatestEffortForCwd: (cwd: string) => Promise<ThinkingEffort>;
-  getLatestModelForCwd: (cwd: string) => Promise<string | undefined>;
+  getLatestModelForCwd: (cwd: string) => Promise<ModelRef | undefined>;
   emit: (notification: DiligentServerNotification) => Promise<void>;
   consumeTurn: (runtime: ThreadRuntime, runPromise: Promise<void>, turnId: string) => Promise<void>;
   resolveToolsContext: (threadId?: string) => Promise<{ cwd: string; tools: DiligentConfig["tools"] | undefined }>;
@@ -90,14 +91,14 @@ export interface ThreadHandlersContext {
 
 export async function handleThreadStart(
   ctx: ThreadHandlersContext,
-  params: { cwd: string; mode?: Mode; effort?: ThinkingEffort; model?: string },
+  params: { cwd: string; mode?: Mode; effort?: ThinkingEffort; model?: ModelRef },
 ): Promise<{ threadId: string }> {
   const mode = params.mode ?? "default";
   const tempId = generateSessionId();
   const effort = params.effort ?? (await ctx.getLatestEffortForCwd(params.cwd));
-  const modelId = params.model ?? (await ctx.getLatestModelForCwd(params.cwd));
-  const runtime = await ctx.createThreadRuntime(tempId, params.cwd, mode, true, effort, modelId);
-  runtime.effort = normalizeThinkingEffort(resolveModel(runtime.modelId), runtime.effort);
+  const model = params.model ?? (await ctx.getLatestModelForCwd(params.cwd));
+  const runtime = await ctx.createThreadRuntime(tempId, params.cwd, mode, true, effort, model);
+  runtime.effort = normalizeThinkingEffort(resolveModel(runtime.model), runtime.effort);
   const threadId = runtime.manager.sessionId;
   runtime.id = threadId;
 
@@ -122,7 +123,7 @@ export async function handleThreadRead(
   isRunning: boolean;
   currentMode: Mode;
   currentEffort: ThinkingEffort;
-  currentModel?: string;
+  currentModel?: ModelRef;
   totalCost?: number;
 }> {
   const runtime = await ctx.resolveThreadRuntime(threadId);
@@ -144,11 +145,15 @@ export async function handleThreadRead(
   for (const msg of messages) {
     const m = msg as {
       role?: string;
-      model?: string;
+      model?: ModelRef;
       usage?: { inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number };
     };
     if (m.role === "assistant" && m.usage && m.model) {
-      totalCost += calculateUsageCost(resolveModel(m.model), m.usage);
+      try {
+        totalCost += calculateUsageCost(resolveModel(m.model), m.usage);
+      } catch {
+        // Retired model cards remain readable but no longer have pricing metadata.
+      }
     }
   }
 
@@ -162,7 +167,7 @@ export async function handleThreadRead(
     isRunning: runtime.isRunning,
     currentMode: runtime.manager.getCurrentMode() ?? runtime.mode,
     currentEffort: runtime.manager.getCurrentEffort() ?? runtime.effort,
-    currentModel: runtime.manager.getCurrentModel()?.modelId ?? runtime.modelId,
+    currentModel: runtime.manager.getCurrentModel() ?? runtime.model,
     totalCost,
   };
 }
@@ -234,8 +239,8 @@ export async function handleEffortSet(
   effort: ThinkingEffort,
 ): Promise<{ effort: ThinkingEffort }> {
   const runtime = await ctx.resolveThreadRuntime(threadId);
-  const modelId = runtime.manager.getCurrentModel()?.modelId ?? runtime.modelId;
-  const model = modelId ? resolveModel(modelId) : undefined;
+  const modelRef = runtime.manager.getCurrentModel() ?? runtime.model;
+  const model = modelRef ? resolveModel(modelRef) : undefined;
   const unsupportedEffort = model?.supportsThinking && !supportsThinkingEffort(model, effort);
   if (unsupportedEffort) {
     throw Object.assign(new Error(`Thinking effort "${effort}" is not supported for this model.`), { code: -32602 });

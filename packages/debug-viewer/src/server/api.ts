@@ -1,6 +1,6 @@
 // @summary REST API endpoint handlers for sessions, search, and knowledge queries
 
-import { resolveModel } from "@diligent/core/model-registry";
+import { findModel } from "@diligent/core/model-registry";
 import { createLogger, type Logger } from "@diligent/logging";
 import { readdirSync } from "fs";
 import { join } from "path";
@@ -25,7 +25,16 @@ function calculateUsageCost(
   usage: { inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number },
   modelId: string,
 ): number {
-  let model = resolveModel(modelId);
+  const ref = modelId.startsWith("claude-") ? { provider: "anthropic" as const, modelId } : undefined;
+  let model = ref ? findModel(ref) : undefined;
+
+  if (!model && modelId.startsWith("claude-sonnet-4-"))
+    model = findModel({ provider: "anthropic", modelId: "claude-sonnet-4-6" });
+  if (!model && modelId.startsWith("claude-opus-4-"))
+    model = findModel({ provider: "anthropic", modelId: "claude-opus-4-8" });
+  if (!model && modelId.startsWith("claude-haiku-4-"))
+    model = findModel({ provider: "anthropic", modelId: "claude-haiku-4-5-20251001" });
+  if (!model) return 0;
 
   const hasAnyPricing =
     model.inputCostPer1M != null ||
@@ -33,11 +42,7 @@ function calculateUsageCost(
     model.cacheReadCostPer1M != null ||
     model.cacheWriteCostPer1M != null;
 
-  if (!hasAnyPricing) {
-    if (modelId.startsWith("claude-sonnet-4-")) model = resolveModel("claude-sonnet-4-6");
-    if (modelId.startsWith("claude-opus-4-")) model = resolveModel("claude-opus-4-8");
-    if (modelId.startsWith("claude-haiku-4-")) model = resolveModel("claude-haiku-4-5-20251001");
-  }
+  if (!hasAnyPricing) return 0;
 
   const inputCost = (usage.inputTokens / 1_000_000) * (model.inputCostPer1M ?? 0);
   const outputCost = (usage.outputTokens / 1_000_000) * (model.outputCostPer1M ?? 0);

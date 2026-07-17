@@ -52,7 +52,7 @@ export function createGeminiStream(apiKey?: string, baseUrl?: string): StreamFun
   });
 
   return createAISDKStream({
-    createLanguageModel: (model) => provider(model.id),
+    createLanguageModel: (model) => provider(model.modelId),
     classifyError: classifyGeminiError,
     buildTools: buildGeminiTools,
     buildProviderOptions: buildGeminiProviderOptions,

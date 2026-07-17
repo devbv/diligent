@@ -93,7 +93,7 @@ export function withRetry(
   return (model, context, options) => {
     const retryLogger = logger.child({
       ...(options.sessionId !== undefined && { sessionId: options.sessionId }),
-      fields: { provider: model.provider, model: model.id },
+      fields: { provider: model.provider, model: model.modelId },
     });
     const signal = options.signal;
     const stream = new EventStream<ProviderEvent, ProviderResult>(

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { createLogger } from "@diligent/logging";
 import { parse as parseJsonc } from "jsonc-parser";
 import { resolveProjectDirName } from "../infrastructure/diligent-dir";
+import { normalizeLegacyModelRef } from "../model/legacy-model-ref";
 import { DEFAULT_CONFIG, type DiligentConfig, DiligentConfigSchema } from "./schema";
 
 const logger = createLogger({ scope: "runtime.config" });
@@ -61,6 +62,10 @@ async function loadConfigFile(path: string): Promise<DiligentConfig | null> {
     const text = await file.text();
     const parsed = parseJsonc(text);
     const substituted = substituteTemplates(parsed);
+    if (typeof substituted === "object" && substituted !== null && "model" in substituted) {
+      const record = substituted as Record<string, unknown>;
+      if (record.model !== undefined) record.model = normalizeLegacyModelRef(record.model);
+    }
     const result = DiligentConfigSchema.safeParse(substituted);
     if (!result.success) {
       logger.warn("invalid_config", {
@@ -84,6 +89,8 @@ export function mergeConfig(base: DiligentConfig, override: DiligentConfig): Dil
     if (key === "instructions" && Array.isArray(value)) {
       const baseInstructions = (base as Record<string, unknown>).instructions as string[] | undefined;
       (merged as Record<string, unknown>).instructions = [...new Set([...(baseInstructions ?? []), ...value])];
+    } else if (key === "model") {
+      (merged as Record<string, unknown>)[key] = value;
     } else if (isPlainObject(value)) {
       const baseValue = (base as Record<string, unknown>)[key];
       (merged as Record<string, unknown>)[key] = isPlainObject(baseValue)

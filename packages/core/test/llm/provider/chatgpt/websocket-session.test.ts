@@ -27,7 +27,7 @@ describe("ChatGPT WebSocket session", () => {
     });
 
     const events = await collectEvents(
-      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, {
+      chatgptStream(resolveModel({ provider: "chatgpt", modelId: "gpt-5.6-luna" }), TEST_CONTEXT, {
         effort: "medium",
       }),
     );
@@ -43,7 +43,7 @@ describe("ChatGPT WebSocket session", () => {
       webSocketFactory: harness.factory,
     });
     const scope = createStreamTurnScope();
-    const model = resolveModel("chatgpt-5.6-luna");
+    const model = resolveModel({ provider: "chatgpt", modelId: "gpt-5.6-luna" });
 
     await collectEvents(
       chatgptStream(model, TEST_CONTEXT, {
@@ -107,7 +107,7 @@ describe("ChatGPT WebSocket session", () => {
       useWebSocketForGpt56: true,
       webSocketFactory: harness.factory,
       webSocketIdleTimeoutMs: 1,
-    })(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, {
+    })(resolveModel({ provider: "chatgpt", modelId: "gpt-5.6-luna" }), TEST_CONTEXT, {
       effort: "medium",
       signal: controller.signal,
       turnScope: scope,
@@ -356,7 +356,7 @@ describe("ChatGPT WebSocket session", () => {
     const scope = createStreamTurnScope();
 
     const events = await collectEvents(
-      stream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, {
+      stream(resolveModel({ provider: "chatgpt", modelId: "gpt-5.6-luna" }), TEST_CONTEXT, {
         effort: "medium",
         turnScope: scope,
       }),
@@ -394,7 +394,7 @@ describe("ChatGPT WebSocket session", () => {
     };
 
     const events = await collectEvents(
-      chatgptStream(resolveModel("chatgpt-5.6-luna"), context, {
+      chatgptStream(resolveModel({ provider: "chatgpt", modelId: "gpt-5.6-luna" }), context, {
         effort: "low",
       }),
     );
@@ -449,7 +449,7 @@ describe("ChatGPT WebSocket session", () => {
     });
 
     const events = await collectEvents(
-      chatgptStream(resolveModel("chatgpt-5.5"), TEST_CONTEXT, {
+      chatgptStream(resolveModel({ provider: "chatgpt", modelId: "gpt-5.5" }), TEST_CONTEXT, {
         effort: "medium",
       }),
     );
@@ -470,7 +470,7 @@ describe("ChatGPT WebSocket session", () => {
     });
 
     const events = await collectEvents(
-      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, {
+      chatgptStream(resolveModel({ provider: "chatgpt", modelId: "gpt-5.6-luna" }), TEST_CONTEXT, {
         effort: "medium",
       }),
     );
@@ -490,7 +490,7 @@ describe("ChatGPT WebSocket session", () => {
     });
 
     const events = await collectEvents(
-      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, {
+      chatgptStream(resolveModel({ provider: "chatgpt", modelId: "gpt-5.6-luna" }), TEST_CONTEXT, {
         effort: "medium",
       }),
     );
@@ -511,7 +511,7 @@ describe("ChatGPT WebSocket session", () => {
     });
 
     const events = await collectEvents(
-      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, {
+      chatgptStream(resolveModel({ provider: "chatgpt", modelId: "gpt-5.6-luna" }), TEST_CONTEXT, {
         effort: "medium",
       }),
     );
@@ -534,7 +534,7 @@ describe("ChatGPT WebSocket session", () => {
     });
 
     const events = await collectEvents(
-      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, {
+      chatgptStream(resolveModel({ provider: "chatgpt", modelId: "gpt-5.6-luna" }), TEST_CONTEXT, {
         effort: "medium",
       }),
     );
@@ -555,7 +555,7 @@ describe("ChatGPT WebSocket session", () => {
     });
 
     const events = await collectEvents(
-      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, {
+      chatgptStream(resolveModel({ provider: "chatgpt", modelId: "gpt-5.6-luna" }), TEST_CONTEXT, {
         effort: "medium",
       }),
     );
@@ -596,7 +596,7 @@ describe("ChatGPT WebSocket session", () => {
     });
 
     const events = await collectEvents(
-      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, {
+      chatgptStream(resolveModel({ provider: "chatgpt", modelId: "gpt-5.6-luna" }), TEST_CONTEXT, {
         effort: "medium",
       }),
     );
@@ -635,7 +635,7 @@ describe("ChatGPT WebSocket session", () => {
     });
 
     const events = await collectEvents(
-      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, {
+      chatgptStream(resolveModel({ provider: "chatgpt", modelId: "gpt-5.6-luna" }), TEST_CONTEXT, {
         effort: "medium",
       }),
     );
@@ -670,7 +670,7 @@ describe("ChatGPT WebSocket session", () => {
       webSocketFactory: errorHarness.factory,
     });
     const errorEvents = await collectEvents(
-      errorStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, {
+      errorStream(resolveModel({ provider: "chatgpt", modelId: "gpt-5.6-luna" }), TEST_CONTEXT, {
         effort: "medium",
       }),
     );
@@ -684,7 +684,7 @@ describe("ChatGPT WebSocket session", () => {
     const abortStream = createChatGPTStream(() => testTokens(), {
       useWebSocketForGpt56: true,
       webSocketFactory: abortHarness.factory,
-    })(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, {
+    })(resolveModel({ provider: "chatgpt", modelId: "gpt-5.6-luna" }), TEST_CONTEXT, {
       effort: "medium",
       signal: abortController.signal,
     });
@@ -714,7 +714,7 @@ describe("ChatGPT WebSocket session", () => {
     });
 
     const events = await collectEvents(
-      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, {
+      chatgptStream(resolveModel({ provider: "chatgpt", modelId: "gpt-5.6-luna" }), TEST_CONTEXT, {
         effort: "medium",
       }),
     );
@@ -744,7 +744,7 @@ describe("ChatGPT WebSocket session", () => {
     });
 
     const events = await collectEvents(
-      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, {
+      chatgptStream(resolveModel({ provider: "chatgpt", modelId: "gpt-5.6-luna" }), TEST_CONTEXT, {
         effort: "medium",
       }),
     );
@@ -774,7 +774,7 @@ describe("ChatGPT WebSocket session", () => {
     });
 
     const events = await collectEvents(
-      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, {
+      chatgptStream(resolveModel({ provider: "chatgpt", modelId: "gpt-5.6-luna" }), TEST_CONTEXT, {
         effort: "medium",
       }),
     );
@@ -804,7 +804,7 @@ describe("ChatGPT WebSocket session", () => {
     });
 
     const events = await collectEvents(
-      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, {
+      chatgptStream(resolveModel({ provider: "chatgpt", modelId: "gpt-5.6-luna" }), TEST_CONTEXT, {
         effort: "medium",
       }),
     );

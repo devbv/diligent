@@ -275,7 +275,7 @@ export async function consumeAISDKStreamParts<TState>(
   const message: AssistantMessage = {
     role: "assistant",
     content,
-    model: model.id,
+    model,
     usage,
     stopReason,
     timestamp: Date.now(),

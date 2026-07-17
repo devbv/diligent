@@ -12,7 +12,7 @@ import type { Model, ProviderEvent, ProviderResult } from "../../../../src/llm/t
 import type { AssistantMessage } from "../../../../src/types";
 
 const TEST_MODEL: Model = {
-  id: "test-model",
+  modelId: "test-model",
   provider: "openai",
   contextWindow: 128_000,
   maxOutputTokens: 16_384,
@@ -101,7 +101,7 @@ describe("buildOpenAICompatibleMessages", () => {
       {
         role: "assistant",
         content: [{ type: "text", text: "I can help" }],
-        model: TEST_MODEL.id,
+        model: TEST_MODEL,
         usage: {
           inputTokens: 10,
           outputTokens: 5,
@@ -127,7 +127,7 @@ describe("buildOpenAICompatibleMessages", () => {
             input: { command: "ls" },
           },
         ],
-        model: TEST_MODEL.id,
+        model: TEST_MODEL,
         usage: {
           inputTokens: 10,
           outputTokens: 5,
@@ -162,7 +162,7 @@ describe("buildOpenAICompatibleMessages", () => {
             input: { command: "pwd" },
           },
         ],
-        model: TEST_MODEL.id,
+        model: TEST_MODEL,
         usage: {
           inputTokens: 5,
           outputTokens: 10,
@@ -183,7 +183,7 @@ describe("buildOpenAICompatibleMessages", () => {
       {
         role: "assistant",
         content: [],
-        model: TEST_MODEL.id,
+        model: TEST_MODEL,
         usage: {
           inputTokens: 0,
           outputTokens: 0,
@@ -232,7 +232,7 @@ describe("buildOpenAICompatibleMessages", () => {
             input: { command: "ls" },
           },
         ],
-        model: TEST_MODEL.id,
+        model: TEST_MODEL,
         usage: {
           inputTokens: 5,
           outputTokens: 5,

@@ -73,7 +73,7 @@ export function createAnthropicStream(apiKey?: string, baseUrl?: string): Stream
           } else {
             const budgets = model.thinkingBudgets;
             if (!budgets) {
-              throw new Error(`Anthropic model ${model.id} does not define thinking budgets`);
+              throw new Error(`Anthropic model ${model.modelId} does not define thinking budgets`);
             }
             const budgetKey: keyof typeof budgets = effort === "xhigh" ? "max" : effort;
             const budgetTokens = budgets[budgetKey];
@@ -95,7 +95,7 @@ export function createAnthropicStream(apiKey?: string, baseUrl?: string): Stream
 
         const systemBlocks = toAnthropicBlocks(context.systemPrompt);
         const requestParams = {
-          model: model.id,
+          model: model.modelId,
           max_tokens: maxTokens,
           system: systemBlocks,
           messages: await convertMessages(context.messages, context.compactionSummary, context.localImageLoader),
@@ -297,7 +297,7 @@ function mapToAssistantMessage(msg: Anthropic.Message, model: Model): AssistantM
   return {
     role: "assistant",
     content,
-    model: model.id,
+    model,
     usage,
     stopReason,
     timestamp: Date.now(),

@@ -6,7 +6,7 @@ import { runEvalExecution } from "../../src/runner/execution";
 import type { EvalTask } from "../../src/task";
 import { assistantMessage, hangingStream, sequenceStream, TEST_MODEL } from "../helpers/fake-stream";
 
-const PROFILE = { provider: "anthropic", model: TEST_MODEL.id, effort: "medium" } as const;
+const PROFILE = { provider: "anthropic", model: TEST_MODEL.modelId, effort: "medium" } as const;
 
 function toolTask(overrides: Partial<EvalTask<{ executions: number }>["limits"]> = {}) {
   const task: EvalTask<{ executions: number }> = {

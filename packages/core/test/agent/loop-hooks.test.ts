@@ -16,8 +16,8 @@ import { createLogger, type LogRecord } from "@diligent/logging";
 import { z } from "zod";
 
 const model: Model = {
-  id: "test-model",
-  provider: "test",
+  modelId: "test-model",
+  provider: "anthropic",
   contextWindow: 100_000,
   maxOutputTokens: 4_096,
   supportsThinking: false,
@@ -28,7 +28,7 @@ function assistant(content: AssistantMessage["content"], stopReason: AssistantMe
   return {
     role: "assistant",
     content,
-    model: model.id,
+    model: model,
     usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
     stopReason,
     timestamp: Date.now(),

@@ -14,7 +14,7 @@ import {
 import type { AssistantMessage } from "../../src/types";
 
 const TEST_MODEL: Model = {
-  id: "chatgpt-test",
+  modelId: "chatgpt-test",
   provider: "chatgpt",
   contextWindow: 128_000,
   maxOutputTokens: 16_384,
@@ -30,7 +30,7 @@ const TEST_CONTEXT: StreamContext = {
 const TEST_MESSAGE: AssistantMessage = {
   role: "assistant",
   content: [{ type: "text", text: "ok" }],
-  model: TEST_MODEL.id,
+  model: TEST_MODEL,
   usage: {
     inputTokens: 0,
     outputTokens: 0,

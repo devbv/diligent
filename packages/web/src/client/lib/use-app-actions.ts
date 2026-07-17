@@ -5,6 +5,7 @@ import type {
   ImageUploadAttachment,
   Mode,
   ModelInfo,
+  ModelRef,
   SkillInfo,
   ThinkingEffort,
   ThreadReadResponse,
@@ -18,7 +19,9 @@ import { fileToBase64, normalizeImageFileName, replaceThreadUrl } from "./app-ut
 import {
   findModelInfo,
   getThinkingEffortUsage,
+  modelOptionKey,
   normalizeThinkingEffort,
+  resolveModelSelector,
   supportsThinkingEffort,
 } from "./model-thinking-helpers";
 import type { WebRpcClient } from "./rpc-client";
@@ -68,10 +71,10 @@ export async function prepareNewThreadForFirstMessage({
   rpc: WebRpcClient;
   mode: Mode;
   cwd: string;
-  model?: string;
+  model?: ModelRef;
   effort: ThinkingEffort;
   activateServerThread: (threadId: string) => Promise<ThreadReadResponse>;
-  applySessionModel: (sessionModel?: string) => Promise<void>;
+  applySessionModel: (sessionModel?: ModelRef) => Promise<void>;
   dispatch: Dispatch<AppAction>;
   localText: string;
   contextItems: AgentContextItem[];
@@ -229,9 +232,9 @@ export function useAppActions({
   supportsVision: boolean;
   effort: ThinkingEffort;
   slashCommands: SlashCommand[];
-  currentModel: string;
+  currentModel: ModelRef | undefined;
   availableModels: ModelInfo[];
-  currentModelRef: RefObject<string>;
+  currentModelRef: RefObject<ModelRef | undefined>;
   clearThreadInput: (threadId: string) => void;
   clearDraftInput: () => void;
   clearActiveContextItems: () => void;
@@ -239,7 +242,7 @@ export function useAppActions({
   setIsUploadingImages: Dispatch<SetStateAction<boolean>>;
   setShowImageUploadIndicator: Dispatch<SetStateAction<boolean>>;
   setEffortState: Dispatch<SetStateAction<ThinkingEffort>>;
-  changeModel: (modelId: string, threadId?: string) => Promise<void>;
+  changeModel: (model: ModelRef, threadId?: string) => Promise<void>;
   startNewThread: () => Promise<void>;
   openThread: (threadId: string) => Promise<void>;
   openMcpModal: () => void;
@@ -248,7 +251,7 @@ export function useAppActions({
   steeringControl: SteeringControl;
   modeRef: RefObject<Mode>;
   cwdRef: RefObject<string>;
-  applySessionModel: (sessionModel?: string) => Promise<void>;
+  applySessionModel: (sessionModel?: ModelRef) => Promise<void>;
   activateServerThread: (threadId: string) => Promise<ThreadReadResponse>;
   refreshThreadList: (rpc?: WebRpcClient | null) => Promise<void>;
 }) {
@@ -274,7 +277,7 @@ export function useAppActions({
           rpc,
           mode: modeRef.current,
           cwd: cwdRef.current || "/",
-          model: currentModelRef.current || undefined,
+          model: currentModelRef.current,
           effort,
           activateServerThread,
           applySessionModel,
@@ -314,7 +317,7 @@ export function useAppActions({
           fileName: image.fileName,
         })),
         content,
-        model: currentModelRef.current || undefined,
+        model: currentModelRef.current,
       });
       await refreshThreadList(rpc);
     } catch (error) {
@@ -520,24 +523,31 @@ export function useAppActions({
             return;
           }
 
-          const exists = availableModels.some((model) => model.id === arg);
-          if (!exists) {
-            dispatch({ type: "show_info_toast", payload: `Unknown model: ${arg}` });
+          let selected: ModelInfo;
+          try {
+            selected = resolveModelSelector(availableModels, arg);
+          } catch (error) {
+            dispatch({
+              type: "show_info_toast",
+              payload: error instanceof Error ? error.message : `Unknown model: ${arg}`,
+            });
             return;
           }
 
-          void changeModel(arg, getModelChangeThreadId(activeThreadId)).then(() => {
-            const modelInfo = availableModels.find((model) => model.id === arg);
-            const normalizedEffort = normalizeThinkingEffort(modelInfo, effort);
+          void changeModel(selected, getModelChangeThreadId(activeThreadId)).then(() => {
+            const normalizedEffort = normalizeThinkingEffort(selected, effort);
             if (normalizedEffort !== effort) {
               setEffortState(normalizedEffort);
               dispatch({
                 type: "show_info_toast",
-                payload: `Model switched to ${arg}. Thinking adjusted to ${normalizedEffort}.`,
+                payload: `Model switched to ${selected.provider}/${selected.modelId}. Thinking adjusted to ${normalizedEffort}.`,
               });
               return;
             }
-            dispatch({ type: "show_info_toast", payload: `Model switched to ${arg}` });
+            dispatch({
+              type: "show_info_toast",
+              payload: `Model switched to ${selected.provider}/${selected.modelId}`,
+            });
           });
           return;
         }
@@ -710,7 +720,7 @@ export function useAppActions({
           threadId,
           message: lastUser.text,
           content: [{ type: "text", text: lastUser.text }],
-          model: currentModelRef.current || undefined,
+          model: currentModelRef.current,
         });
       } catch (error) {
         logger.error("turn.retry_failed", { message: "Failed to retry the last turn", error, threadId });
@@ -733,10 +743,11 @@ export function useAppActions({
   );
 
   const handleModelChange = useCallback(
-    (modelId: string) => {
-      void changeModel(modelId, getModelChangeThreadId(state.activeThreadId));
+    (optionKey: string) => {
+      const model = availableModels.find((candidate) => modelOptionKey(candidate) === optionKey);
+      if (model) void changeModel(model, getModelChangeThreadId(state.activeThreadId));
     },
-    [changeModel, state.activeThreadId],
+    [availableModels, changeModel, state.activeThreadId],
   );
 
   const handleAddImagesToDock = useCallback(

@@ -47,8 +47,8 @@ function readResult(response: JSONRPCResponse): unknown {
 }
 
 const FAKE_MODEL = {
-  id: "fake-model" as const,
-  provider: "fake" as const,
+  modelId: TEST_ANTHROPIC_MODEL_ID,
+  provider: "anthropic" as const,
   contextWindow: 128_000,
   maxOutputTokens: 4096,
   supportsThinking: false as const,
@@ -144,29 +144,20 @@ function defaultServerRequestResponse(method: DiligentServerRequest["method"]): 
 function makeFactoryRuntimeConfig(overrides?: {
   tools?: Record<string, unknown>;
   effort?: ThinkingEffort;
-  modelId?: string;
+  model?: { provider: Model["provider"]; modelId: string };
 }) {
   const providerManager = new ProviderManager({});
   providerManager.setApiKey("anthropic", "test-key");
   providerManager.setApiKey("openai", "test-key");
-  const model: Model =
-    overrides?.modelId && overrides.modelId !== "gpt-5.6-terra"
-      ? resolveModel(overrides.modelId)
-      : overrides?.modelId === "gpt-5.6-terra"
-        ? {
-            id: "gpt-5.6-terra",
-            provider: "openai",
-            contextWindow: 400_000,
-            maxOutputTokens: 128_000,
-            supportsThinking: true,
-          }
-        : {
-            id: TEST_ANTHROPIC_MODEL_ID,
-            provider: "anthropic",
-            contextWindow: 200_000,
-            maxOutputTokens: 128_000,
-            supportsThinking: true,
-          };
+  const model: Model = overrides?.model
+    ? resolveModel(overrides.model)
+    : {
+        modelId: TEST_ANTHROPIC_MODEL_ID,
+        provider: "anthropic",
+        contextWindow: 200_000,
+        maxOutputTokens: 128_000,
+        supportsThinking: true,
+      };
 
   return {
     model,
@@ -272,7 +263,7 @@ describe("DiligentAppServer", () => {
         sessionId: "session-1",
         sessionPath: join(projectRoot, "session.jsonl"),
         cwd: projectRoot,
-        model: "chatgpt-5.1-codex-max",
+        model: { provider: "chatgpt", modelId: "gpt-5.1-codex-max" },
         provider: "chatgpt",
         effort: "medium",
         userId: "user-1",
@@ -280,7 +271,7 @@ describe("DiligentAppServer", () => {
           {
             role: "assistant",
             content: [{ type: "text", text: "ok" }],
-            model: "chatgpt-5.1-codex-max",
+            model: { provider: "chatgpt", modelId: "gpt-5.1-codex-max" },
             usage: { inputTokens: 1, outputTokens: 2, cacheReadTokens: 0, cacheWriteTokens: 0 },
             stopReason: "end_turn",
             timestamp: Date.now(),
@@ -309,7 +300,7 @@ describe("DiligentAppServer", () => {
         cwd: projectRoot,
         mode: "default",
         effort: "medium",
-        currentModel: "fake-model",
+        currentModel: { provider: "anthropic", modelId: TEST_ANTHROPIC_MODEL_ID },
         availableModels: [],
       }),
       resolvePaths: async (cwd) => ensureDiligentDir(cwd),
@@ -331,7 +322,7 @@ describe("DiligentAppServer", () => {
                 message: {
                   role: "assistant",
                   content: [{ type: "text", text: "hello" }],
-                  model: "fake-model",
+                  model: { provider: "anthropic", modelId: TEST_ANTHROPIC_MODEL_ID },
                   usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
                   stopReason: "end_turn",
                   timestamp: Date.now(),
@@ -368,13 +359,13 @@ describe("DiligentAppServer", () => {
       cwd?: string;
       mode?: string;
       effort?: string;
-      currentModel?: string;
+      currentModel?: { provider: string; modelId: string };
     };
     expect(initResult.protocolVersion).toBe(1);
     expect(initResult.cwd).toBe(projectRoot);
     expect(initResult.mode).toBe("default");
     expect(initResult.effort).toBe("medium");
-    expect(initResult.currentModel).toBe("fake-model");
+    expect(initResult.currentModel).toEqual({ provider: "anthropic", modelId: TEST_ANTHROPIC_MODEL_ID });
 
     const start = await server.handleRequest(TEST_CONNECTION_ID, {
       id: 2,
@@ -427,7 +418,7 @@ describe("DiligentAppServer", () => {
                 message: {
                   role: "assistant",
                   content: [{ type: "text", text: "ok" }],
-                  model: "fake-model",
+                  model: { provider: "anthropic", modelId: TEST_ANTHROPIC_MODEL_ID },
                   usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
                   stopReason: "end_turn",
                   timestamp: Date.now(),
@@ -520,7 +511,7 @@ describe("DiligentAppServer", () => {
                 message: {
                   role: "assistant",
                   content: [{ type: "text", text: "ok" }],
-                  model: "fake-model",
+                  model: { provider: "anthropic", modelId: TEST_ANTHROPIC_MODEL_ID },
                   usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
                   stopReason: "end_turn",
                   timestamp: Date.now(),
@@ -627,7 +618,7 @@ describe("DiligentAppServer", () => {
                 message: {
                   role: "assistant",
                   content: [{ type: "text", text: "ok" }],
-                  model: "fake-model",
+                  model: { provider: "anthropic", modelId: TEST_ANTHROPIC_MODEL_ID },
                   usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
                   stopReason: "end_turn",
                   timestamp: Date.now(),
@@ -697,7 +688,7 @@ describe("DiligentAppServer", () => {
                 message: {
                   role: "assistant",
                   content: [{ type: "text", text: "ok" }],
-                  model: "fake-model",
+                  model: { provider: "anthropic", modelId: TEST_ANTHROPIC_MODEL_ID },
                   usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
                   stopReason: "end_turn",
                   timestamp: Date.now(),
@@ -766,7 +757,7 @@ describe("DiligentAppServer", () => {
     await server.handleRequest(TEST_CONNECTION_ID, {
       id: 602,
       method: "config/set",
-      params: { threadId: threadA, model: "gpt-5.6-terra" },
+      params: { threadId: threadA, model: { provider: "openai", modelId: "gpt-5.6-terra" } },
     });
 
     const readA = await server.handleRequest(TEST_CONNECTION_ID, {
@@ -774,14 +765,20 @@ describe("DiligentAppServer", () => {
       method: "thread/read",
       params: { threadId: threadA },
     });
-    expect((readResult(readA) as { currentModel?: string }).currentModel).toBe("gpt-5.6-terra");
+    expect((readResult(readA) as { currentModel?: { provider: string; modelId: string } }).currentModel).toEqual({
+      provider: "openai",
+      modelId: "gpt-5.6-terra",
+    });
 
     const readB = await server.handleRequest(TEST_CONNECTION_ID, {
       id: 604,
       method: "thread/read",
       params: { threadId: threadB },
     });
-    expect((readResult(readB) as { currentModel?: string }).currentModel).toBe(TEST_ANTHROPIC_MODEL_ID);
+    expect((readResult(readB) as { currentModel?: { provider: string; modelId: string } }).currentModel).toMatchObject({
+      provider: "anthropic",
+      modelId: TEST_ANTHROPIC_MODEL_ID,
+    });
 
     const resumedServer = new DiligentAppServer(
       createAppServerConfig({
@@ -803,7 +800,10 @@ describe("DiligentAppServer", () => {
       method: "thread/read",
       params: { threadId: threadA },
     });
-    expect((readResult(resumedRead) as { currentModel?: string }).currentModel).toBe("gpt-5.6-terra");
+    expect((readResult(resumedRead) as { currentModel?: { provider: string; modelId: string } }).currentModel).toEqual({
+      provider: "openai",
+      modelId: "gpt-5.6-terra",
+    });
 
     const newThread = await resumedServer.handleRequest(TEST_CONNECTION_ID, {
       id: 607,
@@ -817,7 +817,9 @@ describe("DiligentAppServer", () => {
       method: "thread/read",
       params: { threadId: newThreadId },
     });
-    expect((readResult(newThreadRead) as { currentModel?: string }).currentModel).toBe("gpt-5.6-terra");
+    expect(
+      (readResult(newThreadRead) as { currentModel?: { provider: string; modelId: string } }).currentModel,
+    ).toEqual({ provider: "openai", modelId: "gpt-5.6-terra" });
   });
 
   it("config/reload re-discovers skills and forces the next turn to rebuild its agent", async () => {
@@ -885,14 +887,17 @@ describe("DiligentAppServer", () => {
       providerManager,
       authStore,
       resolvePaths: async (cwd) => ensureDiligentDir(cwd),
-      createAgent: ({ modelId }) => {
+      createAgent: ({ model }) => {
         return new RuntimeAgent(FAKE_MODEL, [{ label: "base", content: "test" }], [], {
           effort: "medium",
           ...fakeConfig(() => {
-            if (modelId.startsWith("claude") && providerManager.getApiKey("anthropic") !== "valid-anthropic-key") {
+            if (
+              model.modelId.startsWith("claude") &&
+              providerManager.getApiKey("anthropic") !== "valid-anthropic-key"
+            ) {
               throw new Error("invalid Anthropic key");
             }
-            if (modelId.startsWith("gpt") && !providerManager.hasKeyFor("openai")) {
+            if (model.modelId.startsWith("gpt") && !providerManager.hasKeyFor("openai")) {
               throw new Error("missing OpenAI key");
             }
             const stream = new EventStream(
@@ -906,8 +911,8 @@ describe("DiligentAppServer", () => {
                 stopReason: "end_turn",
                 message: {
                   role: "assistant",
-                  content: [{ type: "text", text: modelId }],
-                  model: modelId,
+                  content: [{ type: "text", text: model.modelId }],
+                  model,
                   usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
                   stopReason: "end_turn",
                   timestamp: Date.now(),
@@ -946,7 +951,7 @@ describe("DiligentAppServer", () => {
     const started = await server.handleRequest(TEST_CONNECTION_ID, {
       id: 610,
       method: "thread/start",
-      params: { cwd: projectRoot, model: TEST_ANTHROPIC_MODEL_ID },
+      params: { cwd: projectRoot, model: { provider: "anthropic", modelId: TEST_ANTHROPIC_MODEL_ID } },
     });
     const threadId = (readResult(started) as { threadId: string }).threadId;
 
@@ -981,7 +986,7 @@ describe("DiligentAppServer", () => {
     await server.handleRequest(TEST_CONNECTION_ID, {
       id: 614,
       method: "turn/start",
-      params: { threadId, message: "second", model: "gpt-5.6-terra" },
+      params: { threadId, message: "second", model: { provider: "openai", modelId: "gpt-5.6-terra" } },
     });
     expect(await secondOutcome).toBe("completed");
 
@@ -1010,7 +1015,7 @@ describe("DiligentAppServer", () => {
       .filter((entry) => entry.type === "message" && entry.message?.role === "assistant")
       .map((entry) => entry.message?.model);
 
-    expect(assistantModels).toEqual(["gpt-5.6-terra"]);
+    expect(assistantModels).toEqual([{ provider: "openai", modelId: "gpt-5.6-terra" }]);
   });
 
   it("uses runtime config default effort for new threads", async () => {
@@ -1101,7 +1106,7 @@ describe("DiligentAppServer", () => {
     const server = new DiligentAppServer(
       createAppServerConfig({
         cwd: projectRoot,
-        runtimeConfig: makeFactoryRuntimeConfig({ modelId: "gpt-5.6-sol" }),
+        runtimeConfig: makeFactoryRuntimeConfig({ model: { provider: "openai", modelId: "gpt-5.6-sol" } }),
       }),
     );
 
@@ -1133,7 +1138,7 @@ describe("DiligentAppServer", () => {
     const server = new DiligentAppServer(
       createAppServerConfig({
         cwd: projectRoot,
-        runtimeConfig: makeFactoryRuntimeConfig({ modelId: "gpt-5.5" }),
+        runtimeConfig: makeFactoryRuntimeConfig({ model: { provider: "openai", modelId: "gpt-5.5" } }),
       }),
     );
 
@@ -1167,7 +1172,7 @@ describe("DiligentAppServer", () => {
     const server = new DiligentAppServer(
       createAppServerConfig({
         cwd: projectRoot,
-        runtimeConfig: makeFactoryRuntimeConfig({ modelId: "vertex-gemma-4-26b-it" }),
+        runtimeConfig: makeFactoryRuntimeConfig({ model: { provider: "vertex", modelId: "vertex-gemma-4-26b-it" } }),
       }),
     );
 
@@ -1193,7 +1198,7 @@ describe("DiligentAppServer", () => {
     const server = new DiligentAppServer(
       createAppServerConfig({
         cwd: projectRoot,
-        runtimeConfig: makeFactoryRuntimeConfig({ modelId: "gpt-5.6-sol" }),
+        runtimeConfig: makeFactoryRuntimeConfig({ model: { provider: "openai", modelId: "gpt-5.6-sol" } }),
       }),
     );
 
@@ -1212,7 +1217,7 @@ describe("DiligentAppServer", () => {
     await server.handleRequest(TEST_CONNECTION_ID, {
       id: 1542,
       method: "config/set",
-      params: { threadId, model: "gpt-5.5" },
+      params: { threadId, model: { provider: "openai", modelId: "gpt-5.5" } },
     });
 
     const read = await server.handleRequest(TEST_CONNECTION_ID, {
@@ -1245,7 +1250,7 @@ describe("DiligentAppServer", () => {
                 message: {
                   role: "assistant",
                   content: [{ type: "text", text: "ok" }],
-                  model: "fake-model",
+                  model: { provider: "anthropic", modelId: TEST_ANTHROPIC_MODEL_ID },
                   usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
                   stopReason: "end_turn",
                   timestamp: Date.now(),
@@ -1297,7 +1302,7 @@ describe("DiligentAppServer", () => {
                 message: {
                   role: "assistant",
                   content: [{ type: "text", text: "original" }],
-                  model: "fake-model",
+                  model: { provider: "anthropic", modelId: TEST_ANTHROPIC_MODEL_ID },
                   usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
                   stopReason: "end_turn",
                   timestamp: Date.now(),
@@ -1363,7 +1368,7 @@ describe("DiligentAppServer", () => {
       message: {
         role: "assistant",
         content: [{ type: "text", text: "from-disk" }],
-        model: last.message?.model ?? "fake-model",
+        model: last.message?.model ?? TEST_ANTHROPIC_MODEL_ID,
         usage: last.message?.usage ?? { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
         stopReason: last.message?.stopReason ?? "end_turn",
         timestamp: Date.now(),
@@ -1437,7 +1442,7 @@ describe("DiligentAppServer", () => {
         message: {
           role: "assistant",
           content: [{ type: "tool_call", id: "tc-read-1", name: "read", input: { file_path: "README.md" } }],
-          model: "fake-model",
+          model: { provider: "anthropic", modelId: TEST_ANTHROPIC_MODEL_ID },
           usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
           stopReason: "tool_use",
           timestamp,
@@ -1525,7 +1530,7 @@ describe("DiligentAppServer", () => {
         message: {
           role: "assistant",
           content: [{ type: "tool_call", id: "tc-bash-1", name: "bash", input: { command: "pwd" } }],
-          model: "fake-model",
+          model: { provider: "anthropic", modelId: TEST_ANTHROPIC_MODEL_ID },
           usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
           stopReason: "tool_use",
           timestamp,
@@ -1633,7 +1638,7 @@ describe("DiligentAppServer", () => {
         message: {
           role: "assistant",
           content: [{ type: "tool_call", id: "tc-bash-err-1", name: "bash", input: { command: "badcmd" } }],
-          model: "fake-model",
+          model: { provider: "anthropic", modelId: TEST_ANTHROPIC_MODEL_ID },
           usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
           stopReason: "tool_use",
           timestamp,
@@ -1720,7 +1725,7 @@ describe("DiligentAppServer", () => {
         message: {
           role: "assistant",
           content: [{ type: "tool_call", id: "tc-read-resume-1", name: "read", input: { file_path: "README.md" } }],
-          model: "fake-model",
+          model: { provider: "anthropic", modelId: TEST_ANTHROPIC_MODEL_ID },
           usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
           stopReason: "tool_use",
           timestamp: base + 1,
@@ -1809,7 +1814,7 @@ describe("DiligentAppServer", () => {
         message: {
           role: "assistant",
           content: [{ type: "tool_call", id: "tc-bash-2", name: "bash", input: { command: "pwd" } }],
-          model: "fake-model",
+          model: { provider: "anthropic", modelId: TEST_ANTHROPIC_MODEL_ID },
           usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
           stopReason: "tool_use",
           timestamp: startTimestamp,
@@ -1877,7 +1882,7 @@ describe("DiligentAppServer", () => {
                 message: {
                   role: "assistant",
                   content: [{ type: "text", text: "ok" }],
-                  model: "fake-model",
+                  model: { provider: "anthropic", modelId: TEST_ANTHROPIC_MODEL_ID },
                   usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
                   stopReason: "end_turn",
                   timestamp: Date.now(),
@@ -2077,7 +2082,7 @@ describe("DiligentAppServer", () => {
                         },
                       },
                     ],
-                    model: "fake-model",
+                    model: { provider: "anthropic", modelId: TEST_ANTHROPIC_MODEL_ID },
                     usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
                     stopReason: "tool_use",
                     timestamp: Date.now(),
@@ -2194,7 +2199,7 @@ describe("DiligentAppServer", () => {
                           },
                         ]
                       : [{ type: "text", text: "done" }],
-                    model: "fake-model",
+                    model: { provider: "anthropic", modelId: TEST_ANTHROPIC_MODEL_ID },
                     usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
                     stopReason: first ? "tool_use" : "end_turn",
                     timestamp: Date.now(),
@@ -2407,7 +2412,7 @@ describe("DiligentAppServer", () => {
                   message: {
                     role: "assistant",
                     content: [{ type: "text", text: "persist-check" }],
-                    model: "fake-model",
+                    model: { provider: "anthropic", modelId: TEST_ANTHROPIC_MODEL_ID },
                     usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
                     stopReason: "end_turn",
                     timestamp: Date.now(),
@@ -2486,7 +2491,7 @@ describe("DiligentAppServer", () => {
                 message: {
                   role: "assistant",
                   content: [{ type: "text", text: `decision:${decision}` }],
-                  model: "fake-model",
+                  model: { provider: "anthropic", modelId: TEST_ANTHROPIC_MODEL_ID },
                   usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
                   stopReason: "end_turn",
                   timestamp: Date.now(),
@@ -2568,7 +2573,7 @@ describe("DiligentAppServer", () => {
                 message: {
                   role: "assistant",
                   content: [{ type: "text", text: `decision:${decision}` }],
-                  model: "fake-model",
+                  model: { provider: "anthropic", modelId: TEST_ANTHROPIC_MODEL_ID },
                   usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
                   stopReason: "end_turn",
                   timestamp: Date.now(),
@@ -2793,7 +2798,7 @@ describe("DiligentAppServer", () => {
                 message: {
                   role: "assistant",
                   content: [{ type: "text", text: "hello" }],
-                  model: "fake-model",
+                  model: { provider: "anthropic", modelId: TEST_ANTHROPIC_MODEL_ID },
                   usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
                   stopReason: "end_turn",
                   timestamp: Date.now(),
@@ -2869,7 +2874,7 @@ describe("DiligentAppServer", () => {
                 message: {
                   role: "assistant",
                   content: [{ type: "text", text: "hello" }],
-                  model: "fake-model",
+                  model: { provider: "anthropic", modelId: TEST_ANTHROPIC_MODEL_ID },
                   usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
                   stopReason: "end_turn",
                   timestamp: Date.now(),
@@ -2952,7 +2957,7 @@ describe("DiligentAppServer", () => {
           return {
             role: "assistant" as const,
             content: [{ type: "tool_call" as const, id: "tc-noop", name: "noop", input: {} }],
-            model: "fake-model",
+            model: { provider: "anthropic", modelId: TEST_ANTHROPIC_MODEL_ID },
             usage,
             stopReason: "tool_use" as const,
             timestamp: Date.now(),
@@ -2973,7 +2978,7 @@ describe("DiligentAppServer", () => {
                 },
               },
             ],
-            model: "fake-model",
+            model: { provider: "anthropic", modelId: TEST_ANTHROPIC_MODEL_ID },
             usage,
             stopReason: "tool_use" as const,
             timestamp: Date.now(),
@@ -2982,7 +2987,7 @@ describe("DiligentAppServer", () => {
         return {
           role: "assistant" as const,
           content: [{ type: "text" as const, text: "done" }],
-          model: "fake-model",
+          model: { provider: "anthropic", modelId: TEST_ANTHROPIC_MODEL_ID },
           usage,
           stopReason: "end_turn" as const,
           timestamp: Date.now(),
@@ -3011,7 +3016,7 @@ describe("DiligentAppServer", () => {
         const { tools: collabTools, registry } = createCollabTools({
           cwd: projectRoot,
           paths,
-          modelId: "fake-model",
+          model: { provider: "anthropic", modelId: TEST_ANTHROPIC_MODEL_ID },
           effort: "medium",
           systemPrompt: [{ label: "base", content: "test" }],
           agentDefinitions: getBuiltinAgentDefinitions(),
@@ -3067,7 +3072,7 @@ describe("DiligentAppServer", () => {
                       message: {
                         role: "assistant",
                         content: [{ type: "text", text: "child done" }],
-                        model: "fake-model",
+                        model: { provider: "anthropic", modelId: TEST_ANTHROPIC_MODEL_ID },
                         usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
                         stopReason: "end_turn",
                         timestamp: Date.now(),

@@ -9,7 +9,7 @@ import type {
   SystemSection,
 } from "@diligent/runtime";
 import { ensureDiligentDir, loadRuntimeConfig, ProviderAuthPresenter, resolveModel } from "@diligent/runtime";
-import { DEFAULT_PROVIDER, getDefaultModelId, type ProviderManager, type ProviderName } from "./provider-manager";
+import { DEFAULT_PROVIDER, getDefaultModelRef, type ProviderManager, type ProviderName } from "./provider-manager";
 
 export interface AppConfig {
   apiKey: string;
@@ -34,7 +34,7 @@ export async function loadConfig(cwd: string = process.cwd(), paths?: DiligentPa
   const resolvedPaths = paths ?? (await ensureDiligentDir(cwd));
   const runtime = await loadRuntimeConfig(cwd, resolvedPaths);
   // Defensive fallback; runtime normally resolves this through the provider model policy.
-  const model = runtime.model ?? resolveModel(getDefaultModelId(DEFAULT_PROVIDER));
+  const model = runtime.model ?? resolveModel(getDefaultModelRef(DEFAULT_PROVIDER));
   const provider = (model.provider ?? DEFAULT_PROVIDER) as ProviderName;
   const apiKey = runtime.providerManager.getApiKey(provider) ?? "";
 

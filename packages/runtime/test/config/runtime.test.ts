@@ -37,19 +37,23 @@ afterEach(async () => {
 
 describe("loadRuntimeConfig", () => {
   it("preserves the last selected model when its provider is configured", () => {
-    expect(resolveRuntimeModel("gpt-5.6-terra", ["openai"]).id).toBe("gpt-5.6-terra");
+    expect(resolveRuntimeModel({ provider: "openai", modelId: "gpt-5.6-terra" }, ["openai"]).modelId).toBe(
+      "gpt-5.6-terra",
+    );
   });
 
   it("uses the configured provider default when there is no last selected model", () => {
-    expect(resolveRuntimeModel(undefined, ["openai"]).id).toBe("gpt-5.6-sol");
+    expect(resolveRuntimeModel(undefined, ["openai"]).modelId).toBe("gpt-5.6-sol");
   });
 
   it("uses the configured provider default when the last selected provider is unavailable", () => {
-    expect(resolveRuntimeModel("claude-sonnet-4-6", ["openai"]).id).toBe("gpt-5.6-sol");
+    expect(resolveRuntimeModel({ provider: "anthropic", modelId: "claude-sonnet-4-6" }, ["openai"]).modelId).toBe(
+      "gpt-5.6-sol",
+    );
   });
 
   it("uses the default provider policy when neither a model nor provider is configured", () => {
-    expect(resolveRuntimeModel(undefined, []).id).toBe("claude-opus-4-8");
+    expect(resolveRuntimeModel(undefined, []).modelId).toBe("claude-opus-4-8");
   });
 
   it("loads discovered agents and adds an agents section to the system prompt", async () => {
@@ -257,7 +261,7 @@ describe("loadRuntimeConfig", () => {
       expect(config.providerManager.hasKeyFor("vertex")).toBe(true);
       expect(config.providerAuthPresenter?.getStatus("vertex").maskedKey).toBe("Vertex access token");
       expect(config.model?.provider).toBe("vertex");
-      expect(config.model?.id).toBe("vertex-gemma-4-26b-it");
+      expect(config.model?.modelId).toBe("vertex-gemma-4-26b-it");
     } finally {
       process.env.HOME = originalHome;
       process.env.USERPROFILE = originalUserProfile;
@@ -283,7 +287,7 @@ describe("loadRuntimeConfig", () => {
       const config = await loadRuntimeConfig(tmpRoot, paths);
       expect(config.diligent.model).toBeUndefined();
       expect(config.model?.provider).toBe("openai");
-      expect(config.model?.id).toBe("gpt-5.6-sol");
+      expect(config.model?.modelId).toBe("gpt-5.6-sol");
     } finally {
       process.env.HOME = originalHome;
       process.env.USERPROFILE = originalUserProfile;
@@ -317,7 +321,7 @@ describe("loadRuntimeConfig", () => {
       expect(config.providerManager.hasKeyFor("zai-coding-plan")).toBe(true);
       expect(config.providerAuthPresenter?.getStatus("zai-coding-plan").maskedKey).toBe("zai-tes...");
       expect(config.model?.provider).toBe("zai-coding-plan");
-      expect(config.model?.id).toBe("glm-5.2");
+      expect(config.model?.modelId).toBe("glm-5.2");
     } finally {
       process.env.HOME = originalHome;
       process.env.USERPROFILE = originalUserProfile;

@@ -375,9 +375,21 @@ This ensures prompt behavior stays consistent no matter which client starts the 
 
 Providers are abstracted in core behind a shared stream interface. Runtime wires real auth and config into that abstraction.
 
+### Provider-scoped model identity (invariant)
+
+A model is identified by the pair `(provider, modelId)`, never by a globally-unique model ID string. The shared value object is `ModelRef = { provider, modelId }` (`@diligent/protocol`), and it crosses every boundary where a model is selected, dispatched, persisted, or presented.
+
+- The catalog is provider-scoped (`provider -> modelId -> model card`) and permits the same `modelId` under different providers — `openai/gpt-5.5` and `chatgpt/gpt-5.5` are distinct cards with distinct capabilities and pricing.
+- Core `resolveModel(ref)` is strict: it requires provider context, throws a typed unknown-model error, and never infers capabilities from a bare ID. `Agent`/`RuntimeAgent` accept a resolved `Model`.
+- Every protocol model-selection field uses `ModelRefSchema`; `ModelInfo.provider` uses `ProviderNameSchema`. Config persists `{ provider, modelId }` and merges it atomically.
+- The canonical textual selector is `<provider>/<model-id>`; an unqualified ID resolves only when it is unique. Reference equality always goes through `sameModelRef()` — never compare `modelId` alone.
+- Provider-prefix inference is confined to one runtime-owned legacy migration adapter (`packages/runtime/src/model/legacy-model-ref.ts`) used only when reading pre-P082 config/session data; it maps known strings deterministically and never fabricates a card.
+
+See D105 for rationale and D096 for the fixed `protocolVersion: 1` marker.
+
 Current provider-related behavior includes:
 
-- known model registry and model resolution
+- provider-scoped model registry and strict `ModelRef`-based resolution
 - provider-specific streaming through `ProviderManager`
 - API-key-backed providers from `~/.diligent/auth.jsonc`
 - runtime-managed external auth bindings such as ChatGPT OAuth

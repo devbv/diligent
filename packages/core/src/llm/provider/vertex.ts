@@ -28,7 +28,7 @@ export function createVertexStream(getAccessToken: () => string, config?: Vertex
         apiKey: token,
         includeUsage: true,
       });
-      return provider.chatModel(resolveVertexModelId(model.id, baseURL, config?.modelMap));
+      return provider.chatModel(resolveVertexModelId(model.modelId, baseURL, config?.modelMap));
     },
     classifyError: classifyVertexError,
   });

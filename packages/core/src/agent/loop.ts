@@ -238,7 +238,7 @@ async function compactIfNeeded(messages: Message[], request: LoopRequest, stream
       thresholdTokens: decision.thresholdTokens,
       reserveTokens: decision.reserveTokens,
       provider: request.config.model.provider,
-      model: request.config.model.id,
+      model: request.config.model.modelId,
     },
   });
 
@@ -258,7 +258,7 @@ async function compactAfterContextOverflow(
     fields: {
       reason: "context_overflow",
       provider: request.config.model.provider,
-      model: request.config.model.id,
+      model: request.config.model.modelId,
     },
   });
   await applyCompaction(messages, request, stream);

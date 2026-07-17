@@ -1,7 +1,7 @@
 // @summary React hook for steering queue state: pending steers, abort-restart, and suppress-injected logic
 
 import { createLogger } from "@diligent/logging";
-import type { PendingSteer } from "@diligent/protocol";
+import type { ModelRef, PendingSteer } from "@diligent/protocol";
 import { DILIGENT_CLIENT_REQUEST_METHODS } from "@diligent/protocol";
 import type { RefObject } from "react";
 import { useCallback, useRef } from "react";
@@ -122,7 +122,7 @@ export async function executeRestartFromAbort({
   threadId: string;
   restartMessage: string;
   hadItemsBeforeRestart: boolean;
-  model: string | undefined;
+  model: ModelRef | undefined;
   dispatch: (action: SteeringAction) => void;
 }): Promise<void> {
   dispatch({ type: "consume_first_pending_steer" });
@@ -156,7 +156,7 @@ export function useSteeringQueue({
   stateRef: RefObject<ThreadState>;
   dispatch: (action: SteeringAction) => void;
   activeThreadId: string | null;
-  currentModelRef: RefObject<string>;
+  currentModelRef: RefObject<ModelRef | undefined>;
   activeInput: string;
   pendingImages: PendingImage[];
   contextItems: AgentContextItem[];
@@ -184,7 +184,7 @@ export function useSteeringQueue({
         threadId,
         restartMessage,
         hadItemsBeforeRestart: stateRef.current.items.length > 0,
-        model: currentModelRef.current || undefined,
+        model: currentModelRef.current,
         dispatch,
       });
     },

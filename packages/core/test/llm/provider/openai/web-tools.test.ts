@@ -6,7 +6,7 @@ import { handleResponsesAPIEvents } from "../../../../src/llm/provider/openai/ss
 import type { Model, ProviderEvent, ProviderResult, ToolDefinition } from "../../../../src/llm/types";
 
 const OPENAI_MODEL: Model = {
-  id: "gpt-5",
+  modelId: "gpt-5",
   provider: "openai",
   contextWindow: 128_000,
   maxOutputTokens: 16_384,
@@ -14,7 +14,7 @@ const OPENAI_MODEL: Model = {
 };
 
 const CHATGPT_MODEL: Model = {
-  id: "chatgpt-5",
+  modelId: "gpt-5",
   provider: "chatgpt",
   contextWindow: 128_000,
   maxOutputTokens: 16_384,
@@ -46,7 +46,7 @@ describe("OpenAI native web tools", () => {
     ];
 
     const body = await buildResponsesRequestBody({
-      model: OPENAI_MODEL.id,
+      model: OPENAI_MODEL.modelId,
       messages: [{ role: "user", content: "Find it", timestamp: 1 }],
       tools,
       strictTools: false,
@@ -94,7 +94,7 @@ describe("OpenAI native web tools", () => {
     ];
 
     const body = await buildResponsesRequestBody({
-      model: OPENAI_MODEL.id,
+      model: OPENAI_MODEL.modelId,
       messages: [{ role: "user", content: "Find it", timestamp: 1 }],
       tools,
       strictTools: false,

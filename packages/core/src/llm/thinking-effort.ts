@@ -1,5 +1,7 @@
 // @summary Shared thinking-effort helpers for aliases, provider capabilities, and UI labels
-import type { Model, ModelInfo, ThinkingEffort } from "./types";
+
+import { sameModelRef } from "./models";
+import type { Model, ModelInfo, ModelRef, ThinkingEffort } from "./types";
 
 export const THINKING_EFFORT_VALUES = [
   "low",
@@ -69,7 +71,7 @@ export function getThinkingEffortUsage(
   return getThinkingEffortUsageValues(model).join("|");
 }
 
-export function findModelInfo(models: ModelInfo[], modelId?: string): ModelInfo | undefined {
-  if (!modelId) return undefined;
-  return models.find((model) => model.id === modelId);
+export function findModelInfo(models: ModelInfo[], ref?: ModelRef): ModelInfo | undefined {
+  if (!ref) return undefined;
+  return models.find((model) => sameModelRef(model, ref));
 }

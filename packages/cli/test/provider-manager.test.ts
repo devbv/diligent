@@ -1,7 +1,7 @@
 // @summary Tests for provider manager configuration and model handling
 import { describe, expect, test } from "bun:test";
 import { createChatGPTOAuthBinding, ProviderAuthPresenter } from "@diligent/runtime";
-import { getDefaultModelId, PROVIDER_MODEL_POLICIES, PROVIDER_NAMES, ProviderManager } from "../src/provider-manager";
+import { getDefaultModelRef, PROVIDER_MODEL_POLICIES, PROVIDER_NAMES, ProviderManager } from "../src/provider-manager";
 
 describe("ProviderManager", () => {
   test("config does not provide API keys (auth-only)", () => {
@@ -36,9 +36,9 @@ describe("ProviderManager", () => {
   });
 
   test("uses the current flagship models as provider defaults", () => {
-    expect(getDefaultModelId("anthropic")).toBe("claude-opus-4-8");
-    expect(getDefaultModelId("openai")).toBe("gpt-5.6-sol");
-    expect(getDefaultModelId("chatgpt")).toBe("chatgpt-5.6-sol");
+    expect(getDefaultModelRef("anthropic").modelId).toBe("claude-opus-4-8");
+    expect(getDefaultModelRef("openai").modelId).toBe("gpt-5.6-sol");
+    expect(getDefaultModelRef("chatgpt")).toEqual({ provider: "chatgpt", modelId: "gpt-5.6-sol" });
   });
 
   test("oauth marks chatgpt as configured", () => {

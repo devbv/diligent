@@ -14,14 +14,10 @@ const CHATGPT_JSON_CONTENT_TYPE = "application/json";
 const CHATGPT_CODEX_CLIENT_VERSION = "0.144.1";
 const USER_AGENT = `diligent (${platform()} ${release()}; ${arch()})`;
 
-function resolveChatGPTModelId(modelId: string): string {
-  return modelId.startsWith("chatgpt-") ? `gpt-${modelId.slice("chatgpt-".length)}` : modelId;
-}
-
 export function createChatGPTNativeCompaction(getTokens: () => OpenAIOAuthTokens): NativeCompactFn {
   return async (input) => {
     const tokens = getTokens();
-    const upstreamModelId = resolveChatGPTModelId(input.model.id);
+    const upstreamModelId = input.model.modelId;
     const useResponsesLite = isGpt56Model(upstreamModelId);
     const headers: Record<string, string> = {
       "Content-Type": CHATGPT_JSON_CONTENT_TYPE,

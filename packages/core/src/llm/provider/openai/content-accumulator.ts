@@ -1,6 +1,6 @@
 // @summary Shared OpenAI-family content buffering and exactly-once assistant-message finalization
 import type { AssistantMessage, ContentBlock, StopReason, ThinkingBlock, Usage } from "../../../types";
-import type { ProviderEvent } from "../../types";
+import type { ModelRef, ProviderEvent } from "../../types";
 
 type ToolBuffer = {
   id: string;
@@ -24,7 +24,7 @@ export interface CompleteToolCallOptions {
 }
 
 export interface OpenAIContentFinalizationOptions {
-  modelId: string;
+  model: ModelRef;
   finalizePendingTools: boolean;
   parseToolArguments?: (argumentsText: string) => Record<string, unknown>;
   flushThinking?: boolean;
@@ -187,7 +187,7 @@ export class OpenAIContentAccumulator {
     const message: AssistantMessage = {
       role: "assistant",
       content: this.contentBlocks,
-      model: options.modelId,
+      model: options.model,
       usage: this.usage,
       stopReason: this.stopReason,
       timestamp: Date.now(),

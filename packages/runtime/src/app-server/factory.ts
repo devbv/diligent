@@ -113,7 +113,18 @@ async function createRuntimeAgent(args: {
   bundledToolProviders?: BundledToolProvider[];
 }): Promise<RuntimeAgent> {
   const { request, runtimeConfig, getPaths, bundledToolProviders } = args;
-  const { cwd, mode, effort, modelId, approve, ask, getSessionId, existingAgent, onChildStop, userId } = request;
+  const {
+    cwd,
+    mode,
+    effort,
+    model: modelRef,
+    approve,
+    ask,
+    getSessionId,
+    existingAgent,
+    onChildStop,
+    userId,
+  } = request;
   const paths = await getPaths();
   const guardedSystemPrompt = withSkillGuardrail(runtimeConfig);
   const systemPromptWithLatestKnowledge = await withLatestKnowledge(
@@ -121,12 +132,12 @@ async function createRuntimeAgent(args: {
     paths,
     runtimeConfig.diligent.knowledge,
   );
-  const model = resolveModel(modelId);
+  const model = resolveModel(modelRef);
   const toolsResult = await buildDefaultTools({
     cwd,
     paths,
     collabDeps: {
-      modelId: modelId,
+      model: modelRef,
       effort,
       agentDefinitions: runtimeConfig.agentDefinitions,
       getParentSessionId: getSessionId,
@@ -171,7 +182,7 @@ async function createRuntimeAgent(args: {
   const filteredTools = filterToolsByMode(activeMode, toolsResult.tools);
   if (toolsResult.registry) {
     toolsResult.registry.updateDeps({
-      modelId,
+      model: modelRef,
       effort,
       agentDefinitions: runtimeConfig.agentDefinitions,
       parentTools: filteredTools,
@@ -300,7 +311,7 @@ export function createAppServerConfig(opts: CreateAppServerConfigOptions): Dilig
         cwd,
         mode: runtimeConfig.mode,
         effort: initialEffort,
-        currentModel: runtimeConfig.model?.id,
+        currentModel: runtimeConfig.model,
         availableModels: modelsForConfiguredProviders(),
         consent: consentConfig.get(),
       };
@@ -366,16 +377,16 @@ export function createAppServerConfig(opts: CreateAppServerConfigOptions): Dilig
       },
     },
     modelConfig: {
-      currentModelId: runtimeConfig.model?.id,
+      currentModel: runtimeConfig.model,
       getAvailableModels: () => modelsForConfiguredProviders(),
-      onModelChange: (modelId, threadId) => {
+      onModelChange: (model, threadId) => {
         if (!threadId) {
-          runtimeConfig.model = resolveModel(modelId);
-          saveGlobalModel(modelId).catch((err) => {
+          runtimeConfig.model = resolveModel(model);
+          saveGlobalModel(model).catch((err) => {
             logger.warn("persist_model_failed", {
               message: `[config] Failed to persist model selection: ${err instanceof Error ? err.message : String(err)}`,
               error: err,
-              fields: { modelId },
+              fields: { model },
             });
           });
         }

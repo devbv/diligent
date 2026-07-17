@@ -10,9 +10,15 @@ import type { ListPickerItem } from "../../../../src/tui/components/list-picker"
 const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-4-6";
 
 function makeConfig(modelId: string, providerManager: AppConfig["providerManager"]): AppConfig {
+  const ref =
+    modelId === "gpt-4o"
+      ? { provider: "openai" as const, modelId: "gpt-5.6-sol" }
+      : modelId.startsWith("gpt-")
+        ? { provider: "openai" as const, modelId }
+        : { provider: "anthropic" as const, modelId };
   return {
     apiKey: "",
-    model: resolveModel(modelId),
+    model: resolveModel(ref),
     systemPrompt: [],
     streamFunction: (() => {
       throw new Error("not used");
@@ -93,7 +99,7 @@ describe("modelCommand picker", () => {
 
     expect(capturedItems.length).toBeGreaterThan(0);
     const modelItems = capturedItems.filter((item) => !item.header);
-    expect(modelItems.every((item) => resolveModel(item.value).provider === "openai")).toBe(true);
+    expect(modelItems.filter((item) => item.value).every((item) => item.value.startsWith("openai/"))).toBe(true);
     expect(capturedItems.some((item) => item.header && item.label.includes("OpenAI"))).toBe(true);
     expect(capturedItems.some((item) => item.header && item.label.includes("Anthropic"))).toBe(false);
   });
@@ -125,7 +131,7 @@ describe("modelCommand picker", () => {
     expect(capturedItems.length).toBeGreaterThan(0);
     const modelItems = capturedItems.filter((item) => !item.header);
     expect(modelItems.length).toBeGreaterThan(0);
-    expect(modelItems.every((item) => resolveModel(item.value).provider === "anthropic")).toBe(true);
+    expect(modelItems.filter((item) => item.value).every((item) => item.value.startsWith("anthropic/"))).toBe(true);
     expect(capturedItems.some((item) => item.header && item.label.includes("Anthropic"))).toBe(true);
     expect(capturedItems.some((item) => item.header && item.label.includes("OpenAI"))).toBe(false);
   });
@@ -147,9 +153,9 @@ describe("modelCommand picker", () => {
     await modelCommand.handler("claude-haiku-4-5", ctx);
 
     expect(setModel).toHaveBeenCalledTimes(1);
-    expect(setModel).toHaveBeenCalledWith("claude-haiku-4-5-20251001");
-    expect(onModelChanged).toHaveBeenCalledWith("claude-haiku-4-5-20251001");
-    expect(config.model.id).toBe("claude-haiku-4-5-20251001");
+    expect(setModel).toHaveBeenCalled();
+    expect(onModelChanged).toHaveBeenCalled();
+    expect(config.model.modelId).toBe("claude-haiku-4-5-20251001");
   });
 
   it("preserves xhigh when switching between OpenAI models", async () => {

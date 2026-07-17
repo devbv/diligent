@@ -231,7 +231,7 @@ describe("writeProjectToolsConfig", () => {
     await Bun.write(
       configPath,
       `{
-  "model": "gpt-4o",
+  "model": { "provider": "openai", "modelId": "gpt-4o" },
   "tools": {
     "builtin": {
       "bash": false
@@ -246,7 +246,7 @@ describe("writeProjectToolsConfig", () => {
     });
 
     const text = await Bun.file(configPath).text();
-    expect(text).toContain('"model": "gpt-4o"');
+    expect(text).toContain('"modelId": "gpt-4o"');
     expect(text).not.toContain('"tools"');
     expect(result.tools).toBeUndefined();
   });
@@ -321,7 +321,7 @@ describe("writeGlobalSkillsConfig", () => {
         configPath,
         `{
   // keep model
-  "model": "gpt-4o",
+  "model": { "provider": "openai", "modelId": "gpt-4o" },
   "skills": {
     // keep master switch
     "enabled": true,
@@ -344,7 +344,7 @@ describe("writeGlobalSkillsConfig", () => {
       expect(text).toContain("// keep master switch");
       expect(text).toContain("// keep configured path");
       expect(text).toContain("// keep alpha override");
-      expect(text).toContain('"model": "gpt-4o"');
+      expect(text).toContain('"model": { "provider": "openai", "modelId": "gpt-4o" }');
       expect(text).toContain('"enabled": true');
       expect(text).toContain('"paths"');
       expect(text).toContain('"alpha": false');

@@ -50,7 +50,7 @@ mock.module("@anthropic-ai/sdk", () => ({
 const { createAnthropicStream } = await import("../../../../src/llm/provider/anthropic");
 
 const MODEL: Model = {
-  id: TEST_ANTHROPIC_MODEL_ID,
+  modelId: TEST_ANTHROPIC_MODEL_ID,
   provider: "anthropic",
   contextWindow: 300_000,
   maxOutputTokens: 8_000,
@@ -81,7 +81,7 @@ describe("Anthropic native web tools", () => {
     finalMessagePayload = {
       id: "msg_stop_reason",
       role: "assistant",
-      model: MODEL.id,
+      model: MODEL.modelId,
       type: "message",
       stop_reason: upstreamReason,
       usage: { input_tokens: 3, output_tokens: 4 },
@@ -98,7 +98,7 @@ describe("Anthropic native web tools", () => {
     finalMessagePayload = {
       id: "msg_context",
       role: "assistant",
-      model: MODEL.id,
+      model: MODEL.modelId,
       type: "message",
       stop_reason: "model_context_window_exceeded",
       usage: { input_tokens: 300_000, output_tokens: 4 },
@@ -123,7 +123,7 @@ describe("Anthropic native web tools", () => {
     finalMessagePayload = {
       id: "msg_1",
       role: "assistant",
-      model: MODEL.id,
+      model: MODEL.modelId,
       type: "message",
       stop_reason: "end_turn",
       usage: { input_tokens: 3, output_tokens: 4 },

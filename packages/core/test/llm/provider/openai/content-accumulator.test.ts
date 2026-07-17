@@ -18,12 +18,14 @@ describe("OpenAIContentAccumulator", () => {
     expect(accumulator.appendTextDelta("world")).toEqual([{ type: "text_delta", delta: "world" }]);
 
     const finalized = accumulator.finalize({
-      modelId: "test",
+      model: { provider: "openai", modelId: "test" },
       finalizePendingTools: false,
     });
     expect(finalized?.events.map((event) => event.type)).toEqual(["text_end", "usage", "done"]);
     expect(finalized?.message.content).toEqual([{ type: "text", text: "Hello world" }]);
-    expect(accumulator.finalize({ modelId: "test", finalizePendingTools: false })).toBeUndefined();
+    expect(
+      accumulator.finalize({ model: { provider: "openai", modelId: "test" }, finalizePendingTools: false }),
+    ).toBeUndefined();
   });
 
   test("orders thinking before text when the caller closes the transition", () => {
@@ -34,7 +36,7 @@ describe("OpenAIContentAccumulator", () => {
     accumulator.appendTextDelta("Answer");
 
     const finalized = accumulator.finalize({
-      modelId: "test",
+      model: { provider: "openai", modelId: "test" },
       finalizePendingTools: false,
     });
     expect(finalized?.message.content).toEqual([
@@ -50,7 +52,10 @@ describe("OpenAIContentAccumulator", () => {
 
     expect(accumulator.appendThinkingDelta("late")).toEqual([{ type: "thinking_delta", delta: "late" }]);
     expect(accumulator.flushThinking()).toEqual([]);
-    const finalized = accumulator.finalize({ modelId: "test", finalizePendingTools: false });
+    const finalized = accumulator.finalize({
+      model: { provider: "openai", modelId: "test" },
+      finalizePendingTools: false,
+    });
 
     expect(finalized?.message.content).toEqual([{ type: "thinking", thinking: "first" }]);
   });
@@ -60,7 +65,7 @@ describe("OpenAIContentAccumulator", () => {
     accumulator.appendThinkingDelta("thinking only");
 
     const finalized = accumulator.finalize({
-      modelId: "test",
+      model: { provider: "openai", modelId: "test" },
       finalizePendingTools: false,
     });
     expect(finalized?.events.map((event) => event.type)).toEqual(["thinking_end", "usage", "done"]);
@@ -76,7 +81,7 @@ describe("OpenAIContentAccumulator", () => {
     accumulator.appendToolArguments("0", ':"a"}');
 
     const finalized = accumulator.finalize({
-      modelId: "test",
+      model: { provider: "openai", modelId: "test" },
       finalizePendingTools: true,
       parseToolArguments: parseJson,
     });
@@ -93,7 +98,7 @@ describe("OpenAIContentAccumulator", () => {
     accumulator.appendToolArguments("0", '{"path":"a"}');
 
     const finalized = accumulator.finalize({
-      modelId: "test",
+      model: { provider: "openai", modelId: "test" },
       finalizePendingTools: true,
       parseToolArguments: parseJson,
     });
@@ -138,7 +143,7 @@ describe("OpenAIContentAccumulator", () => {
     accumulator.appendToolArguments("0", "{}");
 
     const finalized = accumulator.finalize({
-      modelId: "test",
+      model: { provider: "openai", modelId: "test" },
       finalizePendingTools: true,
       parseToolArguments: parseJson,
     });
@@ -156,7 +161,7 @@ describe("OpenAIContentAccumulator", () => {
     ]);
 
     const finalized = accumulator.finalize({
-      modelId: "test",
+      model: { provider: "openai", modelId: "test" },
       finalizePendingTools: false,
     });
     expect(finalized?.message.content).toEqual([{ type: "text", text: "final" }]);
@@ -167,7 +172,7 @@ describe("OpenAIContentAccumulator", () => {
     const accumulator = new OpenAIContentAccumulator();
     accumulator.setUsage(USAGE);
     const finalized = accumulator.finalize({
-      modelId: "test",
+      model: { provider: "openai", modelId: "test" },
       finalizePendingTools: false,
     });
 
@@ -182,6 +187,8 @@ describe("OpenAIContentAccumulator", () => {
     accumulator.setStopReason("error");
     accumulator.abort();
 
-    expect(accumulator.finalize({ modelId: "test", finalizePendingTools: false })).toBeUndefined();
+    expect(
+      accumulator.finalize({ model: { provider: "openai", modelId: "test" }, finalizePendingTools: false }),
+    ).toBeUndefined();
   });
 });

@@ -19,7 +19,7 @@ export function createZaiCodingPlanStream(apiKey?: string, baseUrl?: string): St
         includeUsage: true,
         transformRequestBody: transformZaiCodingPlanRequest,
       });
-      return provider.chatModel(model.id);
+      return provider.chatModel(model.modelId);
     },
     classifyError: classifyZaiCodingPlanError,
     buildProviderOptions: buildZaiCodingPlanProviderOptions,

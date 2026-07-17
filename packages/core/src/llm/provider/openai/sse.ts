@@ -371,7 +371,7 @@ export async function handleResponsesAPIEvents(
   if (terminalState === "error") return;
 
   const finalization = state.accumulator.finalize({
-    modelId: model.id,
+    model,
     finalizePendingTools: false,
     flushThinking: false,
   });

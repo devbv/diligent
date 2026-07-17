@@ -171,7 +171,7 @@ export class AgentRegistry {
   updateDeps(next: MutableCollabDeps): void {
     this.deps = {
       ...this.deps,
-      modelId: next.modelId,
+      model: next.model,
       effort: next.effort,
       agentDefinitions: next.agentDefinitions,
       parentTools: next.parentTools,
@@ -266,7 +266,7 @@ export class AgentRegistry {
     ];
 
     // Resolve model class: explicit override > resolved agent default > parent model class.
-    const parentModel = resolveModel(this.deps.modelId);
+    const parentModel = resolveModel(this.deps.model);
     const targetClass: ModelClass =
       params.modelClass ?? agentDefinition.defaultModelClass ?? getModelClass(parentModel);
     const childModel = resolveModelForClass(parentModel, targetClass);
@@ -290,7 +290,7 @@ export class AgentRegistry {
               sessionId: childManager.sessionId,
               sessionPath: childManager.sessionPath ?? "",
               cwd: this.deps.cwd,
-              model: childModel.id,
+              model: childModel,
               provider: childModel.provider,
               effort: childEffort,
               userId: this.deps.userId,
@@ -334,7 +334,7 @@ export class AgentRegistry {
           ) ?? [];
 
         return new RuntimeAgent(
-          childModel.id,
+          childModel,
           childSystemPrompt,
           filteredTools,
           {

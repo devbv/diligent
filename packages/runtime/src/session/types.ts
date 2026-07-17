@@ -1,12 +1,12 @@
 import type { Agent, SerializableError } from "@diligent/core/agent";
 import type { Message } from "@diligent/core/message-contract";
-import type { ThinkingEffort } from "@diligent/core/provider-contract";
+import type { ProviderName, ThinkingEffort } from "@diligent/core/provider-contract";
 import type { ContextPresentation } from "@diligent/protocol";
 import type { Mode } from "../agent/mode";
 import type { DiligentPaths } from "../infrastructure";
 
 /** Session file format version. Increment when entry schema changes. */
-export const SESSION_VERSION = 11;
+export const SESSION_VERSION = 12;
 
 /** Unique entry ID — 8-char hex */
 export function generateEntryId(): string {
@@ -65,7 +65,7 @@ export interface ModelChangeEntry {
   id: string;
   parentId: string | null;
   timestamp: string;
-  provider: string;
+  provider: ProviderName;
   modelId: string;
 }
 

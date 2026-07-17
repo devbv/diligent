@@ -8,7 +8,7 @@ import {
 import type { Model } from "../../../src/llm/types";
 
 const model: Model = {
-  id: "glm-test",
+  modelId: "glm-test",
   provider: "zai-coding-plan",
   contextWindow: 100_000,
   maxOutputTokens: 16_000,

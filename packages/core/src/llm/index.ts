@@ -16,10 +16,17 @@ export {
 } from "./model-class-policy";
 export type { ModelCard, ModelCardProvenance } from "./models";
 export {
+  AmbiguousModelError,
+  findModel,
+  formatModelRef,
   getModelInfoList,
+  listModels,
   MODEL_CARD_SCHEMA_VERSION,
-  MODEL_CARDS,
+  MODEL_CATALOG,
   resolveModel,
+  resolveModelSelector,
+  sameModelRef,
+  UnknownModelError,
 } from "./models";
 export { classifyAnthropicError, createAnthropicNativeCompaction, createAnthropicStream } from "./provider/anthropic";
 export { createChatGPTNativeCompaction, createChatGPTStream } from "./provider/chatgpt";
@@ -43,7 +50,7 @@ export {
   ProviderManager,
 } from "./provider-manager";
 export type { ProviderModelPolicy } from "./provider-model-policy";
-export { getDefaultModelId, PROVIDER_MODEL_POLICIES } from "./provider-model-policy";
+export { getDefaultModelRef, PROVIDER_MODEL_POLICIES } from "./provider-model-policy";
 export type { RetryConfig } from "./retry";
 export { withRetry } from "./retry";
 export { resolveStream } from "./stream-resolver";
@@ -61,6 +68,8 @@ export { createStreamTurnScope } from "./turn-scope";
 export type {
   FunctionToolDefinition,
   Model,
+  ModelInfo,
+  ModelRef,
   ProviderBuiltinToolDefinition,
   ProviderEvent,
   ProviderResult,

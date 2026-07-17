@@ -30,7 +30,7 @@ export function createAnthropicNativeCompaction(apiKey: string, baseUrl?: string
     const rawMessages = await convertMessages(input.messages, input.compactionSummary, input.localImageLoader);
     const normalizedMessages = ensureAnthropicCompactionConversationEndsWithUser(rawMessages);
     const body: Record<string, unknown> = {
-      model: input.model.id,
+      model: input.model.modelId,
       max_tokens: Math.max(256, Math.min(input.model.maxOutputTokens, 4_096)),
       messages: normalizedMessages,
       context_management: {

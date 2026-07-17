@@ -65,7 +65,7 @@ describe("AppSessionLifecycle", () => {
 
     const lifecycle = new AppSessionLifecycle({
       config: {
-        model: resolveModel(TEST_ANTHROPIC_MODEL_ID),
+        model: resolveModel({ provider: "anthropic", modelId: TEST_ANTHROPIC_MODEL_ID }),
         diligent: {},
         providerManager: {
           hasKeyFor: (provider: string) => provider === "openai",
@@ -98,10 +98,10 @@ describe("AppSessionLifecycle", () => {
 
     expect(setupWizardRun).not.toHaveBeenCalled();
     expect((lifecycle as never).deps.config.model.provider).toBe("openai");
-    expect((lifecycle as never).deps.config.model.id).toBe("gpt-5.6-sol");
+    expect((lifecycle as never).deps.config.model.modelId).toBe("gpt-5.6-sol");
     expect(statusBarUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
-        model: "gpt-5.6-sol",
+        model: "openai/gpt-5.6-sol",
       }),
     );
   });
@@ -111,7 +111,7 @@ describe("AppSessionLifecycle", () => {
 
     const lifecycle = new AppSessionLifecycle({
       config: {
-        model: resolveModel(TEST_ANTHROPIC_MODEL_ID),
+        model: resolveModel({ provider: "anthropic", modelId: TEST_ANTHROPIC_MODEL_ID }),
         diligent: {},
         providerManager: {
           hasKeyFor: () => false,

@@ -156,7 +156,7 @@ export async function createWebServer(options: CreateServerOptions = {}): Promis
           cwd,
           mode: runtimeConfig.mode,
           effort: runtimeConfig.effort,
-          currentModel: runtimeConfig.model?.id,
+          currentModel: runtimeConfig.model,
           availableModels: getModelInfoList().filter((m) =>
             runtimeConfig.providerManager
               .getConfiguredProviders()

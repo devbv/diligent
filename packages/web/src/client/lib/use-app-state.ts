@@ -6,7 +6,7 @@ import type { AgentContextItem } from "./agent-native-bridge";
 import { APP_PROJECT_NAME } from "./app-config";
 import { appReducer, type PendingImage } from "./app-state";
 import { getThreadIdFromUrl } from "./app-utils";
-import { normalizeThinkingEffort } from "./model-thinking-helpers";
+import { findModelInfo, normalizeThinkingEffort } from "./model-thinking-helpers";
 import { buildCommandList } from "./slash-commands";
 import { initialThreadState } from "./thread-store";
 import { useAppActions } from "./use-app-actions";
@@ -237,7 +237,7 @@ export function useAppState({
     refreshProviders: providerMgr.refreshProviders,
   });
 
-  const currentModelInfo = providerMgr.availableModels.find((m) => m.id === providerMgr.currentModel);
+  const currentModelInfo = findModelInfo(providerMgr.availableModels, providerMgr.currentModel);
   const supportsVision = currentModelInfo?.supportsVision === true;
   const supportsThinking = currentModelInfo?.supportsThinking === true;
 

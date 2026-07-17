@@ -3,7 +3,6 @@
 import { createLogger, type Logger } from "@diligent/logging";
 import { resolveCompaction } from "../llm/compaction";
 import type { LocalImageLoader } from "../llm/image-io";
-import { resolveModel } from "../llm/models";
 import type { NativeCompactFn } from "../llm/provider/native-compaction";
 import { withRetry } from "../llm/retry";
 import { resolveStream } from "../llm/stream-resolver";
@@ -41,8 +40,8 @@ export class Agent {
   private toolOutputStore?: ToolOutputFileStore;
   readonly agentStream = new AgentStream();
 
-  constructor(model: string | Model, systemPrompt: SystemSection[], tools: Tool[], opts?: AgentOptions) {
-    this.model = typeof model === "string" ? resolveModel(model) : model;
+  constructor(model: Model, systemPrompt: SystemSection[], tools: Tool[], opts?: AgentOptions) {
+    this.model = model;
     this.systemPrompt = systemPrompt;
     this.tools = tools;
     this.effort = opts?.effort ?? "medium";
@@ -192,8 +191,8 @@ export class Agent {
     return `steer-${this.nextSteeringId}`;
   }
 
-  setModel(model: string | Model, streamFn?: StreamFunction, compactionFn?: NativeCompactFn): void {
-    this.model = typeof model === "string" ? resolveModel(model) : model;
+  setModel(model: Model, streamFn?: StreamFunction, compactionFn?: NativeCompactFn): void {
+    this.model = model;
     this.llmMsgStreamFn = this.wrapWithRetry(streamFn ?? resolveStream(this.model.provider as ProviderName));
     this.llmCompactionFn = compactionFn ?? resolveCompaction(this.model.provider);
   }

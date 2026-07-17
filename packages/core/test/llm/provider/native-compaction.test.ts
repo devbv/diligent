@@ -17,7 +17,7 @@ function currentCompactionPayload(encryptedContent = "ENCRYPTED_COMPACTION_SUMMA
 }
 
 const OPENAI_MODEL: Model = {
-  id: "gpt-5.6-sol",
+  modelId: "gpt-5.6-sol",
   provider: "openai",
   contextWindow: 200_000,
   maxOutputTokens: 16_000,
@@ -25,7 +25,7 @@ const OPENAI_MODEL: Model = {
 };
 
 const ANTHROPIC_MODEL: Model = {
-  id: TEST_ANTHROPIC_MODEL_ID,
+  modelId: TEST_ANTHROPIC_MODEL_ID,
   provider: "anthropic",
   contextWindow: 300_000,
   maxOutputTokens: 16_000,
@@ -394,7 +394,7 @@ describe("native compaction adapters", () => {
     }));
 
     await adapter({
-      model: { ...OPENAI_MODEL, id: "chatgpt-5.6-luna", provider: "chatgpt" },
+      model: { ...OPENAI_MODEL, modelId: "gpt-5.6-luna", provider: "chatgpt" },
       systemPrompt: [{ label: "base", content: "System instructions" }],
       messages: [{ role: "user", content: "hello", timestamp: Date.now() }],
       sessionId: "session-1",
@@ -550,7 +550,7 @@ describe("native compaction adapters", () => {
         {
           role: "assistant",
           content: [{ type: "text", text: "assistant reply" }],
-          model: ANTHROPIC_MODEL.id,
+          model: ANTHROPIC_MODEL,
           usage: {
             inputTokens: 1,
             outputTokens: 1,
@@ -600,7 +600,7 @@ describe("native compaction adapters", () => {
         {
           role: "assistant",
           content: [{ type: "text", text: "assistant-only history" }],
-          model: ANTHROPIC_MODEL.id,
+          model: ANTHROPIC_MODEL,
           usage: {
             inputTokens: 1,
             outputTokens: 1,

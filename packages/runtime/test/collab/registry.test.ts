@@ -515,8 +515,8 @@ describe("AgentRegistry", () => {
     const observedModels: string[] = [];
     const registry = new AgentRegistry(
       makeCollabDeps({
-        modelId: "claude-opus-4-8",
-        sessionManagerFactory: makeInspectingSessionManagerFactory((agent) => observedModels.push(agent.model.id)),
+        model: { provider: "anthropic", modelId: "claude-opus-4-8" },
+        sessionManagerFactory: makeInspectingSessionManagerFactory((agent) => observedModels.push(agent.model.modelId)),
       }),
     );
 
@@ -530,7 +530,7 @@ describe("AgentRegistry", () => {
     const observedModels: string[] = [];
     const registry = new AgentRegistry(
       makeCollabDeps({
-        modelId: "claude-opus-4-8",
+        model: { provider: "anthropic", modelId: "claude-opus-4-8" },
         agentDefinitions: resolveAvailableAgentDefinitions(getBuiltinAgentDefinitions(), [
           {
             name: "quick-reviewer",
@@ -542,7 +542,7 @@ describe("AgentRegistry", () => {
             source: "project",
           },
         ]),
-        sessionManagerFactory: makeInspectingSessionManagerFactory((agent) => observedModels.push(agent.model.id)),
+        sessionManagerFactory: makeInspectingSessionManagerFactory((agent) => observedModels.push(agent.model.modelId)),
       }),
     );
 
@@ -556,8 +556,8 @@ describe("AgentRegistry", () => {
     const observedModels: string[] = [];
     const registry = new AgentRegistry(
       makeCollabDeps({
-        modelId: "claude-opus-4-8",
-        sessionManagerFactory: makeInspectingSessionManagerFactory((agent) => observedModels.push(agent.model.id)),
+        model: { provider: "anthropic", modelId: "claude-opus-4-8" },
+        sessionManagerFactory: makeInspectingSessionManagerFactory((agent) => observedModels.push(agent.model.modelId)),
       }),
     );
 
@@ -729,16 +729,16 @@ describe("AgentRegistry", () => {
     const observedEfforts: string[] = [];
     const registry = new AgentRegistry(
       makeCollabDeps({
-        modelId: "gpt-5.3-chat-latest",
+        model: { provider: "openai", modelId: "gpt-5.6-sol" },
         effort: "medium",
         sessionManagerFactory: makeInspectingSessionManagerFactory((agent) => {
-          observedModels.push(agent.model.id);
+          observedModels.push(agent.model.modelId);
           observedEfforts.push(agent.effort);
         }),
       }),
     );
 
-    registry.updateDeps(makeCollabDeps({ modelId: "gpt-5.3-chat-latest", effort: "high" }));
+    registry.updateDeps(makeCollabDeps({ model: { provider: "openai", modelId: "gpt-5.6-sol" }, effort: "high" }));
 
     const { threadId } = registry.spawn({ prompt: "task", description: "", agentType: "general", modelClass: "lite" });
     await registry.wait([threadId], 5000);

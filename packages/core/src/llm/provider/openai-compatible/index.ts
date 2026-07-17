@@ -237,7 +237,7 @@ export async function handleChatCompletionsEvents(
   }
 
   const finalization = accumulator.finalize({
-    modelId: model.id,
+    model,
     finalizePendingTools: true,
     parseToolArguments: parseChatCompletionsToolArguments,
   });

@@ -9,8 +9,8 @@ import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError } from "@diligent/core/pr
 import { z } from "zod";
 
 const TEST_MODEL: Model = {
-  id: "test-model",
-  provider: "test",
+  modelId: "test-model",
+  provider: "anthropic",
   contextWindow: 100_000,
   maxOutputTokens: 4096,
   supportsThinking: false,
@@ -20,7 +20,7 @@ function makeAssistant(text = "ok"): AssistantMessage {
   return {
     role: "assistant",
     content: [{ type: "text", text }],
-    model: TEST_MODEL.id,
+    model: TEST_MODEL,
     usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
     stopReason: "end_turn",
     timestamp: Date.now(),
@@ -214,7 +214,7 @@ describe("Agent", () => {
                 message: {
                   role: "assistant",
                   content: [{ type: "tool_call", id: "tc_1", name: "echo", input: { message: "hi" } }],
-                  model: TEST_MODEL.id,
+                  model: TEST_MODEL,
                   usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
                   stopReason: "tool_use",
                   timestamp: Date.now(),

@@ -2,6 +2,7 @@
 import { spawn } from "node:child_process";
 import { Agent } from "../agent/agent";
 import { buildOAuthTokens, createChatGPTOAuthRequest, exchangeCodeForTokens } from "../auth/chatgpt-oauth";
+import { resolveModel } from "../llm/models";
 import { createChatGPTNativeCompaction, createChatGPTStream } from "../llm/provider/chatgpt";
 import { ProviderManager } from "../llm/provider-manager";
 
@@ -25,11 +26,16 @@ async function main(): Promise<void> {
       },
     },
   });
-  const agent = new Agent("gpt-5.3-codex", [{ label: "system", content: "You are a concise assistant." }], [], {
-    effort: "medium",
-    llmMsgStreamFn: providerManager.createProxyStream(),
-    llmCompactionFn: providerManager.createNativeCompactionForProvider("chatgpt"),
-  });
+  const agent = new Agent(
+    resolveModel({ provider: "chatgpt", modelId: "gpt-5.5" }),
+    [{ label: "system", content: "You are a concise assistant." }],
+    [],
+    {
+      effort: "medium",
+      llmMsgStreamFn: providerManager.createProxyStream(),
+      llmCompactionFn: providerManager.createNativeCompactionForProvider("chatgpt"),
+    },
+  );
 
   agent.subscribe((event) => {
     if (event.type === "message_delta" && event.delta.type === "text_delta") {

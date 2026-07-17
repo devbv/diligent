@@ -183,7 +183,7 @@ export async function compact(input: LLMCompactInput): Promise<LLMCompactResult>
       };
     }
     throw new Error(
-      `Native compaction is configured for provider=${input.model.provider} model=${input.model.id} but returned unsupported${nativeResult.reason ? `: ${nativeResult.reason}` : ""}`,
+      `Native compaction is configured for provider=${input.model.provider} model=${input.model.modelId} but returned unsupported${nativeResult.reason ? `: ${nativeResult.reason}` : ""}`,
     );
   }
 

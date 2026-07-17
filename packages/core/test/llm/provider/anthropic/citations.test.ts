@@ -41,7 +41,7 @@ mock.module("@anthropic-ai/sdk", () => ({
 const { createAnthropicStream } = await import("../../../../src/llm/provider/anthropic");
 
 const MODEL: Model = {
-  id: TEST_ANTHROPIC_MODEL_ID,
+  modelId: TEST_ANTHROPIC_MODEL_ID,
   provider: "anthropic",
   contextWindow: 300_000,
   maxOutputTokens: 8_000,
@@ -61,7 +61,7 @@ describe("Anthropic text citations", () => {
     finalMessagePayload = {
       id: "msg_1",
       role: "assistant",
-      model: MODEL.id,
+      model: MODEL.modelId,
       type: "message",
       stop_reason: "end_turn",
       usage: { input_tokens: 3, output_tokens: 4 },

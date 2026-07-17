@@ -4,6 +4,8 @@ import { randomBytes } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
 import { downscaleImageIfNeeded } from "@diligent/core/image-contract";
+import { sameModelRef } from "@diligent/core/model-registry";
+import type { ModelRef } from "@diligent/core/provider-contract";
 import {
   PROVIDER_NAMES,
   ProviderError,
@@ -66,19 +68,19 @@ export async function handleConsentSet(
 export async function handleConfigSet(
   modelConfig:
     | {
-        getAvailableModels: () => Array<{ id: string }>;
-        onModelChange: (modelId: string, threadId?: string) => void;
+        getAvailableModels: () => ModelRef[];
+        onModelChange: (model: ModelRef, threadId?: string) => void;
       }
     | undefined,
-  currentModelId: string | undefined,
-  model: string | undefined,
+  currentModel: ModelRef | undefined,
+  model: ModelRef | undefined,
   threadId?: string,
-): Promise<{ model: string | undefined }> {
-  if (!model) return { model: currentModelId };
+): Promise<{ model: ModelRef | undefined }> {
+  if (!model) return { model: currentModel };
   if (!modelConfig) throw Object.assign(new Error("Model config not available"), { code: -32601 });
 
-  const valid = modelConfig.getAvailableModels().find((entry) => entry.id === model);
-  if (!valid) throw Object.assign(new Error(`Unknown model: ${model}`), { code: -32602 });
+  const valid = modelConfig.getAvailableModels().find((entry) => sameModelRef(entry, model));
+  if (!valid) throw Object.assign(new Error(`Unknown model: ${model.provider}/${model.modelId}`), { code: -32602 });
 
   modelConfig.onModelChange(model, threadId);
   return { model };

@@ -71,7 +71,7 @@ describe("convertMessages image detail", () => {
           },
           { type: "text", text: "answer" },
         ],
-        model: "gpt-5.6-sol",
+        model: { provider: "openai", modelId: "gpt-5.6-sol" },
         usage: { inputTokens: 1, outputTokens: 2, cacheReadTokens: 0, cacheWriteTokens: 0 },
         stopReason: "end_turn",
         timestamp: 1,

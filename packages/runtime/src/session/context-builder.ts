@@ -1,15 +1,14 @@
 // @summary Builds model context and raw transcript views from tree-structured session entries with compaction support
 import { buildMessagesFromCompaction } from "@diligent/core/agent";
 import type { Message } from "@diligent/core/message-contract";
-import { resolveModel } from "@diligent/core/model-registry";
-import type { AssistantMessage, Mode, ThinkingEffort } from "@diligent/protocol";
+import type { AssistantMessage, Mode, ModelRef, ThinkingEffort } from "@diligent/protocol";
 import type { CompactionEntry, SessionEntry } from "./types";
 
 export interface SessionContext {
   messages: Message[];
   providerMessages: Message[];
   compactionSummary?: Record<string, unknown>;
-  currentModel?: { provider: string; modelId: string };
+  currentModel?: ModelRef;
   currentEffort?: ThinkingEffort;
   currentMode?: Mode;
 }
@@ -98,10 +97,10 @@ export function buildSessionContext(
 
   const messages: Message[] = [];
   const providerMessages: Message[] = [];
-  let currentModel: { provider: string; modelId: string } | undefined;
+  let currentModel: ModelRef | undefined;
   let currentEffort: ThinkingEffort | undefined;
   let currentMode = latestModeInPath(path);
-  let lastAssistantModelId: string | undefined;
+  let lastAssistantModel: ModelRef | undefined;
 
   if (lastCompaction && includeCompactionSummary) {
     if (lastCompaction.compactionSummary) {
@@ -133,7 +132,7 @@ export function buildSessionContext(
             messages.push(entry.message);
           }
           if (entry.message.role === "assistant") {
-            lastAssistantModelId = (entry.message as AssistantMessage).model;
+            lastAssistantModel = (entry.message as AssistantMessage).model;
           }
           break;
         case "model_change":
@@ -156,7 +155,7 @@ export function buildSessionContext(
             messages.push(entry.message);
           }
           if (entry.message.role === "assistant") {
-            lastAssistantModelId = (entry.message as AssistantMessage).model;
+            lastAssistantModel = (entry.message as AssistantMessage).model;
           }
           break;
         case "model_change":
@@ -176,20 +175,10 @@ export function buildSessionContext(
     messages,
     providerMessages,
     compactionSummary: lastCompaction?.compactionSummary,
-    currentModel: currentModel ?? resolveModelFromId(lastAssistantModelId),
+    currentModel: currentModel ?? lastAssistantModel,
     currentEffort,
     currentMode,
   };
-}
-
-function resolveModelFromId(modelId: string | undefined): { provider: string; modelId: string } | undefined {
-  if (!modelId) return undefined;
-  try {
-    const model = resolveModel(modelId);
-    return { provider: model.provider, modelId: model.id };
-  } catch {
-    return undefined;
-  }
 }
 
 function latestModeInPath(path: SessionEntry[]): Mode | undefined {

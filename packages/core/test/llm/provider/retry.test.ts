@@ -15,8 +15,8 @@ import { ProviderError } from "../../../src/llm/types";
 import type { AssistantMessage } from "../../../src/types";
 
 const testModel: Model = {
-  id: "test-model",
-  provider: "test",
+  modelId: "test-model",
+  provider: "anthropic",
   contextWindow: 100000,
   maxOutputTokens: 4096,
   supportsThinking: false,
@@ -26,7 +26,7 @@ function makeAssistantMessage(): AssistantMessage {
   return {
     role: "assistant",
     content: [{ type: "text", text: "hello" }],
-    model: "test-model",
+    model: { provider: "anthropic", modelId: "test-model" },
     usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 },
     stopReason: "end_turn",
     timestamp: Date.now(),
@@ -296,7 +296,7 @@ describe("withRetry", () => {
       errorType: "server_error",
       retryAfterMs: 2,
       statusCode: 503,
-      provider: "test",
+      provider: "anthropic",
       model: "test-model",
     });
     expect(calls.find((call) => call.event === "retry_scheduled")?.fields).toMatchObject({
@@ -306,7 +306,7 @@ describe("withRetry", () => {
       maxAttempts: 2,
       delayMs: 2,
       errorType: "server_error",
-      provider: "test",
+      provider: "anthropic",
       model: "test-model",
     });
     for (const call of calls) {

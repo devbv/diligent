@@ -90,7 +90,7 @@ describe("createChatGPTOAuthBinding", () => {
       expect(binding.auth.getStream()).toBe(stream);
 
       const model = {
-        id: "chatgpt-5.6-luna",
+        modelId: "gpt-5.6-luna",
         provider: "chatgpt",
         contextWindow: 128_000,
         maxOutputTokens: 16_384,
@@ -131,7 +131,7 @@ describe("createChatGPTOAuthBinding", () => {
       });
       const stream = binding.auth.getStream()(
         {
-          id: "chatgpt-5.6-luna",
+          modelId: "gpt-5.6-luna",
           provider: "chatgpt",
           contextWindow: 128_000,
           maxOutputTokens: 16_384,

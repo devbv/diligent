@@ -242,7 +242,7 @@ test("delta without started returns fallback message for messageText", () => {
   expect(events).toHaveLength(1);
   expect(events[0].type).toBe("message_delta");
   if (events[0].type === "message_delta") {
-    expect(events[0].message.model).toBe("unknown");
+    expect(events[0].message.model).toEqual({ provider: "anthropic", modelId: "unknown" });
   }
 });
 

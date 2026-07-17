@@ -4,7 +4,9 @@ import { DEFAULT_CONFIG, type DiligentConfig, DiligentConfigSchema } from "@dili
 
 describe("DiligentConfigSchema", () => {
   it("accepts a valid minimal config", () => {
-    const result = DiligentConfigSchema.safeParse({ model: "claude-sonnet-4-20250514" });
+    const result = DiligentConfigSchema.safeParse({
+      model: { provider: "anthropic", modelId: "claude-sonnet-4-20250514" },
+    });
     expect(result.success).toBe(true);
   });
 
@@ -16,7 +18,7 @@ describe("DiligentConfigSchema", () => {
   it("accepts full config with all fields", () => {
     const full: DiligentConfig = {
       $schema: "https://example.com/schema.json",
-      model: "claude-sonnet-4-20250514",
+      model: { provider: "anthropic", modelId: "claude-sonnet-4-20250514" },
       provider: {
         anthropic: { apiKey: "sk-test", baseUrl: "https://api.anthropic.com" },
         openai: { apiKey: "sk-oai", baseUrl: "https://api.openai.com" },
@@ -33,7 +35,10 @@ describe("DiligentConfigSchema", () => {
   });
 
   it("rejects unknown keys (strict mode)", () => {
-    const result = DiligentConfigSchema.safeParse({ model: "test", unknownKey: true });
+    const result = DiligentConfigSchema.safeParse({
+      model: { provider: "anthropic", modelId: "test" },
+      unknownKey: true,
+    });
     expect(result.success).toBe(false);
   });
 

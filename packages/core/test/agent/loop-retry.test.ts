@@ -10,8 +10,8 @@ import { ProviderError } from "../../src/llm/types";
 import type { AssistantMessage } from "../../src/types";
 
 const testModel: Model = {
-  id: "test-model",
-  provider: "test",
+  modelId: "test-model",
+  provider: "anthropic",
   contextWindow: 100000,
   maxOutputTokens: 4096,
   supportsThinking: false,
@@ -23,7 +23,7 @@ function makeAssistantMessage(): AssistantMessage {
   return {
     role: "assistant",
     content: [{ type: "text", text: "hello" }],
-    model: "test-model",
+    model: { provider: "anthropic", modelId: "test-model" },
     usage: { inputTokens: 100, outputTokens: 50, cacheReadTokens: 0, cacheWriteTokens: 0 },
     stopReason: "end_turn",
     timestamp: Date.now(),
@@ -137,7 +137,7 @@ describe("agent loop retry + usage", () => {
       scope: "llm:retry",
       sessionId: "agent-session",
       fields: {
-        provider: "test",
+        provider: "anthropic",
         model: "test-model",
         attempt: 1,
         nextAttempt: 2,

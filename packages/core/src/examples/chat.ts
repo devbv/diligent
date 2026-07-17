@@ -1,11 +1,16 @@
 // @summary Multi-turn chat example: agent maintains message history internally across turns
 import * as readline from "node:readline";
 import { Agent } from "../agent/agent";
+import { resolveModel } from "../llm/models";
 import { c } from "./common/colors";
 
 const DEFAULT_MODEL = "haiku";
 
-const agent = new Agent(DEFAULT_MODEL, [{ label: "system", content: "You are a helpful assistant." }], []);
+const agent = new Agent(
+  resolveModel({ provider: "anthropic", modelId: DEFAULT_MODEL }),
+  [{ label: "system", content: "You are a helpful assistant." }],
+  [],
+);
 
 agent.subscribe((event) => {
   if (event.type === "message_start") {

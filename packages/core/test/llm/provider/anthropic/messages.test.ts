@@ -13,7 +13,7 @@ import type { AssistantMessage } from "../../../../src/types";
 // what createAnthropicStream does internally, without hitting the real SDK.
 
 const TEST_MODEL: Model = {
-  id: "claude-sonnet-4-6",
+  modelId: "claude-sonnet-4-6",
   provider: "anthropic",
   contextWindow: 300_000,
   maxOutputTokens: 16_384,
@@ -24,7 +24,7 @@ function makeAssistantMessage(overrides?: Partial<AssistantMessage>): AssistantM
   return {
     role: "assistant",
     content: [{ type: "text", text: "Hello" }],
-    model: TEST_MODEL.id,
+    model: TEST_MODEL,
     usage: {
       inputTokens: 10,
       outputTokens: 5,
@@ -406,7 +406,7 @@ describe("Anthropic message conversion", () => {
             retrievedAt: "2026-04-06T00:00:00Z",
           },
         ],
-        model: TEST_MODEL.id,
+        model: TEST_MODEL,
         usage: {
           inputTokens: 1,
           outputTokens: 1,
@@ -494,7 +494,7 @@ describe("Anthropic message conversion", () => {
           },
           { type: "text", text: "done" },
         ],
-        model: TEST_MODEL.id,
+        model: TEST_MODEL,
         usage: {
           inputTokens: 1,
           outputTokens: 1,
@@ -517,7 +517,7 @@ describe("Anthropic message conversion", () => {
           { type: "thinking", thinking: "reasoning from another provider" },
           { type: "text", text: "done" },
         ],
-        model: TEST_MODEL.id,
+        model: TEST_MODEL,
         usage: {
           inputTokens: 1,
           outputTokens: 1,

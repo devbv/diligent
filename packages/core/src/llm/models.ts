@@ -1,5 +1,5 @@
 // @summary Versioned model-card catalog with intrinsic capabilities, metadata, and resolution
-import type { Model, ModelInfo, ThinkingEffort } from "./types";
+import type { Model, ModelInfo, ModelRef, ProviderName, ThinkingEffort } from "./types";
 
 export const MODEL_CARD_SCHEMA_VERSION = 1 as const;
 
@@ -20,7 +20,7 @@ export interface ModelCard extends Model {
   schemaVersion: typeof MODEL_CARD_SCHEMA_VERSION;
   aliases?: string[];
   accessLevel?: string; // OpenAI tier requirement: "standard" | "tier3+" | "enterprise"
-  display?: string; // Human-facing label for the picker; falls back to `id` when unset.
+  display?: string; // Human-facing label for the picker; falls back to `modelId` when unset.
   description?: string;
   ownedBy?: string;
   releasedAt?: string;
@@ -40,10 +40,10 @@ export const GEMINI_THINKING_BUDGETS = { low: 2_048, medium: 8_192, high: 16_384
 const NATIVE_PROVIDER_THINKING_EFFORTS: ThinkingEffort[] = ["low", "medium", "high", "xhigh", "max"];
 const GPT_5_5_THINKING_EFFORTS: ThinkingEffort[] = ["low", "medium", "high", "xhigh"];
 
-export const MODEL_CARDS: ModelCard[] = defineModelCards([
+const MODEL_CARDS = defineModelCards([
   // Anthropic — Opus/Sonnet/Fable use adaptive thinking; Haiku uses manual budgets.
   {
-    id: "claude-opus-4-8",
+    modelId: "claude-opus-4-8",
     display: "Claude Opus 4.8",
     provider: "anthropic",
     contextWindow: 1_000_000,
@@ -60,7 +60,7 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
     aliases: ["claude-opus", "opus", "opus-4-8"],
   },
   {
-    id: "claude-fable-5",
+    modelId: "claude-fable-5",
     display: "Claude Fable 5",
     provider: "anthropic",
     contextWindow: 1_000_000,
@@ -77,7 +77,7 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
     aliases: ["fable", "fable-5"],
   },
   {
-    id: "claude-sonnet-5",
+    modelId: "claude-sonnet-5",
     display: "Claude Sonnet 5",
     provider: "anthropic",
     contextWindow: 1_000_000,
@@ -94,7 +94,7 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
     aliases: ["sonnet-5"],
   },
   {
-    id: "claude-sonnet-4-6",
+    modelId: "claude-sonnet-4-6",
     display: "Claude Sonnet 4.6",
     provider: "anthropic",
     contextWindow: 1_000_000,
@@ -110,7 +110,7 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
     aliases: ["claude-sonnet", "sonnet", "sonnet-4-6"],
   },
   {
-    id: "claude-haiku-4-5-20251001",
+    modelId: "claude-haiku-4-5-20251001",
     display: "Claude Haiku 4.5",
     provider: "anthropic",
     contextWindow: 200_000,
@@ -127,7 +127,7 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
   },
   // Gemini
   {
-    id: "gemini-3.1-pro-preview",
+    modelId: "gemini-3.1-pro-preview",
     display: "Gemini 3.1 Pro",
     provider: "gemini",
     contextWindow: 300_000,
@@ -141,7 +141,7 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
     aliases: ["gemini-pro"],
   },
   {
-    id: "gemini-3.5-flash",
+    modelId: "gemini-3.5-flash",
     display: "Gemini 3.5 Flash",
     provider: "gemini",
     contextWindow: 1_048_576,
@@ -155,7 +155,7 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
     aliases: ["gemini-flash", "gemini", "gemini-3-flash-preview"],
   },
   {
-    id: "gemini-3.1-flash-lite",
+    modelId: "gemini-3.1-flash-lite",
     display: "Gemini 3.1 Flash Lite",
     provider: "gemini",
     contextWindow: 1_048_576,
@@ -169,7 +169,7 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
     aliases: ["gemini-flash-lite", "gemini-3.1-flash-lite-preview"],
   },
   {
-    id: "vertex-gemma-4-26b-it",
+    modelId: "vertex-gemma-4-26b-it",
     display: "Gemma 4 26B (Vertex)",
     provider: "vertex",
     contextWindow: 256_000,
@@ -178,7 +178,7 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
     aliases: ["vertex-gemma", "vertex-gemma-4", "vertex-gemma-4-26b", "gemma-4-26b-vertex", "gemma-vertex"],
   },
   {
-    id: "glm-5.2",
+    modelId: "glm-5.2",
     display: "GLM 5.2",
     provider: "zai-coding-plan",
     contextWindow: 1_000_000,
@@ -189,7 +189,7 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
     aliases: ["glm", "glm-5", "glm5.2"],
   },
   {
-    id: "glm-5.1",
+    modelId: "glm-5.1",
     display: "GLM 5.1",
     provider: "zai-coding-plan",
     contextWindow: 200_000,
@@ -200,7 +200,7 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
   },
   // Keep the retained GPT-5.5 pro model before the current GPT-5.6 family.
   {
-    id: "gpt-5.5",
+    modelId: "gpt-5.5",
     display: "GPT-5.5",
     provider: "openai",
     contextWindow: 1_000_000,
@@ -216,7 +216,7 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
   },
   // GPT-5.6 owns the current pro/general/lite family aliases and class routes.
   {
-    id: "gpt-5.6-sol",
+    modelId: "gpt-5.6-sol",
     display: "GPT-5.6 Sol",
     provider: "openai",
     contextWindow: 1_050_000,
@@ -231,7 +231,7 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
     aliases: ["gpt-5.6", "gpt-5"],
   },
   {
-    id: "gpt-5.6-terra",
+    modelId: "gpt-5.6-terra",
     display: "GPT-5.6 Terra",
     provider: "openai",
     contextWindow: 1_050_000,
@@ -245,7 +245,7 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
     supportsVision: true,
   },
   {
-    id: "gpt-5.6-luna",
+    modelId: "gpt-5.6-luna",
     display: "GPT-5.6 Luna",
     provider: "openai",
     contextWindow: 1_050_000,
@@ -263,7 +263,7 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
   // The public Codex catalog does not publish subscription-specific context limits,
   // so these entries retain the existing conservative 300K ChatGPT runtime budget.
   {
-    id: "chatgpt-5.5",
+    modelId: "gpt-5.5",
     display: "ChatGPT 5.5",
     provider: "chatgpt",
     contextWindow: 300_000,
@@ -271,10 +271,10 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
     supportsThinking: true,
     supportedEfforts: GPT_5_5_THINKING_EFFORTS,
     supportsVision: true,
-    aliases: ["chatgpt-5.5-pro"],
+    aliases: ["gpt-5.5-pro"],
   },
   {
-    id: "chatgpt-5.6-sol",
+    modelId: "gpt-5.6-sol",
     display: "ChatGPT 5.6 Sol",
     provider: "chatgpt",
     contextWindow: 300_000,
@@ -282,10 +282,10 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
     supportsThinking: true,
     supportedEfforts: NATIVE_PROVIDER_THINKING_EFFORTS,
     supportsVision: true,
-    aliases: ["chatgpt-5.6"],
+    aliases: ["gpt-5.6"],
   },
   {
-    id: "chatgpt-5.6-terra",
+    modelId: "gpt-5.6-terra",
     display: "ChatGPT 5.6 Terra",
     provider: "chatgpt",
     contextWindow: 300_000,
@@ -295,7 +295,7 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
     supportsVision: true,
   },
   {
-    id: "chatgpt-5.6-luna",
+    modelId: "gpt-5.6-luna",
     display: "ChatGPT 5.6 Luna",
     provider: "chatgpt",
     contextWindow: 300_000,
@@ -306,103 +306,97 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
   },
 ]);
 
-/**
- * Map all known models to the protocol-facing ModelInfo shape.
- */
-export function getModelInfoList(): ModelInfo[] {
-  return MODEL_CARDS.map((m) => ({
-    id: m.id,
-    display: m.display,
-    provider: m.provider,
-    contextWindow: m.contextWindow,
-    maxOutputTokens: m.maxOutputTokens,
-    inputCostPer1M: m.inputCostPer1M,
-    outputCostPer1M: m.outputCostPer1M,
-    supportsThinking: m.supportsThinking,
-    supportedEfforts: m.supportedEfforts,
-    supportsVision: m.supportsVision,
-  }));
+const providers = ["anthropic", "openai", "chatgpt", "gemini", "vertex", "zai-coding-plan"] as const;
+const catalog = Object.fromEntries(providers.map((provider) => [provider, {}])) as Record<
+  ProviderName,
+  Record<string, ModelCard>
+>;
+const lookup = new Map<ProviderName, Map<string, ModelCard>>(providers.map((provider) => [provider, new Map()]));
+
+for (const card of MODEL_CARDS) {
+  const providerLookup = lookup.get(card.provider);
+  if (!providerLookup) throw new Error(`Unsupported model provider: ${card.provider}`);
+  if (providerLookup.has(card.modelId)) throw new Error(`Duplicate model identity: ${card.provider}/${card.modelId}`);
+  catalog[card.provider][card.modelId] = card;
+  providerLookup.set(card.modelId, card);
+  for (const alias of card.aliases ?? []) {
+    if (providerLookup.has(alias)) throw new Error(`Duplicate model alias: ${card.provider}/${alias}`);
+    providerLookup.set(alias, card);
+  }
 }
 
-/**
- * Resolve a model ID or alias to a full Model.
- * For unknown models, infer provider from ID prefix.
- */
-export function resolveModel(modelId: string): Model {
-  // Exact match
-  const exact = MODEL_CARDS.find((m) => m.id === modelId);
-  if (exact) return exact;
+/** Provider-scoped model-card source exposed as readonly catalog snapshots. */
+export const MODEL_CATALOG: Readonly<Record<ProviderName, Readonly<Record<string, ModelCard>>>> = catalog;
 
-  // Alias match
-  const aliased = MODEL_CARDS.find((m) => m.aliases?.includes(modelId));
-  if (aliased) return aliased;
+export class UnknownModelError extends Error {
+  constructor(public readonly ref: ModelRef) {
+    super(`Unknown model: ${ref.provider}/${ref.modelId}`);
+    this.name = "UnknownModelError";
+  }
+}
 
-  // Infer provider from prefix
-  if (modelId.startsWith("gemini-")) {
-    return {
-      id: modelId,
-      provider: "gemini",
-      contextWindow: 1_048_576,
-      maxOutputTokens: 65_536,
-      supportsThinking: true,
-    };
+export class AmbiguousModelError extends Error {
+  constructor(
+    public readonly selector: string,
+    public readonly candidates: ModelRef[],
+  ) {
+    super(`Ambiguous model: ${selector}; qualify one of: ${candidates.map(formatModelRef).join(", ")}`);
+    this.name = "AmbiguousModelError";
   }
-  if (modelId.startsWith("vertex-")) {
-    return {
-      id: modelId,
-      provider: "vertex",
-      contextWindow: 256_000,
-      maxOutputTokens: 8_192,
-      supportsThinking: false,
-    };
-  }
-  if (modelId.startsWith("glm-")) {
-    return {
-      id: modelId,
-      provider: "zai-coding-plan",
-      contextWindow: 200_000,
-      maxOutputTokens: 128_000,
-      supportsThinking: false,
-    };
-  }
-  if (modelId.startsWith("claude-")) {
-    return {
-      id: modelId,
-      provider: "anthropic",
-      contextWindow: 300_000,
-      maxOutputTokens: 16_384,
-      supportsThinking: true,
-      supportedEfforts: NATIVE_PROVIDER_THINKING_EFFORTS,
-    };
-  }
-  if (modelId.startsWith("chatgpt-")) {
-    return {
-      id: modelId,
-      provider: "chatgpt",
-      contextWindow: 128_000,
-      maxOutputTokens: 16_384,
-      supportsThinking: true,
-      supportedEfforts: NATIVE_PROVIDER_THINKING_EFFORTS,
-    };
-  }
-  if (modelId.startsWith("gpt-") || modelId.match(/^o[1-9]/)) {
-    return {
-      id: modelId,
-      provider: "openai",
-      contextWindow: 128_000,
-      maxOutputTokens: 16_384,
-      supportsThinking: true,
-      supportedEfforts: NATIVE_PROVIDER_THINKING_EFFORTS,
-    };
-  }
+}
 
-  // Default to anthropic
-  return {
-    id: modelId,
-    provider: "anthropic",
-    contextWindow: 300_000,
-    maxOutputTokens: 16_384,
-    supportsThinking: true,
-    supportedEfforts: NATIVE_PROVIDER_THINKING_EFFORTS,
-  };
+export function formatModelRef(ref: ModelRef): string {
+  return `${ref.provider}/${ref.modelId}`;
+}
+
+export function findModel(ref: ModelRef): ModelCard | undefined {
+  return lookup.get(ref.provider)?.get(ref.modelId);
+}
+
+export function resolveModel(ref: ModelRef): ModelCard {
+  const model = findModel(ref);
+  if (!model) throw new UnknownModelError(ref);
+  return model;
+}
+
+export function listModels(provider?: ProviderName): ModelCard[] {
+  return provider
+    ? Object.values(MODEL_CATALOG[provider])
+    : providers.flatMap((name) => Object.values(MODEL_CATALOG[name]));
+}
+
+export function sameModelRef(a: ModelRef | undefined, b: ModelRef | undefined): boolean {
+  return a === b || (a !== undefined && b !== undefined && a.provider === b.provider && a.modelId === b.modelId);
+}
+
+export function resolveModelSelector(selector: string, available: readonly ModelCard[] = listModels()): ModelCard {
+  const slash = selector.indexOf("/");
+  if (slash > 0) {
+    const provider = selector.slice(0, slash);
+    if (providers.includes(provider as ProviderName)) {
+      return resolveModel({ provider: provider as ProviderName, modelId: selector.slice(slash + 1) });
+    }
+  }
+  const matches = available.filter((model) => model.modelId === selector || model.aliases?.includes(selector));
+  const unique = [...new Map(matches.map((model) => [formatModelRef(model), model])).values()];
+  if (unique.length === 1) return unique[0];
+  if (unique.length > 1) throw new AmbiguousModelError(selector, unique);
+  throw new Error(`Unknown model: ${selector}`);
+}
+
+/** Map all known models to the protocol-facing ModelInfo shape. */
+export function getModelInfoList(): ModelInfo[] {
+  return listModels().map((model) => ({
+    modelId: model.modelId,
+    display: model.display,
+    provider: model.provider,
+    aliases: model.aliases,
+    contextWindow: model.contextWindow,
+    maxOutputTokens: model.maxOutputTokens,
+    inputCostPer1M: model.inputCostPer1M,
+    outputCostPer1M: model.outputCostPer1M,
+    supportsThinking: model.supportsThinking,
+    supportedEfforts: model.supportedEfforts,
+    supportsVision: model.supportsVision,
+  }));
 }

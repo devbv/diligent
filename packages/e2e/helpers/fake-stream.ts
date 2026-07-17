@@ -28,7 +28,7 @@ export function createSimpleStream(text: string): StreamFunction {
         message: {
           role: "assistant",
           content: [{ type: "text", text }],
-          model: "fake",
+          model: { provider: "anthropic", modelId: "claude-sonnet-4-6" },
           usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
           stopReason: "end_turn",
           timestamp: Date.now(),
@@ -70,7 +70,7 @@ export function createToolUseStream(toolCalls: ToolCallSpec[], finalText: string
               name: tc.name,
               input: tc.input,
             })),
-            model: "fake",
+            model: { provider: "anthropic", modelId: "claude-sonnet-4-6" },
             usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
             stopReason: "tool_use",
             timestamp: Date.now(),
@@ -85,7 +85,7 @@ export function createToolUseStream(toolCalls: ToolCallSpec[], finalText: string
           message: {
             role: "assistant",
             content: [{ type: "text", text: finalText }],
-            model: "fake",
+            model: { provider: "anthropic", modelId: "claude-sonnet-4-6" },
             usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
             stopReason: "end_turn",
             timestamp: Date.now(),
@@ -118,7 +118,7 @@ export function createSlowStream(text: string, delayMs: number): StreamFunction 
         message: {
           role: "assistant",
           content: [{ type: "text", text }],
-          model: "fake",
+          model: { provider: "anthropic", modelId: "claude-sonnet-4-6" },
           usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
           stopReason: "end_turn",
           timestamp: Date.now(),
@@ -174,7 +174,7 @@ export function createProviderNativeWebStream(finalText: string): StreamFunction
         message: {
           role: "assistant",
           content: [providerToolUse, webSearchResult, webFetchResult, { type: "text", text: finalText }],
-          model: "fake",
+          model: { provider: "anthropic", modelId: "claude-sonnet-4-6" },
           usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
           stopReason: "end_turn",
           timestamp: Date.now(),

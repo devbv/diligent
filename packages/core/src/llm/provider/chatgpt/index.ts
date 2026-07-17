@@ -245,16 +245,12 @@ function createChatGPTWebSocketSessionForProvider(input: {
     },
   });
 }
-function resolveChatGPTModelId(modelId: string): string {
-  return modelId.startsWith("chatgpt-") ? `gpt-${modelId.slice("chatgpt-".length)}` : modelId;
-}
-
 function useChatGPTWebSocketTransportFailure(
   error: unknown,
   providerOptions: ChatGPTStreamOptions,
   model: Model,
 ): boolean {
-  if (providerOptions.useWebSocketForGpt56 !== true || !isGpt56Model(resolveChatGPTModelId(model.id))) return false;
+  if (providerOptions.useWebSocketForGpt56 !== true || !isGpt56Model(model.modelId)) return false;
   return error instanceof ProviderError && error.errorType === ProviderErrorType.Network;
 }
 
@@ -294,7 +290,7 @@ export function createChatGPTStream(
     const work = (async () => {
       try {
         if (options.signal?.aborted) return;
-        const upstreamModelId = resolveChatGPTModelId(model.id);
+        const upstreamModelId = model.modelId;
         const useResponsesLite = isGpt56Model(upstreamModelId);
         const resolveHeaders = async (): Promise<Record<string, string>> => {
           const tokens = getTokens();

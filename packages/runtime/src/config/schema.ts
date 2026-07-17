@@ -1,8 +1,6 @@
 // @summary Zod schema definitions for DiligentConfig validation and type inference
-import { ThinkingEffortSchema } from "@diligent/protocol";
+import { ModelRefSchema, ThinkingEffortSchema } from "@diligent/protocol";
 import { z } from "zod";
-
-export const ModelId = z.string().describe("Model identifier, e.g. 'claude-sonnet-4-6', 'gpt-5.5', 'gemini-3.5-flash'");
 
 const HookCommandSchema = z.object({
   type: z.literal("command"),
@@ -85,7 +83,7 @@ export const DiligentConfigSchema = z
     $schema: z.string().optional(),
 
     // Core settings
-    model: ModelId.optional(),
+    model: ModelRefSchema.optional(),
     provider: z
       .object({
         auth: z

@@ -3,7 +3,7 @@
 export type { ProviderName } from "@diligent/runtime";
 export {
   DEFAULT_PROVIDER,
-  getDefaultModelId,
+  getDefaultModelRef,
   PROVIDER_DESCRIPTORS,
   PROVIDER_MODEL_POLICIES,
   PROVIDER_NAMES,

@@ -1,6 +1,6 @@
 // @summary Resolves canonical and investigation provider profiles and credentials
 
-import { resolveModel, supportsThinkingEffort } from "@diligent/core/model-registry";
+import { resolveModel, resolveModelSelector, supportsThinkingEffort } from "@diligent/core/model-registry";
 import type { Model, StreamFunction } from "@diligent/core/provider-contract";
 import { createAnthropicStream } from "@diligent/core/providers/anthropic";
 import { createOpenAIStream } from "@diligent/core/providers/openai";
@@ -18,7 +18,9 @@ export function resolveSelectedProfiles(options: EvalCliOptions): EvalProfile[] 
   if (options.canonical) return CANONICAL_PROFILES.map((profile) => ({ ...profile }));
 
   if (options.model) {
-    const model = resolveModel(options.model);
+    const model = options.provider
+      ? resolveModel({ provider: options.provider, modelId: options.model })
+      : resolveModelSelector(options.model);
     if (model.provider !== "openai" && model.provider !== "anthropic") {
       throw new Error(`Eval core supports only OpenAI and Anthropic API models, received ${model.provider}.`);
     }
@@ -26,14 +28,14 @@ export function resolveSelectedProfiles(options: EvalCliOptions): EvalProfile[] 
       throw new Error(`Model ${options.model} belongs to ${model.provider}, not ${options.provider}.`);
     }
     validateMediumEffort(model);
-    return [{ provider: model.provider, model: model.id, effort: EVAL_EFFORT }];
+    return [{ provider: model.provider, model: model.modelId, effort: EVAL_EFFORT }];
   }
 
   const canonical = options.provider
     ? CANONICAL_PROFILES.filter((profile) => profile.provider === options.provider)
     : CANONICAL_PROFILES;
   return canonical.map((profile) => {
-    const model = resolveModel(profile.model);
+    const model = resolveModel({ provider: profile.provider, modelId: profile.model });
     validateMediumEffort(model);
     return { ...profile };
   });
@@ -55,7 +57,7 @@ export function createProfileStream(profile: EvalProfile, env: EvalCredentialEnv
 }
 
 export function resolveProfileModel(profile: EvalProfile): Model {
-  const model = resolveModel(profile.model);
+  const model = resolveModel({ provider: profile.provider, modelId: profile.model });
   if (model.provider !== profile.provider) {
     throw new Error(`Profile provider ${profile.provider} does not match model provider ${model.provider}.`);
   }
@@ -81,7 +83,7 @@ export function isEvalProvider(value: string): value is EvalProvider {
 
 function validateMediumEffort(model: Model): void {
   if (!supportsThinkingEffort(model, EVAL_EFFORT)) {
-    throw new Error(`Model ${model.id} does not support effort ${EVAL_EFFORT}.`);
+    throw new Error(`Model ${model.provider}/${model.modelId} does not support effort ${EVAL_EFFORT}.`);
   }
 }
 
