@@ -2,7 +2,7 @@
 
 import type { CoreAgentEvent } from "@diligent/core/agent";
 import type { Message, Usage } from "@diligent/core/message-contract";
-import type { SystemSection, ThinkingEffort } from "@diligent/core/provider-contract";
+import type { SystemSection } from "@diligent/core/provider-contract";
 import type { Tool } from "@diligent/core/tool-contract";
 import type { LogRecord } from "@diligent/logging";
 
@@ -11,7 +11,7 @@ export type EvalProvider = "openai" | "anthropic";
 export interface EvalProfile {
   provider: EvalProvider;
   model: string;
-  effort: ThinkingEffort;
+  effort: "medium";
 }
 
 export type EvalTerminationReason =

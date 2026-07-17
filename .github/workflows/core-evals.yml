@@ -25,19 +25,6 @@ on:
         description: "Model override for non-canonical investigation"
         required: false
         type: string
-      effort:
-        description: "Effort override for non-canonical investigation"
-        required: true
-        type: choice
-        options:
-          - canonical
-          - none
-          - low
-          - medium
-          - high
-          - xhigh
-          - max
-        default: canonical
       seed:
         description: "Optional recorded root seed for world reconstruction"
         required: false
@@ -76,7 +63,6 @@ jobs:
       EVAL_PROVIDER: ${{ inputs.provider || 'all' }}
       EVAL_TASK: ${{ inputs.task || '' }}
       EVAL_MODEL: ${{ inputs.model || '' }}
-      EVAL_EFFORT: ${{ inputs.effort || 'canonical' }}
       EVAL_SEED: ${{ inputs.seed || '' }}
 
     steps:
@@ -105,9 +91,6 @@ jobs:
             fi
             if [ -n "$EVAL_MODEL" ]; then
               args+=(--model "$EVAL_MODEL")
-            fi
-            if [ "$EVAL_EFFORT" != "canonical" ]; then
-              args+=(--effort "$EVAL_EFFORT")
             fi
           fi
           if [ -n "$EVAL_SEED" ]; then

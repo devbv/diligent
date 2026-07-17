@@ -1,15 +1,17 @@
 // @summary Resolves canonical and investigation provider profiles and credentials
 
 import { resolveModel, supportsThinkingEffort } from "@diligent/core/model-registry";
-import type { Model, StreamFunction, ThinkingEffort } from "@diligent/core/provider-contract";
+import type { Model, StreamFunction } from "@diligent/core/provider-contract";
 import { createAnthropicStream } from "@diligent/core/providers/anthropic";
 import { createOpenAIStream } from "@diligent/core/providers/openai";
 import type { EvalCliOptions } from "./cli-options";
 import type { EvalProfile, EvalProvider } from "./task";
 
+const EVAL_EFFORT = "medium" as const;
+
 export const CANONICAL_PROFILES: readonly EvalProfile[] = [
-  { provider: "openai", model: "gpt-5.6-terra", effort: "medium" },
-  { provider: "anthropic", model: "claude-sonnet-4-6", effort: "medium" },
+  { provider: "openai", model: "gpt-5.6-terra", effort: EVAL_EFFORT },
+  { provider: "anthropic", model: "claude-sonnet-4-6", effort: EVAL_EFFORT },
 ];
 
 export function resolveSelectedProfiles(options: EvalCliOptions): EvalProfile[] {
@@ -23,9 +25,8 @@ export function resolveSelectedProfiles(options: EvalCliOptions): EvalProfile[] 
     if (options.provider && options.provider !== model.provider) {
       throw new Error(`Model ${options.model} belongs to ${model.provider}, not ${options.provider}.`);
     }
-    const effort = options.effort ?? "medium";
-    validateEffort(model, effort);
-    return [{ provider: model.provider, model: model.id, effort }];
+    validateMediumEffort(model);
+    return [{ provider: model.provider, model: model.id, effort: EVAL_EFFORT }];
   }
 
   const canonical = options.provider
@@ -33,9 +34,8 @@ export function resolveSelectedProfiles(options: EvalCliOptions): EvalProfile[] 
     : CANONICAL_PROFILES;
   return canonical.map((profile) => {
     const model = resolveModel(profile.model);
-    const effort = options.effort ?? profile.effort;
-    validateEffort(model, effort);
-    return { ...profile, effort };
+    validateMediumEffort(model);
+    return { ...profile };
   });
 }
 
@@ -59,7 +59,7 @@ export function resolveProfileModel(profile: EvalProfile): Model {
   if (model.provider !== profile.provider) {
     throw new Error(`Profile provider ${profile.provider} does not match model provider ${model.provider}.`);
   }
-  validateEffort(model, profile.effort);
+  validateMediumEffort(model);
   return model;
 }
 
@@ -69,7 +69,6 @@ export function canonicalReason(options: EvalCliOptions): string {
     options.provider && `provider=${options.provider}`,
     options.task && `task=${options.task}`,
     options.model && `model=${options.model}`,
-    options.effort && `effort=${options.effort}`,
   ].filter((value): value is string => Boolean(value));
   return overrides.length > 0
     ? `non-canonical investigation override: ${overrides.join(", ")}`
@@ -80,9 +79,9 @@ export function isEvalProvider(value: string): value is EvalProvider {
   return value === "openai" || value === "anthropic";
 }
 
-function validateEffort(model: Model, effort: ThinkingEffort): void {
-  if (!supportsThinkingEffort(model, effort)) {
-    throw new Error(`Model ${model.id} does not support effort ${effort}.`);
+function validateMediumEffort(model: Model): void {
+  if (!supportsThinkingEffort(model, EVAL_EFFORT)) {
+    throw new Error(`Model ${model.id} does not support effort ${EVAL_EFFORT}.`);
   }
 }
 

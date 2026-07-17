@@ -1,9 +1,6 @@
 // @summary Parses and validates canonical and investigation eval CLI options
 
-import type { ThinkingEffort } from "@diligent/core/provider-contract";
 import type { EvalProvider } from "./task";
-
-const EFFORTS = new Set<ThinkingEffort>(["none", "low", "medium", "high", "xhigh", "max"]);
 
 export interface EvalCliOptions {
   suite: "core";
@@ -11,7 +8,6 @@ export interface EvalCliOptions {
   provider?: EvalProvider;
   task?: string;
   model?: string;
-  effort?: ThinkingEffort;
   seed?: string;
   reportPath?: string;
   help: boolean;
@@ -46,12 +42,6 @@ export function parseCliOptions(args: string[]): EvalCliOptions {
       case "--model":
         options.model = requireValue(args, ++index, arg);
         break;
-      case "--effort": {
-        const value = requireValue(args, ++index, arg) as ThinkingEffort;
-        if (!EFFORTS.has(value)) throw new Error(`Invalid effort "${value}".`);
-        options.effort = value;
-        break;
-      }
       case "--seed":
         options.seed = requireValue(args, ++index, arg);
         break;
@@ -67,8 +57,8 @@ export function parseCliOptions(args: string[]): EvalCliOptions {
     }
   }
 
-  if (options.canonical && (options.provider || options.task || options.model || options.effort)) {
-    throw new Error("Canonical mode does not allow provider, task, model, or effort overrides");
+  if (options.canonical && (options.provider || options.task || options.model)) {
+    throw new Error("Canonical mode does not allow provider, task, or model overrides");
   }
   return options;
 }

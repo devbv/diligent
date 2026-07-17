@@ -136,7 +136,7 @@ function printHelp(): void {
   console.log(`Usage:
   bun run eval core --canonical [--seed <seed>] [--report <path>]
   bun run eval core [--provider openai|anthropic] [--task <id>]
-                      [--model <model-id>] [--effort <effort>]
+                      [--model <model-id>]
                       [--seed <seed>] [--report <path>]
 
 Canonical mode requires both provider credentials and rejects selection or profile overrides.`);

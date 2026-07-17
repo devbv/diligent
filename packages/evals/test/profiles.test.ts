@@ -17,6 +17,12 @@ describe("eval profiles", () => {
     ]);
   });
 
+  test("a model override still uses medium effort", () => {
+    expect(resolveSelectedProfiles({ ...BASE_OPTIONS, model: "claude-sonnet-4-6" })).toEqual([
+      { provider: "anthropic", model: "claude-sonnet-4-6", effort: "medium" },
+    ]);
+  });
+
   test("fails before execution when a selected credential is missing", () => {
     expect(() =>
       validateCredentials(CANONICAL_PROFILES, { ANTHROPIC_API_KEY: "anthropic", OPENAI_API_KEY: "" }),

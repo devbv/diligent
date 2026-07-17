@@ -17,8 +17,12 @@ describe("parseCliOptions", () => {
 
   test("rejects filters in canonical mode", () => {
     expect(() => parseCliOptions(["core", "--canonical", "--provider", "openai"])).toThrow(
-      "Canonical mode does not allow provider, task, model, or effort overrides",
+      "Canonical mode does not allow provider, task, or model overrides",
     );
+  });
+
+  test("rejects effort overrides because eval effort is fixed", () => {
+    expect(() => parseCliOptions(["core", "--effort", "high"])).toThrow('Unknown eval option "--effort"');
   });
 
   test("labels filtered execution non-canonical", () => {

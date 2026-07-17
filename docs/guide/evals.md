@@ -16,8 +16,8 @@ bun run eval core --task structured-tool-args
 bun run eval core --task parallel-tools
 ```
 
-Canonical mode runs every required task against the fixed OpenAI and Anthropic profiles. It rejects task, provider,
-model, and effort overrides. Non-canonical runs are for investigation only.
+Canonical mode runs every required task against the fixed OpenAI and Anthropic profiles. All eval runs use medium
+effort. Canonical mode rejects task, provider, and model overrides. Non-canonical runs are for investigation only.
 
 Each run writes a redacted, versioned JSON report to `artifacts/evals/` unless `--report <path>` is supplied. The
 report is safe to upload as a CI artifact; it redacts configured API keys and authorization-like values.
