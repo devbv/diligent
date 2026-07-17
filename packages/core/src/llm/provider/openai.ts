@@ -23,12 +23,7 @@ import { handleResponsesAPIEvents } from "./openai-sse";
 
 export function createOpenAIStream(apiKey?: string, baseUrl?: string, imageDetail?: OpenAIImageDetail): StreamFunction {
   const resolvedApiKey = resolveOpenAIApiKey(apiKey);
-  const client = new OpenAI({
-    apiKey: resolvedApiKey,
-    baseURL: baseUrl,
-    timeout: 15_000,
-    maxRetries: 0,
-  });
+  const client = createOpenAIClient(resolvedApiKey, baseUrl);
 
   return (model: Model, context: StreamContext, options: StreamOptions): EventStream<ProviderEvent, ProviderResult> => {
     const stream = new EventStream<ProviderEvent, ProviderResult>(
@@ -83,8 +78,17 @@ export function createOpenAIStream(apiKey?: string, baseUrl?: string, imageDetai
   };
 }
 
+export function createOpenAIClient(apiKey: string, baseUrl?: string): OpenAI {
+  return new OpenAI({
+    apiKey,
+    baseURL: baseUrl,
+    timeout: 15_000,
+    maxRetries: 0,
+  });
+}
+
 export function classifyOpenAIError(err: unknown): ProviderError {
-  if (isOpenAIAPIError(err)) {
+  if (err instanceof OpenAI.APIError) {
     const status = err.status;
     if (status === 400 && isContextOverflow(err.message)) {
       return new ProviderError(CONTEXT_OVERFLOW_ERROR_MESSAGE, {
@@ -128,17 +132,6 @@ export function classifyOpenAIError(err: unknown): ProviderError {
     undefined,
     err instanceof Error ? err : undefined,
   );
-}
-
-type OpenAIAPIErrorLike = Error & {
-  status?: number;
-  headers?: Headers;
-  error: unknown;
-};
-
-function isOpenAIAPIError(err: unknown): err is OpenAIAPIErrorLike {
-  if (err instanceof OpenAI.APIError) return true;
-  return err instanceof Error && "error" in err && "headers" in err;
 }
 
 function resolveOpenAIApiKey(apiKey?: string): string {

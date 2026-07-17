@@ -16,29 +16,9 @@ function makeOpenAIAPIErrorWithCode(status: number | undefined, code: string, me
   return new OpenAI.APIError(status, { code, message }, message, new Headers());
 }
 
-function makeForeignOpenAIAPIError(status: number, message: string): Error {
-  return Object.assign(new Error(message), {
-    status,
-    headers: new Headers(),
-    error: { message },
-    code: undefined,
-    param: undefined,
-    type: undefined,
-    requestID: undefined,
-  });
-}
-
 describe("classifyOpenAIError", () => {
   test("classifies 429 as non-retryable rate_limit", () => {
     const result = classifyOpenAIError(makeOpenAIAPIError(429, "Rate limit exceeded"));
-
-    expect(result.errorType).toBe("rate_limit");
-    expect(result.isRetryable).toBe(false);
-    expect(result.statusCode).toBe(429);
-  });
-
-  test("classifies SDK errors created by another module instance", () => {
-    const result = classifyOpenAIError(makeForeignOpenAIAPIError(429, "Rate limit exceeded"));
 
     expect(result.errorType).toBe("rate_limit");
     expect(result.isRetryable).toBe(false);
