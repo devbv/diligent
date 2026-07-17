@@ -159,7 +159,6 @@ describe("withRetry", () => {
       signal: controller.signal,
     });
     controller.abort();
-    await stream.result().catch(() => {});
 
     let settled = false;
     const waiting = stream.waitForInnerWork().then(() => {
@@ -170,6 +169,7 @@ describe("withRetry", () => {
 
     releaseCleanup();
     await waiting;
+    await stream.result().catch(() => {});
     expect(settled).toBe(true);
   });
 

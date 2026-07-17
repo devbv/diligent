@@ -103,8 +103,6 @@ export function withRetry(
         throw (event as { type: "error"; error: Error }).error;
       },
     );
-    if (signal) stream.attachSignal(signal);
-
     const work = (async () => {
       for (let attempt = 1; attempt <= config.maxAttempts; attempt++) {
         if (signal?.aborted) {
