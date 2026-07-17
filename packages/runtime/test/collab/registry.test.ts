@@ -1,5 +1,9 @@
 // @summary Tests for AgentRegistry: spawn, maxAgents, status tracking, shutdownAll
 import { describe, expect, it, spyOn } from "bun:test";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { LocalImageLoader } from "@diligent/core/image-contract";
 import type { Tool } from "@diligent/core/tool-contract";
 import type { RuntimeAgent } from "@diligent/runtime/agent/runtime-agent";
 import { AgentRegistry, isFinal } from "@diligent/runtime/collab";
@@ -563,26 +567,34 @@ describe("AgentRegistry", () => {
     expect(observedModels).toEqual(["claude-opus-4-8"]);
   });
 
-  it("excludes collab tools from child agents by default", async () => {
+  it("excludes collab tools and binds the image loader to the child cwd", async () => {
     let childToolNames: string[] = [];
-    let childCwd: string | undefined;
-    const registry = new AgentRegistry(
-      makeCollabDeps({
-        parentTools: [makeTool("read"), makeTool("spawn_agent"), makeTool("wait")],
-        sessionManagerFactory: makeInspectingSessionManagerFactory((agent) => {
-          childToolNames = agent.tools.map((tool) => tool.name);
-          childCwd = agent.cwd;
+    let childImageLoader: LocalImageLoader | undefined;
+    const childCwd = await mkdtemp(join(tmpdir(), "diligent-child-image-loader-"));
+    try {
+      await writeFile(join(childCwd, "image.png"), "child-image");
+      const registry = new AgentRegistry(
+        makeCollabDeps({
+          cwd: childCwd,
+          parentTools: [makeTool("read"), makeTool("spawn_agent"), makeTool("wait")],
+          sessionManagerFactory: makeInspectingSessionManagerFactory((agent) => {
+            childToolNames = agent.tools.map((tool) => tool.name);
+            childImageLoader = (agent as unknown as { localImageLoader?: LocalImageLoader }).localImageLoader;
+          }),
         }),
-      }),
-    );
+      );
 
-    const { threadId } = registry.spawn({ prompt: "task", description: "", agentType: "general" });
-    await registry.wait([threadId], 5000);
+      const { threadId } = registry.spawn({ prompt: "task", description: "", agentType: "general" });
+      await registry.wait([threadId], 5000);
+      const bytes = await childImageLoader?.load({ type: "local_image", path: "image.png", mediaType: "image/png" });
 
-    expect(childToolNames).toContain("read");
-    expect(childToolNames).not.toContain("spawn_agent");
-    expect(childToolNames).not.toContain("wait");
-    expect(childCwd).toBe("/tmp/collab-test");
+      expect(childToolNames).toContain("read");
+      expect(childToolNames).not.toContain("spawn_agent");
+      expect(childToolNames).not.toContain("wait");
+      expect(Buffer.from(bytes!).toString("utf8")).toBe("child-image");
+    } finally {
+      await rm(childCwd, { recursive: true, force: true });
+    }
   });
 
   it("treats an empty per-spawn allowedTools list as inherit-all", async () => {

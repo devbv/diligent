@@ -39,7 +39,7 @@ export function createVertexStream(getAccessToken: () => string, config?: Vertex
         const baseUrl = resolveVertexBaseUrl(config?.baseUrl);
         const body: Record<string, unknown> = {
           model: resolveVertexModelId(model.id, baseUrl, config?.modelMap),
-          messages: await buildOpenAICompatibleMessages(context.messages, context.cwd, context.localImageLoader),
+          messages: await buildOpenAICompatibleMessages(context.messages, context.localImageLoader),
           stream: true,
           stream_options: { include_usage: true },
         };

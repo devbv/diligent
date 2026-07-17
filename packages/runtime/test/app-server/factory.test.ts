@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { LocalImageLoader } from "@diligent/core/image-contract";
 import { DEFAULT_ANTHROPIC_MODEL_ID, getModelInfoList } from "@diligent/core/model-registry";
 import type { Model } from "@diligent/core/provider-contract";
 import { ProviderManager } from "@diligent/core/provider-contract";
@@ -79,6 +80,26 @@ describe("createAppServerConfig", () => {
     expect(config.modelConfig?.currentModelId).toBe(DEFAULT_ANTHROPIC_MODEL_ID);
     expect(config.defaultEffort).toBe("medium");
     expect(config.skillNames).toEqual([]);
+  });
+
+  it("injects a local image loader bound to the main agent cwd", async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), "diligent-main-image-loader-"));
+    tempHomes.push(projectRoot);
+    await writeFile(join(projectRoot, "image.png"), "main-image");
+    const config = createAppServerConfig({ cwd: projectRoot, runtimeConfig: makeRuntimeConfig() });
+    const agent = await config.createAgent({
+      cwd: projectRoot,
+      mode: "default",
+      effort: "medium",
+      modelId: DEFAULT_ANTHROPIC_MODEL_ID,
+      approve: async () => "once",
+      ask: async () => null,
+    });
+    const loader = (agent as unknown as { localImageLoader?: LocalImageLoader }).localImageLoader;
+
+    const bytes = await loader?.load({ type: "local_image", path: "image.png", mediaType: "image/png" });
+
+    expect(Buffer.from(bytes!).toString("utf8")).toBe("main-image");
   });
 
   it("only exposes models for connected providers", () => {

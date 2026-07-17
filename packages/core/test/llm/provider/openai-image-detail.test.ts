@@ -26,7 +26,7 @@ describe("convertMessages image detail", () => {
   });
 
   test("uses the provided detail for a user image", async () => {
-    const items = await convertMessages(userMsg, undefined, "low");
+    const items = await convertMessages(userMsg, "low");
     expect(firstImageDetail(items)).toBe("low");
   });
 
@@ -42,7 +42,7 @@ describe("convertMessages image detail", () => {
         timestamp: 1,
       },
     ];
-    const items = await convertMessages(messages, undefined, "high");
+    const items = await convertMessages(messages, "high");
     expect(firstImageDetail(items)).toBe("high");
   });
 

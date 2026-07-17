@@ -587,7 +587,6 @@ export function createChatGPTStream(
           model: upstreamModelId,
           systemInstructions: flattenSections(context.systemPrompt),
           messages: context.messages,
-          cwd: context.cwd,
           compactionSummary: context.compactionSummary,
           tools: context.tools,
           sessionId: options.sessionId,
@@ -856,7 +855,6 @@ export function createChatGPTNativeCompaction(getTokens: () => OpenAIOAuthTokens
       model: upstreamModelId,
       input: await toResponseInputItems({
         messages: input.messages,
-        cwd: input.cwd,
         compactionSummary: input.compactionSummary,
         localImageLoader: input.localImageLoader,
       }),

@@ -136,7 +136,6 @@ export const DEFAULT_LLM_RETRY_CONFIG: Readonly<LLMRetryConfig> = {
 
 // D008: Loop control configuration — timing and compaction knobs only
 export interface AgentOptions {
-  cwd?: string;
   effort?: ThinkingEffort;
   /** Structured diagnostic logger. Defaults to the local console-compatible core logger. */
   logger?: Logger;

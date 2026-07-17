@@ -9,7 +9,7 @@ import { PLAN_MODE_DISALLOWED_TOOLS } from "../agent/mode";
 import type { ResolvedAgentDefinition } from "../agent/resolved-agent";
 import { resolveAgentDefinition } from "../agent/resolved-agent";
 import { RuntimeAgent } from "../agent/runtime-agent";
-import { localImageLoader, toolOutputStore } from "../infrastructure";
+import { createLocalImageLoader, toolOutputStore } from "../infrastructure";
 import { SessionManager } from "../session/manager";
 import { buildDefaultTools } from "../tools/defaults";
 import { COLLAB_TOOL_NAMES } from "../tools/tool-metadata";
@@ -338,10 +338,9 @@ export class AgentRegistry {
           childSystemPrompt,
           filteredTools,
           {
-            cwd: this.deps.cwd,
             effort: childEffort,
             llmMsgStreamFn: this.deps.streamFn,
-            localImageLoader,
+            localImageLoader: createLocalImageLoader(this.deps.cwd),
             toolOutputStore,
             loopHooks,
           },

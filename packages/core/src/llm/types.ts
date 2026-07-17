@@ -75,7 +75,6 @@ export type StreamFunction = (
 ) => EventStream<ProviderEvent, ProviderResult>;
 
 export interface StreamContext {
-  cwd?: string;
   localImageLoader?: import("./image-io").LocalImageLoader;
   systemPrompt: SystemSection[];
   messages: Message[];

@@ -47,7 +47,6 @@ export function createOpenAIStream(apiKey?: string, baseUrl?: string, imageDetai
           model: model.id,
           systemInstructions: flattenSections(context.systemPrompt),
           messages: context.messages,
-          cwd: context.cwd,
           compactionSummary: context.compactionSummary,
           tools: context.tools,
           strictTools: false,
@@ -201,7 +200,6 @@ export function createOpenAINativeCompaction(
       model: input.model.id,
       input: await toResponseInputItems({
         messages: input.messages,
-        cwd: input.cwd,
         compactionSummary: input.compactionSummary,
         imageDetail,
         localImageLoader: input.localImageLoader,

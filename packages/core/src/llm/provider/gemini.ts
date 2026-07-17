@@ -62,7 +62,7 @@ export function createGeminiStream(apiKey?: string, baseUrl?: string): StreamFun
 
         const responseStream = await client.models.generateContentStream({
           model: model.id,
-          contents: await convertToGeminiContents(context.messages, context.cwd, context.localImageLoader),
+          contents: await convertToGeminiContents(context.messages, context.localImageLoader),
           config: buildGeminiGenerateConfig(context, options, useThinking ? budgetTokens : undefined),
         });
 
@@ -186,7 +186,6 @@ export function buildGeminiGenerateConfig(
 
 export async function convertToGeminiContents(
   messages: Message[],
-  cwd?: string,
   localImageLoader?: LocalImageLoader,
 ): Promise<GeminiContent[]> {
   const result: GeminiContent[] = [];
@@ -196,7 +195,7 @@ export async function convertToGeminiContents(
       const parts: Part[] =
         typeof msg.content === "string"
           ? [{ text: msg.content }]
-          : (await materializeUserContentBlocks(msg.content, { cwd, loader: localImageLoader })).flatMap(
+          : (await materializeUserContentBlocks(msg.content, { loader: localImageLoader })).flatMap(
               convertUserContentBlockToGeminiPart,
             );
       result.push({ role: "user", parts: parts.length > 0 ? parts : [{ text: "" }] });

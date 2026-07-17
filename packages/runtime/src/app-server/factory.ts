@@ -16,7 +16,7 @@ import { applyConsentPatch, refreshPrivacyPolicyUrl, resolveConsentState } from 
 import { loadDiligentConfig } from "../config/loader";
 import { loadRuntimeConfig, type RuntimeConfig } from "../config/runtime";
 import { getGlobalConfigPath, saveGlobalConsent, saveGlobalModel } from "../config/writer";
-import { type DiligentPaths, ensureDiligentDir, localImageLoader, toolOutputStore } from "../infrastructure";
+import { createLocalImageLoader, type DiligentPaths, ensureDiligentDir, toolOutputStore } from "../infrastructure";
 import { buildKnowledgeSection, readKnowledge } from "../knowledge";
 import { discoverSkills } from "../skills";
 import { type BundledToolProvider, createBundledAgentLoopHooks } from "../tools/bundled-provider";
@@ -201,11 +201,10 @@ async function createRuntimeAgent(args: {
     applyModeToPrompt(activeMode, promptSections),
     filteredTools,
     {
-      cwd,
       effort,
       llmMsgStreamFn: runtimeConfig.streamFunction,
       llmCompactionFn,
-      localImageLoader,
+      localImageLoader: createLocalImageLoader(cwd),
       toolOutputStore,
       compaction: {
         reservePercent: runtimeConfig.compaction.reservePercent,

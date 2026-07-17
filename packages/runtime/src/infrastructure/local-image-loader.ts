@@ -25,14 +25,16 @@ export function resolvePersistedLocalImagePath(path: string, cwd?: string): stri
   return resolve(cwd, path);
 }
 
-export const localImageLoader: LocalImageLoader = {
-  async load(block, cwd) {
-    try {
-      const bytes = await readFile(resolvePersistedLocalImagePath(block.path, cwd));
-      return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
-      throw error;
-    }
-  },
-};
+export function createLocalImageLoader(cwd: string): LocalImageLoader {
+  return {
+    async load(block) {
+      try {
+        const bytes = await readFile(resolvePersistedLocalImagePath(block.path, cwd));
+        return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+        throw error;
+      }
+    },
+  };
+}

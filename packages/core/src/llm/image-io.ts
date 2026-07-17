@@ -5,7 +5,7 @@ import { downscaleImageIfNeeded } from "./image-resize";
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 
 export interface LocalImageLoader {
-  load(block: LocalImageBlock, cwd?: string): Promise<ArrayBuffer | null>;
+  load(block: LocalImageBlock): Promise<ArrayBuffer | null>;
 }
 
 function fileNameFromPath(path: string): string {
@@ -16,9 +16,9 @@ function fileNameFromPath(path: string): string {
 
 export async function localImageToBase64(
   block: LocalImageBlock,
-  options: { loader: LocalImageLoader; cwd?: string },
+  options: { loader: LocalImageLoader },
 ): Promise<ImageBlock | null> {
-  const bytes = await options.loader.load(block, options.cwd);
+  const bytes = await options.loader.load(block);
   if (!bytes) return null;
   if (bytes.byteLength > MAX_IMAGE_BYTES) {
     throw new Error(`Attached image exceeds 10 MB limit: ${fileNameFromPath(block.path)}`);
@@ -47,15 +47,13 @@ export async function localImageToBase64(
 
 export async function materializeUserContentBlocks(
   blocks: ContentBlock[],
-  options: { loader?: LocalImageLoader; cwd?: string },
+  options: { loader?: LocalImageLoader },
 ): Promise<ContentBlock[]> {
   const result: ContentBlock[] = [];
 
   for (const block of blocks) {
     if (block.type === "local_image") {
-      const imageBlock = options.loader
-        ? await localImageToBase64(block, { ...options, loader: options.loader })
-        : null;
+      const imageBlock = options.loader ? await localImageToBase64(block, { loader: options.loader }) : null;
       if (imageBlock) result.push(imageBlock);
     } else {
       result.push(block);

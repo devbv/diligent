@@ -7,7 +7,7 @@ export {
   resolveStorageNamespace,
 } from "./diligent-dir";
 export {
-  localImageLoader,
+  createLocalImageLoader,
   resolvePersistedLocalImagePath,
   toPersistedLocalImagePath,
 } from "./local-image-loader";

@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  localImageLoader,
+  createLocalImageLoader,
   resolvePersistedLocalImagePath,
   toPersistedLocalImagePath,
 } from "../../src/infrastructure/local-image-loader";
@@ -27,17 +27,22 @@ describe("local image loader", () => {
   it("returns null for missing files and bytes for existing files", async () => {
     const cwd = await mkdtemp(join(tmpdir(), "diligent-local-image-"));
     try {
-      expect(
-        await localImageLoader.load({ type: "local_image", path: "missing.png", mediaType: "image/png" }, cwd),
-      ).toBeNull();
+      const loader = createLocalImageLoader(cwd);
+      expect(await loader.load({ type: "local_image", path: "missing.png", mediaType: "image/png" })).toBeNull();
       const dir = join(cwd, ".diligent", "images");
       await mkdir(dir, { recursive: true });
       await writeFile(join(dir, "example.png"), "image-bytes");
-      const bytes = await localImageLoader.load(
-        { type: "local_image", path: ".diligent/images/example.png", mediaType: "image/png" },
-        cwd,
-      );
+      const bytes = await loader.load({
+        type: "local_image",
+        path: ".diligent/images/example.png",
+        mediaType: "image/png",
+      });
       expect(Buffer.from(bytes!).toString("utf8")).toBe("image-bytes");
+
+      const absolutePath = join(dir, "legacy.png");
+      await writeFile(absolutePath, "legacy-image-bytes");
+      const legacyBytes = await loader.load({ type: "local_image", path: absolutePath, mediaType: "image/png" });
+      expect(Buffer.from(legacyBytes!).toString("utf8")).toBe("legacy-image-bytes");
     } finally {
       await rm(cwd, { recursive: true, force: true });
     }

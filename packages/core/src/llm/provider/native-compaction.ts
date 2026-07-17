@@ -2,7 +2,6 @@
 import type { Model, SystemSection } from "../types";
 
 export interface NativeCompactionInput {
-  cwd?: string;
   localImageLoader?: import("../image-io").LocalImageLoader;
   model: Model;
   systemPrompt: SystemSection[];

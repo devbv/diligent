@@ -64,6 +64,26 @@ describe("buildOpenAICompatibleMessages", () => {
     expect(content[0]).toEqual({ type: "text", text: "hello" });
   });
 
+  test("materializes local images through the injected loader", async () => {
+    const messages = await buildOpenAICompatibleMessages(
+      [
+        {
+          role: "user",
+          content: [{ type: "local_image", path: "image.png", mediaType: "image/png" }],
+          timestamp: 1,
+        },
+      ],
+      { load: async () => new TextEncoder().encode("image-bytes").buffer },
+    );
+
+    expect(messages).toEqual([
+      {
+        role: "user",
+        content: [{ type: "image_url", image_url: { url: "data:image/png;base64,aW1hZ2UtYnl0ZXM=" } }],
+      },
+    ]);
+  });
+
   test("converts an assistant message with text only", async () => {
     const messages = await buildOpenAICompatibleMessages([
       {

@@ -78,12 +78,7 @@ export function createAnthropicStream(apiKey?: string, baseUrl?: string): Stream
           model: model.id,
           max_tokens: options.maxTokens ?? model.maxOutputTokens,
           system: systemBlocks,
-          messages: await convertMessages(
-            context.messages,
-            context.cwd,
-            context.compactionSummary,
-            context.localImageLoader,
-          ),
+          messages: await convertMessages(context.messages, context.compactionSummary, context.localImageLoader),
           ...(context.tools.length > 0 && { tools: convertTools(context.tools) }),
           ...thinkingConfig,
         } as Anthropic.MessageCreateParams;
@@ -195,16 +190,12 @@ export function createAnthropicStream(apiKey?: string, baseUrl?: string): Stream
 
 export async function convertMessages(
   messages: Message[],
-  cwdOrCompactionSummary?: string | Record<string, unknown>,
   compactionSummary?: Record<string, unknown>,
   localImageLoader?: LocalImageLoader,
 ): Promise<Anthropic.MessageParam[]> {
-  const cwd = typeof cwdOrCompactionSummary === "string" ? cwdOrCompactionSummary : undefined;
-  const effectiveCompactionSummary =
-    typeof cwdOrCompactionSummary === "string" ? compactionSummary : (cwdOrCompactionSummary ?? compactionSummary);
   const result: Anthropic.MessageParam[] = [];
 
-  const compactedUserMessage = toAnthropicCompactionUserMessage(effectiveCompactionSummary);
+  const compactedUserMessage = toAnthropicCompactionUserMessage(compactionSummary);
   if (compactedUserMessage) {
     result.push(compactedUserMessage);
   }
@@ -214,9 +205,7 @@ export async function convertMessages(
       const blocks =
         typeof msg.content === "string"
           ? [{ type: "text" as const, text: msg.content }]
-          : (await materializeUserContentBlocks(msg.content, { cwd, loader: localImageLoader })).map(
-              convertContentBlock,
-            );
+          : (await materializeUserContentBlocks(msg.content, { loader: localImageLoader })).map(convertContentBlock);
       result.push({ role: "user", content: blocks });
     } else if (msg.role === "assistant") {
       result.push({
@@ -806,12 +795,7 @@ function toAnthropicBlocks(sections: SystemSection[]): AnthropicTextBlock[] {
 export function createAnthropicNativeCompaction(apiKey: string, baseUrl?: string): NativeCompactFn {
   const endpoint = `${resolveAnthropicBaseUrl(baseUrl)}/messages`;
   return async (input) => {
-    const rawMessages = await convertMessages(
-      input.messages,
-      input.cwd,
-      input.compactionSummary,
-      input.localImageLoader,
-    );
+    const rawMessages = await convertMessages(input.messages, input.compactionSummary, input.localImageLoader);
     const normalizedMessages = ensureAnthropicCompactionConversationEndsWithUser(rawMessages);
     const body: Record<string, unknown> = {
       model: input.model.id,

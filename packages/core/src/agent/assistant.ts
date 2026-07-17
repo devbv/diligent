@@ -68,7 +68,6 @@ export async function streamAssistantMessage(
   messages: Message[],
   request: {
     config: {
-      cwd?: string;
       model: Model;
       effort: ThinkingEffort;
       localImageLoader?: import("../llm/image-io").LocalImageLoader;
@@ -87,7 +86,6 @@ export async function streamAssistantMessage(
   generateItemId: () => string,
 ): Promise<AssistantMessage> {
   const context: StreamContext = {
-    cwd: request.config.cwd,
     localImageLoader: request.config.localImageLoader,
     systemPrompt: runtime.systemPrompt,
     messages,

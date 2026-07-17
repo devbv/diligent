@@ -11,7 +11,6 @@ export type OpenAIImageDetail = "auto" | "low" | "high";
 
 export async function convertMessages(
   messages: Message[],
-  cwd?: string,
   imageDetail: OpenAIImageDetail = "auto",
   localImageLoader?: LocalImageLoader,
 ): Promise<ResponseInputItem[]> {
@@ -23,7 +22,7 @@ export async function convertMessages(
       if (typeof msg.content === "string") {
         result.push({ type: "message", role: "user", content: [{ type: "input_text", text: msg.content }] });
       } else {
-        const blocks = await materializeUserContentBlocks(msg.content, { cwd, loader: localImageLoader });
+        const blocks = await materializeUserContentBlocks(msg.content, { loader: localImageLoader });
         const content: ResponseInputMessageContentList = [];
         for (const block of blocks) {
           if (block.type === "text") {
@@ -89,12 +88,11 @@ export async function convertMessages(
 
 export async function toResponseInputItems(input: {
   messages: Message[];
-  cwd?: string;
   compactionSummary?: Record<string, unknown>;
   imageDetail?: OpenAIImageDetail;
   localImageLoader?: LocalImageLoader;
 }): Promise<ResponseInputItem[]> {
-  const convertedMessages = await convertMessages(input.messages, input.cwd, input.imageDetail, input.localImageLoader);
+  const convertedMessages = await convertMessages(input.messages, input.imageDetail, input.localImageLoader);
   if (input.compactionSummary) {
     return [input.compactionSummary as unknown as ResponseInputItem, ...convertedMessages];
   }
@@ -240,7 +238,6 @@ export function buildTools(tools: ToolDefinition[], strict?: boolean): OpenAIRes
 export async function buildResponsesRequestBody(input: {
   model: string;
   messages: Message[];
-  cwd?: string;
   compactionSummary?: Record<string, unknown>;
   systemInstructions?: string;
   tools?: ToolDefinition[];
@@ -260,7 +257,6 @@ export async function buildResponsesRequestBody(input: {
     stream: true,
     input: await toResponseInputItems({
       messages: input.messages,
-      cwd: input.cwd,
       compactionSummary: input.compactionSummary,
       imageDetail: input.imageDetail,
       localImageLoader: input.localImageLoader,

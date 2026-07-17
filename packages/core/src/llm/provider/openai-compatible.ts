@@ -32,7 +32,6 @@ type OpenAICompatibleTool = {
 
 export async function buildOpenAICompatibleMessages(
   messages: Message[],
-  cwd?: string,
   localImageLoader?: LocalImageLoader,
 ): Promise<OpenAICompatibleMessage[]> {
   const result: OpenAICompatibleMessage[] = [];
@@ -44,7 +43,7 @@ export async function buildOpenAICompatibleMessages(
         continue;
       }
 
-      const blocks = await materializeUserContentBlocks(msg.content, { cwd, loader: localImageLoader });
+      const blocks = await materializeUserContentBlocks(msg.content, { loader: localImageLoader });
       const content: OpenAICompatibleContentPart[] = [];
       for (const block of blocks) {
         if (block.type === "text") {

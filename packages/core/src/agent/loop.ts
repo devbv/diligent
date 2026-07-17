@@ -19,7 +19,6 @@ import { toSerializableError } from "./util/errors";
 
 // Internal fully-resolved config for one loop run
 interface LoopConfig {
-  cwd?: string;
   model: Model;
   systemPrompt: SystemSection[];
   tools: Tool[];
