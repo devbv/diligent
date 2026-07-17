@@ -1,4 +1,5 @@
 import type {
+  ModelRef as ProtocolModelRef,
   ProviderErrorReason as ProtocolProviderErrorReason,
   ProviderErrorType as ProtocolProviderErrorType,
   ProviderName as ProtocolProviderName,
@@ -23,12 +24,12 @@ export interface SystemSection {
 export type ThinkingEffort = ProtocolThinkingEffort;
 
 export type ProviderName = ProtocolProviderName;
+export type ModelRef = ProtocolModelRef;
 
-export interface ModelInfo {
-  id: string;
-  /** Human-facing label for the picker; falls back to `id` when unset. */
+export interface ModelInfo extends ModelRef {
+  /** Human-facing label for the picker; falls back to `modelId` when unset. */
   display?: string;
-  provider: string;
+  aliases?: string[];
   contextWindow: number;
   maxOutputTokens: number;
   inputCostPer1M?: number;
@@ -38,9 +39,7 @@ export interface ModelInfo {
   supportsVision?: boolean;
 }
 
-export interface Model {
-  id: string;
-  provider: string;
+export interface Model extends ModelRef {
   contextWindow: number;
   maxOutputTokens: number;
   inputCostPer1M?: number; // cost per 1M input tokens in USD
@@ -50,8 +49,8 @@ export interface Model {
   supportsThinking: boolean;
   supportedEfforts?: ThinkingEffort[];
   supportsVision?: boolean;
-  defaultBudgetTokens?: number; // fallback when thinkingBudgets absent
   supportsAdaptiveThinking?: boolean; // opus/sonnet/fable: model decides budget
+  supportsXhighEffort?: boolean; // adaptive Anthropic models that accept output_config.effort=xhigh
   thinkingBudgets?: {
     // effort-level budgets for non-adaptive models
     low: number;

@@ -15,8 +15,8 @@ import { ProviderError } from "../../../src/llm/types";
 import type { AssistantMessage } from "../../../src/types";
 
 const testModel: Model = {
-  id: "test-model",
-  provider: "test",
+  modelId: "test-model",
+  provider: "anthropic",
   contextWindow: 100000,
   maxOutputTokens: 4096,
   supportsThinking: false,
@@ -26,7 +26,7 @@ function makeAssistantMessage(): AssistantMessage {
   return {
     role: "assistant",
     content: [{ type: "text", text: "hello" }],
-    model: "test-model",
+    model: { provider: "anthropic", modelId: "test-model" },
     usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 },
     stopReason: "end_turn",
     timestamp: Date.now(),
@@ -136,6 +136,43 @@ function recordingLogger(
 }
 
 describe("withRetry", () => {
+  test("tracks the wrapper worker until the aborted inner stream cleanup settles", async () => {
+    let releaseCleanup!: () => void;
+    const cleanup = new Promise<void>((resolve) => {
+      releaseCleanup = resolve;
+    });
+    const controller = new AbortController();
+    const streamFn: StreamFunction = () => {
+      const inner = new EventStream<ProviderEvent, ProviderResult>(
+        (event) => event.type === "done" || event.type === "error",
+        (event) => {
+          if (event.type === "done") return { message: event.message };
+          throw (event as { type: "error"; error: Error }).error;
+        },
+      );
+      inner.attachSignal(controller.signal);
+      inner.setInnerWork(cleanup);
+      inner.result().catch(() => {});
+      return inner;
+    };
+    const stream = withRetry(streamFn, { maxAttempts: 1, baseDelayMs: 1, maxDelayMs: 1 })(testModel, testContext, {
+      signal: controller.signal,
+    });
+    controller.abort();
+
+    let settled = false;
+    const waiting = stream.waitForInnerWork().then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    releaseCleanup();
+    await waiting;
+    await stream.result().catch(() => {});
+    expect(settled).toBe(true);
+  });
+
   test("succeeds on first attempt without retrying", async () => {
     const { streamFn, callCount } = createFailingStreamFn([]);
     const retried = withRetry(streamFn, {
@@ -259,7 +296,7 @@ describe("withRetry", () => {
       errorType: "server_error",
       retryAfterMs: 2,
       statusCode: 503,
-      provider: "test",
+      provider: "anthropic",
       model: "test-model",
     });
     expect(calls.find((call) => call.event === "retry_scheduled")?.fields).toMatchObject({
@@ -269,7 +306,7 @@ describe("withRetry", () => {
       maxAttempts: 2,
       delayMs: 2,
       errorType: "server_error",
-      provider: "test",
+      provider: "anthropic",
       model: "test-model",
     });
     for (const call of calls) {

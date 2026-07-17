@@ -18,7 +18,7 @@ import { NonInteractiveRunner } from "../../src/tui/runner";
 import { createInProcessRpcClientFactory } from "../helpers/in-process-server";
 
 const TEST_MODEL: Model = {
-  id: "test-model",
+  modelId: "claude-sonnet-4-6",
   provider: "anthropic",
   contextWindow: 100_000,
   maxOutputTokens: 4096,
@@ -59,7 +59,7 @@ function createAssistantMessage(args: {
   return {
     role: "assistant",
     content,
-    model: TEST_MODEL.id,
+    model: TEST_MODEL,
     usage,
     stopReason: args.toolCall ? "tool_use" : "end_turn",
     timestamp: Date.now(),

@@ -19,8 +19,8 @@ import type { Tool } from "../../src/tool/types";
 import type { AssistantMessage, Message } from "../../src/types";
 
 const TEST_MODEL: Model = {
-  id: "test-model",
-  provider: "test",
+  modelId: "test-model",
+  provider: "anthropic",
   contextWindow: 100_000,
   maxOutputTokens: 4096,
   supportsThinking: false,
@@ -33,7 +33,7 @@ function makeAssistant(
   return {
     role: "assistant",
     content,
-    model: TEST_MODEL.id,
+    model: TEST_MODEL,
     usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 },
     stopReason,
     timestamp: Date.now(),
@@ -515,8 +515,8 @@ describe("Agent compactionSummary persistence", () => {
     // The assistant mock returns usage={inputTokens:10, outputTokens:5, ...} = 15 total,
     // which exceeds the threshold on the second prompt call, triggering auto-compaction.
     const smallModel: Model = {
-      id: "test-model",
-      provider: "test",
+      modelId: "test-model",
+      provider: "anthropic",
       contextWindow: 200_000,
       maxOutputTokens: 4096,
       supportsThinking: false,

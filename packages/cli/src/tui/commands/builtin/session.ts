@@ -103,7 +103,7 @@ export const statusCommand: Command = {
   availableDuringTask: true,
   handler: async (_args, ctx) => {
     const lines: string[] = [""];
-    lines.push(`  ${t.bold}Model:${t.reset}    ${ctx.config.model.id} (${ctx.config.model.provider})`);
+    lines.push(`  ${t.bold}Model:${t.reset}    ${ctx.config.model.provider}/${ctx.config.model.modelId}`);
 
     if (ctx.threadId) {
       lines.push(`  ${t.bold}Thread:${t.reset}   ${ctx.threadId}`);

@@ -33,7 +33,7 @@ function assistantMsg(text: string): Message {
   return {
     role: "assistant",
     content: [{ type: "text", text }],
-    model: "test",
+    model: { provider: "anthropic", modelId: "test" },
     usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
     stopReason: "end_turn",
     timestamp: Date.now(),
@@ -75,8 +75,8 @@ function userContent(msg: Message): string {
 }
 
 const TEST_MODEL: Model = {
-  id: "test-model",
-  provider: "test",
+  modelId: "test-model",
+  provider: "anthropic",
   contextWindow: 100_000,
   maxOutputTokens: 40_000,
   supportsThinking: false,
@@ -122,7 +122,7 @@ describe("estimateTokens", () => {
           { type: "thinking", thinking: "a".repeat(40) },
           { type: "text", text: "b".repeat(40) },
         ],
-        model: "test",
+        model: { provider: "anthropic", modelId: "test" },
         usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
         stopReason: "end_turn",
         timestamp: Date.now(),
@@ -174,7 +174,7 @@ describe("shouldCompact", () => {
     const zeroUsageThinking: Message = {
       role: "assistant",
       content: [{ type: "thinking", thinking: "no visible output" }],
-      model: "test",
+      model: { provider: "anthropic", modelId: "test" },
       usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
       stopReason: "end_turn",
       timestamp: Date.now(),

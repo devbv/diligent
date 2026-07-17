@@ -1,48 +1,21 @@
-// @summary Cheap API-key validation via a provider "list models" call, used at save time
-
-import Anthropic from "@anthropic-ai/sdk";
-import { GoogleGenAI } from "@google/genai";
-import OpenAI from "openai";
+// @summary Provider-neutral API-key validation using cheap authenticated HTTP requests
 import { isAuthenticationStatus } from "../provider-errors";
 import { ProviderError, ProviderErrorReason, ProviderErrorType, type ProviderName } from "../types";
 import { resolveZaiCodingPlanBaseUrl } from "./zai-coding-plan";
 
-// z.ai has no reliable models-list endpoint, so validate with a 1-token chat completion —
-// the same endpoint the provider actually uses. A bad key returns 401/403; a valid one returns 200.
-async function validateZaiCodingPlanKey(apiKey: string, baseUrl?: string, model?: string): Promise<void> {
-  const response = await fetch(`${resolveZaiCodingPlanBaseUrl(baseUrl)}/chat/completions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({
-      model: model ?? "glm-5.2",
-      messages: [{ role: "user", content: "hi" }],
-      max_tokens: 1,
-      stream: false,
-    }),
-    signal: AbortSignal.timeout(VALIDATE_TIMEOUT_MS),
-  });
-  if (!response.ok) {
-    const body = (await response.text().catch(() => "")).trim();
-    throw Object.assign(new Error(body || `z.ai API error (${response.status})`), { status: response.status });
-  }
-}
-
-function authStatus(err: unknown): number | undefined {
-  const status =
-    (err as { status?: number; response?: { status?: number } })?.status ??
-    (err as { response?: { status?: number } })?.response?.status;
-  return typeof status === "number" ? status : undefined;
-}
-
-// Validate a provider API key with the cheapest authenticated call available. Anthropic/OpenAI/Gemini
-// use a free "list models" GET; z.ai has no reliable list endpoint so it uses a 1-token chat completion.
-// Vertex (Google access token) and chatgpt (OAuth login) are skipped: best-effort, saved as before.
-// Throws on an invalid key so the caller can refuse to persist it.
-//
-// Fail fast: the SDK defaults are a 10-minute timeout with 2 automatic retries (and timeouts are
-// themselves retried), so a bad key or unreachable endpoint would hang for minutes. For an
-// interactive save we want a single quick attempt — no retries, a short timeout.
 const VALIDATE_TIMEOUT_MS = 10_000;
+const DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com";
+const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
+const DEFAULT_GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
+
+type KeyValidator = (apiKey: string, baseUrl?: string, model?: string) => Promise<void>;
+
+const KEY_VALIDATORS: Partial<Record<ProviderName, KeyValidator>> = {
+  anthropic: validateAnthropicKey,
+  openai: validateOpenAIKey,
+  gemini: validateGeminiKey,
+  "zai-coding-plan": validateZaiCodingPlanKey,
+};
 
 export async function validateProviderApiKey(
   provider: ProviderName,
@@ -50,22 +23,11 @@ export async function validateProviderApiKey(
   baseUrl?: string,
   model?: string,
 ): Promise<void> {
+  const validator = KEY_VALIDATORS[provider];
+  if (!validator) return;
+
   try {
-    if (provider === "anthropic") {
-      await new Anthropic({ apiKey, baseURL: baseUrl, maxRetries: 0, timeout: VALIDATE_TIMEOUT_MS }).models.list({
-        limit: 1,
-      });
-    } else if (provider === "openai") {
-      await new OpenAI({ apiKey, baseURL: baseUrl, maxRetries: 0, timeout: VALIDATE_TIMEOUT_MS }).models.list();
-    } else if (provider === "gemini") {
-      await new GoogleGenAI({
-        apiKey,
-        httpOptions: { ...(baseUrl ? { baseUrl } : {}), timeout: VALIDATE_TIMEOUT_MS },
-      }).models.list({ config: { pageSize: 1 } });
-    } else if (provider === "zai-coding-plan") {
-      await validateZaiCodingPlanKey(apiKey, baseUrl, model);
-    }
-    // Other providers (vertex, chatgpt): no validation (preserves prior save-anything behavior).
+    await validator(apiKey, baseUrl, model);
   } catch (err) {
     const status = authStatus(err);
     const message = err instanceof Error ? err.message : String(err);
@@ -85,4 +47,58 @@ export async function validateProviderApiKey(
       cause: err instanceof Error ? err : undefined,
     });
   }
+}
+
+async function validateAnthropicKey(apiKey: string, baseUrl?: string): Promise<void> {
+  await requestValidation(joinUrl(baseUrl ?? DEFAULT_ANTHROPIC_BASE_URL, "v1/models?limit=1"), {
+    headers: {
+      "anthropic-version": "2023-06-01",
+      "x-api-key": apiKey,
+    },
+  });
+}
+
+async function validateOpenAIKey(apiKey: string, baseUrl?: string): Promise<void> {
+  await requestValidation(joinUrl(baseUrl ?? DEFAULT_OPENAI_BASE_URL, "models"), {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
+}
+
+async function validateGeminiKey(apiKey: string, baseUrl?: string): Promise<void> {
+  await requestValidation(joinUrl(baseUrl ?? DEFAULT_GEMINI_BASE_URL, "models?pageSize=1"), {
+    headers: { "x-goog-api-key": apiKey },
+  });
+}
+
+// z.ai does not expose a dependable models-list endpoint for Coding Plan keys, so use the
+// same endpoint as generation with the smallest possible non-streaming completion.
+async function validateZaiCodingPlanKey(apiKey: string, baseUrl?: string, model?: string): Promise<void> {
+  await requestValidation(joinUrl(resolveZaiCodingPlanBaseUrl(baseUrl), "chat/completions"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model: model ?? "glm-5.2",
+      messages: [{ role: "user", content: "hi" }],
+      max_tokens: 1,
+      stream: false,
+    }),
+  });
+}
+
+async function requestValidation(url: string, init: RequestInit): Promise<void> {
+  const response = await fetch(url, { ...init, signal: AbortSignal.timeout(VALIDATE_TIMEOUT_MS) });
+  if (response.ok) return;
+  const body = (await response.text().catch(() => "")).trim();
+  throw Object.assign(new Error(body || `Provider API error (${response.status})`), { status: response.status });
+}
+
+function joinUrl(baseUrl: string, path: string): string {
+  return `${baseUrl.replace(/\/+$/, "")}/${path.replace(/^\/+/, "")}`;
+}
+
+function authStatus(err: unknown): number | undefined {
+  if (!err || typeof err !== "object") return undefined;
+  const record = err as { status?: unknown; statusCode?: unknown; response?: { status?: unknown } };
+  const status = record.statusCode ?? record.status ?? record.response?.status;
+  return typeof status === "number" ? status : undefined;
 }

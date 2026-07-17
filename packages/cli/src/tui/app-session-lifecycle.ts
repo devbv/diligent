@@ -1,9 +1,9 @@
 // @summary Session startup, resume/hydration, and active-thread synchronization helpers for the CLI TUI
 
 import { DILIGENT_CLIENT_NOTIFICATION_METHODS, DILIGENT_CLIENT_REQUEST_METHODS } from "@diligent/protocol";
-import { getThinkingEffortLabel, resolveModel } from "@diligent/runtime";
+import { formatModelRef, resolveModel } from "@diligent/runtime";
 import type { AppConfig } from "../config";
-import { DEFAULT_MODELS, DEFAULT_PROVIDER, type ProviderName } from "../provider-manager";
+import { DEFAULT_PROVIDER, getDefaultModelRef, type ProviderName } from "../provider-manager";
 import { buildWelcomeBanner } from "./app-presenter";
 import type { AppRuntimeState } from "./app-runtime-state";
 import type { ChatView } from "./components/chat-view";
@@ -52,18 +52,18 @@ export class AppSessionLifecycle {
     await this.ensureConfiguredProviderOrFallback();
 
     this.deps.statusBar.update({
-      model: this.deps.config.model.id,
+      model: formatModelRef(this.deps.config.model),
       contextWindow: this.deps.config.model.contextWindow,
       status: "idle",
       cwd: process.cwd(),
       mode: this.deps.runtime.currentMode,
       effort: this.deps.runtime.currentEffort,
-      effortLabel: getThinkingEffortLabel(this.deps.runtime.currentEffort, this.deps.config.model),
+      effortLabel: this.deps.runtime.currentEffort,
     });
 
     const welcomeLines = buildWelcomeBanner({
       version: this.deps.pkgVersion,
-      modelId: this.deps.config.model.id,
+      modelId: formatModelRef(this.deps.config.model),
       cwd: process.cwd(),
       terminalColumns: this.deps.terminal.columns,
       yolo: Boolean(this.deps.config.diligent.yolo),
@@ -105,8 +105,7 @@ export class AppSessionLifecycle {
 
     const fallbackProvider = this.deps.config.providerManager.getConfiguredProviders()[0];
     if (fallbackProvider) {
-      const fallbackModelId = DEFAULT_MODELS[fallbackProvider];
-      this.deps.config.model = resolveModel(fallbackModelId);
+      this.deps.config.model = resolveModel(getDefaultModelRef(fallbackProvider));
       return;
     }
 
@@ -120,11 +119,11 @@ export class AppSessionLifecycle {
     this.deps.runtime.currentEffort = thread.currentEffort;
 
     let activeModel = this.deps.config.model;
-    let modelId = activeModel.id;
+    let modelId = formatModelRef(activeModel);
     let contextWindow = activeModel.contextWindow;
 
     if (thread.currentModel) {
-      modelId = thread.currentModel;
+      modelId = formatModelRef(thread.currentModel);
       try {
         activeModel = resolveModel(thread.currentModel);
         this.deps.config.model = activeModel;
@@ -138,7 +137,7 @@ export class AppSessionLifecycle {
       model: modelId,
       contextWindow,
       effort: thread.currentEffort,
-      effortLabel: getThinkingEffortLabel(thread.currentEffort, activeModel),
+      effortLabel: thread.currentEffort,
     });
     this.deps.renderer.requestRender();
   }

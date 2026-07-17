@@ -1,5 +1,5 @@
 {
-  "model": "gpt-5.5",
+  "model": { "provider": "openai", "modelId": "gpt-5.5" },
   "effort": "high",
   "systemPromptFile": "system-prompt.txt",
   "yolo": true,

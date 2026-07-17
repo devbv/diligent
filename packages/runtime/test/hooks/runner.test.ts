@@ -253,7 +253,7 @@ describe("getTurnUsage", () => {
       {
         role: "assistant",
         content: [{ type: "text", text: "prev turn" }],
-        model: "fake-model",
+        model: { provider: "anthropic", modelId: "fake-model" },
         usage: { inputTokens: 100, outputTokens: 20, cacheReadTokens: 5, cacheWriteTokens: 1 },
         stopReason: "end_turn",
         timestamp: 1,
@@ -262,7 +262,7 @@ describe("getTurnUsage", () => {
       {
         role: "assistant",
         content: [{ type: "text", text: "tool_use" }],
-        model: "fake-model",
+        model: { provider: "anthropic", modelId: "fake-model" },
         usage: { inputTokens: 30, outputTokens: 10, cacheReadTokens: 2, cacheWriteTokens: 0 },
         stopReason: "tool_use",
         timestamp: 3,
@@ -278,7 +278,7 @@ describe("getTurnUsage", () => {
       {
         role: "assistant",
         content: [{ type: "text", text: "final" }],
-        model: "fake-model",
+        model: { provider: "anthropic", modelId: "fake-model" },
         usage: { inputTokens: 40, outputTokens: 15, cacheReadTokens: 3, cacheWriteTokens: 1 },
         stopReason: "end_turn",
         timestamp: 5,

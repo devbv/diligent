@@ -12,7 +12,7 @@ import type {
   RequestId,
 } from "@diligent/protocol";
 import { DILIGENT_CLIENT_REQUEST_METHODS, DILIGENT_SERVER_NOTIFICATION_METHODS } from "@diligent/protocol";
-import type { DiligentPaths, SkillMetadata } from "@diligent/runtime";
+import { type DiligentPaths, formatModelRef, type SkillMetadata } from "@diligent/runtime";
 import { version as pkgVersion } from "../../package.json";
 import type { AppConfig } from "../config";
 import { AppDialogs } from "./app-dialogs";
@@ -221,7 +221,6 @@ export class App {
     this.threadManager = createThreadManager({
       getRpcClient: () => this.rpcClient,
       getCurrentMode: () => this.runtime.currentMode,
-      getModelId: () => this.config.model.id,
       setCurrentThreadId: (id) => {
         this.runtime.currentThreadId = id;
         this.updateAppServerLogSession(id);
@@ -289,7 +288,7 @@ export class App {
         this.chatView.addLines(
           buildWelcomeBanner({
             version: pkgVersion,
-            modelId: this.config.model.id,
+            modelId: formatModelRef(this.config.model),
             cwd: process.cwd(),
             terminalColumns: this.terminal.columns,
             yolo: Boolean(this.config.diligent.yolo),
@@ -318,8 +317,8 @@ export class App {
       pickInline: (o) => this.dialogs.pickInline(o),
       promptInline: (o) => this.dialogs.promptInline(o),
       shutdown: () => this.shutdown(),
-      onModelChanged: (modelId) => {
-        this.statusBar.update({ model: modelId });
+      onModelChanged: (model) => {
+        this.statusBar.update({ model: formatModelRef(model) });
         this.renderer.requestRender();
       },
       onEffortChanged: (effort, label) => {
@@ -600,7 +599,7 @@ export class App {
         threadId,
         message: restartMessage,
         content: [{ type: "text", text: restartMessage }],
-        model: this.config.model.id || undefined,
+        model: this.config.model,
       });
     } catch (error) {
       this.runtime.isProcessing = false;

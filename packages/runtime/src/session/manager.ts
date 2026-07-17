@@ -162,7 +162,7 @@ export class SessionManager {
     return this.memoryErrors;
   }
 
-  getCurrentModel(): { provider: string; modelId: string } | undefined {
+  getCurrentModel(): import("@diligent/core/provider-contract").ModelRef | undefined {
     return buildSessionContext(this.state.getCommittedEntries(), this.state.getCommittedLeafId(), {}).currentModel;
   }
 
@@ -202,7 +202,7 @@ export class SessionManager {
     return this.orchestrator.compactNow();
   }
 
-  appendModelChange(provider: string, modelId: string): void {
+  appendModelChange(provider: import("@diligent/core/provider-contract").ProviderName, modelId: string): void {
     const entry: ModelChangeEntry = {
       type: "model_change",
       id: generateEntryId(),

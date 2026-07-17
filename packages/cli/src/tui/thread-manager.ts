@@ -6,7 +6,6 @@ import type { AppServerRpcClient } from "./rpc-client";
 export interface ThreadManagerDeps {
   getRpcClient: () => AppServerRpcClient | null;
   getCurrentMode: () => ProtocolMode;
-  getModelId: () => string;
   setCurrentThreadId: (id: string | null) => void;
   updateStatusBar: (updates: { sessionId: string }) => void;
 }

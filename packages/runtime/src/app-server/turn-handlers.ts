@@ -1,6 +1,6 @@
 // @summary Turn lifecycle request handlers: turn start, interrupt, and steer
 
-import { resolveModel } from "@diligent/core/model-registry";
+import { resolveModel, sameModelRef } from "@diligent/core/model-registry";
 import { runCombinedHooks } from "../hooks/runner";
 import { resolvePersistedLocalImagePath, toPersistedLocalImagePath } from "../infrastructure/local-image-loader";
 import {
@@ -78,15 +78,15 @@ async function initializeTurnRuntime(
   runtime.abortController = new AbortController();
   runtime.isRunning = true;
   runtime.runningEffortSnapshot = runtime.effort;
-  runtime.runningModelIdSnapshot = params.model ?? runtime.modelId;
+  runtime.runningModelSnapshot = params.model ?? runtime.model;
   runtime.currentTurnUserId = ctx.getUserId(connectionId);
 
-  const effectiveModelId = runtime.runningModelIdSnapshot;
-  const lastRecordedModelId = runtime.manager.getCurrentModel()?.modelId;
-  if (effectiveModelId !== lastRecordedModelId) {
-    const model = resolveModel(effectiveModelId);
-    runtime.manager.appendModelChange(model.provider, model.id);
-    runtime.modelId = effectiveModelId;
+  const effectiveModel = runtime.runningModelSnapshot;
+  const lastRecordedModel = runtime.manager.getCurrentModel();
+  if (!sameModelRef(effectiveModel, lastRecordedModel)) {
+    const model = resolveModel(effectiveModel);
+    runtime.manager.appendModelChange(model.provider, model.modelId);
+    runtime.model = effectiveModel;
     runtime.agent = undefined; // force rebuild so per-turn model overrides update the provider stream
   }
 

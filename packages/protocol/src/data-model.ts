@@ -14,11 +14,17 @@ export type ProtocolVersion = z.infer<typeof ProtocolVersionSchema>;
 export const ModeSchema = z.enum(["default", "plan", "execute"]);
 export type Mode = z.infer<typeof ModeSchema>;
 
-export const ThinkingEffortSchema = z.enum(["none", "low", "medium", "high", "xhigh", "max"]);
+export const ThinkingEffortSchema = z.enum(["low", "medium", "high", "xhigh", "max"]);
 export type ThinkingEffort = z.infer<typeof ThinkingEffortSchema>;
 
 export const ProviderNameSchema = z.enum(["anthropic", "openai", "chatgpt", "gemini", "vertex", "zai-coding-plan"]);
 export type ProviderName = z.infer<typeof ProviderNameSchema>;
+
+export const ModelRefSchema = z.object({
+  provider: ProviderNameSchema,
+  modelId: z.string().min(1),
+});
+export type ModelRef = z.infer<typeof ModelRefSchema>;
 
 export const StopReasonSchema = z.enum(["end_turn", "tool_use", "max_tokens", "error", "aborted"]);
 export type StopReason = z.infer<typeof StopReasonSchema>;
@@ -74,7 +80,7 @@ export type UserMessage = z.infer<typeof UserMessageSchema>;
 export const AssistantMessageSchema = z.object({
   role: z.literal("assistant"),
   content: z.array(ContentBlockSchema),
-  model: z.string(),
+  model: ModelRefSchema,
   usage: UsageSchema,
   stopReason: StopReasonSchema,
   timestamp: z.number().int(),

@@ -8,14 +8,25 @@ export type {
   LLMCompactInput,
 } from "./compaction";
 export { compact, compactMessages, generateSummary, resolveCompaction } from "./compaction";
-export type { ModelClass, ModelDefinition } from "./models";
+export type { ModelClass, ModelClassDefinition } from "./model-class-policy";
 export {
-  DEFAULT_ANTHROPIC_MODEL_ID,
   getModelClass,
-  getModelInfoList,
-  KNOWN_MODELS,
-  resolveModel,
+  MODEL_CLASSES,
   resolveModelForClass,
+} from "./model-class-policy";
+export type { ModelCard, ModelCardProvenance } from "./models";
+export {
+  AmbiguousModelError,
+  findModel,
+  formatModelRef,
+  getModelInfoList,
+  listModels,
+  MODEL_CARD_SCHEMA_VERSION,
+  MODEL_CATALOG,
+  resolveModel,
+  resolveModelSelector,
+  sameModelRef,
+  UnknownModelError,
 } from "./models";
 export { classifyAnthropicError, createAnthropicNativeCompaction, createAnthropicStream } from "./provider/anthropic";
 export { createChatGPTNativeCompaction, createChatGPTStream } from "./provider/chatgpt";
@@ -34,30 +45,31 @@ export { classifyVertexError, createVertexStream } from "./provider/vertex";
 export type { ExternalProviderAuth, ProviderName } from "./provider-manager";
 export {
   createStreamForProvider,
-  DEFAULT_MODELS,
   DEFAULT_PROVIDER,
   PROVIDER_NAMES,
   ProviderManager,
 } from "./provider-manager";
+export type { ProviderModelPolicy } from "./provider-model-policy";
+export { getDefaultModelRef, PROVIDER_MODEL_POLICIES } from "./provider-model-policy";
 export type { RetryConfig } from "./retry";
 export { withRetry } from "./retry";
 export { resolveStream } from "./stream-resolver";
 export { flattenSections } from "./system-sections";
 export {
   findModelInfo,
-  getThinkingEffortLabel,
   getThinkingEffortOptions,
   getThinkingEffortUsage,
   getThinkingEffortUsageValues,
   normalizeThinkingEffort,
   supportsThinkingEffort,
-  supportsThinkingNone,
 } from "./thinking-effort";
 export type { StreamTurnResource, StreamTurnScope } from "./turn-scope";
 export { createStreamTurnScope } from "./turn-scope";
 export type {
   FunctionToolDefinition,
   Model,
+  ModelInfo,
+  ModelRef,
   ProviderBuiltinToolDefinition,
   ProviderEvent,
   ProviderResult,

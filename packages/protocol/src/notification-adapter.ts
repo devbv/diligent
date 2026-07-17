@@ -3,11 +3,11 @@
 import type { AgentEvent, AssistantMessage, DiligentServerNotification, ToolRenderPayload } from "./index";
 import { DILIGENT_SERVER_NOTIFICATION_METHODS } from "./index";
 
-function createEmptyAssistantMessage(model = "unknown"): AssistantMessage {
+function createEmptyAssistantMessage(): AssistantMessage {
   return {
     role: "assistant",
     content: [],
-    model,
+    model: { provider: "anthropic", modelId: "unknown" },
     usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
     stopReason: "end_turn",
     timestamp: Date.now(),

@@ -4,13 +4,14 @@ import { DiligentConfigSchema } from "../../src/config/schema.js";
 
 describe("DiligentConfigSchema — tools section", () => {
   it("accepts valid effort values", () => {
-    for (const effort of ["none", "low", "medium", "high", "xhigh", "max"] as const) {
+    for (const effort of ["low", "medium", "high", "xhigh", "max"] as const) {
       const result = DiligentConfigSchema.parse({ effort });
       expect(result.effort).toBe(effort);
     }
   });
 
   it("rejects invalid effort values", () => {
+    expect(() => DiligentConfigSchema.parse({ effort: "none" })).toThrow();
     expect(() => DiligentConfigSchema.parse({ effort: "ultra" })).toThrow();
   });
 
@@ -112,9 +113,9 @@ describe("DiligentConfigSchema — tools section", () => {
   });
 
   it("parses config without tools section (backward compat)", () => {
-    const result = DiligentConfigSchema.parse({ model: "gpt-4o" });
+    const result = DiligentConfigSchema.parse({ model: { provider: "openai", modelId: "gpt-4o" } });
     expect(result.tools).toBeUndefined();
-    expect(result.model).toBe("gpt-4o");
+    expect(result.model).toEqual({ provider: "openai", modelId: "gpt-4o" });
   });
 
   it("accepts agents config with enabled, paths, and boolean overrides", () => {
@@ -146,7 +147,7 @@ describe("DiligentConfigSchema — tools section", () => {
   });
 
   it("accepts skills config omission and rejects non-boolean skill overrides", () => {
-    expect(DiligentConfigSchema.parse({ model: "gpt-4o" }).skills).toBeUndefined();
+    expect(DiligentConfigSchema.parse({ model: { provider: "openai", modelId: "gpt-4o" } }).skills).toBeUndefined();
     expect(() => DiligentConfigSchema.parse({ skills: { overrides: { "tech-lead": "off" } } })).toThrow();
   });
 

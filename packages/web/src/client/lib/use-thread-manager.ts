@@ -1,7 +1,7 @@
 // @summary React hook for thread CRUD, switching, and per-thread input state
 
 import { createLogger } from "@diligent/logging";
-import type { Mode, SessionSummary, ThinkingEffort, ThreadReadResponse } from "@diligent/protocol";
+import type { Mode, ModelRef, SessionSummary, ThinkingEffort, ThreadReadResponse } from "@diligent/protocol";
 import { DILIGENT_CLIENT_REQUEST_METHODS } from "@diligent/protocol";
 import type { RefObject } from "react";
 import { useCallback, useRef, useState } from "react";
@@ -116,7 +116,7 @@ export function useThreadManager({
   rpcRef: RefObject<WebRpcClient | null>;
   dispatch: ThreadDispatch;
   activeThreadIdRef: RefObject<string | null>;
-  applySessionModel: (sessionModel?: string) => Promise<void>;
+  applySessionModel: (sessionModel?: ModelRef) => Promise<void>;
   resetDraftModel: () => void;
   setEffortState: (effort: ThinkingEffort) => void;
   activateThreadPrompts: (threadId: string) => void;

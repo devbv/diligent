@@ -37,8 +37,8 @@ describe("loadConfig", () => {
     await mkdir(dir, { recursive: true });
 
     const config = await loadConfig(dir);
-    expect(config.model.id).toBe("gemini-3.1-pro-preview");
-    expect(config.model.provider).toBe("gemini");
+    expect(config.model.modelId).toBe("claude-opus-4-8");
+    expect(config.model.provider).toBe("anthropic");
   });
 
   test("loads config from config.jsonc", async () => {
@@ -48,13 +48,13 @@ describe("loadConfig", () => {
       join(dir, ".diligent", "config.jsonc"),
       `{
         // Project config
-        "model": "claude-haiku-3-20250307",
+        "model": { "provider": "anthropic", "modelId": "claude-haiku-4-5-20251001" },
         "provider": { "anthropic": { "apiKey": "sk-test" } }
       }`,
     );
 
     const config = await loadConfig(dir);
-    expect(config.model.id).toBe("claude-haiku-3-20250307");
+    expect(config.model.modelId).toBe("claude-haiku-4-5-20251001");
     expect(config.sources.length).toBeGreaterThan(0);
   });
 

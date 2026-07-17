@@ -1,6 +1,11 @@
 // @summary Session management request handlers: thread list, resume, and delete
 
-import { DILIGENT_SERVER_NOTIFICATION_METHODS, type SessionSummary, type ThinkingEffort } from "../protocol/index";
+import {
+  DILIGENT_SERVER_NOTIFICATION_METHODS,
+  type ModelRef,
+  type SessionSummary,
+  type ThinkingEffort,
+} from "../protocol/index";
 import { buildSessionContext } from "../session/context-builder";
 import { deleteSession, listSessions, readSessionFile } from "../session/persistence";
 import { generateSessionId } from "../session/types";
@@ -45,7 +50,7 @@ export async function handleThreadResume(
     const context = runtime.manager.getContext();
     runtime.mode = runtime.manager.getCurrentMode() ?? runtime.mode;
     runtime.effort = runtime.manager.getCurrentEffort() ?? runtime.effort;
-    runtime.modelId = runtime.manager.getCurrentModel()?.modelId ?? runtime.modelId;
+    runtime.model = runtime.manager.getCurrentModel() ?? runtime.model;
     ctx.threads.set(threadId, runtime);
 
     ctx.setActiveThreadId(threadId);
@@ -162,8 +167,8 @@ export async function getLatestModelFromSessions(
   resolvePaths: (cwd: string) => Promise<{ sessions: string }>,
   threads: Map<string, ThreadRuntime>,
   cwd: string,
-  fallback?: string,
-): Promise<string | undefined> {
+  fallback?: ModelRef,
+): Promise<ModelRef | undefined> {
   const paths = await resolvePaths(cwd);
   const ordered = (await listSessions(paths.sessions))
     .filter((session) => session.cwd === cwd)
@@ -181,15 +186,15 @@ export async function getLatestModelFromSessions(
 
   for (const summary of ordered) {
     const runtime = threads.get(summary.id);
-    const runtimeModelId = runtime?.manager.getCurrentModel()?.modelId ?? runtime?.modelId;
-    if (runtimeModelId) return runtimeModelId;
+    const runtimeModel = runtime?.manager.getCurrentModel() ?? runtime?.model;
+    if (runtimeModel) return runtimeModel;
     if (!summary.path) continue;
 
     try {
       const { entries } = await readSessionFile(summary.path);
       const leafId = entries.length > 0 ? entries[entries.length - 1].id : null;
-      const modelId = buildSessionContext(entries, leafId).currentModel?.modelId;
-      if (modelId) return modelId;
+      const model = buildSessionContext(entries, leafId).currentModel;
+      if (model) return model;
     } catch {
       // Ignore unreadable session files and continue.
     }

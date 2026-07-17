@@ -5,7 +5,7 @@ import { resolveModel } from "@diligent/core/model-registry";
 import { calculateUsageCost } from "../src/cost";
 
 test("prices GPT-5.6 cache writes separately from input and cache reads", () => {
-  const cost = calculateUsageCost(resolveModel("gpt-5.6-sol"), {
+  const cost = calculateUsageCost(resolveModel({ provider: "openai", modelId: "gpt-5.6-sol" }), {
     inputTokens: 1_000_000,
     outputTokens: 1_000_000,
     cacheReadTokens: 1_000_000,

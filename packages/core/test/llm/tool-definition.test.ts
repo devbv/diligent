@@ -1,6 +1,6 @@
 // @summary Tests for normalized tool definition unions and provider-side function filtering
 import { describe, expect, test } from "bun:test";
-import { buildTools } from "../../src/llm/provider/openai-responses";
+import { buildTools } from "../../src/llm/provider/openai/responses";
 import type { ToolDefinition } from "../../src/llm/types";
 
 describe("ToolDefinition", () => {

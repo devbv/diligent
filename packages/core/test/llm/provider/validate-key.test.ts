@@ -1,4 +1,4 @@
-// @summary z.ai key validation hits the chat endpoint and returns structured provider failures
+// @summary API-key validation request and error-classification contracts
 import { afterEach, describe, expect, it } from "bun:test";
 import { validateProviderApiKey } from "../../../src/llm/provider/validate-key";
 import { ProviderError, ProviderErrorReason, ProviderErrorType } from "../../../src/llm/types";
@@ -8,8 +8,38 @@ afterEach(() => {
   globalThis.fetch = realFetch;
 });
 
-describe("validateProviderApiKey — z.ai", () => {
-  it("classifies a 401 without adding user-facing provider copy", async () => {
+describe("validateProviderApiKey", () => {
+  it.each([
+    {
+      provider: "anthropic" as const,
+      expectedUrl: "https://api.anthropic.com/v1/models?limit=1",
+      expectedHeader: ["x-api-key", "test-key"],
+    },
+    {
+      provider: "openai" as const,
+      expectedUrl: "https://api.openai.com/v1/models",
+      expectedHeader: ["Authorization", "Bearer test-key"],
+    },
+    {
+      provider: "gemini" as const,
+      expectedUrl: "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1",
+      expectedHeader: ["x-goog-api-key", "test-key"],
+    },
+  ])("uses the cheap authenticated models request for $provider", async ({ provider, expectedUrl, expectedHeader }) => {
+    let request: { url: string; init?: RequestInit } | undefined;
+    globalThis.fetch = (async (url: string, init?: RequestInit) => {
+      request = { url: String(url), init };
+      return new Response("{}", { status: 200 });
+    }) as unknown as typeof fetch;
+
+    await validateProviderApiKey(provider, "test-key");
+
+    expect(request?.url).toBe(expectedUrl);
+    expect(new Headers(request?.init?.headers).get(expectedHeader[0])).toBe(expectedHeader[1]);
+    expect(request?.init?.method).toBeUndefined();
+  });
+
+  it("classifies a z.ai 401 without adding user-facing provider copy", async () => {
     let calledUrl = "";
     globalThis.fetch = (async (url: string) => {
       calledUrl = String(url);
@@ -29,9 +59,15 @@ describe("validateProviderApiKey — z.ai", () => {
     expect(calledUrl).toContain("/chat/completions");
   });
 
-  it("resolves when the chat endpoint returns ok", async () => {
-    globalThis.fetch = (async () =>
-      new Response(JSON.stringify({ choices: [] }), { status: 200 })) as unknown as typeof fetch;
-    await expect(validateProviderApiKey("zai-coding-plan", "good-key")).resolves.toBeUndefined();
+  it("skips providers whose authentication is not an API key", async () => {
+    let called = false;
+    globalThis.fetch = (async () => {
+      called = true;
+      return new Response("{}", { status: 200 });
+    }) as unknown as typeof fetch;
+
+    await validateProviderApiKey("vertex", "unused");
+    await validateProviderApiKey("chatgpt", "unused");
+    expect(called).toBe(false);
   });
 });

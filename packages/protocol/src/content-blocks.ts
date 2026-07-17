@@ -53,6 +53,13 @@ export const ThinkingBlockSchema = z.object({
   type: z.literal("thinking"),
   thinking: z.string(),
   signature: z.string().optional(),
+  providerState: z
+    .object({
+      provider: z.enum(["openai", "chatgpt"]),
+      itemId: z.string(),
+      encryptedContent: z.string(),
+    })
+    .optional(),
 });
 export type ThinkingBlock = z.infer<typeof ThinkingBlockSchema>;
 

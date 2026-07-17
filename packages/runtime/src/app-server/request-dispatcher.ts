@@ -1,7 +1,13 @@
 // @summary Client request dispatch context, session defaults injection, and request router for DiligentAppServer
 
-import { normalizeThinkingEffort, resolveModel } from "@diligent/core/model-registry";
-import type { NativeCompactFn, ProviderManager, ProviderName, StreamFunction } from "@diligent/core/provider-contract";
+import { normalizeThinkingEffort, resolveModel, sameModelRef } from "@diligent/core/model-registry";
+import type {
+  ModelRef,
+  NativeCompactFn,
+  ProviderManager,
+  ProviderName,
+  StreamFunction,
+} from "@diligent/core/provider-contract";
 import type { AuthStoreOptions } from "../auth/auth-store";
 import type { ProviderAuthPresenter } from "../auth/provider-auth-presenter";
 import type { DiligentConfig } from "../config/schema";
@@ -68,9 +74,9 @@ export interface ConnectedPeer {
 // ─── Dispatch context ────────────────────────────────────────────────────────
 
 export interface ModelConfig {
-  currentModelId: string | undefined;
+  currentModel: ModelRef | undefined;
   getAvailableModels: () => ModelInfo[];
-  onModelChange: (modelId: string, threadId?: string) => void;
+  onModelChange: (model: ModelRef, threadId?: string) => void;
 }
 
 export interface ToolConfigManager {
@@ -112,11 +118,11 @@ export interface ClientRequestDispatchContext {
 
   // Model/config state
   modelConfig: ModelConfig | undefined;
-  currentModelId: string | undefined;
-  setCurrentModelId(id: string | undefined): void;
+  currentModel: ModelRef | undefined;
+  setCurrentModel(model: ModelRef | undefined): void;
   streamFunction: StreamFunction | undefined;
   createNativeCompaction: ((provider: ProviderName) => NativeCompactFn | undefined) | undefined;
-  lastUsedModelByCwd: Map<string, string>;
+  lastUsedModelByCwd: Map<string, ModelRef>;
   lastUsedEffortByCwd: Map<string, ThinkingEffort>;
 
   // Auth state
@@ -355,15 +361,15 @@ export async function dispatchClientRequest(
     case DILIGENT_CLIENT_REQUEST_METHODS.CONFIG_SET: {
       const connectionThreadId = ctx.getConnection(connectionId)?.currentThreadId ?? undefined;
       const targetThreadId = request.params.threadId ?? connectionThreadId;
-      const result = await handleConfigSet(ctx.modelConfig, ctx.currentModelId, request.params.model, targetThreadId);
+      const result = await handleConfigSet(ctx.modelConfig, ctx.currentModel, request.params.model, targetThreadId);
       if (targetThreadId && result.model) {
         const runtime = await ctx.resolveThreadRuntime(targetThreadId);
-        if (runtime.modelId !== result.model) {
-          runtime.modelId = result.model;
+        if (!sameModelRef(runtime.model, result.model)) {
+          runtime.model = result.model;
           const model = resolveModel(result.model);
           const llmCompactionFn = ctx.createNativeCompaction?.(model.provider as ProviderName);
           const llmMsgStreamFn = ctx.streamFunction;
-          runtime.agent?.setModel(result.model, llmMsgStreamFn, llmCompactionFn);
+          runtime.agent?.setModel(model, llmMsgStreamFn, llmCompactionFn);
           const normalizedEffort = normalizeThinkingEffort(model, runtime.effort);
           if (normalizedEffort !== runtime.effort) {
             runtime.effort = normalizedEffort;
@@ -371,11 +377,11 @@ export async function dispatchClientRequest(
             runtime.manager.appendEffortChange(normalizedEffort, "config");
             ctx.lastUsedEffortByCwd.set(runtime.cwd, normalizedEffort);
           }
-          runtime.manager.appendModelChange(model.provider, model.id);
+          runtime.manager.appendModelChange(model.provider, model.modelId);
           ctx.lastUsedModelByCwd.set(runtime.cwd, result.model);
         }
       } else {
-        ctx.setCurrentModelId(result.model);
+        ctx.setCurrentModel(result.model);
       }
       return result;
     }

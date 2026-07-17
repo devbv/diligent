@@ -8,8 +8,8 @@ import type { Tool } from "../../src/tool/types";
 import type { AssistantMessage } from "../../src/types";
 
 const TEST_MODEL: Model = {
-  id: "test-model",
-  provider: "test",
+  modelId: "test-model",
+  provider: "anthropic",
   contextWindow: 100_000,
   maxOutputTokens: 4096,
   supportsThinking: false,
@@ -19,7 +19,7 @@ function makeAssistant(text = "ok"): AssistantMessage {
   return {
     role: "assistant",
     content: [{ type: "text", text }],
-    model: TEST_MODEL.id,
+    model: TEST_MODEL,
     usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
     stopReason: "end_turn",
     timestamp: Date.now(),

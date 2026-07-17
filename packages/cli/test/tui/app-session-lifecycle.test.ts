@@ -1,8 +1,10 @@
 // @summary Tests resume history hydration behavior in AppSessionLifecycle
 
 import { describe, expect, mock, test } from "bun:test";
-import { DEFAULT_ANTHROPIC_MODEL_ID, resolveModel } from "@diligent/runtime";
+import { resolveModel } from "@diligent/runtime";
 import { AppSessionLifecycle } from "../../src/tui/app-session-lifecycle";
+
+const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-4-6";
 
 function createLifecycleWithThreadRead(threadRead: unknown) {
   const addUserMessage = mock(() => {});
@@ -63,7 +65,7 @@ describe("AppSessionLifecycle", () => {
 
     const lifecycle = new AppSessionLifecycle({
       config: {
-        model: resolveModel(DEFAULT_ANTHROPIC_MODEL_ID),
+        model: resolveModel({ provider: "anthropic", modelId: TEST_ANTHROPIC_MODEL_ID }),
         diligent: {},
         providerManager: {
           hasKeyFor: (provider: string) => provider === "openai",
@@ -96,10 +98,10 @@ describe("AppSessionLifecycle", () => {
 
     expect(setupWizardRun).not.toHaveBeenCalled();
     expect((lifecycle as never).deps.config.model.provider).toBe("openai");
-    expect((lifecycle as never).deps.config.model.id).toBe("gpt-5.5");
+    expect((lifecycle as never).deps.config.model.modelId).toBe("gpt-5.6-sol");
     expect(statusBarUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
-        model: "gpt-5.5",
+        model: "openai/gpt-5.6-sol",
       }),
     );
   });
@@ -109,7 +111,7 @@ describe("AppSessionLifecycle", () => {
 
     const lifecycle = new AppSessionLifecycle({
       config: {
-        model: resolveModel(DEFAULT_ANTHROPIC_MODEL_ID),
+        model: resolveModel({ provider: "anthropic", modelId: TEST_ANTHROPIC_MODEL_ID }),
         diligent: {},
         providerManager: {
           hasKeyFor: () => false,

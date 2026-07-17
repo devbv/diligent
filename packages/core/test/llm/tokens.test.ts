@@ -67,7 +67,7 @@ describe("estimateTokens", () => {
           { type: "text", text: "y".repeat(20) },
           { type: "tool_call", id: "c", name: "do", input: { a: "z".repeat(16) } },
         ],
-        model: "m",
+        model: { provider: "anthropic", modelId: "m" },
         usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
         stopReason: "end_turn",
         timestamp: 0,

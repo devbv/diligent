@@ -5,7 +5,7 @@ import type { ClipboardEvent, KeyboardEvent as ReactKeyboardEvent } from "react"
 import { useCallback, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { AgentContextItem } from "../lib/agent-native-bridge";
-import { findModelInfo, getThinkingEffortOptions } from "../lib/model-thinking-helpers";
+import { getThinkingEffortOptions, modelOptionKey } from "../lib/model-thinking-helpers";
 import type { SlashCommand } from "../lib/slash-commands";
 import { BUILTIN_COMMANDS, filterCommands, isSlashPrefix } from "../lib/slash-commands";
 import type { UsageState } from "../lib/thread-store";
@@ -181,8 +181,8 @@ function formatUsageTooltip(usage: UsageState): string {
 
 function modelOptions(models: ModelInfo[]): SelectOption[] {
   return models.map((model) => ({
-    value: model.id,
-    label: model.display ?? model.id,
+    value: modelOptionKey(model),
+    label: model.display ?? model.modelId,
     group: model.provider,
   }));
 }
@@ -295,7 +295,7 @@ export function InputDock({
   );
 
   const modeMenuOptions = modeOptions();
-  const currentModelInfo = findModelInfo(availableModels, currentModel);
+  const currentModelInfo = availableModels.find((model) => modelOptionKey(model) === currentModel);
   const effortMenuOptions: SelectOption[] = getThinkingEffortOptions(currentModelInfo).map((option) => ({
     value: option.value,
     label: option.label,

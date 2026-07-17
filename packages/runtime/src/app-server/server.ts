@@ -2,8 +2,15 @@
 
 import { userInfo } from "node:os";
 import { toSerializableError } from "@diligent/core/agent";
-import { KNOWN_MODELS, resolveModel } from "@diligent/core/model-registry";
-import type { NativeCompactFn, ProviderManager, ProviderName, StreamFunction } from "@diligent/core/provider-contract";
+import { getDefaultModelRef } from "@diligent/core/model-registry";
+import {
+  DEFAULT_PROVIDER,
+  type ModelRef,
+  type NativeCompactFn,
+  type ProviderManager,
+  type ProviderName,
+  type StreamFunction,
+} from "@diligent/core/provider-contract";
 import type { RuntimeAgent } from "../agent/runtime-agent";
 import type { AgentEvent } from "../agent-event";
 import type { ApprovalRequest, ApprovalResponse, PermissionEngine } from "../approval/types";
@@ -74,7 +81,7 @@ export interface CreateAgentArgs {
   cwd: string;
   mode: Mode;
   effort: ThinkingEffort;
-  modelId: string;
+  model: ModelRef;
   approve: (request: ApprovalRequest) => Promise<ApprovalResponse>;
   ask: (request: UserInputRequest) => Promise<UserInputResponse>;
   /** Lazily returns the current session ID for collab parent-session linking. */
@@ -173,19 +180,19 @@ export class DiligentAppServer {
   private serverRequestSeq = 0;
 
   // Config/auth state
-  private currentModelId: string | undefined;
+  private currentModel: ModelRef | undefined;
   private oauthPending: Promise<void> | null = null;
   private oauthAbortController: AbortController | null = null;
 
   // Per-cwd cache to avoid scanning session files on every new thread creation
-  private readonly lastUsedModelByCwd = new Map<string, string>();
+  private readonly lastUsedModelByCwd = new Map<string, ModelRef>();
   private readonly lastUsedEffortByCwd = new Map<string, ThinkingEffort>();
 
   constructor(private readonly config: DiligentAppServerConfig) {
     this.serverName = config.serverName ?? "diligent-app-server";
     this.serverVersion = config.serverVersion ?? DILIGENT_VERSION;
     this.knownCwds.add(config.cwd ?? process.cwd());
-    this.currentModelId = config.modelConfig?.currentModelId;
+    this.currentModel = config.modelConfig?.currentModel;
   }
 
   // ─── New multi-connection API ───────────────────────────────────────────────
@@ -524,14 +531,8 @@ export class DiligentAppServer {
     const provider = runtime?.agent?.model?.provider;
     const parsedProvider = ProviderNameSchema.safeParse(provider);
     if (parsedProvider.success) return parsedProvider.data;
-    const modelId = runtime?.runningModelIdSnapshot ?? runtime?.modelId;
-    if (!modelId) return undefined;
-    try {
-      const resolved = ProviderNameSchema.safeParse(resolveModel(modelId).provider);
-      return resolved.success ? resolved.data : undefined;
-    } catch {
-      return undefined;
-    }
+    const model = runtime?.runningModelSnapshot ?? runtime?.model;
+    return model ? model.provider : undefined;
   }
 
   // ─── Server request broadcasting ────────────────────────────────────────────
@@ -588,16 +589,16 @@ export class DiligentAppServer {
     mode: Mode,
     createNew: boolean,
     effort: ThinkingEffort = this.config.defaultEffort ?? "medium",
-    modelId?: string,
+    model?: ModelRef,
   ): Promise<ThreadRuntime> {
     const runtime: ThreadRuntime = {
       id: threadId,
       cwd,
       mode,
       effort,
-      modelId: modelId ?? this.currentModelId ?? KNOWN_MODELS[0].id,
+      model: model ?? this.currentModel ?? getDefaultModelRef(DEFAULT_PROVIDER),
       runningEffortSnapshot: undefined,
-      runningModelIdSnapshot: undefined,
+      runningModelSnapshot: undefined,
       manager: null as unknown as SessionManager,
       abortController: null,
       currentTurnId: null,
@@ -614,7 +615,7 @@ export class DiligentAppServer {
             cwd,
             mode: runtime.mode,
             effort: runtime.runningEffortSnapshot ?? runtime.effort,
-            modelId: runtime.runningModelIdSnapshot ?? runtime.modelId,
+            model: runtime.runningModelSnapshot ?? runtime.model,
             approve: (request) => this.requestApproval(runtime.id, request),
             ask: (request) => this.requestUserInput(runtime.id, request),
             getSessionId: () => runtime.manager.sessionId,
@@ -636,7 +637,7 @@ export class DiligentAppServer {
           sessionId: runtime.manager.sessionId,
           sessionPath: runtime.manager.sessionPath ?? "",
           cwd: runtime.cwd,
-          model: runtime.runningModelIdSnapshot ?? runtime.modelId,
+          model: runtime.runningModelSnapshot ?? runtime.model,
           provider: runtime.agent?.model?.provider,
           effort: runtime.runningEffortSnapshot ?? runtime.effort,
           permissionMode: runtime.mode,
@@ -670,7 +671,7 @@ export class DiligentAppServer {
 
       runtime.mode = runtime.manager.getCurrentMode() ?? runtime.mode;
       runtime.effort = runtime.manager.getCurrentEffort() ?? runtime.effort;
-      runtime.modelId = runtime.manager.getCurrentModel()?.modelId ?? runtime.modelId;
+      runtime.model = runtime.manager.getCurrentModel() ?? runtime.model;
       this.threads.set(id, runtime);
       this.activeThreadId = id;
 
@@ -698,19 +699,19 @@ export class DiligentAppServer {
     return result;
   }
 
-  private async getLatestModelForCwd(cwd: string): Promise<string | undefined> {
+  private async getLatestModelForCwd(cwd: string): Promise<ModelRef | undefined> {
     for (const runtime of this.threads.values()) {
       if (runtime.cwd === cwd) {
-        const modelId = runtime.manager.getCurrentModel()?.modelId ?? runtime.modelId;
-        if (modelId) {
-          this.lastUsedModelByCwd.set(cwd, modelId);
-          return modelId;
+        const model = runtime.manager.getCurrentModel() ?? runtime.model;
+        if (model) {
+          this.lastUsedModelByCwd.set(cwd, model);
+          return model;
         }
       }
     }
     const cached = this.lastUsedModelByCwd.get(cwd);
     if (cached !== undefined) return cached;
-    const result = await getLatestModelFromSessions(this.config.resolvePaths, this.threads, cwd, this.currentModelId);
+    const result = await getLatestModelFromSessions(this.config.resolvePaths, this.threads, cwd, this.currentModel);
     if (result !== undefined) this.lastUsedModelByCwd.set(cwd, result);
     return result;
   }
@@ -879,9 +880,9 @@ export class DiligentAppServer {
       unsubscribeFromThread: (subscriptionId) => this.unsubscribeFromThread(subscriptionId),
       resolveThreadRuntime: (threadId) => this.resolveThreadRuntime(threadId),
       modelConfig: this.config.modelConfig,
-      currentModelId: this.currentModelId,
-      setCurrentModelId: (id) => {
-        this.currentModelId = id;
+      currentModel: this.currentModel,
+      setCurrentModel: (model) => {
+        this.currentModel = model;
       },
       streamFunction: this.config.streamFunction,
       createNativeCompaction: this.config.createNativeCompaction,
@@ -933,8 +934,8 @@ export class DiligentAppServer {
         mode: Mode,
         createNew: boolean,
         effort?: ThinkingEffort,
-        modelId?: string,
-      ) => this.createThreadRuntime(threadId, cwd, mode, createNew, effort, modelId),
+        model?: ModelRef,
+      ) => this.createThreadRuntime(threadId, cwd, mode, createNew, effort, model),
       resolveThreadRuntime: (threadId?: string) => this.resolveThreadRuntime(threadId),
       getLatestEffortForCwd: (cwd: string) => this.getLatestEffortForCwd(cwd),
       getLatestModelForCwd: (cwd: string) => this.getLatestModelForCwd(cwd),

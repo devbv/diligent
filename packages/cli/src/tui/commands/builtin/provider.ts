@@ -1,5 +1,5 @@
 // @summary Provider configuration command - configure LLM provider and API keys
-import { resolveModel } from "@diligent/core/model-registry";
+import { formatModelRef, resolveModel } from "@diligent/core/model-registry";
 import { DILIGENT_CLIENT_REQUEST_METHODS } from "@diligent/protocol";
 import {
   createChatGPTOAuthBinding,
@@ -9,8 +9,8 @@ import {
   saveAuthKey,
 } from "@diligent/runtime";
 import {
-  DEFAULT_MODELS,
   DEFAULT_PROVIDER,
+  getDefaultModelRef,
   PROVIDER_DESCRIPTORS,
   PROVIDER_NAMES,
   type ProviderName,
@@ -152,13 +152,12 @@ async function switchProvider(provider: ProviderName, ctx: CommandContext): Prom
     }
   }
 
-  const defaultModelId = DEFAULT_MODELS[provider];
-  const model = resolveModel(defaultModelId);
+  const model = resolveModel(getDefaultModelRef(provider));
   ctx.config.model = model;
-  await ctx.setModel(model.id);
-  ctx.onModelChanged(model.id);
+  await ctx.setModel(model);
+  ctx.onModelChanged(model);
   ctx.displayLines([
-    `  Provider: ${t.bold}${providerDisplayName(provider)}${t.reset}  Model: ${t.bold}${model.id}${t.reset}`,
+    `  Provider: ${t.bold}${providerDisplayName(provider)}${t.reset}  Model: ${t.bold}${formatModelRef(model)}${t.reset}`,
   ]);
 }
 
@@ -247,11 +246,11 @@ async function startChatGPTOAuthFlow(ctx: CommandContext): Promise<void> {
     );
 
     // Switch to default Codex model
-    const model = resolveModel(DEFAULT_MODELS.chatgpt);
+    const model = resolveModel(getDefaultModelRef("chatgpt"));
     ctx.config.model = model;
-    await ctx.setModel(model.id);
-    ctx.onModelChanged(model.id);
-    ctx.displayLines([`  Model: ${t.bold}${model.id}${t.reset}`]);
+    await ctx.setModel(model);
+    ctx.onModelChanged(model);
+    ctx.displayLines([`  Model: ${t.bold}${formatModelRef(model)}${t.reset}`]);
   } catch (err) {
     ctx.displayError(`OAuth failed: ${err instanceof Error ? err.message : String(err)}`);
   }

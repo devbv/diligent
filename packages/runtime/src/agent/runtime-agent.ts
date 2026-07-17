@@ -11,7 +11,7 @@ export class RuntimeAgent extends Agent {
   readonly registry?: AgentRegistry;
 
   constructor(
-    model: string | Model,
+    model: Model,
     systemPrompt: SystemSection[],
     tools: Tool[],
     opts?: AgentOptions,

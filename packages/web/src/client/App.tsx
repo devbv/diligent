@@ -18,6 +18,7 @@ import { Sidebar } from "./components/Sidebar";
 import { SteeringQueuePanel } from "./components/SteeringQueuePanel";
 import { Toast } from "./components/Toast";
 import { ToolSettingsModal } from "./components/ToolSettingsModal";
+import { modelOptionKey } from "./lib/model-thinking-helpers";
 import { hasPendingUserInputTool } from "./lib/thread-utils";
 import { useAgentNativeBridge } from "./lib/use-agent-native-bridge";
 import { useAppState } from "./lib/use-app-state";
@@ -278,7 +279,7 @@ export function App() {
             onModeChange={handleModeChange}
             effort={effort}
             onEffortChange={handleEffortChange}
-            currentModel={providerMgr.currentModel}
+            currentModel={providerMgr.currentModel ? modelOptionKey(providerMgr.currentModel) : ""}
             availableModels={providerMgr.availableModels}
             onModelChange={handleModelChange}
             usage={state.usage}

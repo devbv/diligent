@@ -2,6 +2,7 @@
 import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import type { ModelRef } from "@diligent/core/provider-contract";
 import { applyEdits, format, modify, type ParseError, parse as parseJsonc } from "jsonc-parser";
 
 import { resolveProjectDirName } from "../infrastructure/diligent-dir";
@@ -99,7 +100,7 @@ export function getGlobalConfigPath(): string {
  * Save the selected model to the global config file (~/.diligent/config.jsonc).
  * Preserves existing comments and formatting via jsonc-parser.
  */
-export async function saveGlobalModel(modelId: string): Promise<void> {
+export async function saveGlobalModel(model: ModelRef): Promise<void> {
   const configPath = getGlobalConfigPath();
   await mkdir(dirname(configPath), { recursive: true });
 
@@ -109,7 +110,7 @@ export async function saveGlobalModel(modelId: string): Promise<void> {
     content = await file.text();
   }
 
-  const edits = modify(content, ["model"], modelId, { formattingOptions: JSONC_FORMAT_OPTIONS });
+  const edits = modify(content, ["model"], model, { formattingOptions: JSONC_FORMAT_OPTIONS });
   const updated = applyEdits(content, edits);
   if (content.trim() === "{}" || content.trim() === "") {
     const formatEdits = format(updated, undefined, JSONC_FORMAT_OPTIONS);

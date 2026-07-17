@@ -2,13 +2,14 @@
 
 import { describe, expect, test } from "bun:test";
 import type { Mode } from "@diligent/protocol";
-import { DEFAULT_ANTHROPIC_MODEL_ID } from "@diligent/runtime";
 import type { AppConfig } from "../../../../src/config";
 import { ProviderManager } from "../../../../src/provider-manager";
 import { providerCommand } from "../../../../src/tui/commands/builtin/provider";
 import type { CommandRegistry } from "../../../../src/tui/commands/registry";
 import type { CommandContext } from "../../../../src/tui/commands/types";
 import type { ConfirmDialogOptions } from "../../../../src/tui/components/confirm-dialog";
+
+const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-4-6";
 
 function createMockContext(pm: ProviderManager): {
   ctx: CommandContext;
@@ -38,7 +39,7 @@ function createMockContext(pm: ProviderManager): {
     config: {
       apiKey: "",
       model: {
-        id: DEFAULT_ANTHROPIC_MODEL_ID,
+        id: TEST_ANTHROPIC_MODEL_ID,
         provider: "anthropic",
         contextWindow: 1_000_000,
         maxOutputTokens: 64_000,

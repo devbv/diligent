@@ -6,6 +6,7 @@ import type { StreamTurnScope } from "../llm/turn-scope";
 import type {
   FunctionToolDefinition,
   Model,
+  ModelRef,
   StreamContext,
   StreamFunction,
   SystemSection,
@@ -41,7 +42,7 @@ function toToolDefinition(
   return tool.modelExposure ?? toFunctionToolDefinition(tool);
 }
 
-function createAssistantMessage(model: string): AssistantMessage {
+function createAssistantMessage(model: ModelRef): AssistantMessage {
   return {
     role: "assistant",
     content: [],
@@ -54,12 +55,12 @@ function createAssistantMessage(model: string): AssistantMessage {
 
 function ensureCurrentMessage(
   currentMessage: AssistantMessage | undefined,
-  modelId: string,
+  model: ModelRef,
   stream: AgentStream,
   itemId: string,
 ): AssistantMessage {
   if (currentMessage) return currentMessage;
-  const message = createAssistantMessage(modelId);
+  const message = createAssistantMessage(model);
   stream.emit({ type: "message_start", itemId, message });
   return message;
 }
@@ -141,7 +142,7 @@ export async function streamAssistantMessage(
         break;
       case "text_delta":
       case "thinking_delta": {
-        currentMessage = ensureCurrentMessage(currentMessage, request.config.model.id, stream, messageItemId);
+        currentMessage = ensureCurrentMessage(currentMessage, request.config.model, stream, messageItemId);
 
         stream.emit({
           type: "message_delta",
@@ -155,7 +156,7 @@ export async function streamAssistantMessage(
         break;
       }
       case "content_block": {
-        currentMessage = ensureCurrentMessage(currentMessage, request.config.model.id, stream, messageItemId);
+        currentMessage = ensureCurrentMessage(currentMessage, request.config.model, stream, messageItemId);
         currentMessage.content.push(event.block);
         stream.emit({
           type: "message_delta",
@@ -172,7 +173,7 @@ export async function streamAssistantMessage(
       case "tool_call_start":
       case "tool_call_delta":
       case "tool_call_end":
-        currentMessage = ensureCurrentMessage(currentMessage, request.config.model.id, stream, messageItemId);
+        currentMessage = ensureCurrentMessage(currentMessage, request.config.model, stream, messageItemId);
         break;
       case "usage":
         break;

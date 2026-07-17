@@ -1,496 +1,123 @@
-// @summary Known models registry with resolution logic for aliases, inference, and model classes
-import type { Model, ModelInfo, ThinkingEffort } from "./types";
+// @summary Provider-composed model catalog with identity validation and resolution
 
-/**
- * Model class tiers — abstract capability levels independent of provider.
- * - pro:     Highest capability, most expensive. For complex reasoning tasks.
- * - general: Balanced cost/capability. Default for most work.
- * - lite:    Cheapest/fastest. Good for read-only exploration and simple tasks.
- */
-export type ModelClass = "pro" | "general" | "lite";
+import type { ModelCard } from "./model-card";
+import { ANTHROPIC_MODELS } from "./provider/anthropic/models";
+import { CHATGPT_MODELS } from "./provider/chatgpt/models";
+import { GEMINI_MODELS } from "./provider/gemini/models";
+import { OPENAI_MODELS } from "./provider/openai/models";
+import { VERTEX_MODELS } from "./provider/vertex/models";
+import { ZAI_CODING_PLAN_MODELS } from "./provider/zai-coding-plan/models";
+import type { ModelInfo, ModelRef, ProviderName } from "./types";
 
-export interface ModelDefinition extends Model {
-  aliases?: string[];
-  modelClass?: ModelClass;
-  accessLevel?: string; // OpenAI tier requirement: "standard" | "tier3+" | "enterprise"
-  display?: string; // Human-facing label for the picker; falls back to `id` when unset.
+export type { ModelCard, ModelCardProvenance } from "./model-card";
+export { MODEL_CARD_SCHEMA_VERSION } from "./model-card";
+export { GEMINI_THINKING_BUDGETS } from "./provider/gemini/models";
+
+const PROVIDER_MODELS = {
+  anthropic: ANTHROPIC_MODELS,
+  openai: OPENAI_MODELS,
+  chatgpt: CHATGPT_MODELS,
+  gemini: GEMINI_MODELS,
+  vertex: VERTEX_MODELS,
+  "zai-coding-plan": ZAI_CODING_PLAN_MODELS,
+} satisfies Record<ProviderName, readonly ModelCard[]>;
+
+const providers = ["anthropic", "openai", "chatgpt", "gemini", "vertex", "zai-coding-plan"] as const;
+const catalog = Object.fromEntries(providers.map((provider) => [provider, {}])) as Record<
+  ProviderName,
+  Record<string, ModelCard>
+>;
+const lookup = new Map<ProviderName, Map<string, ModelCard>>(providers.map((provider) => [provider, new Map()]));
+
+for (const provider of providers) {
+  for (const card of PROVIDER_MODELS[provider]) {
+    if (card.provider !== provider) {
+      throw new Error(`Provider model ownership mismatch: ${provider}/${card.provider}/${card.modelId}`);
+    }
+    const providerLookup = lookup.get(provider);
+    if (!providerLookup) throw new Error(`Unsupported model provider: ${provider}`);
+    if (providerLookup.has(card.modelId)) throw new Error(`Duplicate model identity: ${provider}/${card.modelId}`);
+    catalog[provider][card.modelId] = card;
+    providerLookup.set(card.modelId, card);
+    for (const alias of card.aliases ?? []) {
+      if (providerLookup.has(alias)) throw new Error(`Duplicate model alias: ${provider}/${alias}`);
+      providerLookup.set(alias, card);
+    }
+  }
 }
 
-export const GEMINI_THINKING_BUDGETS = { low: 2_048, medium: 8_192, high: 16_384, max: 24_576 } as const;
-const THINKING_EFFORTS_WITH_NONE: ThinkingEffort[] = ["none", "low", "medium", "high", "max"];
-const THINKING_EFFORTS_WITHOUT_NONE: ThinkingEffort[] = ["low", "medium", "high", "max"];
-const GPT_56_THINKING_EFFORTS: ThinkingEffort[] = ["none", "low", "medium", "high", "xhigh", "max"];
+/** Provider-scoped model-card source exposed as readonly catalog snapshots. */
+export const MODEL_CATALOG: Readonly<Record<ProviderName, Readonly<Record<string, ModelCard>>>> = catalog;
 
-export const DEFAULT_ANTHROPIC_MODEL_ID = "claude-sonnet-4-6";
-
-export const KNOWN_MODELS: ModelDefinition[] = [
-  // Anthropic — opus/sonnet/fable use adaptive thinking (model decides budget within cap)
-  {
-    id: "claude-opus-4-8",
-    display: "Claude Opus 4.8",
-    provider: "anthropic",
-    contextWindow: 1_000_000,
-    maxOutputTokens: 128_000,
-    inputCostPer1M: 5.0,
-    outputCostPer1M: 25.0,
-    cacheReadCostPer1M: 0.5,
-    cacheWriteCostPer1M: 6.25,
-    supportsThinking: true,
-    supportedEfforts: THINKING_EFFORTS_WITHOUT_NONE,
-    supportsVision: true,
-    supportsAdaptiveThinking: true,
-    thinkingBudgets: { low: 2_000, medium: 8_000, high: 16_000, max: 32_000 },
-    aliases: ["claude-opus", "opus", "opus-4-8"],
-    modelClass: "pro",
-  },
-  {
-    id: "claude-fable-5",
-    display: "Claude Fable 5",
-    provider: "anthropic",
-    contextWindow: 1_000_000,
-    maxOutputTokens: 128_000,
-    inputCostPer1M: 10.0,
-    outputCostPer1M: 50.0,
-    cacheReadCostPer1M: 1.0,
-    cacheWriteCostPer1M: 12.5,
-    supportsThinking: true,
-    supportedEfforts: THINKING_EFFORTS_WITHOUT_NONE,
-    supportsVision: true,
-    supportsAdaptiveThinking: true,
-    thinkingBudgets: { low: 2_000, medium: 8_000, high: 16_000, max: 32_000 },
-    aliases: ["fable", "fable-5"],
-  },
-  {
-    id: "claude-sonnet-5",
-    display: "Claude Sonnet 5",
-    provider: "anthropic",
-    contextWindow: 1_000_000,
-    maxOutputTokens: 128_000,
-    inputCostPer1M: 3.0,
-    outputCostPer1M: 15.0,
-    cacheReadCostPer1M: 0.3,
-    cacheWriteCostPer1M: 3.75,
-    supportsThinking: true,
-    supportedEfforts: THINKING_EFFORTS_WITHOUT_NONE,
-    supportsVision: true,
-    supportsAdaptiveThinking: true,
-    thinkingBudgets: { low: 1_500, medium: 6_000, high: 12_000, max: 24_000 },
-    aliases: ["sonnet-5"],
-    modelClass: "general",
-  },
-  {
-    id: DEFAULT_ANTHROPIC_MODEL_ID,
-    display: "Claude Sonnet 4.6",
-    provider: "anthropic",
-    contextWindow: 1_000_000,
-    maxOutputTokens: 128_000,
-    inputCostPer1M: 3.0,
-    outputCostPer1M: 15.0,
-    cacheReadCostPer1M: 0.3,
-    cacheWriteCostPer1M: 3.75,
-    supportsThinking: true,
-    supportedEfforts: THINKING_EFFORTS_WITHOUT_NONE,
-    supportsVision: true,
-    supportsAdaptiveThinking: true,
-    thinkingBudgets: { low: 1_500, medium: 6_000, high: 12_000, max: 24_000 },
-    aliases: ["claude-sonnet", "sonnet", "sonnet-4-6"],
-    modelClass: "general",
-  },
-  {
-    id: "claude-haiku-4-5-20251001",
-    display: "Claude Haiku 4.5",
-    provider: "anthropic",
-    contextWindow: 200_000,
-    maxOutputTokens: 64_000,
-    inputCostPer1M: 1.0,
-    outputCostPer1M: 5.0,
-    cacheReadCostPer1M: 0.1,
-    cacheWriteCostPer1M: 1.25,
-    supportsThinking: true,
-    supportedEfforts: THINKING_EFFORTS_WITHOUT_NONE,
-    supportsVision: true,
-    thinkingBudgets: { low: 1_024, medium: 3_000, high: 8_000, max: 16_000 },
-    aliases: ["claude-haiku", "haiku", "claude-haiku-4-5"],
-    modelClass: "lite",
-  },
-  // Gemini
-  {
-    id: "gemini-3.1-pro-preview",
-    display: "Gemini 3.1 Pro",
-    provider: "gemini",
-    contextWindow: 300_000,
-    maxOutputTokens: 65_536,
-    inputCostPer1M: 2.0,
-    outputCostPer1M: 12.0,
-    supportsThinking: true,
-    supportedEfforts: THINKING_EFFORTS_WITH_NONE,
-    supportsVision: true,
-    thinkingBudgets: GEMINI_THINKING_BUDGETS,
-    aliases: ["gemini-pro"],
-    modelClass: "pro",
-  },
-  {
-    id: "gemini-3.5-flash",
-    display: "Gemini 3.5 Flash",
-    provider: "gemini",
-    contextWindow: 1_048_576,
-    maxOutputTokens: 65_536,
-    inputCostPer1M: 1.5,
-    outputCostPer1M: 9.0,
-    supportsThinking: true,
-    supportedEfforts: THINKING_EFFORTS_WITH_NONE,
-    supportsVision: true,
-    thinkingBudgets: GEMINI_THINKING_BUDGETS,
-    aliases: ["gemini-flash", "gemini", "gemini-3-flash-preview"],
-    modelClass: "general",
-  },
-  {
-    id: "gemini-3.1-flash-lite",
-    display: "Gemini 3.1 Flash Lite",
-    provider: "gemini",
-    contextWindow: 1_048_576,
-    maxOutputTokens: 65_536,
-    inputCostPer1M: 0.25,
-    outputCostPer1M: 1.5,
-    supportsThinking: true,
-    supportedEfforts: THINKING_EFFORTS_WITH_NONE,
-    supportsVision: true,
-    thinkingBudgets: GEMINI_THINKING_BUDGETS,
-    aliases: ["gemini-flash-lite", "gemini-3.1-flash-lite-preview"],
-    modelClass: "lite",
-  },
-  {
-    id: "vertex-gemma-4-26b-it",
-    display: "Gemma 4 26B (Vertex)",
-    provider: "vertex",
-    contextWindow: 256_000,
-    maxOutputTokens: 8_192,
-    supportsThinking: false,
-    aliases: ["vertex-gemma", "vertex-gemma-4", "vertex-gemma-4-26b", "gemma-4-26b-vertex", "gemma-vertex"],
-    modelClass: "general",
-  },
-  {
-    id: "glm-5.2",
-    display: "GLM 5.2",
-    provider: "zai-coding-plan",
-    contextWindow: 1_000_000,
-    maxOutputTokens: 128_000,
-    supportsThinking: true,
-    supportedEfforts: THINKING_EFFORTS_WITHOUT_NONE,
-    supportsVision: false,
-    aliases: ["glm", "glm-5", "glm5.2"],
-    modelClass: "pro",
-  },
-  {
-    id: "glm-5.1",
-    display: "GLM 5.1",
-    provider: "zai-coding-plan",
-    contextWindow: 200_000,
-    maxOutputTokens: 128_000,
-    supportsThinking: false,
-    supportsVision: false,
-    aliases: ["glm5.1"],
-    modelClass: "general",
-  },
-  // Existing OpenAI models remain first so default class routing is unchanged.
-  {
-    id: "gpt-5.5",
-    display: "GPT-5.5",
-    provider: "openai",
-    contextWindow: 1_000_000,
-    maxOutputTokens: 128_000,
-    inputCostPer1M: 5.0,
-    outputCostPer1M: 30.0,
-    cacheReadCostPer1M: 0.5,
-    cacheWriteCostPer1M: 0,
-    supportsThinking: true,
-    supportedEfforts: THINKING_EFFORTS_WITH_NONE,
-    supportsVision: true,
-    accessLevel: "standard",
-    modelClass: "pro",
-  },
-  {
-    id: "gpt-5.4",
-    display: "GPT-5.4",
-    provider: "openai",
-    contextWindow: 1_000_000,
-    maxOutputTokens: 128_000,
-    inputCostPer1M: 2.5,
-    outputCostPer1M: 15.0,
-    cacheReadCostPer1M: 0.25,
-    cacheWriteCostPer1M: 0,
-    supportsThinking: true,
-    supportedEfforts: THINKING_EFFORTS_WITH_NONE,
-    supportsVision: true,
-    accessLevel: "standard",
-    aliases: ["gpt-5"],
-    modelClass: "general",
-  },
-  {
-    id: "gpt-5.4-mini",
-    display: "GPT-5.4 mini",
-    provider: "openai",
-    contextWindow: 400_000,
-    maxOutputTokens: 128_000,
-    inputCostPer1M: 0.75,
-    outputCostPer1M: 4.5,
-    cacheReadCostPer1M: 0.075,
-    cacheWriteCostPer1M: 0,
-    supportsThinking: true,
-    supportedEfforts: THINKING_EFFORTS_WITH_NONE,
-    supportsVision: true,
-    modelClass: "lite",
-  },
-  // GPT-5.6 is selectable without replacing existing defaults or class routes.
-  {
-    id: "gpt-5.6-sol",
-    display: "GPT-5.6 Sol",
-    provider: "openai",
-    contextWindow: 1_050_000,
-    maxOutputTokens: 128_000,
-    inputCostPer1M: 5.0,
-    outputCostPer1M: 30.0,
-    cacheReadCostPer1M: 0.5,
-    cacheWriteCostPer1M: 6.25,
-    supportsThinking: true,
-    supportedEfforts: GPT_56_THINKING_EFFORTS,
-    supportsVision: true,
-    aliases: ["gpt-5.6"],
-    modelClass: "pro",
-  },
-  {
-    id: "gpt-5.6-terra",
-    display: "GPT-5.6 Terra",
-    provider: "openai",
-    contextWindow: 1_050_000,
-    maxOutputTokens: 128_000,
-    inputCostPer1M: 2.5,
-    outputCostPer1M: 15.0,
-    cacheReadCostPer1M: 0.25,
-    cacheWriteCostPer1M: 3.125,
-    supportsThinking: true,
-    supportedEfforts: GPT_56_THINKING_EFFORTS,
-    supportsVision: true,
-    modelClass: "general",
-  },
-  {
-    id: "gpt-5.6-luna",
-    display: "GPT-5.6 Luna",
-    provider: "openai",
-    contextWindow: 1_050_000,
-    maxOutputTokens: 128_000,
-    inputCostPer1M: 1.0,
-    outputCostPer1M: 6.0,
-    cacheReadCostPer1M: 0.1,
-    cacheWriteCostPer1M: 1.25,
-    supportsThinking: true,
-    supportedEfforts: GPT_56_THINKING_EFFORTS,
-    supportsVision: true,
-    modelClass: "lite",
-  },
-  // ChatGPT subscription models map to upstream GPT slugs, but remain distinct in
-  // Diligent so provider identity stays separate from the OpenAI API auth strategy.
-  // The public Codex catalog does not publish subscription-specific context limits,
-  // so these entries retain the existing conservative 300K ChatGPT runtime budget.
-  {
-    id: "chatgpt-5.5",
-    display: "ChatGPT 5.5",
-    provider: "chatgpt",
-    contextWindow: 300_000,
-    maxOutputTokens: 128_000,
-    supportsThinking: true,
-    supportedEfforts: THINKING_EFFORTS_WITH_NONE,
-    supportsVision: true,
-    aliases: ["chatgpt-5.5-pro"],
-    modelClass: "pro",
-  },
-  {
-    id: "chatgpt-5.4",
-    display: "ChatGPT 5.4",
-    provider: "chatgpt",
-    contextWindow: 300_000,
-    maxOutputTokens: 128_000,
-    inputCostPer1M: 2.5,
-    outputCostPer1M: 15.0,
-    cacheReadCostPer1M: 0.25,
-    supportsThinking: true,
-    supportedEfforts: THINKING_EFFORTS_WITH_NONE,
-    supportsVision: true,
-    modelClass: "general",
-  },
-  {
-    id: "chatgpt-5.4-mini",
-    display: "ChatGPT 5.4 mini",
-    provider: "chatgpt",
-    contextWindow: 300_000,
-    maxOutputTokens: 128_000,
-    inputCostPer1M: 0.75,
-    outputCostPer1M: 4.5,
-    cacheReadCostPer1M: 0.075,
-    supportsThinking: true,
-    supportedEfforts: THINKING_EFFORTS_WITH_NONE,
-    supportsVision: true,
-    modelClass: "lite",
-  },
-  {
-    id: "chatgpt-5.6-sol",
-    display: "ChatGPT 5.6 Sol",
-    provider: "chatgpt",
-    contextWindow: 300_000,
-    maxOutputTokens: 128_000,
-    supportsThinking: true,
-    supportedEfforts: GPT_56_THINKING_EFFORTS,
-    supportsVision: true,
-    aliases: ["chatgpt-5.6"],
-    modelClass: "pro",
-  },
-  {
-    id: "chatgpt-5.6-terra",
-    display: "ChatGPT 5.6 Terra",
-    provider: "chatgpt",
-    contextWindow: 300_000,
-    maxOutputTokens: 128_000,
-    supportsThinking: true,
-    supportedEfforts: GPT_56_THINKING_EFFORTS,
-    supportsVision: true,
-    modelClass: "general",
-  },
-  {
-    id: "chatgpt-5.6-luna",
-    display: "ChatGPT 5.6 Luna",
-    provider: "chatgpt",
-    contextWindow: 300_000,
-    maxOutputTokens: 128_000,
-    supportsThinking: true,
-    supportedEfforts: GPT_56_THINKING_EFFORTS,
-    supportsVision: true,
-    modelClass: "lite",
-  },
-];
-
-/**
- * Resolve a model for a given provider and model class.
- * Returns the first KNOWN_MODELS entry matching both provider and modelClass.
- * Falls back to the current model if no match is found.
- */
-export function resolveModelForClass(currentModel: Model, targetClass: ModelClass): Model {
-  const provider = currentModel.provider;
-
-  // If the current model already has this class, return as-is
-  const currentDef = KNOWN_MODELS.find((m) => m.id === currentModel.id);
-  if (currentDef?.modelClass === targetClass) return currentModel;
-
-  // Find the first known model matching both provider and class
-  const match = KNOWN_MODELS.find((m) => m.provider === provider && m.modelClass === targetClass);
-  return match ?? currentModel;
+export class UnknownModelError extends Error {
+  constructor(public readonly ref: ModelRef) {
+    super(`Unknown model: ${ref.provider}/${ref.modelId}`);
+    this.name = "UnknownModelError";
+  }
 }
 
-/**
- * Determine the model class of a given model.
- * Returns the modelClass from KNOWN_MODELS if found, otherwise infers "general".
- */
-export function getModelClass(model: Model): ModelClass {
-  const def = KNOWN_MODELS.find((m) => m.id === model.id);
-  return def?.modelClass ?? "general";
+export class AmbiguousModelError extends Error {
+  constructor(
+    public readonly selector: string,
+    public readonly candidates: ModelRef[],
+  ) {
+    super(`Ambiguous model: ${selector}; qualify one of: ${candidates.map(formatModelRef).join(", ")}`);
+    this.name = "AmbiguousModelError";
+  }
 }
 
-/**
- * Return the default thinking effort for a given model class.
- * pro → high, general → medium, lite → low
- */
-export function getDefaultEffortForClass(modelClass: ModelClass): ThinkingEffort {
-  if (modelClass === "pro") return "high";
-  if (modelClass === "lite") return "low";
-  return "medium";
+export function formatModelRef(ref: ModelRef): string {
+  return `${ref.provider}/${ref.modelId}`;
 }
 
-/**
- * Map all known models to the protocol-facing ModelInfo shape.
- */
+export function findModel(ref: ModelRef): ModelCard | undefined {
+  return lookup.get(ref.provider)?.get(ref.modelId);
+}
+
+export function resolveModel(ref: ModelRef): ModelCard {
+  const model = findModel(ref);
+  if (!model) throw new UnknownModelError(ref);
+  return model;
+}
+
+export function listModels(provider?: ProviderName): ModelCard[] {
+  return provider
+    ? Object.values(MODEL_CATALOG[provider])
+    : providers.flatMap((name) => Object.values(MODEL_CATALOG[name]));
+}
+
+export function sameModelRef(a: ModelRef | undefined, b: ModelRef | undefined): boolean {
+  return a === b || (a !== undefined && b !== undefined && a.provider === b.provider && a.modelId === b.modelId);
+}
+
+export function resolveModelSelector(selector: string, available: readonly ModelCard[] = listModels()): ModelCard {
+  const slash = selector.indexOf("/");
+  if (slash > 0) {
+    const provider = selector.slice(0, slash);
+    if (providers.includes(provider as ProviderName)) {
+      return resolveModel({ provider: provider as ProviderName, modelId: selector.slice(slash + 1) });
+    }
+  }
+  const matches = available.filter((model) => model.modelId === selector || model.aliases?.includes(selector));
+  const unique = [...new Map(matches.map((model) => [formatModelRef(model), model])).values()];
+  if (unique.length === 1) return unique[0];
+  if (unique.length > 1) throw new AmbiguousModelError(selector, unique);
+  throw new Error(`Unknown model: ${selector}`);
+}
+
+/** Map all known models to the protocol-facing ModelInfo shape. */
 export function getModelInfoList(): ModelInfo[] {
-  return KNOWN_MODELS.map((m) => ({
-    id: m.id,
-    display: m.display,
-    provider: m.provider,
-    contextWindow: m.contextWindow,
-    maxOutputTokens: m.maxOutputTokens,
-    inputCostPer1M: m.inputCostPer1M,
-    outputCostPer1M: m.outputCostPer1M,
-    supportsThinking: m.supportsThinking,
-    supportedEfforts: m.supportedEfforts,
-    supportsVision: m.supportsVision,
+  return listModels().map((model) => ({
+    modelId: model.modelId,
+    display: model.display,
+    provider: model.provider,
+    aliases: model.aliases,
+    contextWindow: model.contextWindow,
+    maxOutputTokens: model.maxOutputTokens,
+    inputCostPer1M: model.inputCostPer1M,
+    outputCostPer1M: model.outputCostPer1M,
+    supportsThinking: model.supportsThinking,
+    supportedEfforts: model.supportedEfforts,
+    supportsVision: model.supportsVision,
   }));
-}
-
-/**
- * Resolve a model ID or alias to a full Model.
- * For unknown models, infer provider from ID prefix.
- */
-export function resolveModel(modelId: string): Model {
-  // Exact match
-  const exact = KNOWN_MODELS.find((m) => m.id === modelId);
-  if (exact) return exact;
-
-  // Alias match
-  const aliased = KNOWN_MODELS.find((m) => m.aliases?.includes(modelId));
-  if (aliased) return aliased;
-
-  // Infer provider from prefix
-  if (modelId.startsWith("gemini-")) {
-    return {
-      id: modelId,
-      provider: "gemini",
-      contextWindow: 1_048_576,
-      maxOutputTokens: 65_536,
-      supportsThinking: true,
-    };
-  }
-  if (modelId.startsWith("vertex-")) {
-    return {
-      id: modelId,
-      provider: "vertex",
-      contextWindow: 256_000,
-      maxOutputTokens: 8_192,
-      supportsThinking: false,
-    };
-  }
-  if (modelId.startsWith("glm-")) {
-    return {
-      id: modelId,
-      provider: "zai-coding-plan",
-      contextWindow: 200_000,
-      maxOutputTokens: 128_000,
-      supportsThinking: false,
-    };
-  }
-  if (modelId.startsWith("claude-")) {
-    return {
-      id: modelId,
-      provider: "anthropic",
-      contextWindow: 300_000,
-      maxOutputTokens: 16_384,
-      supportsThinking: true,
-    };
-  }
-  if (modelId.startsWith("chatgpt-")) {
-    return {
-      id: modelId,
-      provider: "chatgpt",
-      contextWindow: 128_000,
-      maxOutputTokens: 16_384,
-      supportsThinking: true,
-    };
-  }
-  if (modelId.startsWith("gpt-") || modelId.match(/^o[1-9]/)) {
-    return { id: modelId, provider: "openai", contextWindow: 128_000, maxOutputTokens: 16_384, supportsThinking: true };
-  }
-
-  // Default to anthropic
-  return {
-    id: modelId,
-    provider: "anthropic",
-    contextWindow: 300_000,
-    maxOutputTokens: 16_384,
-    supportsThinking: true,
-  };
 }

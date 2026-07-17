@@ -1,8 +1,10 @@
 // @summary Static render tests for core UI components and accessibility attributes
 
 import { expect, test } from "bun:test";
-import { DEFAULT_ANTHROPIC_MODEL_ID } from "@diligent/core/model-registry";
 import { renderToStaticMarkup } from "react-dom/server";
+
+const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-4-6";
+
 import { AppHeader } from "../../../src/client/components/AppHeader";
 import { AssetThumbnail } from "../../../src/client/components/AssetThumbnail";
 import { AssistantMessage } from "../../../src/client/components/AssistantMessage";
@@ -1529,18 +1531,18 @@ test("input dock renders pending image preview and add-images action", () => {
       threadStatus="idle"
       mode="default"
       onModeChange={() => {}}
-      effort="none"
+      effort="medium"
       onEffortChange={() => {}}
-      currentModel="gpt-5.4"
+      currentModel="gpt-5.6-terra"
       availableModels={[
         {
-          id: "gpt-5.4",
+          id: "gpt-5.6-terra",
           provider: "openai",
           contextWindow: 400000,
           maxOutputTokens: 64000,
           supportsVision: true,
           supportsThinking: true,
-          supportedEfforts: ["none", "low", "medium", "high", "max"],
+          supportedEfforts: ["low", "medium", "high", "max"],
         },
       ]}
       onModelChange={() => {}}
@@ -1566,8 +1568,7 @@ test("input dock renders pending image preview and add-images action", () => {
   expect(html).toContain("Ask anything or attach images…");
   expect(html).toContain('data-icon="agent-logo"');
   expect(html).toContain('class="relative z-20 bg-surface-dark');
-  expect(html).toContain("minimal");
-  expect(html).toContain("minimal");
+  expect(html).toContain("medium");
 });
 
 test("input dock renders GPT-5.6 xhigh as a distinct selected effort", () => {
@@ -1595,7 +1596,7 @@ test("input dock renders GPT-5.6 xhigh as a distinct selected effort", () => {
           maxOutputTokens: 128000,
           supportsVision: true,
           supportsThinking: true,
-          supportedEfforts: ["none", "low", "medium", "high", "xhigh", "max"],
+          supportedEfforts: ["low", "medium", "high", "xhigh", "max"],
         },
       ]}
       onModelChange={() => {}}
@@ -1675,10 +1676,10 @@ test("input dock shows uploading state and disables send affordance", () => {
       onModeChange={() => {}}
       effort="high"
       onEffortChange={() => {}}
-      currentModel={DEFAULT_ANTHROPIC_MODEL_ID}
+      currentModel={TEST_ANTHROPIC_MODEL_ID}
       availableModels={[
         {
-          id: DEFAULT_ANTHROPIC_MODEL_ID,
+          id: TEST_ANTHROPIC_MODEL_ID,
           provider: "anthropic",
           contextWindow: 1000000,
           maxOutputTokens: 64000,

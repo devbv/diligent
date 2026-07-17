@@ -1,17 +1,33 @@
 // @summary Web model lookup and thinking-effort option helpers
 
-import type { ModelInfo, ThinkingEffort } from "@diligent/protocol";
+import type { ModelInfo, ModelRef, ThinkingEffort } from "@diligent/protocol";
 
-export function findModelInfo(models: ModelInfo[], modelId?: string): ModelInfo | undefined {
-  if (!modelId) return undefined;
-  return models.find((model) => model.id === modelId);
+export function sameModelRef(a: ModelRef | undefined, b: ModelRef | undefined): boolean {
+  return a === b || (a !== undefined && b !== undefined && a.provider === b.provider && a.modelId === b.modelId);
 }
 
-export function supportsThinkingNone(
-  model: Pick<ModelInfo, "supportsThinking" | "supportedEfforts"> | undefined,
-): boolean {
-  if (!model?.supportsThinking) return false;
-  return model.supportedEfforts?.includes("none") ?? false;
+export function modelOptionKey(model: ModelRef): string {
+  return `${model.provider}\0${model.modelId}`;
+}
+
+export function resolveModelSelector(models: ModelInfo[], selector: string): ModelInfo {
+  const slash = selector.indexOf("/");
+  const scoped = slash > 0 ? models.filter((model) => model.provider === selector.slice(0, slash)) : models;
+  const value = slash > 0 ? selector.slice(slash + 1) : selector;
+  const matches = scoped.filter((model) => model.modelId === value || model.aliases?.includes(value));
+  const unique = [...new Map(matches.map((model) => [modelOptionKey(model), model])).values()];
+  if (unique.length === 1) return unique[0];
+  if (unique.length > 1) {
+    throw new Error(
+      `Ambiguous model: ${selector}; qualify one of: ${unique.map((model) => `${model.provider}/${model.modelId}`).join(", ")}`,
+    );
+  }
+  throw new Error(`Unknown model: ${selector}`);
+}
+
+export function findModelInfo(models: ModelInfo[], ref?: ModelRef): ModelInfo | undefined {
+  if (!ref) return undefined;
+  return models.find((model) => sameModelRef(model, ref));
 }
 
 export function supportsThinkingEffort(
@@ -19,15 +35,7 @@ export function supportsThinkingEffort(
   effort: ThinkingEffort,
 ): boolean {
   if (!model?.supportsThinking) return false;
-  return model.supportedEfforts?.includes(effort) ?? !["none", "xhigh"].includes(effort);
-}
-
-function getThinkingEffortLabel(
-  effort: ThinkingEffort,
-  model: Pick<ModelInfo, "supportsThinking" | "supportedEfforts"> | undefined,
-): string {
-  if (effort === "none" && supportsThinkingNone(model)) return "minimal";
-  return effort;
+  return model.supportedEfforts?.includes(effort) ?? effort !== "xhigh";
 }
 
 export function getThinkingEffortOptions(
@@ -37,7 +45,7 @@ export function getThinkingEffortOptions(
   if (model && !model.supportsThinking) return [];
   const supportedEfforts =
     model?.supportsThinking === true ? (model.supportedEfforts ?? fallbackEffortValues) : fallbackEffortValues;
-  return supportedEfforts.map((effort) => ({ value: effort, label: getThinkingEffortLabel(effort, model) }));
+  return supportedEfforts.map((effort) => ({ value: effort, label: effort }));
 }
 
 export function normalizeThinkingEffort(
@@ -46,7 +54,7 @@ export function normalizeThinkingEffort(
 ): ThinkingEffort {
   if (!model) return effort;
   if (!model.supportsThinking) {
-    return effort === "none" || effort === "xhigh" ? "medium" : effort;
+    return effort === "xhigh" ? "medium" : effort;
   }
   if (supportsThinkingEffort(model, effort)) return effort;
   if (

@@ -6,7 +6,7 @@ import type { ParallelToolFragment } from "../../../src/tasks/core";
 import { CORE_CANDIDATE_TASKS, CORE_EVAL_TASKS } from "../../../src/tasks/core";
 import { assistantMessage, sequenceStream, TEST_MODEL } from "../../helpers/fake-stream";
 
-const PROFILE = { provider: "anthropic", model: TEST_MODEL.id, effort: "medium" } as const;
+const PROFILE = { provider: "anthropic", model: TEST_MODEL.modelId, effort: "medium" } as const;
 
 describe("core eval tasks", () => {
   test("registers structured arguments and parallel tools as candidates", () => {

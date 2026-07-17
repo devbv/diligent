@@ -31,7 +31,7 @@ describe("sub-agent thread ID consistency", () => {
     const registry = new AgentRegistry({
       cwd,
       paths,
-      modelId: TEST_MODEL.id,
+      model: TEST_MODEL,
       effort: "medium",
       systemPrompt: [{ label: "test", content: "test" }],
       agentDefinitions: getBuiltinAgentDefinitions(),

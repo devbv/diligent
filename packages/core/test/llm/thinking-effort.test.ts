@@ -1,7 +1,7 @@
 // @summary Tests for model-specific thinking-effort options and compatibility normalization
 
 import { describe, expect, it } from "bun:test";
-import { resolveModel } from "../../src/llm/models";
+import { listModels, resolveModel } from "../../src/llm/models";
 import {
   getThinkingEffortOptions,
   normalizeThinkingEffort,
@@ -9,59 +9,55 @@ import {
 } from "../../src/llm/thinking-effort";
 
 describe("thinking effort capabilities", () => {
-  it("exposes xhigh and max separately for every GPT-5.6 family member", () => {
-    for (const id of [
-      "gpt-5.6-sol",
-      "gpt-5.6-terra",
-      "gpt-5.6-luna",
-      "chatgpt-5.6-sol",
-      "chatgpt-5.6-terra",
-      "chatgpt-5.6-luna",
-    ]) {
-      const values = getThinkingEffortOptions(resolveModel(id)).map((option) => option.value);
-      expect(values).toEqual(["none", "low", "medium", "high", "xhigh", "max"]);
+  it("exposes the full effort set for native provider models other than GPT-5.5", () => {
+    for (const model of listModels().filter(
+      ({ modelId, provider }) => !modelId.endsWith("5.5") && ["anthropic", "openai", "chatgpt"].includes(provider),
+    )) {
+      expect(getThinkingEffortOptions(model).map((option) => option.value)).toEqual([
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+      ]);
     }
   });
 
-  it("does not expose xhigh for GPT-5.5, Claude, or unknown models", () => {
-    expect(getThinkingEffortOptions(resolveModel("gpt-5.5")).map((option) => option.value)).toEqual([
-      "none",
-      "low",
-      "medium",
-      "high",
-      "max",
-    ]);
-    expect(getThinkingEffortOptions(resolveModel("claude-sonnet-4-6")).map((option) => option.value)).toEqual([
-      "low",
-      "medium",
-      "high",
-      "max",
-    ]);
+  it("exposes xhigh instead of max for GPT-5.5", () => {
+    for (const provider of ["openai", "chatgpt"] as const) {
+      expect(
+        getThinkingEffortOptions(resolveModel({ provider, modelId: "gpt-5.5" })).map((option) => option.value),
+      ).toEqual(["low", "medium", "high", "xhigh"]);
+    }
+  });
+
+  it("uses the generic effort set when no explicit model is selected", () => {
     expect(getThinkingEffortOptions(undefined).map((option) => option.value)).toEqual(["low", "medium", "high", "max"]);
   });
 
   it("checks explicit model metadata for effort support", () => {
-    expect(supportsThinkingEffort(resolveModel("gpt-5.6-sol"), "xhigh")).toBe(true);
-    expect(supportsThinkingEffort(resolveModel("gpt-5.5"), "xhigh")).toBe(false);
-    expect(supportsThinkingEffort(resolveModel("claude-sonnet-4-6"), "none")).toBe(false);
+    expect(supportsThinkingEffort(resolveModel({ provider: "openai", modelId: "gpt-5.5" }), "xhigh")).toBe(true);
+    expect(supportsThinkingEffort(resolveModel({ provider: "anthropic", modelId: "claude-sonnet-4-6" }), "xhigh")).toBe(
+      true,
+    );
+    expect(supportsThinkingEffort(resolveModel({ provider: "chatgpt", modelId: "gpt-5.5" }), "xhigh")).toBe(true);
+    expect(supportsThinkingEffort(resolveModel({ provider: "openai", modelId: "gpt-5.5" }), "max")).toBe(false);
+    expect(supportsThinkingEffort(resolveModel({ provider: "chatgpt", modelId: "gpt-5.5" }), "max")).toBe(false);
   });
 
-  it("normalizes GPT-5.6 xhigh to the legacy OpenAI max compatibility value", () => {
-    expect(normalizeThinkingEffort(resolveModel("gpt-5.5"), "xhigh")).toBe("max");
-    expect(normalizeThinkingEffort(resolveModel("chatgpt-5.5"), "xhigh")).toBe("max");
+  it("preserves xhigh for native provider models", () => {
+    expect(normalizeThinkingEffort(resolveModel({ provider: "openai", modelId: "gpt-5.5" }), "xhigh")).toBe("xhigh");
+    expect(
+      normalizeThinkingEffort(resolveModel({ provider: "anthropic", modelId: "claude-sonnet-4-6" }), "xhigh"),
+    ).toBe("xhigh");
+    expect(normalizeThinkingEffort(resolveModel({ provider: "chatgpt", modelId: "gpt-5.5" }), "xhigh")).toBe("xhigh");
   });
 
-  it("falls back to medium when another provider does not support the selected effort", () => {
-    expect(normalizeThinkingEffort(resolveModel("claude-sonnet-4-6"), "xhigh")).toBe("medium");
-    expect(normalizeThinkingEffort(resolveModel("claude-sonnet-4-6"), "none")).toBe("medium");
-  });
-
-  it("preserves legacy effort state for non-thinking models while removing restricted values", () => {
-    const model = resolveModel("vertex-gemma-4-26b-it");
+  it("preserves legacy effort state for non-thinking models while removing xhigh", () => {
+    const model = resolveModel({ provider: "vertex", modelId: "vertex-gemma-4-26b-it" });
 
     expect(normalizeThinkingEffort(model, "high")).toBe("high");
     expect(normalizeThinkingEffort(model, "max")).toBe("max");
-    expect(normalizeThinkingEffort(model, "none")).toBe("medium");
     expect(normalizeThinkingEffort(model, "xhigh")).toBe("medium");
   });
 });

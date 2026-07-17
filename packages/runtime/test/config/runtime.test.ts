@@ -4,12 +4,12 @@ import { afterEach, describe, expect, it, mock } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DEFAULT_ANTHROPIC_MODEL_ID } from "@diligent/core/model-registry";
 import type { RuntimeConfig } from "../../src/config/runtime";
-import { loadRuntimeConfig } from "../../src/config/runtime";
+import { loadRuntimeConfig, resolveRuntimeModel } from "../../src/config/runtime";
 import type { DiligentPaths } from "../../src/infrastructure";
 
 let tmpRoot = "";
+const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-4-6";
 let originalStorageNamespace: string | undefined;
 
 function makePaths(base: string): DiligentPaths {
@@ -36,6 +36,26 @@ afterEach(async () => {
 });
 
 describe("loadRuntimeConfig", () => {
+  it("preserves the last selected model when its provider is configured", () => {
+    expect(resolveRuntimeModel({ provider: "openai", modelId: "gpt-5.6-terra" }, ["openai"]).modelId).toBe(
+      "gpt-5.6-terra",
+    );
+  });
+
+  it("uses the configured provider default when there is no last selected model", () => {
+    expect(resolveRuntimeModel(undefined, ["openai"]).modelId).toBe("gpt-5.6-sol");
+  });
+
+  it("uses the configured provider default when the last selected provider is unavailable", () => {
+    expect(resolveRuntimeModel({ provider: "anthropic", modelId: "claude-sonnet-4-6" }, ["openai"]).modelId).toBe(
+      "gpt-5.6-sol",
+    );
+  });
+
+  it("uses the default provider policy when neither a model nor provider is configured", () => {
+    expect(resolveRuntimeModel(undefined, []).modelId).toBe("claude-opus-4-8");
+  });
+
   it("loads discovered agents and adds an agents section to the system prompt", async () => {
     tmpRoot = await mkdtemp(join(tmpdir(), "diligent-runtime-config-"));
     const paths = makePaths(tmpRoot);
@@ -59,7 +79,7 @@ describe("loadRuntimeConfig", () => {
         "You are a code reviewer.",
       ].join("\n"),
     );
-    await writeFile(join(tmpRoot, ".diligent", "config.jsonc"), JSON.stringify({ model: DEFAULT_ANTHROPIC_MODEL_ID }));
+    await writeFile(join(tmpRoot, ".diligent", "config.jsonc"), JSON.stringify({ model: TEST_ANTHROPIC_MODEL_ID }));
 
     const originalHome = process.env.HOME;
     const originalUserProfile = process.env.USERPROFILE;
@@ -208,7 +228,7 @@ describe("loadRuntimeConfig", () => {
     }
   });
 
-  it("binds vertex config and selects the first available vertex model", async () => {
+  it("binds vertex config and selects the vertex provider default model", async () => {
     tmpRoot = await mkdtemp(join(tmpdir(), "diligent-runtime-vertex-"));
     const paths = makePaths(tmpRoot);
     const isolatedHome = join(tmpRoot, ".isolated-home");
@@ -241,7 +261,33 @@ describe("loadRuntimeConfig", () => {
       expect(config.providerManager.hasKeyFor("vertex")).toBe(true);
       expect(config.providerAuthPresenter?.getStatus("vertex").maskedKey).toBe("Vertex access token");
       expect(config.model?.provider).toBe("vertex");
-      expect(config.model?.id).toBe("vertex-gemma-4-26b-it");
+      expect(config.model?.modelId).toBe("vertex-gemma-4-26b-it");
+    } finally {
+      process.env.HOME = originalHome;
+      process.env.USERPROFILE = originalUserProfile;
+    }
+  });
+
+  it("selects the OpenAI provider default when no model was previously selected", async () => {
+    tmpRoot = await mkdtemp(join(tmpdir(), "diligent-runtime-openai-default-"));
+    const paths = makePaths(tmpRoot);
+    const isolatedHome = join(tmpRoot, ".isolated-home");
+    await mkdir(paths.sessions, { recursive: true });
+    await mkdir(paths.knowledge, { recursive: true });
+    await mkdir(paths.skills, { recursive: true });
+    await mkdir(paths.images, { recursive: true });
+    await mkdir(join(isolatedHome, ".diligent"), { recursive: true });
+    await writeFile(join(isolatedHome, ".diligent", "auth.jsonc"), JSON.stringify({ openai: "sk-openai-test" }));
+
+    const originalHome = process.env.HOME;
+    const originalUserProfile = process.env.USERPROFILE;
+    process.env.HOME = isolatedHome;
+    process.env.USERPROFILE = isolatedHome;
+    try {
+      const config = await loadRuntimeConfig(tmpRoot, paths);
+      expect(config.diligent.model).toBeUndefined();
+      expect(config.model?.provider).toBe("openai");
+      expect(config.model?.modelId).toBe("gpt-5.6-sol");
     } finally {
       process.env.HOME = originalHome;
       process.env.USERPROFILE = originalUserProfile;
@@ -275,7 +321,7 @@ describe("loadRuntimeConfig", () => {
       expect(config.providerManager.hasKeyFor("zai-coding-plan")).toBe(true);
       expect(config.providerAuthPresenter?.getStatus("zai-coding-plan").maskedKey).toBe("zai-tes...");
       expect(config.model?.provider).toBe("zai-coding-plan");
-      expect(config.model?.id).toBe("glm-5.2");
+      expect(config.model?.modelId).toBe("glm-5.2");
     } finally {
       process.env.HOME = originalHome;
       process.env.USERPROFILE = originalUserProfile;

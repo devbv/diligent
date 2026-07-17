@@ -69,6 +69,13 @@ describe("protocol/flow", () => {
     ).toBe(true);
 
     expect(
+      DiligentClientRequestSchema.safeParse({
+        method: DILIGENT_CLIENT_REQUEST_METHODS.EFFORT_SET,
+        params: { threadId: "th-1", effort: "none" },
+      }).success,
+    ).toBe(false);
+
+    expect(
       DiligentClientResponseSchema.safeParse({
         method: DILIGENT_CLIENT_REQUEST_METHODS.EFFORT_SET,
         result: { effort: "xhigh" },
@@ -135,7 +142,7 @@ describe("protocol/flow", () => {
         cwd: "/repo",
         mode: "default",
         effort: "medium",
-        currentModel: TEST_MODEL_ID,
+        currentModel: { provider: "anthropic", modelId: TEST_MODEL_ID },
         availableModels: [],
       }).success,
     ).toBe(true);
@@ -153,7 +160,7 @@ describe("protocol/flow", () => {
           isRunning: false,
           currentMode: "plan",
           currentEffort: "medium",
-          currentModel: TEST_MODEL_ID,
+          currentModel: { provider: "anthropic", modelId: TEST_MODEL_ID },
         },
       }).success,
     ).toBe(true);
@@ -180,7 +187,7 @@ describe("protocol/flow", () => {
     expect(
       MessageSchema.safeParse({
         role: "assistant",
-        model: "gpt-5",
+        model: { provider: "openai", modelId: "gpt-5" },
         usage: { inputTokens: 10, outputTokens: 20, cacheReadTokens: 0, cacheWriteTokens: 0 },
         stopReason: "end_turn",
         timestamp: 1,
@@ -535,7 +542,7 @@ describe("protocol/flow", () => {
           message: {
             role: "assistant",
             content: [{ type: "text", text: "hi" }],
-            model: TEST_MODEL_ID,
+            model: { provider: "anthropic", modelId: TEST_MODEL_ID },
             usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
             stopReason: "end_turn",
             timestamp: Date.now(),

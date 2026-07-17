@@ -103,7 +103,7 @@ Runtime config shape:
 
 ```jsonc
 {
-  "model": "vertex-gemma-4-26b-it",
+  "model": { "provider": "vertex", "modelId": "vertex-gemma-4-26b-it" },
   "provider": {
     "vertex": {
       "project": "my-gcp-project",

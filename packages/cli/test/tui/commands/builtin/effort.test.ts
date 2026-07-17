@@ -8,6 +8,10 @@ import type { CommandContext } from "../../../../src/tui/commands/types";
 import type { ListPickerItem } from "../../../../src/tui/components/list-picker";
 
 function makeContext(modelId: string, overrides?: Partial<CommandContext>): CommandContext {
+  const ref =
+    modelId === "vertex-gemma-4-26b-it"
+      ? { provider: "vertex" as const, modelId }
+      : { provider: "openai" as const, modelId };
   return {
     app: {
       confirm: async () => true,
@@ -16,7 +20,7 @@ function makeContext(modelId: string, overrides?: Partial<CommandContext>): Comm
       stop: () => {},
       getRpcClient: () => null,
     },
-    config: { model: resolveModel(modelId) } as AppConfig,
+    config: { model: resolveModel(ref) } as AppConfig,
     threadId: "thread-1",
     skills: [],
     registry: {} as CommandContext["registry"],
@@ -55,15 +59,26 @@ describe("effortCommand", () => {
     expect(onEffortChanged).toHaveBeenCalledWith("xhigh", "xhigh");
   });
 
-  it("rejects xhigh for GPT-5.5", async () => {
+  it("accepts xhigh for GPT-5.5", async () => {
     const setEffort = mock(async () => {});
     const displayError = mock(() => {});
     const ctx = makeContext("gpt-5.5", { setEffort, displayError });
 
     await effortCommand.handler("xhigh", ctx);
 
+    expect(setEffort).toHaveBeenCalledWith("xhigh");
+    expect(displayError).not.toHaveBeenCalled();
+  });
+
+  it("rejects max for GPT-5.5", async () => {
+    const setEffort = mock(async () => {});
+    const displayError = mock(() => {});
+    const ctx = makeContext("gpt-5.5", { setEffort, displayError });
+
+    await effortCommand.handler("max", ctx);
+
     expect(setEffort).not.toHaveBeenCalled();
-    expect(displayError).toHaveBeenCalledWith('Thinking effort "xhigh" is not supported for this model.');
+    expect(displayError).toHaveBeenCalledWith('Thinking effort "max" is not supported for this model.');
   });
 
   it("preserves the existing command behavior for non-thinking models", async () => {
@@ -77,7 +92,20 @@ describe("effortCommand", () => {
     expect(displayError).not.toHaveBeenCalled();
   });
 
-  it("shows all six GPT-5.6 effort options in the picker", async () => {
+  it("rejects removed none and minimal aliases", async () => {
+    for (const value of ["none", "minimal"]) {
+      const setEffort = mock(async () => {});
+      const displayError = mock(() => {});
+      const ctx = makeContext("gpt-5.6-sol", { setEffort, displayError });
+
+      await effortCommand.handler(value, ctx);
+
+      expect(setEffort).not.toHaveBeenCalled();
+      expect(displayError).toHaveBeenCalledWith(`Unknown effort: ${value}. Usage: /effort <low|medium|high|xhigh|max>`);
+    }
+  });
+
+  it("shows the fixed OpenAI effort options in the picker", async () => {
     let items: ListPickerItem[] = [];
     const ctx = makeContext("gpt-5.6-terra", {
       app: {
@@ -94,6 +122,6 @@ describe("effortCommand", () => {
 
     await effortCommand.handler(undefined, ctx);
 
-    expect(items.map((item) => item.value)).toEqual(["none", "low", "medium", "high", "xhigh", "max"]);
+    expect(items.map((item) => item.value)).toEqual(["low", "medium", "high", "xhigh", "max"]);
   });
 });

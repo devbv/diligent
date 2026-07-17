@@ -1,15 +1,24 @@
 // @summary Unified provider manager — provider stream dispatch with injected auth bindings
 
-import { DEFAULT_ANTHROPIC_MODEL_ID } from "./models";
+import { EventStream } from "../event-stream";
 import { createAnthropicNativeCompaction, createAnthropicStream } from "./provider/anthropic";
 import { createGeminiStream } from "./provider/gemini";
 import type { NativeCompactionLookup } from "./provider/native-compaction";
 import { createOpenAINativeCompaction, createOpenAIStream } from "./provider/openai";
-import type { OpenAIImageDetail } from "./provider/openai-responses";
+import type { OpenAIImageDetail } from "./provider/openai/responses";
 import { validateProviderApiKey } from "./provider/validate-key";
 import { createVertexStream } from "./provider/vertex";
 import { createZaiCodingPlanStream } from "./provider/zai-coding-plan";
-import { ProviderError, ProviderErrorReason, ProviderErrorType, type ProviderName, type StreamFunction } from "./types";
+import { getDefaultModelRef } from "./provider-model-policy";
+import {
+  ProviderError,
+  ProviderErrorReason,
+  ProviderErrorType,
+  type ProviderEvent,
+  type ProviderName,
+  type ProviderResult,
+  type StreamFunction,
+} from "./types";
 
 export interface ExternalProviderAuth {
   isConfigured: () => boolean;
@@ -36,15 +45,6 @@ export const DEFAULT_PROVIDER: ProviderName = "anthropic";
 
 export const PROVIDER_NAMES: ProviderName[] = ["anthropic", "openai", "chatgpt", "gemini", "vertex", "zai-coding-plan"];
 
-export const DEFAULT_MODELS: Record<ProviderName, string> = {
-  anthropic: DEFAULT_ANTHROPIC_MODEL_ID,
-  openai: "gpt-5.5",
-  chatgpt: "chatgpt-5.5",
-  gemini: "gemini-3.5-flash",
-  vertex: "vertex-gemma-4-26b-it",
-  "zai-coding-plan": "glm-5.2",
-};
-
 // imageDetail is OpenAI-only; other factories have fewer params and remain assignable (a function
 // taking fewer args satisfies a type expecting more), so they simply ignore the extra argument.
 const PROVIDER_FACTORIES: Record<
@@ -62,7 +62,7 @@ const PROVIDER_FACTORIES: Record<
 };
 
 class StreamFactoryCache {
-  private cache = new Map<string, StreamFunction>();
+  private cache = new Map<ProviderName, StreamFunction>();
 
   getOrCreate(
     provider: ProviderName,
@@ -70,21 +70,18 @@ class StreamFactoryCache {
     baseUrl?: string,
     imageDetail?: OpenAIImageDetail,
   ): StreamFunction {
-    const cacheKey = `${provider}:${apiKey}:${imageDetail ?? ""}`;
-    const cached = this.cache.get(cacheKey);
+    const cached = this.cache.get(provider);
     if (cached) return cached;
 
     const factory = PROVIDER_FACTORIES[provider];
     if (!factory) throw new Error(`Unknown provider: ${provider}`);
     const stream = factory(apiKey, baseUrl, imageDetail);
-    this.cache.set(cacheKey, stream);
+    this.cache.set(provider, stream);
     return stream;
   }
 
   invalidateProvider(provider: ProviderName): void {
-    for (const key of this.cache.keys()) {
-      if (key.startsWith(`${provider}:`)) this.cache.delete(key);
-    }
+    this.cache.delete(provider);
   }
 }
 
@@ -142,7 +139,12 @@ function createCompactionRegistry(
   return (provider) => {
     const external = authState.getExternalAuth(provider as ProviderName);
     if (external) {
-      return external.getNativeCompaction?.();
+      const compact = external.getNativeCompaction?.();
+      if (!compact) return undefined;
+      return async (input) => {
+        await ensureExternalProviderReady(external, input.signal);
+        return compact(input);
+      };
     }
 
     const key = authState.getApiKey(provider as ProviderName);
@@ -151,6 +153,46 @@ function createCompactionRegistry(
     if (provider === "openai") return createOpenAINativeCompaction(key, baseUrls.openai, openaiImageDetail);
     return undefined;
   };
+}
+
+async function ensureExternalProviderReady(external: ExternalProviderAuth, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) throw new Error("Aborted");
+  await external.ensureFresh?.();
+  if (signal?.aborted) throw new Error("Aborted");
+}
+
+function createDeferredExternalStream(
+  external: ExternalProviderAuth,
+  start: () => ReturnType<StreamFunction>,
+  signal?: AbortSignal,
+): EventStream<ProviderEvent, ProviderResult> {
+  const stream = new EventStream<ProviderEvent, ProviderResult>(
+    (event) => event.type === "done" || event.type === "error",
+    (event) => {
+      if (event.type === "done") return { message: event.message };
+      throw (event as { type: "error"; error: Error }).error;
+    },
+  );
+  if (signal) stream.attachSignal(signal);
+
+  const work = (async () => {
+    let inner: ReturnType<StreamFunction> | undefined;
+    try {
+      await ensureExternalProviderReady(external, signal);
+      inner = start();
+      for await (const event of inner) stream.push(event);
+      stream.end(await inner.result());
+    } catch (error) {
+      stream.push({
+        type: "error",
+        error: error instanceof Error ? error : new Error(String(error)),
+      });
+    } finally {
+      await inner?.waitForInnerWork();
+    }
+  })();
+  stream.setInnerWork(work);
+  return stream;
 }
 
 export function createStreamForProvider(provider: string, apiKey: string): StreamFunction {
@@ -188,7 +230,7 @@ export class ProviderManager {
 
   // Verify an API key before persisting it. Throws with a user-facing message if the key is invalid.
   async validateApiKey(provider: ProviderName, apiKey: string): Promise<void> {
-    await validateProviderApiKey(provider, apiKey, this.baseUrls[provider], DEFAULT_MODELS[provider]);
+    await validateProviderApiKey(provider, apiKey, this.baseUrls[provider], getDefaultModelRef(provider).modelId);
   }
 
   createProxyStream(): StreamFunction {
@@ -197,8 +239,11 @@ export class ProviderManager {
 
       const external = this.authState.getExternalAuth(provider);
       if (external) {
-        external.ensureFresh?.().catch(() => {});
-        return external.getStream()(model, context, options);
+        return createDeferredExternalStream(
+          external,
+          () => external.getStream()(model, context, options),
+          options.signal,
+        );
       }
 
       const apiKey = this.authState.getApiKey(provider);

@@ -31,7 +31,7 @@ function makeMsg(id: string, parentId: string | null, role: "user" | "assistant"
     message: {
       role: "assistant",
       content: [{ type: "text", text }],
-      model: "test",
+      model: { provider: "anthropic", modelId: "test" },
       usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
       stopReason: "end_turn",
       timestamp: 1708900000000,

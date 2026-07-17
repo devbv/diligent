@@ -8,14 +8,8 @@ import type {
   StreamFunction,
   SystemSection,
 } from "@diligent/runtime";
-import {
-  DEFAULT_ANTHROPIC_MODEL_ID,
-  ensureDiligentDir,
-  loadRuntimeConfig,
-  ProviderAuthPresenter,
-  resolveModel,
-} from "@diligent/runtime";
-import { DEFAULT_PROVIDER, type ProviderManager, type ProviderName } from "./provider-manager";
+import { ensureDiligentDir, loadRuntimeConfig, ProviderAuthPresenter, resolveModel } from "@diligent/runtime";
+import { DEFAULT_PROVIDER, getDefaultModelRef, type ProviderManager, type ProviderName } from "./provider-manager";
 
 export interface AppConfig {
   apiKey: string;
@@ -39,8 +33,8 @@ export interface AppConfig {
 export async function loadConfig(cwd: string = process.cwd(), paths?: DiligentPaths): Promise<AppConfig> {
   const resolvedPaths = paths ?? (await ensureDiligentDir(cwd));
   const runtime = await loadRuntimeConfig(cwd, resolvedPaths);
-  // CLI default: Anthropic Sonnet when no provider is configured
-  const model = runtime.model ?? resolveModel(DEFAULT_ANTHROPIC_MODEL_ID);
+  // Defensive fallback; runtime normally resolves this through the provider model policy.
+  const model = runtime.model ?? resolveModel(getDefaultModelRef(DEFAULT_PROVIDER));
   const provider = (model.provider ?? DEFAULT_PROVIDER) as ProviderName;
   const apiKey = runtime.providerManager.getApiKey(provider) ?? "";
 

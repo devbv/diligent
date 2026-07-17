@@ -93,7 +93,7 @@ export function withRetry(
   return (model, context, options) => {
     const retryLogger = logger.child({
       ...(options.sessionId !== undefined && { sessionId: options.sessionId }),
-      fields: { provider: model.provider, model: model.id },
+      fields: { provider: model.provider, model: model.modelId },
     });
     const signal = options.signal;
     const stream = new EventStream<ProviderEvent, ProviderResult>(
@@ -103,8 +103,7 @@ export function withRetry(
         throw (event as { type: "error"; error: Error }).error;
       },
     );
-
-    (async () => {
+    const work = (async () => {
       for (let attempt = 1; attempt <= config.maxAttempts; attempt++) {
         if (signal?.aborted) {
           logRetry(retryLogger, "info", "retry_aborted", `aborted before attempt=${attempt}/${config.maxAttempts}`, {
@@ -178,6 +177,8 @@ export function withRetry(
             { attempt, maxAttempts: config.maxAttempts, ...errorFields(errorEvent) },
             errorEvent,
           );
+        } finally {
+          await inner?.waitForInnerWork();
         }
 
         // Consume the inner stream's rejected result to prevent unhandled rejection
@@ -278,6 +279,7 @@ export function withRetry(
       );
       stream.push({ type: "error", error: providerErr });
     });
+    stream.setInnerWork(work);
 
     return stream;
   };

@@ -23,8 +23,8 @@ import type { AgentEvent } from "../../src/agent-event";
 const TEST_ROOT = join(tmpdir(), `diligent-steering-test-${Date.now()}`);
 
 const TEST_MODEL: Model = {
-  id: "test-model",
-  provider: "test",
+  modelId: "test-model",
+  provider: "anthropic",
   contextWindow: 100_000,
   maxOutputTokens: 4096,
   supportsThinking: false,
@@ -34,7 +34,7 @@ function makeAssistant(text: string = "hi"): AssistantMessage {
   return {
     role: "assistant",
     content: [{ type: "text", text }],
-    model: TEST_MODEL.id,
+    model: TEST_MODEL,
     usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 },
     stopReason: "end_turn",
     timestamp: Date.now(),
@@ -45,7 +45,7 @@ function makeToolCallAssistant(toolCallId: string, toolName: string, input: Reco
   return {
     role: "assistant",
     content: [{ type: "tool_call", id: toolCallId, name: toolName, input }],
-    model: TEST_MODEL.id,
+    model: TEST_MODEL,
     usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 },
     stopReason: "tool_use",
     timestamp: Date.now(),
@@ -214,7 +214,7 @@ describe("Context builder: message entries on resume", () => {
         message: {
           role: "assistant",
           content: [{ type: "text", text: "hi" }],
-          model: "test",
+          model: { provider: "anthropic", modelId: "test" },
           usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
           stopReason: "end_turn",
           timestamp: 1708900000000,
@@ -235,7 +235,7 @@ describe("Context builder: message entries on resume", () => {
         message: {
           role: "assistant",
           content: [{ type: "text", text: "understood" }],
-          model: "test",
+          model: { provider: "anthropic", modelId: "test" },
           usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
           stopReason: "end_turn",
           timestamp: 1708900000000,
@@ -269,7 +269,7 @@ describe("Context builder: message entries on resume", () => {
         message: {
           role: "assistant",
           content: [{ type: "text", text: "old response" }],
-          model: "test",
+          model: { provider: "anthropic", modelId: "test" },
           usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
           stopReason: "end_turn",
           timestamp: 1708900000000,
@@ -300,7 +300,7 @@ describe("Context builder: message entries on resume", () => {
         message: {
           role: "assistant",
           content: [{ type: "text", text: "following new direction" }],
-          model: "test",
+          model: { provider: "anthropic", modelId: "test" },
           usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
           stopReason: "end_turn",
           timestamp: 1708900000000,
@@ -343,7 +343,7 @@ describe("SessionManager orphaned tool-call repair", () => {
           { type: "tool_call", id: "tc_1", name: "bash", input: { command: "echo one" } },
           { type: "tool_call", id: "tc_2", name: "bash", input: { command: "echo two" } },
         ],
-        model: TEST_MODEL.id,
+        model: TEST_MODEL,
         usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
         stopReason: "tool_use",
         timestamp: 1783341874000,

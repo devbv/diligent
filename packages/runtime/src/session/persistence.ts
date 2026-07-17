@@ -1,6 +1,9 @@
 // @summary Session file persistence with JSONL format, immediate writing, and session listing
 import { appendFile, unlink } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
+import type { ModelRef, ProviderName } from "@diligent/core/provider-contract";
+import { ProviderNameSchema } from "@diligent/protocol";
+import { normalizeLegacyModelRef } from "../model/legacy-model-ref";
 import { externalizeEntryImages, materializeEntryImages } from "./image-sidecar";
 import type {
   AppendedEntryInfo,
@@ -84,13 +87,41 @@ export async function readSessionFile(
     );
   }
 
-  const rawEntries = lines.slice(1).map((line) => JSON.parse(line) as SessionEntry);
+  const rawEntries = normalizePersistedModelRefs(lines.slice(1).map((line) => JSON.parse(line) as SessionEntry));
   if (options?.materializeImages === false) {
     return { header, entries: rawEntries };
   }
   const sessionsDir = dirname(path);
   const entries = await Promise.all(rawEntries.map((entry) => materializeEntryImages(sessionsDir, entry)));
   return { header, entries };
+}
+
+function normalizePersistedModelRefs(entries: SessionEntry[]): SessionEntry[] {
+  const normalized = entries.map((entry) => {
+    if (entry.type !== "model_change") return entry;
+    const provider = ProviderNameSchema.safeParse(entry.provider);
+    const ref = normalizeLegacyModelRef(entry.modelId, provider.success ? provider.data : undefined);
+    return { ...entry, provider: ref.provider, modelId: ref.modelId };
+  });
+  const byId = new Map(normalized.map((entry) => [entry.id, entry]));
+  const modelByEntryId = new Map<string, ModelRef | undefined>();
+  const nearestModel = (entry: SessionEntry): ModelRef | undefined => {
+    if (modelByEntryId.has(entry.id)) return modelByEntryId.get(entry.id);
+    const current = entry.type === "model_change" ? { provider: entry.provider, modelId: entry.modelId } : undefined;
+    const parent = entry.parentId ? byId.get(entry.parentId) : undefined;
+    const inherited = parent ? nearestModel(parent) : undefined;
+    const result = current ?? inherited;
+    modelByEntryId.set(entry.id, result);
+    return result;
+  };
+  return normalized.map((entry) => {
+    if (entry.type !== "message" || entry.message.role !== "assistant") return entry;
+    const rawModel = (entry.message as unknown as { model: unknown }).model;
+    const parent = entry.parentId ? byId.get(entry.parentId) : undefined;
+    const ancestor = parent ? nearestModel(parent) : undefined;
+    const ref = normalizeLegacyModelRef(rawModel, ancestor?.provider as ProviderName | undefined);
+    return { ...entry, message: { ...entry.message, model: ref } };
+  });
 }
 
 /**

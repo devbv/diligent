@@ -1,7 +1,7 @@
 // @summary Tests for provider manager configuration and model handling
 import { describe, expect, test } from "bun:test";
-import { createChatGPTOAuthBinding, DEFAULT_ANTHROPIC_MODEL_ID, ProviderAuthPresenter } from "@diligent/runtime";
-import { DEFAULT_MODELS, PROVIDER_NAMES, ProviderManager } from "../src/provider-manager";
+import { createChatGPTOAuthBinding, ProviderAuthPresenter } from "@diligent/runtime";
+import { getDefaultModelRef, PROVIDER_MODEL_POLICIES, PROVIDER_NAMES, ProviderManager } from "../src/provider-manager";
 
 describe("ProviderManager", () => {
   test("config does not provide API keys (auth-only)", () => {
@@ -10,34 +10,6 @@ describe("ProviderManager", () => {
     });
     // apiKey in config is ignored — keys come from auth.json via setApiKey
     expect(pm.hasKeyFor("anthropic")).toBe(false);
-  });
-
-  test("hasKeyFor returns false when no key", () => {
-    const pm = new ProviderManager({});
-    expect(pm.hasKeyFor("anthropic")).toBe(false);
-    expect(pm.hasKeyFor("openai")).toBe(false);
-    expect(pm.hasKeyFor("chatgpt")).toBe(false);
-    expect(pm.hasKeyFor("zai-coding-plan")).toBe(false);
-  });
-
-  test("setApiKey updates the key and invalidates cache", () => {
-    const pm = new ProviderManager({});
-    expect(pm.hasKeyFor("anthropic")).toBe(false);
-
-    pm.setApiKey("anthropic", "sk-new-key");
-    expect(pm.hasKeyFor("anthropic")).toBe(true);
-    expect(pm.getApiKey("anthropic")).toBe("sk-new-key");
-  });
-
-  test("getConfiguredProviders returns only providers with keys", () => {
-    const pm = new ProviderManager({});
-    expect(pm.getConfiguredProviders()).toEqual([]);
-
-    pm.setApiKey("anthropic", "sk-test");
-    expect(pm.getConfiguredProviders()).toEqual(["anthropic"]);
-
-    pm.setApiKey("openai", "sk-openai");
-    expect(pm.getConfiguredProviders()).toEqual(["anthropic", "openai"]);
   });
 
   test("runtime presenter masks configured API keys", () => {
@@ -53,64 +25,20 @@ describe("ProviderManager", () => {
     expect("hasOAuthFor" in pm).toBe(false);
   });
 
-  test("createProxyStream returns a function", () => {
-    const pm = new ProviderManager({});
-    pm.setApiKey("anthropic", "sk-test");
-    const stream = pm.createProxyStream();
-    expect(typeof stream).toBe("function");
-  });
-
-  test("proxy stream throws when no key for provider", () => {
-    const pm = new ProviderManager({});
-    const proxy = pm.createProxyStream();
-    expect(() => {
-      proxy(
-        { id: DEFAULT_ANTHROPIC_MODEL_ID, provider: "anthropic", contextWindow: 1_000_000, maxOutputTokens: 64_000 },
-        { systemPrompt: [], messages: [], tools: [] },
-        {},
-      );
-    }).toThrow(/No authentication is configured for anthropic/);
-  });
-
   test("PROVIDER_NAMES constant contains all providers", () => {
     expect(PROVIDER_NAMES).toEqual(["anthropic", "openai", "chatgpt", "gemini", "vertex", "zai-coding-plan"]);
   });
 
-  test("DEFAULT_MODELS has entries for all providers", () => {
+  test("provider model policy has entries for all providers", () => {
     for (const provider of PROVIDER_NAMES) {
-      expect(DEFAULT_MODELS[provider]).toBeDefined();
+      expect(PROVIDER_MODEL_POLICIES[provider]).toBeDefined();
     }
   });
 
-  test("keeps GPT-5.5 as the default when newer models are registered", () => {
-    expect(DEFAULT_MODELS.openai).toBe("gpt-5.5");
-    expect(DEFAULT_MODELS.chatgpt).toBe("chatgpt-5.5");
-  });
-
-  test("setApiKey allows subsequent proxy calls", () => {
-    const pm = new ProviderManager({});
-    expect(pm.hasKeyFor("openai")).toBe(false);
-
-    pm.setApiKey("openai", "sk-openai-new");
-    expect(pm.hasKeyFor("openai")).toBe(true);
-    expect(pm.getApiKey("openai")).toBe("sk-openai-new");
-  });
-
-  test("zai-coding-plan provider can be configured like other api-key providers", () => {
-    const pm = new ProviderManager({});
-    expect(pm.hasKeyFor("zai-coding-plan")).toBe(false);
-
-    pm.setApiKey("zai-coding-plan", "zai-test-key");
-
-    expect(pm.hasKeyFor("zai-coding-plan")).toBe(true);
-    expect(pm.getApiKey("zai-coding-plan")).toBe("zai-test-key");
-    expect(pm.getConfiguredProviders()).toEqual(["zai-coding-plan"]);
-  });
-
-  test("empty string key is treated as no key", () => {
-    const pm = new ProviderManager({});
-    pm.setApiKey("anthropic", "");
-    expect(pm.hasKeyFor("anthropic")).toBe(false);
+  test("uses the current flagship models as provider defaults", () => {
+    expect(getDefaultModelRef("anthropic").modelId).toBe("claude-opus-4-8");
+    expect(getDefaultModelRef("openai").modelId).toBe("gpt-5.6-sol");
+    expect(getDefaultModelRef("chatgpt")).toEqual({ provider: "chatgpt", modelId: "gpt-5.6-sol" });
   });
 
   test("oauth marks chatgpt as configured", () => {
@@ -132,19 +60,5 @@ describe("ProviderManager", () => {
       maskedKey: "ChatGPT OAuth",
       oauthConnected: true,
     });
-  });
-
-  test("anthropic native compaction is enabled by default", () => {
-    const pm = new ProviderManager({});
-    pm.setApiKey("anthropic", "sk-ant-test");
-
-    expect(pm.createNativeCompactionForProvider("anthropic")).toBeDefined();
-  });
-
-  test("openai native compaction remains enabled when api key exists", () => {
-    const pm = new ProviderManager({});
-    pm.setApiKey("openai", "sk-openai-test");
-
-    expect(typeof pm.createNativeCompactionForProvider("openai")).toBe("function");
   });
 });

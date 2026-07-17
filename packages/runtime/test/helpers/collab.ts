@@ -17,8 +17,8 @@ import type { AgentEvent } from "../../src/agent-event";
 import type { SessionManager } from "../../src/session/manager";
 
 export const TEST_MODEL: Model = {
-  id: "test-model",
-  provider: "test",
+  modelId: "claude-sonnet-4-6",
+  provider: "anthropic",
   contextWindow: 100_000,
   maxOutputTokens: 4096,
   supportsThinking: false,
@@ -36,7 +36,7 @@ export function makeAssistant(text = "done"): AssistantMessage {
   return {
     role: "assistant",
     content: [{ type: "text", text }],
-    model: TEST_MODEL.id,
+    model: TEST_MODEL,
     usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 },
     stopReason: "end_turn",
     timestamp: Date.now(),
@@ -151,7 +151,7 @@ export function makeCollabDeps(overrides: Partial<CollabToolDeps> = {}): CollabT
   return {
     cwd: "/tmp/collab-test",
     paths: TEST_PATHS,
-    modelId: TEST_MODEL.id,
+    model: TEST_MODEL,
     effort: "medium",
     systemPrompt: [{ label: "base", content: "You are a helpful agent." }] as SystemSection[],
     agentDefinitions: getBuiltinAgentDefinitions(),

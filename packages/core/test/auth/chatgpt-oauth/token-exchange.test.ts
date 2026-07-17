@@ -48,6 +48,16 @@ describe("exchangeCodeForTokens", () => {
 
     await expect(exchangeCodeForTokens("bad-code", "verifier")).rejects.toThrow("Token exchange failed (401)");
   });
+
+  test("rejects a partial authorization-code response", async () => {
+    globalThis.fetch = mock(
+      async () => new Response(JSON.stringify({ access_token: "at-123" }), { status: 200 }),
+    ) as unknown as typeof fetch;
+
+    await expect(exchangeCodeForTokens("auth-code", "verifier")).rejects.toThrow(
+      "refresh_token must be a non-empty string",
+    );
+  });
 });
 
 describe("parseJwtClaims", () => {
@@ -173,6 +183,10 @@ describe("extractAccountInfo", () => {
 });
 
 describe("buildOAuthTokens", () => {
+  test("rejects a non-object token response", () => {
+    expect(() => buildOAuthTokens(null as unknown as RawTokenResponse)).toThrow("Token response must be an object");
+  });
+
   test("builds tokens with expires_at from expires_in", () => {
     const before = Date.now();
     const raw = {

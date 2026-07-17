@@ -20,8 +20,8 @@ import type { AgentEvent } from "../../src/agent-event";
 const TEST_ROOT = join(tmpdir(), `diligent-sm-test-${Date.now()}`);
 
 const TEST_MODEL: Model = {
-  id: "test-model",
-  provider: "test",
+  modelId: "test-model",
+  provider: "anthropic",
   contextWindow: 100_000,
   maxOutputTokens: 4096,
   supportsThinking: false,
@@ -38,7 +38,7 @@ function makeAssistantMessage(
   return {
     role: "assistant",
     content,
-    model: TEST_MODEL.id,
+    model: TEST_MODEL,
     usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 },
     stopReason,
     timestamp: Date.now(),

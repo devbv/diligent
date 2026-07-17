@@ -1,21 +1,23 @@
 // @summary Tests for provider-native compaction adapters (OpenAI/ChatGPT/Anthropic)
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import { DEFAULT_ANTHROPIC_MODEL_ID } from "../../../src/llm/models";
+import { toSerializableError } from "../../../src/agent/util/errors";
 import { createAnthropicNativeCompaction } from "../../../src/llm/provider/anthropic";
 import { createChatGPTNativeCompaction } from "../../../src/llm/provider/chatgpt";
 import { createOpenAINativeCompaction } from "../../../src/llm/provider/openai";
-import { buildResponsesRequestBody, toResponseInputItems } from "../../../src/llm/provider/openai-responses";
-import {
-  describeCompactionPayload,
-  extractCompactionSummary,
-  extractCompactionSummaryItem,
-} from "../../../src/llm/provider/openai-shared";
+import { buildResponsesRequestBody, toResponseInputItems } from "../../../src/llm/provider/openai/responses";
+import { describeCompactionPayload, extractCompactionSummaryItem } from "../../../src/llm/provider/openai/shared";
 import type { Model } from "../../../src/llm/types";
+
+const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-4-6";
 
 const originalFetch = globalThis.fetch;
 
+function currentCompactionPayload(encryptedContent = "ENCRYPTED_COMPACTION_SUMMARY") {
+  return { output: [{ type: "compaction", encrypted_content: encryptedContent }] };
+}
+
 const OPENAI_MODEL: Model = {
-  id: "gpt-5.4",
+  modelId: "gpt-5.6-sol",
   provider: "openai",
   contextWindow: 200_000,
   maxOutputTokens: 16_000,
@@ -23,7 +25,7 @@ const OPENAI_MODEL: Model = {
 };
 
 const ANTHROPIC_MODEL: Model = {
-  id: DEFAULT_ANTHROPIC_MODEL_ID,
+  modelId: TEST_ANTHROPIC_MODEL_ID,
   provider: "anthropic",
   contextWindow: 300_000,
   maxOutputTokens: 16_000,
@@ -43,7 +45,7 @@ describe("native compaction adapters", () => {
       capturedUrl = String(url);
       capturedHeaders = (init?.headers as Record<string, string>) ?? {};
       capturedBody = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
-      return new Response(JSON.stringify({ id: "resp_1", summary: "Compacted summary" }), {
+      return new Response(JSON.stringify(currentCompactionPayload()), {
         status: 200,
       });
     }) as unknown as typeof fetch;
@@ -57,17 +59,21 @@ describe("native compaction adapters", () => {
 
     expect(capturedUrl).toBe("https://api.openai.com/v1/responses/compact");
     expect(capturedHeaders.Authorization).toBe("Bearer sk-openai");
-    expect(capturedBody.model).toBe("gpt-5.4");
+    expect(capturedBody.model).toBe("gpt-5.6-sol");
     expect(capturedBody.input).toBeArray();
     expect(result.status).toBe("ok");
   });
 
   test("OpenAI adapter prepends prior compactionSummary to compact input", async () => {
     let capturedBody: Record<string, unknown> = {};
-    const message = { role: "user" as const, content: "follow up", timestamp: Date.now() };
+    const message = {
+      role: "user" as const,
+      content: "follow up",
+      timestamp: Date.now(),
+    };
     globalThis.fetch = mock(async (_url: string | URL, init?: RequestInit) => {
       capturedBody = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
-      return new Response(JSON.stringify({ id: "resp_1", summary: "Compacted summary" }), {
+      return new Response(JSON.stringify(currentCompactionPayload()), {
         status: 200,
       });
     }) as unknown as typeof fetch;
@@ -77,13 +83,19 @@ describe("native compaction adapters", () => {
       model: OPENAI_MODEL,
       systemPrompt: [{ label: "base", content: "You are helpful." }],
       messages: [message],
-      compactionSummary: { type: "compaction", encrypted_content: "ENCRYPTED_COMPACTION_SUMMARY" },
+      compactionSummary: {
+        type: "compaction",
+        encrypted_content: "ENCRYPTED_COMPACTION_SUMMARY",
+      },
     });
 
     expect(capturedBody.input).toEqual(
       await toResponseInputItems({
         messages: [message],
-        compactionSummary: { type: "compaction", encrypted_content: "ENCRYPTED_COMPACTION_SUMMARY" },
+        compactionSummary: {
+          type: "compaction",
+          encrypted_content: "ENCRYPTED_COMPACTION_SUMMARY",
+        },
       }),
     );
   });
@@ -92,7 +104,7 @@ describe("native compaction adapters", () => {
     let capturedBody: Record<string, unknown> = {};
     globalThis.fetch = mock(async (_url: string | URL, init?: RequestInit) => {
       capturedBody = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
-      return new Response(JSON.stringify({ id: "resp_1", summary: "Compacted summary" }), { status: 200 });
+      return new Response(JSON.stringify(currentCompactionPayload()), { status: 200 });
     }) as unknown as typeof fetch;
 
     const compact = createOpenAINativeCompaction("sk-openai", "https://api.openai.com/v1");
@@ -106,42 +118,15 @@ describe("native compaction adapters", () => {
           timestamp: Date.now(),
         },
       ],
-      localImageLoader: { load: async () => new TextEncoder().encode("image-bytes").buffer },
+      localImageLoader: {
+        load: async () => new TextEncoder().encode("image-bytes").buffer,
+      },
     });
 
     expect(JSON.stringify(capturedBody.input)).toContain("data:image/png;base64,aW1hZ2UtYnl0ZXM=");
   });
 
-  test("OpenAI adapter extracts summary from reasoning summary array", async () => {
-    globalThis.fetch = mock(
-      async () =>
-        new Response(
-          JSON.stringify({
-            output: [
-              {
-                type: "reasoning",
-                summary: [{ type: "summary_text", text: "Compacted summary via reasoning" }],
-              },
-            ],
-          }),
-          { status: 200 },
-        ),
-    ) as unknown as typeof fetch;
-
-    const compact = createOpenAINativeCompaction("sk-openai", "https://api.openai.com/v1");
-    const result = await compact({
-      model: OPENAI_MODEL,
-      systemPrompt: [{ label: "base", content: "You are helpful." }],
-      messages: [{ role: "user", content: "hello", timestamp: Date.now() }],
-    });
-
-    expect(result.status).toBe("ok");
-    if (result.status === "ok") {
-      expect(result.summary).toContain("Compacted summary via reasoning");
-    }
-  });
-
-  test("OpenAI adapter includes error body in unsupported reason", async () => {
+  test("OpenAI adapter throws generic structured 400 errors with diagnostics", async () => {
     globalThis.fetch = mock(
       async () =>
         new Response(
@@ -158,143 +143,43 @@ describe("native compaction adapters", () => {
     ) as unknown as typeof fetch;
 
     const compact = createOpenAINativeCompaction("sk-openai", "https://api.openai.com/v1");
-    const result = await compact({
+    const error = await compact({
       model: OPENAI_MODEL,
       systemPrompt: [{ label: "base", content: "You are helpful." }],
       messages: [{ role: "user", content: "hello", timestamp: Date.now() }],
-    });
+    }).catch((caught: unknown) => caught);
 
-    expect(result.status).toBe("unsupported");
-    if (result.status === "unsupported") {
-      expect(result.reason).toContain("status_400");
-      expect(result.reason).toContain("unknown_parameter");
-      expect(result.reason).toContain("store");
-      expect(result.reason).toContain("Unknown parameter: 'store'.");
-    }
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain("OpenAI native compaction failed (400)");
+    expect((error as Error).message).toContain("unknown_parameter");
+    expect((error as Error).message).toContain("Unknown parameter: 'store'.");
+    expect(toSerializableError(error).code).toBe("unknown_parameter");
   });
 
-  test("ChatGPT adapter accepts compact response output array format", async () => {
+  test("OpenAI adapter throws an unstructured 400 instead of masking it as unsupported", async () => {
     globalThis.fetch = mock(
-      async () =>
-        new Response(
-          JSON.stringify({
-            output: [
-              {
-                type: "message",
-                content: [{ type: "output_text", text: "Compacted summary via output" }],
-              },
-            ],
-          }),
-          { status: 200 },
-        ),
+      async () => new Response("malformed compact request", { status: 400 }),
     ) as unknown as typeof fetch;
 
-    const adapter = createChatGPTNativeCompaction(() => ({
-      access_token: "access-token",
-      refresh_token: "refresh-token",
-      id_token: "id-token",
-      expires_at: Date.now() + 60_000,
-      account_id: "acct_1",
-    }));
-
-    const result = await adapter({
-      model: OPENAI_MODEL,
-      systemPrompt: [],
-      messages: [{ role: "user", content: "hello", timestamp: Date.now() }],
-    });
-
-    expect(result.status).toBe("ok");
-    if (result.status === "ok") {
-      expect(result.summary).toContain("Compacted summary via output");
-    }
+    await expect(
+      createOpenAINativeCompaction("sk-openai")({
+        model: OPENAI_MODEL,
+        systemPrompt: [],
+        messages: [{ role: "user", content: "hello", timestamp: 1 }],
+      }),
+    ).rejects.toThrow("OpenAI native compaction failed (400) body=malformed compact request");
   });
 
-  test("ChatGPT adapter ignores echoed input_text messages and extracts only actual summary output", async () => {
-    globalThis.fetch = mock(
-      async () =>
-        new Response(
-          JSON.stringify({
-            output: [
-              {
-                type: "message",
-                role: "user",
-                content: [{ type: "input_text", text: "very long prior conversation echoed back" }],
-              },
-              {
-                type: "message",
-                role: "assistant",
-                content: [{ type: "output_text", text: "## Goal\nReal compacted summary" }],
-              },
-            ],
-          }),
-          { status: 200 },
-        ),
-    ) as unknown as typeof fetch;
+  test.each([404, 405])("OpenAI adapter marks HTTP %d as unsupported", async (status) => {
+    globalThis.fetch = mock(async () => new Response("not supported", { status })) as unknown as typeof fetch;
 
-    const adapter = createChatGPTNativeCompaction(() => ({
-      access_token: "access-token",
-      refresh_token: "refresh-token",
-      id_token: "id-token",
-      expires_at: Date.now() + 60_000,
-      account_id: "acct_1",
-    }));
-
-    const result = await adapter({
+    const result = await createOpenAINativeCompaction("sk-openai")({
       model: OPENAI_MODEL,
       systemPrompt: [],
-      messages: [{ role: "user", content: "hello", timestamp: Date.now() }],
+      messages: [{ role: "user", content: "hello", timestamp: 1 }],
     });
 
-    expect(result.status).toBe("ok");
-    if (result.status === "ok") {
-      expect(result.summary).toBe("## Goal\nReal compacted summary");
-      expect(result.summary).not.toContain("echoed back");
-    }
-  });
-
-  test("ChatGPT adapter falls back to compacted message transcript when output contains only echoed input_text messages", async () => {
-    globalThis.fetch = mock(
-      async () =>
-        new Response(
-          JSON.stringify({
-            output: [
-              {
-                type: "message",
-                role: "user",
-                content: [{ type: "input_text", text: "first compacted user message" }],
-              },
-              {
-                type: "message",
-                role: "assistant",
-                content: [{ type: "input_text", text: "assistant compacted content echoed as input_text" }],
-              },
-            ],
-          }),
-          { status: 200 },
-        ),
-    ) as unknown as typeof fetch;
-
-    const adapter = createChatGPTNativeCompaction(() => ({
-      access_token: "access-token",
-      refresh_token: "refresh-token",
-      id_token: "id-token",
-      expires_at: Date.now() + 60_000,
-      account_id: "acct_1",
-    }));
-
-    const result = await adapter({
-      model: OPENAI_MODEL,
-      systemPrompt: [],
-      messages: [{ role: "user", content: "hello", timestamp: Date.now() }],
-    });
-
-    expect(result.status).toBe("ok");
-    if (result.status === "ok") {
-      expect(result.summary).toContain("<user>");
-      expect(result.summary).toContain("first compacted user message");
-      expect(result.summary).toContain("<assistant>");
-      expect(result.summary).toContain("assistant compacted content echoed as input_text");
-    }
+    expect(result).toEqual({ status: "unsupported", reason: `status_${status} body=not supported` });
   });
 
   test("compaction payload descriptor reports structured compaction items", () => {
@@ -306,17 +191,33 @@ describe("native compaction adapters", () => {
           content: [{ type: "input_text", text: "hello" }],
         },
         {
-          type: "compaction_summary",
+          type: "compaction",
           encrypted_content: "encrypted",
         },
       ],
     };
 
     expect(describeCompactionPayload(payload)).toContain("structured_compaction_items=1");
-    expect(extractCompactionSummary(payload)).toBeUndefined();
     expect(extractCompactionSummaryItem(payload)).toEqual({
       type: "compaction",
       encrypted_content: "encrypted",
+    });
+  });
+
+  test("rejects unobserved plaintext aliases with concise shape diagnostics", async () => {
+    globalThis.fetch = mock(
+      async () => new Response(JSON.stringify({ summary: "unproven plaintext alias" }), { status: 200 }),
+    ) as unknown as typeof fetch;
+
+    const result = await createOpenAINativeCompaction("sk-openai")({
+      model: OPENAI_MODEL,
+      systemPrompt: [],
+      messages: [{ role: "user", content: "hello", timestamp: 1 }],
+    });
+
+    expect(result).toEqual({
+      status: "unsupported",
+      reason: "missing_summary payload_keys=summary output_items=0 output_shape=none structured_compaction_items=0",
     });
   });
 
@@ -327,7 +228,7 @@ describe("native compaction adapters", () => {
           JSON.stringify({
             output: [
               {
-                type: "compaction_summary",
+                type: "compaction",
                 encrypted_content: "ENCRYPTED_COMPACTION_SUMMARY",
               },
             ],
@@ -354,23 +255,36 @@ describe("native compaction adapters", () => {
 
   test("request body prepends compaction summary before converted follow-up messages", async () => {
     const body = await buildResponsesRequestBody({
-      model: "gpt-5.4",
+      model: "gpt-5.6-sol",
       messages: [{ role: "user", content: "follow up", timestamp: Date.now() }],
-      compactionSummary: { type: "compaction", encrypted_content: "ENCRYPTED_COMPACTION_SUMMARY" },
+      compactionSummary: {
+        type: "compaction",
+        encrypted_content: "ENCRYPTED_COMPACTION_SUMMARY",
+      },
     });
 
     expect(body.input).toEqual([
       { type: "compaction", encrypted_content: "ENCRYPTED_COMPACTION_SUMMARY" },
-      { type: "message", role: "user", content: [{ type: "input_text", text: "follow up" }] },
+      {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: "follow up" }],
+      },
     ]);
   });
 
   test("ChatGPT adapter prepends prior compactionSummary to compact input", async () => {
     let capturedBody: Record<string, unknown> = {};
-    const message = { role: "user" as const, content: "follow up", timestamp: Date.now() };
+    const message = {
+      role: "user" as const,
+      content: "follow up",
+      timestamp: Date.now(),
+    };
     globalThis.fetch = mock(async (_url: string | URL, init?: RequestInit) => {
       capturedBody = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
-      return new Response(JSON.stringify({ summary: "Compacted summary" }), { status: 200 });
+      return new Response(JSON.stringify(currentCompactionPayload()), {
+        status: 200,
+      });
     }) as unknown as typeof fetch;
 
     const adapter = createChatGPTNativeCompaction(() => ({
@@ -383,15 +297,22 @@ describe("native compaction adapters", () => {
       model: OPENAI_MODEL,
       systemPrompt: [],
       messages: [message],
-      compactionSummary: { type: "compaction", encrypted_content: "ENCRYPTED_COMPACTION_SUMMARY" },
+      compactionSummary: {
+        type: "compaction",
+        encrypted_content: "ENCRYPTED_COMPACTION_SUMMARY",
+      },
     });
 
-    expect(capturedBody.input).toEqual(
-      await toResponseInputItems({
+    expect(capturedBody.input).toEqual([
+      { type: "additional_tools", role: "developer", tools: [] },
+      ...(await toResponseInputItems({
         messages: [message],
-        compactionSummary: { type: "compaction", encrypted_content: "ENCRYPTED_COMPACTION_SUMMARY" },
-      }),
-    );
+        compactionSummary: {
+          type: "compaction",
+          encrypted_content: "ENCRYPTED_COMPACTION_SUMMARY",
+        },
+      })),
+    ]);
   });
 
   test("ChatGPT adapter posts to codex compact endpoint with account header", async () => {
@@ -402,7 +323,7 @@ describe("native compaction adapters", () => {
       capturedUrl = String(url);
       capturedHeaders = (init?.headers as Record<string, string>) ?? {};
       capturedBody = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
-      return new Response(JSON.stringify({ summary: "Compacted summary" }), {
+      return new Response(JSON.stringify(currentCompactionPayload()), {
         status: 200,
       });
     }) as unknown as typeof fetch;
@@ -425,9 +346,33 @@ describe("native compaction adapters", () => {
     expect(capturedHeaders.Authorization).toBe("Bearer access-token");
     expect(capturedHeaders["ChatGPT-Account-ID"]).toBe("acct_1");
     expect(capturedHeaders.version).toBe("0.144.1");
-    expect(capturedHeaders.session_id).toBe("session-1");
+    expect(capturedHeaders["session-id"]).toBe("session-1");
+    expect(capturedHeaders.session_id).toBeUndefined();
     expect(capturedBody.store).toBeUndefined();
     expect(result.status).toBe("ok");
+  });
+
+  test("ChatGPT adapter omits both session header spellings without a session ID", async () => {
+    let capturedHeaders: Record<string, string> = {};
+    globalThis.fetch = mock(async (_url: string | URL, init?: RequestInit) => {
+      capturedHeaders = (init?.headers as Record<string, string>) ?? {};
+      return new Response(JSON.stringify(currentCompactionPayload()), { status: 200 });
+    }) as unknown as typeof fetch;
+    const adapter = createChatGPTNativeCompaction(() => ({
+      access_token: "access-token",
+      refresh_token: "refresh-token",
+      id_token: "id-token",
+      expires_at: Date.now() + 60_000,
+    }));
+
+    await adapter({
+      model: OPENAI_MODEL,
+      systemPrompt: [],
+      messages: [{ role: "user", content: "hello", timestamp: 1 }],
+    });
+
+    expect(capturedHeaders["session-id"]).toBeUndefined();
+    expect(capturedHeaders.session_id).toBeUndefined();
   });
 
   test("ChatGPT GPT-5.6 compaction uses the Responses Lite HTTP contract", async () => {
@@ -436,7 +381,9 @@ describe("native compaction adapters", () => {
     globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
       capturedHeaders = Object.fromEntries(new Headers(init?.headers).entries());
       capturedBody = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
-      return new Response(JSON.stringify({ summary: "Compacted summary" }), { status: 200 });
+      return new Response(JSON.stringify(currentCompactionPayload()), {
+        status: 200,
+      });
     }) as unknown as typeof fetch;
     const adapter = createChatGPTNativeCompaction(() => ({
       access_token: "access-token",
@@ -447,7 +394,7 @@ describe("native compaction adapters", () => {
     }));
 
     await adapter({
-      model: { ...OPENAI_MODEL, id: "chatgpt-5.6-luna", provider: "chatgpt" },
+      model: { ...OPENAI_MODEL, modelId: "gpt-5.6-luna", provider: "chatgpt" },
       systemPrompt: [{ label: "base", content: "System instructions" }],
       messages: [{ role: "user", content: "hello", timestamp: Date.now() }],
       sessionId: "session-1",
@@ -466,7 +413,11 @@ describe("native compaction adapters", () => {
         role: "developer",
         content: [{ type: "input_text", text: "System instructions" }],
       },
-      { type: "message", role: "user", content: [{ type: "input_text", text: "hello" }] },
+      {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: "hello" }],
+      },
     ]);
   });
 
@@ -493,10 +444,15 @@ describe("native compaction adapters", () => {
   test("ChatGPT adapter surfaces JSON error payload details", async () => {
     globalThis.fetch = mock(
       async () =>
-        new Response(JSON.stringify({ error: { code: "invalid_request", message: "session_id invalid" } }), {
-          status: 400,
-          headers: { "content-type": "application/json" },
-        }),
+        new Response(
+          JSON.stringify({
+            error: { code: "invalid_request", message: "session_id invalid" },
+          }),
+          {
+            status: 400,
+            headers: { "content-type": "application/json" },
+          },
+        ),
     ) as unknown as typeof fetch;
 
     const adapter = createChatGPTNativeCompaction(() => ({
@@ -532,17 +488,31 @@ describe("native compaction adapters", () => {
   test("Anthropic adapter includes 400 error body in unsupported reason", async () => {
     globalThis.fetch = mock(
       async () =>
-        new Response(JSON.stringify({ error: { type: "invalid_request_error", message: "max_tokens too small" } }), {
-          status: 400,
-          headers: { "content-type": "application/json" },
-        }),
+        new Response(
+          JSON.stringify({
+            error: {
+              type: "invalid_request_error",
+              message: "max_tokens too small",
+            },
+          }),
+          {
+            status: 400,
+            headers: { "content-type": "application/json" },
+          },
+        ),
     ) as unknown as typeof fetch;
 
     const adapter = createAnthropicNativeCompaction("sk-ant");
     const result = await adapter({
       model: ANTHROPIC_MODEL,
       systemPrompt: [],
-      messages: [{ role: "user", content: "x".repeat(50_000 * 4), timestamp: Date.now() }],
+      messages: [
+        {
+          role: "user",
+          content: "x".repeat(50_000 * 4),
+          timestamp: Date.now(),
+        },
+      ],
     });
 
     expect(result.status).toBe("unsupported");
@@ -572,12 +542,21 @@ describe("native compaction adapters", () => {
       model: ANTHROPIC_MODEL,
       systemPrompt: [],
       messages: [
-        { role: "user", content: "x".repeat(50_000 * 4), timestamp: Date.now() },
+        {
+          role: "user",
+          content: "x".repeat(50_000 * 4),
+          timestamp: Date.now(),
+        },
         {
           role: "assistant",
           content: [{ type: "text", text: "assistant reply" }],
-          model: ANTHROPIC_MODEL.id,
-          usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
+          model: ANTHROPIC_MODEL,
+          usage: {
+            inputTokens: 1,
+            outputTokens: 1,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+          },
           stopReason: "end_turn",
           timestamp: Date.now(),
         },
@@ -588,9 +567,53 @@ describe("native compaction adapters", () => {
     expect(capturedBody.messages).toEqual([
       {
         role: "user",
-        content: [{ type: "text", text: "x".repeat(50_000 * 4), cache_control: { type: "ephemeral" } }],
+        content: [
+          {
+            type: "text",
+            text: "x".repeat(50_000 * 4),
+            cache_control: { type: "ephemeral" },
+          },
+        ],
       },
     ]);
+  });
+
+  test("Anthropic adapter sends an empty native-compaction conversation when no user message exists", async () => {
+    let capturedBody: Record<string, unknown> = {};
+    globalThis.fetch = mock(async (_url: string | URL, init?: RequestInit) => {
+      capturedBody = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+      return new Response(
+        JSON.stringify({
+          id: "msg_1",
+          stop_reason: "compaction",
+          content: [{ type: "compaction", content: "opaque compacted context" }],
+        }),
+        { status: 200 },
+      );
+    }) as unknown as typeof fetch;
+
+    const adapter = createAnthropicNativeCompaction("sk-ant", "https://api.anthropic.com");
+    await adapter({
+      model: ANTHROPIC_MODEL,
+      systemPrompt: [],
+      messages: [
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "assistant-only history" }],
+          model: ANTHROPIC_MODEL,
+          usage: {
+            inputTokens: 1,
+            outputTokens: 1,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+          },
+          stopReason: "end_turn",
+          timestamp: Date.now(),
+        },
+      ],
+    });
+
+    expect(capturedBody.messages).toEqual([]);
   });
 
   test("Anthropic adapter posts to /messages with beta compaction header and context_management", async () => {
@@ -615,14 +638,20 @@ describe("native compaction adapters", () => {
     const result = await adapter({
       model: ANTHROPIC_MODEL,
       systemPrompt: [{ label: "base", content: "You are helpful." }],
-      messages: [{ role: "user", content: "x".repeat(50_000 * 4), timestamp: Date.now() }],
+      messages: [
+        {
+          role: "user",
+          content: "x".repeat(50_000 * 4),
+          timestamp: Date.now(),
+        },
+      ],
     });
 
     expect(capturedUrl).toBe("https://api.anthropic.com/v1/messages");
     expect(capturedHeaders["x-api-key"]).toBe("sk-ant");
     expect(capturedHeaders["anthropic-version"]).toBe("2023-06-01");
     expect(capturedHeaders["anthropic-beta"]).toBe("compact-2026-01-12");
-    expect(capturedBody.model).toBe(DEFAULT_ANTHROPIC_MODEL_ID);
+    expect(capturedBody.model).toBe(TEST_ANTHROPIC_MODEL_ID);
     expect(capturedBody.max_tokens).toBe(4096);
     expect(capturedBody.context_management).toEqual({
       edits: [
@@ -636,7 +665,10 @@ describe("native compaction adapters", () => {
     expect(result.status).toBe("ok");
     if (result.status === "ok") {
       expect(result.summary).toBe("opaque compacted context");
-      expect(result.compactionSummary).toEqual({ type: "compaction", content: "opaque compacted context" });
+      expect(result.compactionSummary).toEqual({
+        type: "compaction",
+        content: "opaque compacted context",
+      });
     }
   });
 
@@ -659,10 +691,16 @@ describe("native compaction adapters", () => {
       model: ANTHROPIC_MODEL,
       systemPrompt: [],
       messages: [{ role: "user", content: "follow-up", timestamp: Date.now() }],
-      compactionSummary: { type: "compaction", content: "prior compacted context" },
+      compactionSummary: {
+        type: "compaction",
+        content: "prior compacted context",
+      },
     });
 
-    const messages = capturedBody.messages as Array<{ role: string; content: unknown }>;
+    const messages = capturedBody.messages as Array<{
+      role: string;
+      content: unknown;
+    }>;
     expect(messages).toHaveLength(2);
     expect(messages[0]).toEqual({
       role: "user",

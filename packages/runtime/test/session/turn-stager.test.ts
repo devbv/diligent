@@ -29,7 +29,7 @@ describe("TurnStager", () => {
       message: {
         role: "assistant",
         content: [{ type: "text", text: "done" }],
-        model: "test-model",
+        model: { provider: "anthropic", modelId: "test-model" },
         usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
         stopReason: "tool_use",
         timestamp: Date.now(),

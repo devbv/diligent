@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { LocalImageLoader } from "@diligent/core/image-contract";
-import { DEFAULT_ANTHROPIC_MODEL_ID, getModelInfoList } from "@diligent/core/model-registry";
+import { getModelInfoList } from "@diligent/core/model-registry";
 import type { Model } from "@diligent/core/provider-contract";
 import { ProviderManager } from "@diligent/core/provider-contract";
 import { createAppServerConfig } from "@diligent/runtime/app-server";
@@ -12,9 +12,12 @@ import { z } from "zod";
 import { getBuiltinAgentDefinitions } from "../../src/agent/agent-types";
 import type { PermissionEngine } from "../../src/approval";
 import type { RuntimeConfig } from "../../src/config/runtime";
+
 import { writeKnowledge } from "../../src/knowledge/store";
 import type { BundledToolProvider } from "../../src/tools/bundled-provider";
 import { makeAssistant, makeStreamFn } from "../helpers/collab";
+
+const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-4-6";
 
 function makeRuntimeConfig(overrides?: Partial<RuntimeConfig>): RuntimeConfig {
   const providerManager = new ProviderManager({});
@@ -23,7 +26,7 @@ function makeRuntimeConfig(overrides?: Partial<RuntimeConfig>): RuntimeConfig {
     remember: () => {},
   };
   const model: Model = {
-    id: DEFAULT_ANTHROPIC_MODEL_ID,
+    modelId: TEST_ANTHROPIC_MODEL_ID,
     provider: "anthropic",
     contextWindow: 200_000,
     maxOutputTokens: 64_000,
@@ -77,7 +80,7 @@ describe("createAppServerConfig", () => {
     expect(config.authStore).toEqual(runtimeConfig.authStore);
     expect(config.permissionEngine).toBe(runtimeConfig.permissionEngine);
     expect(config.modelConfig).toBeDefined();
-    expect(config.modelConfig?.currentModelId).toBe(DEFAULT_ANTHROPIC_MODEL_ID);
+    expect(config.modelConfig?.currentModel).toMatchObject({ provider: "anthropic", modelId: TEST_ANTHROPIC_MODEL_ID });
     expect(config.defaultEffort).toBe("medium");
     expect(config.skillNames).toEqual([]);
   });
@@ -91,7 +94,7 @@ describe("createAppServerConfig", () => {
       cwd: projectRoot,
       mode: "default",
       effort: "medium",
-      modelId: DEFAULT_ANTHROPIC_MODEL_ID,
+      model: { provider: "anthropic", modelId: TEST_ANTHROPIC_MODEL_ID },
       approve: async () => "once",
       ask: async () => null,
     });
@@ -180,8 +183,8 @@ describe("createAppServerConfig", () => {
       const runtimeConfig = makeRuntimeConfig();
       const config = createAppServerConfig({ cwd: "/tmp/test", runtimeConfig });
 
-      config.modelConfig?.onModelChange("claude-haiku-4-5");
-      expect(runtimeConfig.model?.id).toBe("claude-haiku-4-5-20251001");
+      config.modelConfig?.onModelChange({ provider: "anthropic", modelId: "claude-haiku-4-5-20251001" });
+      expect(runtimeConfig.model?.modelId).toBe("claude-haiku-4-5-20251001");
     } finally {
       if (originalHome === undefined) {
         delete process.env.HOME;
@@ -201,9 +204,12 @@ describe("createAppServerConfig", () => {
       const runtimeConfig = makeRuntimeConfig();
       const config = createAppServerConfig({ cwd: "/tmp/test", runtimeConfig });
 
-      config.modelConfig?.onModelChange("claude-haiku-4-5", "thread-child");
+      config.modelConfig?.onModelChange(
+        { provider: "anthropic", modelId: "claude-haiku-4-5-20251001" },
+        "thread-child",
+      );
 
-      expect(runtimeConfig.model?.id).toBe(DEFAULT_ANTHROPIC_MODEL_ID);
+      expect(runtimeConfig.model?.modelId).toBe(TEST_ANTHROPIC_MODEL_ID);
       const configPath = join(fakeHome, ".diligent", "config.jsonc");
       expect(await Bun.file(configPath).exists()).toBe(false);
     } finally {
@@ -258,7 +264,7 @@ describe("createAppServerConfig", () => {
       cwd: "/tmp/test",
       mode: "default",
       effort: "medium",
-      modelId: DEFAULT_ANTHROPIC_MODEL_ID,
+      model: { provider: "anthropic", modelId: TEST_ANTHROPIC_MODEL_ID },
       approve: async () => "once",
       ask: async () => null,
     });
@@ -289,7 +295,7 @@ describe("createAppServerConfig", () => {
       cwd: "/tmp/test",
       mode: "default",
       effort: "medium",
-      modelId: DEFAULT_ANTHROPIC_MODEL_ID,
+      model: { provider: "anthropic", modelId: TEST_ANTHROPIC_MODEL_ID },
       approve: async () => "once",
       ask: async () => null,
     });
@@ -325,7 +331,7 @@ describe("createAppServerConfig", () => {
       cwd: projectRoot,
       mode: "default",
       effort: "medium",
-      modelId: DEFAULT_ANTHROPIC_MODEL_ID,
+      model: { provider: "anthropic", modelId: TEST_ANTHROPIC_MODEL_ID },
       approve: async () => "once",
       ask: async () => null,
     });
@@ -343,7 +349,7 @@ describe("createAppServerConfig", () => {
       cwd: projectRoot,
       mode: "default",
       effort: "medium",
-      modelId: DEFAULT_ANTHROPIC_MODEL_ID,
+      model: { provider: "anthropic", modelId: TEST_ANTHROPIC_MODEL_ID },
       approve: async () => "once",
       ask: async () => null,
     });
@@ -368,7 +374,7 @@ describe("createAppServerConfig", () => {
       cwd: "/tmp/test",
       mode: "execute",
       effort: "medium",
-      modelId: DEFAULT_ANTHROPIC_MODEL_ID,
+      model: { provider: "anthropic", modelId: TEST_ANTHROPIC_MODEL_ID },
       approve: async () => "once",
       ask: async () => null,
     });
@@ -397,7 +403,7 @@ describe("createAppServerConfig", () => {
       cwd: "/tmp/test",
       mode: "execute",
       effort: "medium",
-      modelId: DEFAULT_ANTHROPIC_MODEL_ID,
+      model: { provider: "anthropic", modelId: TEST_ANTHROPIC_MODEL_ID },
       approve: async () => "once",
       ask: async () => null,
     });
@@ -509,7 +515,7 @@ describe("getModelInfoList", () => {
     const list = getModelInfoList();
     expect(list.length).toBeGreaterThan(0);
     for (const m of list) {
-      expect(m.id).toBeTypeOf("string");
+      expect(m.modelId).toBeTypeOf("string");
       expect(m.provider).toBeTypeOf("string");
       expect(m.contextWindow).toBeGreaterThan(0);
       expect(m.maxOutputTokens).toBeGreaterThan(0);

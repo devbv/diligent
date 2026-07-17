@@ -1,7 +1,7 @@
 // @summary AgentStatus, AgentEntry, CollabToolDeps, and CollabEvent types for non-blocking multi-agent collab
 
 import type { Message } from "@diligent/core/message-contract";
-import type { ThinkingEffort } from "@diligent/core/provider-contract";
+import type { ModelRef, ThinkingEffort } from "@diligent/core/provider-contract";
 import type { Tool } from "@diligent/core/tool-contract";
 import type { ResolvedAgentDefinition } from "../agent/resolved-agent";
 import type { AgentEvent, ChildAgentEvent } from "../agent-event";
@@ -15,7 +15,7 @@ export interface ChildStopInfo {
   sessionId: string;
   sessionPath: string;
   cwd: string;
-  model: string;
+  model: ModelRef;
   provider?: string;
   effort: ThinkingEffort;
   userId?: string;
@@ -52,7 +52,7 @@ export type CollabAgentEvent = Extract<AgentEvent, { type: `collab_${string}` }>
 export interface CollabToolDeps {
   cwd: string;
   paths: DiligentPaths;
-  modelId: string;
+  model: ModelRef;
   effort: ThinkingEffort;
   agentDefinitions: ResolvedAgentDefinition[];
   parentTools: Tool[];

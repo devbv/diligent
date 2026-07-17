@@ -358,23 +358,36 @@ test("compaction_error clears compacting state", () => {
 
 test("resolveDraftModel preserves the current user-selected model when available", () => {
   const next = resolveDraftModel({
-    initialModel: "gpt-5",
-    currentModel: "claude-sonnet",
+    initialModel: { provider: "openai", modelId: "gpt-5" },
+    currentModel: { provider: "anthropic", modelId: "claude-sonnet" },
     availableModels: [
-      { id: "claude-sonnet", provider: "anthropic" },
-      { id: "gpt-5", provider: "openai" },
+      { modelId: "claude-sonnet", provider: "anthropic" },
+      { modelId: "gpt-5", provider: "openai" },
     ],
   });
 
-  expect(next).toBe("claude-sonnet");
+  expect(next).toEqual({ provider: "anthropic", modelId: "claude-sonnet" });
 });
 
 test("resolveDraftModel falls back to initial model when current model is unavailable", () => {
   const next = resolveDraftModel({
-    initialModel: "gpt-5",
-    currentModel: "claude-sonnet",
-    availableModels: [{ id: "gpt-5", provider: "openai" }],
+    initialModel: { provider: "openai", modelId: "gpt-5" },
+    currentModel: { provider: "anthropic", modelId: "claude-sonnet" },
+    availableModels: [{ modelId: "gpt-5", provider: "openai" }],
   });
 
-  expect(next).toBe("gpt-5");
+  expect(next).toEqual({ provider: "openai", modelId: "gpt-5" });
+});
+
+test("resolveDraftModel prefers the runtime default over catalog order", () => {
+  const next = resolveDraftModel({
+    initialModel: { provider: "openai", modelId: "gpt-5.6-sol" },
+    currentModel: undefined,
+    availableModels: [
+      { modelId: "gpt-5.6-terra", provider: "openai" },
+      { modelId: "gpt-5.6-sol", provider: "openai" },
+    ],
+  });
+
+  expect(next).toEqual({ provider: "openai", modelId: "gpt-5.6-sol" });
 });
