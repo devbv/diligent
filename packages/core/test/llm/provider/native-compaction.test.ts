@@ -409,7 +409,7 @@ describe("native compaction adapters", () => {
   test("ChatGPT GPT-5.6 compaction uses the Responses Lite HTTP contract", async () => {
     let capturedHeaders: Record<string, string> = {};
     let capturedBody: Record<string, unknown> = {};
-    globalThis.fetch = (async (_input, init) => {
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
       capturedHeaders = Object.fromEntries(new Headers(init?.headers).entries());
       capturedBody = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
       return new Response(JSON.stringify({ summary: "Compacted summary" }), { status: 200 });

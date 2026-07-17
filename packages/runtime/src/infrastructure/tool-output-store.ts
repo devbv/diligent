@@ -3,9 +3,9 @@
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ToolOutputStore } from "@diligent/core/tool-contract";
+import type { ToolOutputFileStore } from "@diligent/core/tool-contract";
 
-export const toolOutputStore: ToolOutputStore = {
+export const toolOutputStore: ToolOutputFileStore = {
   async save(output) {
     const dir = await mkdtemp(join(tmpdir(), "diligent-"));
     const filePath = join(dir, "full-output.txt");

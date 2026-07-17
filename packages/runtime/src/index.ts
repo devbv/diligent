@@ -2,27 +2,13 @@
 export type {
   AgentOptions,
   CoreAgentEvent,
-  Message,
-  Model,
-  OpenAIOAuthTokens,
-  ProviderName,
-  StreamFunction,
-  SystemSection,
-  Tool,
-  ToolContext,
-  ToolRegistry,
-  ToolResult,
-} from "@diligent/core";
+} from "@diligent/core/agent";
+export { Agent } from "@diligent/core/agent";
+export type { OpenAIOAuthTokens } from "@diligent/core/auth";
+export { EventStream } from "@diligent/core/event-stream";
+export type { Message } from "@diligent/core/message-contract";
 export {
-  Agent,
-  createAnthropicStream,
-  createGeminiStream,
-  createOpenAIStream,
   DEFAULT_ANTHROPIC_MODEL_ID,
-  DEFAULT_MODELS,
-  DEFAULT_PROVIDER,
-  EventStream,
-  flattenSections,
   getModelInfoList,
   getThinkingEffortLabel,
   getThinkingEffortOptions,
@@ -30,12 +16,22 @@ export {
   getThinkingEffortUsageValues,
   KNOWN_MODELS,
   normalizeThinkingEffort,
-  PROVIDER_NAMES,
-  ProviderManager,
   resolveModel,
   supportsThinkingEffort,
   supportsThinkingNone,
-} from "@diligent/core";
+} from "@diligent/core/model-registry";
+export { flattenSections } from "@diligent/core/prompt-contract";
+export type { Model, ProviderName, StreamFunction, SystemSection } from "@diligent/core/provider-contract";
+export {
+  DEFAULT_MODELS,
+  DEFAULT_PROVIDER,
+  PROVIDER_NAMES,
+  ProviderManager,
+} from "@diligent/core/provider-contract";
+export { createAnthropicStream } from "@diligent/core/providers/anthropic";
+export { createGeminiStream } from "@diligent/core/providers/gemini";
+export { createOpenAIStream } from "@diligent/core/providers/openai";
+export type { Tool, ToolContext, ToolRegistry, ToolResult } from "@diligent/core/tool-contract";
 export { getBuiltinAgentDefinitions } from "./agent/agent-types";
 export type { ContextPresentation } from "./agent/context-presentation";
 export { createPresentableContextInjection, readContextPresentation } from "./agent/context-presentation";

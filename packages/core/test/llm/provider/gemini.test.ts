@@ -144,7 +144,7 @@ describe("Gemini tool schema conversion", () => {
       },
     ];
 
-    expect(convertToGeminiTools(tools)).toEqual([
+    expect(convertToGeminiTools(tools) as unknown).toEqual([
       {
         functionDeclarations: [
           {
@@ -250,7 +250,7 @@ describe("Gemini tool schema conversion", () => {
       },
     ];
 
-    expect(convertToGeminiTools(tools)).toEqual([
+    expect(convertToGeminiTools(tools) as unknown).toEqual([
       {
         functionDeclarations: [
           {
@@ -335,7 +335,7 @@ describe("Gemini web metadata normalization", () => {
           },
         ],
       },
-    });
+    } as unknown as Parameters<typeof extractGeminiWebBlocks>[0]);
 
     expect(blocks).toEqual([
       {

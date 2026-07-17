@@ -64,6 +64,7 @@
                 "patterns": [
                   {
                     "group": [
+                      "@diligent/core",
                       "@diligent/core/*",
                       "!@diligent/core/agent",
                       "!@diligent/core/auth",
@@ -75,6 +76,9 @@
                       "!@diligent/core/prompt-contract",
                       "!@diligent/core/provider-contract",
                       "!@diligent/core/providers/chatgpt",
+                      "!@diligent/core/providers/anthropic",
+                      "!@diligent/core/providers/gemini",
+                      "!@diligent/core/providers/openai",
                       "!@diligent/core/providers/vertex",
                       "!@diligent/core/tool-contract"
                     ],

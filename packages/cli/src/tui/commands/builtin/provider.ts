@@ -1,5 +1,5 @@
 // @summary Provider configuration command - configure LLM provider and API keys
-import { resolveModel } from "@diligent/core";
+import { resolveModel } from "@diligent/core/model-registry";
 import { DILIGENT_CLIENT_REQUEST_METHODS } from "@diligent/protocol";
 import { createChatGPTOAuthBinding, removeAuthKey, removeOAuthTokens, saveAuthKey } from "@diligent/runtime";
 import {

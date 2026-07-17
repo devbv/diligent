@@ -1,7 +1,6 @@
 // @summary Tests for model resolution inference logic and model class system
 import { describe, expect, it } from "bun:test";
 import {
-  agentTypeToModelClass,
   DEFAULT_ANTHROPIC_MODEL_ID,
   getModelClass,
   KNOWN_MODELS,
@@ -249,6 +248,7 @@ describe("getModelClass", () => {
       provider: "anthropic",
       contextWindow: 200_000,
       maxOutputTokens: 4096,
+      supportsThinking: false,
     };
     expect(getModelClass(unknown)).toBe("general");
   });
@@ -330,7 +330,13 @@ describe("resolveModelForClass", () => {
   });
 
   it("falls back to current model for unknown provider", () => {
-    const custom: Model = { id: "custom-model", provider: "custom", contextWindow: 100_000, maxOutputTokens: 4096 };
+    const custom: Model = {
+      id: "custom-model",
+      provider: "custom",
+      contextWindow: 100_000,
+      maxOutputTokens: 4096,
+      supportsThinking: false,
+    };
     const result = resolveModelForClass(custom, "pro");
     expect(result.id).toBe("custom-model");
   });
@@ -342,32 +348,5 @@ describe("resolveModelForClass", () => {
     // Should never cross providers
     expect(pro.provider).not.toBe("openai");
     expect(pro.provider).not.toBe("gemini");
-  });
-});
-
-describe("agentTypeToModelClass", () => {
-  it("maps explore → lite", () => {
-    const sonnet = resolveModel(DEFAULT_ANTHROPIC_MODEL_ID);
-    expect(agentTypeToModelClass("explore", sonnet)).toBe("lite");
-  });
-
-  it("maps general → same class as parent (general)", () => {
-    const sonnet = resolveModel(DEFAULT_ANTHROPIC_MODEL_ID);
-    expect(agentTypeToModelClass("general", sonnet)).toBe("general");
-  });
-
-  it("maps general → same class as parent (pro)", () => {
-    const opus = resolveModel("claude-opus-4-8");
-    expect(agentTypeToModelClass("general", opus)).toBe("pro");
-  });
-
-  it("maps general → same class as parent (lite)", () => {
-    const haiku = resolveModel("claude-haiku-4-5");
-    expect(agentTypeToModelClass("general", haiku)).toBe("lite");
-  });
-
-  it("maps unknown agent type → general (same as parent default)", () => {
-    const sonnet = resolveModel(DEFAULT_ANTHROPIC_MODEL_ID);
-    expect(agentTypeToModelClass("unknown_type", sonnet)).toBe("general");
   });
 });

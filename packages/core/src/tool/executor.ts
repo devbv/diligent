@@ -11,12 +11,13 @@ import {
 } from "./truncation";
 import type { ToolContext, ToolRegistry, ToolResult } from "./types";
 
-export interface ToolOutputStore {
+/** Filesystem adapter for persisting a full tool output when core truncates the returned payload. */
+export interface ToolOutputFileStore {
   save(output: string): Promise<string>;
 }
 
 export interface ExecuteToolOptions {
-  outputStore?: ToolOutputStore;
+  outputStore?: ToolOutputFileStore;
 }
 
 export async function executeTool(
@@ -74,7 +75,12 @@ export async function executeTool(
           ? truncateHeadTail(result.output, maxBytes)
           : truncateTail(result.output, maxBytes);
 
-    const savedPath = await options?.outputStore?.save(result.output);
+    let savedPath: string | undefined;
+    try {
+      savedPath = await options?.outputStore?.save(result.output);
+    } catch {
+      // Full-output persistence is optional diagnostics. A usable truncated result already exists.
+    }
 
     return {
       ...result,

@@ -1,4 +1,4 @@
-export type { ExecuteToolOptions, ToolOutputStore } from "./executor";
+export type { ExecuteToolOptions, ToolOutputFileStore } from "./executor";
 export { executeTool } from "./executor";
 
 export { ToolRegistryBuilder } from "./registry";

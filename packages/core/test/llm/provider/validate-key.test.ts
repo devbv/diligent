@@ -14,7 +14,7 @@ describe("validateProviderApiKey — z.ai", () => {
     globalThis.fetch = (async (url: string) => {
       calledUrl = String(url);
       return new Response("unauthorized", { status: 401 });
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
 
     const error = await validateProviderApiKey("zai-coding-plan", "bad-key").catch((value: unknown) => value);
     expect(error).toBeInstanceOf(ProviderError);
@@ -30,7 +30,8 @@ describe("validateProviderApiKey — z.ai", () => {
   });
 
   it("resolves when the chat endpoint returns ok", async () => {
-    globalThis.fetch = (async () => new Response(JSON.stringify({ choices: [] }), { status: 200 })) as typeof fetch;
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ choices: [] }), { status: 200 })) as unknown as typeof fetch;
     await expect(validateProviderApiKey("zai-coding-plan", "good-key")).resolves.toBeUndefined();
   });
 });

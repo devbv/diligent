@@ -15,7 +15,13 @@ import type {
 import { createLogger, type LogRecord } from "@diligent/logging";
 import { z } from "zod";
 
-const model: Model = { id: "test-model", provider: "test", contextWindow: 100_000, maxOutputTokens: 4_096 };
+const model: Model = {
+  id: "test-model",
+  provider: "test",
+  contextWindow: 100_000,
+  maxOutputTokens: 4_096,
+  supportsThinking: false,
+};
 const user = (content = "goal"): Message => ({ role: "user", content, timestamp: Date.now() });
 
 function assistant(content: AssistantMessage["content"], stopReason: AssistantMessage["stopReason"]): AssistantMessage {
@@ -75,7 +81,16 @@ function makeAgent(stream: StreamFunction, hooks: readonly AgentLoopHook[], reco
     {
       llmMsgStreamFn: stream,
       loopHooks: hooks,
-      ...(records ? { logger: createLogger({ scope: "test", sink: (record) => records.push(record) }) } : {}),
+      ...(records
+        ? {
+            logger: createLogger({
+              scope: "test",
+              sink: (record) => {
+                records.push(record);
+              },
+            }),
+          }
+        : {}),
     },
   );
 }

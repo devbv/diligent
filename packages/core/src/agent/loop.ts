@@ -6,7 +6,7 @@ import type { NativeCompactFn } from "../llm/provider/native-compaction";
 import type { StreamTurnScope } from "../llm/turn-scope";
 import type { Model, StreamFunction, SystemSection, ThinkingEffort } from "../llm/types";
 import { ProviderError, ProviderErrorType } from "../llm/types";
-import type { ToolOutputStore } from "../tool/executor";
+import type { ToolOutputFileStore } from "../tool/executor";
 import type { Tool } from "../tool/types";
 import type { AssistantMessage, Message, ToolCallBlock } from "../types";
 import { streamAssistantMessage } from "./assistant";
@@ -38,7 +38,7 @@ export interface LoopRuntime {
   sessionId?: string;
   compactionSummary?: Record<string, unknown>;
   loopHooks: AgentLoopHookDispatcher;
-  toolOutputStore?: ToolOutputStore;
+  toolOutputStore?: ToolOutputFileStore;
   hooks: {
     drainSteeringMessages: () => QueuedSteeringMessage[];
     pendingSteeringCount: () => number;

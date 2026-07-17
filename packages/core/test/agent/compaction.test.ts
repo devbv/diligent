@@ -2,6 +2,7 @@
 import { describe, expect, it } from "bun:test";
 import { NATIVE_COMPACTION_MIN_INPUT_TOKENS } from "@diligent/core/compaction-contract";
 import { EventStream } from "@diligent/core/event-stream";
+import type { LocalImageLoader } from "@diligent/core/image-contract";
 import type { Message, UserMessage } from "@diligent/core/message-contract";
 import type { Model, ProviderEvent, ProviderResult, StreamFunction } from "@diligent/core/provider-contract";
 import { resolveMaxTokens } from "@diligent/core/provider-contract";
@@ -294,7 +295,7 @@ describe("runCompaction", () => {
     let capturedSessionId: string | undefined;
     let capturedCompactionSummary: Record<string, unknown> | undefined;
     const localImageLoader = { load: async () => null };
-    let capturedLocalImageLoader: typeof localImageLoader | undefined;
+    let capturedLocalImageLoader: LocalImageLoader | undefined;
 
     await runCompaction({
       messages,

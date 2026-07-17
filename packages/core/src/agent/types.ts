@@ -1,39 +1,16 @@
 // @summary Agent public types and event stream primitives for the core runner
 
 import type { Logger } from "@diligent/logging";
+import type { MessageDelta, SerializableError } from "@diligent/protocol";
 import type { LocalImageLoader } from "../llm/image-io";
 import type { NativeCompactFn } from "../llm/provider/native-compaction";
 import type { StreamTurnScope } from "../llm/turn-scope";
-import type { ProviderErrorReason, ProviderErrorType, StreamFunction, ThinkingEffort } from "../llm/types";
-import type { ToolOutputStore } from "../tool/executor";
-import type {
-  AssistantMessage,
-  ContentBlock,
-  ImageBlock,
-  Message,
-  ToolRenderPayloadLike,
-  ToolResultMessage,
-  Usage,
-} from "../types";
+import type { StreamFunction, ThinkingEffort } from "../llm/types";
+import type { ToolOutputFileStore } from "../tool/executor";
+import type { AssistantMessage, ImageBlock, Message, ToolRenderPayloadLike, ToolResultMessage, Usage } from "../types";
 import type { AgentLoopHook } from "./loop-hooks";
 
-export type MessageDelta =
-  | { type: "text_delta"; delta: string }
-  | { type: "thinking_delta"; delta: string }
-  | { type: "content_block_delta"; block: ContentBlock };
-
-// D086: Serializable error representation for events crossing core↔consumer boundary
-export interface SerializableError {
-  message: string;
-  name: string;
-  stack?: string;
-  code?: string;
-  providerErrorType?: ProviderErrorType;
-  providerErrorReason?: ProviderErrorReason;
-  isRetryable?: boolean;
-  retryAfterMs?: number;
-  statusCode?: number;
-}
+export type { MessageDelta, SerializableError } from "@diligent/protocol";
 
 // Core events emitted by the reusable agent engine — D086: itemId on grouped subtypes, SerializableError
 export type CoreAgentEvent =
@@ -174,7 +151,7 @@ export interface AgentOptions {
   /** Caller-owned adapter for reading persisted local image blocks. */
   localImageLoader?: LocalImageLoader;
   /** Caller-owned adapter for storing full tool output when core truncates it. */
-  toolOutputStore?: ToolOutputStore;
+  toolOutputStore?: ToolOutputFileStore;
   /** Trusted synchronous hooks scoped to this Agent instance. */
   loopHooks?: readonly AgentLoopHook[];
 }

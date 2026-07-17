@@ -10,7 +10,7 @@ function makeCtx(): ToolContext {
   return {
     toolCallId: "tc_test",
     signal: new AbortController().signal,
-    approve: async () => "once" as const,
+    abort: () => {},
   };
 }
 
@@ -115,6 +115,36 @@ describe("executeTool", () => {
       makeCtx(),
     );
 
+    expect(result.metadata?.fullOutputPath).toBeUndefined();
+    expect(result.output).not.toContain("Full output saved to disk");
+  });
+
+  test("truncates successfully when the optional output file store fails", async () => {
+    const bigTool: Tool = {
+      name: "big_with_failing_store",
+      description: "Returns big output",
+      parameters: z.object({}),
+      async execute() {
+        return { output: "x".repeat(60_000) };
+      },
+    };
+    const registry = new ToolRegistryBuilder().register(bigTool).build();
+
+    const result = await executeTool(
+      registry,
+      { type: "tool_call", id: "tc_1", name: "big_with_failing_store", input: {} },
+      makeCtx(),
+      {
+        outputStore: {
+          save: async () => {
+            throw new Error("store unavailable");
+          },
+        },
+      },
+    );
+
+    expect(result.output).toContain("WARNING");
+    expect(result.metadata?.truncated).toBe(true);
     expect(result.metadata?.fullOutputPath).toBeUndefined();
     expect(result.output).not.toContain("Full output saved to disk");
   });

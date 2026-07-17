@@ -395,17 +395,6 @@ export function getModelClass(model: Model): ModelClass {
 }
 
 /**
- * Map agent type to a default model class.
- * - "explore" agents do read-only work → lite
- * - "general" agents need full capability → same class as parent
- */
-export function agentTypeToModelClass(agentType: string, parentModel: Model): ModelClass {
-  if (agentType === "explore") return "lite";
-  // general: keep the same class as parent
-  return getModelClass(parentModel);
-}
-
-/**
  * Return the default thinking effort for a given model class.
  * pro → high, general → medium, lite → low
  */

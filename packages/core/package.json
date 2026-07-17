@@ -16,6 +16,9 @@
     "./prompt-contract": "./src/prompt-contract.ts",
     "./provider-contract": "./src/provider-contract.ts",
     "./providers/chatgpt": "./src/llm/provider/chatgpt.ts",
+    "./providers/anthropic": "./src/llm/provider/anthropic.ts",
+    "./providers/gemini": "./src/llm/provider/gemini.ts",
+    "./providers/openai": "./src/llm/provider/openai.ts",
     "./providers/vertex": "./src/llm/provider/vertex.ts",
     "./tool-contract": "./src/tool-contract.ts"
   },

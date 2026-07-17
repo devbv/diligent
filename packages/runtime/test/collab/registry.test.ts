@@ -507,6 +507,62 @@ describe("AgentRegistry", () => {
     expect(typeof result.threadId).toBe("string");
   });
 
+  it("uses the built-in agent default model class", async () => {
+    const observedModels: string[] = [];
+    const registry = new AgentRegistry(
+      makeCollabDeps({
+        modelId: "claude-opus-4-8",
+        sessionManagerFactory: makeInspectingSessionManagerFactory((agent) => observedModels.push(agent.model.id)),
+      }),
+    );
+
+    const { threadId } = registry.spawn({ prompt: "explore", description: "", agentType: "explore" });
+    await registry.wait([threadId], 5000);
+
+    expect(observedModels).toEqual(["claude-haiku-4-5-20251001"]);
+  });
+
+  it("uses a custom agent default model class", async () => {
+    const observedModels: string[] = [];
+    const registry = new AgentRegistry(
+      makeCollabDeps({
+        modelId: "claude-opus-4-8",
+        agentDefinitions: resolveAvailableAgentDefinitions(getBuiltinAgentDefinitions(), [
+          {
+            name: "quick-reviewer",
+            description: "Reviews quickly",
+            filePath: "/tmp/quick-reviewer/AGENT.md",
+            content: "Review quickly.",
+            tools: ["read"],
+            defaultModelClass: "lite",
+            source: "project",
+          },
+        ]),
+        sessionManagerFactory: makeInspectingSessionManagerFactory((agent) => observedModels.push(agent.model.id)),
+      }),
+    );
+
+    const { threadId } = registry.spawn({ prompt: "review", description: "", agentType: "quick-reviewer" });
+    await registry.wait([threadId], 5000);
+
+    expect(observedModels).toEqual(["claude-haiku-4-5-20251001"]);
+  });
+
+  it("inherits the parent model class when an agent has no default", async () => {
+    const observedModels: string[] = [];
+    const registry = new AgentRegistry(
+      makeCollabDeps({
+        modelId: "claude-opus-4-8",
+        sessionManagerFactory: makeInspectingSessionManagerFactory((agent) => observedModels.push(agent.model.id)),
+      }),
+    );
+
+    const { threadId } = registry.spawn({ prompt: "work", description: "", agentType: "general" });
+    await registry.wait([threadId], 5000);
+
+    expect(observedModels).toEqual(["claude-opus-4-8"]);
+  });
+
   it("excludes collab tools from child agents by default", async () => {
     let childToolNames: string[] = [];
     let childCwd: string | undefined;

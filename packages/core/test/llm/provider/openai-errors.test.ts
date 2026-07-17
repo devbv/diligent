@@ -1,17 +1,18 @@
 // @summary Tests for OpenAI and ChatGPT error classification retryability
 import { describe, expect, test } from "bun:test";
 import OpenAI from "openai";
+import type { APIError } from "openai/core/error.mjs";
 import { toSerializableError } from "../../../src/agent/util/errors";
 import { isNetworkError } from "../../../src/llm/errors";
 import { classifyOpenAIError } from "../../../src/llm/provider/openai";
 import { CONTEXT_OVERFLOW_ERROR_MESSAGE } from "../../../src/llm/types";
 
-function makeOpenAIAPIError(status: number, message: string, headers?: Record<string, string>): OpenAI.APIError {
+function makeOpenAIAPIError(status: number, message: string, headers?: Record<string, string>): APIError {
   const sdkHeaders = new Headers(headers);
   return new OpenAI.APIError(status, { message }, message, sdkHeaders);
 }
 
-function makeOpenAIAPIErrorWithCode(status: number | undefined, code: string, message: string): OpenAI.APIError {
+function makeOpenAIAPIErrorWithCode(status: number | undefined, code: string, message: string): APIError {
   return new OpenAI.APIError(status, { code, message }, message, new Headers());
 }
 

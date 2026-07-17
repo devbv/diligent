@@ -60,7 +60,6 @@ export type {
   WebToolUserLocation,
 } from "./llm/index";
 export {
-  agentTypeToModelClass,
   classifyGeminiError,
   classifyVertexError,
   createAnthropicNativeCompaction,

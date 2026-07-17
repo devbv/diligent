@@ -1,8 +1,7 @@
 // @summary AgentRegistry — spawn/wait/send_input/close lifecycle for non-blocking multi-agent collab
 
 import type { TextBlock } from "@diligent/core/message-contract";
-import type { ModelClass } from "@diligent/core/model-registry";
-import { agentTypeToModelClass, resolveModel, resolveModelForClass } from "@diligent/core/model-registry";
+import { getModelClass, type ModelClass, resolveModel, resolveModelForClass } from "@diligent/core/model-registry";
 import type { ThinkingEffort } from "@diligent/core/provider-contract";
 import type { Tool } from "@diligent/core/tool-contract";
 import { createLogger } from "@diligent/logging";
@@ -266,10 +265,10 @@ export class AgentRegistry {
       },
     ];
 
-    // Resolve model class: explicit override > agent_type-based default
+    // Resolve model class: explicit override > resolved agent default > parent model class.
     const parentModel = resolveModel(this.deps.modelId);
     const targetClass: ModelClass =
-      params.modelClass ?? agentDefinition.defaultModelClass ?? agentTypeToModelClass(params.agentType, parentModel);
+      params.modelClass ?? agentDefinition.defaultModelClass ?? getModelClass(parentModel);
     const childModel = resolveModelForClass(parentModel, targetClass);
     const useClassDefaultEffort = params.modelClass !== undefined || agentDefinition.defaultModelClass !== undefined;
     const childEffort = resolveChildEffort(this.deps.effort, targetClass, childModel, useClassDefaultEffort);

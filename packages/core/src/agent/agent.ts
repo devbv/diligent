@@ -9,7 +9,7 @@ import { withRetry } from "../llm/retry";
 import { resolveStream } from "../llm/stream-resolver";
 import { createStreamTurnScope, type StreamTurnScope } from "../llm/turn-scope";
 import type { Model, ProviderName, StreamFunction, SystemSection, ThinkingEffort } from "../llm/types";
-import type { ToolOutputStore } from "../tool/executor";
+import type { ToolOutputFileStore } from "../tool/executor";
 import type { Tool } from "../tool/types";
 import type { Message } from "../types";
 import { runCompaction } from "./compaction";
@@ -39,7 +39,7 @@ export class Agent {
   private _running = false;
   private sessionId?: string;
   private localImageLoader?: LocalImageLoader;
-  private toolOutputStore?: ToolOutputStore;
+  private toolOutputStore?: ToolOutputFileStore;
   readonly agentStream = new AgentStream();
 
   constructor(model: string | Model, systemPrompt: SystemSection[], tools: Tool[], opts?: AgentOptions) {

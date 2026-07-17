@@ -19,6 +19,7 @@ const testModel: Model = {
   provider: "test",
   contextWindow: 100000,
   maxOutputTokens: 4096,
+  supportsThinking: false,
 };
 
 function makeAssistantMessage(): AssistantMessage {
@@ -70,9 +71,7 @@ const testContext: StreamContext = {
   tools: [],
 };
 
-const testOptions: StreamOptions = {
-  apiKey: "test-key",
-};
+const testOptions: StreamOptions = {};
 
 afterEach(() => {
   console.warn = originalConsoleWarn;
@@ -109,7 +108,7 @@ function recordingLogger(
 ): Logger {
   const write =
     (level: LoggedCall["level"]) =>
-    (event: string, input: string | { message?: string; fields?: Readonly<Record<string, unknown>> }) =>
+    (event: string, input: string | { message?: string; fields?: Readonly<Record<string, unknown>> }) => {
       calls.push({
         level,
         event,
@@ -120,12 +119,15 @@ function recordingLogger(
           ...(typeof input === "string" ? {} : input.fields),
         },
       });
+    };
   return {
-    child: (childContext) =>
-      recordingLogger(calls, {
-        sessionId: childContext.sessionId ?? context.sessionId,
-        fields: { ...context.fields, ...childContext.fields },
-      }),
+    child: (childContext) => {
+      const child = childContext ?? {};
+      return recordingLogger(calls, {
+        sessionId: child.sessionId ?? context.sessionId,
+        fields: { ...context.fields, ...child.fields },
+      });
+    },
     debug: write("debug"),
     info: write("info"),
     warn: write("warn"),

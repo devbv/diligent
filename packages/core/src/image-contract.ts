@@ -1,4 +1,4 @@
 // @summary Public image transformation policy and injected local-image loader boundary
 
-export * from "./llm/image-io";
-export * from "./llm/image-resize";
+export type { LocalImageLoader } from "./llm/image-io";
+export { downscaleImageIfNeeded, withImageDownscaling } from "./llm/image-resize";

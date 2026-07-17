@@ -6,14 +6,19 @@ import type { CoreAgentEvent } from "../../src/agent/types";
 import { EventStream } from "../../src/event-stream";
 import type { Model, ProviderEvent, ProviderResult, StreamContext, StreamFunction } from "../../src/llm/types";
 import type { Tool } from "../../src/tool/types";
-import type { AssistantMessage, Message } from "../../src/types";
+import type { AssistantMessage, Message, UserMessage } from "../../src/types";
 
 const TEST_MODEL: Model = {
   id: "test-model",
   provider: "test",
   contextWindow: 100_000,
   maxOutputTokens: 4096,
+  supportsThinking: false,
 };
+
+function userMessageContent(message: Message): UserMessage["content"] | undefined {
+  return message.role === "user" ? message.content : undefined;
+}
 
 function makeAssistant(
   content: AssistantMessage["content"],
@@ -116,7 +121,7 @@ describe("agent steering", () => {
     const firstSteer = steeringEvents[0] as { type: "steering_injected"; messageCount: number; messages: Message[] };
     expect(firstSteer.messageCount).toBe(1);
     expect(firstSteer.messages).toHaveLength(1);
-    expect(firstSteer.messages[0].content).toBe("change direction");
+    expect(userMessageContent(firstSteer.messages[0])).toBe("change direction");
 
     // The steering message should be visible in the first LLM call's context
     expect(streamFn.contexts[0].messages.length).toBeGreaterThanOrEqual(2); // user + steering
@@ -141,7 +146,7 @@ describe("agent steering", () => {
       | { type: "steering_injected"; messages: Message[] }
       | undefined;
 
-    expect(steering?.messages.map((m) => m.content)).toEqual(["keep me"]);
+    expect(steering?.messages.map(userMessageContent)).toEqual(["keep me"]);
   });
 
   test("cancelPendingMessage uses steer id when queue index shifted", () => {
@@ -166,7 +171,7 @@ describe("agent steering", () => {
       | { type: "steering_injected"; messages: Message[] }
       | undefined;
 
-    expect(steering?.messages.map((m) => m.content)).toEqual(["new"]);
+    expect(steering?.messages.map(userMessageContent)).toEqual(["new"]);
   });
 
   test("updatePendingMessage uses steer id when queue index shifted", async () => {
@@ -182,7 +187,7 @@ describe("agent steering", () => {
       | { type: "steering_injected"; messages: Message[] }
       | undefined;
 
-    expect(steering?.messages.map((m) => m.content)).toEqual(["new"]);
+    expect(steering?.messages.map(userMessageContent)).toEqual(["new"]);
   });
 
   test("steering messages injected before next LLM call (drain at loop top)", async () => {

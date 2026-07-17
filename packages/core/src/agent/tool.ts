@@ -1,6 +1,6 @@
 // @summary Tool-call runner for sequential and parallel execution batches
 
-import type { ToolOutputStore } from "../tool/executor";
+import type { ToolOutputFileStore } from "../tool/executor";
 import { executeTool } from "../tool/executor";
 import type { ToolContext, ToolRegistry } from "../tool/types";
 import type { ToolCallBlock, ToolResultMessage } from "../types";
@@ -13,7 +13,7 @@ export async function runToolCalls(
   stream: AgentStream,
   generateItemId: () => string,
   onToolAbort: () => void,
-  outputStore?: ToolOutputStore,
+  outputStore?: ToolOutputFileStore,
 ): Promise<{
   executions: Array<{
     toolCall: ToolCallBlock;

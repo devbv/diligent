@@ -50,6 +50,7 @@ const MODEL: Model = {
   provider: "openai",
   contextWindow: 128_000,
   maxOutputTokens: 16_384,
+  supportsThinking: true,
 };
 
 const CONTEXT: StreamContext = {

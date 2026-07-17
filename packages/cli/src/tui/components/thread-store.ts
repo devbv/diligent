@@ -1,6 +1,6 @@
 // @summary Renderer-agnostic transcript state container for chat, tool results, thinking blocks, and active prompts
 
-import type { ToolResultMessage } from "@diligent/core";
+import type { ToolResultMessage } from "@diligent/core/message-contract";
 import type { AgentEvent, ThreadReadResponse, ToolRenderPayload } from "@diligent/protocol";
 import { formatClientError } from "../error-presentation";
 import type { Component } from "../framework/types";
