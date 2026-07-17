@@ -1,25 +1,25 @@
 // @summary OpenAI provider implementation with streaming, tools, and error classification
 import OpenAI from "openai";
-import { EventStream } from "../../event-stream";
-import { isNetworkError } from "../errors";
-import { classifyProviderHttpError } from "../provider-errors";
-import { flattenSections } from "../system-sections";
-import type { Model, ProviderEvent, ProviderResult, StreamContext, StreamFunction, StreamOptions } from "../types";
-import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError, ProviderErrorReason, ProviderErrorType } from "../types";
-import type { NativeCompactFn } from "./native-compaction";
+import { EventStream } from "../../../event-stream";
+import { isNetworkError } from "../../errors";
+import { classifyProviderHttpError } from "../../provider-errors";
+import { flattenSections } from "../../system-sections";
+import type { Model, ProviderEvent, ProviderResult, StreamContext, StreamFunction, StreamOptions } from "../../types";
+import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError, ProviderErrorReason, ProviderErrorType } from "../../types";
+import type { NativeCompactFn } from "../native-compaction";
 import {
   buildResponsesRequestBody,
   isContextOverflow,
   type OpenAIImageDetail,
   toResponseInputItems,
-} from "./openai-responses";
+} from "./responses";
 import {
   describeCompactionPayload,
   extractCompactionSummary,
   extractCompactionSummaryItem,
   isTransientOpenAIErrorMessage,
-} from "./openai-shared";
-import { handleResponsesAPIEvents } from "./openai-sse";
+} from "./shared";
+import { handleResponsesAPIEvents } from "./sse";
 
 export function createOpenAIStream(apiKey?: string, baseUrl?: string, imageDetail?: OpenAIImageDetail): StreamFunction {
   const resolvedApiKey = resolveOpenAIApiKey(apiKey);

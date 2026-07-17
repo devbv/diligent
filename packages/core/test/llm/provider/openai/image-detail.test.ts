@@ -1,7 +1,7 @@
 // @summary Tests that convertMessages threads the OpenAI image `detail` setting (default "auto").
 import { describe, expect, test } from "bun:test";
-import { buildResponsesRequestBody, convertMessages } from "../../../src/llm/provider/openai-responses";
-import type { Message } from "../../../src/types";
+import { buildResponsesRequestBody, convertMessages } from "../../../../src/llm/provider/openai/responses";
+import type { Message } from "../../../../src/types";
 
 const imageBlock = {
   type: "image" as const,

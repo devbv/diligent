@@ -1,15 +1,14 @@
 // @summary Responses API SSE event state machine and handleResponsesAPIEvents for OpenAI-format providers
 import { createLogger } from "@diligent/logging";
-import type { EventStream } from "../../event-stream";
-import type { AssistantMessage, ContentBlock, StopReason, Usage } from "../../types";
-import type { Model, ProviderEvent, ProviderResult } from "../types";
-import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError, ProviderErrorReason, ProviderErrorType } from "../types";
-import { isContextOverflow, mapStopReason, mapUsage } from "./openai-responses";
-import { isTransientOpenAIErrorMessage } from "./openai-shared";
+import type { EventStream } from "../../../event-stream";
+import type { ContentBlock } from "../../../types";
+import type { Model, ProviderEvent, ProviderResult } from "../../types";
+import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError, ProviderErrorReason, ProviderErrorType } from "../../types";
+import { OpenAIContentAccumulator } from "./content-accumulator";
+import { isContextOverflow, mapStopReason, mapUsage } from "./responses";
+import { isTransientOpenAIErrorMessage } from "./shared";
 
 const webToolsLogger = createLogger({ scope: "llm:web-tools" });
-
-type ResponseToolBuffer = { id: string; name: string; args: string };
 
 type ProviderName = "openai" | "chatgpt" | "anthropic";
 type ProviderToolUseBlock = Extract<ContentBlock, { type: "provider_tool_use" }>;
@@ -17,17 +16,11 @@ type WebSearchResultBlock = Extract<ContentBlock, { type: "web_search_result" }>
 type WebFetchResultBlock = Extract<ContentBlock, { type: "web_fetch_result" }>;
 
 type ResponsesAPIState = {
-  contentBlocks: ContentBlock[];
+  accumulator: OpenAIContentAccumulator;
   pendingProviderToolUses: Map<string, ProviderToolUseBlock>;
   pendingWebSearchResults: Map<string, WebSearchResultBlock>;
   pendingWebFetchResults: Map<string, WebFetchResultBlock>;
-  pendingCompletedResponse?: Record<string, unknown>;
-  currentText: string;
-  currentThinking: string;
   currentToolId: string;
-  stopReason: StopReason;
-  usage: Usage;
-  toolBuffers: Map<string, ResponseToolBuffer>;
 };
 
 type ResponsesAPIDecodedEvent =
@@ -55,17 +48,11 @@ type ResponsesAPIDecodedEvent =
 
 function createResponsesAPIState(): ResponsesAPIState {
   return {
-    contentBlocks: [],
+    accumulator: new OpenAIContentAccumulator(),
     pendingProviderToolUses: new Map<string, ProviderToolUseBlock>(),
     pendingWebSearchResults: new Map<string, WebSearchResultBlock>(),
     pendingWebFetchResults: new Map<string, WebFetchResultBlock>(),
-    pendingCompletedResponse: undefined,
-    currentText: "",
-    currentThinking: "",
     currentToolId: "",
-    stopReason: "end_turn",
-    usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
-    toolBuffers: new Map<string, ResponseToolBuffer>(),
   };
 }
 
@@ -156,34 +143,30 @@ function reduceResponsesAPIEvent(
 ): ProviderEvent[] {
   switch (event.kind) {
     case "text_delta":
-      state.currentText += event.delta;
-      return [{ type: "text_delta", delta: event.delta }];
+      return state.accumulator.appendTextDelta(event.delta);
 
     case "thinking_delta":
-      state.currentThinking += event.delta;
-      return [{ type: "thinking_delta", delta: event.delta }];
+      return state.accumulator.appendThinkingDelta(event.delta);
 
-    case "tool_call_start":
+    case "tool_call_start": {
       state.currentToolId = event.id;
-      state.toolBuffers.set(event.id, { id: event.id, name: event.name, args: "" });
+      state.accumulator.upsertToolCall(event.id, { id: event.id, name: event.name, order: 0 });
       return [{ type: "tool_call_start", id: event.id, name: event.name }];
+    }
 
     case "provider_web_call_start": {
       debugWebSearchPayload("start", event.item, model.provider);
       const providerToolUse = createProviderToolUseBlock(event.item, model.provider);
       if (!providerToolUse) return [];
       state.pendingProviderToolUses.set(providerToolUse.id, providerToolUse);
-      state.contentBlocks.push(providerToolUse);
+      state.accumulator.addContentBlock(providerToolUse);
       return [{ type: "content_block", block: providerToolUse }];
     }
 
     case "tool_call_args_delta": {
       const itemId = event.itemId ?? state.currentToolId;
-      const buffer = state.toolBuffers.get(itemId);
-      if (buffer) {
-        buffer.args += event.delta;
-        return [{ type: "tool_call_delta", id: buffer.id, delta: event.delta }];
-      }
+      const emitted = state.accumulator.appendToolArguments(itemId, event.delta);
+      if (emitted.length > 0) return emitted;
       if (state.currentToolId) {
         return [{ type: "tool_call_delta", id: state.currentToolId, delta: event.delta }];
       }
@@ -191,34 +174,20 @@ function reduceResponsesAPIEvent(
     }
 
     case "reasoning_done": {
-      const finalThinking = state.currentThinking || event.summaryText;
-      if (!finalThinking) return [];
-      state.currentThinking = "";
-      state.contentBlocks.unshift({ type: "thinking", thinking: finalThinking });
-      return [{ type: "thinking_end", thinking: finalThinking }];
+      return state.accumulator.flushThinking(event.summaryText, "prepend");
     }
 
     case "message_done": {
-      if (event.blocks.length === 0) return [];
-      state.currentText = "";
-      const emitted: ProviderEvent[] = [];
-      for (const block of event.blocks) {
-        state.contentBlocks.push(block);
-        if (block.type === "text") emitted.push({ type: "text_end", text: block.text });
-      }
-      return emitted;
+      return state.accumulator.acceptAuthoritativeMessage(event.blocks);
     }
 
     case "tool_call_done": {
-      let input: Record<string, unknown>;
-      try {
-        input = JSON.parse(event.args) as Record<string, unknown>;
-      } catch {
-        input = {};
-      }
-      state.toolBuffers.delete(event.id);
-      state.contentBlocks.push({ type: "tool_call", id: event.id, name: event.name, input });
-      return [{ type: "tool_call_end", id: event.id, name: event.name, input }];
+      return state.accumulator.completeToolCall(event.id, {
+        id: event.id,
+        name: event.name,
+        arguments: event.args,
+        parseArguments: parseResponsesToolArguments,
+      });
     }
 
     case "provider_web_call_done": {
@@ -229,29 +198,28 @@ function reduceResponsesAPIEvent(
         const providerToolUse = createProviderToolUseBlock(event.item, model.provider);
         if (providerToolUse) {
           state.pendingProviderToolUses.set(toolUseId, providerToolUse);
-          state.contentBlocks.push(providerToolUse);
+          state.accumulator.addContentBlock(providerToolUse);
         }
       }
       const webSearchResult = createWebSearchResultBlock(event.item, toolUseId, model.provider);
       if (webSearchResult) {
         state.pendingWebSearchResults.set(toolUseId, webSearchResult);
-        state.contentBlocks.push(webSearchResult);
+        state.accumulator.addContentBlock(webSearchResult);
         return [{ type: "content_block", block: webSearchResult }];
       }
       const webFetchResult = createWebFetchResultBlock(event.item, toolUseId, model.provider);
       if (webFetchResult) {
         state.pendingWebFetchResults.set(toolUseId, webFetchResult);
-        state.contentBlocks.push(webFetchResult);
+        state.accumulator.addContentBlock(webFetchResult);
         return [{ type: "content_block", block: webFetchResult }];
       }
       return [];
     }
 
     case "response_completed":
-      state.pendingCompletedResponse = event.response;
       applyCompletedResponseFallbacks(state, event.response, model.provider);
-      state.usage = mapUsage(event.usage);
-      state.stopReason = mapStopReason(event.status);
+      state.accumulator.setUsage(mapUsage(event.usage));
+      state.accumulator.setStopReason(mapStopReason(event.status));
       return [];
 
     case "response_failed": {
@@ -285,6 +253,14 @@ function reduceResponsesAPIEvent(
         },
       ];
     }
+  }
+}
+
+function parseResponsesToolArguments(argumentsText: string): Record<string, unknown> {
+  try {
+    return JSON.parse(argumentsText) as Record<string, unknown>;
+  } catch {
+    return {};
   }
 }
 
@@ -464,7 +440,7 @@ function applyCompletedResponseFallbacks(
       const providerToolUse = createProviderToolUseBlock(item, provider);
       if (providerToolUse) {
         state.pendingProviderToolUses.set(toolUseId, providerToolUse);
-        state.contentBlocks.push(providerToolUse);
+        state.accumulator.addContentBlock(providerToolUse);
         recoveredToolUses += 1;
       }
     }
@@ -473,7 +449,7 @@ function applyCompletedResponseFallbacks(
       const webSearchResult = createWebSearchResultBlock(item, toolUseId, provider);
       if (webSearchResult && webSearchResult.results.length > 0) {
         state.pendingWebSearchResults.set(toolUseId, webSearchResult);
-        state.contentBlocks.push(webSearchResult);
+        state.accumulator.addContentBlock(webSearchResult);
         recoveredSearchResults += 1;
       }
     }
@@ -482,7 +458,7 @@ function applyCompletedResponseFallbacks(
       const webFetchResult = createWebFetchResultBlock(item, toolUseId, provider);
       if (webFetchResult) {
         state.pendingWebFetchResults.set(toolUseId, webFetchResult);
-        state.contentBlocks.push(webFetchResult);
+        state.accumulator.addContentBlock(webFetchResult);
         recoveredFetchResults += 1;
       }
     }
@@ -662,18 +638,25 @@ export async function handleResponsesAPIEvents(
   let sawCompleted = false;
 
   for await (const event of iter) {
-    if (signal?.aborted) break;
+    if (signal?.aborted) {
+      state.accumulator.abort();
+      break;
+    }
     const decodedEvent = decodeResponsesAPIEvent(event);
     if (!decodedEvent) continue;
     if (decodedEvent.kind === "response_completed") sawCompleted = true;
     const emittedEvents = reduceResponsesAPIEvent(state, decodedEvent, model);
     emitProviderEvents(stream, emittedEvents);
-    if (emittedEvents.some((providerEvent) => providerEvent.type === "error")) return;
+    if (emittedEvents.some((providerEvent) => providerEvent.type === "error")) {
+      state.accumulator.abort();
+      return;
+    }
   }
 
   if (signal?.aborted) return;
 
   if (!sawCompleted) {
+    state.accumulator.abort();
     stream.push({
       type: "error",
       error: new ProviderError("stream closed before response.completed", ProviderErrorType.Network, true),
@@ -681,23 +664,10 @@ export async function handleResponsesAPIEvents(
     return;
   }
 
-  if (state.currentText) {
-    const text = state.currentText;
-    state.currentText = "";
-    state.contentBlocks.push({ type: "text", text });
-    stream.push({ type: "text_end", text });
-  }
-
-  stream.push({ type: "usage", usage: state.usage });
-
-  const assistantMessage: AssistantMessage = {
-    role: "assistant",
-    content: state.contentBlocks,
-    model: model.id,
-    usage: state.usage,
-    stopReason: state.stopReason,
-    timestamp: Date.now(),
-  };
-
-  stream.push({ type: "done", stopReason: state.stopReason, message: assistantMessage });
+  const finalization = state.accumulator.finalize({
+    modelId: model.id,
+    finalizePendingTools: false,
+    flushThinking: false,
+  });
+  if (finalization) emitProviderEvents(stream, finalization.events);
 }

@@ -1,28 +1,29 @@
 // @summary ChatGPT subscription stream — HTTP/SSE for legacy models and WebSocket Responses Lite for GPT-5.6
 import { arch, platform, release } from "node:os";
 import { createLogger } from "@diligent/logging";
-import type { OpenAIOAuthTokens } from "../../auth/types";
-import { EventStream } from "../../event-stream";
-import { isNetworkError } from "../errors";
-import { classifyProviderHttpError } from "../provider-errors";
-import { flattenSections } from "../system-sections";
-import type { Model, ProviderEvent, ProviderResult, StreamContext, StreamFunction, StreamOptions } from "../types";
-import { ProviderError, ProviderErrorReason, ProviderErrorType } from "../types";
-import { type ChatGPTWebSocketSession, createChatGPTWebSocketSession } from "./chatgpt-websocket-session";
-import type { NativeCompactFn } from "./native-compaction";
+import type { OpenAIOAuthTokens } from "../../../auth/types";
+import { EventStream } from "../../../event-stream";
+import { isNetworkError } from "../../errors";
+import { classifyProviderHttpError } from "../../provider-errors";
+import { flattenSections } from "../../system-sections";
+import type { Model, ProviderEvent, ProviderResult, StreamContext, StreamFunction, StreamOptions } from "../../types";
+import { ProviderError, ProviderErrorReason, ProviderErrorType } from "../../types";
+import type { NativeCompactFn } from "../native-compaction";
 import {
   buildResponsesRequestBody,
   isGpt56Model,
   toResponseInputItems,
   toResponsesLiteRequestBody,
-} from "./openai-responses";
+} from "../openai/responses";
 import {
   describeCompactionPayload,
   extractCompactionSummary,
   extractCompactionSummaryItem,
   isTransientOpenAIErrorMessage,
-} from "./openai-shared";
-import { handleResponsesAPIEvents } from "./openai-sse";
+} from "../openai/shared";
+import { handleResponsesAPIEvents } from "../openai/sse";
+import { iterateOpenAIJsonSse } from "../openai-compatible/json-sse";
+import { type ChatGPTWebSocketSession, createChatGPTWebSocketSession } from "./websocket-session";
 
 const webSocketLogger = createLogger({ scope: "llm:chatgpt-ws" });
 const httpSseLogger = createLogger({ scope: "llm:chatgpt-sse" });
@@ -53,73 +54,12 @@ type ChatGPTTransportState = {
   consecutiveTransportFailures: number;
 };
 
-type QueueWaiter<T> = {
-  resolve: (result: IteratorResult<T>) => void;
-  reject: (error: Error) => void;
-};
-
-class AsyncEventQueue<T> implements AsyncIterable<T> {
-  private readonly values: T[] = [];
-  private readonly waiters: Array<QueueWaiter<T>> = [];
-  private done = false;
-  private failure?: Error;
-
-  push(value: T): void {
-    if (this.done) return;
-    const waiter = this.waiters.shift();
-    if (waiter) {
-      waiter.resolve({ value, done: false });
-    } else {
-      this.values.push(value);
-    }
-  }
-
-  end(): void {
-    if (this.done) return;
-    this.done = true;
-    for (const waiter of this.waiters.splice(0)) {
-      waiter.resolve({ value: undefined as T, done: true });
-    }
-  }
-
-  fail(error: Error): void {
-    if (this.done) return;
-    this.done = true;
-    this.failure = error;
-    for (const waiter of this.waiters.splice(0)) {
-      waiter.reject(error);
-    }
-  }
-
-  [Symbol.asyncIterator](): AsyncIterator<T> {
-    return {
-      next: () => {
-        const value = this.values.shift();
-        if (value !== undefined) return Promise.resolve({ value, done: false });
-        if (this.failure) return Promise.reject(this.failure);
-        if (this.done) return Promise.resolve({ value: undefined as T, done: true });
-        return new Promise<IteratorResult<T>>((resolve, reject) => {
-          this.waiters.push({ resolve, reject });
-        });
-      },
-    };
-  }
-}
-
 function createDefaultWebSocket(url: string, headers: Record<string, string>): WebSocket {
   const BunWebSocket = WebSocket as unknown as new (
     url: string,
     options: { headers: Record<string, string> },
   ) => WebSocket;
   return new BunWebSocket(url, { headers });
-}
-
-async function webSocketMessageToString(data: unknown): Promise<string> {
-  if (typeof data === "string") return data;
-  if (data instanceof ArrayBuffer) return new TextDecoder().decode(data);
-  if (ArrayBuffer.isView(data)) return new TextDecoder().decode(data);
-  if (typeof Blob !== "undefined" && data instanceof Blob) return data.text();
-  return String(data);
 }
 
 function webSocketMessageToImmediateString(data: unknown): string | undefined {
@@ -206,7 +146,11 @@ function debugChatGPTWebSocket(direction: "->" | "<-", byteLength: number | unde
   if (process.env.DILIGENT_DEBUG_CHATGPT_WEBSOCKET !== "1") return;
   webSocketLogger.debug("websocket_payload", {
     message: `ChatGPT WebSocket: [llm:chatgpt-ws] ${direction} bytes=${byteLength ?? "unknown"} ${summary}`,
-    fields: { direction, ...(byteLength !== undefined && { byteLength }), summary },
+    fields: {
+      direction,
+      ...(byteLength !== undefined && { byteLength }),
+      summary,
+    },
   });
 }
 
@@ -230,7 +174,13 @@ function debugChatGPTHttpRequest(
   httpSseLogger.debug("http_request", {
     message: `ChatGPT HTTP/SSE: [llm:chatgpt-sse] -> state=${state} bytes=${byteLength}${status !== undefined ? ` status=${status}` : ""} ${summary}`,
     sessionId: context?.sessionId,
-    fields: { direction: "->", state, byteLength, ...(status !== undefined && { status }), summary },
+    fields: {
+      direction: "->",
+      state,
+      byteLength,
+      ...(status !== undefined && { status }),
+      summary,
+    },
   });
 }
 
@@ -299,221 +249,93 @@ function classifyChatGPTHttpError(input: {
   });
 }
 
-function createChatGPTWebSocketEvents(input: {
-  headers: Record<string, string>;
-  request: Record<string, unknown>;
-  signal?: AbortSignal;
+function createChatGPTWebSocketSessionForProvider(input: {
+  resolveHeaders: () => Promise<Record<string, string>>;
   webSocketFactory: (url: string, headers: Record<string, string>) => WebSocket;
-  idleTimeoutMs?: number;
-}): { opened: Promise<void>; events: AsyncIterable<Record<string, unknown>> } {
-  const queue = new AsyncEventQueue<Record<string, unknown>>();
-  const socket = input.webSocketFactory(CHATGPT_CODEX_WEBSOCKET_URL, input.headers);
-  const idleTimeoutMs = input.idleTimeoutMs ?? CHATGPT_WEBSOCKET_IDLE_TIMEOUT_MS;
-  let opened = false;
-  let settled = false;
-  let terminalSeen = false;
-  let idleTimer: ReturnType<typeof setTimeout> | undefined;
-  let pendingMessageCount = 0;
-  let messageWork = Promise.resolve();
-  let resolveOpened!: () => void;
-  let rejectOpened!: (error: Error) => void;
-  const openedPromise = new Promise<void>((resolve, reject) => {
-    resolveOpened = resolve;
-    rejectOpened = reject;
-  });
-
-  const cleanup = () => {
-    if (idleTimer) {
-      clearTimeout(idleTimer);
-      idleTimer = undefined;
-    }
-    socket.removeEventListener("open", handleOpen);
-    socket.removeEventListener("message", handleMessage);
-    socket.removeEventListener("error", handleError);
-    socket.removeEventListener("close", handleClose);
-    input.signal?.removeEventListener("abort", handleAbort);
-  };
-
-  const terminate = () => {
-    if (socket.readyState === WebSocket.CLOSED) return;
-    const terminatingSocket = socket as WebSocket & { terminate?: () => void };
-    if (typeof terminatingSocket.terminate === "function") {
-      terminatingSocket.terminate();
-    } else {
-      socket.close();
-    }
-  };
-
-  const resetIdleTimeout = (message: string) => {
-    if (idleTimer) clearTimeout(idleTimer);
-    idleTimer = setTimeout(() => {
-      if (process.env.DILIGENT_DEBUG_CHATGPT_WEBSOCKET === "1") {
-        webSocketLogger.debug("websocket_timeout", {
-          message: `[llm:chatgpt-ws] state=timeout pendingDecode=${pendingMessageCount} message=${message}`,
-          fields: { state: "timeout", pendingDecode: pendingMessageCount },
+  idleTimeoutMs: number;
+}): ChatGPTWebSocketSession {
+  return createChatGPTWebSocketSession({
+    url: CHATGPT_CODEX_WEBSOCKET_URL,
+    resolveHeaders: input.resolveHeaders,
+    webSocketFactory: input.webSocketFactory,
+    idleTimeoutMs: input.idleTimeoutMs,
+    classifyError: toChatGPTWebSocketError,
+    diagnostics: {
+      onOpen() {
+        if (process.env.DILIGENT_DEBUG_CHATGPT_WEBSOCKET !== "1") return;
+        webSocketLogger.debug("websocket_open", {
+          message: "[llm:chatgpt-ws] state=open",
+          fields: { state: "open" },
         });
-      }
-      fail(new ProviderError(message, ProviderErrorType.Network, true));
-    }, idleTimeoutMs);
-  };
-
-  const fail = (error: Error) => {
-    if (!settled) {
-      settled = true;
-      rejectOpened(error);
-    }
-    queue.fail(error);
-    cleanup();
-    terminate();
-  };
-
-  function handleOpen(): void {
-    opened = true;
-    if (process.env.DILIGENT_DEBUG_CHATGPT_WEBSOCKET === "1") {
-      webSocketLogger.debug("websocket_open", {
-        message: "[llm:chatgpt-ws] state=open",
-        fields: { state: "open" },
-      });
-    }
-    resetIdleTimeout("ChatGPT WebSocket idle timeout sending request");
-    try {
-      const requestText = JSON.stringify(input.request);
-      if (process.env.DILIGENT_DEBUG_CHATGPT_WEBSOCKET === "1") {
+      },
+      onSend(data, payload) {
         debugChatGPTWebSocket(
           "->",
-          new TextEncoder().encode(requestText).byteLength,
-          summarizeChatGPTWebSocketPayload(input.request),
+          new TextEncoder().encode(data).byteLength,
+          summarizeChatGPTWebSocketPayload(payload),
         );
-      }
-      socket.send(requestText);
-      settled = true;
-      resolveOpened();
-      resetIdleTimeout("ChatGPT WebSocket idle timeout waiting for response");
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      fail(new ProviderError(`ChatGPT WebSocket send failed: ${message}`, ProviderErrorType.Network, true));
-    }
-  }
-
-  function handleMessage(event: MessageEvent): void {
-    pendingMessageCount++;
-    const debugEnabled = process.env.DILIGENT_DEBUG_CHATGPT_WEBSOCKET === "1";
-    const byteLength = debugEnabled ? webSocketMessageByteLength(event.data) : undefined;
-    const immediateText = debugEnabled ? webSocketMessageToImmediateString(event.data) : undefined;
-    if (debugEnabled) {
-      if (immediateText !== undefined) {
+      },
+      onReceive(data) {
+        if (process.env.DILIGENT_DEBUG_CHATGPT_WEBSOCKET !== "1") return;
+        const byteLength = webSocketMessageByteLength(data);
+        const immediateText = webSocketMessageToImmediateString(data);
+        if (immediateText === undefined) {
+          debugChatGPTWebSocket("<-", byteLength, "pending_decode");
+          return;
+        }
         try {
-          const payload = JSON.parse(immediateText) as Record<string, unknown>;
-          debugChatGPTWebSocket("<-", byteLength, summarizeChatGPTWebSocketPayload(payload));
+          debugChatGPTWebSocket(
+            "<-",
+            byteLength,
+            summarizeChatGPTWebSocketPayload(JSON.parse(immediateText) as Record<string, unknown>),
+          );
         } catch {
           debugChatGPTWebSocket("<-", byteLength, "invalid_json");
         }
-      } else {
-        debugChatGPTWebSocket("<-", byteLength, "pending_decode");
-      }
-    }
-    messageWork = messageWork
-      .then(async () => {
-        const text = await webSocketMessageToString(event.data);
-        const payload = JSON.parse(text) as Record<string, unknown>;
-        if (debugEnabled && immediateText === undefined) {
-          debugChatGPTWebSocket("<-", byteLength, `decoded ${summarizeChatGPTWebSocketPayload(payload)}`);
+      },
+      onDecoded(data, payload) {
+        if (
+          process.env.DILIGENT_DEBUG_CHATGPT_WEBSOCKET === "1" &&
+          webSocketMessageToImmediateString(data) === undefined
+        ) {
+          debugChatGPTWebSocket(
+            "<-",
+            webSocketMessageByteLength(data),
+            `decoded ${summarizeChatGPTWebSocketPayload(payload)}`,
+          );
         }
-        resetIdleTimeout("ChatGPT WebSocket idle timeout waiting for response");
-        if (payload.type === "error") {
-          terminalSeen = true;
-          fail(toChatGPTWebSocketError(payload));
-          return;
-        }
-
-        queue.push(payload);
-        if (payload.type === "response.completed" || payload.type === "response.failed") {
-          terminalSeen = true;
-          queue.end();
-          cleanup();
-          if (socket.readyState !== WebSocket.CLOSED) socket.close(1000);
-        }
-      })
-      .finally(() => {
-        pendingMessageCount--;
-      })
-      .catch((error) => fail(error instanceof Error ? error : new Error(String(error))));
-  }
-
-  function handleError(): void {
-    if (process.env.DILIGENT_DEBUG_CHATGPT_WEBSOCKET === "1") {
-      webSocketLogger.debug("websocket_error", {
-        message: `[llm:chatgpt-ws] state=error opened=${opened} pendingDecode=${pendingMessageCount}`,
-        fields: { state: "error", opened, pendingDecode: pendingMessageCount },
-      });
-    }
-    fail(new ProviderError("ChatGPT WebSocket connection failed", ProviderErrorType.Network, true));
-  }
-
-  function finalizeClose(code: number, reason: string): void {
-    if (!opened) {
-      fail(
-        new ProviderError(
-          `ChatGPT WebSocket connection closed before opening (${code}${reason ? `: ${reason}` : ""})`,
-          ProviderErrorType.Network,
-          true,
-        ),
-      );
-      return;
-    }
-    if (!terminalSeen) {
-      fail(
-        new ProviderError(
-          `ChatGPT WebSocket closed before response.completed (${code}${reason ? `: ${reason}` : ""})`,
-          ProviderErrorType.Network,
-          true,
-        ),
-      );
-      return;
-    }
-    if (!settled) {
-      settled = true;
-      resolveOpened();
-    }
-    queue.end();
-    cleanup();
-  }
-
-  function handleClose(event: CloseEvent): void {
-    const code = event.code;
-    const reason = event.reason;
-    if (process.env.DILIGENT_DEBUG_CHATGPT_WEBSOCKET === "1") {
-      webSocketLogger.debug("websocket_close", {
-        message: `[llm:chatgpt-ws] state=close code=${code} reason=${truncateWebSocketLogValue(reason || "none")} pendingDecode=${pendingMessageCount}`,
-        fields: { state: "close", code, reason: reason || "none", pendingDecode: pendingMessageCount },
-      });
-    }
-    messageWork = messageWork
-      .then(() => finalizeClose(code, reason))
-      .catch((error) => fail(error instanceof Error ? error : new Error(String(error))));
-  }
-
-  function handleAbort(): void {
-    if (!settled) {
-      settled = true;
-      rejectOpened(new ProviderError("Aborted", ProviderErrorType.Unknown, false));
-    }
-    queue.end();
-    cleanup();
-    terminate();
-  }
-
-  socket.addEventListener("open", handleOpen);
-  socket.addEventListener("message", handleMessage);
-  socket.addEventListener("error", handleError);
-  socket.addEventListener("close", handleClose);
-  input.signal?.addEventListener("abort", handleAbort, { once: true });
-  resetIdleTimeout("ChatGPT WebSocket idle timeout waiting for connection");
-  if (input.signal?.aborted) handleAbort();
-
-  return { opened: openedPromise, events: queue };
+      },
+      onClose(code, reason, pendingDecode) {
+        if (process.env.DILIGENT_DEBUG_CHATGPT_WEBSOCKET !== "1") return;
+        webSocketLogger.debug("websocket_close", {
+          message: `[llm:chatgpt-ws] state=close code=${code} reason=${truncateWebSocketLogValue(
+            reason || "none",
+          )} pendingDecode=${pendingDecode}`,
+          fields: {
+            state: "close",
+            code,
+            reason: reason || "none",
+            pendingDecode,
+          },
+        });
+      },
+      onError(opened, pendingDecode) {
+        if (process.env.DILIGENT_DEBUG_CHATGPT_WEBSOCKET !== "1") return;
+        webSocketLogger.debug("websocket_error", {
+          message: `[llm:chatgpt-ws] state=error opened=${opened} pendingDecode=${pendingDecode}`,
+          fields: { state: "error", opened, pendingDecode },
+        });
+      },
+      onTimeout(message, pendingDecode) {
+        if (process.env.DILIGENT_DEBUG_CHATGPT_WEBSOCKET !== "1") return;
+        webSocketLogger.debug("websocket_timeout", {
+          message: `[llm:chatgpt-ws] state=timeout pendingDecode=${pendingDecode} message=${message}`,
+          fields: { state: "timeout", pendingDecode },
+        });
+      },
+    },
+  });
 }
-
 function resolveChatGPTModelId(modelId: string): string {
   return modelId.startsWith("chatgpt-") ? `gpt-${modelId.slice("chatgpt-".length)}` : modelId;
 }
@@ -545,7 +367,10 @@ export function createChatGPTStream(
   getTokens: () => OpenAIOAuthTokens,
   providerOptions: ChatGPTStreamOptions = {},
 ): StreamFunction {
-  const transportState: ChatGPTTransportState = { websocketDisabled: false, consecutiveTransportFailures: 0 };
+  const transportState: ChatGPTTransportState = {
+    websocketDisabled: false,
+    consecutiveTransportFailures: 0,
+  };
   const turnSessionKey = Symbol("chatgpt-websocket-turn-session");
   return (model: Model, context: StreamContext, options: StreamOptions): EventStream<ProviderEvent, ProviderResult> => {
     const stream = new EventStream<ProviderEvent, ProviderResult>(
@@ -560,6 +385,8 @@ export function createChatGPTStream(
     (async () => {
       try {
         if (options.signal?.aborted) return;
+        const upstreamModelId = resolveChatGPTModelId(model.id);
+        const useResponsesLite = isGpt56Model(upstreamModelId);
         const resolveHeaders = async (): Promise<Record<string, string>> => {
           const tokens = getTokens();
           const headers: Record<string, string> = {
@@ -572,14 +399,12 @@ export function createChatGPTStream(
           if (options.sessionId) headers[CHATGPT_SESSION_HEADER] = options.sessionId;
           if (options.turnStateRef?.value !== undefined)
             headers[CHATGPT_TURN_STATE_HEADER] = options.turnStateRef.value;
+          if (useResponsesLite) headers[RESPONSES_LITE_HEADER] = "true";
           return headers;
         };
-        const headers = await resolveHeaders();
 
         const effort = options.effort;
         const useReasoning = model.supportsThinking;
-        const upstreamModelId = resolveChatGPTModelId(model.id);
-        const useResponsesLite = isGpt56Model(upstreamModelId);
         const useWebSocket =
           useResponsesLite && providerOptions.useWebSocketForGpt56 === true && !transportState.websocketDisabled;
 
@@ -597,49 +422,50 @@ export function createChatGPTStream(
         });
 
         const requestBody = useResponsesLite ? toResponsesLiteRequestBody(standardBody) : standardBody;
-        if (useResponsesLite) {
-          headers[RESPONSES_LITE_HEADER] = "true";
-        }
 
         if (useWebSocket) {
           const request = { type: "response.create", ...requestBody };
-          const session: ChatGPTWebSocketSession | undefined = options.turnScope?.getOrCreate(turnSessionKey, () => {
-            const value = createChatGPTWebSocketSession({
-              url: CHATGPT_CODEX_WEBSOCKET_URL,
+          const createSession = () =>
+            createChatGPTWebSocketSessionForProvider({
               resolveHeaders,
               webSocketFactory: providerOptions.webSocketFactory ?? createDefaultWebSocket,
               idleTimeoutMs: providerOptions.webSocketIdleTimeoutMs ?? CHATGPT_WEBSOCKET_IDLE_TIMEOUT_MS,
             });
-            return { value, dispose: () => value.dispose() };
-          });
-          const connection = session
-            ? session.streamRequest(request, options.signal)
-            : createChatGPTWebSocketEvents({
-                headers,
-                request,
-                signal: options.signal,
-                webSocketFactory: providerOptions.webSocketFactory ?? createDefaultWebSocket,
-                idleTimeoutMs: providerOptions.webSocketIdleTimeoutMs,
-              });
-          await connection.opened;
-          stream.push({ type: "start" });
-          await handleResponsesAPIEvents(
-            connection.events,
-            stream,
-            model,
-            options.signal,
-            context.messages.length,
-            options.sessionId,
-          );
-          transportState.consecutiveTransportFailures = 0;
+          let ephemeralSession: ChatGPTWebSocketSession | undefined;
+          const session = options.turnScope
+            ? options.turnScope.getOrCreate(turnSessionKey, () => {
+                const value = createSession();
+                return { value, dispose: () => value.dispose() };
+              })
+            : (ephemeralSession = createSession());
+          try {
+            const connection = session.streamRequest(request, options.signal);
+            await connection.opened;
+            stream.push({ type: "start" });
+            await handleResponsesAPIEvents(
+              connection.events,
+              stream,
+              model,
+              options.signal,
+              context.messages.length,
+              options.sessionId,
+            );
+            transportState.consecutiveTransportFailures = 0;
+          } finally {
+            await ephemeralSession?.dispose();
+          }
           return;
         }
 
+        const headers = await resolveHeaders();
         const requestText = JSON.stringify(requestBody);
         const debugHttpSse = process.env.DILIGENT_DEBUG_CHATGPT_HTTP_SSE === "1";
         const requestByteLength = debugHttpSse ? new TextEncoder().encode(requestText).byteLength : 0;
         const requestSummary = debugHttpSse
-          ? summarizeChatGPTWebSocketPayload({ ...requestBody, type: "response.create" })
+          ? summarizeChatGPTWebSocketPayload({
+              ...requestBody,
+              type: "response.create",
+            })
           : "";
         if (debugHttpSse) {
           debugChatGPTHttpRequest("sending", requestByteLength, requestSummary, { sessionId: options.sessionId });
@@ -692,7 +518,11 @@ export function createChatGPTStream(
           const errText = await response.text().catch(() => "");
           const isUsageLimit = errText.includes("usage_limit_reached");
           const message = `ChatGPT API error (${response.status}): ${errText || "no body"}`;
-          throw classifyChatGPTHttpError({ message, status: response.status, isUsageLimit });
+          throw classifyChatGPTHttpError({
+            message,
+            status: response.status,
+            isUsageLimit,
+          });
         }
 
         // Capture sticky routing token on first successful response
@@ -703,56 +533,21 @@ export function createChatGPTStream(
 
         stream.push({ type: "start" });
 
-        // Parse SSE lines into an async iterable of event objects
-        async function* parseSse(): AsyncIterable<Record<string, unknown>> {
-          const reader = response.body!.getReader();
-          const decoder = new TextDecoder();
-          const debugEnabled = process.env.DILIGENT_DEBUG_CHATGPT_HTTP_SSE === "1";
-          let buffer = "";
-
-          while (true) {
-            if (options.signal?.aborted) break;
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split("\n");
-            buffer = lines.pop()!; // keep incomplete line
-
-            for (const line of lines) {
-              if (!line.startsWith("data: ")) continue;
-              const data = line.slice(6).trim();
-              if (!data || data === "[DONE]") continue;
-
-              let event: Record<string, unknown>;
-              try {
-                event = JSON.parse(data) as Record<string, unknown>;
-              } catch {
-                if (debugEnabled) {
-                  debugChatGPTHttpSse(
-                    "<-",
-                    new TextEncoder().encode(data).byteLength,
-                    "invalid_json",
-                    options.sessionId,
-                  );
-                }
-                continue;
-              }
-              if (debugEnabled) {
-                debugChatGPTHttpSse(
-                  "<-",
-                  new TextEncoder().encode(data).byteLength,
-                  summarizeChatGPTWebSocketPayload(event),
-                  options.sessionId,
-                );
-              }
-              yield event;
-            }
-          }
-        }
+        const debugEnabled = process.env.DILIGENT_DEBUG_CHATGPT_HTTP_SSE === "1";
+        const responseEvents = iterateOpenAIJsonSse(response.body, {
+          signal: options.signal,
+          onJson: (event, _data, byteLength) => {
+            if (!debugEnabled) return;
+            debugChatGPTHttpSse("<-", byteLength, summarizeChatGPTWebSocketPayload(event), options.sessionId);
+          },
+          onInvalidJson: (_data, byteLength) => {
+            if (!debugEnabled) return;
+            debugChatGPTHttpSse("<-", byteLength, "invalid_json", options.sessionId);
+          },
+        });
 
         await handleResponsesAPIEvents(
-          parseSse(),
+          responseEvents,
           stream,
           model,
           options.signal,
@@ -767,7 +562,10 @@ export function createChatGPTStream(
         if (err instanceof ProviderError) {
           stream.push({ type: "error", error: err });
         } else if (isNetworkError(err)) {
-          stream.push({ type: "error", error: new ProviderError(String(err), ProviderErrorType.Network, true) });
+          stream.push({
+            type: "error",
+            error: new ProviderError(String(err), ProviderErrorType.Network, true),
+          });
         } else if (err instanceof Error && isTransientOpenAIErrorMessage(err.message)) {
           stream.push({
             type: "error",
@@ -882,7 +680,10 @@ export function createChatGPTNativeCompaction(getTokens: () => OpenAIOAuthTokens
     const summary = extractCompactionSummary(payload);
     const compactionSummary = extractCompactionSummaryItem(payload);
     if (!summary?.trim() && !compactionSummary) {
-      return { status: "unsupported", reason: `missing_summary ${describeCompactionPayload(payload)}` };
+      return {
+        status: "unsupported",
+        reason: `missing_summary ${describeCompactionPayload(payload)}`,
+      };
     }
     return { status: "ok", summary, compactionSummary };
   };

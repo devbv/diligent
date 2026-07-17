@@ -1,6 +1,6 @@
 // @summary Tests that OpenAI SDK clients are constructed with explicit timeout and no retries.
 import { describe, expect, test } from "bun:test";
-import { createOpenAIClient } from "../../../src/llm/provider/openai";
+import { createOpenAIClient } from "../../../../src/llm/provider/openai";
 
 describe("createOpenAIClient", () => {
   test("constructs the SDK client with explicit timeout and no retries", () => {

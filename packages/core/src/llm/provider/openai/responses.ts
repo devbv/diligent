@@ -1,8 +1,13 @@
 // @summary Responses API message conversion, tool building, and request body construction for OpenAI-format providers
 import type { ResponseInputItem, ResponseInputMessageContentList } from "openai/resources/responses/responses";
-import type { Message, StopReason, Usage } from "../../types";
-import { type LocalImageLoader, materializeUserContentBlocks } from "../image-io";
-import type { FunctionToolDefinition, ProviderBuiltinToolDefinition, ThinkingEffort, ToolDefinition } from "../types";
+import type { Message, StopReason, Usage } from "../../../types";
+import { type LocalImageLoader, materializeUserContentBlocks } from "../../image-io";
+import type {
+  FunctionToolDefinition,
+  ProviderBuiltinToolDefinition,
+  ThinkingEffort,
+  ToolDefinition,
+} from "../../types";
 
 export type ResponsesReasoningEffort = "none" | "low" | "medium" | "high" | "xhigh" | "max";
 

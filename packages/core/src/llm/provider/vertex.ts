@@ -5,12 +5,13 @@ import { classifyProviderHttpError } from "../provider-errors";
 import { flattenSections } from "../system-sections";
 import type { Model, ProviderEvent, ProviderResult, StreamContext, StreamFunction, StreamOptions } from "../types";
 import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError, ProviderErrorReason, ProviderErrorType } from "../types";
+import { isContextOverflow } from "./openai/responses";
 import {
   buildOpenAICompatibleMessages,
   buildOpenAICompatibleTools,
   handleChatCompletionsEvents,
 } from "./openai-compatible";
-import { isContextOverflow } from "./openai-responses";
+import { iterateOpenAIJsonSse } from "./openai-compatible/json-sse";
 
 export interface VertexStreamConfig {
   baseUrl?: string;
@@ -76,33 +77,12 @@ export function createVertexStream(getAccessToken: () => string, config?: Vertex
 
         stream.push({ type: "start" });
 
-        async function* parseSse(): AsyncIterable<Record<string, unknown>> {
-          const reader = response.body?.getReader();
-          if (!reader) return;
-          const decoder = new TextDecoder();
-          let buffer = "";
-
-          while (true) {
-            if (options.signal?.aborted) return;
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split("\n");
-            buffer = lines.pop() ?? "";
-
-            for (const line of lines) {
-              if (!line.startsWith("data:")) continue;
-              const data = line.slice(5).trim();
-              if (!data || data === "[DONE]") continue;
-              try {
-                yield JSON.parse(data) as Record<string, unknown>;
-              } catch {}
-            }
-          }
-        }
-
-        await handleChatCompletionsEvents(parseSse(), stream, model, options.signal);
+        await handleChatCompletionsEvents(
+          iterateOpenAIJsonSse(response.body, { signal: options.signal }),
+          stream,
+          model,
+          options.signal,
+        );
       } catch (err) {
         stream.push({ type: "error", error: classifyVertexError(err) });
       }

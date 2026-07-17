@@ -1,22 +1,22 @@
-// @summary Tests for OpenAI Responses request construction, usage mapping, and streaming edge cases
+// @summary Tests for ChatGPT transport plus OpenAI Responses request and stream compatibility
 import { afterEach, describe, expect, test } from "bun:test";
 import { type LogRecord, resetDefaultLogSinkForTests, setDefaultLogSink } from "@diligent/logging";
-import { toSerializableError } from "../../../src/agent/util/errors";
-import type { OpenAIOAuthTokens } from "../../../src/auth/types";
-import type { EventStream } from "../../../src/event-stream";
-import { resolveModel } from "../../../src/llm/models";
-import { createChatGPTStream, summarizeChatGPTWebSocketPayload } from "../../../src/llm/provider/chatgpt";
+import { toSerializableError } from "../../../../src/agent/util/errors";
+import type { OpenAIOAuthTokens } from "../../../../src/auth/types";
+import { EventStream } from "../../../../src/event-stream";
+import { resolveModel } from "../../../../src/llm/models";
+import { createChatGPTStream, summarizeChatGPTWebSocketPayload } from "../../../../src/llm/provider/chatgpt";
 import {
   buildResponsesRequestBody,
   isGpt56Model,
   mapUsage,
   toResponsesReasoningEffort,
-} from "../../../src/llm/provider/openai-responses";
-import { handleResponsesAPIEvents } from "../../../src/llm/provider/openai-sse";
-import { withRetry } from "../../../src/llm/retry";
-import { createStreamTurnScope } from "../../../src/llm/turn-scope";
-import type { Model, ProviderEvent, ProviderResult, StreamContext } from "../../../src/llm/types";
-import { ProviderError } from "../../../src/llm/types";
+} from "../../../../src/llm/provider/openai/responses";
+import { handleResponsesAPIEvents } from "../../../../src/llm/provider/openai/sse";
+import { withRetry } from "../../../../src/llm/retry";
+import { createStreamTurnScope } from "../../../../src/llm/turn-scope";
+import type { Model, ProviderEvent, ProviderResult, StreamContext } from "../../../../src/llm/types";
+import { ProviderError } from "../../../../src/llm/types";
 
 const TEST_MODEL: Model = {
   id: "gpt-test",
@@ -109,9 +109,17 @@ function createWebSocketHarness(
   options: Omit<FakeChatGPTWebSocketOptions, "onSend"> = {},
 ): {
   factory: ChatGPTWebSocketFactory;
-  requests: Array<{ url: string; headers: Record<string, string>; socket: FakeChatGPTWebSocket }>;
+  requests: Array<{
+    url: string;
+    headers: Record<string, string>;
+    socket: FakeChatGPTWebSocket;
+  }>;
 } {
-  const requests: Array<{ url: string; headers: Record<string, string>; socket: FakeChatGPTWebSocket }> = [];
+  const requests: Array<{
+    url: string;
+    headers: Record<string, string>;
+    socket: FakeChatGPTWebSocket;
+  }> = [];
   return {
     requests,
     factory(url, headers) {
@@ -127,7 +135,10 @@ function completeWebSocketResponse(socket: FakeChatGPTWebSocket, text = "ok"): v
     socket.emit({ type: "response.output_text.delta", delta: text });
     socket.emit({
       type: "response.completed",
-      response: { status: "completed", usage: { input_tokens: 1, output_tokens: 1 } },
+      response: {
+        status: "completed",
+        usage: { input_tokens: 1, output_tokens: 1 },
+      },
     });
   });
 }
@@ -152,9 +163,41 @@ async function collectEvents(stream: EventStream<ProviderEvent, ProviderResult>)
   return events;
 }
 
+function makeProviderEventStream(): EventStream<ProviderEvent, ProviderResult> {
+  return new EventStream<ProviderEvent, ProviderResult>(
+    (event) => event.type === "done" || event.type === "error",
+    (event) => {
+      if (event.type === "done") return { message: event.message };
+      throw (event as { type: "error"; error: Error }).error;
+    },
+  );
+}
+
+async function collectScopedChatGPTEvents(
+  stream: ReturnType<typeof createChatGPTStream>,
+  options: { signal?: AbortSignal } = {},
+): Promise<ProviderEvent[]> {
+  const scope = createStreamTurnScope();
+  try {
+    return await collectEvents(
+      stream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, {
+        effort: "medium",
+        turnScope: scope,
+        ...options,
+      }),
+    );
+  } finally {
+    await scope.dispose();
+  }
+}
+
 function createRetriedChatGPTStream(): EventStream<ProviderEvent, ProviderResult> {
   const chatgptStream = createChatGPTStream(() => testTokens());
-  const retried = withRetry(chatgptStream, { maxAttempts: 2, baseDelayMs: 1, maxDelayMs: 1 });
+  const retried = withRetry(chatgptStream, {
+    maxAttempts: 2,
+    baseDelayMs: 1,
+    maxDelayMs: 1,
+  });
   return retried({ ...TEST_MODEL, id: "chatgpt-5", provider: "chatgpt" }, TEST_CONTEXT, {});
 }
 
@@ -175,6 +218,79 @@ afterEach(() => {
 });
 
 describe("handleResponsesAPIEvents", () => {
+  test("preserves the Responses empty-object fallback for malformed tool arguments", async () => {
+    const stream = makeProviderEventStream();
+
+    async function* iter(): AsyncIterable<Record<string, unknown>> {
+      yield {
+        type: "response.output_item.added",
+        item: { type: "function_call", call_id: "call_1", name: "read" },
+      };
+      yield {
+        type: "response.function_call_arguments.delta",
+        delta: "INVALID_JSON",
+      };
+      yield {
+        type: "response.output_item.done",
+        item: {
+          type: "function_call",
+          call_id: "call_1",
+          name: "read",
+          arguments: "INVALID_JSON",
+        },
+      };
+      yield {
+        type: "response.completed",
+        response: {
+          status: "completed",
+          usage: { input_tokens: 2, output_tokens: 1 },
+        },
+      };
+    }
+
+    await handleResponsesAPIEvents(iter(), stream, TEST_MODEL);
+    const events = await collectEvents(stream);
+    const toolEnd = events.find(
+      (event): event is Extract<ProviderEvent, { type: "tool_call_end" }> => event.type === "tool_call_end",
+    );
+
+    expect(toolEnd?.input).toEqual({});
+    expect((await stream.result()).message.content).toContainEqual({
+      type: "tool_call",
+      id: "call_1",
+      name: "read",
+      input: {},
+    });
+  });
+
+  test("uses authoritative message completion after text deltas without duplicating text", async () => {
+    const stream = makeProviderEventStream();
+
+    async function* iter(): AsyncIterable<Record<string, unknown>> {
+      yield { type: "response.output_text.delta", delta: "draft" };
+      yield {
+        type: "response.output_item.done",
+        item: {
+          type: "message",
+          content: [{ type: "output_text", text: "authoritative" }],
+        },
+      };
+      yield {
+        type: "response.completed",
+        response: {
+          status: "completed",
+          usage: { input_tokens: 2, output_tokens: 1 },
+        },
+      };
+    }
+
+    await handleResponsesAPIEvents(iter(), stream, TEST_MODEL);
+    const events = await collectEvents(stream);
+
+    expect(events.filter((event) => event.type === "text_end")).toEqual([{ type: "text_end", text: "authoritative" }]);
+    expect((await stream.result()).message.content).toEqual([{ type: "text", text: "authoritative" }]);
+  });
+
   test("does not emit a successful terminal event after abort", async () => {
     const controller = new AbortController();
     const events: ProviderEvent[] = [];
@@ -189,7 +305,10 @@ describe("handleResponsesAPIEvents", () => {
       controller.abort();
       yield {
         type: "response.completed",
-        response: { status: "cancelled", usage: { input_tokens: 10, output_tokens: 5 } },
+        response: {
+          status: "cancelled",
+          usage: { input_tokens: 10, output_tokens: 5 },
+        },
       };
     }
 
@@ -209,7 +328,10 @@ describe("handleResponsesAPIEvents", () => {
     async function* iter(): AsyncIterable<Record<string, unknown>> {
       yield {
         type: "response.output_item.done",
-        item: { type: "reasoning", summary: [{ type: "summary_text", text: "thinking only" }] },
+        item: {
+          type: "reasoning",
+          summary: [{ type: "summary_text", text: "thinking only" }],
+        },
       };
     }
 
@@ -237,7 +359,9 @@ describe("handleResponsesAPIEvents", () => {
     async function* iter(): AsyncIterable<Record<string, unknown>> {
       yield {
         type: "response.failed",
-        response: { error: { code: "server_error", message: "Something went wrong" } },
+        response: {
+          error: { code: "server_error", message: "Something went wrong" },
+        },
       };
     }
 
@@ -259,9 +383,12 @@ describe("createChatGPTStream retry classification", () => {
         input: [{ type: "message" }, { type: "message" }],
       }),
     ).toBe("response.create model=gpt-5.6-luna inputItems=2");
-    expect(summarizeChatGPTWebSocketPayload({ type: "response.output_text.delta", delta: "sensitive text" })).toBe(
-      "response.output_text.delta deltaChars=14",
-    );
+    expect(
+      summarizeChatGPTWebSocketPayload({
+        type: "response.output_text.delta",
+        delta: "sensitive text",
+      }),
+    ).toBe("response.output_text.delta deltaChars=14");
     expect(
       summarizeChatGPTWebSocketPayload({
         type: "error",
@@ -294,7 +421,10 @@ describe("createChatGPTStream retry classification", () => {
       ["chatgpt-5.6-luna", "medium"],
     ] as const) {
       const events = await collectEvents(
-        chatgptStream(resolveModel(modelId), TEST_CONTEXT, { effort, sessionId: "session_1" }),
+        chatgptStream(resolveModel(modelId), TEST_CONTEXT, {
+          effort,
+          sessionId: "session_1",
+        }),
       );
       expect(events.some((event) => event.type === "done")).toBe(true);
     }
@@ -412,7 +542,9 @@ describe("createChatGPTStream retry classification", () => {
     });
 
     const events = await collectEvents(
-      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, { effort: "medium" }),
+      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, {
+        effort: "medium",
+      }),
     );
 
     const error = events.find((event): event is Extract<ProviderEvent, { type: "error" }> => event.type === "error");
@@ -435,14 +567,19 @@ describe("createChatGPTStream retry classification", () => {
           }, 15);
         },
       });
-      return new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } });
+      return new Response(body, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
     }) as unknown as typeof fetch;
     const chatgptStream = createChatGPTStream(() => testTokens(), {
       httpHeaderTimeoutMs: 5,
     });
 
     const events = await collectEvents(
-      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, { effort: "medium" }),
+      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, {
+        effort: "medium",
+      }),
     );
 
     expect(events.some((event) => event.type === "done")).toBe(true);
@@ -457,7 +594,9 @@ describe("createChatGPTStream retry classification", () => {
     });
 
     const events = await collectEvents(
-      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, { effort: "medium" }),
+      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, {
+        effort: "medium",
+      }),
     );
 
     expect(events.some((event) => event.type === "done")).toBe(true);
@@ -473,15 +612,298 @@ describe("createChatGPTStream retry classification", () => {
     const scope = createStreamTurnScope();
     const model = resolveModel("chatgpt-5.6-luna");
 
-    await collectEvents(chatgptStream(model, TEST_CONTEXT, { effort: "medium", turnScope: scope }));
+    await collectEvents(
+      chatgptStream(model, TEST_CONTEXT, {
+        effort: "medium",
+        turnScope: scope,
+      }),
+    );
     expect(harness.requests).toHaveLength(1);
     expect(harness.requests[0]?.socket.closed).toBe(false);
-    await collectEvents(chatgptStream(model, TEST_CONTEXT, { effort: "medium", turnScope: scope }));
+    await collectEvents(
+      chatgptStream(model, TEST_CONTEXT, {
+        effort: "medium",
+        turnScope: scope,
+      }),
+    );
 
     expect(harness.requests).toHaveLength(1);
     expect(harness.requests[0]?.socket.sent).toHaveLength(2);
     await scope.dispose();
     expect(harness.requests[0]?.socket.closed).toBe(true);
+  });
+
+  test("scoped path processes a delayed terminal WebSocket message before close", async () => {
+    const harness = createWebSocketHarness((_body, socket) => {
+      const payload = JSON.stringify({
+        type: "response.completed",
+        response: {
+          status: "completed",
+          usage: { input_tokens: 1, output_tokens: 1 },
+        },
+      });
+      const delayedBlob = new Blob([payload]);
+      Object.defineProperty(delayedBlob, "text", {
+        value: async () => {
+          await new Promise((resolve) => setTimeout(resolve, 1));
+          return payload;
+        },
+      });
+
+      queueMicrotask(() => {
+        socket.emitRaw(delayedBlob);
+        socket.emitClose(1000, "normal closure");
+      });
+    });
+    const events = await collectScopedChatGPTEvents(
+      createChatGPTStream(() => testTokens(), {
+        useWebSocketForGpt56: true,
+        webSocketFactory: harness.factory,
+      }),
+    );
+
+    expect(events.some((event) => event.type === "done")).toBe(true);
+    expect(events.some((event) => event.type === "error")).toBe(false);
+  });
+
+  test("scoped path times out when a WebSocket never opens", async () => {
+    const harness = createWebSocketHarness(undefined, { autoOpen: false });
+    const controller = new AbortController();
+    const scope = createStreamTurnScope();
+    const stream = createChatGPTStream(() => testTokens(), {
+      useWebSocketForGpt56: true,
+      webSocketFactory: harness.factory,
+      webSocketIdleTimeoutMs: 1,
+    })(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, {
+      effort: "medium",
+      signal: controller.signal,
+      turnScope: scope,
+    });
+    const collection = collectEvents(stream);
+    const outcome = await Promise.race([
+      collection,
+      new Promise<"still-pending">((resolve) => setTimeout(() => resolve("still-pending"), 25)),
+    ]);
+    if (outcome === "still-pending") controller.abort();
+    const events = outcome === "still-pending" ? await collection : outcome;
+    await scope.dispose();
+
+    expect(outcome).not.toBe("still-pending");
+    const error = events.find((event): event is Extract<ProviderEvent, { type: "error" }> => event.type === "error");
+    expect(error?.error.message).toBe("ChatGPT WebSocket idle timeout waiting for connection");
+    expect((error?.error as { errorType?: string }).errorType).toBe("network");
+    expect((error?.error as { isRetryable?: boolean }).isRetryable).toBe(true);
+    expect(harness.requests[0]?.socket.terminated).toBe(true);
+  });
+
+  test("scoped path preserves close code and reason before completion", async () => {
+    const harness = createWebSocketHarness((_body, socket) => {
+      queueMicrotask(() => socket.emitClose(1011, "upstream unavailable"));
+    });
+    const events = await collectScopedChatGPTEvents(
+      createChatGPTStream(() => testTokens(), {
+        useWebSocketForGpt56: true,
+        webSocketFactory: harness.factory,
+      }),
+    );
+
+    const error = events.find((event): event is Extract<ProviderEvent, { type: "error" }> => event.type === "error");
+    expect(error?.error.message).toContain(
+      "ChatGPT WebSocket closed before response.completed (1011: upstream unavailable)",
+    );
+    expect((error?.error as { errorType?: string }).errorType).toBe("network");
+    expect((error?.error as { isRetryable?: boolean }).isRetryable).toBe(true);
+  });
+
+  test("scoped path maps send throws to retryable network errors", async () => {
+    const harness = createWebSocketHarness(undefined, {
+      sendError: new Error("send failed"),
+    });
+    const events = await collectScopedChatGPTEvents(
+      createChatGPTStream(() => testTokens(), {
+        useWebSocketForGpt56: true,
+        webSocketFactory: harness.factory,
+      }),
+    );
+
+    const error = events.find((event): event is Extract<ProviderEvent, { type: "error" }> => event.type === "error");
+    expect(error?.error.message).toBe("ChatGPT WebSocket send failed: send failed");
+    expect((error?.error as { errorType?: string }).errorType).toBe("network");
+    expect((error?.error as { isRetryable?: boolean }).isRetryable).toBe(true);
+  });
+
+  test("scoped path classifies top-level provider errors like the unscoped path", async () => {
+    const cases: Array<{
+      payload: Record<string, unknown>;
+      expectedType: string;
+      expectedRetryable: boolean;
+      expectedStatus?: number;
+      expectedReason?: string;
+      expectedMessage: string;
+    }> = [
+      {
+        payload: {
+          type: "error",
+          status: 401,
+          error: { type: "authentication_error", message: "unauthorized" },
+        },
+        expectedType: "auth",
+        expectedRetryable: false,
+        expectedStatus: 401,
+        expectedReason: "credentials_rejected",
+        expectedMessage: "unauthorized",
+      },
+      {
+        payload: {
+          type: "error",
+          status_code: 403,
+          error: { message: "forbidden" },
+        },
+        expectedType: "auth",
+        expectedRetryable: false,
+        expectedStatus: 403,
+        expectedReason: "credentials_rejected",
+        expectedMessage: "forbidden",
+      },
+      {
+        payload: {
+          type: "error",
+          status_code: 429,
+          error: { message: "rate limited" },
+        },
+        expectedType: "rate_limit",
+        expectedRetryable: false,
+        expectedStatus: 429,
+        expectedMessage: "rate limited",
+      },
+      {
+        payload: {
+          type: "error",
+          status: 429,
+          error: {
+            type: "usage_limit_reached",
+            message: "The usage limit has been reached",
+          },
+        },
+        expectedType: "rate_limit",
+        expectedRetryable: false,
+        expectedStatus: 429,
+        expectedReason: "usage_limit_reached",
+        expectedMessage: "usage_limit_reached",
+      },
+      {
+        payload: {
+          type: "error",
+          status: 400,
+          error: {
+            code: "websocket_connection_limit_reached",
+            message: "Too many WebSocket connections",
+          },
+        },
+        expectedType: "unknown",
+        expectedRetryable: true,
+        expectedStatus: 400,
+        expectedMessage: "websocket_connection_limit_reached",
+      },
+    ];
+
+    for (const testCase of cases) {
+      const harness = createWebSocketHarness((_body, socket) => {
+        queueMicrotask(() => socket.emit(testCase.payload));
+      });
+      const events = await collectScopedChatGPTEvents(
+        createChatGPTStream(() => testTokens(), {
+          useWebSocketForGpt56: true,
+          webSocketFactory: harness.factory,
+        }),
+      );
+      const error = events.find((event): event is Extract<ProviderEvent, { type: "error" }> => event.type === "error");
+
+      expect(error?.error.message).toContain(testCase.expectedMessage);
+      expect((error?.error as { errorType?: string }).errorType).toBe(testCase.expectedType);
+      expect((error?.error as { isRetryable?: boolean }).isRetryable).toBe(testCase.expectedRetryable);
+      expect((error?.error as { statusCode?: number }).statusCode).toBe(testCase.expectedStatus);
+      expect((error?.error as { reason?: string }).reason).toBe(testCase.expectedReason);
+    }
+  });
+
+  test("scoped path preserves transient response.failed classification", async () => {
+    const harness = createWebSocketHarness((_body, socket) => {
+      queueMicrotask(() =>
+        socket.emit({
+          type: "response.failed",
+          response: {
+            error: {
+              message: "ChatGPT is temporarily unavailable. Please try again.",
+            },
+          },
+        }),
+      );
+    });
+    const events = await collectScopedChatGPTEvents(
+      createChatGPTStream(() => testTokens(), {
+        useWebSocketForGpt56: true,
+        webSocketFactory: harness.factory,
+      }),
+    );
+
+    const error = events.find((event): event is Extract<ProviderEvent, { type: "error" }> => event.type === "error");
+    expect((error?.error as { errorType?: string }).errorType).toBe("server_error");
+    expect((error?.error as { isRetryable?: boolean }).isRetryable).toBe(true);
+  });
+
+  test("scoped path aborts during open and during an active exchange", async () => {
+    const openingHarness = createWebSocketHarness(undefined, {
+      autoOpen: false,
+    });
+    const openingController = new AbortController();
+    const openingCollection = collectScopedChatGPTEvents(
+      createChatGPTStream(() => testTokens(), {
+        useWebSocketForGpt56: true,
+        webSocketFactory: openingHarness.factory,
+      }),
+      { signal: openingController.signal },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    openingController.abort();
+    await openingCollection;
+    expect(openingHarness.requests[0]?.socket.terminated).toBe(true);
+
+    const activeHarness = createWebSocketHarness();
+    const activeController = new AbortController();
+    const activeCollection = collectScopedChatGPTEvents(
+      createChatGPTStream(() => testTokens(), {
+        useWebSocketForGpt56: true,
+        webSocketFactory: activeHarness.factory,
+      }),
+      { signal: activeController.signal },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(activeHarness.requests[0]?.socket.sent).toHaveLength(1);
+    activeController.abort();
+    await activeCollection;
+    expect(activeHarness.requests[0]?.socket.terminated).toBe(true);
+  });
+
+  test("scoped path logs frame byte sizes and payload summaries", async () => {
+    process.env.DILIGENT_DEBUG_CHATGPT_WEBSOCKET = "1";
+    const logs: string[] = [];
+    console.debug = (...args: unknown[]) => logs.push(args.map(String).join(" "));
+    const harness = createWebSocketHarness((_body, socket) => completeWebSocketResponse(socket));
+    const events = await collectScopedChatGPTEvents(
+      createChatGPTStream(() => testTokens(), {
+        useWebSocketForGpt56: true,
+        webSocketFactory: harness.factory,
+      }),
+    );
+
+    expect(logs.some((line) => line.includes("[llm:chatgpt-ws] -> bytes=") && line.includes("response.create"))).toBe(
+      true,
+    );
+    expect(
+      logs.some((line) => line.includes("[llm:chatgpt-ws] <- bytes=") && line.includes("response.completed")),
+    ).toBe(true);
+    expect(events.some((event) => event.type === "done")).toBe(true);
   });
 
   test("falls back to HTTP after two scoped WebSocket transport failures", async () => {
@@ -501,7 +923,10 @@ describe("createChatGPTStream retry classification", () => {
     const scope = createStreamTurnScope();
 
     const events = await collectEvents(
-      stream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, { effort: "medium", turnScope: scope }),
+      stream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, {
+        effort: "medium",
+        turnScope: scope,
+      }),
     );
 
     expect(events.some((event) => event.type === "done")).toBe(true);
@@ -526,13 +951,20 @@ describe("createChatGPTStream retry classification", () => {
           kind: "function",
           name: "read",
           description: "Read a file",
-          inputSchema: { properties: { path: { type: "string" } }, required: ["path"] },
+          inputSchema: {
+            properties: { path: { type: "string" } },
+            required: ["path"],
+          },
         },
         { kind: "provider_builtin", capability: "web" },
       ],
     };
 
-    const events = await collectEvents(chatgptStream(resolveModel("chatgpt-5.6-luna"), context, { effort: "low" }));
+    const events = await collectEvents(
+      chatgptStream(resolveModel("chatgpt-5.6-luna"), context, {
+        effort: "low",
+      }),
+    );
     expect(events.some((event) => event.type === "done")).toBe(true);
 
     const input = requestBody.input as Array<Record<string, unknown>>;
@@ -558,7 +990,10 @@ describe("createChatGPTStream retry classification", () => {
       role: "developer",
       content: [{ type: "input_text", text: "System instructions" }],
     });
-    expect(input[2]).toEqual({ type: "compaction", encrypted_content: "summary" });
+    expect(input[2]).toEqual({
+      type: "compaction",
+      encrypted_content: "summary",
+    });
     expect(input[3]).toEqual({
       type: "message",
       role: "user",
@@ -580,7 +1015,11 @@ describe("createChatGPTStream retry classification", () => {
       },
     });
 
-    const events = await collectEvents(chatgptStream(resolveModel("chatgpt-5.5"), TEST_CONTEXT, { effort: "medium" }));
+    const events = await collectEvents(
+      chatgptStream(resolveModel("chatgpt-5.5"), TEST_CONTEXT, {
+        effort: "medium",
+      }),
+    );
 
     expect(events.some((event) => event.type === "done")).toBe(true);
     expect(webSocketCalled).toBe(false);
@@ -598,7 +1037,9 @@ describe("createChatGPTStream retry classification", () => {
     });
 
     const events = await collectEvents(
-      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, { effort: "medium" }),
+      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, {
+        effort: "medium",
+      }),
     );
 
     const error = events.find((event): event is Extract<ProviderEvent, { type: "error" }> => event.type === "error");
@@ -616,7 +1057,9 @@ describe("createChatGPTStream retry classification", () => {
     });
 
     const events = await collectEvents(
-      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, { effort: "medium" }),
+      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, {
+        effort: "medium",
+      }),
     );
 
     const error = events.find((event): event is Extract<ProviderEvent, { type: "error" }> => event.type === "error");
@@ -635,7 +1078,9 @@ describe("createChatGPTStream retry classification", () => {
     });
 
     const events = await collectEvents(
-      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, { effort: "medium" }),
+      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, {
+        effort: "medium",
+      }),
     );
 
     const error = events.find((event): event is Extract<ProviderEvent, { type: "error" }> => event.type === "error");
@@ -646,7 +1091,9 @@ describe("createChatGPTStream retry classification", () => {
   });
 
   test("maps GPT-5.6 WebSocket send throws to retryable network errors", async () => {
-    const harness = createWebSocketHarness(undefined, { sendError: new Error("send failed") });
+    const harness = createWebSocketHarness(undefined, {
+      sendError: new Error("send failed"),
+    });
     const chatgptStream = createChatGPTStream(() => testTokens(), {
       useWebSocketForGpt56: true,
       webSocketFactory: harness.factory,
@@ -654,7 +1101,9 @@ describe("createChatGPTStream retry classification", () => {
     });
 
     const events = await collectEvents(
-      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, { effort: "medium" }),
+      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, {
+        effort: "medium",
+      }),
     );
 
     const error = events.find((event): event is Extract<ProviderEvent, { type: "error" }> => event.type === "error");
@@ -673,7 +1122,9 @@ describe("createChatGPTStream retry classification", () => {
     });
 
     const events = await collectEvents(
-      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, { effort: "medium" }),
+      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, {
+        effort: "medium",
+      }),
     );
 
     const error = events.find((event): event is Extract<ProviderEvent, { type: "error" }> => event.type === "error");
@@ -688,7 +1139,10 @@ describe("createChatGPTStream retry classification", () => {
     const harness = createWebSocketHarness((_body, socket) => {
       const payload = JSON.stringify({
         type: "response.completed",
-        response: { status: "completed", usage: { input_tokens: 1, output_tokens: 1 } },
+        response: {
+          status: "completed",
+          usage: { input_tokens: 1, output_tokens: 1 },
+        },
       });
       const delayedBlob = new Blob([payload]);
       Object.defineProperty(delayedBlob, "text", {
@@ -709,7 +1163,9 @@ describe("createChatGPTStream retry classification", () => {
     });
 
     const events = await collectEvents(
-      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, { effort: "medium" }),
+      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, {
+        effort: "medium",
+      }),
     );
 
     expect(events.some((event) => event.type === "done")).toBe(true);
@@ -725,7 +1181,10 @@ describe("createChatGPTStream retry classification", () => {
     const harness = createWebSocketHarness((_body, socket) => {
       const payload = JSON.stringify({
         type: "response.completed",
-        response: { status: "completed", usage: { input_tokens: 3, output_tokens: 2 } },
+        response: {
+          status: "completed",
+          usage: { input_tokens: 3, output_tokens: 2 },
+        },
       });
       const delayedBlob = new Blob([payload]);
       Object.defineProperty(delayedBlob, "text", {
@@ -745,7 +1204,9 @@ describe("createChatGPTStream retry classification", () => {
     });
 
     const events = await collectEvents(
-      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, { effort: "medium" }),
+      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, {
+        effort: "medium",
+      }),
     );
 
     expect(receiveLogSeenBeforeDecode).toBe(true);
@@ -777,7 +1238,9 @@ describe("createChatGPTStream retry classification", () => {
       webSocketFactory: errorHarness.factory,
     });
     const errorEvents = await collectEvents(
-      errorStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, { effort: "medium" }),
+      errorStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, {
+        effort: "medium",
+      }),
     );
     const error = errorEvents.find(
       (event): event is Extract<ProviderEvent, { type: "error" }> => event.type === "error",
@@ -806,7 +1269,10 @@ describe("createChatGPTStream retry classification", () => {
         socket.emit({
           type: "error",
           status: 429,
-          error: { type: "usage_limit_reached", message: "The usage limit has been reached" },
+          error: {
+            type: "usage_limit_reached",
+            message: "The usage limit has been reached",
+          },
         }),
       );
     });
@@ -816,7 +1282,9 @@ describe("createChatGPTStream retry classification", () => {
     });
 
     const events = await collectEvents(
-      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, { effort: "medium" }),
+      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, {
+        effort: "medium",
+      }),
     );
 
     const error = events.find((event): event is Extract<ProviderEvent, { type: "error" }> => event.type === "error");
@@ -844,7 +1312,9 @@ describe("createChatGPTStream retry classification", () => {
     });
 
     const events = await collectEvents(
-      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, { effort: "medium" }),
+      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, {
+        effort: "medium",
+      }),
     );
 
     const error = events.find((event): event is Extract<ProviderEvent, { type: "error" }> => event.type === "error");
@@ -859,7 +1329,10 @@ describe("createChatGPTStream retry classification", () => {
       queueMicrotask(() =>
         socket.emit({
           type: "error",
-          error: { code: "usage_limit_reached", message: "The usage limit has been reached" },
+          error: {
+            code: "usage_limit_reached",
+            message: "The usage limit has been reached",
+          },
         }),
       );
     });
@@ -869,7 +1342,9 @@ describe("createChatGPTStream retry classification", () => {
     });
 
     const events = await collectEvents(
-      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, { effort: "medium" }),
+      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, {
+        effort: "medium",
+      }),
     );
     const error = events.find((event): event is Extract<ProviderEvent, { type: "error" }> => event.type === "error");
 
@@ -884,7 +1359,10 @@ describe("createChatGPTStream retry classification", () => {
         socket.emit({
           type: "error",
           status: 400,
-          error: { code: "websocket_connection_limit_reached", message: "Too many WebSocket connections" },
+          error: {
+            code: "websocket_connection_limit_reached",
+            message: "Too many WebSocket connections",
+          },
         }),
       );
     });
@@ -894,7 +1372,9 @@ describe("createChatGPTStream retry classification", () => {
     });
 
     const events = await collectEvents(
-      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, { effort: "medium" }),
+      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, {
+        effort: "medium",
+      }),
     );
 
     const error = events.find((event): event is Extract<ProviderEvent, { type: "error" }> => event.type === "error");
@@ -923,7 +1403,12 @@ describe("createChatGPTStream retry classification", () => {
   test("preserves HTTP usage-limit diagnostics with a stable reason", async () => {
     globalThis.fetch = (async () =>
       new Response(
-        JSON.stringify({ error: { type: "usage_limit_reached", message: "The usage limit has been reached" } }),
+        JSON.stringify({
+          error: {
+            type: "usage_limit_reached",
+            message: "The usage limit has been reached",
+          },
+        }),
         { status: 429 },
       )) as unknown as typeof fetch;
 
@@ -1005,7 +1490,10 @@ describe("createChatGPTStream retry classification", () => {
     globalThis.fetch = (async () => {
       fetchCount++;
       if (fetchCount === 1) {
-        return new Response("", { status: 200, headers: { "content-type": "text/event-stream" } });
+        return new Response("", {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        });
       }
       return chatGPTSuccessResponse();
     }) as unknown as typeof fetch;

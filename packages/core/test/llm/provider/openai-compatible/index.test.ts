@@ -1,15 +1,15 @@
-// @summary Contract tests for openai-compatible.ts shared helpers used by zai-coding-plan, vertex, and openai providers
+// @summary Contract tests for OpenAI-compatible helpers used by z.ai, Vertex, and OpenAI providers
 import { describe, expect, test } from "bun:test";
-import { EventStream } from "../../../src/event-stream";
+import { EventStream } from "../../../../src/event-stream";
 import {
   buildOpenAICompatibleMessages,
   buildOpenAICompatibleTools,
   handleChatCompletionsEvents,
   mapChatCompletionsStopReason,
   mapChatCompletionsUsage,
-} from "../../../src/llm/provider/openai-compatible";
-import type { Model, ProviderEvent, ProviderResult } from "../../../src/llm/types";
-import type { AssistantMessage } from "../../../src/types";
+} from "../../../../src/llm/provider/openai-compatible";
+import type { Model, ProviderEvent, ProviderResult } from "../../../../src/llm/types";
+import type { AssistantMessage } from "../../../../src/types";
 
 const TEST_MODEL: Model = {
   id: "test-model",
@@ -55,12 +55,19 @@ describe("buildOpenAICompatibleMessages", () => {
 
   test("converts a user message with text content block", async () => {
     const messages = await buildOpenAICompatibleMessages([
-      { role: "user", content: [{ type: "text", text: "hello" }], timestamp: 1 },
+      {
+        role: "user",
+        content: [{ type: "text", text: "hello" }],
+        timestamp: 1,
+      },
     ]);
     expect(messages).toHaveLength(1);
     expect(messages[0].role).toBe("user");
     expect(Array.isArray(messages[0].content)).toBe(true);
-    const content = messages[0].content as Array<{ type: string; text?: string }>;
+    const content = messages[0].content as Array<{
+      type: string;
+      text?: string;
+    }>;
     expect(content[0]).toEqual({ type: "text", text: "hello" });
   });
 
@@ -79,7 +86,12 @@ describe("buildOpenAICompatibleMessages", () => {
     expect(messages).toEqual([
       {
         role: "user",
-        content: [{ type: "image_url", image_url: { url: "data:image/png;base64,aW1hZ2UtYnl0ZXM=" } }],
+        content: [
+          {
+            type: "image_url",
+            image_url: { url: "data:image/png;base64,aW1hZ2UtYnl0ZXM=" },
+          },
+        ],
       },
     ]);
   });
@@ -90,7 +102,12 @@ describe("buildOpenAICompatibleMessages", () => {
         role: "assistant",
         content: [{ type: "text", text: "I can help" }],
         model: TEST_MODEL.id,
-        usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 },
+        usage: {
+          inputTokens: 10,
+          outputTokens: 5,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+        },
         stopReason: "end_turn",
         timestamp: Date.now(),
       },
@@ -102,9 +119,21 @@ describe("buildOpenAICompatibleMessages", () => {
     const messages = await buildOpenAICompatibleMessages([
       {
         role: "assistant",
-        content: [{ type: "tool_call", id: "tc_1", name: "bash", input: { command: "ls" } }],
+        content: [
+          {
+            type: "tool_call",
+            id: "tc_1",
+            name: "bash",
+            input: { command: "ls" },
+          },
+        ],
         model: TEST_MODEL.id,
-        usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 },
+        usage: {
+          inputTokens: 10,
+          outputTokens: 5,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+        },
         stopReason: "tool_use",
         timestamp: Date.now(),
       },
@@ -126,10 +155,20 @@ describe("buildOpenAICompatibleMessages", () => {
         role: "assistant",
         content: [
           { type: "text", text: "Sure, running it now." },
-          { type: "tool_call", id: "tc_2", name: "bash", input: { command: "pwd" } },
+          {
+            type: "tool_call",
+            id: "tc_2",
+            name: "bash",
+            input: { command: "pwd" },
+          },
         ],
         model: TEST_MODEL.id,
-        usage: { inputTokens: 5, outputTokens: 10, cacheReadTokens: 0, cacheWriteTokens: 0 },
+        usage: {
+          inputTokens: 5,
+          outputTokens: 10,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+        },
         stopReason: "tool_use",
         timestamp: Date.now(),
       },
@@ -145,7 +184,12 @@ describe("buildOpenAICompatibleMessages", () => {
         role: "assistant",
         content: [],
         model: TEST_MODEL.id,
-        usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+        usage: {
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+        },
         stopReason: "end_turn",
         timestamp: Date.now(),
       },
@@ -180,9 +224,21 @@ describe("buildOpenAICompatibleMessages", () => {
       { role: "user", content: "run ls", timestamp: now },
       {
         role: "assistant",
-        content: [{ type: "tool_call", id: "tc_3", name: "bash", input: { command: "ls" } }],
+        content: [
+          {
+            type: "tool_call",
+            id: "tc_3",
+            name: "bash",
+            input: { command: "ls" },
+          },
+        ],
         model: TEST_MODEL.id,
-        usage: { inputTokens: 5, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0 },
+        usage: {
+          inputTokens: 5,
+          outputTokens: 5,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+        },
         stopReason: "tool_use",
         timestamp: now,
       },
@@ -241,7 +297,10 @@ describe("buildOpenAICompatibleTools", () => {
         kind: "function",
         name: "read",
         description: "Read a file",
-        inputSchema: { properties: { path: { type: "string" } }, required: ["path"] },
+        inputSchema: {
+          properties: { path: { type: "string" } },
+          required: ["path"],
+        },
       },
     ]);
     expect(tools).toHaveLength(1);
@@ -326,6 +385,81 @@ describe("mapChatCompletionsUsage", () => {
 // ---------------------------------------------------------------------------
 
 describe("handleChatCompletionsEvents", () => {
+  test("flushes thinking when the response has no text", async () => {
+    const stream = makeStream();
+    const payloads = [
+      {
+        choices: [
+          {
+            delta: { reasoning_content: "thinking only" },
+            finish_reason: null,
+          },
+        ],
+      },
+      {
+        choices: [{ delta: {}, finish_reason: "stop" }],
+        usage: { prompt_tokens: 4, completion_tokens: 2 },
+      },
+    ];
+
+    await handleChatCompletionsEvents(makeAsyncIter(payloads), stream, TEST_MODEL);
+    const events = await collectEvents(stream);
+
+    expect(events.map((event) => event.type)).toEqual(["thinking_delta", "thinking_end", "usage", "done"]);
+    expect((await stream.result()).message.content).toEqual([{ type: "thinking", thinking: "thinking only" }]);
+  });
+
+  test("finalizes multiple interleaved tool calls in index order", async () => {
+    const stream = makeStream();
+    const payloads = [
+      {
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  index: 1,
+                  id: "tc_2",
+                  function: { name: "write", arguments: '{"path"' },
+                },
+                {
+                  index: 0,
+                  id: "tc_1",
+                  function: { name: "read", arguments: '{"path"' },
+                },
+              ],
+            },
+            finish_reason: null,
+          },
+        ],
+      },
+      {
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                { index: 0, function: { arguments: ':"a"}' } },
+                { index: 1, function: { arguments: ':"b"}' } },
+              ],
+            },
+            finish_reason: "tool_calls",
+          },
+        ],
+      },
+    ];
+
+    await handleChatCompletionsEvents(makeAsyncIter(payloads), stream, TEST_MODEL);
+    const events = await collectEvents(stream);
+    const ends = events.filter(
+      (event): event is Extract<ProviderEvent, { type: "tool_call_end" }> => event.type === "tool_call_end",
+    );
+
+    expect(ends.map((event) => ({ id: event.id, input: event.input }))).toEqual([
+      { id: "tc_1", input: { path: "a" } },
+      { id: "tc_2", input: { path: "b" } },
+    ]);
+  });
+
   test("text-only response: emits text_delta, text_end, usage, done", async () => {
     const stream = makeStream();
 
@@ -344,7 +478,10 @@ describe("handleChatCompletionsEvents", () => {
 
     expect(events.map((e) => e.type)).toEqual(["text_delta", "text_delta", "text_end", "usage", "done"]);
 
-    const textEnd = events.find((e) => e.type === "text_end") as { type: "text_end"; text: string };
+    const textEnd = events.find((e) => e.type === "text_end") as {
+      type: "text_end";
+      text: string;
+    };
     expect(textEnd.text).toBe("Hello, world!");
 
     const result = await stream.result();
@@ -384,12 +521,21 @@ describe("handleChatCompletionsEvents", () => {
       "done",
     ]);
 
-    const thinkingEnd = events.find((e) => e.type === "thinking_end") as { type: "thinking_end"; thinking: string };
+    const thinkingEnd = events.find((e) => e.type === "thinking_end") as {
+      type: "thinking_end";
+      thinking: string;
+    };
     expect(thinkingEnd.thinking).toBe("Think step.");
 
     const result = await stream.result();
-    expect((result.message as AssistantMessage).content[0]).toEqual({ type: "thinking", thinking: "Think step." });
-    expect((result.message as AssistantMessage).content[1]).toEqual({ type: "text", text: "Answer." });
+    expect((result.message as AssistantMessage).content[0]).toEqual({
+      type: "thinking",
+      thinking: "Think step.",
+    });
+    expect((result.message as AssistantMessage).content[1]).toEqual({
+      type: "text",
+      text: "Answer.",
+    });
   });
 
   test("tool call response: emits tool_call_start, deltas, tool_call_end, done", async () => {
@@ -400,7 +546,13 @@ describe("handleChatCompletionsEvents", () => {
         choices: [
           {
             delta: {
-              tool_calls: [{ index: 0, id: "tc_abc", function: { name: "bash", arguments: '{"command"' } }],
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "tc_abc",
+                  function: { name: "bash", arguments: '{"command"' },
+                },
+              ],
             },
             finish_reason: null,
           },
@@ -459,7 +611,13 @@ describe("handleChatCompletionsEvents", () => {
         choices: [
           {
             delta: {
-              tool_calls: [{ index: 0, id: "tc_x", function: { name: "read", arguments: "INVALID_JSON" } }],
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "tc_x",
+                  function: { name: "read", arguments: "INVALID_JSON" },
+                },
+              ],
             },
             finish_reason: "tool_calls",
           },
@@ -486,7 +644,9 @@ describe("handleChatCompletionsEvents", () => {
     stream.subscribe((event) => events.push(event));
 
     async function* abortingIter(): AsyncIterable<Record<string, unknown>> {
-      yield { choices: [{ delta: { content: "partial" }, finish_reason: null }] };
+      yield {
+        choices: [{ delta: { content: "partial" }, finish_reason: null }],
+      };
       controller.abort();
       yield {
         choices: [{ delta: { content: " more" }, finish_reason: "stop" }],
@@ -527,7 +687,13 @@ describe("handleChatCompletionsEvents", () => {
         choices: [
           {
             delta: {
-              tool_calls: [{ index: 0, id: "tc_y", function: { name: "bash", arguments: '{"command":"pwd"}' } }],
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "tc_y",
+                  function: { name: "bash", arguments: '{"command":"pwd"}' },
+                },
+              ],
             },
             finish_reason: "tool_calls",
           },

@@ -1,15 +1,24 @@
 // @summary Unified provider manager — provider stream dispatch with injected auth bindings
 
+import { EventStream } from "../event-stream";
 import { DEFAULT_ANTHROPIC_MODEL_ID } from "./models";
 import { createAnthropicNativeCompaction, createAnthropicStream } from "./provider/anthropic";
 import { createGeminiStream } from "./provider/gemini";
 import type { NativeCompactionLookup } from "./provider/native-compaction";
 import { createOpenAINativeCompaction, createOpenAIStream } from "./provider/openai";
-import type { OpenAIImageDetail } from "./provider/openai-responses";
+import type { OpenAIImageDetail } from "./provider/openai/responses";
 import { validateProviderApiKey } from "./provider/validate-key";
 import { createVertexStream } from "./provider/vertex";
 import { createZaiCodingPlanStream } from "./provider/zai-coding-plan";
-import { ProviderError, ProviderErrorReason, ProviderErrorType, type ProviderName, type StreamFunction } from "./types";
+import {
+  ProviderError,
+  ProviderErrorReason,
+  ProviderErrorType,
+  type ProviderEvent,
+  type ProviderName,
+  type ProviderResult,
+  type StreamFunction,
+} from "./types";
 
 export interface ExternalProviderAuth {
   isConfigured: () => boolean;
@@ -142,7 +151,12 @@ function createCompactionRegistry(
   return (provider) => {
     const external = authState.getExternalAuth(provider as ProviderName);
     if (external) {
-      return external.getNativeCompaction?.();
+      const compact = external.getNativeCompaction?.();
+      if (!compact) return undefined;
+      return async (input) => {
+        await ensureExternalProviderReady(external, input.signal);
+        return compact(input);
+      };
     }
 
     const key = authState.getApiKey(provider as ProviderName);
@@ -151,6 +165,46 @@ function createCompactionRegistry(
     if (provider === "openai") return createOpenAINativeCompaction(key, baseUrls.openai, openaiImageDetail);
     return undefined;
   };
+}
+
+async function ensureExternalProviderReady(external: ExternalProviderAuth, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) throw new Error("Aborted");
+  await external.ensureFresh?.();
+  if (signal?.aborted) throw new Error("Aborted");
+}
+
+function createDeferredExternalStream(
+  external: ExternalProviderAuth,
+  start: () => ReturnType<StreamFunction>,
+  signal?: AbortSignal,
+): EventStream<ProviderEvent, ProviderResult> {
+  const stream = new EventStream<ProviderEvent, ProviderResult>(
+    (event) => event.type === "done" || event.type === "error",
+    (event) => {
+      if (event.type === "done") return { message: event.message };
+      throw (event as { type: "error"; error: Error }).error;
+    },
+  );
+  if (signal) stream.attachSignal(signal);
+
+  const work = (async () => {
+    let inner: ReturnType<StreamFunction> | undefined;
+    try {
+      await ensureExternalProviderReady(external, signal);
+      inner = start();
+      for await (const event of inner) stream.push(event);
+      stream.end(await inner.result());
+    } catch (error) {
+      stream.push({
+        type: "error",
+        error: error instanceof Error ? error : new Error(String(error)),
+      });
+    } finally {
+      await inner?.waitForInnerWork();
+    }
+  })();
+  stream.setInnerWork(work);
+  return stream;
 }
 
 export function createStreamForProvider(provider: string, apiKey: string): StreamFunction {
@@ -197,8 +251,11 @@ export class ProviderManager {
 
       const external = this.authState.getExternalAuth(provider);
       if (external) {
-        external.ensureFresh?.().catch(() => {});
-        return external.getStream()(model, context, options);
+        return createDeferredExternalStream(
+          external,
+          () => external.getStream()(model, context, options),
+          options.signal,
+        );
       }
 
       const apiKey = this.authState.getApiKey(provider);

@@ -1,8 +1,8 @@
 // @summary Tests for Anthropic thinking payload assembly across adaptive and budget-based models
 import { describe, expect, mock, test } from "bun:test";
 import { APIError } from "@anthropic-ai/sdk/core/error.mjs";
-import { DEFAULT_ANTHROPIC_MODEL_ID } from "../../../src/llm/models";
-import type { Model, StreamContext, StreamOptions, ToolDefinition } from "../../../src/llm/types";
+import { DEFAULT_ANTHROPIC_MODEL_ID } from "../../../../src/llm/models";
+import type { Model, StreamContext, StreamOptions, ToolDefinition } from "../../../../src/llm/types";
 
 const anthropicCalls: unknown[] = [];
 const anthropicConstructorOptions: unknown[] = [];
@@ -45,7 +45,7 @@ mock.module("@anthropic-ai/sdk", () => ({
   APIError,
 }));
 
-const { createAnthropicStream } = await import("../../../src/llm/provider/anthropic");
+const { createAnthropicStream } = await import("../../../../src/llm/provider/anthropic");
 
 const EMPTY_CONTEXT: StreamContext = {
   systemPrompt: [],

@@ -1,9 +1,9 @@
 // @summary Tests for OpenAI/ChatGPT provider-native web tool request and response normalization
 import { describe, expect, test } from "bun:test";
-import type { EventStream } from "../../../src/event-stream";
-import { buildResponsesRequestBody, type OpenAIResponsesTool } from "../../../src/llm/provider/openai-responses";
-import { handleResponsesAPIEvents } from "../../../src/llm/provider/openai-sse";
-import type { Model, ProviderEvent, ProviderResult, ToolDefinition } from "../../../src/llm/types";
+import type { EventStream } from "../../../../src/event-stream";
+import { buildResponsesRequestBody, type OpenAIResponsesTool } from "../../../../src/llm/provider/openai/responses";
+import { handleResponsesAPIEvents } from "../../../../src/llm/provider/openai/sse";
+import type { Model, ProviderEvent, ProviderResult, ToolDefinition } from "../../../../src/llm/types";
 
 const OPENAI_MODEL: Model = {
   id: "gpt-5",

@@ -2,10 +2,10 @@
 import { describe, expect, test } from "bun:test";
 import OpenAI from "openai";
 import type { APIError } from "openai/core/error.mjs";
-import { toSerializableError } from "../../../src/agent/util/errors";
-import { isNetworkError } from "../../../src/llm/errors";
-import { classifyOpenAIError } from "../../../src/llm/provider/openai";
-import { CONTEXT_OVERFLOW_ERROR_MESSAGE } from "../../../src/llm/types";
+import { toSerializableError } from "../../../../src/agent/util/errors";
+import { isNetworkError } from "../../../../src/llm/errors";
+import { classifyOpenAIError } from "../../../../src/llm/provider/openai";
+import { CONTEXT_OVERFLOW_ERROR_MESSAGE } from "../../../../src/llm/types";
 
 function makeOpenAIAPIError(status: number, message: string, headers?: Record<string, string>): APIError {
   const sdkHeaders = new Headers(headers);

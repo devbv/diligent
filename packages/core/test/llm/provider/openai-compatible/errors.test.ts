@@ -1,8 +1,8 @@
 // @summary Tests shared HTTP error classification in OpenAI-compatible providers
 import { describe, expect, test } from "bun:test";
-import { classifyVertexError } from "../../../src/llm/provider/vertex";
-import { classifyZaiCodingPlanError } from "../../../src/llm/provider/zai-coding-plan";
-import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderErrorReason, ProviderErrorType } from "../../../src/llm/types";
+import { classifyVertexError } from "../../../../src/llm/provider/vertex";
+import { classifyZaiCodingPlanError } from "../../../../src/llm/provider/zai-coding-plan";
+import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderErrorReason, ProviderErrorType } from "../../../../src/llm/types";
 
 const classifiers = [
   ["Vertex", classifyVertexError],

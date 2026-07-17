@@ -1,11 +1,11 @@
 // @summary Anthropic provider implementation with thinking, streaming, and message conversion
 import Anthropic from "@anthropic-ai/sdk";
 import { createLogger } from "@diligent/logging";
-import { EventStream } from "../../event-stream";
-import type { AssistantMessage, ContentBlock, Message, StopReason, Usage } from "../../types";
-import { isNetworkError } from "../errors";
-import { type LocalImageLoader, materializeUserContentBlocks } from "../image-io";
-import { classifyProviderHttpError } from "../provider-errors";
+import { EventStream } from "../../../event-stream";
+import type { AssistantMessage, ContentBlock, Message, StopReason, Usage } from "../../../types";
+import { isNetworkError } from "../../errors";
+import { type LocalImageLoader, materializeUserContentBlocks } from "../../image-io";
+import { classifyProviderHttpError } from "../../provider-errors";
 import type {
   FunctionToolDefinition,
   Model,
@@ -16,9 +16,9 @@ import type {
   StreamOptions,
   SystemSection,
   ToolDefinition,
-} from "../types";
-import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError, ProviderErrorReason, ProviderErrorType } from "../types";
-import type { NativeCompactFn } from "./native-compaction";
+} from "../../types";
+import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError, ProviderErrorReason, ProviderErrorType } from "../../types";
+import type { NativeCompactFn } from "../native-compaction";
 
 const anthropicLogger = createLogger({ scope: "llm:anthropic" });
 
@@ -66,7 +66,10 @@ export function createAnthropicStream(apiKey?: string, baseUrl?: string): Stream
           const budgetKey = effort === "none" ? "low" : effort === "xhigh" ? "max" : effort;
           const budgetTokens = model.thinkingBudgets?.[budgetKey] ?? model.defaultBudgetTokens ?? 8_000;
           thinkingConfig = {
-            thinking: { type: "enabled", budget_tokens: budgetTokens } as Anthropic.ThinkingConfigParam,
+            thinking: {
+              type: "enabled",
+              budget_tokens: budgetTokens,
+            } as Anthropic.ThinkingConfigParam,
             temperature: 1,
           };
         } else {
@@ -79,7 +82,9 @@ export function createAnthropicStream(apiKey?: string, baseUrl?: string): Stream
           max_tokens: options.maxTokens ?? model.maxOutputTokens,
           system: systemBlocks,
           messages: await convertMessages(context.messages, context.compactionSummary, context.localImageLoader),
-          ...(context.tools.length > 0 && { tools: convertTools(context.tools) }),
+          ...(context.tools.length > 0 && {
+            tools: convertTools(context.tools),
+          }),
           ...thinkingConfig,
         } as Anthropic.MessageCreateParams;
 
@@ -116,7 +121,11 @@ export function createAnthropicStream(apiKey?: string, baseUrl?: string): Stream
 
         sdkStream.on("inputJson", (partialJson) => {
           if (activeToolId) {
-            stream.push({ type: "tool_call_delta", id: activeToolId, delta: partialJson });
+            stream.push({
+              type: "tool_call_delta",
+              id: activeToolId,
+              delta: partialJson,
+            });
           }
         });
 
@@ -155,7 +164,11 @@ export function createAnthropicStream(apiKey?: string, baseUrl?: string): Stream
           if (event.type === "content_block_start") {
             if (event.content_block.type === "tool_use") {
               activeToolId = event.content_block.id;
-              stream.push({ type: "tool_call_start", id: event.content_block.id, name: event.content_block.name });
+              stream.push({
+                type: "tool_call_start",
+                id: event.content_block.id,
+                name: event.content_block.name,
+              });
             } else if (event.content_block.type === "server_tool_use") {
               const providerToolUse = createProviderToolUseBlock(event.content_block);
               if (providerToolUse) {
@@ -188,93 +201,142 @@ export function createAnthropicStream(apiKey?: string, baseUrl?: string): Stream
   };
 }
 
+export interface ConvertedAnthropicMessage {
+  message: Anthropic.MessageParam;
+  coalesceWithPreviousUser: boolean;
+}
+
 export async function convertMessages(
   messages: Message[],
   compactionSummary?: Record<string, unknown>,
   localImageLoader?: LocalImageLoader,
 ): Promise<Anthropic.MessageParam[]> {
-  const result: Anthropic.MessageParam[] = [];
+  let result = buildAnthropicCompactionPrefix(compactionSummary);
 
-  const compactedUserMessage = toAnthropicCompactionUserMessage(compactionSummary);
-  if (compactedUserMessage) {
-    result.push(compactedUserMessage);
+  for (const message of messages) {
+    const converted = await convertAnthropicMessage(message, localImageLoader);
+    result = appendAnthropicConvertedMessage(result, converted);
   }
 
-  for (const msg of messages) {
-    if (msg.role === "user") {
-      const blocks =
-        typeof msg.content === "string"
-          ? [{ type: "text" as const, text: msg.content }]
-          : (await materializeUserContentBlocks(msg.content, { loader: localImageLoader })).map(convertContentBlock);
-      result.push({ role: "user", content: blocks });
-    } else if (msg.role === "assistant") {
-      result.push({
+  return applyAnthropicLastUserCacheBreakpoint(result);
+}
+
+export function buildAnthropicCompactionPrefix(compactionSummary?: Record<string, unknown>): Anthropic.MessageParam[] {
+  if (!isRecord(compactionSummary) || compactionSummary.type !== "compaction") return [];
+  const content = typeof compactionSummary.content === "string" ? compactionSummary.content.trim() : "";
+  if (!content) return [];
+  return [
+    {
+      role: "user",
+      content: [{ type: "text", text: content }],
+    },
+  ];
+}
+
+export async function convertAnthropicMessage(
+  message: Message,
+  localImageLoader?: LocalImageLoader,
+): Promise<ConvertedAnthropicMessage> {
+  if (message.role === "user") {
+    const content =
+      typeof message.content === "string"
+        ? [{ type: "text" as const, text: message.content }]
+        : (
+            await materializeUserContentBlocks(message.content, {
+              loader: localImageLoader,
+            })
+          ).map(convertContentBlock);
+    return {
+      message: { role: "user", content },
+      coalesceWithPreviousUser: false,
+    };
+  }
+
+  if (message.role === "assistant") {
+    return {
+      message: {
         role: "assistant",
-        content: msg.content.flatMap((block) => {
+        content: message.content.flatMap((block) => {
           const converted = convertAssistantContentBlock(block);
           return converted ? [converted] : [];
         }),
-      });
-    } else if (msg.role === "tool_result") {
-      // Tool results go into a user message with tool_result blocks
-      // Check if previous result entry is already a user message we can append to
-      const last = result[result.length - 1];
-      const hasImages = (msg.outputImages?.length ?? 0) > 0;
-      const toolResultBlock: Anthropic.ToolResultBlockParam = {
-        type: "tool_result",
-        tool_use_id: msg.toolCallId,
-        content: hasImages
-          ? [
-              // Anthropic rejects empty text blocks — omit when output is empty.
-              ...(msg.output ? [{ type: "text" as const, text: msg.output }] : []),
-              ...(msg.outputImages ?? []).map(
-                (img): Anthropic.ImageBlockParam => ({
-                  type: "image",
-                  source: {
-                    type: "base64",
-                    media_type: img.source.media_type as Anthropic.Base64ImageSource["media_type"],
-                    data: img.source.data,
-                  },
-                }),
-              ),
-            ]
-          : msg.output,
-        is_error: msg.isError,
-      };
-
-      if (last && last.role === "user" && Array.isArray(last.content)) {
-        (last.content as Anthropic.ContentBlockParam[]).push(toolResultBlock);
-      } else {
-        result.push({ role: "user", content: [toolResultBlock] });
-      }
-    }
+      },
+      coalesceWithPreviousUser: false,
+    };
   }
 
-  // Cache breakpoint on last user message (text or tool_result) so the entire
-  // conversation prefix is cached and any fork from this point gets a cache hit.
-  for (let i = result.length - 1; i >= 0; i--) {
-    const msg = result[i];
-    if (msg.role !== "user" || !Array.isArray(msg.content) || msg.content.length === 0) continue;
-    (msg.content[msg.content.length - 1] as unknown as Record<string, unknown>).cache_control = { type: "ephemeral" };
-    break;
-  }
-
-  return result;
-}
-
-function toAnthropicCompactionUserMessage(
-  compactionSummary?: Record<string, unknown>,
-): Anthropic.MessageParam | undefined {
-  if (!isRecord(compactionSummary)) return undefined;
-  if (compactionSummary.type !== "compaction") return undefined;
-  const content = typeof compactionSummary.content === "string" ? compactionSummary.content.trim() : "";
-  if (!content) return undefined;
+  const hasImages = (message.outputImages?.length ?? 0) > 0;
+  const toolResultBlock: Anthropic.ToolResultBlockParam = {
+    type: "tool_result",
+    tool_use_id: message.toolCallId,
+    content: hasImages
+      ? [
+          ...(message.output ? [{ type: "text" as const, text: message.output }] : []),
+          ...(message.outputImages ?? []).map(
+            (image): Anthropic.ImageBlockParam => ({
+              type: "image",
+              source: {
+                type: "base64",
+                media_type: image.source.media_type as Anthropic.Base64ImageSource["media_type"],
+                data: image.source.data,
+              },
+            }),
+          ),
+        ]
+      : message.output,
+    is_error: message.isError,
+  };
   return {
-    role: "user",
-    content: [{ type: "text", text: content }],
+    message: { role: "user", content: [toolResultBlock] },
+    coalesceWithPreviousUser: true,
   };
 }
 
+export function appendAnthropicConvertedMessage(
+  messages: Anthropic.MessageParam[],
+  converted: ConvertedAnthropicMessage,
+): Anthropic.MessageParam[] {
+  const last = messages[messages.length - 1];
+  if (
+    converted.coalesceWithPreviousUser &&
+    last?.role === "user" &&
+    Array.isArray(last.content) &&
+    Array.isArray(converted.message.content)
+  ) {
+    return [
+      ...messages.slice(0, -1),
+      {
+        ...last,
+        content: [...last.content, ...converted.message.content],
+      },
+    ];
+  }
+  return [...messages, converted.message];
+}
+
+export function applyAnthropicLastUserCacheBreakpoint(messages: Anthropic.MessageParam[]): Anthropic.MessageParam[] {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index];
+    if (message.role !== "user" || !Array.isArray(message.content) || message.content.length === 0) continue;
+    const content = message.content;
+    const lastBlock = content[content.length - 1] as unknown as Record<string, unknown>;
+    return [
+      ...messages.slice(0, index),
+      {
+        ...message,
+        content: [
+          ...content.slice(0, -1),
+          {
+            ...lastBlock,
+            cache_control: { type: "ephemeral" },
+          } as Anthropic.ContentBlockParam,
+        ],
+      },
+      ...messages.slice(index + 1),
+    ];
+  }
+  return messages;
+}
 function ensureAnthropicCompactionConversationEndsWithUser(
   messages: Anthropic.MessageParam[],
 ): Anthropic.MessageParam[] {
@@ -290,10 +352,7 @@ function ensureAnthropicCompactionConversationEndsWithUser(
     return [];
   }
 
-  const normalized = messages.slice(0, lastUserIndex + 1);
-  if (lastUserIndex !== messages.length - 1) {
-  }
-  return normalized;
+  return messages.slice(0, lastUserIndex + 1);
 }
 
 function convertContentBlock(block: ContentBlock): Anthropic.ContentBlockParam {
@@ -439,7 +498,9 @@ function flattenTopLevelSchema(schema: Record<string, unknown>): Record<string, 
     .filter((b): b is Record<string, unknown> => typeof b === "object" && b !== null)
     .map((b) => flattenTopLevelSchema(b));
 
-  const properties: Record<string, unknown> = { ...((rest.properties as Record<string, unknown>) ?? {}) };
+  const properties: Record<string, unknown> = {
+    ...((rest.properties as Record<string, unknown>) ?? {}),
+  };
   const requiredPerBranch: string[][] = [];
   for (const branch of branches) {
     Object.assign(properties, (branch.properties as Record<string, unknown>) ?? {});
@@ -531,7 +592,11 @@ function mapToAssistantMessage(msg: Anthropic.Message, model: Model): AssistantM
   const content: ContentBlock[] = msg.content.map((block): ContentBlock => {
     if (block.type === "text") {
       const citations = mapTextCitations(block.citations);
-      return { type: "text", text: block.text, ...(citations ? { citations } : {}) };
+      return {
+        type: "text",
+        text: block.text,
+        ...(citations ? { citations } : {}),
+      };
     } else if (block.type === "tool_use") {
       return {
         type: "tool_call",
@@ -540,7 +605,11 @@ function mapToAssistantMessage(msg: Anthropic.Message, model: Model): AssistantM
         input: block.input as Record<string, unknown>,
       };
     } else if (block.type === "thinking") {
-      return { type: "thinking", thinking: block.thinking, signature: block.signature };
+      return {
+        type: "thinking",
+        thinking: block.thinking,
+        signature: block.signature,
+      };
     } else if (block.type === "server_tool_use") {
       return createProviderToolUseBlock(block) ?? { type: "text", text: "" };
     } else if (block.type === "web_search_tool_result") {

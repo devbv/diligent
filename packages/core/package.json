@@ -15,10 +15,10 @@
     "./model-registry": "./src/model-registry.ts",
     "./prompt-contract": "./src/contracts/prompt.ts",
     "./provider-contract": "./src/contracts/provider.ts",
-    "./providers/chatgpt": "./src/llm/provider/chatgpt.ts",
-    "./providers/anthropic": "./src/llm/provider/anthropic.ts",
+    "./providers/chatgpt": "./src/llm/provider/chatgpt/index.ts",
+    "./providers/anthropic": "./src/llm/provider/anthropic/index.ts",
     "./providers/gemini": "./src/llm/provider/gemini.ts",
-    "./providers/openai": "./src/llm/provider/openai.ts",
+    "./providers/openai": "./src/llm/provider/openai/index.ts",
     "./providers/vertex": "./src/llm/provider/vertex.ts",
     "./tool-contract": "./src/contracts/tool.ts"
   },

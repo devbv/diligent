@@ -1,8 +1,8 @@
 // @summary Tests for Anthropic provider-native web tool content block normalization
 import { describe, expect, mock, test } from "bun:test";
 import { APIError } from "@anthropic-ai/sdk/core/error.mjs";
-import { DEFAULT_ANTHROPIC_MODEL_ID } from "../../../src/llm/models";
-import type { Model, ProviderEvent, ProviderResult, StreamContext } from "../../../src/llm/types";
+import { DEFAULT_ANTHROPIC_MODEL_ID } from "../../../../src/llm/models";
+import type { Model, ProviderEvent, ProviderResult, StreamContext } from "../../../../src/llm/types";
 
 type MockListenerArgs = unknown[];
 type MockListener = (...args: MockListenerArgs) => void;
@@ -40,7 +40,7 @@ mock.module("@anthropic-ai/sdk", () => ({
   APIError,
 }));
 
-const { createAnthropicStream } = await import("../../../src/llm/provider/anthropic");
+const { createAnthropicStream } = await import("../../../../src/llm/provider/anthropic");
 
 const MODEL: Model = {
   id: DEFAULT_ANTHROPIC_MODEL_ID,
