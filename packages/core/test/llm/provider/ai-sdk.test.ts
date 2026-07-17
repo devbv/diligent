@@ -1,9 +1,15 @@
 // @summary Contract tests for the shared AI SDK to Diligent provider bridge
 import { describe, expect, it } from "bun:test";
-import { simulateReadableStream } from "ai";
+import { simulateReadableStream, type TextStreamPart, type ToolSet } from "ai";
 import { MockLanguageModelV4 } from "ai/test";
-import { convertToAISDKMessages, convertToAISDKTools, createAISDKStream } from "../../../src/llm/provider/ai-sdk";
-import type { Model } from "../../../src/llm/types";
+import { EventStream } from "../../../src/event-stream";
+import {
+  consumeAISDKStreamParts,
+  convertToAISDKMessages,
+  convertToAISDKTools,
+  createAISDKStream,
+} from "../../../src/llm/provider/ai-sdk";
+import type { Model, ProviderEvent, ProviderResult } from "../../../src/llm/types";
 import { ProviderError, ProviderErrorType } from "../../../src/llm/types";
 
 const model: Model = {
@@ -114,6 +120,37 @@ describe("AI SDK message conversion", () => {
 });
 
 describe("AI SDK stream bridge", () => {
+  it("rejects and closes when the provider emits an abort part", async () => {
+    const stream = new EventStream<ProviderEvent, ProviderResult>(
+      (event) => event.type === "done" || event.type === "error",
+      (event) => {
+        if (event.type === "done") return { message: event.message };
+        throw (event as { type: "error"; error: Error }).error;
+      },
+    );
+    const parts: AsyncIterable<TextStreamPart<ToolSet>> = (async function* () {
+      yield { type: "text-delta", id: "text-1", text: "partial" } as TextStreamPart<ToolSet>;
+      yield { type: "abort", reason: "provider cancelled" } as TextStreamPart<ToolSet>;
+    })();
+    const work = consumeAISDKStreamParts(stream, parts, model, {}, undefined, {}).catch((error) => {
+      stream.push({
+        type: "error",
+        error: new ProviderError(error instanceof Error ? error.message : String(error), {
+          errorType: ProviderErrorType.Unknown,
+          isRetryable: false,
+        }),
+      });
+    });
+    stream.setInnerWork(work);
+    const events = [];
+    for await (const event of stream) events.push(event);
+
+    await expect(stream.result()).rejects.toThrow("Aborted");
+    await stream.waitForInnerWork();
+    expect(events.map((event) => event.type)).toEqual(["start", "text_delta", "error"]);
+    expect(events.some((event) => event.type === "done")).toBe(false);
+  });
+
   it("maps text, reasoning, tool calls, usage, and finish events", async () => {
     const languageModel = new MockLanguageModelV4({
       doStream: async () => ({

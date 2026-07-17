@@ -24,15 +24,18 @@ import type {
   ToolDefinition,
 } from "../types";
 
-export interface AISDKStreamConfig {
+export interface AISDKStreamAdapter<TState = undefined> {
+  createProviderState?: () => TState;
+  handleProviderPart?: (part: TextStreamPart<ToolSet>, state: TState) => ContentBlock[];
+  finalizeProviderState?: (state: TState) => ContentBlock[];
+}
+
+export interface AISDKStreamConfig<TState = undefined> extends AISDKStreamAdapter<TState> {
   createLanguageModel: (model: Model) => LanguageModel;
   classifyError: (error: unknown) => ProviderError;
   buildTools?: (tools: ToolDefinition[]) => ToolSet;
   buildProviderOptions?: (model: Model, options: StreamOptions) => AISDKProviderOptions | undefined;
   resolveReasoning?: (model: Model, options: StreamOptions) => AISDKReasoning | undefined;
-  createProviderState?: () => unknown;
-  handleProviderPart?: (part: TextStreamPart<ToolSet>, state: unknown) => ContentBlock[];
-  finalizeProviderState?: (state: unknown) => ContentBlock[];
 }
 
 type AISDKReasoning = "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "provider-default";
@@ -134,7 +137,7 @@ export function convertToAISDKTools(tools: ToolDefinition[]): ToolSet {
   return result;
 }
 
-export function createAISDKStream(config: AISDKStreamConfig): StreamFunction {
+export function createAISDKStream<TState = undefined>(config: AISDKStreamConfig<TState>): StreamFunction {
   return (model, context, options) => {
     const stream = new EventStream<ProviderEvent, ProviderResult>(
       (event) => event.type === "done" || event.type === "error",
@@ -151,12 +154,12 @@ export function createAISDKStream(config: AISDKStreamConfig): StreamFunction {
   };
 }
 
-async function runAISDKStream(
+async function runAISDKStream<TState>(
   stream: EventStream<ProviderEvent, ProviderResult>,
   model: Model,
   context: StreamContext,
   options: StreamOptions,
-  config: AISDKStreamConfig,
+  config: AISDKStreamConfig<TState>,
 ): Promise<void> {
   try {
     const providerState = config.createProviderState?.();
@@ -175,98 +178,109 @@ async function runAISDKStream(
       maxRetries: 0,
     });
 
-    const content: ContentBlock[] = [];
-    const startedToolCalls = new Set<string>();
-    let text = "";
-    let thinking = "";
-    let usage = emptyUsage();
-    let stopReason: StopReason = "end_turn";
-    stream.push({ type: "start" });
-
-    for await (const part of result.stream) {
-      if (options.signal?.aborted) return;
-      if (part.type === "error") throw part.error;
-      if (part.type === "abort") return;
-
-      if (part.type === "text-delta") {
-        text += part.text;
-        stream.push({ type: "text_delta", delta: part.text });
-      } else if (part.type === "text-end") {
-        if (text.length > 0) {
-          stream.push({ type: "text_end", text });
-          content.push({ type: "text", text });
-          text = "";
-        }
-      } else if (part.type === "reasoning-delta") {
-        thinking += part.text;
-        stream.push({ type: "thinking_delta", delta: part.text });
-      } else if (part.type === "reasoning-end") {
-        if (thinking.length > 0) {
-          stream.push({ type: "thinking_end", thinking });
-          content.push({ type: "thinking", thinking });
-          thinking = "";
-        }
-      } else if (part.type === "tool-input-start" && !part.providerExecuted) {
-        startedToolCalls.add(part.id);
-        stream.push({ type: "tool_call_start", id: part.id, name: part.toolName });
-      } else if (part.type === "tool-input-delta" && startedToolCalls.has(part.id)) {
-        stream.push({ type: "tool_call_delta", id: part.id, delta: part.delta });
-      } else if (part.type === "tool-call" && !part.providerExecuted) {
-        if (!startedToolCalls.has(part.toolCallId)) {
-          stream.push({ type: "tool_call_start", id: part.toolCallId, name: part.toolName });
-        }
-        const input = toInputRecord(part.input);
-        stream.push({ type: "tool_call_end", id: part.toolCallId, name: part.toolName, input });
-        content.push({
-          type: "tool_call",
-          id: part.toolCallId,
-          name: part.toolName,
-          input,
-          ...(part.providerMetadata ? { providerMetadata: part.providerMetadata as Record<string, unknown> } : {}),
-        } satisfies ToolCallBlock);
-      } else if (part.type === "finish-step") {
-        stopReason = mapAISDKFinishReason(part.finishReason);
-        usage = mapAISDKUsage(part.usage);
-      } else if (part.type === "finish") {
-        stopReason = mapAISDKFinishReason(part.finishReason);
-        usage = mapAISDKUsage(part.totalUsage);
-      }
-
-      if (providerState !== undefined) {
-        const blocks = config.handleProviderPart?.(part, providerState) ?? [];
-        for (const block of blocks) {
-          content.push(block);
-          stream.push({ type: "content_block", block });
-        }
-      }
-    }
-
-    if (thinking.length > 0) {
-      stream.push({ type: "thinking_end", thinking });
-      content.push({ type: "thinking", thinking });
-    }
-    if (text.length > 0) {
-      stream.push({ type: "text_end", text });
-      content.push({ type: "text", text });
-    }
-    for (const block of providerState === undefined ? [] : (config.finalizeProviderState?.(providerState) ?? [])) {
-      content.push(block);
-      stream.push({ type: "content_block", block });
-    }
-
-    stream.push({ type: "usage", usage });
-    const message: AssistantMessage = {
-      role: "assistant",
-      content,
-      model: model.id,
-      usage,
-      stopReason,
-      timestamp: Date.now(),
-    };
-    stream.push({ type: "done", stopReason, message });
+    await consumeAISDKStreamParts(stream, result.stream, model, options, providerState, config);
   } catch (error) {
     stream.push({ type: "error", error: config.classifyError(error) });
   }
+}
+
+export async function consumeAISDKStreamParts<TState>(
+  stream: EventStream<ProviderEvent, ProviderResult>,
+  parts: AsyncIterable<TextStreamPart<ToolSet>>,
+  model: Model,
+  options: StreamOptions,
+  providerState: TState | undefined,
+  adapter: AISDKStreamAdapter<TState>,
+): Promise<void> {
+  const content: ContentBlock[] = [];
+  const startedToolCalls = new Set<string>();
+  let text = "";
+  let thinking = "";
+  let usage = emptyUsage();
+  let stopReason: StopReason = "end_turn";
+  stream.push({ type: "start" });
+
+  for await (const part of parts) {
+    if (options.signal?.aborted) return;
+    if (part.type === "error") throw part.error;
+    if (part.type === "abort") throw new Error("Aborted");
+
+    if (part.type === "text-delta") {
+      text += part.text;
+      stream.push({ type: "text_delta", delta: part.text });
+    } else if (part.type === "text-end") {
+      if (text.length > 0) {
+        stream.push({ type: "text_end", text });
+        content.push({ type: "text", text });
+        text = "";
+      }
+    } else if (part.type === "reasoning-delta") {
+      thinking += part.text;
+      stream.push({ type: "thinking_delta", delta: part.text });
+    } else if (part.type === "reasoning-end") {
+      if (thinking.length > 0) {
+        stream.push({ type: "thinking_end", thinking });
+        content.push({ type: "thinking", thinking });
+        thinking = "";
+      }
+    } else if (part.type === "tool-input-start" && !part.providerExecuted) {
+      startedToolCalls.add(part.id);
+      stream.push({ type: "tool_call_start", id: part.id, name: part.toolName });
+    } else if (part.type === "tool-input-delta" && startedToolCalls.has(part.id)) {
+      stream.push({ type: "tool_call_delta", id: part.id, delta: part.delta });
+    } else if (part.type === "tool-call" && !part.providerExecuted) {
+      if (!startedToolCalls.has(part.toolCallId)) {
+        stream.push({ type: "tool_call_start", id: part.toolCallId, name: part.toolName });
+      }
+      const input = toInputRecord(part.input);
+      stream.push({ type: "tool_call_end", id: part.toolCallId, name: part.toolName, input });
+      content.push({
+        type: "tool_call",
+        id: part.toolCallId,
+        name: part.toolName,
+        input,
+        ...(part.providerMetadata ? { providerMetadata: part.providerMetadata as Record<string, unknown> } : {}),
+      } satisfies ToolCallBlock);
+    } else if (part.type === "finish-step") {
+      stopReason = mapAISDKFinishReason(part.finishReason);
+      usage = mapAISDKUsage(part.usage);
+    } else if (part.type === "finish") {
+      stopReason = mapAISDKFinishReason(part.finishReason);
+      usage = mapAISDKUsage(part.totalUsage);
+    }
+
+    if (providerState !== undefined) {
+      const blocks = adapter.handleProviderPart?.(part, providerState) ?? [];
+      for (const block of blocks) {
+        content.push(block);
+        stream.push({ type: "content_block", block });
+      }
+    }
+  }
+
+  if (thinking.length > 0) {
+    stream.push({ type: "thinking_end", thinking });
+    content.push({ type: "thinking", thinking });
+  }
+  if (text.length > 0) {
+    stream.push({ type: "text_end", text });
+    content.push({ type: "text", text });
+  }
+  for (const block of providerState === undefined ? [] : (adapter.finalizeProviderState?.(providerState) ?? [])) {
+    content.push(block);
+    stream.push({ type: "content_block", block });
+  }
+
+  stream.push({ type: "usage", usage });
+  const message: AssistantMessage = {
+    role: "assistant",
+    content,
+    model: model.id,
+    usage,
+    stopReason,
+    timestamp: Date.now(),
+  };
+  stream.push({ type: "done", stopReason, message });
 }
 
 function resolveAISDKReasoning(model: Model, options: StreamOptions): AISDKReasoning | undefined {

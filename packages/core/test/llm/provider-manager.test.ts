@@ -104,6 +104,75 @@ describe("ProviderManager auth errors", () => {
   });
 });
 
+describe("ProviderManager configuration", () => {
+  it("handles API-key set, removal, and empty keys", () => {
+    const manager = new ProviderManager({});
+    manager.setApiKey("anthropic", "sk-test");
+    expect(manager.hasKeyFor("anthropic")).toBe(true);
+    expect(manager.getApiKey("anthropic")).toBe("sk-test");
+
+    manager.setApiKey("anthropic", "");
+    expect(manager.hasKeyFor("anthropic")).toBe(false);
+    manager.removeApiKey("anthropic");
+    expect(manager.getApiKey("anthropic")).toBeUndefined();
+  });
+
+  it("returns configured providers in stable provider order", () => {
+    const manager = new ProviderManager({});
+    manager.setApiKey("zai-coding-plan", "zai-key");
+    manager.setApiKey("openai", "openai-key");
+    manager.setApiKey("anthropic", "anthropic-key");
+
+    expect(manager.getConfiguredProviders()).toEqual(["anthropic", "openai", "zai-coding-plan"]);
+  });
+
+  it("reuses cached stream factories and invalidates them by provider", () => {
+    const manager = new ProviderManager({});
+    const cache = (
+      manager as unknown as {
+        streamCache: {
+          getOrCreate(provider: "openai", apiKey: string): StreamFunction;
+          invalidateProvider(provider: "openai"): void;
+        };
+      }
+    ).streamCache;
+
+    const first = cache.getOrCreate("openai", "first-key");
+    expect(cache.getOrCreate("openai", "first-key")).toBe(first);
+    cache.invalidateProvider("openai");
+    expect(cache.getOrCreate("openai", "second-key")).not.toBe(first);
+  });
+
+  it("exposes native compaction for API-key providers", () => {
+    const manager = new ProviderManager({});
+    manager.setApiKey("anthropic", "anthropic-key");
+    manager.setApiKey("openai", "openai-key");
+
+    expect(manager.createNativeCompactionForProvider("anthropic")).toBeDefined();
+    expect(manager.createNativeCompactionForProvider("openai")).toBeDefined();
+    expect(manager.createNativeCompactionForProvider("gemini")).toBeUndefined();
+  });
+
+  it("gives configured external auth precedence and falls back after removal", async () => {
+    let externalStarts = 0;
+    const manager = new ProviderManager({
+      auth: {
+        chatgpt: {
+          isConfigured: () => true,
+          getStream: () => completingStream(() => externalStarts++),
+        },
+      },
+    });
+    const proxy = manager.createProxyStream();
+    await proxy(TEST_MODEL, TEST_CONTEXT, {}).result();
+    expect(externalStarts).toBe(1);
+
+    manager.removeExternalAuth("chatgpt");
+    expect(manager.hasKeyFor("chatgpt")).toBe(false);
+    expect(() => proxy(TEST_MODEL, TEST_CONTEXT, {})).toThrow("No authentication is configured for chatgpt");
+  });
+});
+
 describe("ProviderManager external auth readiness", () => {
   it("does not start a provider request until readiness resolves and exposes refreshed credentials", async () => {
     const readiness = deferred();

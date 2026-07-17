@@ -62,7 +62,7 @@ const PROVIDER_FACTORIES: Record<
 };
 
 class StreamFactoryCache {
-  private cache = new Map<string, StreamFunction>();
+  private cache = new Map<ProviderName, StreamFunction>();
 
   getOrCreate(
     provider: ProviderName,
@@ -70,21 +70,18 @@ class StreamFactoryCache {
     baseUrl?: string,
     imageDetail?: OpenAIImageDetail,
   ): StreamFunction {
-    const cacheKey = `${provider}:${apiKey}:${imageDetail ?? ""}`;
-    const cached = this.cache.get(cacheKey);
+    const cached = this.cache.get(provider);
     if (cached) return cached;
 
     const factory = PROVIDER_FACTORIES[provider];
     if (!factory) throw new Error(`Unknown provider: ${provider}`);
     const stream = factory(apiKey, baseUrl, imageDetail);
-    this.cache.set(cacheKey, stream);
+    this.cache.set(provider, stream);
     return stream;
   }
 
   invalidateProvider(provider: ProviderName): void {
-    for (const key of this.cache.keys()) {
-      if (key.startsWith(`${provider}:`)) this.cache.delete(key);
-    }
+    this.cache.delete(provider);
   }
 }
 

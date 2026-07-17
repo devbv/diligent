@@ -8,19 +8,11 @@ import { classifyProviderHttpError } from "../../provider-errors";
 import { flattenSections } from "../../system-sections";
 import type { Model, ProviderEvent, ProviderResult, StreamContext, StreamFunction, StreamOptions } from "../../types";
 import { ProviderError, ProviderErrorReason, ProviderErrorType } from "../../types";
-import type { NativeCompactFn } from "../native-compaction";
-import {
-  buildResponsesRequestBody,
-  isGpt56Model,
-  toResponseInputItems,
-  toResponsesLiteRequestBody,
-} from "../openai/responses";
-import {
-  describeCompactionPayload,
-  extractCompactionSummary,
-  extractCompactionSummaryItem,
-  isTransientOpenAIErrorMessage,
-} from "../openai/shared";
+
+export { createChatGPTNativeCompaction } from "./native-compaction";
+
+import { buildResponsesRequestBody, isGpt56Model, toResponsesLiteRequestBody } from "../openai/responses";
+import { isTransientOpenAIErrorMessage } from "../openai/shared";
 import { handleResponsesAPIEvents } from "../openai/sse";
 import { iterateOpenAIJsonSse } from "../openai-compatible/json-sse";
 import { type ChatGPTWebSocketSession, createChatGPTWebSocketSession } from "./websocket-session";
@@ -30,7 +22,6 @@ const httpSseLogger = createLogger({ scope: "llm:chatgpt-sse" });
 
 const CHATGPT_CODEX_URL = "https://chatgpt.com/backend-api/codex/responses";
 const CHATGPT_CODEX_WEBSOCKET_URL = "wss://chatgpt.com/backend-api/codex/responses";
-const CHATGPT_COMPACT_URL = "https://chatgpt.com/backend-api/codex/responses/compact";
 const RESPONSES_LITE_HEADER = "x-openai-internal-codex-responses-lite";
 const CHATGPT_SESSION_HEADER = "session-id";
 const CHATGPT_TURN_STATE_HEADER = "x-codex-turn-state";
@@ -382,7 +373,7 @@ export function createChatGPTStream(
     );
     if (options.signal) stream.attachSignal(options.signal);
 
-    (async () => {
+    const work = (async () => {
       try {
         if (options.signal?.aborted) return;
         const upstreamModelId = resolveChatGPTModelId(model.id);
@@ -442,14 +433,7 @@ export function createChatGPTStream(
             const connection = session.streamRequest(request, options.signal);
             await connection.opened;
             stream.push({ type: "start" });
-            await handleResponsesAPIEvents(
-              connection.events,
-              stream,
-              model,
-              options.signal,
-              context.messages.length,
-              options.sessionId,
-            );
+            await handleResponsesAPIEvents(connection.events, stream, model, options.signal);
             transportState.consecutiveTransportFailures = 0;
           } finally {
             await ephemeralSession?.dispose();
@@ -546,14 +530,7 @@ export function createChatGPTStream(
           },
         });
 
-        await handleResponsesAPIEvents(
-          responseEvents,
-          stream,
-          model,
-          options.signal,
-          context.messages.length,
-          options.sessionId,
-        );
+        await handleResponsesAPIEvents(responseEvents, stream, model, options.signal);
       } catch (err) {
         if (useChatGPTWebSocketTransportFailure(err, providerOptions, model)) {
           transportState.consecutiveTransportFailures += 1;
@@ -586,105 +563,8 @@ export function createChatGPTStream(
         }
       }
     })();
+    stream.setInnerWork(work);
 
     return stream;
-  };
-}
-
-function truncateErrorBody(value: string, maxLen = 400): string {
-  if (value.length <= maxLen) return value;
-  return `${value.slice(0, maxLen)}…`;
-}
-
-function stringifyErrorPayload(payload: Record<string, unknown>): string {
-  const errorValue = payload.error;
-  if (typeof errorValue === "string") {
-    return truncateErrorBody(errorValue);
-  }
-  if (errorValue && typeof errorValue === "object") {
-    const err = errorValue as Record<string, unknown>;
-    const code = typeof err.code === "string" ? err.code : undefined;
-    const type = typeof err.type === "string" ? err.type : undefined;
-    const message = typeof err.message === "string" ? err.message : undefined;
-    const fields = [code, type, message].filter((field): field is string => Boolean(field));
-    if (fields.length > 0) {
-      return truncateErrorBody(fields.join(" | "));
-    }
-  }
-  return truncateErrorBody(JSON.stringify(payload));
-}
-
-async function readCompactErrorBody(response: Response): Promise<string> {
-  const contentType = response.headers.get("content-type") ?? "";
-  if (contentType.includes("application/json")) {
-    try {
-      const payload = (await response.json()) as unknown;
-      if (payload && typeof payload === "object") {
-        return stringifyErrorPayload(payload as Record<string, unknown>);
-      }
-    } catch {
-      // fall through to text path
-    }
-  }
-
-  const text = await response.text().catch(() => "");
-  return truncateErrorBody(text.trim());
-}
-
-export function createChatGPTNativeCompaction(getTokens: () => OpenAIOAuthTokens): NativeCompactFn {
-  return async (input) => {
-    const tokens = getTokens();
-    const upstreamModelId = resolveChatGPTModelId(input.model.id);
-    const useResponsesLite = isGpt56Model(upstreamModelId);
-    const headers: Record<string, string> = {
-      "Content-Type": CHATGPT_JSON_CONTENT_TYPE,
-      Authorization: `Bearer ${tokens.access_token}`,
-      "User-Agent": USER_AGENT,
-      originator: "diligent",
-      version: CHATGPT_CODEX_CLIENT_VERSION,
-    };
-    if (tokens.account_id) headers["ChatGPT-Account-ID"] = tokens.account_id;
-    if (input.sessionId) {
-      headers.session_id = input.sessionId;
-    }
-    if (useResponsesLite) headers[RESPONSES_LITE_HEADER] = "true";
-
-    const standardBody: Record<string, unknown> = {
-      model: upstreamModelId,
-      input: await toResponseInputItems({
-        messages: input.messages,
-        compactionSummary: input.compactionSummary,
-        localImageLoader: input.localImageLoader,
-      }),
-    };
-    if (input.systemPrompt.length > 0) standardBody.instructions = flattenSections(input.systemPrompt);
-    const body = useResponsesLite ? toResponsesLiteRequestBody(standardBody) : standardBody;
-
-    const response = await fetch(CHATGPT_COMPACT_URL, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-      signal: input.signal,
-    });
-
-    if (!response.ok) {
-      const errorBody = await readCompactErrorBody(response);
-      if (response.status === 404 || response.status === 405) {
-        return { status: "unsupported", reason: `status_${response.status}` };
-      }
-      const suffix = errorBody ? ` body=${errorBody}` : "";
-      throw new Error(`ChatGPT native compaction failed (${response.status})${suffix}`);
-    }
-
-    const payload = (await response.json()) as Record<string, unknown>;
-    const summary = extractCompactionSummary(payload);
-    const compactionSummary = extractCompactionSummaryItem(payload);
-    if (!summary?.trim() && !compactionSummary) {
-      return {
-        status: "unsupported",
-        reason: `missing_summary ${describeCompactionPayload(payload)}`,
-      };
-    }
-    return { status: "ok", summary, compactionSummary };
   };
 }

@@ -136,6 +136,43 @@ function recordingLogger(
 }
 
 describe("withRetry", () => {
+  test("tracks the wrapper worker until the aborted inner stream cleanup settles", async () => {
+    let releaseCleanup!: () => void;
+    const cleanup = new Promise<void>((resolve) => {
+      releaseCleanup = resolve;
+    });
+    const controller = new AbortController();
+    const streamFn: StreamFunction = () => {
+      const inner = new EventStream<ProviderEvent, ProviderResult>(
+        (event) => event.type === "done" || event.type === "error",
+        (event) => {
+          if (event.type === "done") return { message: event.message };
+          throw (event as { type: "error"; error: Error }).error;
+        },
+      );
+      inner.attachSignal(controller.signal);
+      inner.setInnerWork(cleanup);
+      inner.result().catch(() => {});
+      return inner;
+    };
+    const stream = withRetry(streamFn, { maxAttempts: 1, baseDelayMs: 1, maxDelayMs: 1 })(testModel, testContext, {
+      signal: controller.signal,
+    });
+    controller.abort();
+    await stream.result().catch(() => {});
+
+    let settled = false;
+    const waiting = stream.waitForInnerWork().then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    releaseCleanup();
+    await waiting;
+    expect(settled).toBe(true);
+  });
+
   test("succeeds on first attempt without retrying", async () => {
     const { streamFn, callCount } = createFailingStreamFn([]);
     const retried = withRetry(streamFn, {

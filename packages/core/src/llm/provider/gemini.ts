@@ -68,8 +68,7 @@ function createGeminiProviderState(): GeminiProviderState {
   return { blocksByKey: new Map(), sourceResults: new Map() };
 }
 
-export function handleGeminiProviderPart(part: TextStreamPart<ToolSet>, rawState: unknown): ContentBlock[] {
-  const state = rawState as GeminiProviderState;
+export function handleGeminiProviderPart(part: TextStreamPart<ToolSet>, state: GeminiProviderState): ContentBlock[] {
   const candidates: ContentBlock[] = [];
 
   if (part.type === "tool-call" && part.providerExecuted) {
@@ -96,8 +95,7 @@ export function handleGeminiProviderPart(part: TextStreamPart<ToolSet>, rawState
   return addNewBlocks(state, candidates);
 }
 
-function finalizeGeminiProviderState(rawState: unknown): ContentBlock[] {
-  const state = rawState as GeminiProviderState;
+function finalizeGeminiProviderState(state: GeminiProviderState): ContentBlock[] {
   if (state.sourceResults.size === 0 || hasBlockType(state, "web_search_result")) return [];
 
   const existingUse = [...state.blocksByKey.values()].find(
