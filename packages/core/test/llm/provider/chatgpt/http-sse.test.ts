@@ -1,6 +1,7 @@
 // @summary ChatGPT JSON adapter tests over standards-compliant SSE framing
 import { describe, expect, test } from "bun:test";
 import { iterateChatGPTJsonSse } from "../../../../src/llm/provider/chatgpt/http-sse";
+import type { ProviderError } from "../../../../src/llm/types";
 
 const encoder = new TextEncoder();
 
@@ -75,11 +76,46 @@ describe("iterateChatGPTJsonSse", () => {
       },
     });
     const controller = new AbortController();
-    const iterator = iterateChatGPTJsonSse(body, { signal: controller.signal })[Symbol.asyncIterator]();
+    const iterator = iterateChatGPTJsonSse(body, { signal: controller.signal, idleTimeoutMs: 50 })[
+      Symbol.asyncIterator
+    ]();
     const pending = iterator.next();
     controller.abort();
 
     await expect(pending).resolves.toEqual({ done: true, value: undefined });
     expect(cancelled).toBe(true);
+  });
+
+  test("cancels a stalled body and throws a retryable idle-timeout error", async () => {
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      cancel() {
+        cancelled = true;
+      },
+    });
+
+    const result = collect(body, { idleTimeoutMs: 5, idleTimeoutMessage: "test body idle timeout" });
+
+    await expect(result).rejects.toMatchObject({
+      message: "test body idle timeout",
+      errorType: "network",
+      isRetryable: true,
+    } satisfies Partial<ProviderError>);
+    expect(cancelled).toBe(true);
+  });
+
+  test("resets the idle deadline after each body chunk instead of imposing a total deadline", async () => {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        setTimeout(() => controller.enqueue(encoder.encode('data: {"step":1}\n\n')), 6);
+        setTimeout(() => controller.enqueue(encoder.encode('data: {"step":2}\n\n')), 14);
+        setTimeout(() => {
+          controller.enqueue(encoder.encode('data: {"step":3}\n\n'));
+          controller.close();
+        }, 22);
+      },
+    });
+
+    await expect(collect(body, { idleTimeoutMs: 12 })).resolves.toEqual([{ step: 1 }, { step: 2 }, { step: 3 }]);
   });
 });

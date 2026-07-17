@@ -101,14 +101,47 @@ describe("classifyOpenAIError", () => {
     expect(result.statusCode).toBeUndefined();
   });
 
-  test("does not classify OpenAI SDK server_error code alone as retryable", () => {
+  test("classifies OpenAI SDK server_error code alone as retryable", () => {
     const result = classifyOpenAIError(
       makeOpenAIAPIErrorWithCode(undefined, "server_error", "The request could not be completed."),
     );
 
-    expect(result.errorType).toBe("unknown");
-    expect(result.isRetryable).toBe(false);
+    expect(result.errorType).toBe("server_error");
+    expect(result.isRetryable).toBe(true);
     expect(result.statusCode).toBeUndefined();
+  });
+
+  test("classifies structured context_length_exceeded before message heuristics", () => {
+    const result = classifyOpenAIError(
+      makeOpenAIAPIErrorWithCode(
+        400,
+        "context_length_exceeded",
+        "Your input exceeds the context window of this model. Please adjust your input and try again.",
+      ),
+    );
+
+    expect(result.errorType).toBe("context_overflow");
+    expect(result.reason).toBe("context_window_exceeded");
+    expect(result.isRetryable).toBe(false);
+    expect(toSerializableError(result).code).toBe("context_length_exceeded");
+  });
+
+  test.each([
+    ["rate_limit_exceeded", "rate_limit", true, undefined],
+    ["insufficient_quota", "rate_limit", false, "usage_limit_reached"],
+    ["usage_limit_reached", "rate_limit", false, "usage_limit_reached"],
+    ["overloaded", "server_error", true, undefined],
+    ["invalid_prompt", "unknown", false, undefined],
+    ["bio_policy", "unknown", false, undefined],
+    ["invalid_api_key", "auth", false, "credentials_rejected"],
+  ] as const)("classifies provider code %s authoritatively", (code, errorType, isRetryable, reason) => {
+    const result = classifyOpenAIError(makeOpenAIAPIErrorWithCode(400, code, "opaque provider failure"));
+
+    expect(result.errorType).toBe(errorType);
+    expect(result.isRetryable).toBe(isRetryable);
+    expect(result.reason).toBe(reason);
+    expect(result.statusCode).toBe(400);
+    expect(toSerializableError(result).code).toBe(code);
   });
 
   test("classifies 500 as retryable server_error", () => {

@@ -11,6 +11,24 @@ import {
 afterEach(restoreChatGPTStreamTestState);
 
 describe("ChatGPT retry classification", () => {
+  test("retries a coded transient rate limit even when the message is opaque", async () => {
+    let fetchCount = 0;
+    globalThis.fetch = (async () => {
+      fetchCount++;
+      if (fetchCount === 1) {
+        return new Response(JSON.stringify({ error: { code: "rate_limit_exceeded", message: "slow down" } }), {
+          status: 429,
+        });
+      }
+      return chatGPTSuccessResponse();
+    }) as unknown as typeof fetch;
+
+    const events = await collectEvents(createRetriedChatGPTStream());
+
+    expect(fetchCount).toBe(2);
+    expect(events.some((event) => event.type === "done")).toBe(true);
+  });
+
   test("does not retry HTTP 429 without usage limit body", async () => {
     let fetchCount = 0;
     globalThis.fetch = (async () => {
@@ -34,8 +52,8 @@ describe("ChatGPT retry classification", () => {
       new Response(
         JSON.stringify({
           error: {
-            type: "usage_limit_reached",
-            message: "The usage limit has been reached",
+            code: "insufficient_quota",
+            message: "opaque quota failure",
           },
         }),
         { status: 429 },
@@ -44,7 +62,7 @@ describe("ChatGPT retry classification", () => {
     const events = await collectEvents(createRetriedChatGPTStream());
     const error = events.find((event): event is Extract<ProviderEvent, { type: "error" }> => event.type === "error");
 
-    expect(error?.error.message).toContain("usage_limit_reached");
+    expect(error?.error.message).toContain("opaque quota failure");
     expect(error?.error.message).not.toContain("upgrade your plan");
     expect((error?.error as { errorType?: string }).errorType).toBe("rate_limit");
     expect((error?.error as { reason?: string }).reason).toBe("usage_limit_reached");

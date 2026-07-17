@@ -3,17 +3,16 @@ import { arch, platform, release } from "node:os";
 import { createLogger } from "@diligent/logging";
 import type { OpenAIOAuthTokens } from "../../../auth/types";
 import { EventStream } from "../../../event-stream";
-import { isNetworkError } from "../../errors";
-import { classifyProviderHttpError } from "../../provider-errors";
 import { flattenSections } from "../../system-sections";
 import type { Model, ProviderEvent, ProviderResult, StreamContext, StreamFunction, StreamOptions } from "../../types";
-import { ProviderError, ProviderErrorReason, ProviderErrorType } from "../../types";
+import { ProviderError, ProviderErrorType } from "../../types";
 
 export { createChatGPTNativeCompaction } from "./native-compaction";
 
 import { buildResponsesRequestBody, isGpt56Model, toResponsesLiteRequestBody } from "../openai/responses";
-import { isTransientOpenAIErrorMessage } from "../openai/shared";
+import { classifyOpenAIFamilyError, parseOpenAIRetryAfter } from "../openai/shared";
 import { handleResponsesAPIEvents } from "../openai/sse";
+import { CHATGPT_SESSION_HEADER } from "./headers";
 import { iterateChatGPTJsonSse } from "./http-sse";
 import { type ChatGPTWebSocketSession, createChatGPTWebSocketSession } from "./websocket-session";
 
@@ -23,13 +22,13 @@ const httpSseLogger = createLogger({ scope: "llm:chatgpt-sse" });
 const CHATGPT_CODEX_URL = "https://chatgpt.com/backend-api/codex/responses";
 const CHATGPT_CODEX_WEBSOCKET_URL = "wss://chatgpt.com/backend-api/codex/responses";
 const RESPONSES_LITE_HEADER = "x-openai-internal-codex-responses-lite";
-const CHATGPT_SESSION_HEADER = "session-id";
 const CHATGPT_TURN_STATE_HEADER = "x-codex-turn-state";
 const CHATGPT_JSON_CONTENT_TYPE = "application/json";
 // Pinned to the Codex client version used to verify the GPT-5.6 transport contract.
 const CHATGPT_CODEX_CLIENT_VERSION = "0.144.1";
 const CHATGPT_WEBSOCKET_IDLE_TIMEOUT_MS = 300_000;
 const CHATGPT_HTTP_HEADER_TIMEOUT_MS = 15_000;
+const CHATGPT_HTTP_STREAM_IDLE_TIMEOUT_MS = 300_000;
 const USER_AGENT = `diligent (${platform()} ${release()}; ${arch()})`;
 
 export interface ChatGPTStreamOptions {
@@ -38,6 +37,8 @@ export interface ChatGPTStreamOptions {
   webSocketIdleTimeoutMs?: number;
   /** Maximum wait for HTTP response headers. Does not limit SSE body streaming. */
   httpHeaderTimeoutMs?: number;
+  /** Maximum idle wait between HTTP body chunks. Resets whenever bytes arrive. */
+  httpStreamIdleTimeoutMs?: number;
 }
 
 type ChatGPTTransportState = {
@@ -175,53 +176,12 @@ function toChatGPTWebSocketError(payload: Record<string, unknown>): ProviderErro
     "ChatGPT WebSocket request failed";
   const errorType = typeof error?.type === "string" ? error.type : undefined;
   const errorCode = typeof error?.code === "string" ? error.code : undefined;
-  const normalizedMessage = message.toLowerCase();
-  const isUsageLimit =
-    errorType?.includes("usage_limit") === true ||
-    errorCode?.includes("usage_limit") === true ||
-    message.includes("usage_limit_reached") ||
-    normalizedMessage.includes("usage limit");
-  const isConnectionLimit = errorCode === "websocket_connection_limit_reached";
   const details = [errorCode, errorType, message].filter((value): value is string => Boolean(value)).join(" | ");
 
-  return classifyChatGPTHttpError({
+  return classifyOpenAIFamilyError({
     message: `ChatGPT API error${status ? ` (${status})` : ""}: ${details || message}`,
     status,
-    isUsageLimit,
-    isConnectionLimit,
-  });
-}
-
-function classifyChatGPTHttpError(input: {
-  message: string;
-  status: number | undefined;
-  isUsageLimit?: boolean;
-  isConnectionLimit?: boolean;
-  cause?: Error;
-}): ProviderError {
-  if (input.isUsageLimit) {
-    return new ProviderError(input.message, {
-      errorType: ProviderErrorType.RateLimit,
-      isRetryable: false,
-      statusCode: input.status,
-      cause: input.cause,
-      reason: ProviderErrorReason.UsageLimitReached,
-    });
-  }
-
-  const httpError = classifyProviderHttpError({
-    message: input.message,
-    status: input.status,
-    cause: input.cause,
-  });
-  if (httpError) return httpError;
-
-  const isRetryable = input.isConnectionLimit === true || isTransientOpenAIErrorMessage(input.message);
-  return new ProviderError(input.message, {
-    errorType: ProviderErrorType.Unknown,
-    isRetryable,
-    statusCode: input.status,
-    cause: input.cause,
+    code: errorCode ?? errorType,
   });
 }
 
@@ -459,12 +419,14 @@ export function createChatGPTStream(
 
         if (!response.ok) {
           const errText = await response.text().catch(() => "");
-          const isUsageLimit = errText.includes("usage_limit_reached");
+          const structuredError = decodeChatGPTHttpError(errText);
           const message = `ChatGPT API error (${response.status}): ${errText || "no body"}`;
-          throw classifyChatGPTHttpError({
+          throw classifyOpenAIFamilyError({
             message,
             status: response.status,
-            isUsageLimit,
+            code: structuredError.code,
+            cause: structuredError.cause,
+            retryAfterMs: parseOpenAIRetryAfter(response.headers),
           });
         }
 
@@ -479,6 +441,7 @@ export function createChatGPTStream(
         const debugEnabled = process.env.DILIGENT_DEBUG_CHATGPT_HTTP_SSE === "1";
         const responseEvents = iterateChatGPTJsonSse(response.body, {
           signal: options.signal,
+          idleTimeoutMs: Math.max(1, providerOptions.httpStreamIdleTimeoutMs ?? CHATGPT_HTTP_STREAM_IDLE_TIMEOUT_MS),
           onJson: (event, _data, byteLength) => {
             if (!debugEnabled) return;
             debugChatGPTHttpSse("<-", byteLength, summarizeChatGPTWebSocketPayload(event), options.sessionId);
@@ -497,27 +460,13 @@ export function createChatGPTStream(
         }
         if (err instanceof ProviderError) {
           stream.push({ type: "error", error: err });
-        } else if (isNetworkError(err)) {
-          stream.push({
-            type: "error",
-            error: new ProviderError(String(err), ProviderErrorType.Network, true),
-          });
-        } else if (err instanceof Error && isTransientOpenAIErrorMessage(err.message)) {
-          stream.push({
-            type: "error",
-            error: new ProviderError(err.message, ProviderErrorType.ServerError, true, undefined, undefined, err),
-          });
         } else {
           stream.push({
             type: "error",
-            error: new ProviderError(
-              err instanceof Error ? err.message : String(err),
-              ProviderErrorType.Unknown,
-              false,
-              undefined,
-              undefined,
-              err instanceof Error ? err : undefined,
-            ),
+            error: classifyOpenAIFamilyError({
+              message: err instanceof Error ? err.message : String(err),
+              cause: err instanceof Error ? err : undefined,
+            }),
           });
         }
       }
@@ -526,4 +475,19 @@ export function createChatGPTStream(
 
     return stream;
   };
+}
+
+function decodeChatGPTHttpError(text: string): { code?: string; cause?: Error } {
+  if (!text) return {};
+  try {
+    const payload: unknown = JSON.parse(text);
+    if (!payload || typeof payload !== "object") return { cause: new Error(text) };
+    const rawError = (payload as Record<string, unknown>).error;
+    if (!rawError || typeof rawError !== "object") return { cause: new Error(text) };
+    const error = rawError as Record<string, unknown>;
+    const code = typeof error.code === "string" ? error.code : typeof error.type === "string" ? error.type : undefined;
+    return { code, cause: Object.assign(new Error(text), { error: rawError, ...(code ? { code } : {}) }) };
+  } catch {
+    return { cause: new Error(text) };
+  }
 }

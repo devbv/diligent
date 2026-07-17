@@ -1,8 +1,11 @@
 // @summary ChatGPT HTTP JSON adapter over standards-compliant SSE framing
-import { EventSourceParserStream } from "eventsource-parser/stream";
+import { createParser } from "eventsource-parser";
+import { waitForOpenAIStreamProgress } from "../openai/shared";
 
 export interface ChatGPTJsonSseOptions {
   signal?: AbortSignal;
+  idleTimeoutMs?: number;
+  idleTimeoutMessage?: string;
   onJson?: (event: Record<string, unknown>, data: string, byteLength: number) => void;
   onInvalidJson?: (data: string, byteLength: number) => void;
 }
@@ -13,17 +16,14 @@ export async function* iterateChatGPTJsonSse(
 ): AsyncIterable<Record<string, unknown>> {
   if (!body || options.signal?.aborted) return;
 
-  const flushFinalEvent = new TransformStream<string, string>({
-    transform(chunk, controller) {
-      controller.enqueue(chunk);
-    },
-    flush(controller) {
-      controller.enqueue("\n\n");
+  const pendingEvents: string[] = [];
+  const parser = createParser({
+    onEvent(event) {
+      pendingEvents.push(event.data);
     },
   });
-  const decoder = new TextDecoderStream() as unknown as TransformStream<Uint8Array, string>;
-  const events = body.pipeThrough(decoder).pipeThrough(flushFinalEvent).pipeThrough(new EventSourceParserStream());
-  const reader = events.getReader();
+  const decoder = new TextDecoder();
+  const reader = body.getReader();
   const encoder = new TextEncoder();
   let completed = false;
   const abortRead = () => {
@@ -35,27 +35,44 @@ export async function* iterateChatGPTJsonSse(
     while (!options.signal?.aborted) {
       let chunk: Awaited<ReturnType<typeof reader.read>>;
       try {
-        chunk = await reader.read();
+        const read = reader.read();
+        chunk =
+          options.idleTimeoutMs === undefined
+            ? await read
+            : await waitForOpenAIStreamProgress(read, {
+                idleTimeoutMs: options.idleTimeoutMs,
+                message:
+                  options.idleTimeoutMessage ?? `ChatGPT HTTP stream idle timeout after ${options.idleTimeoutMs}ms`,
+                signal: options.signal,
+                onTimeout: (error) => reader.cancel(error),
+                onAbort: (reason) => reader.cancel(reason),
+              });
       } catch (error) {
         if (options.signal?.aborted) return;
         throw error;
       }
       if (chunk.done) {
+        parser.feed(decoder.decode());
+        parser.feed("\n\n");
         completed = true;
-        return;
+      } else {
+        parser.feed(decoder.decode(chunk.value, { stream: true }));
       }
 
-      const data = chunk.value.data.trim();
-      if (!data) continue;
-      if (data === "[DONE]") return;
-      const byteLength = encoder.encode(data).byteLength;
-      try {
-        const event = JSON.parse(data) as Record<string, unknown>;
-        options.onJson?.(event, data, byteLength);
-        yield event;
-      } catch {
-        options.onInvalidJson?.(data, byteLength);
+      while (pendingEvents.length > 0) {
+        const data = pendingEvents.shift()?.trim() ?? "";
+        if (!data) continue;
+        if (data === "[DONE]") return;
+        const byteLength = encoder.encode(data).byteLength;
+        try {
+          const event = JSON.parse(data) as Record<string, unknown>;
+          options.onJson?.(event, data, byteLength);
+          yield event;
+        } catch {
+          options.onInvalidJson?.(data, byteLength);
+        }
       }
+      if (completed) return;
     }
   } finally {
     options.signal?.removeEventListener("abort", abortRead);

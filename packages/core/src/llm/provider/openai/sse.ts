@@ -2,10 +2,10 @@
 import type { EventStream } from "../../../event-stream";
 import type { ContentBlock } from "../../../types";
 import type { Model, ProviderEvent, ProviderResult } from "../../types";
-import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError, ProviderErrorReason, ProviderErrorType } from "../../types";
+import { ProviderError, ProviderErrorType } from "../../types";
 import { OpenAIContentAccumulator } from "./content-accumulator";
-import { isContextOverflow, mapStopReason, mapUsage } from "./responses";
-import { isTransientOpenAIErrorMessage } from "./shared";
+import { mapStopReason, mapUsage } from "./responses";
+import { classifyOpenAIFamilyError } from "./shared";
 import {
   applyCompletedResponseFallbacks,
   createProviderToolUseBlock,
@@ -259,11 +259,27 @@ function reduceResponsesAPIEvent(
       state.accumulator.setStopReason(mapStopReason(event.status));
       return [];
 
-    case "response_incomplete":
+    case "response_incomplete": {
       applyCompletedResponseFallbacks(state, event.response, model.provider);
       state.accumulator.setUsage(mapUsage(event.usage));
-      state.accumulator.setStopReason(event.reason === "max_output_tokens" ? "max_tokens" : "error");
-      return [];
+      if (event.reason === "max_output_tokens") {
+        state.accumulator.setStopReason("max_tokens");
+        return [];
+      }
+      const incompleteReason = event.reason ?? "unknown";
+      const incompleteMessage = `Responses API response incomplete: ${incompleteReason}`;
+      return [
+        { type: "usage", usage: mapUsage(event.usage) },
+        {
+          type: "error",
+          error: new ProviderError(incompleteMessage, {
+            errorType: ProviderErrorType.Unknown,
+            isRetryable: false,
+            cause: Object.assign(new Error(incompleteMessage), { incompleteReason }),
+          }),
+        },
+      ];
+    }
 
     case "response_failed":
     case "provider_error": {
@@ -271,36 +287,11 @@ function reduceResponsesAPIEvent(
       if (event.kind === "response_failed" && event.usage) {
         events.push({ type: "usage", usage: mapUsage(event.usage) });
       }
-      // Carry the provider's error code via cause so error logs show code=... (D086)
-      const cause = Object.assign(new Error(event.message), { code: event.code });
-      if (isContextOverflow(event.message)) {
-        return [
-          ...events,
-          {
-            type: "error",
-            error: new ProviderError(CONTEXT_OVERFLOW_ERROR_MESSAGE, {
-              errorType: ProviderErrorType.ContextOverflow,
-              isRetryable: false,
-              cause,
-              reason: ProviderErrorReason.ContextWindowExceeded,
-            }),
-          },
-        ];
-      }
-      if (isTransientOpenAIErrorMessage(event.message)) {
-        return [
-          ...events,
-          {
-            type: "error",
-            error: new ProviderError(event.message, ProviderErrorType.ServerError, true, undefined, undefined, cause),
-          },
-        ];
-      }
       return [
         ...events,
         {
           type: "error",
-          error: new ProviderError(event.message, ProviderErrorType.Unknown, false, undefined, undefined, cause),
+          error: classifyOpenAIFamilyError({ message: event.message, code: event.code }),
         },
       ];
     }

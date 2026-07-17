@@ -126,6 +126,23 @@ describe("ChatGPT HTTP transport", () => {
     expect(events.some((event) => event.type === "error")).toBe(false);
   });
 
+  test("surfaces a content-filter incomplete response as an error while preserving usage", async () => {
+    globalThis.fetch = (async () =>
+      new Response(
+        'data: {"type":"response.incomplete","response":{"status":"incomplete","incomplete_details":{"reason":"content_filter"},"usage":{"input_tokens":4,"output_tokens":0}}}\n\n',
+        { status: 200, headers: { "content-type": "text/event-stream" } },
+      )) as unknown as typeof fetch;
+
+    const events = await collectEvents(
+      createChatGPTStream(() => testTokens())(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, {
+        effort: "medium",
+      }),
+    );
+
+    expect(events.map((event) => event.type)).toEqual(["start", "usage", "error"]);
+    expect(events.at(-1)).toMatchObject({ type: "error", error: { isRetryable: false } });
+  });
+
   test("logs ChatGPT HTTP/SSE payloads with byte sizes and content-safe summaries", async () => {
     process.env.DILIGENT_DEBUG_CHATGPT_HTTP_SSE = "1";
     const logs: LogRecord[] = [];
@@ -244,5 +261,34 @@ describe("ChatGPT HTTP transport", () => {
 
     expect(events.some((event) => event.type === "done")).toBe(true);
     expect(events.some((event) => event.type === "error")).toBe(false);
+  });
+
+  test("times out a stalled ChatGPT SSE body after response headers", async () => {
+    let cancelled = false;
+    globalThis.fetch = (async () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          cancel() {
+            cancelled = true;
+          },
+        }),
+        { status: 200, headers: { "content-type": "text/event-stream" } },
+      )) as unknown as typeof fetch;
+    const chatgptStream = createChatGPTStream(() => testTokens(), {
+      httpHeaderTimeoutMs: 50,
+      httpStreamIdleTimeoutMs: 5,
+    });
+
+    const events = await collectEvents(
+      chatgptStream(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, { effort: "medium" }),
+    );
+    const error = events.find((event): event is Extract<ProviderEvent, { type: "error" }> => event.type === "error");
+
+    expect(error?.error).toMatchObject({
+      message: "ChatGPT HTTP stream idle timeout after 5ms",
+      errorType: "network",
+      isRetryable: true,
+    });
+    expect(cancelled).toBe(true);
   });
 });

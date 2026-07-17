@@ -1,19 +1,29 @@
 // @summary OpenAI provider implementation with streaming, tools, and error classification
 import OpenAI from "openai";
 import { EventStream } from "../../../event-stream";
-import { isNetworkError } from "../../errors";
-import { classifyProviderHttpError } from "../../provider-errors";
 import { flattenSections } from "../../system-sections";
 import type { Model, ProviderEvent, ProviderResult, StreamContext, StreamFunction, StreamOptions } from "../../types";
-import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError, ProviderErrorReason, ProviderErrorType } from "../../types";
+import { ProviderError } from "../../types";
 
 export { createOpenAINativeCompaction } from "./native-compaction";
 
-import { buildResponsesRequestBody, isContextOverflow, type OpenAIImageDetail } from "./responses";
-import { isTransientOpenAIErrorMessage } from "./shared";
+import { buildResponsesRequestBody, type OpenAIImageDetail } from "./responses";
+import { classifyOpenAIFamilyError, iterateOpenAIStreamWithIdleTimeout, parseOpenAIRetryAfter } from "./shared";
 import { handleResponsesAPIEvents } from "./sse";
 
-export function createOpenAIStream(apiKey?: string, baseUrl?: string, imageDetail?: OpenAIImageDetail): StreamFunction {
+const OPENAI_STREAM_IDLE_TIMEOUT_MS = 300_000;
+
+export interface OpenAIStreamProviderOptions {
+  /** Maximum idle wait between SDK stream events. Resets whenever an event arrives. */
+  streamIdleTimeoutMs?: number;
+}
+
+export function createOpenAIStream(
+  apiKey?: string,
+  baseUrl?: string,
+  imageDetail?: OpenAIImageDetail,
+  providerOptions: OpenAIStreamProviderOptions = {},
+): StreamFunction {
   const resolvedApiKey = resolveOpenAIApiKey(apiKey);
   const client = createOpenAIClient(resolvedApiKey, baseUrl);
 
@@ -43,6 +53,7 @@ export function createOpenAIStream(apiKey?: string, baseUrl?: string, imageDetai
           temperature: options.temperature,
           useReasoning,
           effort: options.effort,
+          store: false,
           imageDetail,
           localImageLoader: context.localImageLoader,
           provider: "openai",
@@ -54,8 +65,18 @@ export function createOpenAIStream(apiKey?: string, baseUrl?: string, imageDetai
 
         stream.push({ type: "start" });
 
+        const sdkStream = openaiStream as unknown as AsyncIterable<Record<string, unknown>> & {
+          controller?: AbortController;
+        };
+        const idleTimeoutMs = Math.max(1, providerOptions.streamIdleTimeoutMs ?? OPENAI_STREAM_IDLE_TIMEOUT_MS);
         await handleResponsesAPIEvents(
-          openaiStream as unknown as AsyncIterable<Record<string, unknown>>,
+          iterateOpenAIStreamWithIdleTimeout(sdkStream, {
+            idleTimeoutMs,
+            message: `OpenAI stream idle timeout after ${idleTimeoutMs}ms`,
+            signal: options.signal,
+            onTimeout: () => sdkStream.controller?.abort(),
+            onAbort: () => sdkStream.controller?.abort(),
+          }),
           stream,
           model,
           options.signal,
@@ -80,67 +101,24 @@ export function createOpenAIClient(apiKey: string, baseUrl?: string): OpenAI {
 }
 
 export function classifyOpenAIError(err: unknown): ProviderError {
+  if (err instanceof ProviderError) return err;
   if (err instanceof OpenAI.APIError) {
-    const status = err.status;
-    if (status === 400 && isContextOverflow(err.message)) {
-      return new ProviderError(CONTEXT_OVERFLOW_ERROR_MESSAGE, {
-        errorType: ProviderErrorType.ContextOverflow,
-        isRetryable: false,
-        statusCode: status,
-        cause: err,
-        reason: ProviderErrorReason.ContextWindowExceeded,
-      });
-    }
-    const httpError = classifyProviderHttpError({
+    return classifyOpenAIFamilyError({
       message: err.message,
-      status,
+      status: err.status,
+      code: typeof err.code === "string" ? err.code : undefined,
       cause: err,
-      retryAfterMs: parseRetryAfterFromHeaders(err.headers),
+      retryAfterMs: parseOpenAIRetryAfter(err.headers),
     });
-    if (httpError) return httpError;
-    if (isTransientOpenAIError(err)) {
-      return new ProviderError(err.message, ProviderErrorType.ServerError, true, undefined, status, err);
-    }
-    return new ProviderError(err.message, ProviderErrorType.Unknown, false, undefined, status, err);
   }
-  if (isNetworkError(err)) {
-    return new ProviderError(String(err), ProviderErrorType.Network, true);
-  }
-  if (isTransientOpenAIError(err)) {
-    return new ProviderError(
-      err instanceof Error ? err.message : String(err),
-      ProviderErrorType.ServerError,
-      true,
-      undefined,
-      undefined,
-      err instanceof Error ? err : undefined,
-    );
-  }
-  return new ProviderError(
-    err instanceof Error ? err.message : String(err),
-    ProviderErrorType.Unknown,
-    false,
-    undefined,
-    undefined,
-    err instanceof Error ? err : undefined,
-  );
+  return classifyOpenAIFamilyError({
+    message: err instanceof Error ? err.message : String(err),
+    cause: err instanceof Error ? err : undefined,
+  });
 }
 
 function resolveOpenAIApiKey(apiKey?: string): string {
   const resolved = apiKey?.trim() || process.env.OPENAI_API_KEY?.trim();
   if (resolved) return resolved;
   throw new Error("OpenAI API key is required. Set OPENAI_API_KEY or pass apiKey to createOpenAIStream().");
-}
-
-function parseRetryAfterFromHeaders(headers: Headers | undefined): number | undefined {
-  if (!headers) return undefined;
-  const ms = headers.get("retry-after-ms");
-  if (ms) return Number.parseInt(ms, 10);
-  const s = headers.get("retry-after");
-  if (s) return Number.parseInt(s, 10) * 1000;
-  return undefined;
-}
-
-function isTransientOpenAIError(err: unknown): boolean {
-  return err instanceof Error && isTransientOpenAIErrorMessage(err.message);
 }

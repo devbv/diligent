@@ -36,6 +36,36 @@ class CompletingWebSocket extends EventTarget {
 }
 
 describe("createChatGPTOAuthBinding", () => {
+  it("does not publish or persist credentials when a refresh response is invalid", async () => {
+    const originalFetch = globalThis.fetch;
+    let persistedTokens: unknown;
+    globalThis.fetch = mock(() =>
+      Promise.resolve(new Response(JSON.stringify({ id_token: "not-a-jwt" }), { status: 200 })),
+    ) as typeof fetch;
+
+    const initialTokens = {
+      access_token: "first",
+      refresh_token: "refresh",
+      id_token: "eyJhbGciOiJSUzI1NiJ9.e30.signature",
+      expires_at: Date.now() - 60_000,
+    };
+
+    try {
+      const binding = createChatGPTOAuthBinding({
+        initialTokens,
+        onTokensRefreshed: async (tokens) => {
+          persistedTokens = tokens;
+        },
+      });
+
+      await expect(binding.auth.ensureFresh?.()).rejects.toThrow("id_token must be a valid JWT");
+      expect(binding.getTokens()).toEqual(initialTokens);
+      expect(persistedTokens).toBeUndefined();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it("returns one stable stream function while token updates remain visible", async () => {
     const originalFetch = globalThis.fetch;
     const authorizationHeaders: string[] = [];

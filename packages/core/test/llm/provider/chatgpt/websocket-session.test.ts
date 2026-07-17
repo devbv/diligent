@@ -233,7 +233,7 @@ describe("ChatGPT WebSocket session", () => {
             message: "Too many WebSocket connections",
           },
         },
-        expectedType: "unknown",
+        expectedType: "rate_limit",
         expectedRetryable: true,
         expectedStatus: 400,
         expectedMessage: "websocket_connection_limit_reached",

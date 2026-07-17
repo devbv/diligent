@@ -1,7 +1,7 @@
 // @summary Refresh OpenAI OAuth tokens using refresh_token (single-use with rotation)
 import type { OpenAIOAuthTokens } from "../types";
 import { CLIENT_ID, OAUTH_TOKEN_URL } from "./constants";
-import { buildOAuthTokens } from "./token-exchange";
+import { mergeOAuthRefreshTokens } from "./token-exchange";
 
 /** Check if tokens need refresh (expire within 5 minutes) */
 export function shouldRefresh(tokens: OpenAIOAuthTokens): boolean {
@@ -27,6 +27,5 @@ export async function refreshOAuthTokens(tokens: OpenAIOAuthTokens): Promise<Ope
     throw new Error(`Token refresh failed (${res.status}): ${text}`);
   }
 
-  const raw = await res.json();
-  return buildOAuthTokens(raw);
+  return mergeOAuthRefreshTokens(tokens, await res.json());
 }

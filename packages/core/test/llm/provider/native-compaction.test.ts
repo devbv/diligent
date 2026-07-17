@@ -1,5 +1,6 @@
 // @summary Tests for provider-native compaction adapters (OpenAI/ChatGPT/Anthropic)
 import { afterEach, describe, expect, mock, test } from "bun:test";
+import { toSerializableError } from "../../../src/agent/util/errors";
 import { createAnthropicNativeCompaction } from "../../../src/llm/provider/anthropic";
 import { createChatGPTNativeCompaction } from "../../../src/llm/provider/chatgpt";
 import { createOpenAINativeCompaction } from "../../../src/llm/provider/openai";
@@ -125,7 +126,7 @@ describe("native compaction adapters", () => {
     expect(JSON.stringify(capturedBody.input)).toContain("data:image/png;base64,aW1hZ2UtYnl0ZXM=");
   });
 
-  test("OpenAI adapter includes error body in unsupported reason", async () => {
+  test("OpenAI adapter throws generic structured 400 errors with diagnostics", async () => {
     globalThis.fetch = mock(
       async () =>
         new Response(
@@ -142,19 +143,43 @@ describe("native compaction adapters", () => {
     ) as unknown as typeof fetch;
 
     const compact = createOpenAINativeCompaction("sk-openai", "https://api.openai.com/v1");
-    const result = await compact({
+    const error = await compact({
       model: OPENAI_MODEL,
       systemPrompt: [{ label: "base", content: "You are helpful." }],
       messages: [{ role: "user", content: "hello", timestamp: Date.now() }],
+    }).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain("OpenAI native compaction failed (400)");
+    expect((error as Error).message).toContain("unknown_parameter");
+    expect((error as Error).message).toContain("Unknown parameter: 'store'.");
+    expect(toSerializableError(error).code).toBe("unknown_parameter");
+  });
+
+  test("OpenAI adapter throws an unstructured 400 instead of masking it as unsupported", async () => {
+    globalThis.fetch = mock(
+      async () => new Response("malformed compact request", { status: 400 }),
+    ) as unknown as typeof fetch;
+
+    await expect(
+      createOpenAINativeCompaction("sk-openai")({
+        model: OPENAI_MODEL,
+        systemPrompt: [],
+        messages: [{ role: "user", content: "hello", timestamp: 1 }],
+      }),
+    ).rejects.toThrow("OpenAI native compaction failed (400) body=malformed compact request");
+  });
+
+  test.each([404, 405])("OpenAI adapter marks HTTP %d as unsupported", async (status) => {
+    globalThis.fetch = mock(async () => new Response("not supported", { status })) as unknown as typeof fetch;
+
+    const result = await createOpenAINativeCompaction("sk-openai")({
+      model: OPENAI_MODEL,
+      systemPrompt: [],
+      messages: [{ role: "user", content: "hello", timestamp: 1 }],
     });
 
-    expect(result.status).toBe("unsupported");
-    if (result.status === "unsupported") {
-      expect(result.reason).toContain("status_400");
-      expect(result.reason).toContain("unknown_parameter");
-      expect(result.reason).toContain("store");
-      expect(result.reason).toContain("Unknown parameter: 'store'.");
-    }
+    expect(result).toEqual({ status: "unsupported", reason: `status_${status} body=not supported` });
   });
 
   test("compaction payload descriptor reports structured compaction items", () => {
@@ -321,9 +346,33 @@ describe("native compaction adapters", () => {
     expect(capturedHeaders.Authorization).toBe("Bearer access-token");
     expect(capturedHeaders["ChatGPT-Account-ID"]).toBe("acct_1");
     expect(capturedHeaders.version).toBe("0.144.1");
-    expect(capturedHeaders.session_id).toBe("session-1");
+    expect(capturedHeaders["session-id"]).toBe("session-1");
+    expect(capturedHeaders.session_id).toBeUndefined();
     expect(capturedBody.store).toBeUndefined();
     expect(result.status).toBe("ok");
+  });
+
+  test("ChatGPT adapter omits both session header spellings without a session ID", async () => {
+    let capturedHeaders: Record<string, string> = {};
+    globalThis.fetch = mock(async (_url: string | URL, init?: RequestInit) => {
+      capturedHeaders = (init?.headers as Record<string, string>) ?? {};
+      return new Response(JSON.stringify(currentCompactionPayload()), { status: 200 });
+    }) as unknown as typeof fetch;
+    const adapter = createChatGPTNativeCompaction(() => ({
+      access_token: "access-token",
+      refresh_token: "refresh-token",
+      id_token: "id-token",
+      expires_at: Date.now() + 60_000,
+    }));
+
+    await adapter({
+      model: OPENAI_MODEL,
+      systemPrompt: [],
+      messages: [{ role: "user", content: "hello", timestamp: 1 }],
+    });
+
+    expect(capturedHeaders["session-id"]).toBeUndefined();
+    expect(capturedHeaders.session_id).toBeUndefined();
   });
 
   test("ChatGPT GPT-5.6 compaction uses the Responses Lite HTTP contract", async () => {

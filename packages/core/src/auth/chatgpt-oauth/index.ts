@@ -10,5 +10,11 @@ export {
 export type { PKCEPair } from "./pkce";
 export { generateCodeChallenge, generateCodeVerifier, generatePKCE } from "./pkce";
 export { refreshOAuthTokens, shouldRefresh } from "./refresh";
-export type { RawTokenResponse } from "./token-exchange";
-export { buildOAuthTokens, exchangeCodeForTokens, extractAccountId, parseJwtClaims } from "./token-exchange";
+export type { RawRefreshTokenResponse, RawTokenResponse } from "./token-exchange";
+export {
+  buildOAuthTokens,
+  exchangeCodeForTokens,
+  extractAccountId,
+  mergeOAuthRefreshTokens,
+  parseJwtClaims,
+} from "./token-exchange";

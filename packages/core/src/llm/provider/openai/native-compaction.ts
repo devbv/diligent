@@ -1,9 +1,9 @@
 // @summary OpenAI Responses native compaction request and response handling
 import { flattenSections } from "../../system-sections";
 import type { NativeCompactFn } from "../native-compaction";
-import { readOpenAIFamilyCompactErrorBody } from "./compact-errors";
+import { readOpenAIFamilyCompactError } from "./compact-errors";
 import { type OpenAIImageDetail, toResponseInputItems } from "./responses";
-import { describeCompactionPayload, extractCompactionSummaryItem } from "./shared";
+import { classifyOpenAIFamilyError, describeCompactionPayload, extractCompactionSummaryItem } from "./shared";
 
 const OPENAI_BASE_URL = "https://api.openai.com/v1";
 
@@ -47,12 +47,23 @@ export function createOpenAINativeCompaction(
     });
 
     if (!response.ok) {
-      const errorBody = await readOpenAIFamilyCompactErrorBody(response, ["code", "type", "param", "message"]);
-      if (response.status === 400 || response.status === 404 || response.status === 405) {
-        return { status: "unsupported", reason: formatUnsupportedReason(response.status, errorBody) };
+      const errorBody = await readOpenAIFamilyCompactError(response, ["code", "type", "param", "message"]);
+      if (response.status === 404 || response.status === 405) {
+        return { status: "unsupported", reason: formatUnsupportedReason(response.status, errorBody.formatted) };
       }
-      const suffix = errorBody ? ` body=${errorBody}` : "";
-      throw new Error(`OpenAI native compaction failed (${response.status})${suffix}`);
+      const suffix = errorBody.formatted ? ` body=${errorBody.formatted}` : "";
+      const message = `OpenAI native compaction failed (${response.status})${suffix}`;
+      const cause = Object.assign(new Error(errorBody.message ?? message), {
+        ...(errorBody.code ? { code: errorBody.code } : {}),
+        ...(errorBody.type ? { type: errorBody.type } : {}),
+        ...(errorBody.param ? { param: errorBody.param } : {}),
+      });
+      throw classifyOpenAIFamilyError({
+        message,
+        status: response.status,
+        code: errorBody.code,
+        cause,
+      });
     }
 
     const payload = (await response.json()) as Record<string, unknown>;

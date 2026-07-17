@@ -178,6 +178,8 @@ describe("OpenAIContentAccumulator", () => {
   test("abort prevents terminal flush", () => {
     const accumulator = new OpenAIContentAccumulator();
     accumulator.appendTextDelta("partial");
+    accumulator.setUsage(USAGE);
+    accumulator.setStopReason("error");
     accumulator.abort();
 
     expect(accumulator.finalize({ modelId: "test", finalizePendingTools: false })).toBeUndefined();

@@ -6,6 +6,7 @@ import type { NativeCompactFn } from "../native-compaction";
 import { readOpenAIFamilyCompactErrorBody } from "../openai/compact-errors";
 import { isGpt56Model, toResponseInputItems, toResponsesLiteRequestBody } from "../openai/responses";
 import { describeCompactionPayload, extractCompactionSummaryItem } from "../openai/shared";
+import { CHATGPT_SESSION_HEADER } from "./headers";
 
 const CHATGPT_COMPACT_URL = "https://chatgpt.com/backend-api/codex/responses/compact";
 const RESPONSES_LITE_HEADER = "x-openai-internal-codex-responses-lite";
@@ -30,7 +31,7 @@ export function createChatGPTNativeCompaction(getTokens: () => OpenAIOAuthTokens
       version: CHATGPT_CODEX_CLIENT_VERSION,
     };
     if (tokens.account_id) headers["ChatGPT-Account-ID"] = tokens.account_id;
-    if (input.sessionId) headers.session_id = input.sessionId;
+    if (input.sessionId) headers[CHATGPT_SESSION_HEADER] = input.sessionId;
     if (useResponsesLite) headers[RESPONSES_LITE_HEADER] = "true";
 
     const standardBody: Record<string, unknown> = {
