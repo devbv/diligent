@@ -77,18 +77,18 @@ jobs:
         if: steps.guard.outputs.skip == 'false'
         shell: bash
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           set -euo pipefail
           mkdir -p ~/.diligent
           cat > ~/.diligent/auth.jsonc <<EOF
           {
-            "anthropic": "${ANTHROPIC_API_KEY}"
+            "openai": "${OPENAI_API_KEY}"
           }
           EOF
           cat > ~/.diligent/config.jsonc <<'EOF'
           {
-            "model": "claude-opus-4-6"
+            "model": "gpt-5.6"
           }
           EOF
 
@@ -99,7 +99,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          ./.bin/diligent --yolo --prompt "/tech-lead"
+          ./.bin/diligent --yolo --prompt "/tech-lead Review the accumulated commit range and register only high-confidence, implementation-ready findings as GitHub Issues. Creating no issues is valid."
 
       - name: Commit and push
         if: steps.guard.outputs.skip == 'false'

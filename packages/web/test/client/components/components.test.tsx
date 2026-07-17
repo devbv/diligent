@@ -578,8 +578,8 @@ test("tool settings modal renders skill rows and config copy", () => {
             reason: "skills_disabled",
           },
           {
-            name: "passion-junior",
-            description: "Resolve small follow-up issues.",
+            name: "pr-all-in-one",
+            description: "Prepare and open pull requests.",
             source: "global",
             globalEnabled: false,
             effectiveEnabled: false,
@@ -615,7 +615,7 @@ test("tool settings modal renders skill rows and config copy", () => {
   expect(html).toContain("The skills master switch is off in project config");
   expect(html).toContain("Config path: /home/user/.diligent/config.jsonc");
   expect(html).toContain("tech-lead");
-  expect(html).toContain("passion-junior");
+  expect(html).toContain("pr-all-in-one");
   expect(html).toContain("Project skill");
   expect(html).toContain("Global skill");
   expect(html).toContain("Configured path");

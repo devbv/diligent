@@ -31,7 +31,6 @@ Preferred patterns:
 - Bug fixes: `fix/<short-slug>`.
 - Refactors: `refactor/<short-slug>`.
 - Documentation or process work: `docs/<short-slug>`.
-- Passion Junior issue work: `fix/passion-junior/issue-<number>-<short-slug>`.
 - Provider/model support work may use a concise support branch when that is the existing project pattern, for example `support-glm-5-2`.
 
 If the current branch uses an agent-specific prefix and the work is not pushed yet, rename it before opening the PR.
