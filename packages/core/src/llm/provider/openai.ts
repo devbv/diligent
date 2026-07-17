@@ -84,7 +84,7 @@ export function createOpenAIStream(apiKey?: string, baseUrl?: string, imageDetai
 }
 
 export function classifyOpenAIError(err: unknown): ProviderError {
-  if (err instanceof OpenAI.APIError) {
+  if (isOpenAIAPIError(err)) {
     const status = err.status;
     if (status === 400 && isContextOverflow(err.message)) {
       return new ProviderError(CONTEXT_OVERFLOW_ERROR_MESSAGE, {
@@ -128,6 +128,17 @@ export function classifyOpenAIError(err: unknown): ProviderError {
     undefined,
     err instanceof Error ? err : undefined,
   );
+}
+
+type OpenAIAPIErrorLike = Error & {
+  status?: number;
+  headers?: Headers;
+  error: unknown;
+};
+
+function isOpenAIAPIError(err: unknown): err is OpenAIAPIErrorLike {
+  if (err instanceof OpenAI.APIError) return true;
+  return err instanceof Error && "error" in err && "headers" in err;
 }
 
 function resolveOpenAIApiKey(apiKey?: string): string {
