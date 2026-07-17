@@ -1,6 +1,6 @@
 import type { z } from "zod";
 import type { ProviderBuiltinToolDefinition } from "../llm/types";
-import type { ImageBlock } from "../types";
+import type { ImageBlock, ToolRenderPayloadLike } from "../types";
 
 // D013: Tool definition
 // biome-ignore lint/suspicious/noExplicitAny: generic default requires any for unparameterized Tool references
@@ -32,12 +32,6 @@ export interface ToolContext {
 }
 
 // D020: Tool result
-export interface ToolRenderPayloadLike {
-  inputSummary?: string;
-  outputSummary?: string;
-  blocks: unknown[];
-}
-
 export interface ToolResult {
   output: string;
   /** Optional image content blocks returned alongside text. Provider support varies — Anthropic embeds them in tool_result content; other providers fall back to text-only. */

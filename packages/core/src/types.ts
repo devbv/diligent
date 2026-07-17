@@ -22,11 +22,6 @@ export interface ToolRenderPayloadLike {
   blocks: unknown[];
 }
 
-export interface ToolStartRenderPayloadLike {
-  inputSummary?: string;
-  blocks: unknown[];
-}
-
 export interface ToolResultMessage {
   role: "tool_result";
   toolCallId: string;
