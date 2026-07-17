@@ -45,10 +45,10 @@ describe("model class policy", () => {
           gemini: "gemini-3.5-flash",
           vertex: "vertex-gemma-4-26b-it",
           "zai-coding-plan": "glm-5.1",
-          openai: "gpt-5.4",
-          chatgpt: "chatgpt-5.4",
+          openai: "gpt-5.6-terra",
+          chatgpt: "chatgpt-5.6-terra",
         },
-        additionalModels: ["claude-sonnet-5", "gpt-5.6-terra", "chatgpt-5.6-terra"],
+        additionalModels: ["claude-sonnet-5"],
       },
       {
         id: "lite",
@@ -56,10 +56,9 @@ describe("model class policy", () => {
         defaultModels: {
           anthropic: "claude-haiku-4-5-20251001",
           gemini: "gemini-3.1-flash-lite",
-          openai: "gpt-5.4-mini",
-          chatgpt: "chatgpt-5.4-mini",
+          openai: "gpt-5.6-luna",
+          chatgpt: "chatgpt-5.6-luna",
         },
-        additionalModels: ["gpt-5.6-luna", "chatgpt-5.6-luna"],
       },
     ]);
   });
@@ -69,12 +68,12 @@ describe("model class policy", () => {
       ["claude-fable-5", "pro", "claude-opus-4-8"],
       [TEST_ANTHROPIC_MODEL_ID, "lite", "claude-haiku-4-5-20251001"],
       ["gpt-5.3-codex", "pro", "gpt-5.5"],
-      ["gpt-5.3-codex", "general", "gpt-5.4"],
-      ["gpt-5.3-codex", "lite", "gpt-5.4-mini"],
+      ["gpt-5.3-codex", "general", "gpt-5.6-terra"],
+      ["gpt-5.3-codex", "lite", "gpt-5.6-luna"],
       ["gemini-3.5-flash", "pro", "gemini-3.1-pro-preview"],
       ["gemini-3.5-flash", "lite", "gemini-3.1-flash-lite"],
-      ["chatgpt-5.4", "pro", "chatgpt-5.5"],
-      ["chatgpt-5.4", "lite", "chatgpt-5.4-mini"],
+      ["chatgpt-5.6-terra", "pro", "chatgpt-5.5"],
+      ["chatgpt-5.6-terra", "lite", "chatgpt-5.6-luna"],
     ] as const;
 
     for (const [currentId, modelClass, expectedId] of cases) {

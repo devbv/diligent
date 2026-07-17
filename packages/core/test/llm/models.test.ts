@@ -19,6 +19,7 @@ describe("resolveModel", () => {
 
   it("resolves the GPT-5.6 family alias to Sol", () => {
     expect(resolveModel("gpt-5.6").id).toBe("gpt-5.6-sol");
+    expect(resolveModel("gpt-5").id).toBe("gpt-5.6-sol");
     expect(MODEL_CARDS.find((model) => model.id === "gpt-5.6-sol")?.display).toBe("GPT-5.6 Sol");
     expect(MODEL_CARDS.find((model) => model.id === "gpt-5.6-terra")?.display).toBe("GPT-5.6 Terra");
     expect(MODEL_CARDS.find((model) => model.id === "gpt-5.6-luna")?.display).toBe("GPT-5.6 Luna");
@@ -147,8 +148,6 @@ describe("model cards", () => {
   it("keeps the OpenAI catalog order stable", () => {
     expect(MODEL_CARDS.filter((model) => model.provider === "openai").map((model) => model.id)).toEqual([
       "gpt-5.5",
-      "gpt-5.4",
-      "gpt-5.4-mini",
       "gpt-5.6-sol",
       "gpt-5.6-terra",
       "gpt-5.6-luna",
@@ -164,12 +163,16 @@ describe("model cards", () => {
   it("keeps the ChatGPT catalog order stable", () => {
     expect(MODEL_CARDS.filter((m) => m.provider === "chatgpt").map((m) => m.id)).toEqual([
       "chatgpt-5.5",
-      "chatgpt-5.4",
-      "chatgpt-5.4-mini",
       "chatgpt-5.6-sol",
       "chatgpt-5.6-terra",
       "chatgpt-5.6-luna",
     ]);
+  });
+
+  it("does not advertise the retired GPT-5.4 families", () => {
+    expect(
+      MODEL_CARDS.some((model) => ["gpt-5.4", "gpt-5.4-mini", "chatgpt-5.4", "chatgpt-5.4-mini"].includes(model.id)),
+    ).toBe(false);
   });
 
   it("registers ChatGPT GPT-5.6 capabilities without API usage pricing", () => {

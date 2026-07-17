@@ -16,7 +16,7 @@ const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-4-6";
 const originalFetch = globalThis.fetch;
 
 const OPENAI_MODEL: Model = {
-  id: "gpt-5.4",
+  id: "gpt-5.6-sol",
   provider: "openai",
   contextWindow: 200_000,
   maxOutputTokens: 16_000,
@@ -58,7 +58,7 @@ describe("native compaction adapters", () => {
 
     expect(capturedUrl).toBe("https://api.openai.com/v1/responses/compact");
     expect(capturedHeaders.Authorization).toBe("Bearer sk-openai");
-    expect(capturedBody.model).toBe("gpt-5.4");
+    expect(capturedBody.model).toBe("gpt-5.6-sol");
     expect(capturedBody.input).toBeArray();
     expect(result.status).toBe("ok");
   });
@@ -387,7 +387,7 @@ describe("native compaction adapters", () => {
 
   test("request body prepends compaction summary before converted follow-up messages", async () => {
     const body = await buildResponsesRequestBody({
-      model: "gpt-5.4",
+      model: "gpt-5.6-sol",
       messages: [{ role: "user", content: "follow up", timestamp: Date.now() }],
       compactionSummary: {
         type: "compaction",
@@ -435,15 +435,16 @@ describe("native compaction adapters", () => {
       },
     });
 
-    expect(capturedBody.input).toEqual(
-      await toResponseInputItems({
+    expect(capturedBody.input).toEqual([
+      { type: "additional_tools", role: "developer", tools: [] },
+      ...(await toResponseInputItems({
         messages: [message],
         compactionSummary: {
           type: "compaction",
           encrypted_content: "ENCRYPTED_COMPACTION_SUMMARY",
         },
-      }),
-    );
+      })),
+    ]);
   });
 
   test("ChatGPT adapter posts to codex compact endpoint with account header", async () => {

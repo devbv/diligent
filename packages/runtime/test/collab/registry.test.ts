@@ -743,7 +743,7 @@ describe("AgentRegistry", () => {
     const { threadId } = registry.spawn({ prompt: "task", description: "", agentType: "general", modelClass: "lite" });
     await registry.wait([threadId], 5000);
 
-    expect(observedModels).toEqual(["gpt-5.4-mini"]);
+    expect(observedModels).toEqual(["gpt-5.6-luna"]);
     expect(observedEfforts).toEqual(["low"]);
   });
 

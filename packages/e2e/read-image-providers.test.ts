@@ -119,9 +119,9 @@ const PROVIDERS: ProviderCase[] = [
     makeStream: (apiKey) => createAnthropicStream(apiKey) as never,
   },
   {
-    name: "OpenAI Responses (gpt-5.4)",
+    name: "OpenAI Responses (gpt-5.6-terra)",
     envKey: "OPENAI_API_KEY",
-    modelId: "gpt-5.4",
+    modelId: "gpt-5.6-terra",
     makeStream: (apiKey) => createOpenAIStream(apiKey) as never,
   },
   {

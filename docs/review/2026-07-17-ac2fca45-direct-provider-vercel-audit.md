@@ -82,8 +82,8 @@ The current direct-provider support floor is:
 | Provider | Current Diligent families that justify compatibility code |
 |---|---|
 | Anthropic | Claude Opus 4.8, Fable 5, Sonnet 5, Sonnet 4.6, Haiku 4.5 |
-| OpenAI API | GPT-5.6 variants, GPT-5.5, GPT-5.4, GPT-5.4 mini |
-| ChatGPT subscription | ChatGPT GPT-5.6 variants, GPT-5.5, GPT-5.4, GPT-5.4 mini |
+| OpenAI API | GPT-5.6 variants, GPT-5.5 |
+| ChatGPT subscription | ChatGPT GPT-5.6 variants, GPT-5.5 |
 
 Consequences:
 
@@ -103,10 +103,15 @@ Consequences:
 The current catalog still makes several apparent compatibility branches live:
 
 - budget-based Anthropic thinking is still required by Haiku 4.5;
-- pre-GPT-5.6 prompt-cache and reasoning-effort handling is still required by GPT-5.4 and GPT-5.5 routes; and
-- ChatGPT HTTP/SSE remains the default transport and supports the non-5.6 catalog entries.
+- pre-GPT-5.6 prompt-cache and reasoning-effort handling is still required by the retained GPT-5.5 routes; and
+- ChatGPT HTTP/SSE remains the default transport for the retained catalog.
 
 Those branches should be deleted when their corresponding catalog families are dropped, not before.
+
+As of this audit, GPT-5.4 and GPT-5.4 mini are retired from both the OpenAI API and ChatGPT subscription catalogs.
+GPT-5.6 Terra inherits the `general` class, GPT-5.6 Luna inherits the `lite` class, and the generic `gpt-5` alias
+resolves to GPT-5.6 Sol. Unknown explicit model IDs remain provider-inferred for rapid adoption, but that fallback is
+not a promise of catalog support or model-specific compatibility.
 
 ## Priority Summary
 

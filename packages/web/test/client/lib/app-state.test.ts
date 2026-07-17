@@ -384,7 +384,7 @@ test("resolveDraftModel prefers the runtime default over catalog order", () => {
     initialModel: "gpt-5.6-sol",
     currentModel: "",
     availableModels: [
-      { id: "gpt-5.4", provider: "openai" },
+      { id: "gpt-5.6-terra", provider: "openai" },
       { id: "gpt-5.6-sol", provider: "openai" },
     ],
   });

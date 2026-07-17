@@ -26,9 +26,8 @@ describe("GPT-5.6 Responses API compatibility", () => {
     expect(toResponsesReasoningEffort("max", "gpt-5.6-luna")).toBe("max");
   });
 
-  test("preserves the legacy OpenAI max to xhigh mapping", () => {
+  test("preserves the GPT-5.5 max to xhigh mapping", () => {
     expect(toResponsesReasoningEffort("max", "gpt-5.5")).toBe("xhigh");
-    expect(toResponsesReasoningEffort("max", "gpt-5.4")).toBe("xhigh");
   });
 
   test("uses GPT-5.6 reasoning and prompt cache request fields", async () => {

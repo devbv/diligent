@@ -150,11 +150,11 @@ function makeFactoryRuntimeConfig(overrides?: {
   providerManager.setApiKey("anthropic", "test-key");
   providerManager.setApiKey("openai", "test-key");
   const model: Model =
-    overrides?.modelId && overrides.modelId !== "gpt-5.4"
+    overrides?.modelId && overrides.modelId !== "gpt-5.6-terra"
       ? resolveModel(overrides.modelId)
-      : overrides?.modelId === "gpt-5.4"
+      : overrides?.modelId === "gpt-5.6-terra"
         ? {
-            id: "gpt-5.4",
+            id: "gpt-5.6-terra",
             provider: "openai",
             contextWindow: 400_000,
             maxOutputTokens: 128_000,
@@ -766,7 +766,7 @@ describe("DiligentAppServer", () => {
     await server.handleRequest(TEST_CONNECTION_ID, {
       id: 602,
       method: "config/set",
-      params: { threadId: threadA, model: "gpt-5.4" },
+      params: { threadId: threadA, model: "gpt-5.6-terra" },
     });
 
     const readA = await server.handleRequest(TEST_CONNECTION_ID, {
@@ -774,7 +774,7 @@ describe("DiligentAppServer", () => {
       method: "thread/read",
       params: { threadId: threadA },
     });
-    expect((readResult(readA) as { currentModel?: string }).currentModel).toBe("gpt-5.4");
+    expect((readResult(readA) as { currentModel?: string }).currentModel).toBe("gpt-5.6-terra");
 
     const readB = await server.handleRequest(TEST_CONNECTION_ID, {
       id: 604,
@@ -803,7 +803,7 @@ describe("DiligentAppServer", () => {
       method: "thread/read",
       params: { threadId: threadA },
     });
-    expect((readResult(resumedRead) as { currentModel?: string }).currentModel).toBe("gpt-5.4");
+    expect((readResult(resumedRead) as { currentModel?: string }).currentModel).toBe("gpt-5.6-terra");
 
     const newThread = await resumedServer.handleRequest(TEST_CONNECTION_ID, {
       id: 607,
@@ -817,7 +817,7 @@ describe("DiligentAppServer", () => {
       method: "thread/read",
       params: { threadId: newThreadId },
     });
-    expect((readResult(newThreadRead) as { currentModel?: string }).currentModel).toBe("gpt-5.4");
+    expect((readResult(newThreadRead) as { currentModel?: string }).currentModel).toBe("gpt-5.6-terra");
   });
 
   it("config/reload re-discovers skills and forces the next turn to rebuild its agent", async () => {
@@ -981,7 +981,7 @@ describe("DiligentAppServer", () => {
     await server.handleRequest(TEST_CONNECTION_ID, {
       id: 614,
       method: "turn/start",
-      params: { threadId, message: "second", model: "gpt-5.4" },
+      params: { threadId, message: "second", model: "gpt-5.6-terra" },
     });
     expect(await secondOutcome).toBe("completed");
 
@@ -1010,7 +1010,7 @@ describe("DiligentAppServer", () => {
       .filter((entry) => entry.type === "message" && entry.message?.role === "assistant")
       .map((entry) => entry.message?.model);
 
-    expect(assistantModels).toEqual(["gpt-5.4"]);
+    expect(assistantModels).toEqual(["gpt-5.6-terra"]);
   });
 
   it("uses runtime config default effort for new threads", async () => {
@@ -1220,7 +1220,7 @@ describe("DiligentAppServer", () => {
     const server = new DiligentAppServer(
       createAppServerConfig({
         cwd: projectRoot,
-        runtimeConfig: makeFactoryRuntimeConfig({ modelId: "gpt-5.4" }),
+        runtimeConfig: makeFactoryRuntimeConfig({ modelId: "gpt-5.6-terra" }),
       }),
     );
 

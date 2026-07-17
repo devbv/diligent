@@ -1533,10 +1533,10 @@ test("input dock renders pending image preview and add-images action", () => {
       onModeChange={() => {}}
       effort="none"
       onEffortChange={() => {}}
-      currentModel="gpt-5.4"
+      currentModel="gpt-5.6-terra"
       availableModels={[
         {
-          id: "gpt-5.4",
+          id: "gpt-5.6-terra",
           provider: "openai",
           contextWindow: 400000,
           maxOutputTokens: 64000,
