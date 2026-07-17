@@ -328,71 +328,6 @@ describe("OpenAI native web tools", () => {
         toolUseId: "wf_1",
         provider: "chatgpt",
         url: "https://example.com/page",
-        document: {
-          mimeType: "text/html",
-          text: "Page body",
-          title: "Fetched Page",
-          citationsEnabled: true,
-        },
-        retrievedAt: "2026-04-05T00:00:00Z",
-      },
-    ]);
-  });
-
-  test("response parser extracts fetch document fields from nested output/result/page payloads", async () => {
-    const events: ProviderEvent[] = [];
-    const stream = {
-      push(event: ProviderEvent) {
-        events.push(event);
-      },
-    } as unknown as EventStream<ProviderEvent, ProviderResult>;
-
-    async function* iter(): AsyncIterable<Record<string, unknown>> {
-      yield {
-        type: "response.output_item.done",
-        item: {
-          type: "web_search_call",
-          call_id: "wf_nested_1",
-          action: { type: "open_page", url: "https://example.com/nested" },
-          output: {
-            page: {
-              page_title: "Nested Page",
-              markdown: "Nested markdown body",
-              content_type: "text/markdown",
-              retrievedAt: "2026-04-06T02:00:00Z",
-            },
-          },
-        },
-      };
-      yield {
-        type: "response.completed",
-        response: { status: "completed", usage: { input_tokens: 2, output_tokens: 2 } },
-      };
-    }
-
-    await handleResponsesAPIEvents(iter(), stream, CHATGPT_MODEL);
-
-    const done = events.find((event): event is Extract<ProviderEvent, { type: "done" }> => event.type === "done");
-    expect(done?.message.content).toEqual([
-      {
-        type: "provider_tool_use",
-        id: "wf_nested_1",
-        provider: "chatgpt",
-        name: "web_fetch",
-        input: { type: "open_page", url: "https://example.com/nested" },
-      },
-      {
-        type: "web_fetch_result",
-        toolUseId: "wf_nested_1",
-        provider: "chatgpt",
-        url: "https://example.com/nested",
-        document: {
-          mimeType: "text/markdown",
-          text: "Nested markdown body",
-          title: "Nested Page",
-          citationsEnabled: true,
-        },
-        retrievedAt: "2026-04-06T02:00:00Z",
       },
     ]);
   });
@@ -411,7 +346,7 @@ describe("OpenAI native web tools", () => {
         item: {
           type: "web_search_call",
           call_id: "ws_completed_1",
-          action_type: "search",
+          action: { type: "search" },
         },
       };
       yield {
@@ -426,8 +361,6 @@ describe("OpenAI native web tools", () => {
               action: {
                 type: "search",
                 query: "roblox stock",
-              },
-              output: {
                 sources: [
                   {
                     url: "https://finance.example.com/rblx",

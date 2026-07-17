@@ -109,6 +109,23 @@ describe("ChatGPT HTTP transport", () => {
     }
   });
 
+  test("preserves raw HTTP/SSE incomplete terminal classification", async () => {
+    globalThis.fetch = (async () =>
+      new Response(
+        'data: {"type":"response.incomplete","response":{"status":"incomplete","incomplete_details":{"reason":"max_output_tokens"},"usage":{"input_tokens":4,"output_tokens":8}}}\n\n',
+        { status: 200, headers: { "content-type": "text/event-stream" } },
+      )) as unknown as typeof fetch;
+
+    const events = await collectEvents(
+      createChatGPTStream(() => testTokens())(resolveModel("chatgpt-5.6-luna"), TEST_CONTEXT, {
+        effort: "medium",
+      }),
+    );
+
+    expect(events.at(-1)).toMatchObject({ type: "done", stopReason: "max_tokens" });
+    expect(events.some((event) => event.type === "error")).toBe(false);
+  });
+
   test("logs ChatGPT HTTP/SSE payloads with byte sizes and content-safe summaries", async () => {
     process.env.DILIGENT_DEBUG_CHATGPT_HTTP_SSE = "1";
     const logs: LogRecord[] = [];
@@ -122,9 +139,12 @@ describe("ChatGPT HTTP transport", () => {
     globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
       requestBytes = new TextEncoder().encode(String(init?.body)).byteLength;
       return new Response(
-        ['data: {"type":"response.output_text.delta","delta":"sensitive text"}', `data: ${completedPayload}`, ""].join(
-          "\n",
-        ),
+        [
+          'data: {"type":"response.output_text.delta","delta":"sensitive text"}',
+          "",
+          `data: ${completedPayload}`,
+          "",
+        ].join("\n"),
         { status: 200, headers: { "content-type": "text/event-stream" } },
       );
     }) as unknown as typeof fetch;

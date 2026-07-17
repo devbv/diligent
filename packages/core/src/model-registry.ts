@@ -7,7 +7,7 @@ export {
   MODEL_CLASSES,
   resolveModelForClass,
 } from "./llm/model-class-policy";
-export type { ModelCard, ModelCardLifecycle, ModelCardProvenance } from "./llm/models";
+export type { ModelCard, ModelCardProvenance } from "./llm/models";
 export {
   getModelInfoList,
   MODEL_CARD_SCHEMA_VERSION,

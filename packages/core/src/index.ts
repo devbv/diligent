@@ -42,7 +42,6 @@ export type {
   FunctionToolDefinition,
   Model,
   ModelCard,
-  ModelCardLifecycle,
   ModelCardProvenance,
   ModelClass,
   ModelClassDefinition,

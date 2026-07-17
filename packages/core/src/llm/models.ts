@@ -3,8 +3,6 @@ import type { Model, ModelInfo, ThinkingEffort } from "./types";
 
 export const MODEL_CARD_SCHEMA_VERSION = 1 as const;
 
-export type ModelCardLifecycle = "preview" | "stable" | "deprecated";
-
 export interface ModelCardProvenance {
   source: string;
   sourceUrl?: string;
@@ -27,7 +25,6 @@ export interface ModelCard extends Model {
   ownedBy?: string;
   releasedAt?: string;
   knowledgeCutoff?: string;
-  lifecycle?: ModelCardLifecycle;
   tags?: string[];
   provenance?: ModelCardProvenance;
   extensions?: Record<string, unknown>;
@@ -43,7 +40,7 @@ export const GEMINI_THINKING_BUDGETS = { low: 2_048, medium: 8_192, high: 16_384
 const NATIVE_PROVIDER_THINKING_EFFORTS: ThinkingEffort[] = ["low", "medium", "high", "xhigh", "max"];
 
 export const MODEL_CARDS: ModelCard[] = defineModelCards([
-  // Anthropic — opus/sonnet/fable use adaptive thinking (model decides budget within cap)
+  // Anthropic — Opus/Sonnet/Fable use adaptive thinking; Haiku uses manual budgets.
   {
     id: "claude-opus-4-8",
     display: "Claude Opus 4.8",
@@ -58,7 +55,7 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
     supportedEfforts: NATIVE_PROVIDER_THINKING_EFFORTS,
     supportsVision: true,
     supportsAdaptiveThinking: true,
-    thinkingBudgets: { low: 2_000, medium: 8_000, high: 16_000, max: 32_000 },
+    supportsXhighEffort: true,
     aliases: ["claude-opus", "opus", "opus-4-8"],
   },
   {
@@ -75,7 +72,7 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
     supportedEfforts: NATIVE_PROVIDER_THINKING_EFFORTS,
     supportsVision: true,
     supportsAdaptiveThinking: true,
-    thinkingBudgets: { low: 2_000, medium: 8_000, high: 16_000, max: 32_000 },
+    supportsXhighEffort: true,
     aliases: ["fable", "fable-5"],
   },
   {
@@ -92,7 +89,7 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
     supportedEfforts: NATIVE_PROVIDER_THINKING_EFFORTS,
     supportsVision: true,
     supportsAdaptiveThinking: true,
-    thinkingBudgets: { low: 1_500, medium: 6_000, high: 12_000, max: 24_000 },
+    supportsXhighEffort: true,
     aliases: ["sonnet-5"],
   },
   {
@@ -109,7 +106,6 @@ export const MODEL_CARDS: ModelCard[] = defineModelCards([
     supportedEfforts: NATIVE_PROVIDER_THINKING_EFFORTS,
     supportsVision: true,
     supportsAdaptiveThinking: true,
-    thinkingBudgets: { low: 1_500, medium: 6_000, high: 12_000, max: 24_000 },
     aliases: ["claude-sonnet", "sonnet", "sonnet-4-6"],
   },
   {

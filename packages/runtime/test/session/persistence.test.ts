@@ -96,6 +96,31 @@ describe("appendEntry + readSessionFile", () => {
     expect(entries[0].id).toBe(entry1.id);
     expect(entries[1].id).toBe(entry2.id);
   });
+
+  it("round-trips typed OpenAI reasoning state", async () => {
+    const dir = await setupDir();
+    const { path } = await createSessionFile(dir, "/project");
+    const user = makeUserEntry();
+    const assistant = makeAssistantEntry(user.id);
+    if (assistant.message.role !== "assistant") throw new Error("Expected assistant entry");
+    assistant.message.content = [
+      {
+        type: "thinking",
+        thinking: "summary",
+        providerState: {
+          provider: "openai",
+          itemId: "rs_1",
+          encryptedContent: "opaque-reasoning",
+        },
+      },
+    ];
+
+    await appendEntry(path, user);
+    await appendEntry(path, assistant);
+
+    const { entries } = await readSessionFile(path);
+    expect(entries[1]).toEqual(assistant);
+  });
 });
 
 describe("readSessionFile validation", () => {

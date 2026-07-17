@@ -7,86 +7,56 @@ type ProviderToolUseBlock = Extract<ContentBlock, { type: "provider_tool_use" }>
 type WebSearchResultBlock = Extract<ContentBlock, { type: "web_search_result" }>;
 type WebFetchResultBlock = Extract<ContentBlock, { type: "web_fetch_result" }>;
 
-/**
- * Anthropic rejects `anyOf`/`oneOf`/`allOf` at the top level of a tool `input_schema` — it requires
- * a single object schema. Tool schemas reach us from two runtime sources (zod-to-json-schema output
- * and MCP servers' advertised schemas), either of which can put a union/intersection at the root.
- * Collapse it into one object schema by merging the branches' `properties`. Arguments are validated
- * elsewhere (Zod `parameters` for built-ins, passthrough for MCP), so this only relaxes the
- * model-facing guidance, never the actual call contract. Recurses so nested unions in a branch are
- * flattened too. Anthropic only forbids these keywords at the top level, so we stop after the root.
- */
-function flattenTopLevelSchema(schema: Record<string, unknown>): Record<string, unknown> {
-  const unionKey = (["allOf", "anyOf", "oneOf"] as const).find((k) => Array.isArray(schema[k]));
-  if (!unionKey) return schema;
-
-  const { allOf: _a, anyOf: _b, oneOf: _c, ...rest } = schema;
-  const branches = (schema[unionKey] as unknown[])
-    .filter((b): b is Record<string, unknown> => typeof b === "object" && b !== null)
-    .map((b) => flattenTopLevelSchema(b));
-
-  const properties: Record<string, unknown> = {
-    ...((rest.properties as Record<string, unknown>) ?? {}),
-  };
-  const requiredPerBranch: string[][] = [];
-  for (const branch of branches) {
-    Object.assign(properties, (branch.properties as Record<string, unknown>) ?? {});
-    if (Array.isArray(branch.required)) requiredPerBranch.push(branch.required as string[]);
-  }
-
-  // `allOf` must satisfy every branch → a key required by any branch stays required.
-  // `anyOf`/`oneOf` satisfies just one → require only keys required by all branches.
-  const required =
-    unionKey === "allOf"
-      ? [...new Set(requiredPerBranch.flat())]
-      : requiredPerBranch.length > 0
-        ? requiredPerBranch.reduce((acc, set) => acc.filter((k) => set.includes(k)))
-        : [];
-
-  return {
-    ...rest,
-    type: "object",
-    properties,
-    ...(required.length > 0 ? { required } : {}),
-  };
-}
-
 export function convertTools(tools: ToolDefinition[]): Anthropic.MessageCreateParams["tools"] {
-  return tools.flatMap((tool) => {
+  const converted: NonNullable<Anthropic.MessageCreateParams["tools"]> = [];
+  for (const tool of tools) {
     if (tool.kind === "provider_builtin" && tool.capability === "web") {
-      return [createAnthropicWebTool(tool)];
+      converted.push(createAnthropicWebTool(tool));
+      continue;
     }
-    if (tool.kind !== "function") return [];
+    if (tool.kind !== "function") continue;
     const t: FunctionToolDefinition = tool;
-    return [
-      {
-        name: t.name,
-        description: t.description,
-        input_schema: {
-          type: "object" as const,
-          ...flattenTopLevelSchema(t.inputSchema ?? {}),
-        },
-      },
-    ];
-  });
+    converted.push({
+      name: t.name,
+      description: t.description,
+      input_schema: t.inputSchema as Anthropic.Tool.InputSchema,
+    });
+  }
+  return converted;
 }
 
-function createAnthropicWebTool(tool: Extract<ToolDefinition, { kind: "provider_builtin" }>): Anthropic.Tool {
+function createAnthropicWebTool(
+  tool: Extract<ToolDefinition, { kind: "provider_builtin" }>,
+): Anthropic.Messages.WebSearchTool20260209 | Anthropic.Messages.WebFetchTool20260209 {
   const options = tool.options;
   const hasFetchSettings = Boolean(options?.maxContentTokens);
-  const webToolType = hasFetchSettings ? "web_fetch_20260209" : "web_search_20260209";
-  const userLocation = options?.userLocation;
-
-  return {
-    type: webToolType,
-    name: hasFetchSettings ? "web_fetch" : "web_search",
-    allowed_callers: ["direct"],
+  const shared = {
+    // Diligent intentionally uses the current GA tools in direct-only mode. This
+    // keeps ZDR-compatible server execution and opts out of dynamic filtering.
+    allowed_callers: ["direct"] as Array<"direct">,
     ...(options?.maxUses !== undefined ? { max_uses: options.maxUses } : {}),
     ...(options?.allowedDomains?.length ? { allowed_domains: options.allowedDomains } : {}),
     ...(options?.blockedDomains?.length ? { blocked_domains: options.blockedDomains } : {}),
-    ...(userLocation ? { user_location: toAnthropicUserLocation(userLocation) } : {}),
-    ...(hasFetchSettings ? { max_content_tokens: options?.maxContentTokens } : {}),
-  } as unknown as Anthropic.Tool;
+  };
+
+  // Product policy: maxContentTokens selects web_fetch; the generic `web`
+  // capability does not otherwise imply a fetch/search distinction.
+  if (hasFetchSettings) {
+    return {
+      ...shared,
+      type: "web_fetch_20260209",
+      name: "web_fetch",
+      max_content_tokens: options?.maxContentTokens,
+      ...(options?.citationsEnabled !== undefined ? { citations: { enabled: options.citationsEnabled } } : {}),
+    };
+  }
+
+  return {
+    ...shared,
+    type: "web_search_20260209",
+    name: "web_search",
+    ...(options?.userLocation ? { user_location: toAnthropicUserLocation(options.userLocation) } : {}),
+  };
 }
 
 function toAnthropicUserLocation(

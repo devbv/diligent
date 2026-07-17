@@ -61,6 +61,7 @@ function baseModel(overrides: Partial<Model>): Model {
     contextWindow: 300_000,
     maxOutputTokens: 8_000,
     supportsThinking: true,
+    supportsAdaptiveThinking: true,
     ...overrides,
   };
 }
@@ -110,20 +111,46 @@ describe("createAnthropicStream", () => {
     const request = await collectRequest(
       baseModel({
         supportsAdaptiveThinking: true,
-        thinkingBudgets: { low: 1_500, medium: 6_000, high: 12_000, max: 24_000 },
       }),
       { effort: "high" },
     );
 
-    expect(request.thinking).toEqual({ type: "adaptive" });
+    expect(request.thinking).toEqual({ type: "adaptive", display: "summarized" });
     expect(request.output_config).toEqual({ effort: "high" });
-    expect(request.temperature).toBe(1);
+    expect(request.temperature).toBeUndefined();
   });
 
-  test("maps xhigh to max for adaptive thinking", async () => {
-    const request = await collectRequest(baseModel({ supportsAdaptiveThinking: true }), { effort: "xhigh" });
+  test("preserves xhigh for adaptive models with intrinsic xhigh support", async () => {
+    const request = await collectRequest(baseModel({ supportsAdaptiveThinking: true, supportsXhighEffort: true }), {
+      effort: "xhigh",
+    });
+
+    expect(request.output_config).toEqual({ effort: "xhigh" });
+  });
+
+  test("maps xhigh to max for adaptive models without xhigh support", async () => {
+    const request = await collectRequest(baseModel({ supportsAdaptiveThinking: true, supportsXhighEffort: false }), {
+      effort: "xhigh",
+    });
 
     expect(request.output_config).toEqual({ effort: "max" });
+  });
+
+  test("rejects none effort without sending an Anthropic request", async () => {
+    anthropicCalls.length = 0;
+    const stream = createAnthropicStream("test-key")(baseModel({ supportsAdaptiveThinking: true }), EMPTY_CONTEXT, {
+      effort: "none",
+    });
+
+    await expect(stream.result()).rejects.toThrow("does not support effort 'none'");
+    expect(anthropicCalls).toHaveLength(0);
+  });
+
+  test("defaults missing effort to medium adaptive thinking", async () => {
+    const request = await collectRequest(baseModel({ supportsAdaptiveThinking: true }), {});
+
+    expect(request.thinking).toEqual({ type: "adaptive", display: "summarized" });
+    expect(request.output_config).toEqual({ effort: "medium" });
   });
 
   test("uses budget_tokens for non-adaptive thinking models", async () => {
@@ -136,24 +163,49 @@ describe("createAnthropicStream", () => {
       { effort: "medium" },
     );
 
-    expect(request.thinking).toEqual({ type: "enabled", budget_tokens: 3_000 });
+    expect(request.thinking).toEqual({ type: "enabled", budget_tokens: 3_000, display: "summarized" });
     expect(request.output_config).toBeUndefined();
-    expect(request.temperature).toBe(1);
+    expect(request.temperature).toBeUndefined();
   });
 
   test("uses the max budget when a non-adaptive model receives xhigh", async () => {
     const request = await collectRequest(
       baseModel({
+        maxOutputTokens: 64_000,
         supportsAdaptiveThinking: false,
         thinkingBudgets: { low: 1_024, medium: 3_000, high: 8_000, max: 16_000 },
       }),
       { effort: "xhigh" },
     );
 
-    expect(request.thinking).toEqual({ type: "enabled", budget_tokens: 16_000 });
+    expect(request.thinking).toEqual({ type: "enabled", budget_tokens: 16_000, display: "summarized" });
   });
 
-  test("uses caller temperature when thinking is disabled", async () => {
+  test("rejects manual thinking budgets that are not below max_tokens", async () => {
+    const stream = createAnthropicStream("test-key")(
+      baseModel({
+        id: "claude-haiku-4-5",
+        supportsAdaptiveThinking: false,
+        thinkingBudgets: { low: 1_024, medium: 3_000, high: 8_000, max: 16_000 },
+      }),
+      EMPTY_CONTEXT,
+      { effort: "max", maxTokens: 16_000 },
+    );
+
+    await expect(stream.result()).rejects.toThrow("must be less than max_tokens");
+  });
+
+  test("rejects manual thinking models without explicit budgets", async () => {
+    const stream = createAnthropicStream("test-key")(
+      baseModel({ id: "claude-unknown", supportsAdaptiveThinking: false }),
+      EMPTY_CONTEXT,
+      { effort: "medium" },
+    );
+
+    await expect(stream.result()).rejects.toThrow("does not define thinking budgets");
+  });
+
+  test("uses caller temperature for models that do not support thinking", async () => {
     const request = await collectRequest(
       baseModel({
         supportsThinking: false,
@@ -216,6 +268,8 @@ describe("createAnthropicStream", () => {
             options: {
               allowedDomains: ["example.com"],
               maxContentTokens: 4000,
+              citationsEnabled: false,
+              userLocation: { type: "approximate", country: "US" },
             },
           },
         ],
@@ -232,6 +286,7 @@ describe("createAnthropicStream", () => {
         allowed_callers: ["direct"],
         allowed_domains: ["example.com"],
         max_content_tokens: 4000,
+        citations: { enabled: false },
       },
     ]);
   });

@@ -1,5 +1,5 @@
 // @summary Shared OpenAI-family content buffering and exactly-once assistant-message finalization
-import type { AssistantMessage, ContentBlock, StopReason, Usage } from "../../../types";
+import type { AssistantMessage, ContentBlock, StopReason, ThinkingBlock, Usage } from "../../../types";
 import type { ProviderEvent } from "../../types";
 
 type ToolBuffer = {
@@ -66,15 +66,23 @@ export class OpenAIContentAccumulator {
     return [{ type: "thinking_delta", delta }];
   }
 
-  flushThinking(fallback = "", position: "append" | "prepend" = "append"): ProviderEvent[] {
+  flushThinking(
+    fallback = "",
+    position: "append" | "prepend" = "append",
+    providerState?: ThinkingBlock["providerState"],
+  ): ProviderEvent[] {
     const thinking = this.currentThinking || fallback;
-    if (!thinking) return [];
+    if (!thinking && !providerState) return [];
     this.currentThinking = "";
     this.thinkingEnded = true;
-    const block: ContentBlock = { type: "thinking", thinking };
+    const block: ContentBlock = {
+      type: "thinking",
+      thinking,
+      ...(providerState ? { providerState } : {}),
+    };
     if (position === "prepend") this.contentBlocks.unshift(block);
     else this.contentBlocks.push(block);
-    return [{ type: "thinking_end", thinking }];
+    return thinking ? [{ type: "thinking_end", thinking }] : [];
   }
 
   flushText(): ProviderEvent[] {

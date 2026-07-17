@@ -18,6 +18,7 @@ export async function convertMessages(
   messages: Message[],
   imageDetail: OpenAIImageDetail = "auto",
   localImageLoader?: LocalImageLoader,
+  provider?: "openai" | "chatgpt",
 ): Promise<ResponseInputItem[]> {
   const result: ResponseInputItem[] = [];
   const pendingCalls = new Map<string, number>();
@@ -44,7 +45,17 @@ export async function convertMessages(
       }
     } else if (msg.role === "assistant") {
       for (const block of msg.content) {
-        if (block.type === "text") {
+        if (block.type === "thinking") {
+          const providerState = block.providerState;
+          if (providerState && providerState.provider === provider) {
+            result.push({
+              type: "reasoning",
+              id: providerState.itemId,
+              encrypted_content: providerState.encryptedContent,
+              summary: block.thinking ? [{ type: "summary_text", text: block.thinking }] : [],
+            });
+          }
+        } else if (block.type === "text") {
           result.push({ role: "assistant", content: block.text });
         } else if (block.type === "tool_call") {
           pendingCalls.set(block.id, result.length);
@@ -96,8 +107,14 @@ export async function toResponseInputItems(input: {
   compactionSummary?: Record<string, unknown>;
   imageDetail?: OpenAIImageDetail;
   localImageLoader?: LocalImageLoader;
+  provider?: "openai" | "chatgpt";
 }): Promise<ResponseInputItem[]> {
-  const convertedMessages = await convertMessages(input.messages, input.imageDetail, input.localImageLoader);
+  const convertedMessages = await convertMessages(
+    input.messages,
+    input.imageDetail,
+    input.localImageLoader,
+    input.provider,
+  );
   if (input.compactionSummary) {
     return [input.compactionSummary as unknown as ResponseInputItem, ...convertedMessages];
   }
@@ -172,7 +189,7 @@ type OpenAIFunctionTool = {
 };
 
 type OpenAIWebSearchTool = {
-  type: "web_search" | "web_search_preview";
+  type: "web_search";
   filters?: { allowed_domains?: string[] };
   search_context_size?: "low" | "medium" | "high";
   user_location?: {
@@ -256,6 +273,7 @@ export async function buildResponsesRequestBody(input: {
   strictTools?: boolean;
   imageDetail?: OpenAIImageDetail;
   localImageLoader?: LocalImageLoader;
+  provider?: "openai" | "chatgpt";
 }): Promise<Record<string, unknown>> {
   const body: Record<string, unknown> = {
     model: input.model,
@@ -265,6 +283,7 @@ export async function buildResponsesRequestBody(input: {
       compactionSummary: input.compactionSummary,
       imageDetail: input.imageDetail,
       localImageLoader: input.localImageLoader,
+      provider: input.provider,
     }),
   };
   if (input.systemInstructions) body.instructions = input.systemInstructions;

@@ -18,31 +18,40 @@ import {
 } from "./web-content";
 
 type ResponsesAPIState = OpenAIWebContentState & {
-  currentToolId: string;
+  toolCallIdsByItemId: Map<string, string>;
+};
+
+type ResponsesUsage = {
+  input_tokens: number;
+  output_tokens: number;
+  input_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number };
+  output_tokens_details?: { reasoning_tokens?: number };
 };
 
 type ResponsesAPIDecodedEvent =
   | { kind: "text_delta"; delta: string }
   | { kind: "thinking_delta"; delta: string }
-  | { kind: "tool_call_start"; id: string; name: string }
+  | { kind: "tool_call_start"; id: string; itemId?: string; name: string }
   | { kind: "provider_web_call_start"; item: Record<string, unknown> }
   | { kind: "tool_call_args_delta"; itemId?: string; delta: string }
-  | { kind: "reasoning_done"; summaryText: string }
+  | { kind: "reasoning_done"; itemId?: string; encryptedContent?: string; summaryText: string }
   | { kind: "message_done"; blocks: ContentBlock[] }
   | { kind: "tool_call_done"; id: string; name: string; args: string }
   | { kind: "provider_web_call_done"; item: Record<string, unknown> }
   | {
       kind: "response_completed";
       response?: Record<string, unknown>;
-      usage?: {
-        input_tokens: number;
-        output_tokens: number;
-        input_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number };
-        output_tokens_details?: { reasoning_tokens?: number };
-      };
+      usage?: ResponsesUsage;
       status?: string;
     }
-  | { kind: "response_failed"; message: string; code?: string };
+  | {
+      kind: "response_incomplete";
+      response?: Record<string, unknown>;
+      usage?: ResponsesUsage;
+      reason?: string;
+    }
+  | { kind: "response_failed"; message: string; code?: string; usage?: ResponsesUsage }
+  | { kind: "provider_error"; message: string; code?: string };
 
 function createResponsesAPIState(): ResponsesAPIState {
   return {
@@ -50,7 +59,7 @@ function createResponsesAPIState(): ResponsesAPIState {
     pendingProviderToolUses: new Map(),
     pendingWebSearchResults: new Map(),
     pendingWebFetchResults: new Map(),
-    currentToolId: "",
+    toolCallIdsByItemId: new Map(),
   };
 }
 
@@ -75,7 +84,12 @@ function decodeResponsesAPIEvent(event: Record<string, unknown>): ResponsesAPIDe
         return { kind: "provider_web_call_start", item };
       }
       if (item.type !== "function_call") return undefined;
-      return { kind: "tool_call_start", id: (item.call_id as string) ?? "", name: (item.name as string) ?? "" };
+      return {
+        kind: "tool_call_start",
+        id: (item.call_id as string) ?? "",
+        itemId: typeof item.id === "string" ? item.id : undefined,
+        name: (item.name as string) ?? "",
+      };
     }
     case "response.function_call_arguments.delta": {
       const delta = event.delta as string;
@@ -86,7 +100,12 @@ function decodeResponsesAPIEvent(event: Record<string, unknown>): ResponsesAPIDe
       const item = event.item as Record<string, unknown> | undefined;
       if (!item) return undefined;
       if (item.type === "reasoning") {
-        return { kind: "reasoning_done", summaryText: extractReasoningSummaryText(item.summary) };
+        return {
+          kind: "reasoning_done",
+          itemId: typeof item.id === "string" ? item.id : undefined,
+          encryptedContent: typeof item.encrypted_content === "string" ? item.encrypted_content : undefined,
+          summaryText: extractReasoningSummaryText(item.summary),
+        };
       }
       if (item.type === "message") {
         return { kind: "message_done", blocks: extractOutputContentBlocks(item.content) };
@@ -110,13 +129,18 @@ function decodeResponsesAPIEvent(event: Record<string, unknown>): ResponsesAPIDe
       return {
         kind: "response_completed",
         response,
-        usage: response.usage as {
-          input_tokens: number;
-          output_tokens: number;
-          input_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number };
-          output_tokens_details?: { reasoning_tokens?: number };
-        },
+        usage: response.usage as ResponsesUsage,
         status: response.status as string | undefined,
+      };
+    }
+    case "response.incomplete": {
+      const response = event.response as Record<string, unknown> | undefined;
+      const details = response?.incomplete_details as Record<string, unknown> | undefined;
+      return {
+        kind: "response_incomplete",
+        response,
+        usage: response?.usage as ResponsesUsage | undefined,
+        reason: typeof details?.reason === "string" ? details.reason : undefined,
       };
     }
     case "response.failed": {
@@ -126,6 +150,18 @@ function decodeResponsesAPIEvent(event: Record<string, unknown>): ResponsesAPIDe
       return {
         kind: "response_failed",
         message: (responseError?.message as string) ?? "Response failed",
+        code: typeof code === "string" ? code : undefined,
+        usage: response?.usage as ResponsesUsage | undefined,
+      };
+    }
+    case "error": {
+      const rawError = event.error;
+      const error = rawError && typeof rawError === "object" ? (rawError as Record<string, unknown>) : undefined;
+      const code = error?.code ?? event.code;
+      const message = error?.message ?? event.message ?? (typeof rawError === "string" ? rawError : undefined);
+      return {
+        kind: "provider_error",
+        message: typeof message === "string" ? message : "OpenAI stream error",
         code: typeof code === "string" ? code : undefined,
       };
     }
@@ -147,7 +183,7 @@ function reduceResponsesAPIEvent(
       return state.accumulator.appendThinkingDelta(event.delta);
 
     case "tool_call_start": {
-      state.currentToolId = event.id;
+      if (event.itemId) state.toolCallIdsByItemId.set(event.itemId, event.id);
       state.accumulator.upsertToolCall(event.id, { id: event.id, name: event.name, order: 0 });
       return [{ type: "tool_call_start", id: event.id, name: event.name }];
     }
@@ -162,17 +198,17 @@ function reduceResponsesAPIEvent(
     }
 
     case "tool_call_args_delta": {
-      const itemId = event.itemId ?? state.currentToolId;
-      const emitted = state.accumulator.appendToolArguments(itemId, event.delta);
-      if (emitted.length > 0) return emitted;
-      if (state.currentToolId) {
-        return [{ type: "tool_call_delta", id: state.currentToolId, delta: event.delta }];
-      }
-      return [];
+      const callId = event.itemId ? state.toolCallIdsByItemId.get(event.itemId) : undefined;
+      return callId ? state.accumulator.appendToolArguments(callId, event.delta) : [];
     }
 
     case "reasoning_done": {
-      return state.accumulator.flushThinking(event.summaryText, "prepend");
+      const provider: "openai" | "chatgpt" = model.provider === "chatgpt" ? "chatgpt" : "openai";
+      const providerState =
+        event.itemId && event.encryptedContent
+          ? { provider, itemId: event.itemId, encryptedContent: event.encryptedContent }
+          : undefined;
+      return state.accumulator.flushThinking(event.summaryText, "prepend", providerState);
     }
 
     case "message_done": {
@@ -180,6 +216,9 @@ function reduceResponsesAPIEvent(
     }
 
     case "tool_call_done": {
+      for (const [itemId, callId] of state.toolCallIdsByItemId) {
+        if (callId === event.id) state.toolCallIdsByItemId.delete(itemId);
+      }
       return state.accumulator.completeToolCall(event.id, {
         id: event.id,
         name: event.name,
@@ -200,7 +239,7 @@ function reduceResponsesAPIEvent(
         }
       }
       const webSearchResult = createWebSearchResultBlock(event.item, toolUseId, model.provider);
-      if (webSearchResult) {
+      if (webSearchResult && webSearchResult.results.length > 0) {
         state.pendingWebSearchResults.set(toolUseId, webSearchResult);
         state.accumulator.addContentBlock(webSearchResult);
         return [{ type: "content_block", block: webSearchResult }];
@@ -220,11 +259,23 @@ function reduceResponsesAPIEvent(
       state.accumulator.setStopReason(mapStopReason(event.status));
       return [];
 
-    case "response_failed": {
+    case "response_incomplete":
+      applyCompletedResponseFallbacks(state, event.response, model.provider);
+      state.accumulator.setUsage(mapUsage(event.usage));
+      state.accumulator.setStopReason(event.reason === "max_output_tokens" ? "max_tokens" : "error");
+      return [];
+
+    case "response_failed":
+    case "provider_error": {
+      const events: ProviderEvent[] = [];
+      if (event.kind === "response_failed" && event.usage) {
+        events.push({ type: "usage", usage: mapUsage(event.usage) });
+      }
       // Carry the provider's error code via cause so error logs show code=... (D086)
       const cause = Object.assign(new Error(event.message), { code: event.code });
       if (isContextOverflow(event.message)) {
         return [
+          ...events,
           {
             type: "error",
             error: new ProviderError(CONTEXT_OVERFLOW_ERROR_MESSAGE, {
@@ -238,6 +289,7 @@ function reduceResponsesAPIEvent(
       }
       if (isTransientOpenAIErrorMessage(event.message)) {
         return [
+          ...events,
           {
             type: "error",
             error: new ProviderError(event.message, ProviderErrorType.ServerError, true, undefined, undefined, cause),
@@ -245,6 +297,7 @@ function reduceResponsesAPIEvent(
         ];
       }
       return [
+        ...events,
         {
           type: "error",
           error: new ProviderError(event.message, ProviderErrorType.Unknown, false, undefined, undefined, cause),
@@ -291,7 +344,7 @@ export async function handleResponsesAPIEvents(
   signal?: AbortSignal,
 ): Promise<void> {
   const state = createResponsesAPIState();
-  let sawCompleted = false;
+  let terminalState: "success" | "error" | undefined;
 
   for await (const event of iter) {
     if (signal?.aborted) {
@@ -300,7 +353,11 @@ export async function handleResponsesAPIEvents(
     }
     const decodedEvent = decodeResponsesAPIEvent(event);
     if (!decodedEvent) continue;
-    if (decodedEvent.kind === "response_completed") sawCompleted = true;
+    if (decodedEvent.kind === "response_completed" || decodedEvent.kind === "response_incomplete") {
+      terminalState = "success";
+    } else if (decodedEvent.kind === "response_failed" || decodedEvent.kind === "provider_error") {
+      terminalState = "error";
+    }
     const emittedEvents = reduceResponsesAPIEvent(state, decodedEvent, model);
     emitProviderEvents(stream, emittedEvents);
     if (emittedEvents.some((providerEvent) => providerEvent.type === "error")) {
@@ -311,14 +368,16 @@ export async function handleResponsesAPIEvents(
 
   if (signal?.aborted) return;
 
-  if (!sawCompleted) {
+  if (!terminalState) {
     state.accumulator.abort();
     stream.push({
       type: "error",
-      error: new ProviderError("stream closed before response.completed", ProviderErrorType.Network, true),
+      error: new ProviderError("stream closed before a terminal response event", ProviderErrorType.Network, true),
     });
     return;
   }
+
+  if (terminalState === "error") return;
 
   const finalization = state.accumulator.finalize({
     modelId: model.id,

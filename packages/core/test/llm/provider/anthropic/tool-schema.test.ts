@@ -1,9 +1,9 @@
-// @summary Tests for Anthropic tool schema normalization
+// @summary Tests for faithful Anthropic function-tool schema forwarding
 import { describe, expect, test } from "bun:test";
 import { convertTools } from "../../../../src/llm/provider/anthropic";
 import type { ToolDefinition } from "../../../../src/llm/types";
 
-describe("convertTools top-level schema flattening", () => {
+describe("convertTools function schemas", () => {
   function fnTool(inputSchema: Record<string, unknown>): ToolDefinition {
     return {
       kind: "function",
@@ -30,7 +30,7 @@ describe("convertTools top-level schema flattening", () => {
     });
   });
 
-  test("flattens a top-level anyOf, dropping the forbidden keyword", () => {
+  test("preserves a top-level anyOf without changing its semantics", () => {
     const schema = schemaOf({
       anyOf: [
         {
@@ -45,69 +45,11 @@ describe("convertTools top-level schema flattening", () => {
         },
       ],
     });
-    expect(schema.anyOf).toBeUndefined();
-    expect(schema.type).toBe("object");
-    // Union of properties, and no key required by *every* branch.
-    expect(schema.properties).toEqual({
-      a: { type: "string" },
-      b: { type: "number" },
-    });
-    expect(schema.required).toBeUndefined();
-  });
-
-  test("anyOf keeps keys required by all branches", () => {
-    const schema = schemaOf({
+    expect(schema).toEqual({
       anyOf: [
-        {
-          type: "object",
-          properties: { a: { type: "string" }, b: { type: "number" } },
-          required: ["a"],
-        },
-        {
-          type: "object",
-          properties: { a: { type: "string" }, c: { type: "boolean" } },
-          required: ["a"],
-        },
+        { type: "object", properties: { a: { type: "string" } }, required: ["a"] },
+        { type: "object", properties: { b: { type: "number" } }, required: ["b"] },
       ],
-    });
-    expect(schema.required).toEqual(["a"]);
-  });
-
-  test("allOf merges branches and unions required keys", () => {
-    const schema = schemaOf({
-      allOf: [
-        {
-          type: "object",
-          properties: { a: { type: "string" } },
-          required: ["a"],
-        },
-        {
-          type: "object",
-          properties: { b: { type: "number" } },
-          required: ["b"],
-        },
-      ],
-    });
-    expect(schema.allOf).toBeUndefined();
-    expect(schema.properties).toEqual({
-      a: { type: "string" },
-      b: { type: "number" },
-    });
-    expect(schema.required).toEqual(["a", "b"]);
-  });
-
-  test("flattens a nested union inside a branch", () => {
-    const schema = schemaOf({
-      anyOf: [
-        { oneOf: [{ type: "object", properties: { a: { type: "string" } } }] },
-        { type: "object", properties: { b: { type: "number" } } },
-      ],
-    });
-    expect(schema.anyOf).toBeUndefined();
-    expect(schema.oneOf).toBeUndefined();
-    expect(schema.properties).toEqual({
-      a: { type: "string" },
-      b: { type: "number" },
     });
   });
 });

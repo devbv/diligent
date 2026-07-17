@@ -13,7 +13,7 @@ import type { AssistantMessage } from "../../../../src/types";
 // what createAnthropicStream does internally, without hitting the real SDK.
 
 const TEST_MODEL: Model = {
-  id: "claude-sonnet-4-20250514",
+  id: "claude-sonnet-4-6",
   provider: "anthropic",
   contextWindow: 300_000,
   maxOutputTokens: 16_384,

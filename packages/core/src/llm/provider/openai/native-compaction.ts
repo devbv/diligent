@@ -3,7 +3,7 @@ import { flattenSections } from "../../system-sections";
 import type { NativeCompactFn } from "../native-compaction";
 import { readOpenAIFamilyCompactErrorBody } from "./compact-errors";
 import { type OpenAIImageDetail, toResponseInputItems } from "./responses";
-import { describeCompactionPayload, extractCompactionSummary, extractCompactionSummaryItem } from "./shared";
+import { describeCompactionPayload, extractCompactionSummaryItem } from "./shared";
 
 const OPENAI_BASE_URL = "https://api.openai.com/v1";
 
@@ -31,6 +31,7 @@ export function createOpenAINativeCompaction(
         compactionSummary: input.compactionSummary,
         imageDetail,
         localImageLoader: input.localImageLoader,
+        provider: "openai",
       }),
     };
     if (input.systemPrompt.length > 0) body.instructions = flattenSections(input.systemPrompt);
@@ -55,11 +56,10 @@ export function createOpenAINativeCompaction(
     }
 
     const payload = (await response.json()) as Record<string, unknown>;
-    const summary = extractCompactionSummary(payload);
     const compactionSummary = extractCompactionSummaryItem(payload);
-    if (!summary?.trim() && !compactionSummary) {
+    if (!compactionSummary) {
       return { status: "unsupported", reason: `missing_summary ${describeCompactionPayload(payload)}` };
     }
-    return { status: "ok", summary, compactionSummary };
+    return { status: "ok", compactionSummary };
   };
 }

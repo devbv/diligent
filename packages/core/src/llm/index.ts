@@ -14,7 +14,7 @@ export {
   MODEL_CLASSES,
   resolveModelForClass,
 } from "./model-class-policy";
-export type { ModelCard, ModelCardLifecycle, ModelCardProvenance } from "./models";
+export type { ModelCard, ModelCardProvenance } from "./models";
 export {
   getModelInfoList,
   MODEL_CARD_SCHEMA_VERSION,

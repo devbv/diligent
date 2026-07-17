@@ -50,8 +50,8 @@ export interface Model {
   supportsThinking: boolean;
   supportedEfforts?: ThinkingEffort[];
   supportsVision?: boolean;
-  defaultBudgetTokens?: number; // fallback when thinkingBudgets absent
   supportsAdaptiveThinking?: boolean; // opus/sonnet/fable: model decides budget
+  supportsXhighEffort?: boolean; // adaptive Anthropic models that accept output_config.effort=xhigh
   thinkingBudgets?: {
     // effort-level budgets for non-adaptive models
     low: number;

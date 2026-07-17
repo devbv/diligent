@@ -195,5 +195,13 @@ describe("model cards", () => {
       "xhigh",
       "max",
     ]);
+    expect(MODEL_CARDS.find((m) => m.id === "claude-opus-4-8")?.supportsXhighEffort).toBe(true);
+    expect(MODEL_CARDS.find((m) => m.id === "claude-fable-5")?.supportsXhighEffort).toBe(true);
+    expect(MODEL_CARDS.find((m) => m.id === "claude-sonnet-5")?.supportsXhighEffort).toBe(true);
+    expect(MODEL_CARDS.find((m) => m.id === "claude-sonnet-4-6")?.supportsXhighEffort).not.toBe(true);
+    expect(MODEL_CARDS.find((m) => m.id === "claude-opus-4-8")?.thinkingBudgets).toBeUndefined();
+    expect(MODEL_CARDS.find((m) => m.id === "claude-fable-5")?.thinkingBudgets).toBeUndefined();
+    expect(MODEL_CARDS.find((m) => m.id === "claude-sonnet-5")?.thinkingBudgets).toBeUndefined();
+    expect(MODEL_CARDS.find((m) => m.id === "claude-sonnet-4-6")?.thinkingBudgets).toBeUndefined();
   });
 });

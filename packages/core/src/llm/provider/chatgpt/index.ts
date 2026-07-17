@@ -14,7 +14,7 @@ export { createChatGPTNativeCompaction } from "./native-compaction";
 import { buildResponsesRequestBody, isGpt56Model, toResponsesLiteRequestBody } from "../openai/responses";
 import { isTransientOpenAIErrorMessage } from "../openai/shared";
 import { handleResponsesAPIEvents } from "../openai/sse";
-import { iterateOpenAIJsonSse } from "../openai-compatible/json-sse";
+import { iterateChatGPTJsonSse } from "./http-sse";
 import { type ChatGPTWebSocketSession, createChatGPTWebSocketSession } from "./websocket-session";
 
 const webSocketLogger = createLogger({ scope: "llm:chatgpt-ws" });
@@ -53,21 +53,6 @@ function createDefaultWebSocket(url: string, headers: Record<string, string>): W
   return new BunWebSocket(url, { headers });
 }
 
-function webSocketMessageToImmediateString(data: unknown): string | undefined {
-  if (typeof data === "string") return data;
-  if (data instanceof ArrayBuffer) return new TextDecoder().decode(data);
-  if (ArrayBuffer.isView(data)) return new TextDecoder().decode(data);
-  return undefined;
-}
-
-function webSocketMessageByteLength(data: unknown): number | undefined {
-  if (typeof data === "string") return new TextEncoder().encode(data).byteLength;
-  if (data instanceof ArrayBuffer) return data.byteLength;
-  if (ArrayBuffer.isView(data)) return data.byteLength;
-  if (typeof Blob !== "undefined" && data instanceof Blob) return data.size;
-  return undefined;
-}
-
 function truncateWebSocketLogValue(value: string, maxLength = 120): string {
   const normalized = value.replace(/\s+/g, " ").trim();
   return normalized.length <= maxLength ? normalized : `${normalized.slice(0, maxLength)}…`;
@@ -84,7 +69,7 @@ export function summarizeChatGPTWebSocketPayload(payload: Record<string, unknown
   }
   if (typeof payload.delta === "string") return `${type} deltaChars=${payload.delta.length}`;
 
-  if (type === "response.completed" || type === "response.failed") {
+  if (type === "response.completed" || type === "response.incomplete" || type === "response.failed") {
     const response =
       payload.response && typeof payload.response === "object"
         ? (payload.response as Record<string, unknown>)
@@ -266,35 +251,8 @@ function createChatGPTWebSocketSessionForProvider(input: {
           summarizeChatGPTWebSocketPayload(payload),
         );
       },
-      onReceive(data) {
-        if (process.env.DILIGENT_DEBUG_CHATGPT_WEBSOCKET !== "1") return;
-        const byteLength = webSocketMessageByteLength(data);
-        const immediateText = webSocketMessageToImmediateString(data);
-        if (immediateText === undefined) {
-          debugChatGPTWebSocket("<-", byteLength, "pending_decode");
-          return;
-        }
-        try {
-          debugChatGPTWebSocket(
-            "<-",
-            byteLength,
-            summarizeChatGPTWebSocketPayload(JSON.parse(immediateText) as Record<string, unknown>),
-          );
-        } catch {
-          debugChatGPTWebSocket("<-", byteLength, "invalid_json");
-        }
-      },
-      onDecoded(data, payload) {
-        if (
-          process.env.DILIGENT_DEBUG_CHATGPT_WEBSOCKET === "1" &&
-          webSocketMessageToImmediateString(data) === undefined
-        ) {
-          debugChatGPTWebSocket(
-            "<-",
-            webSocketMessageByteLength(data),
-            `decoded ${summarizeChatGPTWebSocketPayload(payload)}`,
-          );
-        }
+      onReceive(payload, byteLength) {
+        debugChatGPTWebSocket("<-", byteLength, summarizeChatGPTWebSocketPayload(payload));
       },
       onClose(code, reason, pendingDecode) {
         if (process.env.DILIGENT_DEBUG_CHATGPT_WEBSOCKET !== "1") return;
@@ -410,6 +368,7 @@ export function createChatGPTStream(
           effort,
           store: false,
           localImageLoader: context.localImageLoader,
+          provider: "chatgpt",
         });
 
         const requestBody = useResponsesLite ? toResponsesLiteRequestBody(standardBody) : standardBody;
@@ -518,7 +477,7 @@ export function createChatGPTStream(
         stream.push({ type: "start" });
 
         const debugEnabled = process.env.DILIGENT_DEBUG_CHATGPT_HTTP_SSE === "1";
-        const responseEvents = iterateOpenAIJsonSse(response.body, {
+        const responseEvents = iterateChatGPTJsonSse(response.body, {
           signal: options.signal,
           onJson: (event, _data, byteLength) => {
             if (!debugEnabled) return;

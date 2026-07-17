@@ -5,7 +5,7 @@ import { flattenSections } from "../../system-sections";
 import type { NativeCompactFn } from "../native-compaction";
 import { readOpenAIFamilyCompactErrorBody } from "../openai/compact-errors";
 import { isGpt56Model, toResponseInputItems, toResponsesLiteRequestBody } from "../openai/responses";
-import { describeCompactionPayload, extractCompactionSummary, extractCompactionSummaryItem } from "../openai/shared";
+import { describeCompactionPayload, extractCompactionSummaryItem } from "../openai/shared";
 
 const CHATGPT_COMPACT_URL = "https://chatgpt.com/backend-api/codex/responses/compact";
 const RESPONSES_LITE_HEADER = "x-openai-internal-codex-responses-lite";
@@ -39,6 +39,7 @@ export function createChatGPTNativeCompaction(getTokens: () => OpenAIOAuthTokens
         messages: input.messages,
         compactionSummary: input.compactionSummary,
         localImageLoader: input.localImageLoader,
+        provider: "chatgpt",
       }),
     };
     if (input.systemPrompt.length > 0) standardBody.instructions = flattenSections(input.systemPrompt);
@@ -61,11 +62,10 @@ export function createChatGPTNativeCompaction(getTokens: () => OpenAIOAuthTokens
     }
 
     const payload = (await response.json()) as Record<string, unknown>;
-    const summary = extractCompactionSummary(payload);
     const compactionSummary = extractCompactionSummaryItem(payload);
-    if (!summary?.trim() && !compactionSummary) {
+    if (!compactionSummary) {
       return { status: "unsupported", reason: `missing_summary ${describeCompactionPayload(payload)}` };
     }
-    return { status: "ok", summary, compactionSummary };
+    return { status: "ok", compactionSummary };
   };
 }

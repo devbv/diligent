@@ -1,6 +1,6 @@
-// @summary Transport framing tests for the internal OpenAI-compatible JSON SSE iterator
+// @summary ChatGPT JSON adapter tests over standards-compliant SSE framing
 import { describe, expect, test } from "bun:test";
-import { iterateOpenAIJsonSse } from "../../../../src/llm/provider/openai-compatible/json-sse";
+import { iterateChatGPTJsonSse } from "../../../../src/llm/provider/chatgpt/http-sse";
 
 const encoder = new TextEncoder();
 
@@ -15,14 +15,14 @@ function streamFromByteChunks(chunks: Uint8Array[]): ReadableStream<Uint8Array> 
 
 async function collect(
   body: ReadableStream<Uint8Array>,
-  options?: Parameters<typeof iterateOpenAIJsonSse>[1],
+  options?: Parameters<typeof iterateChatGPTJsonSse>[1],
 ): Promise<Record<string, unknown>[]> {
   const events: Record<string, unknown>[] = [];
-  for await (const event of iterateOpenAIJsonSse(body, options)) events.push(event);
+  for await (const event of iterateChatGPTJsonSse(body, options)) events.push(event);
   return events;
 }
 
-describe("iterateOpenAIJsonSse", () => {
+describe("iterateChatGPTJsonSse", () => {
   test("decodes JSON across byte chunks and CRLF frame boundaries", async () => {
     const bytes = encoder.encode('data: {"text":"before 🙂 after"}\r\n\r\ndata:{"value":2}\r\n\r\n');
     const emojiStart = bytes.indexOf(0xf0);
@@ -38,9 +38,16 @@ describe("iterateOpenAIJsonSse", () => {
     expect(events).toEqual([{ text: "before 🙂 after" }, { value: 2 }]);
   });
 
-  test("flushes the decoder and parses a final data line at EOF", async () => {
-    const events = await collect(streamFromByteChunks([encoder.encode('data: {"final":true}')]));
+  test("joins multi-line data fields and ignores comments", async () => {
+    const events = await collect(
+      streamFromByteChunks([encoder.encode(': keepalive\ndata: {"multi":\ndata: true}\n\n')]),
+    );
 
+    expect(events).toEqual([{ multi: true }]);
+  });
+
+  test("flushes a final SSE event at EOF", async () => {
+    const events = await collect(streamFromByteChunks([encoder.encode('data: {"final":true}')]));
     expect(events).toEqual([{ final: true }]);
   });
 
@@ -48,7 +55,6 @@ describe("iterateOpenAIJsonSse", () => {
     const events = await collect(
       streamFromByteChunks([encoder.encode('data: {"before":1}\n\ndata: [DONE]\n\ndata: {"after":2}\n\n')]),
     );
-
     expect(events).toEqual([{ before: 1 }]);
   });
 
@@ -57,7 +63,6 @@ describe("iterateOpenAIJsonSse", () => {
     const events = await collect(streamFromByteChunks([encoder.encode('data: {broken}\n\ndata: {"valid":true}\n\n')]), {
       onInvalidJson: (data) => invalid.push(data),
     });
-
     expect(invalid).toEqual(["{broken}"]);
     expect(events).toEqual([{ valid: true }]);
   });
@@ -70,9 +75,8 @@ describe("iterateOpenAIJsonSse", () => {
       },
     });
     const controller = new AbortController();
-    const iterator = iterateOpenAIJsonSse(body, { signal: controller.signal })[Symbol.asyncIterator]();
+    const iterator = iterateChatGPTJsonSse(body, { signal: controller.signal })[Symbol.asyncIterator]();
     const pending = iterator.next();
-
     controller.abort();
 
     await expect(pending).resolves.toEqual({ done: true, value: undefined });

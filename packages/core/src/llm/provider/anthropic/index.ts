@@ -31,6 +31,8 @@ const anthropicLogger = createLogger({ scope: "llm:anthropic" });
 
 type TextBlock = Extract<ContentBlock, { type: "text" }>;
 type TextCitation = NonNullable<TextBlock["citations"]>[number];
+// The installed SDK types do not yet expose the documented thinking.display field.
+type ThinkingConfigWithDisplay = Anthropic.ThinkingConfigParam & { display: "summarized" };
 
 export function createAnthropicStream(apiKey?: string, baseUrl?: string): StreamFunction {
   const resolvedApiKey = resolveAnthropicApiKey(apiKey);
@@ -56,34 +58,48 @@ export function createAnthropicStream(apiKey?: string, baseUrl?: string): Stream
 
     const work = (async () => {
       try {
-        const effort = options.effort;
-        const effortProvided = effort !== undefined;
+        const maxTokens = options.maxTokens ?? model.maxOutputTokens;
+        const effort = options.effort ?? "medium";
+        if (effort === "none") {
+          throw new Error("Anthropic does not support effort 'none'; thinking must remain enabled");
+        }
 
         let thinkingConfig: Record<string, unknown>;
-        if (effortProvided && model.supportsThinking && model.supportsAdaptiveThinking) {
-          thinkingConfig = {
-            thinking: { type: "adaptive" } as Anthropic.ThinkingConfigParam,
-            output_config: { effort: effort === "xhigh" ? "max" : effort },
-            temperature: 1,
-          };
-        } else if (effortProvided && model.supportsThinking && !model.supportsAdaptiveThinking) {
-          const budgetKey = effort === "none" ? "low" : effort === "xhigh" ? "max" : effort;
-          const budgetTokens = model.thinkingBudgets?.[budgetKey] ?? model.defaultBudgetTokens ?? 8_000;
-          thinkingConfig = {
-            thinking: {
-              type: "enabled",
-              budget_tokens: budgetTokens,
-            } as Anthropic.ThinkingConfigParam,
-            temperature: 1,
-          };
-        } else {
+        if (!model.supportsThinking) {
           thinkingConfig = options.temperature !== undefined ? { temperature: options.temperature } : {};
+        } else {
+          if (model.supportsAdaptiveThinking) {
+            thinkingConfig = {
+              thinking: { type: "adaptive", display: "summarized" } as ThinkingConfigWithDisplay,
+              output_config: { effort: effort === "xhigh" && !model.supportsXhighEffort ? "max" : effort },
+            };
+          } else {
+            const budgets = model.thinkingBudgets;
+            if (!budgets) {
+              throw new Error(`Anthropic model ${model.id} does not define thinking budgets`);
+            }
+            const budgetKey: keyof typeof budgets = effort === "xhigh" ? "max" : effort;
+            const budgetTokens = budgets[budgetKey];
+            if (budgetTokens < 1_024) {
+              throw new Error(`Anthropic thinking budget ${budgetTokens} must be at least 1024 tokens`);
+            }
+            if (budgetTokens >= maxTokens) {
+              throw new Error(`Anthropic thinking budget ${budgetTokens} must be less than max_tokens ${maxTokens}`);
+            }
+            thinkingConfig = {
+              thinking: {
+                type: "enabled",
+                budget_tokens: budgetTokens,
+                display: "summarized",
+              } as ThinkingConfigWithDisplay,
+            };
+          }
         }
 
         const systemBlocks = toAnthropicBlocks(context.systemPrompt);
         const requestParams = {
           model: model.id,
-          max_tokens: options.maxTokens ?? model.maxOutputTokens,
+          max_tokens: maxTokens,
           system: systemBlocks,
           messages: await convertMessages(context.messages, context.compactionSummary, context.localImageLoader),
           ...(context.tools.length > 0 && {
@@ -185,6 +201,17 @@ export function createAnthropicStream(apiKey?: string, baseUrl?: string): Stream
           type: "usage",
           usage: assistantMessage.usage,
         });
+        if ((finalMessage.stop_reason as string | null) === "model_context_window_exceeded") {
+          stream.push({
+            type: "error",
+            error: new ProviderError(CONTEXT_OVERFLOW_ERROR_MESSAGE, {
+              errorType: ProviderErrorType.ContextOverflow,
+              isRetryable: false,
+              reason: ProviderErrorReason.ContextWindowExceeded,
+            }),
+          });
+          return;
+        }
         stream.push({
           type: "done",
           stopReason: assistantMessage.stopReason,
@@ -290,6 +317,13 @@ function mapStopReason(reason: string | null): StopReason {
       return "max_tokens";
     case "compaction":
       return "end_turn";
+    case "stop_sequence":
+    case "pause_turn":
+      // Direct server-tool pauses are terminal in Diligent until product policy opts
+      // into provider-managed automatic continuation.
+      return "end_turn";
+    case "refusal":
+      return "error";
     default:
       return "end_turn";
   }

@@ -6,6 +6,33 @@ import {
   WebFetchResultBlockSchema,
   WebSearchResultBlockSchema,
 } from "../src/content-blocks";
+import { AssistantMessageSchema } from "../src/data-model";
+
+test("AssistantMessageSchema preserves typed OpenAI reasoning state", () => {
+  const message = AssistantMessageSchema.parse({
+    role: "assistant",
+    content: [
+      {
+        type: "thinking",
+        thinking: "summary",
+        providerState: {
+          provider: "openai",
+          itemId: "rs_1",
+          encryptedContent: "opaque",
+        },
+      },
+    ],
+    model: "gpt-5.6-sol",
+    usage: { inputTokens: 1, outputTokens: 2, cacheReadTokens: 0, cacheWriteTokens: 0 },
+    stopReason: "end_turn",
+    timestamp: 1,
+  });
+
+  expect(message.content[0]).toMatchObject({
+    type: "thinking",
+    providerState: { provider: "openai", itemId: "rs_1", encryptedContent: "opaque" },
+  });
+});
 
 describe("ToolCallBlockSchema", () => {
   test("preserves provider metadata for provider-specific replay fields", () => {

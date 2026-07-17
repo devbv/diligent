@@ -54,4 +54,41 @@ describe("convertMessages image detail", () => {
     });
     expect(firstImageDetail(body.input as unknown[])).toBe("low");
   });
+
+  test("replays encrypted reasoning only for the same provider", async () => {
+    const messages: Message[] = [
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "thinking",
+            thinking: "summary",
+            providerState: {
+              provider: "openai",
+              itemId: "rs_1",
+              encryptedContent: "opaque-reasoning",
+            },
+          },
+          { type: "text", text: "answer" },
+        ],
+        model: "gpt-5.6-sol",
+        usage: { inputTokens: 1, outputTokens: 2, cacheReadTokens: 0, cacheWriteTokens: 0 },
+        stopReason: "end_turn",
+        timestamp: 1,
+      },
+    ];
+
+    expect(await convertMessages(messages, "auto", undefined, "openai")).toEqual([
+      {
+        type: "reasoning",
+        id: "rs_1",
+        encrypted_content: "opaque-reasoning",
+        summary: [{ type: "summary_text", text: "summary" }],
+      },
+      { role: "assistant", content: "answer" },
+    ]);
+    expect(await convertMessages(messages, "auto", undefined, "chatgpt")).toEqual([
+      { role: "assistant", content: "answer" },
+    ]);
+  });
 });

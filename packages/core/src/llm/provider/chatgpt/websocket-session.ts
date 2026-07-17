@@ -12,8 +12,7 @@ export interface ChatGPTWebSocketSessionOptions {
   diagnostics?: {
     onOpen?: () => void;
     onSend?: (data: string, payload: Record<string, unknown>) => void;
-    onReceive?: (data: unknown, pendingDecode: number) => void;
-    onDecoded?: (data: unknown, payload: Record<string, unknown>, pendingDecode: number) => void;
+    onReceive?: (payload: Record<string, unknown>, byteLength: number, pendingDecode: number) => void;
     onClose?: (code: number, reason: string, pendingDecode: number) => void;
     onError?: (opened: boolean, pendingDecode: number) => void;
     onTimeout?: (message: string, pendingDecode: number) => void;
@@ -23,7 +22,7 @@ export interface ChatGPTWebSocketSessionOptions {
 export interface ChatGPTWebSocketExchange {
   /** Resolves after the request has been written to the socket. */
   opened: Promise<void>;
-  /** Response payloads for this exchange, ending at response.completed. */
+  /** Response payloads for this exchange, ending at a terminal response event. */
   events: AsyncIterable<Record<string, unknown>>;
 }
 
@@ -71,12 +70,21 @@ class AsyncEventQueue<T> implements AsyncIterable<T> {
   }
 }
 
-async function messageToString(data: unknown): Promise<string> {
-  if (typeof data === "string") return data;
-  if (data instanceof ArrayBuffer) return new TextDecoder().decode(data);
-  if (ArrayBuffer.isView(data)) return new TextDecoder().decode(data);
-  if (typeof Blob !== "undefined" && data instanceof Blob) return data.text();
-  return String(data);
+async function decodeMessage(data: unknown): Promise<{ text: string; byteLength: number }> {
+  if (typeof data === "string") {
+    return { text: data, byteLength: new TextEncoder().encode(data).byteLength };
+  }
+  if (data instanceof ArrayBuffer) {
+    return { text: new TextDecoder().decode(data), byteLength: data.byteLength };
+  }
+  if (ArrayBuffer.isView(data)) {
+    return { text: new TextDecoder().decode(data), byteLength: data.byteLength };
+  }
+  if (typeof Blob !== "undefined" && data instanceof Blob) {
+    return { text: await data.text(), byteLength: data.size };
+  }
+  const text = String(data);
+  return { text, byteLength: new TextEncoder().encode(text).byteLength };
 }
 
 type ActiveExchange = {
@@ -245,12 +253,12 @@ export class ChatGPTWebSocketSession {
 
   private handleMessage(socket: WebSocket, event: MessageEvent): void {
     this.pendingMessageCount += 1;
-    this.options.diagnostics?.onReceive?.(event.data, this.pendingMessageCount);
     this.messageWork = this.messageWork
       .then(async () => {
         if (this.socket !== socket || !this.active) return;
-        const payload = JSON.parse(await messageToString(event.data)) as Record<string, unknown>;
-        this.options.diagnostics?.onDecoded?.(event.data, payload, this.pendingMessageCount);
+        const decoded = await decodeMessage(event.data);
+        const payload = JSON.parse(decoded.text) as Record<string, unknown>;
+        this.options.diagnostics?.onReceive?.(payload, decoded.byteLength, this.pendingMessageCount);
         const active = this.active;
         if (payload.type === "error") {
           this.invalidate(
@@ -267,7 +275,7 @@ export class ChatGPTWebSocketSession {
           return;
         }
         active.queue.push(payload);
-        if (payload.type === "response.completed") this.complete(active);
+        if (payload.type === "response.completed" || payload.type === "response.incomplete") this.complete(active);
         else this.resetTimeout(active, "ChatGPT WebSocket idle timeout waiting for response");
       })
       .catch((error) => this.invalidate(this.asNetworkError(error, "ChatGPT WebSocket decode failed")))
@@ -293,7 +301,7 @@ export class ChatGPTWebSocketSession {
         }
         this.invalidate(
           new ProviderError(
-            `ChatGPT WebSocket closed before response.completed (${event.code}${
+            `ChatGPT WebSocket closed before a terminal response event (${event.code}${
               event.reason ? `: ${event.reason}` : ""
             })`,
             ProviderErrorType.Network,

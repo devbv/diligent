@@ -142,7 +142,7 @@ describe("ChatGPT WebSocket session", () => {
 
     const error = events.find((event): event is Extract<ProviderEvent, { type: "error" }> => event.type === "error");
     expect(error?.error.message).toContain(
-      "ChatGPT WebSocket closed before response.completed (1011: upstream unavailable)",
+      "ChatGPT WebSocket closed before a terminal response event (1011: upstream unavailable)",
     );
     expect((error?.error as { errorType?: string }).errorType).toBe("network");
     expect((error?.error as { isRetryable?: boolean }).isRetryable).toBe(true);
@@ -477,7 +477,7 @@ describe("ChatGPT WebSocket session", () => {
 
     const error = events.find((event): event is Extract<ProviderEvent, { type: "error" }> => event.type === "error");
     expect(error?.error).toBeInstanceOf(Error);
-    expect(error?.error.message).toContain("response.completed");
+    expect(error?.error.message).toContain("terminal response event");
     expect((error?.error as { isRetryable?: boolean }).isRetryable).toBe(true);
   });
 
@@ -562,7 +562,7 @@ describe("ChatGPT WebSocket session", () => {
 
     const error = events.find((event): event is Extract<ProviderEvent, { type: "error" }> => event.type === "error");
     expect(error?.error.message).toContain(
-      "ChatGPT WebSocket closed before response.completed (1011: upstream unavailable)",
+      "ChatGPT WebSocket closed before a terminal response event (1011: upstream unavailable)",
     );
     expect((error?.error as { errorType?: string }).errorType).toBe("network");
     expect((error?.error as { isRetryable?: boolean }).isRetryable).toBe(true);
@@ -605,11 +605,10 @@ describe("ChatGPT WebSocket session", () => {
     expect(events.some((event) => event.type === "error")).toBe(false);
   });
 
-  test("logs ChatGPT WebSocket frames immediately with byte sizes and summaries", async () => {
+  test("logs each decoded ChatGPT WebSocket frame once with byte size and summary", async () => {
     process.env.DILIGENT_DEBUG_CHATGPT_WEBSOCKET = "1";
     const logs: string[] = [];
     console.debug = (...args: unknown[]) => logs.push(args.map(String).join(" "));
-    let receiveLogSeenBeforeDecode = false;
     let receivedBytes = 0;
     const harness = createWebSocketHarness((_body, socket) => {
       const payload = JSON.stringify({
@@ -629,7 +628,6 @@ describe("ChatGPT WebSocket session", () => {
 
       receivedBytes = delayedBlob.size;
       socket.emitRaw(delayedBlob);
-      receiveLogSeenBeforeDecode = logs.some((line) => line.includes(`<- bytes=${receivedBytes} pending_decode`));
     });
     const chatgptStream = createChatGPTStream(() => testTokens(), {
       useWebSocketForGpt56: true,
@@ -642,7 +640,6 @@ describe("ChatGPT WebSocket session", () => {
       }),
     );
 
-    expect(receiveLogSeenBeforeDecode).toBe(true);
     expect(logs.some((line) => line.includes("[llm:chatgpt-ws] -> bytes=") && line.includes("response.create"))).toBe(
       true,
     );
@@ -650,9 +647,11 @@ describe("ChatGPT WebSocket session", () => {
       logs.some(
         (line) =>
           line.includes(`[llm:chatgpt-ws] <- bytes=${receivedBytes}`) &&
-          line.includes("decoded response.completed status=completed in=3 out=2"),
+          line.includes("response.completed status=completed in=3 out=2") &&
+          !line.includes("decoded "),
       ),
     ).toBe(true);
+    expect(logs.filter((line) => line.includes(`[llm:chatgpt-ws] <- bytes=${receivedBytes}`))).toHaveLength(1);
     expect(events.some((event) => event.type === "done")).toBe(true);
   });
 

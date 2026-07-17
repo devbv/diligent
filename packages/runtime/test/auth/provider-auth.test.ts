@@ -44,6 +44,7 @@ describe("createChatGPTOAuthBinding", () => {
       return new Response(
         [
           'data: {"type":"response.output_text.delta","delta":"ok"}',
+          "",
           'data: {"type":"response.completed","response":{"status":"completed","usage":{"input_tokens":1,"output_tokens":1}}}',
           "",
         ].join("\n"),

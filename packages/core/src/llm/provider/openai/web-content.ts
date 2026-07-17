@@ -48,7 +48,7 @@ export function createProviderToolUseBlock(
 ): ProviderToolUseBlock | undefined {
   const id = getProviderToolUseId(item);
   const action = getWebAction(item);
-  const actionType = action?.type ?? item.action_type;
+  const actionType = action?.type;
   const status = typeof item.status === "string" ? item.status : undefined;
   const name = getCapabilityName(actionType) ?? (item.type === "web_search_call" ? "web_search" : undefined);
   if (!id || !name) return undefined;
@@ -65,68 +65,9 @@ export function createProviderToolUseBlock(
 
 function normalizeSources(item: Record<string, unknown>): Array<Record<string, unknown>> {
   const action = getWebAction(item);
-  const output = item.output && typeof item.output === "object" ? (item.output as Record<string, unknown>) : undefined;
-  const result = item.result && typeof item.result === "object" ? (item.result as Record<string, unknown>) : undefined;
-  const page = item.page && typeof item.page === "object" ? (item.page as Record<string, unknown>) : undefined;
-  const candidateArrays = [
-    action?.sources,
-    item.sources,
-    item.results,
-    output?.sources,
-    output?.results,
-    output?.data,
-    result?.sources,
-    result?.results,
-    page?.sources,
-    page?.results,
-    item.data,
-  ];
-  for (const candidate of candidateArrays) {
-    if (!Array.isArray(candidate)) continue;
-    return candidate.filter((value): value is Record<string, unknown> => Boolean(value) && typeof value === "object");
-  }
-  return [];
-}
-
-function collectDocumentCandidates(item: Record<string, unknown>): Record<string, unknown>[] {
-  const output = item.output && typeof item.output === "object" ? (item.output as Record<string, unknown>) : undefined;
-  const result = item.result && typeof item.result === "object" ? (item.result as Record<string, unknown>) : undefined;
-  const page = item.page && typeof item.page === "object" ? (item.page as Record<string, unknown>) : undefined;
-  const content =
-    item.content && typeof item.content === "object" ? (item.content as Record<string, unknown>) : undefined;
-  const candidates = [
-    item.document,
-    item.page,
-    item.content,
-    item.result,
-    item.output,
-    output?.document,
-    output?.page,
-    output?.content,
-    output?.result,
-    result?.document,
-    result?.page,
-    result?.content,
-    page,
-    content,
-  ];
-  return candidates.filter((value): value is Record<string, unknown> => Boolean(value) && typeof value === "object");
-}
-
-function pickString(record: Record<string, unknown>, keys: string[]): string | undefined {
-  for (const key of keys) {
-    const value = record[key];
-    if (typeof value === "string" && value.length > 0) return value;
-  }
-  return undefined;
-}
-
-function pickDocumentString(candidates: Record<string, unknown>[], keys: string[]): string | undefined {
-  for (const candidate of candidates) {
-    const value = pickString(candidate, keys);
-    if (value) return value;
-  }
-  return undefined;
+  return Array.isArray(action?.sources)
+    ? action.sources.filter((value): value is Record<string, unknown> => Boolean(value) && typeof value === "object")
+    : [];
 }
 
 export function debugWebSearchPayload(
@@ -140,7 +81,7 @@ export function debugWebSearchPayload(
     stage,
     itemType: item?.type,
     callId: item?.call_id,
-    actionType: getWebAction(item ?? {})?.type ?? item?.action_type,
+    actionType: getWebAction(item ?? {})?.type,
     keys: item ? Object.keys(item).slice(0, 20) : [],
     actionKeys: getWebAction(item ?? {}) ? Object.keys(getWebAction(item ?? {})!).slice(0, 20) : [],
     sourcesLen: normalizeSources(item ?? {}).length,
@@ -204,32 +145,15 @@ export function createWebSearchResultBlock(
 ): WebSearchResultBlock | undefined {
   const action = getWebAction(item);
   if (action?.type !== "search") return undefined;
-  const providerToolUse = createProviderToolUseBlock(item, provider);
-  const providerSources = Array.isArray(providerToolUse?.input.sources)
-    ? (providerToolUse?.input.sources as Array<Record<string, unknown>>)
-    : [];
   const results = normalizeSources(item)
     .map((source) => {
       const url = typeof source.url === "string" ? source.url : "";
-      const providerSource = providerSources.find((candidate) => candidate.url === url);
       return {
         url,
-        ...(typeof source.title === "string"
-          ? { title: source.title }
-          : typeof providerSource?.title === "string"
-            ? { title: providerSource.title }
-            : {}),
+        ...(typeof source.title === "string" ? { title: source.title } : {}),
         ...(typeof source.page_age === "string" ? { pageAge: source.page_age } : {}),
-        ...(typeof source.snippet === "string"
-          ? { snippet: source.snippet }
-          : typeof providerSource?.snippet === "string"
-            ? { snippet: providerSource.snippet }
-            : {}),
-        ...(typeof source.encrypted_content === "string"
-          ? { encryptedContent: source.encrypted_content }
-          : typeof providerSource?.encrypted_content === "string"
-            ? { encryptedContent: providerSource.encrypted_content }
-            : {}),
+        ...(typeof source.snippet === "string" ? { snippet: source.snippet } : {}),
+        ...(typeof source.encrypted_content === "string" ? { encryptedContent: source.encrypted_content } : {}),
       };
     })
     .filter((result) => result.url.length > 0);
@@ -248,38 +172,14 @@ export function createWebFetchResultBlock(
 ): WebFetchResultBlock | undefined {
   const action = getWebAction(item);
   if (action?.type !== "open_page" && action?.type !== "find_in_page") return undefined;
-
-  const sources = normalizeSources(item);
-  const source = sources[0];
-  const url = pickString(action, ["url"]) ?? (source ? pickString(source, ["url"]) : undefined);
+  const url = typeof action.url === "string" ? action.url : undefined;
   if (!url) return undefined;
-
-  const documentCandidates = [...collectDocumentCandidates(item), ...(source ? [source] : [])];
-  const text = pickDocumentString(documentCandidates, ["text", "content", "snippet", "body", "markdown"]);
-  const mimeType = pickDocumentString(documentCandidates, ["mime_type", "mimeType", "content_type", "contentType"]);
-  const title = pickDocumentString(documentCandidates, ["title", "page_title", "pageTitle"]);
-  const base64Data = pickDocumentString(documentCandidates, ["base64_data", "base64Data", "data"]);
-  const retrievedAt =
-    pickString(item, ["retrieved_at", "retrievedAt"]) ??
-    pickDocumentString(documentCandidates, ["retrieved_at", "retrievedAt"]);
 
   return {
     type: "web_fetch_result",
     toolUseId,
     provider: getProviderName(provider),
     url,
-    ...(text || mimeType || title || base64Data
-      ? {
-          document: {
-            mimeType: mimeType ?? "text/html",
-            ...(text ? { text } : {}),
-            ...(base64Data ? { base64Data } : {}),
-            ...(title ? { title } : {}),
-            citationsEnabled: true,
-          },
-        }
-      : {}),
-    ...(retrievedAt ? { retrievedAt } : {}),
   };
 }
 

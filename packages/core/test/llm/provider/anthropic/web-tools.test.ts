@@ -1,7 +1,13 @@
 // @summary Tests for Anthropic provider-native web tool content block normalization
 import { describe, expect, mock, test } from "bun:test";
 import { APIError } from "@anthropic-ai/sdk/core/error.mjs";
-import type { Model, ProviderEvent, ProviderResult, StreamContext } from "../../../../src/llm/types";
+import {
+  type Model,
+  ProviderError,
+  type ProviderEvent,
+  type ProviderResult,
+  type StreamContext,
+} from "../../../../src/llm/types";
 
 const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-4-6";
 
@@ -49,6 +55,7 @@ const MODEL: Model = {
   contextWindow: 300_000,
   maxOutputTokens: 8_000,
   supportsThinking: true,
+  supportsAdaptiveThinking: true,
 };
 
 const CONTEXT: StreamContext = {
@@ -64,6 +71,50 @@ function emit(event: string, ...args: MockListenerArgs) {
 }
 
 describe("Anthropic native web tools", () => {
+  test.each([
+    ["stop_sequence", "end_turn"],
+    ["pause_turn", "end_turn"],
+    ["refusal", "error"],
+  ] as const)("maps %s to the deliberate terminal outcome %s", async (upstreamReason, stopReason) => {
+    eventHandlers.clear();
+    finalMessageGate = undefined;
+    finalMessagePayload = {
+      id: "msg_stop_reason",
+      role: "assistant",
+      model: MODEL.id,
+      type: "message",
+      stop_reason: upstreamReason,
+      usage: { input_tokens: 3, output_tokens: 4 },
+      content: [{ type: "text", text: "stopped" }],
+    };
+
+    const result = await createAnthropicStream("test-key")(MODEL, CONTEXT, { effort: "medium" }).result();
+    expect(result.message.stopReason).toBe(stopReason);
+  });
+
+  test("raises model_context_window_exceeded through the structured compaction path", async () => {
+    eventHandlers.clear();
+    finalMessageGate = undefined;
+    finalMessagePayload = {
+      id: "msg_context",
+      role: "assistant",
+      model: MODEL.id,
+      type: "message",
+      stop_reason: "model_context_window_exceeded",
+      usage: { input_tokens: 300_000, output_tokens: 4 },
+      content: [{ type: "text", text: "partial" }],
+    };
+
+    try {
+      await createAnthropicStream("test-key")(MODEL, CONTEXT, { effort: "medium" }).result();
+      throw new Error("Expected context overflow");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ProviderError);
+      expect((error as ProviderError).errorType).toBe("context_overflow");
+      expect((error as ProviderError).reason).toBe("context_window_exceeded");
+    }
+  });
+
   test("normalizes server web tool use and result blocks into content_block events and final message content", async () => {
     eventHandlers.clear();
     finalMessageGate = new Promise<void>((resolve) => {

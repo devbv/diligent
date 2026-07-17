@@ -46,6 +46,7 @@ const MODEL: Model = {
   contextWindow: 300_000,
   maxOutputTokens: 8_000,
   supportsThinking: true,
+  supportsAdaptiveThinking: true,
 };
 
 const CONTEXT: StreamContext = {

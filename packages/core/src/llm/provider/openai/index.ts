@@ -45,6 +45,7 @@ export function createOpenAIStream(apiKey?: string, baseUrl?: string, imageDetai
           effort: options.effort,
           imageDetail,
           localImageLoader: context.localImageLoader,
+          provider: "openai",
         });
         const openaiStream = await client.responses.create(
           requestBody,

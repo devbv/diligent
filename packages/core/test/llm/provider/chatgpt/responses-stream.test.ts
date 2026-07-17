@@ -14,6 +14,146 @@ import {
 afterEach(restoreChatGPTStreamTestState);
 
 describe("handleResponsesAPIEvents", () => {
+  test("correlates interleaved function-call item IDs with public call IDs", async () => {
+    const stream = makeProviderEventStream();
+
+    async function* iter(): AsyncIterable<Record<string, unknown>> {
+      yield {
+        type: "response.output_item.added",
+        output_index: 0,
+        item: { id: "item_1", type: "function_call", call_id: "call_1", name: "read" },
+      };
+      yield {
+        type: "response.output_item.added",
+        output_index: 1,
+        item: { id: "item_2", type: "function_call", call_id: "call_2", name: "write" },
+      };
+      yield { type: "response.function_call_arguments.delta", item_id: "item_1", output_index: 0, delta: '{"a":' };
+      yield { type: "response.function_call_arguments.delta", item_id: "item_2", output_index: 1, delta: '{"b":' };
+      yield { type: "response.function_call_arguments.delta", item_id: "item_1", output_index: 0, delta: "1}" };
+      yield { type: "response.function_call_arguments.delta", item_id: "item_2", output_index: 1, delta: "2}" };
+      yield {
+        type: "response.output_item.done",
+        output_index: 0,
+        item: { id: "item_1", type: "function_call", call_id: "call_1", name: "read", arguments: '{"a":1}' },
+      };
+      yield {
+        type: "response.output_item.done",
+        output_index: 1,
+        item: { id: "item_2", type: "function_call", call_id: "call_2", name: "write", arguments: '{"b":2}' },
+      };
+      yield {
+        type: "response.completed",
+        response: { status: "completed", usage: { input_tokens: 2, output_tokens: 1 } },
+      };
+    }
+
+    await handleResponsesAPIEvents(iter(), stream, TEST_MODEL);
+    const events = await collectEvents(stream);
+    expect(events.filter((event) => event.type === "tool_call_delta")).toEqual([
+      { type: "tool_call_delta", id: "call_1", delta: '{"a":' },
+      { type: "tool_call_delta", id: "call_2", delta: '{"b":' },
+      { type: "tool_call_delta", id: "call_1", delta: "1}" },
+      { type: "tool_call_delta", id: "call_2", delta: "2}" },
+    ]);
+    expect((await stream.result()).message.content).toEqual([
+      { type: "tool_call", id: "call_1", name: "read", input: { a: 1 } },
+      { type: "tool_call", id: "call_2", name: "write", input: { b: 2 } },
+    ]);
+  });
+
+  test("treats response.incomplete max_output_tokens as terminal max_tokens and preserves usage", async () => {
+    const stream = makeProviderEventStream();
+    async function* iter(): AsyncIterable<Record<string, unknown>> {
+      yield { type: "response.output_text.delta", delta: "partial" };
+      yield {
+        type: "response.incomplete",
+        response: {
+          status: "incomplete",
+          incomplete_details: { reason: "max_output_tokens" },
+          usage: { input_tokens: 7, output_tokens: 11 },
+        },
+      };
+    }
+
+    await handleResponsesAPIEvents(iter(), stream, TEST_MODEL);
+    const events = await collectEvents(stream);
+    expect(events.at(-1)).toMatchObject({ type: "done", stopReason: "max_tokens" });
+    expect((await stream.result()).message.usage).toEqual({
+      inputTokens: 7,
+      outputTokens: 11,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+    });
+  });
+
+  test("treats response.incomplete content_filter as terminal error, not a network failure", async () => {
+    const stream = makeProviderEventStream();
+    async function* iter(): AsyncIterable<Record<string, unknown>> {
+      yield {
+        type: "response.incomplete",
+        response: {
+          status: "incomplete",
+          incomplete_details: { reason: "content_filter" },
+          usage: { input_tokens: 3, output_tokens: 0 },
+        },
+      };
+    }
+
+    await handleResponsesAPIEvents(iter(), stream, TEST_MODEL);
+    const events = await collectEvents(stream);
+    expect(events.some((event) => event.type === "error")).toBe(false);
+    expect(events.at(-1)).toMatchObject({ type: "done", stopReason: "error" });
+  });
+
+  test("preserves reasoning item identity and encrypted content with its plaintext summary", async () => {
+    const stream = makeProviderEventStream();
+    async function* iter(): AsyncIterable<Record<string, unknown>> {
+      yield { type: "response.reasoning_summary_text.delta", delta: "private summary" };
+      yield {
+        type: "response.output_item.done",
+        item: {
+          id: "rs_1",
+          type: "reasoning",
+          encrypted_content: "opaque-reasoning",
+          summary: [{ type: "summary_text", text: "private summary" }],
+        },
+      };
+      yield {
+        type: "response.completed",
+        response: { status: "completed", usage: { input_tokens: 3, output_tokens: 2 } },
+      };
+    }
+
+    await handleResponsesAPIEvents(iter(), stream, TEST_MODEL);
+    expect((await stream.result()).message.content).toEqual([
+      {
+        type: "thinking",
+        thinking: "private summary",
+        providerState: {
+          provider: "openai",
+          itemId: "rs_1",
+          encryptedContent: "opaque-reasoning",
+        },
+      },
+    ]);
+  });
+
+  test("surfaces a top-level error frame as a terminal provider error", async () => {
+    const events: ProviderEvent[] = [];
+    const stream = { push: (event: ProviderEvent) => events.push(event) } as unknown as EventStream<
+      ProviderEvent,
+      ProviderResult
+    >;
+    async function* iter(): AsyncIterable<Record<string, unknown>> {
+      yield { type: "error", code: "server_error", message: "Upstream exploded" };
+    }
+
+    await handleResponsesAPIEvents(iter(), stream, TEST_MODEL);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ type: "error", error: { message: "Upstream exploded" } });
+  });
+
   test("preserves the Responses empty-object fallback for malformed tool arguments", async () => {
     const stream = makeProviderEventStream();
 
@@ -113,7 +253,7 @@ describe("handleResponsesAPIEvents", () => {
     expect(events.map((event) => event.type)).toEqual(["text_delta"]);
   });
 
-  test("emits retryable error when stream closes before response.completed", async () => {
+  test("emits retryable error when stream closes before any terminal response event", async () => {
     const events: ProviderEvent[] = [];
     const stream = {
       push(event: ProviderEvent) {
@@ -135,7 +275,7 @@ describe("handleResponsesAPIEvents", () => {
 
     expect(events.map((event) => event.type)).toEqual(["thinking_end", "error"]);
     const error = events.find((event): event is Extract<ProviderEvent, { type: "error" }> => event.type === "error");
-    expect(error?.error.message).toBe("stream closed before response.completed");
+    expect(error?.error.message).toBe("stream closed before a terminal response event");
     expect(error?.error).toBeInstanceOf(ProviderError);
     if (!(error?.error instanceof ProviderError)) throw new Error("Expected ProviderError");
     expect(error.error.errorType).toBe("network");
@@ -157,6 +297,7 @@ describe("handleResponsesAPIEvents", () => {
         type: "response.failed",
         response: {
           error: { code: "server_error", message: "Something went wrong" },
+          usage: { input_tokens: 9, output_tokens: 2 },
         },
       };
     }
@@ -167,5 +308,9 @@ describe("handleResponsesAPIEvents", () => {
     expect(error).toBeDefined();
     const serialized = toSerializableError(error?.error);
     expect(serialized.code).toBe("server_error");
+    expect(events).toContainEqual({
+      type: "usage",
+      usage: { inputTokens: 9, outputTokens: 2, cacheReadTokens: 0, cacheWriteTokens: 0 },
+    });
   });
 });
