@@ -33,6 +33,7 @@ The architecture is organized around four product goals:
 | `packages/web` | Bun web server + React web client over WebSocket JSON-RPC |
 | `packages/debug-viewer` | Viewer for inspecting `.diligent/` data |
 | `packages/e2e` | End-to-end tests spanning protocol and runtime behavior |
+| `packages/evals` | Live-model behavioral evaluations for core capabilities; separate from deterministic end-to-end tests |
 | `apps/overdare-ai-agent` | Rust CLI launcher for the Overdare product: bootstraps the TypeScript runtime, manages self-update, and launches the Bun web server as a child process. Owns compile-time storage namespace defaults, migration from legacy `.diligent/` directories, and launcher-managed bootstrap assets. |
 | `apps/overdare-ai-agent/sidecar` | OVERDARE-owned TypeScript sidecar assembly. Imports the generic `@diligent/web/server`, injects product bundled tool providers, and is compiled as the packaged `diligent-web-server` sidecar. |
 | `apps/vscode-extension` | VS Code extension host: provides an activity bar entry, thread tree view, and conversation panel backed by a stdio JSON-RPC transport to the Diligent runtime. Shares the same protocol contract as the CLI and Web clients. |
@@ -164,6 +165,13 @@ moving an internal core file does not implicitly change the package API.
 Provider authentication checks remain core mechanisms and report structured `ProviderError` diagnostics. Provider
 display names, onboarding hints, and client-facing validation messages are runtime-owned; the corresponding
 `ProviderDescriptor` is carried by the shared protocol so Web and TUI consume the same metadata.
+
+### `@diligent/evals`
+
+`packages/evals` runs small live-model behavioral evaluations against the public core capability boundaries. It owns
+isolated task worlds, runner budgets, deterministic evaluators, redacted versioned reports, and the canonical provider
+profile set. It must not import runtime tools or runtime assembly. It complements `packages/e2e`, which remains the
+home for deterministic full-stack protocol and runtime tests.
 
 ### `@diligent/runtime`
 

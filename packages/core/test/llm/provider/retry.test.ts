@@ -398,6 +398,24 @@ describe("withRetry", () => {
     expect(callCount()).toBeLessThanOrEqual(2);
   });
 
+  test("abort requested by the retry callback skips the pending delay", async () => {
+    const failures = [new ProviderError("server unavailable", "server_error", true, undefined, 503)];
+    const { streamFn } = createFailingStreamFn(failures);
+    const controller = new AbortController();
+    const retried = withRetry(streamFn, { maxAttempts: 3, baseDelayMs: 1_000, maxDelayMs: 1_000 }, () => {
+      controller.abort();
+    });
+
+    const startedAt = performance.now();
+    const stream = retried(testModel, testContext, { ...testOptions, signal: controller.signal });
+    for await (const _event of stream) {
+      /* consume */
+    }
+    await stream.result().catch(() => {});
+
+    expect(performance.now() - startedAt).toBeLessThan(250);
+  });
+
   test("retries after visible streaming by emitting retry discard signal", async () => {
     // Simulates a retryable error that occurs mid-stream, after a text_delta was already emitted.
     let callCount = 0;

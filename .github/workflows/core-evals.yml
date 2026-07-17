@@ -1,0 +1,125 @@
+name: Core Evals
+
+on:
+  workflow_dispatch:
+    inputs:
+      canonical:
+        description: "Run the complete canonical suite"
+        required: true
+        type: boolean
+        default: true
+      provider:
+        description: "Provider filter for non-canonical investigation"
+        required: true
+        type: choice
+        options:
+          - all
+          - openai
+          - anthropic
+        default: all
+      task:
+        description: "Task ID filter for non-canonical investigation"
+        required: false
+        type: string
+      model:
+        description: "Model override for non-canonical investigation"
+        required: false
+        type: string
+      effort:
+        description: "Effort override for non-canonical investigation"
+        required: true
+        type: choice
+        options:
+          - canonical
+          - none
+          - low
+          - medium
+          - high
+          - xhigh
+          - max
+        default: canonical
+      seed:
+        description: "Optional recorded root seed for world reconstruction"
+        required: false
+        type: string
+  schedule:
+    - cron: "0 21 * * *"
+  workflow_call:
+    inputs:
+      artifact_retention_days:
+        description: "Retention for a future release-gate report"
+        required: false
+        type: number
+        default: 90
+    secrets:
+      OPENAI_API_KEY:
+        required: true
+      ANTHROPIC_API_KEY:
+        required: true
+
+concurrency:
+  group: ${{ github.repository }}-core-evals
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  core-evals:
+    name: Core eval suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      EVAL_CANONICAL: ${{ github.event_name != 'workflow_dispatch' || inputs.canonical }}
+      EVAL_PROVIDER: ${{ inputs.provider || 'all' }}
+      EVAL_TASK: ${{ inputs.task || '' }}
+      EVAL_MODEL: ${{ inputs.model || '' }}
+      EVAL_EFFORT: ${{ inputs.effort || 'canonical' }}
+      EVAL_SEED: ${{ inputs.seed || '' }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.9
+
+      - run: bun install --frozen-lockfile
+
+      - name: Run core eval suite
+        shell: bash
+        run: |
+          args=(core)
+          if [ "$EVAL_CANONICAL" = "true" ]; then
+            args+=(--canonical)
+          else
+            if [ "$EVAL_PROVIDER" != "all" ]; then
+              args+=(--provider "$EVAL_PROVIDER")
+            fi
+            if [ -n "$EVAL_TASK" ]; then
+              args+=(--task "$EVAL_TASK")
+            fi
+            if [ -n "$EVAL_MODEL" ]; then
+              args+=(--model "$EVAL_MODEL")
+            fi
+            if [ "$EVAL_EFFORT" != "canonical" ]; then
+              args+=(--effort "$EVAL_EFFORT")
+            fi
+          fi
+          if [ -n "$EVAL_SEED" ]; then
+            args+=(--seed "$EVAL_SEED")
+          fi
+          bun run eval "${args[@]}"
+
+      - name: Upload eval report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-evals-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/evals/*.json
+          if-no-files-found: warn
+          retention-days: ${{ inputs.artifact_retention_days || 30 }}
