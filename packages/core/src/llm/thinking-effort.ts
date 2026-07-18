@@ -11,26 +11,20 @@ export const THINKING_EFFORT_VALUES = [
   "max",
 ] as const satisfies readonly ThinkingEffort[];
 
-const FALLBACK_THINKING_EFFORT_VALUES: readonly ThinkingEffort[] = THINKING_EFFORT_VALUES.filter(
-  (effort) => effort !== "xhigh",
-);
-
 export function supportsThinkingEffort(
   model: Pick<Model, "supportsThinking" | "supportedEfforts"> | undefined,
   effort: ThinkingEffort,
 ): boolean {
   if (!model?.supportsThinking) return false;
-  return model.supportedEfforts?.includes(effort) ?? FALLBACK_THINKING_EFFORT_VALUES.includes(effort);
+  return model.supportedEfforts?.includes(effort) ?? THINKING_EFFORT_VALUES.includes(effort);
 }
 
 export function getThinkingEffortOptions(
-  model: Pick<Model, "provider" | "supportsThinking" | "supportedEfforts"> | undefined,
+  model: Pick<Model, "supportsThinking" | "supportedEfforts"> | undefined,
 ): Array<{ value: ThinkingEffort; label: string }> {
   if (model && !model.supportsThinking) return [];
   const supportedEfforts =
-    model?.supportsThinking === true
-      ? (model.supportedEfforts ?? FALLBACK_THINKING_EFFORT_VALUES)
-      : FALLBACK_THINKING_EFFORT_VALUES;
+    model?.supportsThinking === true ? (model.supportedEfforts ?? THINKING_EFFORT_VALUES) : THINKING_EFFORT_VALUES;
   return supportedEfforts.map((effort) => ({
     value: effort,
     label: effort,
@@ -38,22 +32,12 @@ export function getThinkingEffortOptions(
 }
 
 export function normalizeThinkingEffort(
-  model: Pick<Model, "provider" | "supportsThinking" | "supportedEfforts"> | undefined,
+  model: Pick<Model, "supportsThinking" | "supportedEfforts"> | undefined,
   effort: ThinkingEffort,
 ): ThinkingEffort {
-  if (!model) return effort;
-  if (!model.supportsThinking) {
-    return effort === "xhigh" ? "medium" : effort;
-  }
+  if (!model || !model.supportsThinking) return effort;
   if (supportsThinkingEffort(model, effort)) return effort;
 
-  if (
-    effort === "xhigh" &&
-    (model.provider === "openai" || model.provider === "chatgpt") &&
-    supportsThinkingEffort(model, "max")
-  ) {
-    return "max";
-  }
   if (supportsThinkingEffort(model, "medium")) return "medium";
 
   return getThinkingEffortOptions(model)[0]?.value ?? effort;

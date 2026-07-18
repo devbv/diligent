@@ -1,5 +1,12 @@
 // @summary ChatGPT subscription-owned model-card definitions
-import { defineProviderModels, GPT_5_5_THINKING_EFFORTS, NATIVE_PROVIDER_THINKING_EFFORTS } from "../../model-card";
+import { defineProviderModels } from "../../model-card";
+import { defineProviderModelClasses } from "../../model-class";
+
+export const CHATGPT_MODEL_CLASSES = defineProviderModelClasses({
+  pro: { defaultModelId: "gpt-5.6-sol" },
+  general: { defaultModelId: "gpt-5.6-terra" },
+  lite: { defaultModelId: "gpt-5.6-luna" },
+});
 
 export const CHATGPT_MODELS = defineProviderModels("chatgpt", [
   {
@@ -8,7 +15,7 @@ export const CHATGPT_MODELS = defineProviderModels("chatgpt", [
     contextWindow: 300_000,
     maxOutputTokens: 128_000,
     supportsThinking: true,
-    supportedEfforts: GPT_5_5_THINKING_EFFORTS,
+    supportedEfforts: ["low", "medium", "high", "xhigh"],
     supportsVision: true,
     aliases: ["gpt-5.5-pro"],
   },
@@ -18,7 +25,6 @@ export const CHATGPT_MODELS = defineProviderModels("chatgpt", [
     contextWindow: 300_000,
     maxOutputTokens: 128_000,
     supportsThinking: true,
-    supportedEfforts: NATIVE_PROVIDER_THINKING_EFFORTS,
     supportsVision: true,
     aliases: ["gpt-5.6"],
   },
@@ -28,7 +34,6 @@ export const CHATGPT_MODELS = defineProviderModels("chatgpt", [
     contextWindow: 300_000,
     maxOutputTokens: 128_000,
     supportsThinking: true,
-    supportedEfforts: NATIVE_PROVIDER_THINKING_EFFORTS,
     supportsVision: true,
   },
   {
@@ -37,7 +42,6 @@ export const CHATGPT_MODELS = defineProviderModels("chatgpt", [
     contextWindow: 300_000,
     maxOutputTokens: 128_000,
     supportsThinking: true,
-    supportedEfforts: NATIVE_PROVIDER_THINKING_EFFORTS,
     supportsVision: true,
   },
 ]);

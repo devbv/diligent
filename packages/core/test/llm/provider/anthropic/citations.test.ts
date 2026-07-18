@@ -3,7 +3,7 @@ import { describe, expect, mock, test } from "bun:test";
 import { APIError } from "@anthropic-ai/sdk/core/error.mjs";
 import type { Model, ProviderEvent, ProviderResult, StreamContext } from "../../../../src/llm/types";
 
-const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-4-6";
+const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-5";
 
 type MockListenerArgs = unknown[];
 type MockListener = (...args: MockListenerArgs) => void;

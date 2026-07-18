@@ -1,5 +1,11 @@
 // @summary Z.AI Coding Plan-owned model-card definitions
 import { defineProviderModels } from "../../model-card";
+import { defineProviderModelClasses } from "../../model-class";
+
+export const ZAI_CODING_PLAN_MODEL_CLASSES = defineProviderModelClasses({
+  pro: { defaultModelId: "glm-5.2" },
+  general: { defaultModelId: "glm-5.1" },
+});
 
 export const ZAI_CODING_PLAN_MODELS = defineProviderModels("zai-coding-plan", [
   {

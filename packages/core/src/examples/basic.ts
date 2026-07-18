@@ -8,7 +8,7 @@ import { c, tag } from "./common/colors";
 
 const I1 = "  ";
 const I2 = "    ";
-const DEFAULT_MODEL = "claude-sonnet-4-6";
+const DEFAULT_MODEL = "claude-sonnet-5";
 
 const calculatorTool: Tool<z.ZodObject<{ expression: z.ZodString }>> = {
   name: "calculator",

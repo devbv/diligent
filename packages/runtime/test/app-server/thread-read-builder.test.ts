@@ -35,7 +35,7 @@ describe("buildThreadReadItems", () => {
         message: {
           role: "assistant",
           content: [{ type: "tool_call", id: "tc_1", name: "glob", input: { pattern: "**/*", path: "/" } }],
-          model: { provider: "anthropic", modelId: "claude-sonnet-4-6" },
+          model: { provider: "anthropic", modelId: "claude-sonnet-5" },
           usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
           stopReason: "tool_use",
           timestamp: 100,

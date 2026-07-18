@@ -23,7 +23,7 @@ import {
   ToolsListResponseSchema,
 } from "../src";
 
-const TEST_MODEL_ID = "claude-sonnet-4-6";
+const TEST_MODEL_ID = "claude-sonnet-5";
 
 describe("protocol/flow", () => {
   it("accepts structured context notices for live events and thread snapshots", () => {

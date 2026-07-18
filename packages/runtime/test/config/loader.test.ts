@@ -8,7 +8,7 @@ import type { DiligentConfig } from "@diligent/runtime/config";
 import { loadDiligentConfig, mergeConfig } from "@diligent/runtime/config";
 
 const TEST_ROOT = join(tmpdir(), `diligent-config-test-${Date.now()}`);
-const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-4-6";
+const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-5";
 /** Separate HOME dir so global (~/.diligent/config.jsonc) != project (.diligent/config.jsonc) */
 const TEST_HOME = join(TEST_ROOT, "home");
 let origHome: string | undefined;

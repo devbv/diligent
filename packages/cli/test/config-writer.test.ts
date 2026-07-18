@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { saveApiKey } from "../src/config-writer";
 
 const TEST_ROOT = join(tmpdir(), `diligent-config-writer-test-${Date.now()}`);
-const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-4-6";
+const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-5";
 
 afterEach(async () => {
   try {

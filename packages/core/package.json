@@ -17,9 +17,9 @@
     "./provider-contract": "./src/contracts/provider.ts",
     "./providers/chatgpt": "./src/llm/provider/chatgpt/index.ts",
     "./providers/anthropic": "./src/llm/provider/anthropic/index.ts",
-    "./providers/gemini": "./src/llm/provider/gemini.ts",
+    "./providers/gemini": "./src/llm/provider/gemini/index.ts",
     "./providers/openai": "./src/llm/provider/openai/index.ts",
-    "./providers/vertex": "./src/llm/provider/vertex.ts",
+    "./providers/vertex": "./src/llm/provider/vertex/index.ts",
     "./tool-contract": "./src/contracts/tool.ts"
   },
   "dependencies": {

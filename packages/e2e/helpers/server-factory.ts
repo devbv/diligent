@@ -29,7 +29,7 @@ export function createTestServer(opts: {
       createAgent: () =>
         new RuntimeAgent(
           {
-            modelId: "claude-sonnet-4-6",
+            modelId: "claude-sonnet-5",
             provider: "anthropic",
             contextWindow: 8192,
             maxOutputTokens: 4096,
@@ -49,7 +49,7 @@ export function createTestServer(opts: {
   );
   const runtimeConfig: RuntimeConfig = {
     model: {
-      modelId: "claude-sonnet-4-6",
+      modelId: "claude-sonnet-5",
       provider: "anthropic",
       contextWindow: 8192,
       maxOutputTokens: 4096,

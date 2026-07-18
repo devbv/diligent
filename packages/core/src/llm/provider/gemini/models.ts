@@ -1,7 +1,14 @@
 // @summary Gemini-owned model-card definitions
 import { defineProviderModels } from "../../model-card";
+import { defineProviderModelClasses } from "../../model-class";
 
 export const GEMINI_THINKING_BUDGETS = { low: 2_048, medium: 8_192, high: 16_384, max: 24_576 } as const;
+
+export const GEMINI_MODEL_CLASSES = defineProviderModelClasses({
+  pro: { defaultModelId: "gemini-3.1-pro-preview" },
+  general: { defaultModelId: "gemini-3.5-flash" },
+  lite: { defaultModelId: "gemini-3.1-flash-lite" },
+});
 
 export const GEMINI_MODELS = defineProviderModels("gemini", [
   {

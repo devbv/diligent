@@ -8,7 +8,7 @@ import { buildResponsesRequestBody, toResponseInputItems } from "../../../src/ll
 import { describeCompactionPayload, extractCompactionSummaryItem } from "../../../src/llm/provider/openai/shared";
 import type { Model } from "../../../src/llm/types";
 
-const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-4-6";
+const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-5";
 
 const originalFetch = globalThis.fetch;
 

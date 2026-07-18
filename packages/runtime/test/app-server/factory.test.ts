@@ -17,7 +17,7 @@ import { writeKnowledge } from "../../src/knowledge/store";
 import type { BundledToolProvider } from "../../src/tools/bundled-provider";
 import { makeAssistant, makeStreamFn } from "../helpers/collab";
 
-const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-4-6";
+const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-5";
 
 function makeRuntimeConfig(overrides?: Partial<RuntimeConfig>): RuntimeConfig {
   const providerManager = new ProviderManager({});

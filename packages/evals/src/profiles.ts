@@ -11,7 +11,7 @@ const EVAL_EFFORT = "medium" as const;
 
 export const CANONICAL_PROFILES: readonly EvalProfile[] = [
   { provider: "openai", model: "gpt-5.6-terra", effort: EVAL_EFFORT },
-  { provider: "anthropic", model: "claude-sonnet-4-6", effort: EVAL_EFFORT },
+  { provider: "anthropic", model: "claude-sonnet-5", effort: EVAL_EFFORT },
 ];
 
 export function resolveSelectedProfiles(options: EvalCliOptions): EvalProfile[] {

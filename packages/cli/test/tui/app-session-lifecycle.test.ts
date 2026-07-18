@@ -4,7 +4,7 @@ import { describe, expect, mock, test } from "bun:test";
 import { resolveModel } from "@diligent/runtime";
 import { AppSessionLifecycle } from "../../src/tui/app-session-lifecycle";
 
-const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-4-6";
+const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-5";
 
 function createLifecycleWithThreadRead(threadRead: unknown) {
   const addUserMessage = mock(() => {});

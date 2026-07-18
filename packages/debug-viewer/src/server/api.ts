@@ -29,7 +29,7 @@ function calculateUsageCost(
   let model = ref ? findModel(ref) : undefined;
 
   if (!model && modelId.startsWith("claude-sonnet-4-"))
-    model = findModel({ provider: "anthropic", modelId: "claude-sonnet-4-6" });
+    model = findModel({ provider: "anthropic", modelId: "claude-sonnet-5" });
   if (!model && modelId.startsWith("claude-opus-4-"))
     model = findModel({ provider: "anthropic", modelId: "claude-opus-4-8" });
   if (!model && modelId.startsWith("claude-haiku-4-"))

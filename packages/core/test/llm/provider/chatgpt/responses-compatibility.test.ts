@@ -1,19 +1,11 @@
 // @summary Tests for GPT-5.6 Responses request and usage compatibility
 import { afterEach, describe, expect, test } from "bun:test";
-import { buildResponsesRequestBody, isGpt56Model, mapUsage } from "../../../../src/llm/provider/openai/responses";
+import { buildResponsesRequestBody, mapUsage } from "../../../../src/llm/provider/openai/responses";
 import { restoreChatGPTStreamTestState } from "../../../helpers/chatgpt-stream";
 
 afterEach(restoreChatGPTStreamTestState);
 
 describe("GPT-5.6 Responses API compatibility", () => {
-  test("matches only the official GPT-5.6 model IDs and family alias", () => {
-    expect(isGpt56Model("gpt-5.6")).toBe(true);
-    expect(isGpt56Model("gpt-5.6-sol")).toBe(true);
-    expect(isGpt56Model("gpt-5.6-terra")).toBe(true);
-    expect(isGpt56Model("gpt-5.6-luna")).toBe(true);
-    expect(isGpt56Model("gpt-5.6-unknown")).toBe(false);
-  });
-
   test("passes GPT-5.5 xhigh through without effort translation", async () => {
     const body = await buildResponsesRequestBody({
       model: "gpt-5.5",

@@ -7,7 +7,7 @@ import { modelCommand } from "../../../../src/tui/commands/builtin/model";
 import type { CommandContext } from "../../../../src/tui/commands/types";
 import type { ListPickerItem } from "../../../../src/tui/components/list-picker";
 
-const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-4-6";
+const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-5";
 
 function makeConfig(modelId: string, providerManager: AppConfig["providerManager"]): AppConfig {
   const ref =

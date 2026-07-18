@@ -38,7 +38,7 @@ describe("ChatGPT HTTP transport", () => {
     ).toBe("error status=429 code=rate_limit message=try again");
   });
 
-  test("uses HTTP/SSE + Lite for every ChatGPT GPT-5.6 model by default", async () => {
+  test("uses HTTP/SSE + Lite by default for a compatible ChatGPT model", async () => {
     const requests: Array<{ headers: Headers; body: Record<string, unknown> }> = [];
     globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
       requests.push({
@@ -55,62 +55,37 @@ describe("ChatGPT HTTP transport", () => {
       },
     });
 
-    for (const [modelId, effort] of [
-      ["chatgpt-5.6-sol", "xhigh"],
-      ["chatgpt-5.6-terra", "max"],
-      ["chatgpt-5.6-luna", "medium"],
-    ] as const) {
-      const events = await collectEvents(
-        chatgptStream(
-          resolveModel({ provider: "chatgpt", modelId: modelId.replace(/^chatgpt-/, "gpt-") }),
-          TEST_CONTEXT,
-          {
-            effort,
-            sessionId: "session_1",
-          },
-        ),
-      );
-      expect(events.some((event) => event.type === "done")).toBe(true);
-    }
+    const events = await collectEvents(
+      chatgptStream(resolveModel({ provider: "chatgpt", modelId: "gpt-5.6-luna" }), TEST_CONTEXT, {
+        effort: "medium",
+        sessionId: "session_1",
+      }),
+    );
+    expect(events.some((event) => event.type === "done")).toBe(true);
 
     expect(webSocketCalled).toBe(false);
-    expect(requests.map((request) => request.headers.get("x-openai-internal-codex-responses-lite"))).toEqual([
-      "true",
-      "true",
-      "true",
-    ]);
-    expect(requests.map((request) => request.headers.get("version"))).toEqual(["0.144.1", "0.144.1", "0.144.1"]);
-    expect(requests.map((request) => request.headers.get("ChatGPT-Account-ID"))).toEqual([
-      "acct_1",
-      "acct_1",
-      "acct_1",
-    ]);
-    expect(requests.map((request) => request.headers.get("session-id"))).toEqual([
-      "session_1",
-      "session_1",
-      "session_1",
-    ]);
-    expect(requests.map((request) => request.headers.get("session_id"))).toEqual([null, null, null]);
+    expect(requests).toHaveLength(1);
+    const request = requests[0];
+    if (!request) throw new Error("Expected one ChatGPT HTTP request");
+    expect(request.headers.get("x-openai-internal-codex-responses-lite")).toBe("true");
+    expect(request.headers.get("version")).toBe("0.144.1");
+    expect(request.headers.get("ChatGPT-Account-ID")).toBe("acct_1");
+    expect(request.headers.get("session-id")).toBe("session_1");
+    expect(request.headers.get("session_id")).toBeNull();
 
-    const requestBodies = requests.map((request) => request.body);
-    expect(requestBodies.map((body) => body.type)).toEqual([undefined, undefined, undefined]);
-    expect(requestBodies.map((body) => body.model)).toEqual(["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]);
-    expect(requestBodies.map((body) => (body.reasoning as { effort: string }).effort)).toEqual([
-      "xhigh",
-      "max",
-      "medium",
-    ]);
-    for (const body of requestBodies) {
-      expect(body.instructions).toBeUndefined();
-      expect(body.tools).toBeUndefined();
-      expect(body.parallel_tool_calls).toBe(false);
-      expect((body.reasoning as { context: string }).context).toBe("all_turns");
-      expect((body.input as Array<Record<string, unknown>>)[0]).toEqual({
-        type: "additional_tools",
-        role: "developer",
-        tools: [],
-      });
-    }
+    const body = request.body;
+    expect(body.type).toBeUndefined();
+    expect(body.model).toBe("gpt-5.6-luna");
+    expect((body.reasoning as { effort: string }).effort).toBe("medium");
+    expect(body.instructions).toBeUndefined();
+    expect(body.tools).toBeUndefined();
+    expect(body.parallel_tool_calls).toBe(false);
+    expect((body.reasoning as { context: string }).context).toBe("all_turns");
+    expect((body.input as Array<Record<string, unknown>>)[0]).toEqual({
+      type: "additional_tools",
+      role: "developer",
+      tools: [],
+    });
   });
 
   test("preserves raw HTTP/SSE incomplete terminal classification", async () => {

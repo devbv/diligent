@@ -9,7 +9,7 @@ import { loadRuntimeConfig, resolveRuntimeModel } from "../../src/config/runtime
 import type { DiligentPaths } from "../../src/infrastructure";
 
 let tmpRoot = "";
-const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-4-6";
+const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-5";
 let originalStorageNamespace: string | undefined;
 
 function makePaths(base: string): DiligentPaths {
@@ -47,7 +47,7 @@ describe("loadRuntimeConfig", () => {
   });
 
   it("uses the configured provider default when the last selected provider is unavailable", () => {
-    expect(resolveRuntimeModel({ provider: "anthropic", modelId: "claude-sonnet-4-6" }, ["openai"]).modelId).toBe(
+    expect(resolveRuntimeModel({ provider: "anthropic", modelId: "claude-sonnet-5" }, ["openai"]).modelId).toBe(
       "gpt-5.6-sol",
     );
   });

@@ -2,6 +2,14 @@
 
 import type { ModelInfo, ModelRef, ThinkingEffort } from "@diligent/protocol";
 
+const DEFAULT_THINKING_EFFORT_VALUES = [
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+] as const satisfies readonly ThinkingEffort[];
+
 export function sameModelRef(a: ModelRef | undefined, b: ModelRef | undefined): boolean {
   return a === b || (a !== undefined && b !== undefined && a.provider === b.provider && a.modelId === b.modelId);
 }
@@ -35,35 +43,26 @@ export function supportsThinkingEffort(
   effort: ThinkingEffort,
 ): boolean {
   if (!model?.supportsThinking) return false;
-  return model.supportedEfforts?.includes(effort) ?? effort !== "xhigh";
+  return model.supportedEfforts?.includes(effort) ?? DEFAULT_THINKING_EFFORT_VALUES.includes(effort);
 }
 
 export function getThinkingEffortOptions(
   model: Pick<ModelInfo, "supportsThinking" | "supportedEfforts"> | undefined,
 ): Array<{ value: ThinkingEffort; label: string }> {
-  const fallbackEffortValues: ThinkingEffort[] = ["low", "medium", "high", "max"];
   if (model && !model.supportsThinking) return [];
   const supportedEfforts =
-    model?.supportsThinking === true ? (model.supportedEfforts ?? fallbackEffortValues) : fallbackEffortValues;
+    model?.supportsThinking === true
+      ? (model.supportedEfforts ?? DEFAULT_THINKING_EFFORT_VALUES)
+      : DEFAULT_THINKING_EFFORT_VALUES;
   return supportedEfforts.map((effort) => ({ value: effort, label: effort }));
 }
 
 export function normalizeThinkingEffort(
-  model: Pick<ModelInfo, "provider" | "supportsThinking" | "supportedEfforts"> | undefined,
+  model: Pick<ModelInfo, "supportsThinking" | "supportedEfforts"> | undefined,
   effort: ThinkingEffort,
 ): ThinkingEffort {
-  if (!model) return effort;
-  if (!model.supportsThinking) {
-    return effort === "xhigh" ? "medium" : effort;
-  }
+  if (!model || !model.supportsThinking) return effort;
   if (supportsThinkingEffort(model, effort)) return effort;
-  if (
-    effort === "xhigh" &&
-    (model.provider === "openai" || model.provider === "chatgpt") &&
-    supportsThinkingEffort(model, "max")
-  ) {
-    return "max";
-  }
   if (supportsThinkingEffort(model, "medium")) return "medium";
   return getThinkingEffortOptions(model)[0]?.value ?? effort;
 }

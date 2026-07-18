@@ -1,63 +1,47 @@
-// @summary Tests for model-specific thinking-effort options and compatibility normalization
+// @summary Tests thinking-effort behavior independently of the current model catalog
 
 import { describe, expect, it } from "bun:test";
-import { listModels, resolveModel } from "../../src/llm/models";
 import {
   getThinkingEffortOptions,
   normalizeThinkingEffort,
   supportsThinkingEffort,
 } from "../../src/llm/thinking-effort";
+import type { ProviderName, ThinkingEffort } from "../../src/llm/types";
+
+function thinkingModel(supportedEfforts?: ThinkingEffort[], provider: ProviderName = "anthropic") {
+  return { provider, supportsThinking: true, supportedEfforts };
+}
 
 describe("thinking effort capabilities", () => {
-  it("exposes the full effort set for native provider models other than GPT-5.5", () => {
-    for (const model of listModels().filter(
-      ({ modelId, provider }) => !modelId.endsWith("5.5") && ["anthropic", "openai", "chatgpt"].includes(provider),
-    )) {
-      expect(getThinkingEffortOptions(model).map((option) => option.value)).toEqual([
-        "low",
-        "medium",
-        "high",
-        "xhigh",
-        "max",
-      ]);
-    }
+  it("uses the model's explicit effort set", () => {
+    expect(getThinkingEffortOptions(thinkingModel(["low", "xhigh"])).map((option) => option.value)).toEqual([
+      "low",
+      "xhigh",
+    ]);
   });
 
-  it("exposes xhigh instead of max for GPT-5.5", () => {
-    for (const provider of ["openai", "chatgpt"] as const) {
-      expect(
-        getThinkingEffortOptions(resolveModel({ provider, modelId: "gpt-5.5" })).map((option) => option.value),
-      ).toEqual(["low", "medium", "high", "xhigh"]);
-    }
-  });
-
-  it("uses the generic effort set when no explicit model is selected", () => {
-    expect(getThinkingEffortOptions(undefined).map((option) => option.value)).toEqual(["low", "medium", "high", "max"]);
+  it("includes xhigh by default without explicit model capabilities", () => {
+    expect(getThinkingEffortOptions(undefined).map((option) => option.value)).toContain("xhigh");
+    expect(getThinkingEffortOptions(thinkingModel()).map((option) => option.value)).toContain("xhigh");
+    expect(supportsThinkingEffort(thinkingModel(), "xhigh")).toBe(true);
   });
 
   it("checks explicit model metadata for effort support", () => {
-    expect(supportsThinkingEffort(resolveModel({ provider: "openai", modelId: "gpt-5.5" }), "xhigh")).toBe(true);
-    expect(supportsThinkingEffort(resolveModel({ provider: "anthropic", modelId: "claude-sonnet-4-6" }), "xhigh")).toBe(
-      true,
-    );
-    expect(supportsThinkingEffort(resolveModel({ provider: "chatgpt", modelId: "gpt-5.5" }), "xhigh")).toBe(true);
-    expect(supportsThinkingEffort(resolveModel({ provider: "openai", modelId: "gpt-5.5" }), "max")).toBe(false);
-    expect(supportsThinkingEffort(resolveModel({ provider: "chatgpt", modelId: "gpt-5.5" }), "max")).toBe(false);
+    const model = thinkingModel(["medium", "xhigh"]);
+    expect(supportsThinkingEffort(model, "xhigh")).toBe(true);
+    expect(supportsThinkingEffort(model, "max")).toBe(false);
   });
 
-  it("preserves xhigh for native provider models", () => {
-    expect(normalizeThinkingEffort(resolveModel({ provider: "openai", modelId: "gpt-5.5" }), "xhigh")).toBe("xhigh");
-    expect(
-      normalizeThinkingEffort(resolveModel({ provider: "anthropic", modelId: "claude-sonnet-4-6" }), "xhigh"),
-    ).toBe("xhigh");
-    expect(normalizeThinkingEffort(resolveModel({ provider: "chatgpt", modelId: "gpt-5.5" }), "xhigh")).toBe("xhigh");
+  it("preserves supported effort and normalizes unsupported xhigh to medium", () => {
+    expect(normalizeThinkingEffort(thinkingModel(["medium", "xhigh"]), "xhigh")).toBe("xhigh");
+    expect(normalizeThinkingEffort(thinkingModel(["medium", "max"], "openai"), "xhigh")).toBe("medium");
   });
 
-  it("preserves legacy effort state for non-thinking models while removing xhigh", () => {
-    const model = resolveModel({ provider: "vertex", modelId: "vertex-gemma-4-26b-it" });
+  it("preserves effort state for non-thinking models", () => {
+    const model = { provider: "vertex" as const, supportsThinking: false };
 
     expect(normalizeThinkingEffort(model, "high")).toBe("high");
     expect(normalizeThinkingEffort(model, "max")).toBe("max");
-    expect(normalizeThinkingEffort(model, "xhigh")).toBe("medium");
+    expect(normalizeThinkingEffort(model, "xhigh")).toBe("xhigh");
   });
 });

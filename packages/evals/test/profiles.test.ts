@@ -13,13 +13,13 @@ describe("eval profiles", () => {
 
   test("a provider filter selects one canonical provider profile", () => {
     expect(resolveSelectedProfiles({ ...BASE_OPTIONS, provider: "anthropic" })).toEqual([
-      { provider: "anthropic", model: "claude-sonnet-4-6", effort: "medium" },
+      { provider: "anthropic", model: "claude-sonnet-5", effort: "medium" },
     ]);
   });
 
   test("a model override still uses medium effort", () => {
-    expect(resolveSelectedProfiles({ ...BASE_OPTIONS, model: "claude-sonnet-4-6" })).toEqual([
-      { provider: "anthropic", model: "claude-sonnet-4-6", effort: "medium" },
+    expect(resolveSelectedProfiles({ ...BASE_OPTIONS, model: "claude-sonnet-5" })).toEqual([
+      { provider: "anthropic", model: "claude-sonnet-5", effort: "medium" },
     ]);
   });
 
@@ -31,7 +31,7 @@ describe("eval profiles", () => {
 
   test("a filtered profile requires only its own credential", () => {
     expect(() =>
-      validateCredentials([{ provider: "anthropic", model: "claude-sonnet-4-6", effort: "medium" }], {
+      validateCredentials([{ provider: "anthropic", model: "claude-sonnet-5", effort: "medium" }], {
         ANTHROPIC_API_KEY: "anthropic",
       }),
     ).not.toThrow();

@@ -1,9 +1,15 @@
-// @summary Provider-specific pro, general, and lite model selection policy
+// @summary Aggregates provider-owned pro, general, and lite model selection definitions
+import { MODEL_CLASS_IDS, type ModelClass, type ProviderModelClassDefinitions } from "./model-class";
 import { resolveModel } from "./models";
+import { ANTHROPIC_MODEL_CLASSES } from "./provider/anthropic/models";
+import { CHATGPT_MODEL_CLASSES } from "./provider/chatgpt/models";
+import { GEMINI_MODEL_CLASSES } from "./provider/gemini/models";
+import { OPENAI_MODEL_CLASSES } from "./provider/openai/models";
+import { VERTEX_MODEL_CLASSES } from "./provider/vertex/models";
+import { ZAI_CODING_PLAN_MODEL_CLASSES } from "./provider/zai-coding-plan/models";
 import type { Model, ProviderName, ThinkingEffort } from "./types";
 
-/** Abstract capability levels used to select a provider-specific concrete model. */
-export type ModelClass = "pro" | "general" | "lite";
+export type { ModelClass } from "./model-class";
 
 export interface ModelClassDefinition {
   id: ModelClass;
@@ -12,48 +18,45 @@ export interface ModelClassDefinition {
   additionalModelIds?: Partial<Readonly<Record<ProviderName, readonly string[]>>>;
 }
 
+const DEFAULT_EFFORT_BY_MODEL_CLASS: Readonly<Record<ModelClass, ThinkingEffort>> = {
+  pro: "high",
+  general: "medium",
+  lite: "low",
+};
+
+const PROVIDER_MODEL_CLASSES = {
+  anthropic: ANTHROPIC_MODEL_CLASSES,
+  openai: OPENAI_MODEL_CLASSES,
+  chatgpt: CHATGPT_MODEL_CLASSES,
+  gemini: GEMINI_MODEL_CLASSES,
+  vertex: VERTEX_MODEL_CLASSES,
+  "zai-coding-plan": ZAI_CODING_PLAN_MODEL_CLASSES,
+} satisfies Record<ProviderName, ProviderModelClassDefinitions>;
+
 /**
- * The only three model classes. Each provider may have one concrete default per
- * class, while additional selectable models can retain class membership without
- * carrying policy data on their model cards.
+ * Aggregated compatibility view. New mappings belong in the provider's
+ * `models.ts` file.
  */
-export const MODEL_CLASSES: readonly ModelClassDefinition[] = [
-  {
-    id: "pro",
-    defaultEffort: "high",
-    defaultModelIds: {
-      anthropic: "claude-opus-4-8",
-      gemini: "gemini-3.1-pro-preview",
-      "zai-coding-plan": "glm-5.2",
-      openai: "gpt-5.5",
-      chatgpt: "gpt-5.5",
-    },
-    additionalModelIds: { openai: ["gpt-5.6-sol"], chatgpt: ["gpt-5.6-sol"] },
-  },
-  {
-    id: "general",
-    defaultEffort: "medium",
-    defaultModelIds: {
-      anthropic: "claude-sonnet-4-6",
-      gemini: "gemini-3.5-flash",
-      vertex: "vertex-gemma-4-26b-it",
-      "zai-coding-plan": "glm-5.1",
-      openai: "gpt-5.6-terra",
-      chatgpt: "gpt-5.6-terra",
-    },
-    additionalModelIds: { anthropic: ["claude-sonnet-5"] },
-  },
-  {
-    id: "lite",
-    defaultEffort: "low",
-    defaultModelIds: {
-      anthropic: "claude-haiku-4-5-20251001",
-      gemini: "gemini-3.1-flash-lite",
-      openai: "gpt-5.6-luna",
-      chatgpt: "gpt-5.6-luna",
-    },
-  },
-];
+export const MODEL_CLASSES: readonly ModelClassDefinition[] = MODEL_CLASS_IDS.map((id) => {
+  const defaultModelIds: Partial<Record<ProviderName, string>> = {};
+  const additionalModelIds: Partial<Record<ProviderName, string[]>> = {};
+
+  for (const provider of Object.keys(PROVIDER_MODEL_CLASSES) as ProviderName[]) {
+    const definition = PROVIDER_MODEL_CLASSES[provider][id];
+    if (!definition) continue;
+    defaultModelIds[provider] = definition.defaultModelId;
+    if (definition.additionalModelIds) {
+      additionalModelIds[provider] = [...definition.additionalModelIds];
+    }
+  }
+
+  return {
+    id,
+    defaultEffort: DEFAULT_EFFORT_BY_MODEL_CLASS[id],
+    defaultModelIds,
+    ...(Object.keys(additionalModelIds).length > 0 ? { additionalModelIds } : {}),
+  };
+});
 
 const MODEL_CLASS_BY_ID = new Map(MODEL_CLASSES.map((modelClass) => [modelClass.id, modelClass]));
 const modelClassKey = (provider: ProviderName, modelId: string): string => `${provider}\0${modelId}`;

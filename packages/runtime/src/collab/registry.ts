@@ -1,7 +1,13 @@
 // @summary AgentRegistry — spawn/wait/send_input/close lifecycle for non-blocking multi-agent collab
 
 import type { TextBlock } from "@diligent/core/message-contract";
-import { getModelClass, type ModelClass, resolveModel, resolveModelForClass } from "@diligent/core/model-registry";
+import {
+  getModelClass,
+  type ModelClass,
+  resolveModel,
+  resolveModelForClass,
+  supportsThinkingEffort,
+} from "@diligent/core/model-registry";
 import type { ThinkingEffort } from "@diligent/core/provider-contract";
 import type { Tool } from "@diligent/core/tool-contract";
 import { createLogger } from "@diligent/logging";
@@ -734,14 +740,14 @@ function resolveChildEffort(
 ): ThinkingEffort {
   if (useClassDefaultEffort) {
     const defaultEffort = defaultEffortForModelClass(modelClass);
-    if (childModel.supportsThinking && childModel.supportedEfforts?.includes(defaultEffort)) {
+    if (supportsThinkingEffort(childModel, defaultEffort)) {
       return defaultEffort;
     }
   }
   if (!childModel.supportsThinking) {
     return parentEffort;
   }
-  if (childModel.supportedEfforts?.includes(parentEffort)) {
+  if (supportsThinkingEffort(childModel, parentEffort)) {
     return parentEffort;
   }
   return childModel.supportedEfforts?.[0] ?? "medium";
