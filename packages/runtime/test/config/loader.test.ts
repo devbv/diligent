@@ -4,8 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { DiligentConfig } from "@diligent/runtime/config";
-import { loadDiligentConfig, mergeConfig } from "@diligent/runtime/config";
+import { DEFAULT_CONFIG, type DiligentConfig, loadDiligentConfig, mergeConfig } from "@diligent/runtime/config";
 
 const TEST_ROOT = join(tmpdir(), `diligent-config-test-${Date.now()}`);
 const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-5";
@@ -98,11 +97,10 @@ describe("mergeConfig", () => {
 });
 
 describe("loadDiligentConfig", () => {
-  it("returns default config when no files exist", async () => {
+  it("returns the declared default config when no files exist", async () => {
     await mkdir(TEST_ROOT, { recursive: true });
     const { config, sources } = await loadDiligentConfig(TEST_ROOT);
-    expect(config.model).toBeUndefined();
-    expect(config.planReminderIntervalTurns).toBe(6);
+    expect(config).toEqual(DEFAULT_CONFIG);
     expect(sources).toEqual([]);
   });
 

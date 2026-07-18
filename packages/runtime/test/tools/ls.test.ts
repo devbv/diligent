@@ -78,7 +78,7 @@ describe("ls tool", () => {
     expect(result.render?.blocks[0]).toMatchObject({ type: "list", items: [] });
   });
 
-  test("caps at 500 entries", async () => {
+  test("enforces the 500-entry output safety cap", async () => {
     // Create 510 files
     for (let i = 0; i < 510; i++) {
       await writeFile(join(tmpDir, `file-${String(i).padStart(4, "0")}.txt`), "");

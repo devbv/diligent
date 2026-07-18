@@ -81,7 +81,7 @@ export type ToolCallBlock = z.infer<typeof ToolCallBlockSchema>;
  *   3. Update consumer switch statements in:
  *      - packages/web/src/client/components/AssistantContentBlocks.tsx
  *      - packages/cli/src/tui/components/thread-store-utils.ts
- *   4. Add an e2e scenario to packages/e2e/provider-native-blocks.test.ts.
+ *   4. Add an e2e scenario to packages/e2e/app-server/provider-native-blocks.test.ts.
  *
  * The `name` and `provider` enums here are the authoritative contract; every consumer
  * that branches on these values must be updated together to avoid silent miss-branches.

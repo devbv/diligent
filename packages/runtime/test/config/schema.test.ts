@@ -88,7 +88,7 @@ describe("DiligentConfigSchema — tools section", () => {
     expect(() => DiligentConfigSchema.parse({ bogus: true })).toThrow();
   });
 
-  it("defaults plugin enabled to true when omitted", () => {
+  it("preserves omitted plugin-enabled config compatibility", () => {
     const result = DiligentConfigSchema.parse({
       tools: {
         plugins: [{ package: "some-plugin" }],

@@ -127,16 +127,8 @@ describe("buildToolCatalog", () => {
     const builtins = standardBuiltins();
     const result = await buildToolCatalog(builtins, undefined, "/tmp");
 
-    expect(toolNames(result.tools)).toEqual([
-      "plan",
-      "request_user_input",
-      "skill",
-      "bash",
-      "read",
-      "web_action",
-      "write",
-    ]);
-    expect(result.state).toHaveLength(7);
+    expect(toolNames(result.tools)).toEqual(toolNames(builtins));
+    expect(result.state).toHaveLength(builtins.length);
     expect(result.plugins).toEqual([]);
     for (const entry of result.state) {
       expect(entry.enabled).toBe(true);
@@ -152,16 +144,8 @@ describe("buildToolCatalog", () => {
     const builtins = standardBuiltins();
     const result = await buildToolCatalog(builtins, {}, "/tmp");
 
-    expect(toolNames(result.tools)).toEqual([
-      "plan",
-      "request_user_input",
-      "skill",
-      "bash",
-      "read",
-      "web_action",
-      "write",
-    ]);
-    expect(result.state).toHaveLength(7);
+    expect(toolNames(result.tools)).toEqual(toolNames(builtins));
+    expect(result.state).toHaveLength(builtins.length);
     expect(result.plugins).toEqual([]);
     expect(result.pluginErrors).toEqual([]);
   });
@@ -170,22 +154,14 @@ describe("buildToolCatalog", () => {
     const builtins = standardBuiltins();
     const result = await buildToolCatalog(builtins, { web_action: false }, "/tmp");
 
-    expect(toolNames(result.tools)).toEqual([
-      "plan",
-      "request_user_input",
-      "skill",
-      "bash",
-      "read",
-      "web_action",
-      "write",
-    ]);
+    expect(toolNames(result.tools)).toEqual(toolNames(builtins));
   });
 
   it("excludes a disabled non-immutable builtin", async () => {
     const builtins = standardBuiltins();
     const result = await buildToolCatalog(builtins, { builtin: { bash: false } }, "/tmp");
 
-    expect(toolNames(result.tools)).toEqual(["plan", "request_user_input", "skill", "read", "web_action", "write"]);
+    expect(toolNames(result.tools)).toEqual(toolNames(builtins).filter((name) => name !== "bash"));
     const bashState = result.state.find((s) => s.name === "bash");
     expect(bashState).toBeDefined();
     expect(bashState!.enabled).toBe(false);
@@ -231,7 +207,7 @@ describe("buildToolCatalog", () => {
     const builtins = standardBuiltins();
     const result = await buildToolCatalog(builtins, { builtin: { bash: false, write: false } }, "/tmp");
 
-    expect(toolNames(result.tools)).toEqual(["plan", "request_user_input", "skill", "read", "web_action"]);
+    expect(toolNames(result.tools)).toEqual(toolNames(builtins).filter((name) => name !== "bash" && name !== "write"));
     const bashState = result.state.find((s) => s.name === "bash");
     const writeState = result.state.find((s) => s.name === "write");
     expect(bashState!.enabled).toBe(false);
@@ -268,22 +244,24 @@ describe("buildToolCatalog", () => {
 
     for (const policy of ["error", "builtin_wins", "plugin_wins"] as const) {
       const result = await buildToolCatalog(builtins, { conflictPolicy: policy }, "/tmp");
-      expect(result.tools).toHaveLength(7);
+      expect(result.tools).toHaveLength(builtins.length);
       expect(result.pluginErrors).toEqual([]);
     }
   });
 
   it("keeps only immutable tools when all non-immutable builtins are disabled", async () => {
     const builtins = standardBuiltins();
+    const disabledNames = new Set(["bash", "read", "web_action", "write"]);
+    const expectedNames = toolNames(builtins).filter((name) => !disabledNames.has(name));
     const result = await buildToolCatalog(
       builtins,
       { builtin: { bash: false, read: false, web_action: false, write: false } },
       "/tmp",
     );
 
-    expect(toolNames(result.tools)).toEqual(["plan", "request_user_input", "skill"]);
-    expect(result.state.filter((s) => s.enabled)).toHaveLength(3);
-    expect(result.state.filter((s) => !s.enabled)).toHaveLength(4);
+    expect(toolNames(result.tools)).toEqual(expectedNames);
+    expect(result.state.filter((s) => s.enabled)).toHaveLength(expectedNames.length);
+    expect(result.state.filter((s) => !s.enabled)).toHaveLength(builtins.length - expectedNames.length);
   });
 
   it("handles empty builtins array gracefully", async () => {
@@ -296,24 +274,16 @@ describe("buildToolCatalog", () => {
   });
 
   it("loads plugin tools and exposes separate plugin state metadata", async () => {
+    const builtins = standardBuiltins();
     const result = await buildToolCatalog(
-      standardBuiltins(),
+      builtins,
       {
         plugins: [{ package: "@test/catalog-plugin", enabled: true }],
       },
       "/tmp",
     );
 
-    expect(toolNames(result.tools)).toEqual([
-      "plan",
-      "request_user_input",
-      "skill",
-      "bash",
-      "read",
-      "web_action",
-      "write",
-      "plugin_tool",
-    ]);
+    expect(toolNames(result.tools)).toEqual([...toolNames(builtins), "plugin_tool"]);
     expect(result.plugins).toEqual([
       {
         package: "@test/catalog-plugin",
@@ -335,30 +305,21 @@ describe("buildToolCatalog", () => {
   });
 
   it("merges bundled provider tools between builtins and external plugins", async () => {
+    const builtins = standardBuiltins();
     const provider: BundledToolProvider = {
       id: "@product/bundled-tools",
       createTools: () => [mockTool("bundled_tool")],
     };
 
     const result = await buildToolCatalog(
-      standardBuiltins(),
+      builtins,
       { plugins: [{ package: "@test/catalog-plugin", enabled: true }] },
       "/tmp",
       undefined,
       { bundledProviders: [provider] },
     );
 
-    expect(toolNames(result.tools)).toEqual([
-      "plan",
-      "request_user_input",
-      "skill",
-      "bash",
-      "read",
-      "web_action",
-      "write",
-      "bundled_tool",
-      "plugin_tool",
-    ]);
+    expect(toolNames(result.tools)).toEqual([...toolNames(builtins), "bundled_tool", "plugin_tool"]);
     expect(result.state.find((s) => s.name === "bundled_tool")).toMatchObject({
       source: "plugin",
       pluginPackage: "@product/bundled-tools",
@@ -488,23 +449,16 @@ describe("buildToolCatalog", () => {
   });
 
   it("records disabled plugin packages separately from tool-level state", async () => {
+    const builtins = standardBuiltins();
     const result = await buildToolCatalog(
-      standardBuiltins(),
+      builtins,
       {
         plugins: [{ package: "@test/catalog-plugin", enabled: false, tools: { plugin_tool: false } }],
       },
       "/tmp",
     );
 
-    expect(toolNames(result.tools)).toEqual([
-      "plan",
-      "request_user_input",
-      "skill",
-      "bash",
-      "read",
-      "web_action",
-      "write",
-    ]);
+    expect(toolNames(result.tools)).toEqual(toolNames(builtins));
     expect(result.plugins).toEqual([
       {
         package: "@test/catalog-plugin",
@@ -620,8 +574,9 @@ describe("buildToolCatalog", () => {
   });
 
   it("keeps state ordering deterministic: builtins first, then plugins in config order", async () => {
+    const builtins = standardBuiltins();
     const result = await buildToolCatalog(
-      standardBuiltins(),
+      builtins,
       {
         plugins: [
           { package: "@test/catalog-plugin", enabled: true },
@@ -631,17 +586,7 @@ describe("buildToolCatalog", () => {
       "/tmp",
     );
 
-    expect(toolNames(result.tools)).toEqual([
-      "plan",
-      "request_user_input",
-      "skill",
-      "bash",
-      "read",
-      "web_action",
-      "write",
-      "plugin_tool",
-      "good_plugin_tool",
-    ]);
+    expect(toolNames(result.tools)).toEqual([...toolNames(builtins), "plugin_tool", "good_plugin_tool"]);
   });
 
   // ── Auto-discovery tests ────────────────────────────────────────────────────
@@ -765,17 +710,10 @@ describe("buildToolCatalog", () => {
     // TEST_HOME is set but plugins subdir was never created for this test.
     await rm(getGlobalPluginRoot(), { recursive: true, force: true });
 
-    const result = await buildToolCatalog(standardBuiltins(), {}, "/tmp");
+    const builtins = standardBuiltins();
+    const result = await buildToolCatalog(builtins, {}, "/tmp");
     expect(result.plugins).toEqual([]);
-    expect(toolNames(result.tools)).toEqual([
-      "plan",
-      "request_user_input",
-      "skill",
-      "bash",
-      "read",
-      "web_action",
-      "write",
-    ]);
+    expect(toolNames(result.tools)).toEqual(toolNames(builtins));
   });
 
   // ── Existing global-dir test (kept for regression) ─────────────────────────

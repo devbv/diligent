@@ -17,7 +17,7 @@ Read only what your task requires.
 | Source code — cli (TUI) | `packages/cli/` |
 | Source code — web (React + Tailwind web frontend) | `packages/web/` |
 | Source code — debug-viewer (React web viewer) | `packages/debug-viewer/` |
-| Source code — e2e (integration tests) | `packages/e2e/` |
+| Source code — end-to-end suites | `packages/e2e/` |
 | Product and usage guides | `docs/guide/` |
 | Planning, decisions & phase specs | `docs/plan/` |
 | Past tech-lead assessments | `docs/review/` |
@@ -59,9 +59,26 @@ Most source files include a `@summary` annotation on the first line: `// @summar
 - For end-to-end scenarios, place tests in `packages/e2e/` only.
 - For existing mixed layouts, prefer incremental migration to this convention when touching related files.
 
+### Test Layer Routing
+
+- Put a scenario in `packages/e2e/app-server/` when it drives `DiligentAppServer` through public JSON-RPC and proves
+  only client-observable behavior: a response, notification, persisted state, or external effect.
+- An in-memory `RpcPeer` still exercises the app-server's real transport-neutral boundary. Stdio/NDJSON, WebSocket,
+  CLI child-process startup, and Web host startup belong to their owning host or transport suite.
+- Keep a test under `packages/runtime/test/app-server/` when it calls a handler or helper directly, inspects internal
+  state, verifies collaborator calls, or names an implementation detail such as a cache, map, serializer, or injected
+  default.
+- As a practical check: a test that should pass for any implementation of the same JSON-RPC contract belongs in e2e;
+  a test that must change after an internal refactor belongs with the package implementation.
+- App-server e2e tests should import public package surfaces rather than `packages/*/src/**`. When touching legacy mixed
+  tests, migrate protocol-observable scenarios incrementally instead of adding more mixed coverage.
+
 ### Test Design
 
 - Test behavior and stable invariants, not volatile configuration snapshots.
+- A test must assert an observable that would fail under a plausible incorrect implementation of the named behavior. Successful completion alone is insufficient unless completion or liveness is itself the contract.
+- Prompts and mocked model responses are test inputs, not evidence of model behavior. Tests using them must assert runtime-owned propagation, filtering, persistence, or state transitions; prompt-content tests may assert only the rendered or injected prompt contract.
+- Avoid tests whose result is determined entirely by the fixture or an imported dependency unless the test verifies an otherwise-unobservable integration boundary.
 - Do not assert concrete configuration values merely to mirror the current state. Examples include exact default model IDs, complete supported-model or provider lists, catalog counts, feature-flag defaults, and the presence or absence of a particular configured entry.
 - When testing configuration-driven behavior, derive expectations from the configuration under test instead of duplicating its concrete values in the test.
 - Prefer inline synthetic fixtures when testing generic capability, policy, selection, or normalization logic. Model effort and model-class routing are examples, not special cases.

@@ -18,7 +18,7 @@ export interface WebSocketSender {
  * (call with each raw incoming message to dispatch it to registered listeners).
  *
  * This shared implementation is used by both `packages/web/src/server/index.ts` (production
- * WebSocket server) and `packages/e2e/helpers/ws-server-factory.ts` (transport-level e2e
+ * WebSocket server) and `packages/e2e/app-server/helpers/ws-server-factory.ts` (transport-level e2e
  * tests), ensuring that e2e tests exercise the same message-parsing code path as production.
  */
 export function createWsPeer(ws: WebSocketSender): {

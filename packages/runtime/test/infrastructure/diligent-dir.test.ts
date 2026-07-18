@@ -39,7 +39,7 @@ describe("resolvePaths", () => {
     expect(paths.root).toBe(base);
   });
 
-  it("defaults to diligent without env", () => {
+  it("preserves the generic runtime namespace compatibility contract without env", () => {
     expect(resolveStorageNamespace({} as NodeJS.ProcessEnv)).toBe(DEFAULT_STORAGE_NAMESPACE);
     expect(resolveProjectDirName({} as NodeJS.ProcessEnv)).toBe(".diligent");
   });

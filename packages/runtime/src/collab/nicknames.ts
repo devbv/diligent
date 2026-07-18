@@ -92,15 +92,17 @@ const NAMES: readonly string[] = [
 
 export class NicknamePool {
   private available: string[];
+  private readonly names: readonly string[];
 
-  constructor() {
-    this.available = this.shuffle([...NAMES]);
+  constructor(options: { names?: readonly string[] } = {}) {
+    this.names = options.names?.length ? options.names : NAMES;
+    this.available = this.shuffle([...this.names]);
   }
 
   /** Reserve a random nickname, resetting the pool when exhausted. */
   reserve(): string {
     if (this.available.length === 0) {
-      this.available = this.shuffle([...NAMES]);
+      this.available = this.shuffle([...this.names]);
     }
     return this.available.pop()!;
   }

@@ -10,27 +10,24 @@ describe("NicknamePool", () => {
     expect(name.length).toBeGreaterThan(0);
   });
 
-  it("returns unique names within the 87-name pool", () => {
-    const pool = new NicknamePool();
+  it("returns each configured name once before reuse", () => {
+    const names = ["Acacia", "Birch", "Cedar"];
+    const pool = new NicknamePool({ names });
     const seen = new Set<string>();
-    // Reserve all 87 names — each should be unique
-    for (let i = 0; i < 87; i++) {
+    for (const _ of names) {
       const name = pool.reserve();
       expect(seen.has(name)).toBe(false);
       seen.add(name);
     }
-    expect(seen.size).toBe(87);
+    expect(seen).toEqual(new Set(names));
   });
 
   it("resets and continues after exhaustion", () => {
-    const pool = new NicknamePool();
-    // Drain the pool
-    for (let i = 0; i < 87; i++) {
+    const names = ["Acacia", "Birch"];
+    const pool = new NicknamePool({ names });
+    for (const _ of names) {
       pool.reserve();
     }
-    // 88th should work (pool resets)
-    const name = pool.reserve();
-    expect(typeof name).toBe("string");
-    expect(name.length).toBeGreaterThan(0);
+    expect(names).toContain(pool.reserve());
   });
 });

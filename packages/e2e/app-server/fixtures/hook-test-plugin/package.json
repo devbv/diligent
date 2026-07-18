@@ -1,0 +1,7 @@
+{
+  "name": "hook-test-plugin",
+  "description": "Prompt and stop hook fixture for the app-server e2e suite",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./index.js"
+}

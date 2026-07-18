@@ -406,6 +406,7 @@ describe("SessionManager", () => {
 
     try {
       await mgr.run({ role: "user", content: "show code", timestamp: Date.now() });
+      await mgr.waitForWrites();
 
       const joinedLogs = errorSpy.mock.calls.map((call) => call.join(" ")).join("\n");
       expect(joinedLogs).toContain("code=overloaded_error");
@@ -630,10 +631,15 @@ describe("SessionManager", () => {
     const mgr = new SessionManager(makeManagerConfig(dir, createMockStreamFn([])));
     await mgr.create();
 
-    mgr.appendModeChange("plan", "command");
+    mgr.appendModeChange("plan", "cli");
     await mgr.waitForWrites();
 
-    expect(mgr.entryCount).toBe(1);
+    const { entries } = await readSessionFile(mgr.sessionPath!);
+    expect(entries.find((entry) => entry.type === "mode_change")).toMatchObject({
+      type: "mode_change",
+      mode: "plan",
+      changedBy: "cli",
+    });
   });
 
   test("appendModeChange() defaults changedBy to 'command'", async () => {
@@ -641,7 +647,15 @@ describe("SessionManager", () => {
     const mgr = new SessionManager(makeManagerConfig(dir, createMockStreamFn([])));
     await mgr.create();
 
-    expect(() => mgr.appendModeChange("execute")).not.toThrow();
+    mgr.appendModeChange("execute");
+    await mgr.waitForWrites();
+
+    const { entries } = await readSessionFile(mgr.sessionPath!);
+    expect(entries.find((entry) => entry.type === "mode_change")).toMatchObject({
+      type: "mode_change",
+      mode: "execute",
+      changedBy: "command",
+    });
   });
 
   test("appendModelChange() persists model_change entry payload", async () => {
@@ -764,6 +778,7 @@ describe("SessionManager", () => {
     const events: AgentEvent[] = [];
     const unsub = mgr.subscribe((e) => events.push(e));
     await mgr.run({ role: "user", content: "start compacting", timestamp: Date.now() });
+    await mgr.waitForWrites();
     unsub();
 
     const compactionStartIndex = events.findIndex((event) => event.type === "compaction_start");
@@ -808,6 +823,7 @@ describe("SessionManager", () => {
 
     await mgr.run({ role: "user", content: "first", timestamp: Date.now() });
     await mgr.run({ role: "user", content: "second", timestamp: Date.now() });
+    await mgr.waitForWrites();
 
     const prefixLogs = logs.filter((record) => record.event === "usage_prefix_compare");
 
@@ -844,6 +860,7 @@ describe("SessionManager", () => {
 
     await mgr.run({ role: "user", content: "first", timestamp: Date.now() });
     await mgr.run({ role: "user", content: "second", timestamp: Date.now() });
+    await mgr.waitForWrites();
 
     expect(logs.filter((record) => record.event === "usage_prefix_compare")).toHaveLength(0);
   });

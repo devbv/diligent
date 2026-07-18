@@ -4,12 +4,12 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { LocalImageLoader } from "@diligent/core/image-contract";
-import { getModelInfoList } from "@diligent/core/model-registry";
 import type { Model } from "@diligent/core/provider-contract";
 import { ProviderManager } from "@diligent/core/provider-contract";
-import { createAppServerConfig } from "@diligent/runtime/app-server";
+import type { Tool } from "@diligent/core/tool-contract";
 import { z } from "zod";
 import { getBuiltinAgentDefinitions } from "../../src/agent/agent-types";
+import { createAppServerConfig, filterToolsByMode } from "../../src/app-server/factory";
 import type { PermissionEngine } from "../../src/approval";
 import type { RuntimeConfig } from "../../src/config/runtime";
 
@@ -18,6 +18,14 @@ import type { BundledToolProvider } from "../../src/tools/bundled-provider";
 import { makeAssistant, makeStreamFn } from "../helpers/collab";
 
 const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-5";
+
+async function waitFor(condition: () => Promise<boolean>, timeoutMs = 500): Promise<void> {
+  const startedAt = Date.now();
+  while (!(await condition())) {
+    if (Date.now() - startedAt > timeoutMs) throw new Error("Timed out waiting for condition");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
 
 function makeRuntimeConfig(overrides?: Partial<RuntimeConfig>): RuntimeConfig {
   const providerManager = new ProviderManager({});
@@ -173,7 +181,7 @@ describe("createAppServerConfig", () => {
     expect(config.compaction).toBeDefined();
   });
 
-  it("modelConfig.onModelChange updates runtimeConfig.model", async () => {
+  it("modelConfig.onModelChange updates runtimeConfig.model and persists the selection", async () => {
     const originalHome = process.env.HOME;
     const fakeHome = await mkdtemp(join(tmpdir(), "diligent-factory-home-"));
     tempHomes.push(fakeHome);
@@ -185,6 +193,14 @@ describe("createAppServerConfig", () => {
 
       config.modelConfig?.onModelChange({ provider: "anthropic", modelId: "claude-haiku-4-5-20251001" });
       expect(runtimeConfig.model?.modelId).toBe("claude-haiku-4-5-20251001");
+
+      const configPath = join(fakeHome, ".diligent", "config.jsonc");
+      await waitFor(
+        async () =>
+          (await Bun.file(configPath).exists()) &&
+          (await Bun.file(configPath).text()).includes("claude-haiku-4-5-20251001"),
+      );
+      expect(await Bun.file(configPath).text()).toContain('"modelId": "claude-haiku-4-5-20251001"');
     } finally {
       if (originalHome === undefined) {
         delete process.env.HOME;
@@ -403,9 +419,14 @@ describe("createAppServerConfig", () => {
   });
 
   it("keeps collab registry parent tools aligned with execute mode filtering", async () => {
+    const observedChildToolNames: string[][] = [];
+    const childStream = makeStreamFn([makeAssistant("child done")]);
     const runtimeConfig = makeRuntimeConfig({
       agentDefinitions: getBuiltinAgentDefinitions(),
-      streamFunction: makeStreamFn([makeAssistant("child done")]),
+      streamFunction: (model, context, options) => {
+        observedChildToolNames.push(context.tools.map((tool) => tool.name));
+        return childStream(model, context, options);
+      },
     });
     const config = createAppServerConfig({ cwd: "/tmp/test", runtimeConfig });
 
@@ -420,22 +441,23 @@ describe("createAppServerConfig", () => {
 
     expect(agent.tools.map((tool) => tool.name)).not.toContain("request_user_input");
 
-    const warned: string[] = [];
-    const originalWarn = console.warn;
-    console.warn = (message?: unknown) => warned.push(String(message));
-    try {
-      agent.registry?.spawn({ prompt: "inspect", description: "inspect", agentType: "explore" });
-    } finally {
-      console.warn = originalWarn;
-    }
+    const registry = agent.registry!;
+    const { threadId } = registry.spawn({ prompt: "inspect", description: "inspect", agentType: "explore" });
+    await registry.wait([threadId], 5000);
 
-    expect(warned.join("\n")).not.toContain("zero tools after filtering");
+    expect(observedChildToolNames[0]).toContain("read");
+    expect(observedChildToolNames[0]).not.toContain("request_user_input");
   });
 
   it("keeps nested collab tools available when explicitly enabled after mode filtering", async () => {
+    const observedChildToolNames: string[][] = [];
+    const childStream = makeStreamFn([makeAssistant("child done")]);
     const runtimeConfig = makeRuntimeConfig({
       agentDefinitions: getBuiltinAgentDefinitions(),
-      streamFunction: makeStreamFn([makeAssistant("child done")]),
+      streamFunction: (model, context, options) => {
+        observedChildToolNames.push(context.tools.map((tool) => tool.name));
+        return childStream(model, context, options);
+      },
     });
     const config = createAppServerConfig({ cwd: "/tmp/test", runtimeConfig });
     const agent = await config.createAgent({
@@ -447,22 +469,20 @@ describe("createAppServerConfig", () => {
       ask: async () => null,
     });
 
-    const warned: string[] = [];
-    const originalWarn = console.warn;
-    console.warn = (message?: unknown) => warned.push(String(message));
-    try {
-      agent.registry?.spawn({
-        prompt: "inspect",
-        description: "inspect",
-        agentType: "general",
-        allowNestedAgents: true,
-        allowedTools: ["spawn_agent", "wait"],
-      });
-    } finally {
-      console.warn = originalWarn;
-    }
+    const registry = agent.registry!;
+    const { threadId } = registry.spawn({
+      prompt: "inspect",
+      description: "inspect",
+      agentType: "general",
+      allowNestedAgents: true,
+      allowedTools: ["spawn_agent", "wait"],
+    });
+    await registry.wait([threadId], 5000);
 
-    expect(warned.join("\n")).not.toContain("zero tools after filtering");
+    expect(observedChildToolNames[0]).toContain("spawn_agent");
+    expect(observedChildToolNames[0]).toContain("wait");
+    expect(observedChildToolNames[0]).not.toContain("send_input");
+    expect(observedChildToolNames[0]).not.toContain("close_agent");
   });
 });
 
@@ -549,15 +569,40 @@ describe("reloadConfig", () => {
   });
 });
 
-describe("getModelInfoList", () => {
-  it("returns an entry for each known model with required fields", () => {
-    const list = getModelInfoList();
-    expect(list.length).toBeGreaterThan(0);
-    for (const m of list) {
-      expect(m.modelId).toBeTypeOf("string");
-      expect(m.provider).toBeTypeOf("string");
-      expect(m.contextWindow).toBeGreaterThan(0);
-      expect(m.maxOutputTokens).toBeGreaterThan(0);
-    }
+describe("filterToolsByMode", () => {
+  function tool(name: string): Tool {
+    return { name, description: name, parameters: z.object({}), execute: async () => ({ output: "" }) };
+  }
+
+  it("removes mutation tools in plan mode while preserving read-like tools", () => {
+    const filtered = filterToolsByMode("plan", [
+      tool("read"),
+      tool("web_action"),
+      tool("overdaresearch"),
+      tool("mcp_run_tool"),
+      tool("bash"),
+      tool("write"),
+      tool("update_knowledge"),
+    ]).map((entry) => entry.name);
+
+    expect(filtered).toEqual(["read", "web_action", "overdaresearch", "mcp_run_tool"]);
+  });
+
+  it("removes request_user_input in execute mode", () => {
+    const filtered = filterToolsByMode("execute", [
+      tool("request_user_input"),
+      tool("read"),
+      tool("bash"),
+      tool("overdaresearch"),
+    ]).map((entry) => entry.name);
+
+    expect(filtered).toEqual(["read", "bash", "overdaresearch"]);
+  });
+
+  it("keeps every tool in default mode", () => {
+    const filtered = filterToolsByMode("default", [tool("request_user_input"), tool("bash")]).map(
+      (entry) => entry.name,
+    );
+    expect(filtered).toEqual(["request_user_input", "bash"]);
   });
 });

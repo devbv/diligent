@@ -204,5 +204,5 @@ This keeps Web/TUI/Desktop aligned on the same thread state machine.
 - `packages/protocol/src/client-requests.ts`
 - `packages/protocol/src/server-notifications.ts`
 - `packages/protocol/src/data-model.ts`
-- `packages/e2e/protocol-lifecycle.test.ts`
-- `packages/e2e/session-resume.test.ts`
+- `packages/e2e/app-server/protocol-lifecycle.test.ts`
+- `packages/e2e/app-server/session-resume.test.ts`
