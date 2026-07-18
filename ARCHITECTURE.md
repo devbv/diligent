@@ -123,13 +123,15 @@ Diligent uses **one backend protocol with multiple transports**.
 - **CLI/TUI** launches `diligent app-server --stdio` and speaks NDJSON-framed JSON-RPC over stdio.
 - **Web** runs a Bun server exposing `/rpc` as a WebSocket JSON-RPC endpoint.
 
-The same rule applies to any additional clients such as a VS Code extension/plugin: they may add a client-local transport bridge or UI reducer, but they must still consume the existing shared protocol rather than inventing a client-specific protocol surface.
+The same rule applies to any additional generic clients such as a VS Code extension/plugin: they may add a client-local transport bridge or UI reducer, but they must still consume the existing shared protocol rather than inventing a client-specific Diligent protocol surface.
+
+Product hosts may expose product-owned RPC methods at their transport boundary when the behavior is intentionally outside Diligent. The Web host intercepts these explicitly registered methods before forwarding unmatched traffic to `DiligentAppServer`; product methods must not shadow shared protocol names. OVERDARE consent is the current explicit exception: its Web-local contract and request handling live in `packages/web`, while gateway state and transmission policy live in the OVERDARE sidecar. Runtime and the shared protocol remain consent-unaware, and the TUI does not expose this product UI.
 
 Practical consequences:
 
 1. **Server logic is shared.** Session lifecycle, provider auth wiring, tool execution, mode changes, effort changes, approvals, and steering belong in runtime, not in individual frontends.
 2. **Protocol is the contract.** Anything that crosses the frontend/backend boundary should be modeled in `@diligent/protocol`.
-3. **Transport adapters stay small.** Stdio and WebSocket layers only adapt messages; they should not own business logic.
+3. **Transport adapters stay small.** Stdio and WebSocket layers primarily adapt messages. Product-host RPC interception is allowed only for explicitly product-owned behavior outside the Diligent runtime contract.
 4. **New clients follow the same contract.** A VS Code plugin or any future client must compose shared `@diligent/protocol` payloads and must not introduce a parallel client-specific Diligent protocol.
 
 ### Error diagnostics, presentation, and recovery
@@ -547,7 +549,7 @@ The pattern for extending the protocol with a new request/response pair has four
 
 3. **Implement the handler** — add a `handleXxx(ctx, params)` function to the appropriate handler file in `packages/runtime/src/app-server/`:
    - `thread-handlers.ts` — thread lifecycle (start, resume, list, delete, read, compact)
-   - `config-handlers.ts` — config, auth, consent, and image upload
+   - `config-handlers.ts` — config, auth, and image upload
    - `knowledge-handlers.ts` — knowledge list and update
    - Create a new `*-handlers.ts` file when the new area is distinct enough to warrant its own module.
 
@@ -555,7 +557,13 @@ The pattern for extending the protocol with a new request/response pair has four
 
 5. **Add client-side calls** — if the method is user-facing, implement the client call in `packages/web` (React) and `packages/cli` (TUI). Frontends should call the method through the shared protocol; they must not implement the behavior locally.
 
-The consent feature (`consent/set`) is a concrete reference example that follows every step of this pattern.
+Product-host methods are not added through this flow. They are intercepted by the owning host before core dispatch and use contracts owned by that product surface.
+
+## OVERDARE consent and gateway transmission
+
+OVERDARE consent is a product concern rather than a Diligent runtime capability. `packages/web` owns the browser/server consent schema, initial opaque metadata, and the `consent/set` request interception. The OVERDARE sidecar owns the cached gateway `ConsentService`, privacy-policy resolution, and grant/withdraw mapping.
+
+Runtime emits every registered generic `EntryAppended` lifecycle hook without applying an OVERDARE policy. The OVERDARE gateway provider checks the shared sidecar service before token resolution and again afterward, then transmits `/v1/records` only while consent is granted. Other current and future `EntryAppended` providers are unaffected by OVERDARE consent.
 
 ## Data Locality and `.diligent/`
 

@@ -11,6 +11,7 @@ import { createValidatorToolProvider } from "./validator";
 export interface StudioBundledToolProviderOptions extends StudioToolProviderOptions {
   /** When true, omit the Studio RPC provider so nothing connects to Studio (13377). */
   studioDisabled?: boolean;
+  canTransmitRecords?: () => boolean;
 }
 
 export function createStudioBundledToolProviders(options: StudioBundledToolProviderOptions): BundledToolProvider[] {

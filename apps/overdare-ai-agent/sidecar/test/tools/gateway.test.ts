@@ -68,13 +68,41 @@ describe("createGatewayToolProvider", () => {
   });
 
   test("registers as an async hook", () => {
-    const provider = createGatewayToolProvider({ cwd: "/tmp", projectId: "proj-1" });
+    const provider = createGatewayToolProvider({ cwd: "/tmp", projectId: "proj-1", canTransmitRecords: () => true });
     expect(provider.onEntryAppended?.mode).toBe("async");
+  });
+
+  test.each(["none", "withdrawn"])("does not POST records when consent is %s", async () => {
+    const calls = installFetchSpy();
+    const provider = createGatewayToolProvider({
+      cwd: "/tmp",
+      projectId: "proj-1",
+      canTransmitRecords: () => false,
+    });
+
+    await provider.onEntryAppended?.(makeInput());
+
+    expect(calls).toHaveLength(0);
+  });
+
+  test("does not POST when consent is withdrawn during token resolution", async () => {
+    const calls = installFetchSpy();
+    let checks = 0;
+    const provider = createGatewayToolProvider({
+      cwd: "/tmp",
+      projectId: "proj-1",
+      canTransmitRecords: () => ++checks === 1,
+    });
+
+    await provider.onEntryAppended?.(makeInput());
+
+    expect(checks).toBe(2);
+    expect(calls).toHaveLength(0);
   });
 
   test("POSTs a valid masked envelope on append", async () => {
     const calls = installFetchSpy();
-    const provider = createGatewayToolProvider({ cwd: "/tmp", projectId: "proj-1" });
+    const provider = createGatewayToolProvider({ cwd: "/tmp", projectId: "proj-1", canTransmitRecords: () => true });
 
     await provider.onEntryAppended?.(makeInput());
 
@@ -97,7 +125,7 @@ describe("createGatewayToolProvider", () => {
 
   test("sends only metadata for compaction entries", async () => {
     const calls = installFetchSpy();
-    const provider = createGatewayToolProvider({ cwd: "/tmp", projectId: "proj-1" });
+    const provider = createGatewayToolProvider({ cwd: "/tmp", projectId: "proj-1", canTransmitRecords: () => true });
 
     await provider.onEntryAppended?.(
       makeInput({
@@ -129,7 +157,7 @@ describe("createGatewayToolProvider", () => {
 
   test("falls back to `<user_id>:<cwd>` as project_id when none is injected", async () => {
     const calls = installFetchSpy();
-    const provider = createGatewayToolProvider({ cwd: "/tmp" });
+    const provider = createGatewayToolProvider({ cwd: "/tmp", canTransmitRecords: () => true });
 
     await provider.onEntryAppended?.(makeInput());
 
@@ -141,7 +169,7 @@ describe("createGatewayToolProvider", () => {
     delete process.env.DILIGENT_GATEWAY_URL;
     process.env.HUB_DOMAIN = "https://create.overdare.com";
     const calls = installFetchSpy();
-    const provider = createGatewayToolProvider({ cwd: "/tmp", projectId: "proj-1" });
+    const provider = createGatewayToolProvider({ cwd: "/tmp", projectId: "proj-1", canTransmitRecords: () => true });
 
     await provider.onEntryAppended?.(makeInput());
 
@@ -153,7 +181,7 @@ describe("createGatewayToolProvider", () => {
     process.env.DILIGENT_ENV = "prod";
     process.env.HUB_DOMAIN = "https://release-qa.overdare.com";
     const calls = installFetchSpy();
-    const provider = createGatewayToolProvider({ cwd: "/tmp", projectId: "proj-1" });
+    const provider = createGatewayToolProvider({ cwd: "/tmp", projectId: "proj-1", canTransmitRecords: () => true });
 
     await provider.onEntryAppended?.(makeInput());
 
@@ -164,7 +192,7 @@ describe("createGatewayToolProvider", () => {
     delete process.env.DILIGENT_GATEWAY_URL;
     process.env.HUB_DOMAIN = "https://release-qa.overdare.com";
     const calls = installFetchSpy();
-    const provider = createGatewayToolProvider({ cwd: "/tmp", projectId: "proj-1" });
+    const provider = createGatewayToolProvider({ cwd: "/tmp", projectId: "proj-1", canTransmitRecords: () => true });
 
     await provider.onEntryAppended?.(makeInput());
 

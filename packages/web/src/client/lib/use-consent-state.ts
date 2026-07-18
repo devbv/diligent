@@ -1,7 +1,11 @@
 // @summary Consent state hook: manages consent data and updateConsent RPC callback
-import type { ConsentSetParams, ConsentState } from "@diligent/protocol";
-import { DILIGENT_CLIENT_REQUEST_METHODS } from "@diligent/protocol";
 import { useCallback, useState } from "react";
+import {
+  type ConsentSetParams,
+  type ConsentState,
+  ConsentStateSchema,
+  WEB_CONSENT_SET_METHOD,
+} from "../../shared/consent-protocol";
 import type { useRpcClient } from "./use-rpc";
 
 type RpcClientResult = ReturnType<typeof useRpcClient>;
@@ -13,7 +17,7 @@ export function useConsentState({ rpcRef }: { rpcRef: RpcClientResult["rpcRef"] 
     async (patch: ConsentSetParams) => {
       const rpc = rpcRef.current;
       if (!rpc) return;
-      const next = await rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.CONSENT_SET, patch);
+      const next = ConsentStateSchema.parse(await rpc.requestRaw(WEB_CONSENT_SET_METHOD, patch));
       setConsent(next);
     },
     [rpcRef],

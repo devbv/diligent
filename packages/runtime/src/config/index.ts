@@ -1,9 +1,3 @@
-export {
-  applyConsentPatch,
-  currentPrivacyPolicyUrl,
-  refreshPrivacyPolicyUrl,
-  resolveConsentState,
-} from "./consent";
 export type { DiscoveredInstruction } from "./instructions";
 export { buildSystemPrompt, buildSystemPromptWithKnowledge, discoverInstructions } from "./instructions";
 export type { DiligentConfigLayers } from "./loader";

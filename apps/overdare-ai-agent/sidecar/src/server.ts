@@ -6,7 +6,7 @@ import { OVERDARE_EXPERIMENTS } from "./experiments";
 import { configureSidecarLogging } from "./logging";
 import { runMcpServerMain } from "./mcp-server";
 import { createStudioBundledToolProviders } from "./tools";
-import { createGatewayConsentBackend } from "./tools/gateway/consent";
+import { createGatewayConsentService } from "./tools/gateway/consent";
 
 const logger = createLogger({ scope: "sidecar/server" });
 
@@ -51,6 +51,7 @@ export async function startStudioServer(argv: string[] = process.argv.slice(2)):
   const logFile = args.logFile ?? process.env.DILIGENT_WEB_LOG_FILE;
   const cleanupLogFile = logFile ? enableProcessLogFile(logFile, cwd) : null;
   const cleanupParentWatchdog = startParentWatchdog(args.parentPid);
+  const consentService = createGatewayConsentService();
 
   try {
     const { server } = await createWebServer({
@@ -60,12 +61,13 @@ export async function startStudioServer(argv: string[] = process.argv.slice(2)):
       userId: args.userId,
       distDir: args.distDir,
       // AI-data consent is owned by the gateway (`/v1/consent`), not local config.jsonc.
-      consentBackend: createGatewayConsentBackend(),
+      consentBackend: consentService,
       bundledToolProviders: createStudioBundledToolProviders({
         cwd,
         studioRpcPort: parseEnvPort(process.env.STUDIO_PORT),
         hubDomain: process.env.HUB_DOMAIN,
         projectId: process.env.OVERDARE_PROJECT_ID,
+        canTransmitRecords: () => consentService.isGranted(),
         // STUDIO_DISABLED=1 → skip the Studio RPC provider entirely (no 13377 connects).
         studioDisabled: process.env.STUDIO_DISABLED === "1" || process.env.STUDIO_DISABLED?.toLowerCase() === "true",
       }),

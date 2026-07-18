@@ -11,14 +11,11 @@ import {
   normalizeStoredAgentsConfig,
   normalizeStoredSkillsConfig,
   normalizeStoredToolsConfig,
-  saveGlobalConsent,
   writeGlobalAgentsConfig,
   writeGlobalSkillsConfig,
   writeGlobalToolsConfig,
   writeProjectToolsConfig,
 } from "../../src/config/writer";
-
-const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-5";
 
 const TMP_PREFIX = join(process.cwd(), ".tmp-p032-writer-");
 const tempDirs: string[] = [];
@@ -469,34 +466,6 @@ describe("writeGlobalAgentsConfig", () => {
         "Failed to validate existing config",
       );
       expect(await Bun.file(configPath).text()).toBe(original);
-    } finally {
-      if (originalHome !== undefined) process.env.HOME = originalHome;
-      else delete process.env.HOME;
-    }
-  });
-});
-
-describe("saveGlobalConsent", () => {
-  it("writes the consent subtree to ~/.diligent/config.jsonc and preserves existing keys/comments", async () => {
-    const cwd = await makeTempProject();
-    const originalHome = process.env.HOME;
-    process.env.HOME = cwd;
-
-    try {
-      const configPath = getGlobalConfigPath();
-      await Bun.write(configPath, `{\n  // keep me\n  "model": "${TEST_ANTHROPIC_MODEL_ID}"\n}\n`);
-
-      await saveGlobalConsent({
-        noticeAcknowledgedVersion: "2026-06",
-        serviceImprovement: false,
-        updatedAt: "2026-06-23T00:00:00.000Z",
-      });
-
-      const text = await Bun.file(configPath).text();
-      expect(text).toContain("// keep me");
-      expect(text).toContain(`"model": "${TEST_ANTHROPIC_MODEL_ID}"`);
-      expect(text).toContain('"consent"');
-      expect(text).toContain('"serviceImprovement": false');
     } finally {
       if (originalHome !== undefined) process.env.HOME = originalHome;
       else delete process.env.HOME;

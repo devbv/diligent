@@ -1,8 +1,6 @@
 // @summary Modal for listing and updating built-in tool/plugin settings through shared RPC methods
 
 import type {
-  ConsentSetParams,
-  ConsentState,
   ExperimentsListResponse,
   ExperimentsSetParams,
   ExperimentsSetResponse,
@@ -21,6 +19,7 @@ import type {
   ToolsSetResponse,
 } from "@diligent/protocol";
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { ConsentSetParams, ConsentState } from "../../shared/consent-protocol";
 import {
   buildSkillsSetParams,
   createSkillDraft,

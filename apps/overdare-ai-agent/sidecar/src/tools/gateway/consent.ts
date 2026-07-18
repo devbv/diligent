@@ -1,4 +1,4 @@
-// @summary OVERDARE gateway consent client + ConsentConfigManager backend (OVDR-11475 §3.A).
+// @summary OVERDARE gateway consent service and cached privacy-policy resolver
 //
 // Moves AI-data consent off local `config.jsonc` onto the gateway as the single source of truth:
 //   - GET  /v1/consent          → own status: "granted" | "withdrawn" | "none"
@@ -10,18 +10,26 @@
 // from the bearer token.
 
 import { createLogger } from "@diligent/logging";
-import {
-  type ConsentConfigManager,
-  type ConsentSetParams,
-  type ConsentState,
-  currentPrivacyPolicyUrl,
-} from "@diligent/runtime";
+import type { ConsentSetParams, ConsentState, WebConsentBackend } from "@diligent/web/consent-protocol";
 import { DEBUG, resolveEndpoint, resolveToken } from "./shared";
 
 const GATEWAY_CONSENT_TIMEOUT_MS = 5_000;
 const logger = createLogger({ scope: "sidecar/gateway", context: { component: "consent" } });
 
+export const PRIVACY_POLICY_BASE_URL = "https://www.overdare.com/legal/privacy";
+export const PRIVACY_POLICY_LATEST_URL = "https://static.overdare.com/legal/privacy/en/latest.json";
+export const PRIVACY_POLICY_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+let cachedPrivacyPolicyUrl: string | undefined;
+let cachedPrivacyPolicyAt: number | undefined;
+
 type ConsentStatus = "granted" | "withdrawn" | "none";
+
+export interface ConsentService extends WebConsentBackend {
+  refresh(): Promise<void>;
+  set(params: ConsentSetParams): Promise<ConsentState>;
+  isGranted(): boolean;
+}
 
 interface ConsentGetResponse {
   status?: unknown;
@@ -46,6 +54,36 @@ async function fetchWithTimeout(input: string, init?: RequestInit): Promise<Resp
   } finally {
     clearTimeout(timer);
   }
+}
+
+export async function refreshPrivacyPolicyUrl(now = Date.now()): Promise<string> {
+  if (
+    cachedPrivacyPolicyUrl &&
+    cachedPrivacyPolicyAt !== undefined &&
+    now - cachedPrivacyPolicyAt < PRIVACY_POLICY_CACHE_TTL_MS
+  ) {
+    return cachedPrivacyPolicyUrl;
+  }
+  try {
+    const response = await fetch(PRIVACY_POLICY_LATEST_URL, { signal: AbortSignal.timeout(3_000) });
+    const data = response.ok ? ((await response.json()) as { latestVersion?: unknown }) : undefined;
+    if (typeof data?.latestVersion === "string" && data.latestVersion) {
+      cachedPrivacyPolicyUrl = `${PRIVACY_POLICY_BASE_URL}?version=${encodeURIComponent(data.latestVersion)}`;
+      cachedPrivacyPolicyAt = now;
+    }
+  } catch {
+    // Keep the last known URL and retry on the next refresh when no cached value exists.
+  }
+  return currentPrivacyPolicyUrl();
+}
+
+export function currentPrivacyPolicyUrl(): string {
+  return cachedPrivacyPolicyUrl ?? PRIVACY_POLICY_BASE_URL;
+}
+
+export function resetPrivacyPolicyUrlCache(): void {
+  cachedPrivacyPolicyUrl = undefined;
+  cachedPrivacyPolicyAt = undefined;
 }
 
 /** GET /v1/consent → own consent status. Non-OK responses preserve the cached state. */
@@ -90,12 +128,14 @@ function patchToGranted(params: ConsentSetParams, current: ConsentStatus): boole
  * refreshed at `initialize` (via `refresh`) and after each `set`. Without a resolvable Hub token the
  * gateway is unreachable, so the last-known status is preserved.
  */
-export function createGatewayConsentBackend(): ConsentConfigManager {
+export function createGatewayConsentService(): ConsentService {
   let status: ConsentStatus = "none";
 
   return {
     get: () => statusToState(status),
+    isGranted: () => status === "granted",
     refresh: async () => {
+      await refreshPrivacyPolicyUrl();
       const token = await resolveToken();
       if (!token) return;
       try {

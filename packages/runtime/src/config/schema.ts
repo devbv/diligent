@@ -245,21 +245,6 @@ export const DiligentConfigSchema = z
 
     // Global MCP behavior (tool-loading strategy). See McpGlobalConfigSchema.
     mcp: McpGlobalConfigSchema.optional(),
-
-    // AI-data consent (OVDR-11475 §3.A). Stores the first-run notice acknowledgement
-    // and the service-improvement toggle. Absent fields fall back to defaults
-    // (service-improvement ON) when resolved.
-    consent: z
-      .object({
-        // Notice version the user acknowledged via the first-run popup; compared
-        // against CONSENT_NOTICE_VERSION to decide whether to re-show the popup.
-        noticeAcknowledgedVersion: z.string().optional(),
-        serviceImprovement: z.boolean().optional(),
-        privacyPolicyUrl: z.string().optional(),
-        // ISO timestamp of the last consent change (minimal local record).
-        updatedAt: z.string().optional(),
-      })
-      .optional(),
   })
   .strict();
 

@@ -50,7 +50,7 @@ import type { AppendedEntryInfo } from "../session/types";
 import { type BundledToolProvider, collectBundledHooks } from "../tools/bundled-provider";
 import { collectPluginHooks, type PluginDiscoveryMode } from "../tools/plugin-loader";
 import type { UserInputRequest, UserInputResponse } from "../tools/user-input-types";
-import type { ConfigReloadResult, ConsentConfigManager } from "./config-handlers";
+import type { ConfigReloadResult } from "./config-handlers";
 import type { ExperimentConfigManager } from "./experiment-handlers";
 import { createKeyedSerializer } from "./keyed-serializer";
 import {
@@ -72,7 +72,6 @@ import type { SkillConfigManager } from "./skill-handlers";
 import type { SubagentConfigManager } from "./subagent-handlers";
 import { resetTurnRuntimeState, type ThreadRuntime } from "./thread-handlers";
 
-export type { ConsentConfigManager } from "./config-handlers";
 export type { ConnectedPeer, ModelConfig, ToolConfigManager } from "./request-dispatcher";
 export type { SkillConfigManager } from "./skill-handlers";
 export type { SubagentConfigManager } from "./subagent-handlers";
@@ -115,8 +114,6 @@ export interface DiligentAppServerConfig {
   experimentConfig?: ExperimentConfigManager;
   /** Subagent settings management — required for SUBAGENTS_LIST and SUBAGENTS_SET */
   subagentConfig?: SubagentConfigManager;
-  /** AI-data consent management — required for CONSENT_SET (OVDR-11475 §3.A) */
-  consentConfig?: ConsentConfigManager;
   /** Provider manager — required for AUTH_* methods */
   providerManager?: ProviderManager;
   /** Runtime-owned provider authentication presentation state. */
@@ -788,17 +785,8 @@ export class DiligentAppServer {
     return cwd;
   }
 
-  /**
-   * Dispatch an "EntryAppended" lifecycle hook for a durably-appended session entry,
-   * gated on AI-data consent (OVDR-11475). Runs through the plugin-hook runner so
-   * `mode: "async"` hooks (e.g. gateway transmission) fire-and-forget without blocking
-   * the write/turn path. Per-append hooks cannot block a write, so the result is ignored.
-   */
+  /** Dispatch generic EntryAppended hooks off the write path; per-append hooks cannot block writes. */
   private runEntryAppendedHooks(runtime: ThreadRuntime, info: AppendedEntryInfo): void {
-    // Consent gate: skip when the user has opted out of service improvement.
-    const consent = this.config.consentConfig?.get();
-    if (consent && !consent.serviceImprovement) return;
-
     const { onEntryAppended: entryHooks } = collectBundledHooks(this.config.bundledToolProviders);
     if (entryHooks.length === 0) return;
 
@@ -867,7 +855,6 @@ export class DiligentAppServer {
       skillConfig: this.config.skillConfig,
       experimentConfig: this.config.experimentConfig,
       subagentConfig: this.config.subagentConfig,
-      consentConfig: this.config.consentConfig,
       reloadConfig: this.config.reloadConfig,
       subscribeToThread: (connectionId, threadId) => this.subscribeToThread(connectionId, threadId),
       unsubscribeFromThread: (subscriptionId) => this.unsubscribeFromThread(subscriptionId),

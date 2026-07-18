@@ -28,8 +28,6 @@ import {
 import type { ProviderAuthPresenter } from "../auth/provider-auth-presenter";
 import { resolveProjectDirName } from "../infrastructure/diligent-dir";
 import {
-  type ConsentSetParams,
-  type ConsentState,
   DILIGENT_SERVER_NOTIFICATION_METHODS,
   type DiligentServerNotification,
   type ProviderAuthStatus,
@@ -42,28 +40,6 @@ import type { ThreadRuntime } from "./thread-handlers";
 type EmitFn = (notification: DiligentServerNotification) => Promise<void>;
 
 const logger = createLogger({ scope: "runtime.app-server.auth" });
-
-/**
- * Reads/writes the resolved AI-data consent state (OVDR-11475 §3.A).
- *
- * `set` may be async and `refresh` is optional so the state can be backed by a remote
- * source of truth (e.g. the OVERDARE gateway's `/v1/consent`) instead of local config.
- * When backed remotely, `get` returns the last-known cached state and `refresh` re-syncs
- * it from the server (awaited from `getInitializeResult`).
- */
-export interface ConsentConfigManager {
-  get: () => ConsentState;
-  set: (params: ConsentSetParams) => ConsentState | Promise<ConsentState>;
-  refresh?: () => Promise<void>;
-}
-
-export async function handleConsentSet(
-  consentConfig: ConsentConfigManager | undefined,
-  params: ConsentSetParams,
-): Promise<ConsentState> {
-  if (!consentConfig) throw Object.assign(new Error("Consent config not available"), { code: -32601 });
-  return await consentConfig.set(params);
-}
 
 export async function handleConfigSet(
   modelConfig:
