@@ -1,43 +1,43 @@
-# Core Evals
+# Live eval suites
 
-`packages/evals` runs live-model behavioral evaluations against `@diligent/core`. It is deliberately separate from
-`packages/e2e`: E2E tests are deterministic protocol/runtime tests, while evals execute real provider models and
-evaluate normalized messages, events, tool traces, and isolated task state with deterministic code.
+Diligent keeps live-model behavioral evaluations in the private `@diligent/evals` package. They are separate from
+deterministic unit and end-to-end tests and never run as part of the default `bun test` command.
 
-## Run an eval
+## Suites
 
-Set credentials for the selected provider, then run one of the following commands:
+- `core` evaluates provider normalization and the generic agent loop in isolated in-memory worlds.
+- `runtime` evaluates prompt assembly, mode-specific tools, project instructions, skills, sessions, and workspace
+  effects through an in-process `DiligentAppServer` and `RpcClientSession` connection.
+
+Run the complete manifests with:
 
 ```bash
 bun run eval core --canonical
-bun run eval core --provider anthropic
-bun run eval core --task tool-chain
-bun run eval core --task structured-tool-args
-bun run eval core --task parallel-tools
+bun run eval runtime --canonical
 ```
 
-Canonical mode runs every required task against the fixed OpenAI and Anthropic profiles. All eval runs use medium
-effort. Canonical mode rejects task, provider, and model overrides. Non-canonical runs are for investigation only.
+Use `--provider`, `--task`, or `--model` only for non-canonical investigation. `--seed` reconstructs fixture values;
+it does not make model output deterministic. Reports are written under `artifacts/evals/` unless `--report` is given.
 
-Each run writes a redacted, versioned JSON report to `artifacts/evals/` unless `--report <path>` is supplied. The
-report is safe to upload as a CI artifact; it redacts configured API keys and authorization-like values.
+The canonical core manifest contains `direct-response`, `single-tool`, `tool-chain`, and `recover-tool-error`.
+`structured-tool-args` and `parallel-tools` remain explicit candidate tasks and run as non-blocking scheduled
+investigations. All profiles use medium effort. Canonical mode requires both `OPENAI_API_KEY` and
+`ANTHROPIC_API_KEY`; a filtered investigation requires only its selected provider credential.
 
-## Core task tiers
+## Runtime evidence and isolation
 
-The canonical core suite remains the four stable tasks: `direct-response`, `single-tool`, `tool-chain`, and
-`recover-tool-error`. Candidate tasks are available through an explicit `--task` filter:
+Every runtime task/profile execution receives a fresh temporary project, fresh runtime state, and fresh app server.
+The runner records normalized protocol notifications, core events, tool traces, session JSONL, workspace manifests,
+and verifier output. Deterministic code evaluates this allowlisted evidence; no LLM judge is used.
 
-- `structured-tool-args` verifies nested objects, enums, arrays, booleans, exact values, and tool-result feedback.
-- `parallel-tools` requires three independent function calls in one parallel batch and verifies concurrent execution.
+The tool transformer runs after runtime mode filtering. It removes undeclared capabilities, confines paths to the
+fixture, rejects symlinks and non-exact shell commands, records bounded traces, and stops over-budget calls before the
+underlying tool executes. The runner constructs fixture-owned `RuntimeConfig` values and does not load host config,
+credentials, skills, agents, knowledge, or sessions.
 
-Scheduled runs execute candidate tasks against both canonical provider profiles after the canonical suite. Candidate
-failures are uploaded for investigation but remain non-blocking while their cross-provider stability is observed.
+## Shadow status
 
-## Automation and release policy
-
-The `Core Evals` GitHub workflow runs daily at 06:00 KST and can also be dispatched manually. It is currently a
-non-blocking shadow signal. It is intentionally not invoked by the Release workflow until the documented readiness
-criteria in [P080](../plan/infra/P080-core-eval-gate.md) have been met and a separate reviewed change enables the
-release gate.
-
-The workflow needs both `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` repository secrets for canonical runs.
+Core evals run daily at 06:00 KST. Their release-gate readiness criteria remain documented in P080. Runtime V0 runs
+daily at 06:30 KST. Both workflows share a sequential concurrency group, and both remain manual/daily non-blocking
+shadow signals disconnected from Release. Runtime promotion requires the readiness window and deliberate failure
+checks in P083, followed by a separate reviewed workflow change.

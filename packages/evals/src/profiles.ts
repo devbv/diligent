@@ -22,7 +22,7 @@ export function resolveSelectedProfiles(options: EvalCliOptions): EvalProfile[] 
       ? resolveModel({ provider: options.provider, modelId: options.model })
       : resolveModelSelector(options.model);
     if (model.provider !== "openai" && model.provider !== "anthropic") {
-      throw new Error(`Eval core supports only OpenAI and Anthropic API models, received ${model.provider}.`);
+      throw new Error(`Eval suites support only OpenAI and Anthropic API models, received ${model.provider}.`);
     }
     if (options.provider && options.provider !== model.provider) {
       throw new Error(`Model ${options.model} belongs to ${model.provider}, not ${options.provider}.`);
@@ -66,7 +66,7 @@ export function resolveProfileModel(profile: EvalProfile): Model {
 }
 
 export function canonicalReason(options: EvalCliOptions): string {
-  if (options.canonical) return "exact canonical profiles and complete core task set";
+  if (options.canonical) return `exact canonical profiles and complete ${options.suite} task set`;
   const overrides = [
     options.provider && `provider=${options.provider}`,
     options.task && `task=${options.task}`,

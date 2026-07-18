@@ -27,6 +27,7 @@ export interface RunEvalSuiteInput {
   createStream(profile: EvalProfile): StreamFunction;
   onExecutionStart?: (task: AnyEvalTask, profile: EvalProfile) => void;
   onExecutionEnd?: (result: EvalExecutionResult<unknown>) => void;
+  execute?: (input: Parameters<typeof runEvalExecution>[0]) => Promise<EvalExecutionResult<unknown>>;
 }
 
 export interface EvalCanonicalManifest {
@@ -43,7 +44,8 @@ export async function runEvalSuite(input: RunEvalSuiteInput): Promise<EvalSuiteR
     const taskSeed = deriveTaskSeed(input.rootSeed, task.id);
     for (const profile of input.profiles) {
       input.onExecutionStart?.(task, profile);
-      const result = await runEvalExecution({
+      const execute = input.execute ?? runEvalExecution;
+      const result = await execute({
         task,
         profile,
         model: input.resolveModel(profile),

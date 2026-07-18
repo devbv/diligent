@@ -3,7 +3,7 @@
 import type { EvalProvider } from "./task";
 
 export interface EvalCliOptions {
-  suite: "core";
+  suite: "core" | "runtime";
   canonical: boolean;
   provider?: EvalProvider;
   task?: string;
@@ -17,11 +17,11 @@ export function parseCliOptions(args: string[]): EvalCliOptions {
   if (args.length === 0 || args[0] === "--help" || args[0] === "-h") {
     return { suite: "core", canonical: false, help: true };
   }
-  if (args[0] !== "core") {
-    throw new Error(`Unknown eval suite "${args[0]}". Expected "core".`);
+  if (args[0] !== "core" && args[0] !== "runtime") {
+    throw new Error(`Unknown eval suite "${args[0]}". Expected "core" or "runtime".`);
   }
 
-  const options: EvalCliOptions = { suite: "core", canonical: false, help: false };
+  const options: EvalCliOptions = { suite: args[0], canonical: false, help: false };
   for (let index = 1; index < args.length; index++) {
     const arg = args[index];
     switch (arg) {

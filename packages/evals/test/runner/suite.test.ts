@@ -40,6 +40,44 @@ const CANONICAL_MANIFEST = {
 } as const;
 
 describe("runEvalSuite", () => {
+  test("uses an injected execution adapter", async () => {
+    let calls = 0;
+    const task = textTask("adapter", true);
+    const execute = async (input: Parameters<typeof import("../../src/runner/execution").runEvalExecution>[0]) => {
+      calls += 1;
+      return {
+        passed: true,
+        failures: [],
+        worldSnapshot: { adapter: true },
+        execution: {
+          taskId: input.task.id,
+          profile: input.profile,
+          seed: input.seed,
+          startedAt: new Date(0).toISOString(),
+          elapsedMs: 0,
+          termination: "completed",
+          messages: [],
+          events: [],
+          logs: [],
+          usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+          turnCount: 0,
+          toolCallCount: 0,
+          world: { expected: "adapter" },
+        },
+      };
+    };
+    const report = await runEvalSuite({
+      tasks: [task],
+      profiles: [{ provider: "anthropic", model: TEST_MODEL.modelId, effort: "medium" }],
+      rootSeed: "root",
+      metadata: METADATA,
+      resolveModel: () => TEST_MODEL,
+      createStream: () => sequenceStream([assistantMessage([{ type: "text", text: "unused" }])]),
+      execute: execute as never,
+    });
+    expect(calls).toBe(1);
+    expect(report.executions[0]?.world).toEqual({ adapter: true });
+  });
   test("continues after a failed execution and writes every selected result", async () => {
     const report = await runEvalSuite({
       tasks: [textTask("failing", false), textTask("passing", true)],
