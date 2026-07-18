@@ -1,3 +1,4 @@
+// @summary Plugin fixture whose prompt hook throws to verify app-server error isolation
 export const manifest = {
   name: "error-hook-plugin",
   apiVersion: "1.0",

@@ -1,20 +1,28 @@
-// @summary Transport-level e2e test: exercises real WebSocket serialization path (connect → initialize → thread/start → notifications → disconnect)
+// @summary App-server transport e2e tests over a real WebSocket and the shared production peer
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DILIGENT_VERSION, type DiligentServerNotification, type JSONRPCMessage } from "@diligent/protocol";
-import { RpcClientSession } from "@diligent/runtime";
+import {
+  DILIGENT_SERVER_REQUEST_METHODS,
+  DILIGENT_VERSION,
+  type DiligentServerNotification,
+  type DiligentServerRequest,
+  type DiligentServerRequestResponse,
+  type JSONRPCMessage,
+} from "@diligent/protocol";
+import { createPermissionEngine, type DiligentAppServer, RpcClientSession } from "@diligent/runtime";
+import { createToolUseStream } from "./helpers/fake-stream";
 import { createTestServer } from "./helpers/server-factory";
 import { createWsTestServer, type WsTestServer } from "./helpers/ws-server-factory";
 
 let tmpDir: string;
 let wsServer: WsTestServer;
 
-async function setup() {
+async function setup(buildAppServer: (cwd: string) => DiligentAppServer = (cwd) => createTestServer({ cwd })) {
   tmpDir = await mkdtemp(join(tmpdir(), "diligent-ws-e2e-"));
-  const appServer = createTestServer({ cwd: tmpDir });
+  const appServer = buildAppServer(tmpDir);
   wsServer = createWsTestServer(appServer);
   return { appServer };
 }
@@ -28,7 +36,10 @@ afterEach(async () => {
  * Connects a real WebSocket to the test server and returns an RpcClientSession
  * backed by that transport. Messages flow through actual JSON serialization.
  */
-async function connectWsClient(url: string): Promise<{
+async function connectWsClient(
+  url: string,
+  onServerRequest?: (request: DiligentServerRequest) => Promise<DiligentServerRequestResponse>,
+): Promise<{
   client: RpcClientSession;
   notifications: DiligentServerNotification[];
   waitFor: (method: string, timeout?: number) => Promise<DiligentServerNotification>;
@@ -62,6 +73,10 @@ async function connectWsClient(url: string): Promise<{
                 notificationWaiters.splice(i, 1);
               }
             }
+          },
+          async onServerRequest(request) {
+            if (!onServerRequest) throw new Error(`Unhandled server request: ${request.method}`);
+            return onServerRequest(request);
           },
         },
       );
@@ -161,6 +176,67 @@ describe("websocket-transport", () => {
     const completed = await waitFor("turn/completed", 5000);
     expect((completed.params as Record<string, unknown>).threadId).toBe(threadId);
 
+    close();
+  });
+
+  test("approval request and response survive bidirectional WebSocket serialization", async () => {
+    await setup((cwd) =>
+      createTestServer({
+        cwd,
+        runtimeToolsConfig: { builtin: { bash: true } },
+        runtimeConfigOverrides: { permissionEngine: createPermissionEngine([]) },
+        streamFunction: createToolUseStream(
+          [
+            {
+              id: "tc-ws-approval",
+              name: "bash",
+              input: { command: "printf websocket-approval-ok", description: "Print a WebSocket approval marker" },
+            },
+          ],
+          "approval complete",
+        ),
+      }),
+    );
+
+    let approvalRequest: DiligentServerRequest | undefined;
+    const { client, waitFor, close } = await connectWsClient(wsServer.url, async (request) => {
+      approvalRequest = request;
+      if (request.method === DILIGENT_SERVER_REQUEST_METHODS.APPROVAL_REQUEST) {
+        return {
+          method: DILIGENT_SERVER_REQUEST_METHODS.APPROVAL_REQUEST,
+          result: { decision: "once" },
+        };
+      }
+      return {
+        method: DILIGENT_SERVER_REQUEST_METHODS.USER_INPUT_REQUEST,
+        result: { answers: {} },
+      };
+    });
+
+    await client.request("initialize", {
+      clientName: "ws-test",
+      clientVersion: DILIGENT_VERSION,
+      protocolVersion: 1,
+    });
+    const { threadId } = (await client.request("thread/start", {
+      cwd: tmpDir,
+      mode: "default",
+    })) as { threadId: string };
+    await client.request("thread/subscribe", { threadId });
+    await client.request("turn/start", { threadId, message: "run the approved command" });
+    await waitFor("turn/completed", 5000);
+
+    expect(approvalRequest).toMatchObject({
+      method: DILIGENT_SERVER_REQUEST_METHODS.APPROVAL_REQUEST,
+      params: {
+        threadId,
+        request: {
+          permission: "execute",
+          toolName: "bash",
+          details: { command: "printf websocket-approval-ok" },
+        },
+      },
+    });
     close();
   });
 });

@@ -1,4 +1,4 @@
-// @summary E2e tests for provider-native web tool content blocks: streaming, persistence, and thread/read
+// @summary App-server e2e tests for provider-native block streaming and persistence
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";

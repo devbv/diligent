@@ -44,7 +44,7 @@ make dev
 - `packages/web` — Bun web server and React web client
 - `apps/overdare-ai-agent` — terminal-only wrapper for runtime update and webserver launch
 - `packages/debug-viewer` — viewer for inspecting `.diligent/` project data
-- `packages/e2e` — end-to-end protocol/runtime tests
+- `packages/e2e` — end-to-end suites organized by product boundary; currently includes `DiligentAppServer`
 - `packages/evals` — live-model behavioral evaluations for core capabilities
 
 ## Packaged OVERDARE storage namespace

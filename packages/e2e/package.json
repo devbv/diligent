@@ -1,6 +1,7 @@
 {
   "name": "@diligent/e2e",
   "version": "0.0.1",
+  "description": "End-to-end suites organized by Diligent product boundary",
   "private": true,
   "dependencies": {
     "@diligent/core": "workspace:*",

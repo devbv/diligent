@@ -1,24 +1,19 @@
 # @diligent/e2e
 
-End-to-end tests that run the full agent stack via the JSON-RPC protocol.
+End-to-end suites organized by the Diligent product boundary under test.
 
-## Test Files
+## Suites
 
-| File | What it tests |
-|---|---|
-| `turn-execution.test.ts` | Tool execution, approval, interruption |
-| `session-resume.test.ts` | Session persistence, resume, compaction |
-| `protocol-lifecycle.test.ts` | Initialize, thread lifecycle, disconnect |
-| `mode-and-config.test.ts` | Plan/execute mode switching, config changes |
-| `multi-connection.test.ts` | Multiple concurrent WebSocket clients |
+| Directory | System under test | Entry boundary |
+|---|---|---|
+| [`app-server/`](./app-server/) | `DiligentAppServer` and its assembled runtime | JSON-RPC client request |
+
+Future host-level suites should be added as siblings, such as `cli/` or `web/`, rather than extending the
+`app-server/` boundary. Shared helpers should remain inside the narrowest suite that owns them until multiple suites
+need the same implementation.
 
 ## Run
 
 ```bash
-bun test                        # All tests
-bun test turn-execution.test.ts # Single file
+bun run test:e2e
 ```
-
-Tests use helpers in `helpers/` to start a real app server and communicate over the protocol.
-They are deterministic and do not require provider API credentials. Live-model behavior belongs to
-`@diligent/evals`.

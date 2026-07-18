@@ -1,4 +1,4 @@
-// @summary Protocol lifecycle e2e tests: handshake, thread CRUD, error handling
+// @summary App-server protocol lifecycle e2e tests for handshake, thread CRUD, and errors
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";

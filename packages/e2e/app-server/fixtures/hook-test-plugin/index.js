@@ -1,3 +1,4 @@
+// @summary Plugin fixture for app-server prompt and stop hook e2e scenarios
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 

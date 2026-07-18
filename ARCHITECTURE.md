@@ -32,7 +32,7 @@ The architecture is organized around four product goals:
 | `packages/cli` | Bun CLI entrypoint, stdio app-server transport, TUI client |
 | `packages/web` | Bun web server + React web client over WebSocket JSON-RPC |
 | `packages/debug-viewer` | Viewer for inspecting `.diligent/` data |
-| `packages/e2e` | End-to-end tests spanning protocol and runtime behavior |
+| `packages/e2e` | End-to-end suites organized by product boundary; `app-server/` covers `DiligentAppServer` through JSON-RPC |
 | `packages/evals` | Live-model behavioral evaluations for core and assembled runtime capabilities; separate from deterministic end-to-end tests |
 | `apps/overdare-ai-agent` | Rust CLI launcher for the Overdare product: bootstraps the TypeScript runtime, manages self-update, and launches the Bun web server as a child process. Owns compile-time storage namespace defaults, migration from legacy `.diligent/` directories, and launcher-managed bootstrap assets. |
 | `apps/overdare-ai-agent/sidecar` | OVERDARE-owned TypeScript sidecar assembly. Imports the generic `@diligent/web/server`, injects product bundled tool providers, and is compiled as the packaged `diligent-web-server` sidecar. |
@@ -173,7 +173,9 @@ display names, onboarding hints, and client-facing validation messages are runti
 assembled runtime. It owns isolated task worlds, runner budgets, deterministic evaluators, redacted versioned reports,
 and the default provider profile set. Core task and execution paths must not import runtime; the separate runtime
 adapter may depend on public `@diligent/runtime` subpaths and must execute through `DiligentAppServer`. It complements
-`packages/e2e`, which remains the home for deterministic full-stack protocol and runtime tests.
+`packages/e2e`, whose `app-server/` suite contains deterministic `DiligentAppServer` end-to-end tests through the
+shared JSON-RPC boundary. That suite covers the assembled runtime and core loop with fake provider streams. Product
+hosts and thin-client rendering remain outside its boundary and belong in sibling suites such as `cli/` or `web/`.
 
 ### `@diligent/runtime`
 

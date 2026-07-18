@@ -1,4 +1,4 @@
-// @summary Session resume e2e tests: resume by ID, mostRecent, not-found, list preview
+// @summary App-server session e2e tests for persistence, resume, lookup, and list preview
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";

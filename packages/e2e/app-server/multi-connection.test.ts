@@ -1,4 +1,4 @@
-// @summary Multi-connection e2e tests: subscription fanout, unsubscribe, disconnect
+// @summary App-server multi-connection e2e tests over the in-memory JSON-RPC peer
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -67,34 +67,38 @@ describe("multi-connection", () => {
     const server = createTestServer({ cwd: tmpDir, streamFunction: createSimpleStream("ok") });
 
     const p1 = createProtocolClient(server);
-    clients.push(p1);
+    const p2 = createProtocolClient(server);
+    clients.push(p1, p2);
 
     const threadId = await p1.initAndStartThread(tmpDir);
+    await p2.request("initialize", {
+      clientName: "test-p2",
+      clientVersion: "0.0.1",
+      protocolVersion: 1,
+    });
 
-    // Subscribe
-    const subResult = (await p1.request("thread/subscribe", { threadId })) as {
+    await p1.request("thread/subscribe", { threadId });
+    const subResult = (await p2.request("thread/subscribe", { threadId })) as {
       subscriptionId: string;
     };
     expect(subResult.subscriptionId).toBeTruthy();
 
-    // Unsubscribe
-    const unsubResult = (await p1.request("thread/unsubscribe", {
+    const unsubResult = (await p2.request("thread/unsubscribe", {
       subscriptionId: subResult.subscriptionId,
     })) as { ok: boolean };
     expect(unsubResult.ok).toBe(true);
 
-    // Start a turn — since we're unsubscribed but also the only connection,
-    // server falls back to broadcasting to all connections.
-    // The key is that unsubscribe itself works correctly.
-    const startIdx = p1.notifications.length;
+    // p1 remains subscribed, so notification fanout must not use the
+    // no-subscriber fallback that broadcasts to every connection.
+    const p2StartIdx = p2.notifications.length;
     await p1.request("turn/start", { threadId, message: "after unsub" });
-    await p1.waitForNotification(DILIGENT_SERVER_NOTIFICATION_METHODS.TURN_COMPLETED);
-
-    // Verify the turn still completes (server broadcasts to all when no subscribers)
-    const turnCompleted = p1.notifications.find(
-      (n, i) => i >= startIdx && n.method === DILIGENT_SERVER_NOTIFICATION_METHODS.TURN_COMPLETED,
+    await p1.waitFor(
+      (notification) =>
+        notification.method === DILIGENT_SERVER_NOTIFICATION_METHODS.TURN_COMPLETED &&
+        (notification.params as { threadId?: string }).threadId === threadId,
     );
-    expect(turnCompleted).toBeTruthy();
+
+    expect(p2.notifications.slice(p2StartIdx)).toEqual([]);
   });
 
   test("disconnect cleans up without error", async () => {

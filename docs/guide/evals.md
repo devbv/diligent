@@ -51,8 +51,9 @@ fixture, rejects symlinks and non-exact shell commands, records bounded traces, 
 underlying tool executes. The runner constructs fixture-owned `RuntimeConfig` values and does not load host config,
 credentials, skills, agents, knowledge, or sessions.
 
-`packages/e2e` contains deterministic protocol and runtime integration tests only. Live provider conversation, tool
-recovery, image transport, shell, and file behavior are owned by the core and runtime eval suites.
+`packages/e2e/app-server` contains deterministic `DiligentAppServer` end-to-end tests through its JSON-RPC boundary.
+It uses fake provider streams and does not cover product hosts or thin-client rendering. Live provider conversation,
+tool recovery, image transport, shell, and file behavior are owned by the core and runtime eval suites.
 
 ## Shadow status
 

@@ -1,7 +1,8 @@
-// @summary Deterministic fake StreamFunction factories for protocol-level e2e tests
+// @summary Deterministic fake provider streams for the app-server e2e suite
 
+import type { ProviderEvent, ProviderResult } from "@diligent/core/provider-contract";
 import type { ContentBlock } from "@diligent/protocol";
-import type { ProviderEvent, ProviderResult, StreamFunction } from "@diligent/runtime";
+import type { StreamFunction } from "@diligent/runtime";
 import { EventStream } from "@diligent/runtime";
 
 export interface ToolCallSpec {
@@ -101,7 +102,7 @@ export function createToolUseStream(toolCalls: ToolCallSpec[], finalText: string
  * Creates a StreamFunction that emits text deltas slowly (for interrupt testing).
  */
 export function createSlowStream(text: string, delayMs: number): StreamFunction {
-  return () => {
+  return (_model, _context, options) => {
     const stream = new EventStream<ProviderEvent, ProviderResult>(
       (e) => e.type === "done",
       (e) => ({ message: (e as Extract<ProviderEvent, { type: "done" }>).message }),
@@ -110,6 +111,12 @@ export function createSlowStream(text: string, delayMs: number): StreamFunction 
       stream.push({ type: "start" });
       for (const char of text) {
         await new Promise((r) => setTimeout(r, delayMs));
+        if (options.signal?.aborted) {
+          const error = new Error("Aborted");
+          error.name = "AbortError";
+          stream.error(error);
+          return;
+        }
         stream.push({ type: "text_delta", delta: char });
       }
       stream.push({

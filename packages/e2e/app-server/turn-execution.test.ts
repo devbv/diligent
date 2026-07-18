@@ -1,4 +1,4 @@
-// @summary Turn execution e2e tests: notification sequences, tool use, persistence, multi-turn
+// @summary App-server turn e2e tests for notifications, tools, concurrency, persistence, and context
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { DILIGENT_SERVER_NOTIFICATION_METHODS } from "@diligent/protocol";
 import type { Tool } from "@diligent/runtime";
 import { z } from "zod";
-import { createSimpleStream, createToolUseStream } from "./helpers/fake-stream";
+import { createSimpleStream, createSlowStream, createToolUseStream } from "./helpers/fake-stream";
 import { createProtocolClient, type ProtocolTestClient } from "./helpers/protocol-client";
 import { createTestServer } from "./helpers/server-factory";
 
@@ -127,6 +127,45 @@ describe("turn-execution", () => {
 
     // Wait for first turn to finish
     await client.waitForNotification(DILIGENT_SERVER_NOTIFICATION_METHODS.TURN_COMPLETED);
+  });
+
+  test("turn/interrupt aborts an active turn and returns the thread to idle", async () => {
+    await setup({ streamFunction: createSlowStream("a response that remains active", 20) });
+    const threadId = await client.initAndStartThread(tmpDir);
+
+    await client.request("thread/subscribe", { threadId });
+    const notificationStart = client.notifications.length;
+    await client.request("turn/start", { threadId, message: "start a long response" });
+    await client.waitFor(
+      (notification) =>
+        notification.method === DILIGENT_SERVER_NOTIFICATION_METHODS.AGENT_EVENT &&
+        (notification.params as { event?: { type?: string } }).event?.type === "message_delta",
+    );
+
+    const result = (await client.request("turn/interrupt", { threadId })) as { interrupted: boolean };
+    expect(result.interrupted).toBe(true);
+
+    await client.waitFor(
+      (notification) =>
+        notification.method === DILIGENT_SERVER_NOTIFICATION_METHODS.THREAD_STATUS_CHANGED &&
+        (notification.params as { threadId?: string; status?: string }).threadId === threadId &&
+        (notification.params as { threadId?: string; status?: string }).status === "idle",
+    );
+
+    const turnNotifications = client.notifications.slice(notificationStart);
+    const interruptedIndex = turnNotifications.findIndex(
+      (notification) => notification.method === DILIGENT_SERVER_NOTIFICATION_METHODS.TURN_INTERRUPTED,
+    );
+    const idleIndex = turnNotifications.findIndex(
+      (notification) =>
+        notification.method === DILIGENT_SERVER_NOTIFICATION_METHODS.THREAD_STATUS_CHANGED &&
+        (notification.params as { status?: string }).status === "idle",
+    );
+    expect(interruptedIndex).toBeGreaterThanOrEqual(0);
+    expect(interruptedIndex).toBeLessThan(idleIndex);
+
+    const secondResult = (await client.request("turn/interrupt", { threadId })) as { interrupted: boolean };
+    expect(secondResult.interrupted).toBe(false);
   });
 
   test("turn completion persists messages to thread/read", async () => {

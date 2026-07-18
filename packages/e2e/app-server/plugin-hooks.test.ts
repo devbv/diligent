@@ -1,4 +1,4 @@
-// @summary E2E tests for plugin lifecycle hooks: blocking, error tolerance, additionalContext, and stop_hook_active re-entrance
+// @summary App-server e2e tests for plugin hook blocking, context, errors, and stop-hook re-entry
 import { afterEach, describe, expect, test } from "bun:test";
 import { access, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";

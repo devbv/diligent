@@ -1,4 +1,4 @@
-// @summary Mode and config e2e tests: mode switching, effort changes
+// @summary App-server e2e tests for modes, effort, and tool availability
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";

@@ -1,4 +1,4 @@
-// @summary Creates a real Bun WebSocket server wrapping DiligentAppServer for transport-level e2e tests
+// @summary Real Bun WebSocket host for app-server transport e2e tests
 
 import { createWsPeer, type DiligentAppServer } from "@diligent/runtime";
 

@@ -1,9 +1,10 @@
-// @summary E2E coverage for custom agents and per-spawn child-tool caps
+// @summary App-server e2e coverage for custom agents and per-spawn child-tool caps
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { EventStream, type ProviderEvent, type ProviderResult, type StreamFunction } from "@diligent/runtime";
+import type { ProviderEvent, ProviderResult } from "@diligent/core/provider-contract";
+import { EventStream, type StreamFunction } from "@diligent/runtime";
 import { createProtocolClient, type ProtocolTestClient } from "./helpers/protocol-client";
 import { createTestServer } from "./helpers/server-factory";
 

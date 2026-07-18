@@ -1,4 +1,4 @@
-// @summary RpcClientSession-based test client with direct bidirectional message channel
+// @summary App-server e2e client using RpcClientSession and an in-memory bidirectional peer
 
 import {
   DILIGENT_VERSION,

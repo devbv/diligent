@@ -1,9 +1,9 @@
-// @summary Cross-language storage namespace contract test: verifies TypeScript runtime resolves namespace per D099
+// @summary Repository contract test for Rust launcher and TypeScript runtime storage namespaces
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm, stat } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { ensureDiligentDir, resolvePaths } from "@diligent/runtime";
+import { join, resolve } from "node:path";
+import { DEFAULT_STORAGE_NAMESPACE, ensureDiligentDir, resolvePaths } from "@diligent/runtime/infrastructure";
 
 /**
  * D099 Rust/TypeScript storage namespace boundary contract
@@ -32,20 +32,32 @@ import { ensureDiligentDir, resolvePaths } from "@diligent/runtime";
  *   5. Namespace values must match /^[a-z0-9-]+$/; invalid values are rejected.
  *   6. Empty or whitespace-only env var values fall back to the default.
  *
- * Rust-side constants documented here for human review: any change to these
- * values must be mirrored in the Rust implementation (storage.rs).
+ * The Rust constants are read from storage.rs instead of being copied into this
+ * test, so changes on either side exercise the actual repository contract.
  */
 
-// Rust-side namespace constants documented for cross-language contract traceability.
-// These must stay in sync with apps/overdare-ai-agent/src/storage.rs.
-const RUST_DEFAULT_STORAGE_NAMESPACE = "diligent";
-const RUST_PACKAGED_NAMESPACE_PROD = "overdare";
-const RUST_PACKAGED_NAMESPACE_DEV = "overdare-dev";
+const RUST_STORAGE_PATH = resolve(import.meta.dir, "../../../../apps/overdare-ai-agent/src/storage.rs");
 
-// TypeScript-side default — must equal RUST_DEFAULT_STORAGE_NAMESPACE so that a
-// standalone TypeScript runtime and a Rust-launched runtime with no env override
-// both start from the same namespace baseline.
-const TS_DEFAULT_STORAGE_NAMESPACE = "diligent";
+interface RustStorageNamespaces {
+  default: string;
+  packagedProd: string;
+  packagedDev: string;
+}
+
+async function readRustStorageNamespaces(): Promise<RustStorageNamespaces> {
+  const source = await readFile(RUST_STORAGE_PATH, "utf8");
+  const readConstant = (name: string): string => {
+    const value = new RegExp(`pub const ${name}: &str = "([^"]+)";`).exec(source)?.[1];
+    if (!value) throw new Error(`Missing Rust storage namespace constant: ${name}`);
+    return value;
+  };
+
+  return {
+    default: readConstant("DEFAULT_STORAGE_NAMESPACE"),
+    packagedProd: readConstant("PACKAGED_STORAGE_NAMESPACE_PROD"),
+    packagedDev: readConstant("PACKAGED_STORAGE_NAMESPACE_DEV"),
+  };
+}
 
 let tmpDir: string;
 
@@ -63,8 +75,9 @@ async function dirExists(path: string): Promise<boolean> {
 }
 
 describe("namespace contract: default namespace", () => {
-  test("TypeScript and Rust share the same default namespace value", () => {
-    expect(TS_DEFAULT_STORAGE_NAMESPACE).toBe(RUST_DEFAULT_STORAGE_NAMESPACE);
+  test("TypeScript and Rust share the same default namespace value", async () => {
+    const rust = await readRustStorageNamespaces();
+    expect(DEFAULT_STORAGE_NAMESPACE).toBe(rust.default);
   });
 
   test("resolvePaths uses .diligent as the root dir when no env var is set", async () => {
@@ -101,16 +114,18 @@ describe("namespace contract: env var override", () => {
 
   test("Rust prod namespace value 'overdare' is a valid namespace for the TypeScript runtime", async () => {
     tmpDir = await mkdtemp(join(tmpdir(), "diligent-ns-contract-"));
+    const rust = await readRustStorageNamespaces();
     const paths = resolvePaths(tmpDir, {
-      DILIGENT_STORAGE_NAMESPACE: RUST_PACKAGED_NAMESPACE_PROD,
+      DILIGENT_STORAGE_NAMESPACE: rust.packagedProd,
     });
     expect(paths.root).toBe(join(tmpDir, ".overdare"));
   });
 
   test("Rust dev namespace value 'overdare-dev' is a valid namespace for the TypeScript runtime", async () => {
     tmpDir = await mkdtemp(join(tmpdir(), "diligent-ns-contract-"));
+    const rust = await readRustStorageNamespaces();
     const paths = resolvePaths(tmpDir, {
-      DILIGENT_STORAGE_NAMESPACE: RUST_PACKAGED_NAMESPACE_DEV,
+      DILIGENT_STORAGE_NAMESPACE: rust.packagedDev,
     });
     expect(paths.root).toBe(join(tmpDir, ".overdare-dev"));
   });
@@ -170,8 +185,9 @@ describe("namespace contract: directory creation", () => {
 
   test("ensureDiligentDir with Rust prod namespace creates directories under .overdare", async () => {
     tmpDir = await mkdtemp(join(tmpdir(), "diligent-ns-contract-"));
+    const rust = await readRustStorageNamespaces();
     const paths = await ensureDiligentDir(tmpDir, {
-      DILIGENT_STORAGE_NAMESPACE: RUST_PACKAGED_NAMESPACE_PROD,
+      DILIGENT_STORAGE_NAMESPACE: rust.packagedProd,
     });
     expect(paths.root).toBe(join(tmpDir, ".overdare"));
     expect(await dirExists(paths.root)).toBe(true);

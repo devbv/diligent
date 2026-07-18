@@ -1,4 +1,4 @@
-// @summary Test server factory creating DiligentAppServer with fake stream and optional tools
+// @summary App-server e2e factory with deterministic provider streams and optional tools
 
 import type { RuntimeConfig, StreamFunction, Tool } from "@diligent/runtime";
 import {
@@ -62,8 +62,12 @@ export function createTestServer(opts: {
     streamFunction: streamFn,
     diligent: { tools: opts.runtimeToolsConfig },
     sources: [],
+    configLayers: {},
+    discoveredSkills: [],
     skills: [],
+    discoveredAgents: [],
     agents: opts.runtimeConfigOverrides?.agents ?? [],
+    agentCatalog: [],
     agentDefinitions,
     compaction: {
       enabled: true,
@@ -74,6 +78,11 @@ export function createTestServer(opts: {
     permissionEngine: createYoloPermissionEngine(),
     providerManager,
     authStore: { mode: "auto" },
+    experimentDefinitions: [],
+    experiments: [],
+    disabledToolNames: new Set(),
+    disabledSkillNames: new Set(),
+    disabledAgentNames: new Set(),
     ...opts.runtimeConfigOverrides,
   };
 
