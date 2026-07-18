@@ -1,4 +1,4 @@
-// @summary Runtime eval candidate for exact project-knowledge prompt recall
+// @summary Runtime eval for exact project-knowledge prompt recall
 
 import type { RuntimeEvalTask } from "../../runtime-task";
 import type { EvalProfile } from "../../task";

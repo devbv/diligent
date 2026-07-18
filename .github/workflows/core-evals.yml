@@ -3,13 +3,8 @@ name: Core Evals
 on:
   workflow_dispatch:
     inputs:
-      canonical:
-        description: "Run the complete canonical suite"
-        required: true
-        type: boolean
-        default: true
       provider:
-        description: "Provider filter for non-canonical investigation"
+        description: "Provider filter; all runs both providers"
         required: true
         type: choice
         options:
@@ -18,11 +13,11 @@ on:
           - anthropic
         default: all
       task:
-        description: "Task ID filter for non-canonical investigation"
+        description: "Optional task ID; empty runs every core task"
         required: false
         type: string
       model:
-        description: "Model override for non-canonical investigation"
+        description: "Optional model override"
         required: false
         type: string
       seed:
@@ -45,7 +40,7 @@ on:
         required: true
 
 concurrency:
-  group: ${{ github.repository }}-live-evals
+  group: ${{ github.repository }}-model-evals
   cancel-in-progress: false
 
 permissions:
@@ -59,7 +54,6 @@ jobs:
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-      EVAL_CANONICAL: ${{ github.event_name != 'workflow_dispatch' || inputs.canonical }}
       EVAL_PROVIDER: ${{ inputs.provider || 'all' }}
       EVAL_TASK: ${{ inputs.task || '' }}
       EVAL_MODEL: ${{ inputs.model || '' }}
@@ -80,36 +74,19 @@ jobs:
         shell: bash
         run: |
           args=(core)
-          if [ "$EVAL_CANONICAL" = "true" ]; then
-            args+=(--canonical)
-          else
-            if [ "$EVAL_PROVIDER" != "all" ]; then
-              args+=(--provider "$EVAL_PROVIDER")
-            fi
-            if [ -n "$EVAL_TASK" ]; then
-              args+=(--task "$EVAL_TASK")
-            fi
-            if [ -n "$EVAL_MODEL" ]; then
-              args+=(--model "$EVAL_MODEL")
-            fi
+          if [ "$EVAL_PROVIDER" != "all" ]; then
+            args+=(--provider "$EVAL_PROVIDER")
+          fi
+          if [ -n "$EVAL_TASK" ]; then
+            args+=(--task "$EVAL_TASK")
+          fi
+          if [ -n "$EVAL_MODEL" ]; then
+            args+=(--model "$EVAL_MODEL")
           fi
           if [ -n "$EVAL_SEED" ]; then
             args+=(--seed "$EVAL_SEED")
           fi
           bun run eval "${args[@]}"
-
-      - name: Run candidate core evals in shadow mode
-        if: github.event_name == 'schedule'
-        continue-on-error: true
-        shell: bash
-        run: |
-          candidate_status=0
-          for task in structured-tool-args parallel-tools; do
-            if ! bun run eval core --task "$task" --report "artifacts/evals/core-candidate-$task.json"; then
-              candidate_status=1
-            fi
-          done
-          exit "$candidate_status"
 
       - name: Upload eval report
         if: always()

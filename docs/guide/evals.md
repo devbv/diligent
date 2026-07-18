@@ -1,4 +1,4 @@
-# Live eval suites
+# Model-backed eval suites
 
 Diligent keeps live-model behavioral evaluations in the private `@diligent/evals` package. They are separate from
 deterministic unit and end-to-end tests and never run as part of the default `bun test` command.
@@ -9,24 +9,25 @@ deterministic unit and end-to-end tests and never run as part of the default `bu
 - `runtime` evaluates prompt assembly, mode-specific tools, project instructions, skills, sessions, and workspace
   effects through an in-process `DiligentAppServer` and `RpcClientSession` connection.
 
-Run the complete manifests with:
+Run every task in each suite against both providers with:
 
 ```bash
-bun run eval core --canonical
-bun run eval runtime --canonical
+bun run eval core
+bun run eval runtime
 ```
 
-Use `--provider`, `--task`, or `--model` only for non-canonical investigation. `--seed` reconstructs fixture values;
-it does not make model output deterministic. Reports are written under `artifacts/evals/` unless `--report` is given.
+Use `--provider` to run one provider or `--task` to run one task. Without those filters, the command always runs every
+task against both default provider profiles. `--model` selects one compatible model. `--seed` reconstructs fixture
+values; it does not make model output deterministic. Reports are written under `artifacts/evals/` unless `--report` is
+given.
 
-The canonical core manifest contains `direct-response`, `single-tool`, `tool-chain`, and `recover-tool-error`.
-`structured-tool-args`, `parallel-tools`, and `image-tool-result` remain explicit candidate tasks and run as
-non-blocking scheduled investigations. `image-tool-result` checks provider transport of multiple image blocks from an
-in-memory tool without runtime or filesystem behavior. All profiles use medium effort. Canonical mode requires both
-`OPENAI_API_KEY` and `ANTHROPIC_API_KEY`; a filtered investigation requires only its selected provider credential.
+The core suite contains `direct-response`, `single-tool`, `tool-chain`, `recover-tool-error`, `structured-tool-args`,
+`parallel-tools`, and `image-tool-result`. `image-tool-result` checks provider transport of multiple image blocks from
+an in-memory tool without runtime or filesystem behavior. All profiles use medium effort. A complete run requires both
+`OPENAI_API_KEY` and `ANTHROPIC_API_KEY`; a provider-filtered run requires only its selected credential.
 
-The canonical runtime manifest contains `project-fix`, `plan-readonly`, `skill-guided-change`, and
-`session-resume`. Runtime candidates are available only through an explicit non-canonical `--task` investigation:
+The runtime suite contains `project-fix`, `plan-readonly`, `skill-guided-change`, `session-resume`, and these extended
+runtime scenarios:
 
 - `plan-to-execute` checks plan-to-default mode transition and implementation handoff;
 - `knowledge-recall` checks exact project-knowledge prompt recall;
@@ -55,7 +56,6 @@ recovery, image transport, shell, and file behavior are owned by the core and ru
 
 ## Shadow status
 
-Core evals run daily at 06:00 KST. Their release-gate readiness criteria remain documented in P080. Runtime V0 runs
-daily at 06:30 KST. Both workflows share a sequential concurrency group, and both remain manual/daily non-blocking
-shadow signals disconnected from Release. Runtime promotion requires the readiness window and deliberate failure
-checks in P083, followed by a separate reviewed workflow change.
+Core evals run every task daily at 06:00 KST. Runtime evals run every task daily at 06:30 KST. Both workflows share a
+sequential `model-evals` concurrency group, and both remain manual/daily signals disconnected from Release. A manual
+workflow dispatch may filter to one task or provider; leaving filters empty preserves the complete-suite behavior.

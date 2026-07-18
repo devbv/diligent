@@ -1,4 +1,4 @@
-// @summary Runtime eval candidate for scripted user clarification followed by exact execution
+// @summary Runtime eval for scripted user clarification followed by exact execution
 
 import type { DiligentServerRequestResponse } from "@diligent/protocol";
 import type { RuntimeEvalTask } from "../../runtime-task";

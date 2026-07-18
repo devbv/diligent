@@ -3,14 +3,18 @@
 import { describe, expect, test } from "bun:test";
 import { runEvalExecution } from "../../../src/runner/execution";
 import type { ParallelToolFragment } from "../../../src/tasks/core";
-import { CORE_CANDIDATE_TASKS, CORE_EVAL_TASKS } from "../../../src/tasks/core";
+import { CORE_EVAL_TASKS } from "../../../src/tasks/core";
 import { assistantMessage, sequenceStream, TEST_MODEL } from "../../helpers/fake-stream";
 
 const PROFILE = { provider: "anthropic", model: TEST_MODEL.modelId, effort: "medium" } as const;
 
 describe("core eval tasks", () => {
-  test("registers structured arguments, parallel tools, and image transport as candidates", () => {
-    expect(CORE_CANDIDATE_TASKS.map((task) => task.id)).toEqual([
+  test("registers every core task in one suite", () => {
+    expect(CORE_EVAL_TASKS.map((task) => task.id)).toEqual([
+      "direct-response",
+      "single-tool",
+      "tool-chain",
+      "recover-tool-error",
       "structured-tool-args",
       "parallel-tools",
       "image-tool-result",

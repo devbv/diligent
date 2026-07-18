@@ -1,4 +1,4 @@
-// @summary Registries for canonical and candidate core eval tasks
+// @summary Registry for all core eval tasks
 
 import type { AnyEvalTask } from "../../task";
 import { directResponseTask } from "./direct-response";
@@ -24,17 +24,12 @@ export { structuredToolArgsTask } from "./structured-tool-args";
 export type { ToolChainWorld } from "./tool-chain";
 export { toolChainTask } from "./tool-chain";
 
-export const CORE_CANONICAL_TASKS: readonly AnyEvalTask[] = [
+export const CORE_EVAL_TASKS: readonly AnyEvalTask[] = [
   directResponseTask,
   singleToolTask,
   toolChainTask,
   recoverToolErrorTask,
-];
-
-export const CORE_CANDIDATE_TASKS: readonly AnyEvalTask[] = [
   structuredToolArgsTask,
   parallelToolsTask,
   imageToolResultTask,
 ];
-
-export const CORE_EVAL_TASKS: readonly AnyEvalTask[] = [...CORE_CANONICAL_TASKS, ...CORE_CANDIDATE_TASKS];

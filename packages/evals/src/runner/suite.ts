@@ -7,8 +7,6 @@ import { deriveTaskSeed } from "./seed";
 
 export interface EvalRunMetadata {
   suiteVersion: string;
-  canonical: boolean;
-  canonicalReason: string;
   repository: string;
   commitSha: string;
   ref: string;
@@ -22,7 +20,6 @@ export interface RunEvalSuiteInput {
   profiles: readonly EvalProfile[];
   rootSeed: string;
   metadata: EvalRunMetadata;
-  canonicalManifest?: EvalCanonicalManifest;
   resolveModel(profile: EvalProfile): Model;
   createStream(profile: EvalProfile): StreamFunction;
   onExecutionStart?: (task: AnyEvalTask, profile: EvalProfile) => void;
@@ -30,13 +27,8 @@ export interface RunEvalSuiteInput {
   execute?: (input: Parameters<typeof runEvalExecution>[0]) => Promise<EvalExecutionResult<unknown>>;
 }
 
-export interface EvalCanonicalManifest {
-  taskIds: readonly string[];
-  profiles: readonly EvalProfile[];
-}
-
 export async function runEvalSuite(input: RunEvalSuiteInput): Promise<EvalSuiteReport> {
-  validateSelection(input.tasks, input.profiles, input.metadata.canonical, input.canonicalManifest);
+  validateSelection(input.tasks, input.profiles);
   const startedAt = new Date();
   const executions: EvalExecutionReport[] = [];
 
@@ -60,8 +52,6 @@ export async function runEvalSuite(input: RunEvalSuiteInput): Promise<EvalSuiteR
   return {
     schemaVersion: 1,
     suiteVersion: input.metadata.suiteVersion,
-    canonical: input.metadata.canonical,
-    canonicalReason: input.metadata.canonicalReason,
     repository: input.metadata.repository,
     commitSha: input.metadata.commitSha,
     ref: input.metadata.ref,
@@ -99,33 +89,14 @@ function toExecutionReport(result: EvalExecutionResult<unknown>, maxOutputTokens
   };
 }
 
-function validateSelection(
-  tasks: readonly AnyEvalTask[],
-  profiles: readonly EvalProfile[],
-  canonical: boolean,
-  canonicalManifest?: EvalCanonicalManifest,
-): void {
+function validateSelection(tasks: readonly AnyEvalTask[], profiles: readonly EvalProfile[]): void {
   if (tasks.length === 0) throw new Error("No eval tasks were selected.");
   if (profiles.length === 0) throw new Error("No eval profiles were selected.");
   if (new Set(tasks.map((task) => task.id)).size !== tasks.length) throw new Error("Duplicate eval task ID.");
   const profileKeys = profiles.map(profileKey);
   if (new Set(profileKeys).size !== profileKeys.length) throw new Error("Duplicate eval profile.");
-  if (!canonical) return;
-  if (!canonicalManifest) throw new Error("Canonical eval execution requires a canonical manifest.");
-
-  const selectedTaskIds = tasks.map((task) => task.id).sort();
-  const requiredTaskIds = [...canonicalManifest.taskIds].sort();
-  const selectedProfileKeys = [...profileKeys].sort();
-  const requiredProfileKeys = canonicalManifest.profiles.map(profileKey).sort();
-  if (!sameStrings(selectedTaskIds, requiredTaskIds) || !sameStrings(selectedProfileKeys, requiredProfileKeys)) {
-    throw new Error("Canonical eval runs require the exact canonical task and profile manifest.");
-  }
 }
 
 function profileKey(profile: EvalProfile): string {
   return `${profile.provider}:${profile.model}:${profile.effort}`;
-}
-
-function sameStrings(left: readonly string[], right: readonly string[]): boolean {
-  return left.length === right.length && left.every((value, index) => value === right[index]);
 }

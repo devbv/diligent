@@ -1,4 +1,4 @@
-// @summary Runtime eval candidate for one bounded child-agent delegation with linked evidence
+// @summary Runtime eval for one bounded child-agent delegation with linked evidence
 
 import type { RuntimeEvalTask } from "../../runtime-task";
 import type { EvalProfile } from "../../task";

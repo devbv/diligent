@@ -1,4 +1,4 @@
-// @summary Runtime eval candidate for an ordered read, overwrite, and confirmation read of one workspace file
+// @summary Runtime eval for an ordered read, overwrite, and confirmation read of one workspace file
 
 import type { Message } from "@diligent/core/message-contract";
 import type { RuntimeEvalTask } from "../../runtime-task";

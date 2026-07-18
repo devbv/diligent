@@ -177,8 +177,6 @@ export interface RuntimeEvalSuiteReport {
   schemaVersion: 1;
   suite: "runtime";
   suiteVersion: "runtime-v0";
-  canonical: boolean;
-  canonicalReason: string;
   repository: string;
   commitSha: string;
   ref: string;

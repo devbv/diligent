@@ -3,6 +3,10 @@
 **Status:** Implemented — ready for shadow operation  
 **Date:** 2026-07-17
 
+**Implementation note (2026-07-18):** The shipped CLI no longer distinguishes canonical and candidate runs. Running
+`bun run eval core` executes every registered core task against both default provider profiles; `--task` and
+`--provider` are optional narrowing filters. The canonical terminology below records the original gate design.
+
 ## Summary
 
 Add a live-LLM eval task suite that detects behavioral regressions in `@diligent/core` against the OpenAI and Anthropic API providers. The suite will first run manually and once per day as a non-blocking shadow signal. After a defined burn-in period demonstrates that the tasks and runner are stable, a separate reviewed change will make the canonical suite a blocking prerequisite of the Release workflow.

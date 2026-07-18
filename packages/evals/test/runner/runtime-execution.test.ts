@@ -114,7 +114,7 @@ describe("runRuntimeEvalExecution", () => {
     expect(JSON.stringify(result.execution.session.lines)).toContain(answer);
   });
 
-  test("executes the plan-to-default candidate and verifies its exact implementation", async () => {
+  test("executes the plan-to-default task and verifies its exact implementation", async () => {
     const seed = "shared-seed-123";
     const token = seededToken(seed, "PLAN");
     const operand = (Number.parseInt(seed.slice(0, 4), 36) % 7) + 2;
@@ -154,7 +154,7 @@ describe("runRuntimeEvalExecution", () => {
     expect(result.execution.toolCalls.map((call) => call.name)).toEqual(["glob", "apply_patch", "bash"]);
   });
 
-  test("executes the knowledge-recall candidate through the assembled runtime", async () => {
+  test("executes the knowledge-recall task through the assembled runtime", async () => {
     const seed = "shared-seed-123";
     const token = seededToken(seed, "CHANNEL");
     const result = await runRuntimeEvalExecution({

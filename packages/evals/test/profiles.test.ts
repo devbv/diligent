@@ -1,17 +1,17 @@
-// @summary Tests canonical profile selection and early credential validation
+// @summary Tests default profile selection and early credential validation
 
 import { describe, expect, test } from "bun:test";
 import type { EvalCliOptions } from "../src/cli-options";
-import { CANONICAL_PROFILES, resolveSelectedProfiles, validateCredentials } from "../src/profiles";
+import { DEFAULT_PROFILES, resolveSelectedProfiles, validateCredentials } from "../src/profiles";
 
-const BASE_OPTIONS: EvalCliOptions = { suite: "core", canonical: false, help: false };
+const BASE_OPTIONS: EvalCliOptions = { suite: "core", help: false };
 
 describe("eval profiles", () => {
-  test("canonical mode returns the exact two profiles", () => {
-    expect(resolveSelectedProfiles({ ...BASE_OPTIONS, canonical: true })).toEqual([...CANONICAL_PROFILES]);
+  test("default mode returns both profiles", () => {
+    expect(resolveSelectedProfiles(BASE_OPTIONS)).toEqual([...DEFAULT_PROFILES]);
   });
 
-  test("a provider filter selects one canonical provider profile", () => {
+  test("a provider filter selects one default provider profile", () => {
     expect(resolveSelectedProfiles({ ...BASE_OPTIONS, provider: "anthropic" })).toEqual([
       { provider: "anthropic", model: "claude-sonnet-5", effort: "medium" },
     ]);
@@ -24,9 +24,9 @@ describe("eval profiles", () => {
   });
 
   test("fails before execution when a selected credential is missing", () => {
-    expect(() =>
-      validateCredentials(CANONICAL_PROFILES, { ANTHROPIC_API_KEY: "anthropic", OPENAI_API_KEY: "" }),
-    ).toThrow("OPENAI_API_KEY is required");
+    expect(() => validateCredentials(DEFAULT_PROFILES, { ANTHROPIC_API_KEY: "anthropic", OPENAI_API_KEY: "" })).toThrow(
+      "OPENAI_API_KEY is required",
+    );
   });
 
   test("a filtered profile requires only its own credential", () => {

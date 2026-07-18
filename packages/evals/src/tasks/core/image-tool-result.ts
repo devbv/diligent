@@ -1,4 +1,4 @@
-// @summary Core eval candidate for provider transport of multiple image blocks returned by one in-memory tool
+// @summary Core eval for provider transport of multiple image blocks returned by one in-memory tool
 
 import { z } from "zod";
 import type { EvalTask } from "../../task";

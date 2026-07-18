@@ -1,16 +1,16 @@
-// @summary Tests canonical and investigation CLI selection rules
+// @summary Tests eval suite and optional investigation filters
 
 import { describe, expect, test } from "bun:test";
-import { defaultReportPath } from "../src/cli";
+import { defaultReportPath, selectCoreTasks, selectRuntimeTasks } from "../src/cli";
 import { parseCliOptions } from "../src/cli-options";
 
 describe("parseCliOptions", () => {
-  test("accepts complete canonical mode", () => {
-    expect(parseCliOptions(["core", "--canonical"])).toMatchObject({ suite: "core", canonical: true });
+  test("selects the complete core suite by default", () => {
+    expect(parseCliOptions(["core"])).toEqual({ suite: "core", help: false });
   });
 
   test("accepts the runtime suite selector", () => {
-    expect(parseCliOptions(["runtime", "--canonical"])).toMatchObject({ suite: "runtime", canonical: true });
+    expect(parseCliOptions(["runtime"])).toEqual({ suite: "runtime", help: false });
   });
 
   test("uses suite-specific default report paths", () => {
@@ -19,28 +19,36 @@ describe("parseCliOptions", () => {
     expect(defaultReportPath("runtime", now)).toContain("runtime-2026-07-18T00-00-00.000Z.json");
   });
 
-  test("allows a reconstruction seed in canonical mode", () => {
-    expect(parseCliOptions(["core", "--canonical", "--seed", "recorded-seed"])).toMatchObject({
-      canonical: true,
+  test("allows a reconstruction seed", () => {
+    expect(parseCliOptions(["core", "--seed", "recorded-seed"])).toMatchObject({
       seed: "recorded-seed",
     });
   });
 
-  test("rejects filters in canonical mode", () => {
-    expect(() => parseCliOptions(["core", "--canonical", "--provider", "openai"])).toThrow(
-      "Canonical mode does not allow provider, task, or model overrides",
-    );
+  test("rejects the removed canonical option", () => {
+    expect(() => parseCliOptions(["core", "--canonical"])).toThrow('Unknown eval option "--canonical"');
   });
 
   test("rejects effort overrides because eval effort is fixed", () => {
     expect(() => parseCliOptions(["core", "--effort", "high"])).toThrow('Unknown eval option "--effort"');
   });
 
-  test("labels filtered execution non-canonical", () => {
+  test("accepts provider and task filters", () => {
     expect(parseCliOptions(["core", "--provider", "anthropic", "--task", "single-tool"])).toMatchObject({
-      canonical: false,
       provider: "anthropic",
       task: "single-tool",
     });
+  });
+});
+
+describe("task selection", () => {
+  test("selects every task when no task filter is given", () => {
+    expect(selectCoreTasks()).toHaveLength(7);
+    expect(selectRuntimeTasks()).toHaveLength(12);
+  });
+
+  test("selects exactly one requested task", () => {
+    expect(selectCoreTasks("image-tool-result").map((task) => task.id)).toEqual(["image-tool-result"]);
+    expect(selectRuntimeTasks("file-roundtrip").map((task) => task.id)).toEqual(["file-roundtrip"]);
   });
 });

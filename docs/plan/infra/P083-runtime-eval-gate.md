@@ -6,6 +6,11 @@ created: 2026-07-18
 
 # P083: Runtime Eval Task Gate
 
+> **Implementation note (2026-07-18):** The shipped CLI does not preserve the canonical/candidate split described in
+> the original gate design below. Running `bun run eval runtime` executes every registered runtime task against both
+> default provider profiles; `--task` and `--provider` are optional narrowing filters. The daily workflow uses that
+> complete-suite command.
+
 ## Goal
 
 Extend `@diligent/evals` from core-only behavioral coverage to a runtime suite that detects regressions in the

@@ -1,4 +1,4 @@
-// @summary Runtime eval candidate for plan-to-default mode transition and context handoff
+// @summary Runtime eval for plan-to-default mode transition and context handoff
 
 import type { RuntimeEvalTask } from "../../runtime-task";
 import {

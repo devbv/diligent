@@ -1,4 +1,4 @@
-// @summary Deterministic checks for the canonical runtime task fixtures and provider equivalence
+// @summary Deterministic checks for all runtime task fixtures and provider equivalence
 
 import { describe, expect, test } from "bun:test";
 import { mkdtemp, readFile } from "node:fs/promises";
@@ -13,25 +13,17 @@ import {
   knowledgeUpdateTask,
   manualCompactionResumeTask,
   planToExecuteTask,
-  RUNTIME_CANDIDATE_TASKS,
-  RUNTIME_CANONICAL_TASKS,
   RUNTIME_EVAL_TASKS,
   readImagePairTask,
 } from "../../../src/tasks/runtime";
 
 describe("runtime eval tasks", () => {
-  test("freezes the four-task V0 manifest and limits", () => {
-    expect(RUNTIME_CANONICAL_TASKS.map((task) => task.id)).toEqual([
+  test("registers every runtime task in one suite", () => {
+    expect(RUNTIME_EVAL_TASKS.map((task) => task.id)).toEqual([
       "project-fix",
       "plan-readonly",
       "skill-guided-change",
       "session-resume",
-    ]);
-    expect(RUNTIME_CANONICAL_TASKS.every((task) => task.limits.maxOutputTokens === 8_192)).toBe(true);
-  });
-
-  test("registers runtime investigations separately from the canonical manifest", () => {
-    expect(RUNTIME_CANDIDATE_TASKS.map((task) => task.id)).toEqual([
       "plan-to-execute",
       "knowledge-recall",
       "knowledge-update",
@@ -41,8 +33,7 @@ describe("runtime eval tasks", () => {
       "collaboration-delegation",
       "file-roundtrip",
     ]);
-    expect(RUNTIME_EVAL_TASKS).toEqual([...RUNTIME_CANONICAL_TASKS, ...RUNTIME_CANDIDATE_TASKS]);
-    expect(RUNTIME_CANONICAL_TASKS.some((task) => RUNTIME_CANDIDATE_TASKS.includes(task))).toBe(false);
+    expect(RUNTIME_EVAL_TASKS.every((task) => task.limits.maxOutputTokens === 8_192)).toBe(true);
   });
 
   test("defines paired image reads with seed-controlled color assignment", async () => {

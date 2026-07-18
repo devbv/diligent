@@ -1,4 +1,4 @@
-// @summary Registries for canonical and candidate runtime eval tasks
+// @summary Registry for all runtime eval tasks
 
 import type { AnyRuntimeEvalTask } from "../../runtime-task";
 import { clarifyThenExecuteTask } from "./clarify-then-execute";
@@ -31,14 +31,11 @@ export { planToExecuteTask } from "./plan-to-execute";
 export type { ReadImagePairWorld } from "./read-image-pair";
 export { readImagePairTask } from "./read-image-pair";
 
-export const RUNTIME_CANONICAL_TASKS: readonly AnyRuntimeEvalTask[] = [
+export const RUNTIME_EVAL_TASKS: readonly AnyRuntimeEvalTask[] = [
   projectFixTask,
   planReadonlyTask,
   skillGuidedChangeTask,
   sessionResumeTask,
-];
-
-export const RUNTIME_CANDIDATE_TASKS: readonly AnyRuntimeEvalTask[] = [
   planToExecuteTask,
   knowledgeRecallTask,
   knowledgeUpdateTask,
@@ -47,9 +44,4 @@ export const RUNTIME_CANDIDATE_TASKS: readonly AnyRuntimeEvalTask[] = [
   readImagePairTask,
   collaborationDelegationTask,
   fileRoundtripTask,
-];
-
-export const RUNTIME_EVAL_TASKS: readonly AnyRuntimeEvalTask[] = [
-  ...RUNTIME_CANONICAL_TASKS,
-  ...RUNTIME_CANDIDATE_TASKS,
 ];

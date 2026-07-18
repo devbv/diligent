@@ -9,8 +9,6 @@ describe("runtime eval report", () => {
       schemaVersion: 1,
       suite: "runtime",
       suiteVersion: "runtime-v0",
-      canonical: false,
-      canonicalReason: "test",
       repository: "local/test",
       commitSha: "abc",
       ref: "local",

@@ -1,4 +1,4 @@
-// @summary Resolves canonical and investigation provider profiles and credentials
+// @summary Resolves default or filtered provider profiles and credentials
 
 import { resolveModel, resolveModelSelector, supportsThinkingEffort } from "@diligent/core/model-registry";
 import type { Model, StreamFunction } from "@diligent/core/provider-contract";
@@ -9,14 +9,12 @@ import type { EvalProfile, EvalProvider } from "./task";
 
 const EVAL_EFFORT = "medium" as const;
 
-export const CANONICAL_PROFILES: readonly EvalProfile[] = [
+export const DEFAULT_PROFILES: readonly EvalProfile[] = [
   { provider: "openai", model: "gpt-5.6-terra", effort: EVAL_EFFORT },
   { provider: "anthropic", model: "claude-sonnet-5", effort: EVAL_EFFORT },
 ];
 
 export function resolveSelectedProfiles(options: EvalCliOptions): EvalProfile[] {
-  if (options.canonical) return CANONICAL_PROFILES.map((profile) => ({ ...profile }));
-
   if (options.model) {
     const model = options.provider
       ? resolveModel({ provider: options.provider, modelId: options.model })
@@ -31,10 +29,10 @@ export function resolveSelectedProfiles(options: EvalCliOptions): EvalProfile[] 
     return [{ provider: model.provider, model: model.modelId, effort: EVAL_EFFORT }];
   }
 
-  const canonical = options.provider
-    ? CANONICAL_PROFILES.filter((profile) => profile.provider === options.provider)
-    : CANONICAL_PROFILES;
-  return canonical.map((profile) => {
+  const selected = options.provider
+    ? DEFAULT_PROFILES.filter((profile) => profile.provider === options.provider)
+    : DEFAULT_PROFILES;
+  return selected.map((profile) => {
     const model = resolveModel({ provider: profile.provider, modelId: profile.model });
     validateMediumEffort(model);
     return { ...profile };
@@ -63,18 +61,6 @@ export function resolveProfileModel(profile: EvalProfile): Model {
   }
   validateMediumEffort(model);
   return model;
-}
-
-export function canonicalReason(options: EvalCliOptions): string {
-  if (options.canonical) return `exact canonical profiles and complete ${options.suite} task set`;
-  const overrides = [
-    options.provider && `provider=${options.provider}`,
-    options.task && `task=${options.task}`,
-    options.model && `model=${options.model}`,
-  ].filter((value): value is string => Boolean(value));
-  return overrides.length > 0
-    ? `non-canonical investigation override: ${overrides.join(", ")}`
-    : "complete default selection without --canonical";
 }
 
 export function isEvalProvider(value: string): value is EvalProvider {

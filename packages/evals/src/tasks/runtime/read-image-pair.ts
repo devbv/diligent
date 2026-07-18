@@ -1,4 +1,4 @@
-// @summary Runtime eval candidate for paired image reading with bounded, redacted evidence
+// @summary Runtime eval for paired image reading with bounded, redacted evidence
 
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";

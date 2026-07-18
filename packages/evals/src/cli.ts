@@ -1,24 +1,17 @@
-// @summary CLI entrypoint for canonical and investigation core eval runs
+// @summary CLI entrypoint for complete or task-filtered core and runtime eval runs
 
 import { appendFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parseCliOptions } from "./cli-options";
-import {
-  CANONICAL_PROFILES,
-  canonicalReason,
-  createProfileStream,
-  resolveProfileModel,
-  resolveSelectedProfiles,
-  validateCredentials,
-} from "./profiles";
+import { createProfileStream, resolveProfileModel, resolveSelectedProfiles, validateCredentials } from "./profiles";
 import { redactEvalText, writeEvalReport } from "./reporters/json";
 import { runRuntimeEvalSuite } from "./runner/runtime-suite";
 import { createGithubRootSeed, createRandomRootSeed } from "./runner/seed";
 import { runEvalSuite } from "./runner/suite";
 import type { RuntimeEvalExecutionResult } from "./runtime-task";
 import type { AnyEvalTask, EvalExecutionResult, EvalProfile } from "./task";
-import { CORE_CANONICAL_TASKS, CORE_EVAL_TASKS } from "./tasks/core";
-import { RUNTIME_CANONICAL_TASKS, RUNTIME_EVAL_TASKS } from "./tasks/runtime";
+import { CORE_EVAL_TASKS } from "./tasks/core";
+import { RUNTIME_EVAL_TASKS } from "./tasks/runtime";
 
 const SUITE_VERSION = "core-v0";
 
@@ -34,24 +27,18 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
     const profiles = resolveSelectedProfiles(options);
     const tasks = options.suite === "core" ? selectCoreTasks(options.task) : selectRuntimeTasks(options.task);
     validateCredentials(profiles);
-    const metadata = resolveRunMetadata(options.canonical, canonicalReason(options));
+    const metadata = resolveRunMetadata();
     const rootSeed =
       options.seed ??
       (metadata.runId !== "local"
         ? createGithubRootSeed(metadata.repository, metadata.runId, metadata.commitSha)
         : createRandomRootSeed());
 
-    console.log(
-      `[eval] ${options.canonical ? "canonical" : "non-canonical"} ${options.suite} suite: ${tasks.length} task(s) x ${profiles.length} profile(s)`,
-    );
+    console.log(`[eval] ${options.suite} suite: ${tasks.length} task(s) x ${profiles.length} profile(s)`);
     const shared = {
       profiles,
       rootSeed,
       metadata,
-      canonicalManifest: {
-        taskIds: (options.suite === "core" ? CORE_CANONICAL_TASKS : RUNTIME_CANONICAL_TASKS).map((task) => task.id),
-        profiles: CANONICAL_PROFILES,
-      },
       createStream: createProfileStream,
       onExecutionStart: (task: { id: string }, profile: EvalProfile) => {
         console.log(`[eval] start ${task.id} / ${profile.provider} / ${profile.model}`);
@@ -67,7 +54,7 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
           })
         : await runRuntimeEvalSuite({
             ...shared,
-            tasks: tasks as typeof RUNTIME_CANONICAL_TASKS,
+            tasks: tasks as typeof RUNTIME_EVAL_TASKS,
             onExecutionEnd: (result) => printRuntimeExecutionResult(result, secrets),
           });
 
@@ -83,26 +70,24 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
   }
 }
 
-function selectCoreTasks(taskId?: string): AnyEvalTask[] {
-  if (!taskId) return [...CORE_CANONICAL_TASKS];
+export function selectCoreTasks(taskId?: string): AnyEvalTask[] {
+  if (!taskId) return [...CORE_EVAL_TASKS];
   const task = CORE_EVAL_TASKS.find((candidate) => candidate.id === taskId);
   if (!task) throw new Error(`Unknown core eval task "${taskId}".`);
   return [task];
 }
 
-function selectRuntimeTasks(taskId?: string) {
-  if (!taskId) return [...RUNTIME_CANONICAL_TASKS];
+export function selectRuntimeTasks(taskId?: string) {
+  if (!taskId) return [...RUNTIME_EVAL_TASKS];
   const task = RUNTIME_EVAL_TASKS.find((candidate) => candidate.id === taskId);
   if (!task) throw new Error(`Unknown runtime eval task "${taskId}".`);
   return [task];
 }
 
-function resolveRunMetadata(canonical: boolean, reason: string) {
+function resolveRunMetadata() {
   const commitSha = process.env.GITHUB_SHA?.trim() || localCommitSha();
   return {
     suiteVersion: SUITE_VERSION,
-    canonical,
-    canonicalReason: reason,
     repository: process.env.GITHUB_REPOSITORY?.trim() || "local/diligent",
     commitSha,
     ref: process.env.GITHUB_REF?.trim() || "local",
@@ -158,7 +143,6 @@ async function writeGithubSummary(
     `## ${"suite" in report && report.suite === "runtime" ? "Runtime" : "Core"} eval suite`,
     "",
     `- Status: ${report.passed ? "PASS" : "FAIL"}`,
-    `- Canonical: ${report.canonical ? "yes" : "no"}`,
     `- Commit: \`${report.commitSha}\``,
     `- Results: ${report.executions.filter((execution) => execution.passed).length}/${report.executions.length}`,
     `- Report: \`${reportPath}\``,
@@ -169,16 +153,14 @@ async function writeGithubSummary(
 
 function printHelp(): void {
   console.log(`Usage:
-  bun run eval core --canonical [--seed <seed>] [--report <path>]
   bun run eval core [--provider openai|anthropic] [--task <id>]
                       [--model <model-id>]
                       [--seed <seed>] [--report <path>]
 
-  bun run eval runtime --canonical [--seed <seed>] [--report <path>]
   bun run eval runtime [--provider openai|anthropic] [--task <id>]
                          [--model <model-id>] [--seed <seed>] [--report <path>]
 
-Canonical mode requires both provider credentials and rejects selection or profile overrides.`);
+Omitting --task runs every task in the selected suite. Omitting --provider runs both providers.`);
 }
 
 if (import.meta.main) {

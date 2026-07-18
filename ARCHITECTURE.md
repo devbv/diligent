@@ -112,7 +112,7 @@ Current guides:
 - Tool rendering: `docs/guide/tool-rendering.md`
 - AgentNativeBridge: `docs/guide/agent-native-bridge.md`
 - Product experiments: `docs/guide/experiments.md`
-- Live eval suites: `docs/guide/evals.md`
+- Model-backed eval suites: `docs/guide/evals.md`
 
 ## Frontend Protocol Philosophy
 
@@ -171,7 +171,7 @@ display names, onboarding hints, and client-facing validation messages are runti
 
 `packages/evals` runs small live-model behavioral evaluations against both public core capability boundaries and the
 assembled runtime. It owns isolated task worlds, runner budgets, deterministic evaluators, redacted versioned reports,
-and the canonical provider profile set. Core task and execution paths must not import runtime; the separate runtime
+and the default provider profile set. Core task and execution paths must not import runtime; the separate runtime
 adapter may depend on public `@diligent/runtime` subpaths and must execute through `DiligentAppServer`. It complements
 `packages/e2e`, which remains the home for deterministic full-stack protocol and runtime tests.
 

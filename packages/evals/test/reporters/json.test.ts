@@ -10,8 +10,6 @@ describe("serializeEvalReport", () => {
     const report: EvalSuiteReport = {
       schemaVersion: 1,
       suiteVersion: "core-v0",
-      canonical: true,
-      canonicalReason: "exact canonical suite",
       repository: "example/repo",
       commitSha: "abc123",
       ref: "refs/heads/main",

@@ -1,4 +1,4 @@
-// @summary Runtime eval candidate for manual compaction, restart, and exact context continuation
+// @summary Runtime eval for manual compaction, restart, and exact context continuation
 
 import type { RuntimeEvalTask } from "../../runtime-task";
 import type { EvalProfile } from "../../task";

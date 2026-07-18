@@ -137,8 +137,6 @@ export interface EvalSuiteReport {
   schemaVersion: 1;
   suite?: "core";
   suiteVersion: string;
-  canonical: boolean;
-  canonicalReason: string;
   repository: string;
   commitSha: string;
   ref: string;

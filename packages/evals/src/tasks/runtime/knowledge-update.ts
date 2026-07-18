@@ -1,4 +1,4 @@
-// @summary Runtime eval candidate for stable-id project-knowledge search and in-place update
+// @summary Runtime eval for stable-id project-knowledge search and in-place update
 
 import { join } from "node:path";
 import { readKnowledge } from "@diligent/runtime";
