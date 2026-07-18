@@ -62,6 +62,9 @@ Most source files include a `@summary` annotation on the first line: `// @summar
 ### Test Design
 
 - Test behavior and stable invariants, not volatile configuration snapshots.
+- A test must assert an observable that would fail under a plausible incorrect implementation of the named behavior. Successful completion alone is insufficient unless completion or liveness is itself the contract.
+- Prompts and mocked model responses are test inputs, not evidence of model behavior. Tests using them must assert runtime-owned propagation, filtering, persistence, or state transitions; prompt-content tests may assert only the rendered or injected prompt contract.
+- Avoid tests whose result is determined entirely by the fixture or an imported dependency unless the test verifies an otherwise-unobservable integration boundary.
 - Do not assert concrete configuration values merely to mirror the current state. Examples include exact default model IDs, complete supported-model or provider lists, catalog counts, feature-flag defaults, and the presence or absence of a particular configured entry.
 - When testing configuration-driven behavior, derive expectations from the configuration under test instead of duplicating its concrete values in the test.
 - Prefer inline synthetic fixtures when testing generic capability, policy, selection, or normalization logic. Model effort and model-class routing are examples, not special cases.

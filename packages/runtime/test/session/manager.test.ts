@@ -630,10 +630,15 @@ describe("SessionManager", () => {
     const mgr = new SessionManager(makeManagerConfig(dir, createMockStreamFn([])));
     await mgr.create();
 
-    mgr.appendModeChange("plan", "command");
+    mgr.appendModeChange("plan", "cli");
     await mgr.waitForWrites();
 
-    expect(mgr.entryCount).toBe(1);
+    const { entries } = await readSessionFile(mgr.sessionPath!);
+    expect(entries.find((entry) => entry.type === "mode_change")).toMatchObject({
+      type: "mode_change",
+      mode: "plan",
+      changedBy: "cli",
+    });
   });
 
   test("appendModeChange() defaults changedBy to 'command'", async () => {
@@ -641,7 +646,15 @@ describe("SessionManager", () => {
     const mgr = new SessionManager(makeManagerConfig(dir, createMockStreamFn([])));
     await mgr.create();
 
-    expect(() => mgr.appendModeChange("execute")).not.toThrow();
+    mgr.appendModeChange("execute");
+    await mgr.waitForWrites();
+
+    const { entries } = await readSessionFile(mgr.sessionPath!);
+    expect(entries.find((entry) => entry.type === "mode_change")).toMatchObject({
+      type: "mode_change",
+      mode: "execute",
+      changedBy: "command",
+    });
   });
 
   test("appendModelChange() persists model_change entry payload", async () => {

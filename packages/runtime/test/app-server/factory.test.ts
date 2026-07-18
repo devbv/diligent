@@ -403,9 +403,14 @@ describe("createAppServerConfig", () => {
   });
 
   it("keeps collab registry parent tools aligned with execute mode filtering", async () => {
+    const observedChildToolNames: string[][] = [];
+    const childStream = makeStreamFn([makeAssistant("child done")]);
     const runtimeConfig = makeRuntimeConfig({
       agentDefinitions: getBuiltinAgentDefinitions(),
-      streamFunction: makeStreamFn([makeAssistant("child done")]),
+      streamFunction: (model, context, options) => {
+        observedChildToolNames.push(context.tools.map((tool) => tool.name));
+        return childStream(model, context, options);
+      },
     });
     const config = createAppServerConfig({ cwd: "/tmp/test", runtimeConfig });
 
@@ -420,22 +425,23 @@ describe("createAppServerConfig", () => {
 
     expect(agent.tools.map((tool) => tool.name)).not.toContain("request_user_input");
 
-    const warned: string[] = [];
-    const originalWarn = console.warn;
-    console.warn = (message?: unknown) => warned.push(String(message));
-    try {
-      agent.registry?.spawn({ prompt: "inspect", description: "inspect", agentType: "explore" });
-    } finally {
-      console.warn = originalWarn;
-    }
+    const registry = agent.registry!;
+    const { threadId } = registry.spawn({ prompt: "inspect", description: "inspect", agentType: "explore" });
+    await registry.wait([threadId], 5000);
 
-    expect(warned.join("\n")).not.toContain("zero tools after filtering");
+    expect(observedChildToolNames[0]).toContain("read");
+    expect(observedChildToolNames[0]).not.toContain("request_user_input");
   });
 
   it("keeps nested collab tools available when explicitly enabled after mode filtering", async () => {
+    const observedChildToolNames: string[][] = [];
+    const childStream = makeStreamFn([makeAssistant("child done")]);
     const runtimeConfig = makeRuntimeConfig({
       agentDefinitions: getBuiltinAgentDefinitions(),
-      streamFunction: makeStreamFn([makeAssistant("child done")]),
+      streamFunction: (model, context, options) => {
+        observedChildToolNames.push(context.tools.map((tool) => tool.name));
+        return childStream(model, context, options);
+      },
     });
     const config = createAppServerConfig({ cwd: "/tmp/test", runtimeConfig });
     const agent = await config.createAgent({
@@ -447,22 +453,20 @@ describe("createAppServerConfig", () => {
       ask: async () => null,
     });
 
-    const warned: string[] = [];
-    const originalWarn = console.warn;
-    console.warn = (message?: unknown) => warned.push(String(message));
-    try {
-      agent.registry?.spawn({
-        prompt: "inspect",
-        description: "inspect",
-        agentType: "general",
-        allowNestedAgents: true,
-        allowedTools: ["spawn_agent", "wait"],
-      });
-    } finally {
-      console.warn = originalWarn;
-    }
+    const registry = agent.registry!;
+    const { threadId } = registry.spawn({
+      prompt: "inspect",
+      description: "inspect",
+      agentType: "general",
+      allowNestedAgents: true,
+      allowedTools: ["spawn_agent", "wait"],
+    });
+    await registry.wait([threadId], 5000);
 
-    expect(warned.join("\n")).not.toContain("zero tools after filtering");
+    expect(observedChildToolNames[0]).toContain("spawn_agent");
+    expect(observedChildToolNames[0]).toContain("wait");
+    expect(observedChildToolNames[0]).not.toContain("send_input");
+    expect(observedChildToolNames[0]).not.toContain("close_agent");
   });
 });
 

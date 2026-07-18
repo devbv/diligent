@@ -63,24 +63,12 @@ describe("collab integration", () => {
     }
   });
 
-  it("factory creates 4 tools", () => {
+  it("exposes the collab tool protocol contract", () => {
     const { tools } = createCollabTools(makeCollabDeps());
     const names = tools.map((t) => t.name);
     expect(names).toContain("spawn_agent");
     expect(names).toContain("wait");
     expect(names).toContain("send_input");
     expect(names).toContain("close_agent");
-    expect(tools.length).toBe(4);
-  });
-
-  it("collab tools excluded from child general agent tools", () => {
-    const { registry } = createCollabTools(
-      makeCollabDeps({ sessionManagerFactory: makeMockSessionManagerFactory(makeAssistant("ok")) }),
-    );
-    // The registry should exclude collab tools from child agents
-    // Verify via internal logic: spawn with general type should exclude spawn_agent from parentTools
-    // parentTools in deps is empty, so this just verifies no error
-    const r = registry.spawn({ prompt: "task", description: "", agentType: "general" });
-    expect(typeof r.threadId).toBe("string");
   });
 });

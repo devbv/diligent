@@ -126,20 +126,6 @@ describe("Knowledge Injector", () => {
     expect(lines.length).toBeLessThan(10);
   });
 
-  it("caps injected knowledge items to default top 50 by confidence", () => {
-    const entries = Array.from({ length: 70 }, (_, i) =>
-      makeEntry({ id: `k-${i}`, confidence: (70 - i) / 70, content: `Knowledge item ${i}` }),
-    );
-
-    const section = buildKnowledgeSection(entries, 20_000);
-    const lines = section.split("\n").filter((line) => line.startsWith("- ["));
-
-    expect(lines).toHaveLength(50);
-    expect(lines[0]).toContain("Knowledge item 0");
-    expect(lines[49]).toContain("Knowledge item 49");
-    expect(section).not.toContain("Knowledge item 50");
-  });
-
   it("uses configured maxItems when provided", () => {
     const entries = Array.from({ length: 10 }, (_, i) =>
       makeEntry({ id: `m-${i}`, confidence: (10 - i) / 10, content: `Configured item ${i}` }),

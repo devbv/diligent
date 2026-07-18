@@ -4,6 +4,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { LocalImageLoader } from "@diligent/core/image-contract";
+import { getDefaultEffortForClass, resolveModel, resolveModelForClass } from "@diligent/core/model-registry";
 import type { Tool } from "@diligent/core/tool-contract";
 import type { RuntimeAgent } from "@diligent/runtime/agent/runtime-agent";
 import { AgentRegistry, isFinal } from "@diligent/runtime/collab";
@@ -230,7 +231,8 @@ describe("AgentRegistry", () => {
         sessionManagerFactory: makeMockSessionManagerFactory(makeAssistant("ok")),
       }),
     );
-    expect(() => registry.spawn({ prompt: "task", description: "", agentType: "general" })).not.toThrow();
+    const { threadId } = registry.spawn({ prompt: "task", description: "", agentType: "general" });
+    expect(registry.getStatus(threadId).kind).toMatch(/pending|running/);
   });
 
   it("rejects when maxAgents exceeded", () => {
@@ -257,18 +259,19 @@ describe("AgentRegistry", () => {
     expect(registry.getNickname("bad-id")).toBeUndefined();
   });
 
-  it("shutdownAll aborts all agents", async () => {
+  it("shutdownAll clears every tracked agent", async () => {
     const registry = new AgentRegistry(
       makeCollabDeps({
         sessionManagerFactory: makeMockSessionManagerFactory(makeAssistant("done")),
       }),
     );
-    registry.spawn({ prompt: "task1", description: "", agentType: "general" });
-    registry.spawn({ prompt: "task2", description: "", agentType: "general" });
+    const first = registry.spawn({ prompt: "task1", description: "", agentType: "general" });
+    const second = registry.spawn({ prompt: "task2", description: "", agentType: "general" });
     await registry.shutdownAll();
-    // After shutdown, no more agents tracked
-    // After shutdown, spawned agents are cleared
-    // (we don't know the exact sessionIds, just verify shutdown completed without error)
+
+    expect(registry.getKnownAgents()).toEqual([]);
+    expect(() => registry.getStatus(first.threadId)).toThrow(/Unknown agent/);
+    expect(() => registry.getStatus(second.threadId)).toThrow(/Unknown agent/);
   });
 
   it("close aborts agent and returns final status", async () => {
@@ -513,9 +516,12 @@ describe("AgentRegistry", () => {
 
   it("uses the built-in agent default model class", async () => {
     const observedModels: string[] = [];
+    const parentModelRef = { provider: "anthropic", modelId: "claude-opus-4-8" } as const;
+    const exploreDefinition = getBuiltinAgentDefinitions().find((definition) => definition.name === "explore");
+    expect(exploreDefinition?.defaultModelClass).toBeDefined();
     const registry = new AgentRegistry(
       makeCollabDeps({
-        model: { provider: "anthropic", modelId: "claude-opus-4-8" },
+        model: parentModelRef,
         sessionManagerFactory: makeInspectingSessionManagerFactory((agent) => observedModels.push(agent.model.modelId)),
       }),
     );
@@ -523,14 +529,17 @@ describe("AgentRegistry", () => {
     const { threadId } = registry.spawn({ prompt: "explore", description: "", agentType: "explore" });
     await registry.wait([threadId], 5000);
 
-    expect(observedModels).toEqual(["claude-haiku-4-5-20251001"]);
+    const expected = resolveModelForClass(resolveModel(parentModelRef), exploreDefinition!.defaultModelClass!);
+    expect(observedModels).toEqual([expected.modelId]);
   });
 
   it("uses a custom agent default model class", async () => {
     const observedModels: string[] = [];
+    const parentModelRef = { provider: "anthropic", modelId: "claude-opus-4-8" } as const;
+    const defaultModelClass = "lite" as const;
     const registry = new AgentRegistry(
       makeCollabDeps({
-        model: { provider: "anthropic", modelId: "claude-opus-4-8" },
+        model: parentModelRef,
         agentDefinitions: resolveAvailableAgentDefinitions(getBuiltinAgentDefinitions(), [
           {
             name: "quick-reviewer",
@@ -538,7 +547,7 @@ describe("AgentRegistry", () => {
             filePath: "/tmp/quick-reviewer/AGENT.md",
             content: "Review quickly.",
             tools: ["read"],
-            defaultModelClass: "lite",
+            defaultModelClass,
             source: "project",
           },
         ]),
@@ -549,7 +558,8 @@ describe("AgentRegistry", () => {
     const { threadId } = registry.spawn({ prompt: "review", description: "", agentType: "quick-reviewer" });
     await registry.wait([threadId], 5000);
 
-    expect(observedModels).toEqual(["claude-haiku-4-5-20251001"]);
+    const expected = resolveModelForClass(resolveModel(parentModelRef), defaultModelClass);
+    expect(observedModels).toEqual([expected.modelId]);
   });
 
   it("inherits the parent model class when an agent has no default", async () => {
@@ -701,8 +711,9 @@ describe("AgentRegistry", () => {
     expect(policy?.content).toContain("Do not call spawn_agent, wait, send_input, or close_agent");
   });
 
-  it("applies class-based default effort to child agents", async () => {
+  it("uses the model-class policy effort for an explicit child class", async () => {
     const observedEfforts: string[] = [];
+    const modelClass = "lite" as const;
     const registry = new AgentRegistry(
       makeCollabDeps({
         effort: "max",
@@ -712,16 +723,10 @@ describe("AgentRegistry", () => {
       }),
     );
 
-    const general = registry.spawn({ prompt: "task", description: "", agentType: "general", modelClass: "general" });
-    await registry.wait([general.threadId], 5000);
+    const child = registry.spawn({ prompt: "task", description: "", agentType: "general", modelClass });
+    await registry.wait([child.threadId], 5000);
 
-    const lite = registry.spawn({ prompt: "task", description: "", agentType: "general", modelClass: "lite" });
-    await registry.wait([lite.threadId], 5000);
-
-    const pro = registry.spawn({ prompt: "task", description: "", agentType: "general", modelClass: "pro" });
-    await registry.wait([pro.threadId], 5000);
-
-    expect(observedEfforts).toEqual(["medium", "low", "high"]);
+    expect(observedEfforts).toEqual([getDefaultEffortForClass(modelClass)]);
   });
 
   it("updates reused registry deps so later child spawns see the latest parent model", async () => {

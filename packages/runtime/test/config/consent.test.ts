@@ -27,7 +27,7 @@ afterEach(() => {
 });
 
 describe("resolveConsentState", () => {
-  it("applies defaults when no consent is stored (service-improvement ON, notice not acknowledged)", () => {
+  it("preserves the OVDR-11475 opt-out consent contract when no consent is stored", () => {
     expect(resolveConsentState(undefined)).toEqual({
       noticeAcknowledged: false,
       serviceImprovement: true,

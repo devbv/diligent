@@ -359,6 +359,7 @@ describe("strict vs lenient parsing mode", () => {
     const patch = `apply_patch <<'EOF'\n${ADD_PATCH_BODY}\nEOF`;
     const result = await tool.execute({ patch }, makeCtx());
     expect(result.metadata?.error).not.toBe(true);
+    expect(await readFile(join(tmpDir, "strict.txt"), "utf-8")).toBe("hello\n");
   });
 
   test("strict mode rejects heredoc-wrapped patch", async () => {
@@ -383,7 +384,6 @@ describe("strict vs lenient parsing mode", () => {
 
   test("parsePatch lenient mode (default) accepts heredoc-wrapped patch", () => {
     const patch = `apply_patch <<'EOF'\n${ADD_PATCH_BODY}\nEOF`;
-    expect(() => parsePatch(patch)).not.toThrow();
     expect(parsePatch(patch)).toHaveLength(1);
   });
 });

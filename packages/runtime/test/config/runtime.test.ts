@@ -4,6 +4,8 @@ import { afterEach, describe, expect, it, mock } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { getDefaultModelRef } from "@diligent/core/model-registry";
+import { DEFAULT_PROVIDER } from "@diligent/core/provider-contract";
 import type { RuntimeConfig } from "../../src/config/runtime";
 import { loadRuntimeConfig, resolveRuntimeModel } from "../../src/config/runtime";
 import type { DiligentPaths } from "../../src/infrastructure";
@@ -43,17 +45,17 @@ describe("loadRuntimeConfig", () => {
   });
 
   it("uses the configured provider default when there is no last selected model", () => {
-    expect(resolveRuntimeModel(undefined, ["openai"]).modelId).toBe("gpt-5.6-sol");
+    expect(resolveRuntimeModel(undefined, ["openai"])).toMatchObject(getDefaultModelRef("openai"));
   });
 
   it("uses the configured provider default when the last selected provider is unavailable", () => {
-    expect(resolveRuntimeModel({ provider: "anthropic", modelId: "claude-sonnet-5" }, ["openai"]).modelId).toBe(
-      "gpt-5.6-sol",
+    expect(resolveRuntimeModel({ provider: "anthropic", modelId: "claude-sonnet-5" }, ["openai"])).toMatchObject(
+      getDefaultModelRef("openai"),
     );
   });
 
   it("uses the default provider policy when neither a model nor provider is configured", () => {
-    expect(resolveRuntimeModel(undefined, []).modelId).toBe("claude-opus-4-8");
+    expect(resolveRuntimeModel(undefined, [])).toMatchObject(getDefaultModelRef(DEFAULT_PROVIDER));
   });
 
   it("loads discovered agents and adds an agents section to the system prompt", async () => {
@@ -130,8 +132,10 @@ describe("loadRuntimeConfig", () => {
     try {
       const config = await loadRuntimeConfig(tmpRoot, paths);
       expect(config.discoveredAgents.map((agent) => agent.name)).toEqual(["reviewer"]);
-      expect(config.agentCatalog.map((entry) => entry.definition.name)).toEqual(["general", "explore", "reviewer"]);
-      expect(config.agentDefinitions.map((agent) => agent.name)).toEqual(["general"]);
+      expect(config.agentCatalog.some((entry) => entry.definition.name === "reviewer")).toBe(true);
+      expect(config.agentDefinitions.some((agent) => agent.name === "reviewer")).toBe(false);
+      expect(config.agentDefinitions.every((agent) => agent.name !== "explore")).toBe(true);
+      expect(config.agentDefinitions.some((agent) => agent.name === "general")).toBe(true);
       expect(config.systemPrompt.some((section) => section.label === "agents")).toBe(false);
     } finally {
       process.env.HOME = originalHome;
@@ -261,7 +265,7 @@ describe("loadRuntimeConfig", () => {
       expect(config.providerManager.hasKeyFor("vertex")).toBe(true);
       expect(config.providerAuthPresenter?.getStatus("vertex").maskedKey).toBe("Vertex access token");
       expect(config.model?.provider).toBe("vertex");
-      expect(config.model?.modelId).toBe("vertex-gemma-4-26b-it");
+      expect(config.model).toMatchObject(getDefaultModelRef("vertex"));
     } finally {
       process.env.HOME = originalHome;
       process.env.USERPROFILE = originalUserProfile;
@@ -287,14 +291,14 @@ describe("loadRuntimeConfig", () => {
       const config = await loadRuntimeConfig(tmpRoot, paths);
       expect(config.diligent.model).toBeUndefined();
       expect(config.model?.provider).toBe("openai");
-      expect(config.model?.modelId).toBe("gpt-5.6-sol");
+      expect(config.model).toMatchObject(getDefaultModelRef("openai"));
     } finally {
       process.env.HOME = originalHome;
       process.env.USERPROFILE = originalUserProfile;
     }
   });
 
-  it("loads zai-coding-plan auth from auth.jsonc and selects glm-5.2 when no model is configured", async () => {
+  it("loads zai-coding-plan auth and applies its model policy when no model is configured", async () => {
     tmpRoot = await mkdtemp(join(tmpdir(), "diligent-runtime-zai-coding-plan-"));
     const paths = makePaths(tmpRoot);
     const isolatedHome = join(tmpRoot, ".isolated-home");
@@ -321,7 +325,7 @@ describe("loadRuntimeConfig", () => {
       expect(config.providerManager.hasKeyFor("zai-coding-plan")).toBe(true);
       expect(config.providerAuthPresenter?.getStatus("zai-coding-plan").maskedKey).toBe("zai-tes...");
       expect(config.model?.provider).toBe("zai-coding-plan");
-      expect(config.model?.modelId).toBe("glm-5.2");
+      expect(config.model).toMatchObject(getDefaultModelRef("zai-coding-plan"));
     } finally {
       process.env.HOME = originalHome;
       process.env.USERPROFILE = originalUserProfile;

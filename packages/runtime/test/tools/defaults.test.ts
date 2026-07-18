@@ -49,13 +49,6 @@ describe("buildDefaultTools MCP OAuth wiring", () => {
 });
 
 describe("buildDefaultTools web gating", () => {
-  test("includes provider-native web placeholder tool by default", async () => {
-    const result = await buildDefaultTools({ cwd: "/tmp" });
-    const names = result.tools.map((tool) => tool.name);
-
-    expect(names).toContain("web_action");
-  });
-
   test("omits provider-native web placeholder tool when tools.web_action is false", async () => {
     const result = await buildDefaultTools({ cwd: "/tmp", toolsConfig: { web_action: false } });
     const names = result.tools.map((tool) => tool.name);
@@ -140,7 +133,10 @@ describe("buildDefaultTools provider-specific edit tools", () => {
     expect(stateNames).toContain("multi_edit");
   });
 
-  test.each(["openai", "chatgpt"] as const)("uses apply_patch only for %s", async (provider) => {
+  test.each([
+    "openai",
+    "chatgpt",
+  ] as const)("preserves %s provider compatibility by exposing only apply_patch", async (provider) => {
     const result = await buildDefaultTools({ cwd: "/tmp", provider });
     const names = toolNamesFor(result);
     const stateNames = stateNamesFor(result);
@@ -153,12 +149,8 @@ describe("buildDefaultTools provider-specific edit tools", () => {
     expect(stateNames).not.toContain("multi_edit");
   });
 
-  test.each([
-    "anthropic",
-    "gemini",
-    "vertex",
-    "zai-coding-plan",
-  ] as const)("uses edit and multi_edit only for %s", async (provider) => {
+  test("uses edit and multi_edit for a non-OpenAI provider", async () => {
+    const provider = "anthropic";
     const result = await buildDefaultTools({ cwd: "/tmp", provider });
     const names = toolNamesFor(result);
     const stateNames = stateNamesFor(result);

@@ -1,7 +1,13 @@
 // @summary Tests for spawn_agent, wait, send_input, close_agent tool execute() methods
 import { describe, expect, it } from "bun:test";
 import type { ToolContext } from "@diligent/core/tool-contract";
-import { createCollabTools } from "@diligent/runtime/collab";
+import {
+  type AgentRegistry,
+  createCollabTools,
+  createSendInputTool,
+  createSpawnAgentTool,
+  createWaitTool,
+} from "@diligent/runtime/collab";
 import {
   formatAgentTypeParameterDescription,
   formatSpawnAgentToolDescription,
@@ -34,60 +40,48 @@ describe("spawn_agent tool", () => {
   });
 
   it("defaults agent_type to general", async () => {
-    const { tools } = createCollabTools(
-      makeCollabDeps({
-        sessionManagerFactory: makeMockSessionManagerFactory(makeAssistant("ok")),
-      }),
-    );
-    const spawnTool = tools.find((t) => t.name === "spawn_agent")!;
-    const result = await spawnTool.execute({ message: "task" }, makeCtx());
-    const parsed = JSON.parse(result.output);
-    expect(typeof parsed.thread_id).toBe("string");
+    let received: Parameters<AgentRegistry["spawn"]>[0] | undefined;
+    const registry = {
+      spawn: (params: Parameters<AgentRegistry["spawn"]>[0]) => {
+        received = params;
+        return { threadId: "thread-1", nickname: "Acacia" };
+      },
+    } as unknown as AgentRegistry;
+    const spawnTool = createSpawnAgentTool(registry, getBuiltinAgentDefinitions());
+
+    await spawnTool.execute({ message: "task" }, makeCtx());
+
+    expect(received).toMatchObject({ prompt: "task", description: "", agentType: "general" });
   });
 
   it("treats empty allowed_tools as inherit-all", async () => {
-    const warned: string[] = [];
-    const originalWarn = console.warn;
-    console.warn = (message?: unknown) => warned.push(String(message));
-    try {
-      const { tools } = createCollabTools(
-        makeCollabDeps({
-          parentTools: [
-            {
-              name: "read",
-              description: "read",
-              parameters: {} as never,
-              execute: async () => ({ output: "read" }),
-            },
-          ],
-          sessionManagerFactory: makeMockSessionManagerFactory(makeAssistant("ok")),
-        }),
-      );
-      const spawnTool = tools.find((t) => t.name === "spawn_agent")!;
+    let received: Parameters<AgentRegistry["spawn"]>[0] | undefined;
+    const registry = {
+      spawn: (params: Parameters<AgentRegistry["spawn"]>[0]) => {
+        received = params;
+        return { threadId: "thread-1", nickname: "Acacia" };
+      },
+    } as unknown as AgentRegistry;
+    const spawnTool = createSpawnAgentTool(registry, getBuiltinAgentDefinitions());
 
-      const result = await spawnTool.execute({ message: "task", agent_type: "explore", allowed_tools: [] }, makeCtx());
-      const parsed = JSON.parse(result.output);
+    await spawnTool.execute({ message: "task", agent_type: "explore", allowed_tools: [] }, makeCtx());
 
-      expect(typeof parsed.thread_id).toBe("string");
-      expect(warned.join("\n")).not.toContain("zero tools after filtering");
-    } finally {
-      console.warn = originalWarn;
-    }
+    expect(received?.allowedTools).toBeUndefined();
   });
 
   it("passes resume_id when provided", async () => {
-    const { tools } = createCollabTools(
-      makeCollabDeps({
-        sessionManagerFactory: makeMockSessionManagerFactory(makeAssistant("resumed")),
-      }),
-    );
-    const spawnTool = tools.find((t) => t.name === "spawn_agent")!;
-    const result = await spawnTool.execute(
-      { message: "resume this", agent_type: "general", resume_id: "some-session-id" },
-      makeCtx(),
-    );
-    const parsed = JSON.parse(result.output);
-    expect(typeof parsed.thread_id).toBe("string");
+    let received: Parameters<AgentRegistry["spawn"]>[0] | undefined;
+    const registry = {
+      spawn: (params: Parameters<AgentRegistry["spawn"]>[0]) => {
+        received = params;
+        return { threadId: "thread-1", nickname: "Acacia" };
+      },
+    } as unknown as AgentRegistry;
+    const spawnTool = createSpawnAgentTool(registry, getBuiltinAgentDefinitions());
+
+    await spawnTool.execute({ message: "resume this", agent_type: "general", resume_id: "some-session-id" }, makeCtx());
+
+    expect(received?.resumeId).toBe("some-session-id");
   });
 
   it("exposes detailed role guidance in tool description", () => {
@@ -183,35 +177,35 @@ describe("wait tool", () => {
   });
 
   it("clamps timeout_ms to minimum", async () => {
-    const { tools } = createCollabTools(
-      makeCollabDeps({
-        sessionManagerFactory: makeMockSessionManagerFactory(makeAssistant("done")),
-      }),
-    );
-    const spawnTool = tools.find((t) => t.name === "spawn_agent")!;
-    const waitTool = tools.find((t) => t.name === "wait")!;
-    const spawned = JSON.parse((await spawnTool.execute({ message: "task" }, makeCtx())).output);
+    let receivedTimeout: number | undefined;
+    const registry = {
+      wait: async (_ids: string[], timeoutMs: number) => {
+        receivedTimeout = timeoutMs;
+        return { status: { "thread-1": { kind: "running" as const } }, timedOut: true };
+      },
+      getNickname: () => "Acacia",
+    } as unknown as AgentRegistry;
+    const waitTool = createWaitTool(registry);
 
-    // Provide 1ms timeout — should be clamped to 10s min, still resolves before that
-    const result = await waitTool.execute({ ids: [spawned.thread_id], timeout_ms: 1 }, makeCtx());
-    const parsed = JSON.parse(result.output);
-    // May timeout (1ms clamped to 10s, but agent completes first) or complete — just verify structure
-    expect(typeof parsed.timed_out).toBe("boolean");
-    expect(typeof parsed.status).toBe("object");
+    await waitTool.execute({ ids: ["thread-1"], timeout_ms: 1 }, makeCtx());
+
+    expect(receivedTimeout).toBe(60_000);
   });
 
-  it("calls onUpdate with progress during wait", async () => {
+  it("forwards registry progress through the tool context", async () => {
     const updates: string[] = [];
-    const { tools } = createCollabTools(
-      makeCollabDeps({
-        sessionManagerFactory: makeMockSessionManagerFactory(makeAssistant("done")),
-      }),
-    );
-    const spawnTool = tools.find((t) => t.name === "spawn_agent")!;
-    const waitTool = tools.find((t) => t.name === "wait")!;
-    const spawned = JSON.parse((await spawnTool.execute({ message: "task" }, makeCtx())).output);
-    await waitTool.execute({ ids: [spawned.thread_id] }, makeCtx(updates));
-    // onUpdate may or may not be called depending on timing, but should not error
+    const registry = {
+      wait: async (_ids: string[], _timeoutMs: number, onUpdate?: (summary: string) => void) => {
+        onUpdate?.("Acacia running");
+        return { status: { "thread-1": { kind: "running" as const } }, timedOut: true };
+      },
+      getNickname: () => "Acacia",
+    } as unknown as AgentRegistry;
+    const waitTool = createWaitTool(registry);
+
+    await waitTool.execute({ ids: ["thread-1"] }, makeCtx(updates));
+
+    expect(updates).toEqual(["Acacia running"]);
   });
 
   it("preserves full nested agent output while keeping summary concise", async () => {
@@ -271,32 +265,19 @@ describe("send_input tool", () => {
   });
 
   it("returns ok=true for running agent (steer called)", async () => {
-    let _steerCalled = false;
-    const factory = makeMockSessionManagerFactory(makeAssistant("done"));
-    const wrappedFactory: typeof factory = (cfg) => {
-      const mgr = factory!(cfg);
-      const origSteer = mgr.steer.bind(mgr);
-      mgr.steer = (content: string) => {
-        _steerCalled = true;
-        origSteer(content);
-      };
-      return mgr;
-    };
-    const { tools } = createCollabTools(makeCollabDeps({ sessionManagerFactory: wrappedFactory }));
-    const spawnTool = tools.find((t) => t.name === "spawn_agent")!;
-    const sendTool = tools.find((t) => t.name === "send_input")!;
+    let received: { id: string; message: string } | undefined;
+    const registry = {
+      getNickname: () => "Acacia",
+      sendInput: async (id: string, message: string) => {
+        received = { id, message };
+      },
+    } as unknown as AgentRegistry;
+    const sendTool = createSendInputTool(registry);
 
-    const spawned = JSON.parse((await spawnTool.execute({ message: "task" }, makeCtx())).output);
-    // Agent may have already completed in a microtask — just verify the send_input path
-    // If it throws "not running", that's also valid behavior for a completed agent
-    try {
-      const result = await sendTool.execute({ id: spawned.thread_id, message: "new guidance" }, makeCtx());
-      const parsed = JSON.parse(result.output);
-      expect(parsed.ok).toBe(true);
-    } catch (err) {
-      // Acceptable: agent completed before send_input was called
-      expect(String(err)).toMatch(/not running|Unknown/);
-    }
+    const result = await sendTool.execute({ id: "thread-1", message: "new guidance" }, makeCtx());
+
+    expect(received).toEqual({ id: "thread-1", message: "new guidance" });
+    expect(JSON.parse(result.output)).toEqual({ ok: true, nickname: "Acacia", message: "new guidance" });
   });
 });
 

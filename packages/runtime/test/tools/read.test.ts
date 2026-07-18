@@ -52,7 +52,7 @@ describe("read tool", () => {
     expect(result.output).not.toContain("line 15");
   });
 
-  test("default limit is 2000 lines", async () => {
+  test("bounds output when limit is omitted", async () => {
     const filePath = join(tmpDir, "big.txt");
     const lines = Array.from({ length: 3000 }, (_, i) => `line ${i + 1}`).join("\n");
     await writeFile(filePath, lines);

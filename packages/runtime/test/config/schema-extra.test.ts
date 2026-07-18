@@ -74,14 +74,6 @@ describe("DiligentConfigSchema", () => {
 });
 
 describe("DEFAULT_CONFIG", () => {
-  it("leaves model selection to the runtime provider policy", () => {
-    expect(DEFAULT_CONFIG.model).toBeUndefined();
-  });
-
-  it("enables plan reminders with a six-turn cadence", () => {
-    expect(DEFAULT_CONFIG.planReminderIntervalTurns).toBe(6);
-  });
-
   it("validates against schema", () => {
     const result = DiligentConfigSchema.safeParse(DEFAULT_CONFIG);
     expect(result.success).toBe(true);
