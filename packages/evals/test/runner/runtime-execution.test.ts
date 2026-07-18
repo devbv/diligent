@@ -263,14 +263,14 @@ describe("runRuntimeEvalExecution", () => {
       streamFunction: collaborationStream(token),
     });
 
-    expect(
-      result.execution.turns
-        .flatMap((turn) => turn.runtimeEvents)
-        .flatMap((event) => {
-          const item = event as { type?: string; status?: string };
-          return item.type === "collab_spawn_end" ? [item.status] : [];
-        }),
-    ).toEqual(["running", "completed"]);
+    const childLifecycle = result.execution.turns
+      .flatMap((turn) => turn.runtimeEvents)
+      .flatMap((event) => {
+        const item = event as { type?: string; status?: string; message?: string };
+        return item.type === "collab_spawn_end" ? [item] : [];
+      });
+    const childError = childLifecycle.find((event) => event.status === "errored");
+    expect(childError?.message ?? childLifecycle.map((event) => event.status)).toEqual(["running", "completed"]);
     expect(result.execution.turns).toHaveLength(2);
     expect(result.execution.toolCalls.map((call) => call.name)).toContain("edit");
     expect(result.worldSnapshot).toEqual({ token, result: `${token}\n` });
