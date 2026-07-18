@@ -1,7 +1,7 @@
 // @summary Tests for ProtocolNotificationAdapter: notification → AgentEvent mapping
 import { expect, test } from "bun:test";
-import type { DiligentServerNotification } from "@diligent/protocol";
-import { ProtocolNotificationAdapter } from "@diligent/runtime";
+import { ProtocolNotificationAdapter } from "../src/notification-adapter";
+import type { DiligentServerNotification } from "../src/server-notifications";
 
 function makeAdapter() {
   return new ProtocolNotificationAdapter();

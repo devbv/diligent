@@ -732,9 +732,12 @@ describe("AgentRegistry", () => {
   it("updates reused registry deps so later child spawns see the latest parent model", async () => {
     const observedModels: string[] = [];
     const observedEfforts: string[] = [];
+    const initialModel = { provider: "anthropic", modelId: "claude-opus-4-8" } as const;
+    const latestModel = { provider: "openai", modelId: "gpt-5.6-sol" } as const;
+    const latestEffort = "high" as const;
     const registry = new AgentRegistry(
       makeCollabDeps({
-        model: { provider: "openai", modelId: "gpt-5.6-sol" },
+        model: initialModel,
         effort: "medium",
         sessionManagerFactory: makeInspectingSessionManagerFactory((agent) => {
           observedModels.push(agent.model.modelId);
@@ -743,13 +746,13 @@ describe("AgentRegistry", () => {
       }),
     );
 
-    registry.updateDeps(makeCollabDeps({ model: { provider: "openai", modelId: "gpt-5.6-sol" }, effort: "high" }));
+    registry.updateDeps(makeCollabDeps({ model: latestModel, effort: latestEffort }));
 
-    const { threadId } = registry.spawn({ prompt: "task", description: "", agentType: "general", modelClass: "lite" });
+    const { threadId } = registry.spawn({ prompt: "task", description: "", agentType: "general" });
     await registry.wait([threadId], 5000);
 
-    expect(observedModels).toEqual(["gpt-5.6-luna"]);
-    expect(observedEfforts).toEqual(["low"]);
+    expect(observedModels).toEqual([latestModel.modelId]);
+    expect(observedEfforts).toEqual([latestEffort]);
   });
 
   it("creates distinct bundled loop-hook instances for each child with child context", async () => {

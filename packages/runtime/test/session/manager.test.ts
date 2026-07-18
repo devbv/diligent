@@ -406,6 +406,7 @@ describe("SessionManager", () => {
 
     try {
       await mgr.run({ role: "user", content: "show code", timestamp: Date.now() });
+      await mgr.waitForWrites();
 
       const joinedLogs = errorSpy.mock.calls.map((call) => call.join(" ")).join("\n");
       expect(joinedLogs).toContain("code=overloaded_error");
@@ -777,6 +778,7 @@ describe("SessionManager", () => {
     const events: AgentEvent[] = [];
     const unsub = mgr.subscribe((e) => events.push(e));
     await mgr.run({ role: "user", content: "start compacting", timestamp: Date.now() });
+    await mgr.waitForWrites();
     unsub();
 
     const compactionStartIndex = events.findIndex((event) => event.type === "compaction_start");
@@ -821,6 +823,7 @@ describe("SessionManager", () => {
 
     await mgr.run({ role: "user", content: "first", timestamp: Date.now() });
     await mgr.run({ role: "user", content: "second", timestamp: Date.now() });
+    await mgr.waitForWrites();
 
     const prefixLogs = logs.filter((record) => record.event === "usage_prefix_compare");
 
@@ -857,6 +860,7 @@ describe("SessionManager", () => {
 
     await mgr.run({ role: "user", content: "first", timestamp: Date.now() });
     await mgr.run({ role: "user", content: "second", timestamp: Date.now() });
+    await mgr.waitForWrites();
 
     expect(logs.filter((record) => record.event === "usage_prefix_compare")).toHaveLength(0);
   });

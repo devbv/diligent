@@ -1,7 +1,7 @@
-// @summary Tests for transport-neutral JSON-RPC binding, request correlation, and NDJSON framing
+// @summary Integration tests for JSON-RPC client, server binding, and runtime request flows
 
-import { describe, expect, it } from "bun:test";
-import { mkdtemp } from "node:fs/promises";
+import { afterEach, describe, expect, it } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { EventStream } from "@diligent/core/event-stream";
 import type { StreamFunction } from "@diligent/core/provider-contract";
@@ -11,18 +11,17 @@ import {
   DILIGENT_SERVER_REQUEST_METHODS,
   type JSONRPCMessage,
 } from "@diligent/protocol";
-import {
-  type AgentOptions,
-  createNdjsonParser,
-  formatNdjsonMessage,
-  RpcClientSession,
-  type RpcPeer,
-  RuntimeAgent,
-} from "@diligent/runtime";
+import { type AgentOptions, RpcClientSession, type RpcPeer, RuntimeAgent } from "@diligent/runtime";
 import { DiligentAppServer } from "@diligent/runtime/app-server";
 import { ensureDiligentDir } from "@diligent/runtime/infrastructure";
 import { readKnowledge } from "@diligent/runtime/knowledge";
 import { z } from "zod";
+
+const projectRoots: string[] = [];
+
+afterEach(async () => {
+  await Promise.all(projectRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+});
 
 const FAKE_MODEL = {
   modelId: "claude-sonnet-5" as const,
@@ -71,6 +70,7 @@ function createLinkedPeers(): { client: MemoryPeer; server: MemoryPeer } {
 describe("RPC binding", () => {
   it("binds a peer to DiligentAppServer and completes initialize/thread/start flow", async () => {
     const projectRoot = await mkdtemp(join(process.env.TMPDIR ?? "/tmp", "diligent-rpc-binding-"));
+    projectRoots.push(projectRoot);
     const { client: clientPeer, server: serverPeer } = createLinkedPeers();
 
     const notifications: JSONRPCMessage[] = [];
@@ -149,6 +149,7 @@ describe("RPC binding", () => {
 
   it("rejects initialize requests with unsupported protocolVersion", async () => {
     const projectRoot = await mkdtemp(join(process.env.TMPDIR ?? "/tmp", "diligent-rpc-binding-"));
+    projectRoots.push(projectRoot);
     const { client: clientPeer, server: serverPeer } = createLinkedPeers();
 
     const client = new RpcClientSession(clientPeer);
@@ -179,6 +180,7 @@ describe("RPC binding", () => {
 
   it("round-trips server-initiated approval requests through the bound peer", async () => {
     const projectRoot = await mkdtemp(join(process.env.TMPDIR ?? "/tmp", "diligent-rpc-binding-"));
+    projectRoots.push(projectRoot);
     const { client: clientPeer, server: serverPeer } = createLinkedPeers();
 
     let approvalRequestId: string | number | null = null;
@@ -294,6 +296,7 @@ describe("RPC binding", () => {
 
   it("supports knowledge update (upsert/delete) over RPC", async () => {
     const projectRoot = await mkdtemp(join(process.env.TMPDIR ?? "/tmp", "diligent-rpc-binding-knowledge-"));
+    projectRoots.push(projectRoot);
     const { client: clientPeer, server: serverPeer } = createLinkedPeers();
 
     const client = new RpcClientSession(clientPeer);
@@ -383,21 +386,5 @@ describe("RPC binding", () => {
     expect(entries.some((entry) => entry.id === added.entry.id)).toBe(false);
 
     stop();
-  });
-
-  it("parses and formats NDJSON JSON-RPC frames", () => {
-    const seen: JSONRPCMessage[] = [];
-    const parser = createNdjsonParser((message) => {
-      seen.push(message);
-    });
-
-    const first = formatNdjsonMessage({ id: 1, method: "initialize", params: { clientName: "cli" } });
-    const second = formatNdjsonMessage({ method: "initialized" });
-
-    parser.push(first.slice(0, 10));
-    parser.push(first.slice(10) + second);
-    parser.end();
-
-    expect(seen).toEqual([{ id: 1, method: "initialize", params: { clientName: "cli" } }, { method: "initialized" }]);
   });
 });
