@@ -98,6 +98,24 @@ describe("mode-and-config", () => {
     expect(readResult.currentEffort).toBe("max");
   });
 
+  test("thread-scoped requests inherit the connection's current thread when threadId is omitted", async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), "diligent-e2e-current-thread-"));
+    const server = createTestServer({ cwd: tmpDir });
+    client = createProtocolClient(server);
+
+    const threadId = await client.initAndStartThread(tmpDir);
+    await client.request("mode/set", { mode: "plan" });
+
+    const readResult = (await client.request("thread/read", {})) as {
+      cwd: string;
+      currentMode: Mode;
+    };
+    expect(readResult).toMatchObject({ cwd: tmpDir, currentMode: "plan" });
+
+    const explicitRead = (await client.request("thread/read", { threadId })) as { currentMode: Mode };
+    expect(explicitRead.currentMode).toBe("plan");
+  });
+
   test("tools/list and tools/set expose state and changed availability applies on the next turn", async () => {
     tmpDir = await mkdtemp(join(tmpdir(), "diligent-e2e-tools-"));
     fakeHome = await mkdtemp(join(tmpdir(), "diligent-e2e-home-"));

@@ -28,19 +28,37 @@ A test belongs here when it enters `DiligentAppServer` through JSON-RPC and asse
 notification, persisted state, or external effect after traversing the app-server stack. Package-local unit,
 contract, and lower-layer integration tests belong under that package's `test/` directory.
 
+## Choosing the Test Layer
+
+Use the test subject, not the amount of setup, to choose the location:
+
+| Scenario | Location |
+|---|---|
+| JSON-RPC response, notification, persistence, or tool side effect | `packages/e2e/app-server/` |
+| Direct handler/helper call, internal state, collaborator call, or cache/map behavior | `packages/runtime/test/app-server/` |
+| Stdio/NDJSON framing or CLI child-process lifecycle | CLI test or a future `packages/e2e/cli/` suite |
+| WebSocket upgrade, Web host lifecycle, or browser client behavior | Web test or a future `packages/e2e/web/` suite |
+| Live-model judgment or provider-owned behavior | `packages/evals/` |
+
+An in-memory `RpcPeer` is the real transport-neutral boundary of `DiligentAppServer`; it is not a mock of the
+app-server. Tests in this directory should describe behavior only in public protocol terms and import public package
+surfaces rather than package-internal `src/**` modules. When a legacy runtime test mixes internal assertions with
+protocol-observable behavior, move the observable scenario here when that test is next touched.
+
 ## Test Files
 
 | File | DiligentAppServer behavior |
 |---|---|
 | `custom-agents.test.ts` | Custom-agent spawning and per-spawn tool restrictions |
+| `image-upload.test.ts` | Image upload persistence and attachment response |
 | `knowledge.test.ts` | Knowledge CRUD and filesystem persistence |
-| `mode-and-config.test.ts` | Mode, effort, and tool-availability changes |
+| `mode-and-config.test.ts` | Mode, effort, current-thread defaults, and tool-availability changes |
 | `multi-connection.test.ts` | Subscription fanout, unsubscribe isolation, and disconnect cleanup over in-memory peers |
 | `plugin-hooks.test.ts` | Plugin hook blocking, context injection, errors, and stop-hook re-entry |
 | `protocol-lifecycle.test.ts` | Initialization, thread lifecycle, validation, and errors |
 | `provider-native-blocks.test.ts` | Provider-native block propagation and persistence from the provider seam |
 | `session-resume.test.ts` | Filesystem persistence, resume, recent-thread lookup, and list previews |
-| `server-requests.test.ts` | Approval and user-input server request round trips |
+| `server-requests.test.ts` | Approval and user-input round trips, including reconnect recovery |
 | `steering.test.ts` | Active-turn steering injection and pending-steer management |
 | `turn-execution.test.ts` | Turn notifications, interruption, tool execution, concurrency guards, persistence, and multi-turn context |
 | `websocket-transport.test.ts` | Real WebSocket serialization, lifecycle, notifications, and bidirectional server requests |
