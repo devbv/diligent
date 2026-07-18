@@ -50,6 +50,7 @@ export function transformRuntimeTools(input: {
         const capability = capabilityForTool(tool.name);
         const trace: RuntimeToolTrace = {
           sequence: input.traces.length + 1,
+          toolCallId: context.toolCallId,
           name: tool.name,
           capability,
           input: normalizeEvidence(args, input.root),
@@ -103,7 +104,12 @@ function normalizeEvidence(value: unknown, root: string): unknown {
   }
   if (Array.isArray(value)) return value.map((item) => normalizeEvidence(item, root));
   if (!isRecord(value)) return value;
-  return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, normalizeEvidence(item, root)]));
+  return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => [
+      key,
+      key === "data" && isRecord(value) && value.type === "base64" ? "[base64 omitted]" : normalizeEvidence(item, root),
+    ]),
+  );
 }
 
 function visit(value: unknown, callback: (key: string, value: unknown) => void): void {

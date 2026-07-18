@@ -12,6 +12,9 @@ export function checkRuntimeInvariants(
 ): EvalFailure[] {
   const failures: EvalFailure[] = [];
   for (const turn of execution.turns) {
+    const parentCoreEvents = turn.coreEvents.filter(
+      (item) => !(item.event as { childThreadId?: string }).childThreadId,
+    );
     failures.push(
       ...checkStructuralInvariants({
         taskId: execution.taskId,
@@ -21,11 +24,11 @@ export function checkRuntimeInvariants(
         elapsedMs: turn.elapsedMs,
         termination: turn.termination === "completed" ? "completed" : "core_error",
         messages: turn.messages,
-        events: turn.coreEvents,
+        events: parentCoreEvents,
         logs: [],
         usage: turn.usage,
-        turnCount: turn.coreEvents.filter((item) => item.event.type === "turn_start").length,
-        toolCallCount: turn.coreEvents.filter((item) => item.event.type === "tool_start").length,
+        turnCount: parentCoreEvents.filter((item) => item.event.type === "turn_start").length,
+        toolCallCount: parentCoreEvents.filter((item) => item.event.type === "tool_start").length,
         world: null,
       }),
     );
@@ -42,6 +45,46 @@ export function checkRuntimeInvariants(
     if (turn.termination !== "completed")
       failures.push(failure("turn_interrupted", "An interrupted runtime turn cannot pass."));
   }
+  for (const compaction of execution.compactions) {
+    for (const notification of compaction.notifications) {
+      if (!DiligentServerNotificationSchema.safeParse(notification).success)
+        failures.push(failure("invalid_notification", "A compaction notification did not match the protocol schema."));
+    }
+    const starts = compaction.notifications.filter((item) => item.method === "thread/compaction/started").length;
+    const terminals = compaction.notifications.filter((item) => item.method === "thread/compacted").length;
+    if (starts !== 1 || terminals !== 1)
+      failures.push(
+        failure("compaction_lifecycle", `Expected one compaction start and terminal, received ${starts}/${terminals}.`),
+      );
+    if (!compaction.response.compacted)
+      failures.push(failure("compaction_result", "Manual compaction did not report a compacted result."));
+  }
+  const runtimeEvents = execution.turns.flatMap((turn) => turn.runtimeEvents) as Array<{
+    type?: string;
+    childThreadId?: string;
+    status?: string;
+  }>;
+  const childIds = new Set(
+    runtimeEvents
+      .filter((event) => event.type === "collab_spawn_end" && event.childThreadId)
+      .map((event) => event.childThreadId!),
+  );
+  if (childIds.size > limits.maxChildAgents)
+    failures.push(budget("child_agents", `Spawned ${childIds.size} child agents.`));
+  for (const childId of childIds) {
+    const completed = runtimeEvents.some(
+      (event) => event.type === "collab_spawn_end" && event.childThreadId === childId && event.status === "completed",
+    );
+    if (!completed)
+      failures.push(failure("child_not_completed", `Child agent ${childId} did not reach completed status.`));
+    const session = execution.childSessions.find((candidate) => candidate.threadId === childId);
+    const header = session?.lines[0] as { id?: string; parentSession?: string } | undefined;
+    if (!header || header.id !== childId || header.parentSession !== execution.session.threadId)
+      failures.push(failure("child_session", `Child agent ${childId} did not persist a linked session.`));
+  }
+  const untrackedChildSessions = execution.childSessions.filter((session) => !childIds.has(session.threadId));
+  if (untrackedChildSessions.length > 0)
+    failures.push(failure("child_session", "A child session had no matching collaboration lifecycle event."));
   if (execution.workspace.final.entries.some((entry) => entry.kind === "symlink"))
     failures.push(failure("workspace_symlink", "A symlink appeared in the runtime workspace."));
   const projectOnly = (snapshot: typeof execution.workspace.initial) => ({

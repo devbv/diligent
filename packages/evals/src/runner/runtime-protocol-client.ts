@@ -4,13 +4,21 @@ import {
   DILIGENT_VERSION,
   type DiligentServerNotification,
   type DiligentServerRequest,
+  type DiligentServerRequestResponse,
   type JSONRPCMessage,
 } from "@diligent/protocol";
 import { type DiligentAppServer, RpcClientSession } from "@diligent/runtime";
 
 let connectionSequence = 0;
 
-export function createRuntimeProtocolClient(server: DiligentAppServer) {
+export function createRuntimeProtocolClient(
+  server: DiligentAppServer,
+  options: {
+    respondToServerRequest?: (
+      request: DiligentServerRequest,
+    ) => DiligentServerRequestResponse | Promise<DiligentServerRequestResponse>;
+  } = {},
+) {
   const notifications: DiligentServerNotification[] = [];
   const serverRequests: DiligentServerRequest[] = [];
   let serverListener: ((message: JSONRPCMessage) => void | Promise<void>) | undefined;
@@ -28,6 +36,7 @@ export function createRuntimeProtocolClient(server: DiligentAppServer) {
       },
       async onServerRequest(request) {
         serverRequests.push(structuredClone(request));
+        if (options.respondToServerRequest) return options.respondToServerRequest(request);
         if (request.method === "approval/request")
           return { method: request.method, result: { decision: "once" as const } };
         return { method: request.method, result: { answers: {} } } as never;

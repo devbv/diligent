@@ -94,4 +94,50 @@ describe("runtime tool policy", () => {
       await removeTemporaryRoot(root);
     }
   });
+
+  test("records tool-call identity while redacting base64 image payloads", async () => {
+    const root = await mkdtemp(join(tmpdir(), "diligent-runtime-eval-"));
+    const traces: RuntimeToolTrace[] = [];
+    const secretImageData = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB";
+    const imageTool: Tool = {
+      name: "read_image",
+      description: "read image",
+      parameters: z.object({ file_path: z.string() }),
+      execute: async () => ({
+        output: "Image loaded successfully.",
+        outputImages: [
+          {
+            type: "image" as const,
+            source: { type: "base64" as const, media_type: "image/png", data: secretImageData },
+          },
+        ],
+      }),
+    };
+    try {
+      const [wrapped] = transformRuntimeTools({
+        tools: [imageTool],
+        root,
+        traces,
+        maxToolCalls: 1,
+        policy: { allowedCapabilities: ["read"], allowedCommands: [] },
+        isTerminated: () => false,
+        onBudgetExceeded: () => {},
+      });
+      await wrapped!.execute({ file_path: "a.png" }, { toolCallId: "image-call-1" } as never);
+
+      expect(traces[0]?.toolCallId).toBe("image-call-1");
+      expect(JSON.stringify(traces[0])).not.toContain(secretImageData);
+      expect(traces[0]?.output).toEqual({
+        output: "Image loaded successfully.",
+        outputImages: [
+          {
+            type: "image",
+            source: { type: "base64", media_type: "image/png", data: "[base64 omitted]" },
+          },
+        ],
+      });
+    } finally {
+      await removeTemporaryRoot(root);
+    }
+  });
 });

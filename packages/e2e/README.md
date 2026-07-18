@@ -6,7 +6,6 @@ End-to-end tests that run the full agent stack via the JSON-RPC protocol.
 
 | File | What it tests |
 |---|---|
-| `conversation.test.ts` | Basic conversation flow, multi-turn |
 | `turn-execution.test.ts` | Tool execution, approval, interruption |
 | `session-resume.test.ts` | Session persistence, resume, compaction |
 | `protocol-lifecycle.test.ts` | Initialize, thread lifecycle, disconnect |
@@ -17,7 +16,9 @@ End-to-end tests that run the full agent stack via the JSON-RPC protocol.
 
 ```bash
 bun test                        # All tests
-bun test conversation.test.ts   # Single file
+bun test turn-execution.test.ts # Single file
 ```
 
 Tests use helpers in `helpers/` to start a real app server and communicate over the protocol.
+They are deterministic and do not require provider API credentials. Live-model behavior belongs to
+`@diligent/evals`.

@@ -31,10 +31,13 @@ P080 introduced a live-model core suite with isolated in-memory worlds, runner-o
 evaluators, structural invariants, redacted versioned reports, and fixed provider profiles. It intentionally excluded
 runtime file, shell, approval, session, skill, plugin, and collaboration behavior.
 
-The repository already contains two live E2E areas that belong to this next layer:
+The repository previously contained two live E2E areas that motivated this layer:
 
-- `packages/e2e/conversation.test.ts` exercises runtime bash and file tools with loose assertions;
-- `packages/e2e/read-image-providers.test.ts` exercises the runtime image tool across providers.
+- the removed `packages/e2e/conversation.test.ts` exercised live conversation, bash, file tools, recovery, and abort;
+  core and runtime evals now own the live behaviors, while deterministic abort coverage remains in unit and protocol
+  tests;
+- the removed `packages/e2e/read-image-providers.test.ts` exercised image transport and the runtime image tool in one
+  coupled test; `image-tool-result` and `read-image-pair` now own those responsibilities separately.
 
 Most of `packages/e2e` remains deterministic full-stack protocol coverage and must not move. Runtime evals exist only
 where a real model must interpret a runtime-owned prompt or tool contract and cause a deterministically observable
@@ -189,7 +192,7 @@ Runtime V0 uses the exact P080 profiles so a runtime failure can be compared wit
 | Provider | Model | Effort |
 |---|---|---|
 | OpenAI API | `gpt-5.6-terra` | `medium` |
-| Anthropic API | `claude-sonnet-4-6` | `medium` |
+| Anthropic API | `claude-sonnet-5` | `medium` |
 
 Changing a canonical model, effort, prompt, fixture, evaluator, limit, tool policy, or verifier command is a reviewed
 suite change and restarts the runtime readiness window.
@@ -321,23 +324,35 @@ Pass conditions:
 - both user turns have balanced core lifecycle events and normal completion;
 - no synthetic repair entry is required for an orphaned tool call.
 
-## Deferred Candidate Tasks
+## Candidate Tasks
+
+The following candidates are implemented for explicit non-canonical investigation and are not part of the frozen V0
+manifest:
+
+| Candidate | Coverage |
+|---|---|
+| `plan-to-execute` | Same-session plan-to-default mode transition, diagnosis handoff, implementation, and verification. |
+| `knowledge-recall` | Exact project-knowledge prompt injection and file outcome without a knowledge search tool. |
+| `knowledge-update` | Stable-id search followed by an exact in-place durable preference update. |
+| `manual-compaction-resume` | Manual compaction lifecycle, persisted summary, restart, and exact continuation from compacted facts. |
+| `clarify-then-execute` | Scripted user-input bridge, answer persistence, mode transition, and exact file outcome. |
+| `read-image-pair` | Two seed-swapped workspace image reads, exact color attribution, runtime `tool_end.outputImages`, and base64-free bounded evidence. |
+| `collaboration-delegation` | One bounded explore child, parent wait, actor-attributed tool calls, linked child session, and exact parent write. |
+| `file-roundtrip` | Ordered workspace-file read, provider-appropriate overwrite, confirmation read, exact file hash, and exact final response. |
+
+Promotion changes the canonical manifest and starts a new readiness window.
+
+### Deferred candidates
 
 The following tasks are valuable but are not part of the runtime V0 canonical manifest:
 
 | Candidate | Reason for deferral |
 |---|---|
-| `knowledge-recall` | First stabilize exact preference-vs-current-intent semantics and knowledge fixture isolation. |
-| `knowledge-update` | Model decision to persist can be policy-sensitive; evaluator must avoid subjective intent classification. |
-| `read-image` | Retain current live E2E until runtime image evidence and artifact size controls are complete. |
-| `collaboration` | Multiplies provider calls and requires child-session usage, budget, and cleanup accounting. |
-| `request-user-input` | Needs a deterministic scripted client scenario that makes asking objectively required. |
 | `approval-rejection` | Primarily a deterministic host/tool integration concern; rejection currently aborts execution. |
 | `plugin-tool` | Arbitrary package loading and global plugin discovery require stronger isolation. |
 | `mcp-tool` | Remote availability and OAuth would make the canonical signal externally unstable. |
 
-Candidates run only through explicit non-canonical investigation until separately promoted. Promotion changes the
-canonical manifest and starts a new readiness window.
+Deferred candidates require their listed harness or isolation work before implementation.
 
 ## Task and Execution Contracts
 
@@ -360,6 +375,9 @@ type RuntimeEvalStep =
       mode?: Mode;
     }
   | {
+      kind: "compact";
+    }
+  | {
       kind: "restart_and_resume";
     };
 
@@ -371,8 +389,12 @@ interface RuntimeEvalTask<TWorld> {
   setup(seed: string, root: string): Promise<TWorld>;
   createRuntimeConfig(world: TWorld, profile: EvalProfile): Promise<RuntimeConfig>;
   createSteps(world: TWorld): RuntimeEvalStep[];
+  respondToServerRequest?(
+    world: TWorld,
+    request: DiligentServerRequest,
+  ): DiligentServerRequestResponse | Promise<DiligentServerRequestResponse>;
   verify?(world: TWorld, signal: AbortSignal): Promise<RuntimeVerifierResult>;
-  snapshotWorld(world: TWorld): Promise<RuntimeWorldSnapshot>;
+  snapshotWorld(world: TWorld): Promise<unknown>;
   evaluate(input: RuntimeEvalExecution<TWorld>): EvalSemanticResult;
   cleanup?(world: TWorld): Promise<void>;
 }
@@ -405,6 +427,7 @@ interface RuntimeEvalExecution<TWorld> {
   elapsedMs: number;
   termination: RuntimeEvalTerminationReason;
   turns: RuntimeEvalTurnRecord[];
+  compactions: RuntimeEvalCompactionRecord[];
   toolCalls: RuntimeToolTrace[];
   approvals: RuntimeApprovalTrace[];
   userInputRequests: RuntimeUserInputTrace[];
@@ -469,11 +492,12 @@ Before underlying execution:
 
 After underlying execution:
 
-1. snapshot the allowlisted output, metadata, render payload, and output images;
-2. cap stored text and image evidence;
+1. snapshot the allowlisted output, metadata, render payload, and output-image metadata;
+2. cap stored text and omit raw base64 image data;
 3. classify the normalized capability as `read`, `write`, `execute`, `skill`, `knowledge`, `user_input`, or `collab`;
-4. preserve runtime error metadata exactly enough for invariant and semantic evaluation;
-5. rescan the workspace after every mutating call to catch undeclared changes early.
+4. correlate each tool call ID with its parent or child thread actor;
+5. preserve runtime error metadata exactly enough for invariant and semantic evaluation;
+6. rescan the workspace after every mutating call to catch undeclared changes early.
 
 The bash task policy accepts exact normalized commands, not arbitrary prefixes. For example, allowing `bun test` does
 not allow `bun test && curl ...`, shell substitutions, redirects, or a different command with the same first token.
@@ -530,6 +554,10 @@ combination do not suppress unrelated runnable combinations. Missing canonical c
 - enriched tool render payloads, when present, pass their protocol schemas;
 - no unexpected approval, user-input, collaboration, MCP, plugin, or web interaction occurs;
 - a runner budget termination cannot be reclassified as normal completion.
+- child-agent core events are validated through their linked child session and actor-attributed lifecycle rather than
+  being merged into the parent's core turn balance;
+- unique child count does not exceed the task budget, every child reaches a final completed status, and each child has
+  a persisted session linked to the parent thread.
 
 ### Session invariants
 
@@ -542,6 +570,7 @@ combination do not suppress unrelated runnable combinations. Missing canonical c
 - no fatal or unexplained error entry is accepted as success;
 - resume retains the same session ID and does not silently create a second top-level session;
 - task completion leaves no pending write or transient in-memory-only message required for the evaluator.
+- every captured child-session header identifies the child thread and names the top-level session as `parentSession`.
 
 ### Workspace invariants
 
@@ -711,17 +740,18 @@ core evals, runtime evals, builds, and publish all skip. Every build checks out 
 
 ## Existing E2E Migration
 
-After the runtime suite completes its shadow period:
+The live E2E migration is complete:
 
-- move the live bash behavior from `packages/e2e/conversation.test.ts` into `project-fix` evidence;
-- move the live read/write behavior from `packages/e2e/conversation.test.ts` into `project-fix`;
-- remove loose live conversation cases already covered by the stable core and runtime suites;
+- core `direct-response` and `recover-tool-error` own live conversation and recovery behavior;
+- runtime `project-fix` owns live shell and verified project mutation behavior;
+- runtime `file-roundtrip` owns ordered live read, overwrite, and confirmation-read behavior;
+- deterministic core, runtime, and protocol tests own abort behavior;
 - keep deterministic abort, protocol, mode/config, turn, session, transport, hooks, and multi-connection E2E tests;
-- retain `read-image-providers.test.ts` until the deferred runtime image task has equivalent provider coverage and its
-  own successful shadow period;
-- never delete an E2E case merely because a planned runtime task has the same title.
+- keep image provider transport in core `image-tool-result` and workspace-file integration in runtime
+  `read-image-pair`; the superseded live image E2E has been removed;
+- both superseded live E2E files have been removed deliberately after replacement shadow passes.
 
-Update `packages/e2e/README.md` so it no longer advertises removed live behavior after migration.
+`packages/e2e/README.md` now documents deterministic protocol/runtime integration ownership only.
 
 ## Repository Layout
 
@@ -863,5 +893,3 @@ Other file changes:
 - Confirm the maximum repository artifact retention available for future release reports.
 - Confirm whether the CI runner image guarantees the exact `bun test` verifier environment for the full observation
   window; otherwise pin a dedicated container image before freezing the suite.
-- Decide when the deferred image task should add Gemini investigation coverage without expanding the V0 canonical
-  provider manifest.

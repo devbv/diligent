@@ -2,6 +2,7 @@
 
 import type { AnyEvalTask } from "../../task";
 import { directResponseTask } from "./direct-response";
+import { imageToolResultTask } from "./image-tool-result";
 import { parallelToolsTask } from "./parallel-tools";
 import { recoverToolErrorTask } from "./recover-tool-error";
 import { singleToolTask } from "./single-tool";
@@ -10,6 +11,8 @@ import { toolChainTask } from "./tool-chain";
 
 export type { DirectResponseWorld } from "./direct-response";
 export { directResponseTask } from "./direct-response";
+export type { ImageToolResultWorld } from "./image-tool-result";
+export { imageToolResultTask } from "./image-tool-result";
 export type { ParallelToolFragment, ParallelToolsWorld } from "./parallel-tools";
 export { parallelToolsTask } from "./parallel-tools";
 export type { RecoverToolErrorWorld } from "./recover-tool-error";
@@ -28,6 +31,10 @@ export const CORE_CANONICAL_TASKS: readonly AnyEvalTask[] = [
   recoverToolErrorTask,
 ];
 
-export const CORE_CANDIDATE_TASKS: readonly AnyEvalTask[] = [structuredToolArgsTask, parallelToolsTask];
+export const CORE_CANDIDATE_TASKS: readonly AnyEvalTask[] = [
+  structuredToolArgsTask,
+  parallelToolsTask,
+  imageToolResultTask,
+];
 
 export const CORE_EVAL_TASKS: readonly AnyEvalTask[] = [...CORE_CANONICAL_TASKS, ...CORE_CANDIDATE_TASKS];

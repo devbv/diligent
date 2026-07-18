@@ -1,6 +1,6 @@
 // @summary Executes one isolated runtime eval through DiligentAppServer and in-process RPC
 
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Message, Usage } from "@diligent/core/message-contract";
@@ -13,6 +13,7 @@ import type {
   RuntimeEvalExecution,
   RuntimeEvalExecutionResult,
   RuntimeEvalTurnRecord,
+  RuntimeSessionSnapshot,
   RuntimeVerifierResult,
   RuntimeWorldSnapshot,
 } from "../runtime-task";
@@ -35,6 +36,7 @@ export async function runRuntimeEvalExecution(input: {
   const started = performance.now();
   const traces: RuntimeEvalExecution<unknown>["toolCalls"] = [];
   const turns: RuntimeEvalTurnRecord[] = [];
+  const compactions: RuntimeEvalExecution<unknown>["compactions"] = [];
   const serverRequests: DiligentServerRequest[] = [];
   const logs: LogRecord[] = [];
   const failures: EvalFailure[] = [];
@@ -106,8 +108,14 @@ export async function runRuntimeEvalExecution(input: {
         }),
       );
     };
+    const makeClient = (server: DiligentAppServer) =>
+      createRuntimeProtocolClient(server, {
+        respondToServerRequest: task.respondToServerRequest
+          ? (request) => task.respondToServerRequest!(world, request)
+          : undefined,
+      });
     let server = makeServer();
-    client = createRuntimeProtocolClient(server);
+    client = makeClient(server);
     await client.initialize();
     for (const step of task.createSteps(world)) {
       if (step.kind === "restart_and_resume") {
@@ -115,11 +123,28 @@ export async function runRuntimeEvalExecution(input: {
         client.close();
         config = await task.createRuntimeConfig(world, profile);
         server = makeServer();
-        client = createRuntimeProtocolClient(server);
+        client = makeClient(server);
         await client.initialize();
         const resumed = (await client.request("thread/resume", { threadId })) as { found?: boolean };
         if (!resumed.found) throw new Error(`runtime_contract.resume_failed: ${threadId}`);
         await client.request("thread/subscribe", { threadId });
+        continue;
+      }
+      if (step.kind === "compact") {
+        if (!threadId) throw new Error("runtime_contract.compact_without_thread: compact requires an active thread.");
+        const notificationIndex = client.notifications.length;
+        const response = (await client.request("thread/compact/start", { threadId })) as {
+          compacted: boolean;
+          entryCount: number;
+          tokensBefore: number;
+          tokensAfter: number;
+          summary: string;
+        };
+        compactions.push({
+          threadId,
+          response,
+          notifications: client.notifications.slice(notificationIndex),
+        });
         continue;
       }
       if (!threadId) {
@@ -200,12 +225,10 @@ export async function runRuntimeEvalExecution(input: {
       }
     }
     const sessionPath = join((await ensureDiligentDir(root)).sessions, `${threadId}.jsonl`);
-    const sessionLines = (await readFile(sessionPath, "utf8"))
-      .trim()
-      .split("\n")
-      .filter(Boolean)
-      .map((line) => JSON.parse(line));
+    const sessionLines = await readSessionLines(sessionPath);
+    const childSessions = await captureChildSessions(root, threadId);
     const normalizedTurns = normalizeWorkspaceEvidence(turns, root);
+    annotateToolTraceActors(traces, normalizedTurns, threadId);
     const execution: RuntimeEvalExecution<unknown> = {
       taskId: task.id,
       profile,
@@ -214,6 +237,7 @@ export async function runRuntimeEvalExecution(input: {
       elapsedMs: Math.round(performance.now() - started),
       termination,
       turns: normalizedTurns,
+      compactions: normalizeWorkspaceEvidence(compactions, root),
       toolCalls: traces,
       approvals: [...serverRequests, ...client.serverRequests].filter(
         (request) => request.method === "approval/request",
@@ -227,6 +251,7 @@ export async function runRuntimeEvalExecution(input: {
         path: "$WORKSPACE/.diligent/sessions/$SESSION.jsonl",
         lines: normalizeWorkspaceEvidence(sessionLines, root),
       },
+      childSessions: normalizeWorkspaceEvidence(childSessions, root),
       workspace: { initial, final },
       verifier: verifier ? normalizeWorkspaceEvidence(verifier, root) : undefined,
       world,
@@ -274,11 +299,13 @@ export async function runRuntimeEvalExecution(input: {
       elapsedMs: Math.round(performance.now() - started),
       termination: "runner_error",
       turns: normalizeWorkspaceEvidence(turns, root),
+      compactions: normalizeWorkspaceEvidence(compactions, root),
       toolCalls: traces,
       approvals: [],
       userInputRequests: [],
       logs: normalizeWorkspaceEvidence(logs, root),
       session: { threadId, lines: [] },
+      childSessions: [],
       workspace: { initial, final },
       world,
     };
@@ -305,6 +332,50 @@ export async function runRuntimeEvalExecution(input: {
   }
 }
 
+async function readSessionLines(path: string): Promise<unknown[]> {
+  return (await readFile(path, "utf8"))
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+}
+
+async function captureChildSessions(root: string, parentThreadId: string): Promise<RuntimeSessionSnapshot[]> {
+  const sessionsDir = (await ensureDiligentDir(root)).sessions;
+  const snapshots: RuntimeSessionSnapshot[] = [];
+  for (const file of await readdir(sessionsDir)) {
+    if (!file.endsWith(".jsonl") || file === `${parentThreadId}.jsonl`) continue;
+    const lines = await readSessionLines(join(sessionsDir, file));
+    const header = lines[0] as { id?: string; parentSession?: string } | undefined;
+    if (!header?.id || header.parentSession !== parentThreadId) continue;
+    snapshots.push({
+      threadId: header.id,
+      path: "$WORKSPACE/.diligent/sessions/$CHILD_SESSION.jsonl",
+      lines,
+    });
+  }
+  return snapshots.sort((left, right) => left.threadId.localeCompare(right.threadId));
+}
+
+function annotateToolTraceActors(
+  traces: RuntimeEvalExecution<unknown>["toolCalls"],
+  turns: RuntimeEvalTurnRecord[],
+  parentThreadId: string,
+): void {
+  const actors = new Map<string, { threadId: string; childThreadId?: string }>();
+  for (const turn of turns) {
+    for (const rawEvent of turn.runtimeEvents) {
+      const event = rawEvent as { type?: string; toolCallId?: string; childThreadId?: string };
+      if (event.type !== "tool_start" || !event.toolCallId) continue;
+      actors.set(event.toolCallId, {
+        threadId: event.childThreadId ?? parentThreadId,
+        ...(event.childThreadId && { childThreadId: event.childThreadId }),
+      });
+    }
+  }
+  for (const trace of traces) Object.assign(trace, actors.get(trace.toolCallId) ?? { threadId: parentThreadId });
+}
+
 function recordCleanupFailure(result: RuntimeEvalExecutionResult | undefined, error: unknown, root: string): void {
   if (!result) return;
   const failure: EvalFailure = {
@@ -325,8 +396,17 @@ function normalizeWorkspaceEvidence<T>(value: T, root: string): T {
   if (Array.isArray(value)) return value.map((item) => normalizeWorkspaceEvidence(item, root)) as T;
   if (value === null || typeof value !== "object") return value;
   return Object.fromEntries(
-    Object.entries(value).map(([key, item]) => [key, normalizeWorkspaceEvidence(item, root)]),
+    Object.entries(value).map(([key, item]) => [
+      key,
+      key === "data" && isRecord(value) && value.type === "base64"
+        ? "[base64 omitted]"
+        : normalizeWorkspaceEvidence(item, root),
+    ]),
   ) as T;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object";
 }
 
 function clampOutputTokens(stream: StreamFunction, maximum: number, beforeTurn: () => void): StreamFunction {

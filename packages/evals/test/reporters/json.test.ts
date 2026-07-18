@@ -56,7 +56,12 @@ describe("serializeEvalReport", () => {
             },
           ],
           messages: [],
-          world: {},
+          world: {
+            image: {
+              type: "image",
+              source: { type: "base64", media_type: "image/png", data: "iVBORw0KGgoAAAANSUhEUg" },
+            },
+          },
         },
       ],
     };
@@ -64,6 +69,8 @@ describe("serializeEvalReport", () => {
     const json = serializeEvalReport(report, { secrets: [secret] });
     expect(json).not.toContain(secret);
     expect(json).not.toContain("Bearer ");
+    expect(json).not.toContain("iVBORw0KGgoAAAANSUhEUg");
     expect(json).toContain("[REDACTED]");
+    expect(json).toContain("[base64 omitted]");
   });
 });

@@ -36,14 +36,17 @@ export async function runRuntimeEvalSuite(input: {
         seed: taskSeed,
         streamFunction: input.createStream(profile),
       });
+      const { compactions, childSessions, ...execution } = result.execution;
       executions.push({
-        ...result.execution,
+        ...execution,
         taskSeed,
         fixtureVersion: task.fixtureVersion,
         limits: task.limits,
         passed: result.passed,
         ...(result.failure && { failure: result.failure }),
         failures: result.failures,
+        ...(compactions.length > 0 && { compactions }),
+        ...(childSessions.length > 0 && { childSessions }),
         world: result.worldSnapshot,
       });
       input.onExecutionEnd?.(result);

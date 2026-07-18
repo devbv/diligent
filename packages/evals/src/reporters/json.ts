@@ -53,7 +53,11 @@ function sanitizeValue(value: unknown, secrets: readonly string[], seen: WeakSet
   seen.add(value);
   const output: Record<string, unknown> = {};
   for (const [key, item] of Object.entries(value)) {
-    output[key] = SENSITIVE_KEY_PATTERN.test(key) ? "[REDACTED]" : sanitizeValue(item, secrets, seen);
+    output[key] = SENSITIVE_KEY_PATTERN.test(key)
+      ? "[REDACTED]"
+      : key === "data" && "type" in value && value.type === "base64"
+        ? "[base64 omitted]"
+        : sanitizeValue(item, secrets, seen);
   }
   seen.delete(value);
   return output;

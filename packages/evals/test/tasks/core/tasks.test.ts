@@ -9,8 +9,12 @@ import { assistantMessage, sequenceStream, TEST_MODEL } from "../../helpers/fake
 const PROFILE = { provider: "anthropic", model: TEST_MODEL.modelId, effort: "medium" } as const;
 
 describe("core eval tasks", () => {
-  test("registers structured arguments and parallel tools as candidates", () => {
-    expect(CORE_CANDIDATE_TASKS.map((task) => task.id)).toEqual(["structured-tool-args", "parallel-tools"]);
+  test("registers structured arguments, parallel tools, and image transport as candidates", () => {
+    expect(CORE_CANDIDATE_TASKS.map((task) => task.id)).toEqual([
+      "structured-tool-args",
+      "parallel-tools",
+      "image-tool-result",
+    ]);
   });
 
   test("direct-response requires matching streamed and final text", async () => {
@@ -133,6 +137,35 @@ describe("core eval tasks", () => {
           snapshot.event.type === "tool_end" && snapshot.event.toolCallId === "update-1" && snapshot.event.isError,
       ),
     ).toBe(true);
+  });
+
+  test("image-tool-result requires two core image blocks and exact visual attribution", async () => {
+    const task = CORE_EVAL_TASKS.find((candidate) => candidate.id === "image-tool-result")!;
+    const world = task.createWorld("image-seed");
+    const result = await runEvalExecution({
+      task,
+      profile: PROFILE,
+      model: TEST_MODEL,
+      seed: "image-seed",
+      streamFunction: sequenceStream([
+        assistantMessage([{ type: "tool_call", id: "swatches-1", name: "get_swatch_pair", input: {} }], "tool_use"),
+        assistantMessage([{ type: "text", text: world.expected }]),
+      ]),
+    });
+
+    expect(result.passed).toBe(true);
+    const toolEnd = result.execution.events.find(
+      ({ event }) => event.type === "tool_end" && event.toolCallId === "swatches-1",
+    )?.event;
+    expect(toolEnd?.type === "tool_end" ? toolEnd.outputImages : undefined).toHaveLength(2);
+
+    const withoutImages = structuredClone(result.execution);
+    withoutImages.events = withoutImages.events.map((snapshot) => {
+      if (snapshot.event.type !== "tool_end" || snapshot.event.toolCallId !== "swatches-1") return snapshot;
+      const { outputImages: _omitted, ...event } = snapshot.event;
+      return { ...snapshot, event };
+    });
+    expect(task.evaluate(withoutImages).passed).toBe(false);
   });
 
   test("structured-tool-args verifies nested schema values and the hidden receipt", async () => {

@@ -2,7 +2,12 @@
 
 import type { Message, Usage } from "@diligent/core/message-contract";
 import type { Tool } from "@diligent/core/tool-contract";
-import type { DiligentServerNotification } from "@diligent/protocol";
+import type {
+  DiligentServerNotification,
+  DiligentServerRequest,
+  DiligentServerRequestResponse,
+  ThreadCompactStartResponse,
+} from "@diligent/protocol";
 import type { Mode, RuntimeConfig } from "@diligent/runtime";
 import type {
   EvalEventSnapshot,
@@ -22,7 +27,10 @@ export interface RuntimeEvalLimits extends EvalLimits {
   verifierTimeoutMs: number;
 }
 
-export type RuntimeEvalStep = { kind: "turn"; message: string; mode?: Mode } | { kind: "restart_and_resume" };
+export type RuntimeEvalStep =
+  | { kind: "turn"; message: string; mode?: Mode }
+  | { kind: "compact" }
+  | { kind: "restart_and_resume" };
 
 export type RuntimeToolCapability = "read" | "write" | "execute" | "skill" | "knowledge" | "user_input" | "collab";
 
@@ -34,8 +42,11 @@ export interface RuntimeEvalToolPolicy {
 
 export interface RuntimeToolTrace {
   sequence: number;
+  toolCallId: string;
   name: string;
   capability: RuntimeToolCapability;
+  threadId?: string;
+  childThreadId?: string;
   input: unknown;
   output?: unknown;
   error?: string;
@@ -76,6 +87,12 @@ export interface RuntimeEvalTurnRecord {
   usage: Usage;
 }
 
+export interface RuntimeEvalCompactionRecord {
+  threadId: string;
+  response: ThreadCompactStartResponse;
+  notifications: DiligentServerNotification[];
+}
+
 export type RuntimeEvalTerminationReason =
   | "completed"
   | "timeout"
@@ -100,11 +117,13 @@ export interface RuntimeEvalExecution<TWorld> {
   elapsedMs: number;
   termination: RuntimeEvalTerminationReason;
   turns: RuntimeEvalTurnRecord[];
+  compactions: RuntimeEvalCompactionRecord[];
   toolCalls: RuntimeToolTrace[];
   approvals: unknown[];
   userInputRequests: unknown[];
   logs: EvalLogSnapshot[];
   session: RuntimeSessionSnapshot;
+  childSessions: RuntimeSessionSnapshot[];
   workspace: { initial: RuntimeWorldSnapshot; final: RuntimeWorldSnapshot };
   verifier?: RuntimeVerifierResult;
   world: TWorld;
@@ -120,6 +139,10 @@ export interface RuntimeEvalTask<TWorld> {
   setup(seed: string, root: string): Promise<TWorld>;
   createRuntimeConfig(world: TWorld, profile: EvalProfile): Promise<RuntimeConfig>;
   createSteps(world: TWorld): RuntimeEvalStep[];
+  respondToServerRequest?(
+    world: TWorld,
+    request: DiligentServerRequest,
+  ): DiligentServerRequestResponse | Promise<DiligentServerRequestResponse>;
   verify?(world: TWorld, signal: AbortSignal): Promise<RuntimeVerifierResult>;
   snapshotWorld(world: TWorld): Promise<unknown>;
   evaluate(input: RuntimeEvalExecution<TWorld>): EvalSemanticResult;
@@ -137,13 +160,16 @@ export interface RuntimeEvalExecutionResult {
   worldSnapshot: unknown;
 }
 
-export interface RuntimeEvalExecutionReport extends Omit<RuntimeEvalExecution<unknown>, "world"> {
+export interface RuntimeEvalExecutionReport
+  extends Omit<RuntimeEvalExecution<unknown>, "world" | "compactions" | "childSessions"> {
   taskSeed: string;
   fixtureVersion: string;
   limits: RuntimeEvalLimits;
   passed: boolean;
   failure?: EvalFailure;
   failures: EvalFailure[];
+  compactions?: RuntimeEvalCompactionRecord[];
+  childSessions?: RuntimeSessionSnapshot[];
   world: unknown;
 }
 
