@@ -123,6 +123,7 @@ export interface CompactionConfig {
 }
 
 export interface LLMRetryConfig {
+  /** Number of retries after the initial provider attempt. */
   maxRetries: number;
   baseDelayMs: number;
   maxDelayMs: number;

@@ -99,6 +99,7 @@ type LoggedCall = {
   level: "debug" | "info" | "warn" | "error";
   event: string;
   message: string;
+  error?: unknown;
   fields?: Record<string, unknown>;
 };
 
@@ -113,6 +114,7 @@ function recordingLogger(
         level,
         event,
         message: typeof input === "string" ? input : (input.message ?? event),
+        error: typeof input === "string" ? undefined : (input as { error?: unknown }).error,
         fields: {
           ...(context.sessionId !== undefined && { sessionId: context.sessionId }),
           ...context.fields,
@@ -136,6 +138,17 @@ function recordingLogger(
 }
 
 describe("withRetry", () => {
+  test.each([
+    [{ maxAttempts: 0, baseDelayMs: 1, maxDelayMs: 1 }, "maxAttempts must be a positive integer"],
+    [{ maxAttempts: 1.5, baseDelayMs: 1, maxDelayMs: 1 }, "maxAttempts must be a positive integer"],
+    [{ maxAttempts: 1, baseDelayMs: -1, maxDelayMs: 1 }, "baseDelayMs must be a non-negative finite number"],
+    [{ maxAttempts: 1, baseDelayMs: 1, maxDelayMs: Number.NaN }, "maxDelayMs must be a non-negative finite number"],
+  ] as const)("rejects invalid retry config %#", (config, expectedMessage) => {
+    const { streamFn } = createFailingStreamFn([]);
+
+    expect(() => withRetry(streamFn, config)).toThrow(expectedMessage);
+  });
+
   test("tracks the wrapper worker until the aborted inner stream cleanup settles", async () => {
     let releaseCleanup!: () => void;
     const cleanup = new Promise<void>((resolve) => {
@@ -217,7 +230,7 @@ describe("withRetry", () => {
     expect(events.some((e) => e.type === "done")).toBe(true);
   });
 
-  test("logs provider error status and message before retry handling", async () => {
+  test("logs one structured attempt failure with provider diagnostics", async () => {
     const failures = [new ProviderError("server unavailable", "server_error", true, undefined, 503)];
     const { streamFn } = createFailingStreamFn(failures);
     const logs: string[] = [];
@@ -233,7 +246,14 @@ describe("withRetry", () => {
     }
     await stream.result().catch(() => {});
 
-    expect(logs.some((line) => line.includes("[llm:provider-error] status=503 message=server unavailable"))).toBe(true);
+    const failureLogs = logs.filter((line) => line.includes("event=retry_attempt_failed"));
+    expect(failureLogs).toHaveLength(1);
+    expect(failureLogs[0]).toStartWith("[llm:retry]");
+    expect(failureLogs[0]).toContain("provider attempt failed");
+    expect(failureLogs[0]).toContain("failureSource=stream_error");
+    expect(failureLogs[0]).toContain("statusCode=503");
+    expect(failureLogs[0]).toContain('"message":"server unavailable"');
+    expect(logs.some((line) => line.includes("[llm:provider-error]"))).toBe(false);
   });
 
   test("includes timestamp and sessionId in retry logs when sessionId is present", async () => {
@@ -258,12 +278,25 @@ describe("withRetry", () => {
     const retryLogs = logs.filter((line) => line.startsWith("[llm:retry]"));
     expect(retryLogs.length).toBeGreaterThan(0);
     expectRetryLogContext(retryLogs[0], "session-123");
-    const streamErrorLog = retryLogs.find((line) => line.includes("stream error attempt=1/2"));
-    expect(streamErrorLog).toBeDefined();
-    expect((streamErrorLog?.match(/timestamp=/g) ?? []).length).toBe(1);
-    expect(streamErrorLog).not.toContain("requestStartedAt=");
-    expect(retryLogs.some((line) => line.includes("retrying nextAttempt=2/2 delayMs=1 type=server_error"))).toBe(true);
-    expect(retryLogs.some((line) => line.includes("recovered on attempt=2/2"))).toBe(true);
+    const attemptFailureLog = retryLogs.find((line) => line.includes("event=retry_attempt_failed"));
+    expect(attemptFailureLog).toBeDefined();
+    expect((attemptFailureLog?.match(/timestamp=/g) ?? []).length).toBe(1);
+    expect(attemptFailureLog).not.toContain("requestStartedAt=");
+    expect(
+      retryLogs.some(
+        (line) =>
+          line.includes("provider retry scheduled") &&
+          line.includes("nextAttempt=2") &&
+          line.includes("maxAttempts=2") &&
+          line.includes("delayMs=1"),
+      ),
+    ).toBe(true);
+    expect(
+      retryLogs.some(
+        (line) =>
+          line.includes("provider request recovered") && line.includes("attempt=2") && line.includes("maxAttempts=2"),
+      ),
+    ).toBe(true);
   });
 
   test("emits stable structured retry records with session, retry, and model metadata", async () => {
@@ -283,22 +316,24 @@ describe("withRetry", () => {
     }
     await stream.result().catch(() => {});
 
-    expect(calls.map((call) => call.event)).toEqual([
-      "provider_error",
-      "stream_error",
-      "retry_scheduled",
-      "retry_recovered",
+    expect(calls.map(({ level, event, message }) => ({ level, event, message }))).toEqual([
+      { level: "warn", event: "retry_attempt_failed", message: "[llm:retry] provider attempt failed" },
+      { level: "info", event: "retry_scheduled", message: "[llm:retry] provider retry scheduled" },
+      { level: "info", event: "retry_recovered", message: "[llm:retry] provider request recovered" },
     ]);
-    expect(calls.find((call) => call.event === "stream_error")?.fields).toMatchObject({
+    const attemptFailure = calls.find((call) => call.event === "retry_attempt_failed");
+    expect(attemptFailure?.fields).toMatchObject({
       sessionId: "session-structured",
       attempt: 1,
       maxAttempts: 2,
+      failureSource: "stream_error",
       errorType: "server_error",
       retryAfterMs: 2,
       statusCode: 503,
       provider: "anthropic",
       model: "test-model",
     });
+    expect(attemptFailure?.error).toBeInstanceOf(ProviderError);
     expect(calls.find((call) => call.event === "retry_scheduled")?.fields).toMatchObject({
       sessionId: "session-structured",
       attempt: 1,
@@ -310,6 +345,9 @@ describe("withRetry", () => {
       model: "test-model",
     });
     for (const call of calls) {
+      expect(call.event.startsWith("retry_")).toBe(true);
+      expect(call.message.startsWith("[llm:retry] ")).toBe(true);
+      expect(call.message).not.toContain("attempt=");
       expect(call.fields).not.toHaveProperty("timestamp");
       expect(call.message).not.toContain("timestamp=");
       expect(call.message).not.toContain("requestStartedAt=");
@@ -339,8 +377,14 @@ describe("withRetry", () => {
     const retryLogs = logs.filter((line) => line.startsWith("[llm:retry]"));
     expect(retryLogs.length).toBeGreaterThan(0);
     expectRetryLogContext(retryLogs[0], "n/a");
-    expect(retryLogs.some((line) => line.includes("stream exception attempt=1/1"))).toBe(true);
-    expect(retryLogs.some((line) => line.includes("giving up attempt=1/1 reason=not_retryable"))).toBe(true);
+    expect(
+      retryLogs.some(
+        (line) => line.includes("provider attempt failed") && line.includes("failureSource=stream_exception"),
+      ),
+    ).toBe(true);
+    expect(
+      retryLogs.some((line) => line.includes("provider retries exhausted") && line.includes("reason=not_retryable")),
+    ).toBe(true);
   });
 
   test("stops on non-retryable error", async () => {
