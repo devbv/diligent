@@ -1,7 +1,7 @@
 {
   "name": "diligent",
   "private": true,
-  "packageManager": "bun@1.3.9",
+  "packageManager": "bun@1.3.14",
   "diligent": {
     "projectName": "Diligent"
   },

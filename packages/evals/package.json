@@ -8,6 +8,7 @@
     "@diligent/core": "workspace:*",
     "@diligent/logging": "workspace:*",
     "@diligent/protocol": "workspace:*",
+    "@diligent/runtime": "workspace:*",
     "zod": "^3.24.0"
   },
   "devDependencies": {

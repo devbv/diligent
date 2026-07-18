@@ -1,10 +1,9 @@
-// @summary Parses and validates canonical and investigation eval CLI options
+// @summary Parses eval suite and optional provider, task, model, seed, and report filters
 
 import type { EvalProvider } from "./task";
 
 export interface EvalCliOptions {
-  suite: "core";
-  canonical: boolean;
+  suite: "core" | "runtime";
   provider?: EvalProvider;
   task?: string;
   model?: string;
@@ -15,19 +14,16 @@ export interface EvalCliOptions {
 
 export function parseCliOptions(args: string[]): EvalCliOptions {
   if (args.length === 0 || args[0] === "--help" || args[0] === "-h") {
-    return { suite: "core", canonical: false, help: true };
+    return { suite: "core", help: true };
   }
-  if (args[0] !== "core") {
-    throw new Error(`Unknown eval suite "${args[0]}". Expected "core".`);
+  if (args[0] !== "core" && args[0] !== "runtime") {
+    throw new Error(`Unknown eval suite "${args[0]}". Expected "core" or "runtime".`);
   }
 
-  const options: EvalCliOptions = { suite: "core", canonical: false, help: false };
+  const options: EvalCliOptions = { suite: args[0], help: false };
   for (let index = 1; index < args.length; index++) {
     const arg = args[index];
     switch (arg) {
-      case "--canonical":
-        options.canonical = true;
-        break;
       case "--provider": {
         const value = requireValue(args, ++index, arg);
         if (value !== "openai" && value !== "anthropic") {
@@ -57,9 +53,6 @@ export function parseCliOptions(args: string[]): EvalCliOptions {
     }
   }
 
-  if (options.canonical && (options.provider || options.task || options.model)) {
-    throw new Error("Canonical mode does not allow provider, task, or model overrides");
-  }
   return options;
 }
 

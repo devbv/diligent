@@ -36,6 +36,7 @@ export type EvalFailureCategory =
   | "provider_transient"
   | "provider_terminal"
   | "core_contract"
+  | "runtime_contract"
   | "task_semantic"
   | "budget_exceeded"
   | "evaluator_error"
@@ -134,9 +135,8 @@ export interface EvalExecutionReport {
 
 export interface EvalSuiteReport {
   schemaVersion: 1;
+  suite?: "core";
   suiteVersion: string;
-  canonical: boolean;
-  canonicalReason: string;
   repository: string;
   commitSha: string;
   ref: string;

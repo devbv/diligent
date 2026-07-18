@@ -3,6 +3,10 @@
 **Status:** Implemented — ready for shadow operation  
 **Date:** 2026-07-17
 
+**Implementation note (2026-07-18):** The shipped CLI no longer distinguishes canonical and candidate runs. Running
+`bun run eval core` executes every registered core task against both default provider profiles; `--task` and
+`--provider` are optional narrowing filters. The canonical terminology below records the original gate design.
+
 ## Summary
 
 Add a live-LLM eval task suite that detects behavioral regressions in `@diligent/core` against the OpenAI and Anthropic API providers. The suite will first run manually and once per day as a non-blocking shadow signal. After a defined burn-in period demonstrates that the tasks and runner are stable, a separate reviewed change will make the canonical suite a blocking prerequisite of the Release workflow.
@@ -61,7 +65,7 @@ The core suite runs the same tasks against both canonical profiles.
 | Provider | Model | Effort |
 |---|---|---|
 | OpenAI API | `gpt-5.6-terra` | `medium` |
-| Anthropic API | `claude-sonnet-4-6` | `medium` |
+| Anthropic API | `claude-sonnet-5` | `medium` |
 
 Canonical workflow runs must use these exact profiles. The task-specific output-token budget is an execution safety limit and does not change the canonical model identity or effort.
 
@@ -430,11 +434,12 @@ Do not remove all of `packages/e2e`. Most current files are deterministic full-s
 
 After the new suite is implemented, type-checked, and verified:
 
-- absorb basic live provider conversation and tool-loop coverage from `conversation.test.ts` into the core eval suite;
+- replace basic live provider conversation and tool-loop coverage from `conversation.test.ts` with core eval tasks;
 - move runtime file and shell behaviors into the future runtime eval suite rather than the core suite;
 - retain deterministic abort, protocol, session, transport, and runtime integration coverage;
-- retain `read-image-providers.test.ts` until equivalent core image-contract and runtime image-tool coverage exists, then remove or migrate it deliberately;
-- remove superseded live E2E cases only after the replacement has completed its shadow period.
+- replace `read-image-providers.test.ts` only after equivalent core image-contract and runtime image-tool coverage
+  exists; this completed through core `image-tool-result` and runtime `read-image-pair` before the E2E was removed;
+- the replacement shadow passes completed before the superseded live E2E cases were removed.
 
 ## Implementation Sequence
 

@@ -272,6 +272,45 @@ describe("createAppServerConfig", () => {
     expect(agent.tools.map((tool) => tool.name)).toContain("factory_bundled_tool");
   });
 
+  it("transforms the final mode-filtered tool list without changing the default path", async () => {
+    const runtimeConfig = makeRuntimeConfig();
+    const baseline = createAppServerConfig({ cwd: "/tmp/test", runtimeConfig });
+    const baselineAgent = await baseline.createAgent({
+      cwd: "/tmp/test",
+      mode: "plan",
+      effort: "medium",
+      model: { provider: "anthropic", modelId: TEST_ANTHROPIC_MODEL_ID },
+      approve: async () => "once",
+      ask: async () => null,
+    });
+    let observed: { names: string[]; cwd: string; mode: string; provider: string } | undefined;
+    const transformed = createAppServerConfig({
+      cwd: "/tmp/test",
+      runtimeConfig,
+      transformTools: (tools, context) => {
+        observed = { names: tools.map((tool) => tool.name), ...context };
+        return tools.filter((tool) => tool.name === "read");
+      },
+    });
+    const transformedAgent = await transformed.createAgent({
+      cwd: "/tmp/test",
+      mode: "plan",
+      effort: "medium",
+      model: { provider: "anthropic", modelId: TEST_ANTHROPIC_MODEL_ID },
+      approve: async () => "once",
+      ask: async () => null,
+    });
+
+    expect(observed).toEqual({
+      names: baselineAgent.tools.map((tool) => tool.name),
+      cwd: "/tmp/test",
+      mode: "plan",
+      provider: "anthropic",
+    });
+    expect(observed?.names).not.toContain("bash");
+    expect(transformedAgent.tools.map((tool) => tool.name)).toEqual(["read"]);
+  });
+
   it("constructs built-in-first Agent-scoped loop hooks once per new Agent", async () => {
     const hookCalls: string[] = [];
     let factoryCalls = 0;

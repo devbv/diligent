@@ -54,6 +54,31 @@
   },
   "overrides": [
     {
+      "includes": [
+        "packages/evals/src/task.ts",
+        "packages/evals/src/runner/execution.ts",
+        "packages/evals/src/runner/invariants.ts",
+        "packages/evals/src/tasks/core/**/*.ts"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@diligent/runtime", "@diligent/runtime/*"],
+                    "message": "Core eval tasks and execution adapters must not depend on runtime assembly."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
       "includes": ["packages/runtime/**/*.{ts,tsx}"],
       "linter": {
         "rules": {

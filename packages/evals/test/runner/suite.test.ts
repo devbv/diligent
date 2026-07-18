@@ -21,8 +21,6 @@ function textTask(id: string, passed: boolean): EvalTask<{ expected: string }> {
 
 const METADATA = {
   suiteVersion: "core-v0",
-  canonical: false,
-  canonicalReason: "test",
   repository: "local/test",
   commitSha: "abc",
   ref: "local",
@@ -31,15 +29,45 @@ const METADATA = {
   bunVersion: Bun.version,
 };
 
-const CANONICAL_MANIFEST = {
-  taskIds: ["task-a", "task-b"],
-  profiles: [
-    { provider: "openai", model: "model-a", effort: "medium" },
-    { provider: "anthropic", model: "model-b", effort: "medium" },
-  ],
-} as const;
-
 describe("runEvalSuite", () => {
+  test("uses an injected execution adapter", async () => {
+    let calls = 0;
+    const task = textTask("adapter", true);
+    const execute = async (input: Parameters<typeof import("../../src/runner/execution").runEvalExecution>[0]) => {
+      calls += 1;
+      return {
+        passed: true,
+        failures: [],
+        worldSnapshot: { adapter: true },
+        execution: {
+          taskId: input.task.id,
+          profile: input.profile,
+          seed: input.seed,
+          startedAt: new Date(0).toISOString(),
+          elapsedMs: 0,
+          termination: "completed",
+          messages: [],
+          events: [],
+          logs: [],
+          usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+          turnCount: 0,
+          toolCallCount: 0,
+          world: { expected: "adapter" },
+        },
+      };
+    };
+    const report = await runEvalSuite({
+      tasks: [task],
+      profiles: [{ provider: "anthropic", model: TEST_MODEL.modelId, effort: "medium" }],
+      rootSeed: "root",
+      metadata: METADATA,
+      resolveModel: () => TEST_MODEL,
+      createStream: () => sequenceStream([assistantMessage([{ type: "text", text: "unused" }])]),
+      execute: execute as never,
+    });
+    expect(calls).toBe(1);
+    expect(report.executions[0]?.world).toEqual({ adapter: true });
+  });
   test("continues after a failed execution and writes every selected result", async () => {
     const report = await runEvalSuite({
       tasks: [textTask("failing", false), textTask("passing", true)],
@@ -73,59 +101,16 @@ describe("runEvalSuite", () => {
     expect(report.executions[0]?.world).toEqual(report.executions[1]?.world);
   });
 
-  test("rejects incomplete canonical selection", async () => {
+  test("rejects duplicate task IDs", async () => {
     await expect(
       runEvalSuite({
-        tasks: [textTask("only-one", true)],
+        tasks: [textTask("duplicate", true), textTask("duplicate", true)],
         profiles: [{ provider: "anthropic", model: TEST_MODEL.modelId, effort: "medium" }],
         rootSeed: "root",
-        metadata: { ...METADATA, canonical: true },
-        canonicalManifest: CANONICAL_MANIFEST,
+        metadata: METADATA,
         resolveModel: () => TEST_MODEL,
         createStream: () => sequenceStream([assistantMessage([{ type: "text", text: "done" }])]),
       }),
-    ).rejects.toThrow("exact canonical task and profile manifest");
-  });
-
-  test("rejects a same-sized but incorrect canonical selection", async () => {
-    await expect(
-      runEvalSuite({
-        tasks: [textTask("task-a", true), textTask("wrong-task", true)],
-        profiles: [...CANONICAL_MANIFEST.profiles],
-        rootSeed: "root",
-        metadata: { ...METADATA, canonical: true },
-        canonicalManifest: CANONICAL_MANIFEST,
-        resolveModel: () => TEST_MODEL,
-        createStream: () => sequenceStream([assistantMessage([{ type: "text", text: "done" }])]),
-      }),
-    ).rejects.toThrow("exact canonical task and profile manifest");
-  });
-
-  test("requires a manifest for canonical execution", async () => {
-    await expect(
-      runEvalSuite({
-        tasks: [textTask("task-a", true), textTask("task-b", true)],
-        profiles: [...CANONICAL_MANIFEST.profiles],
-        rootSeed: "root",
-        metadata: { ...METADATA, canonical: true },
-        resolveModel: () => TEST_MODEL,
-        createStream: () => sequenceStream([assistantMessage([{ type: "text", text: "done" }])]),
-      }),
-    ).rejects.toThrow("requires a canonical manifest");
-  });
-
-  test("accepts the exact canonical manifest", async () => {
-    const report = await runEvalSuite({
-      tasks: [textTask("task-a", true), textTask("task-b", true)],
-      profiles: [...CANONICAL_MANIFEST.profiles],
-      rootSeed: "root",
-      metadata: { ...METADATA, canonical: true },
-      canonicalManifest: CANONICAL_MANIFEST,
-      resolveModel: () => TEST_MODEL,
-      createStream: () => sequenceStream([assistantMessage([{ type: "text", text: "done" }])]),
-    });
-
-    expect(report.canonical).toBe(true);
-    expect(report.executions).toHaveLength(4);
+    ).rejects.toThrow("Duplicate eval task ID");
   });
 });

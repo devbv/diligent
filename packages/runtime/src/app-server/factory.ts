@@ -2,6 +2,7 @@
 import { dirname, join } from "node:path";
 import { getModelInfoList, resolveModel } from "@diligent/core/model-registry";
 import type { ProviderName, SystemSection } from "@diligent/core/provider-contract";
+import type { Tool } from "@diligent/core/tool-contract";
 import { createLogger } from "@diligent/logging";
 import {
   EXECUTE_MODE_DISALLOWED_TOOLS,
@@ -111,8 +112,9 @@ async function createRuntimeAgent(args: {
   runtimeConfig: RuntimeConfig;
   getPaths: () => Promise<DiligentPaths>;
   bundledToolProviders?: BundledToolProvider[];
+  transformTools?: CreateAppServerConfigOptions["transformTools"];
 }): Promise<RuntimeAgent> {
-  const { request, runtimeConfig, getPaths, bundledToolProviders } = args;
+  const { request, runtimeConfig, getPaths, bundledToolProviders, transformTools } = args;
   const {
     cwd,
     mode,
@@ -179,7 +181,10 @@ async function createRuntimeAgent(args: {
   const llmCompactionFn = runtimeConfig.providerManager.createNativeCompactionForProvider(
     model.provider as ProviderName,
   );
-  const filteredTools = filterToolsByMode(activeMode, toolsResult.tools);
+  const modeFilteredTools = filterToolsByMode(activeMode, toolsResult.tools);
+  const filteredTools = transformTools
+    ? transformTools(modeFilteredTools, { cwd, mode: activeMode, provider: model.provider as ProviderName })
+    : modeFilteredTools;
   if (toolsResult.registry) {
     toolsResult.registry.updateDeps({
       model: modelRef,
@@ -232,6 +237,7 @@ export interface CreateAppServerConfigOptions {
   cwd: string;
   runtimeConfig: RuntimeConfig;
   bundledToolProviders?: BundledToolProvider[];
+  transformTools?: (tools: Tool[], context: { cwd: string; mode: Mode; provider: ProviderName }) => Tool[];
   /**
    * Optional remote-backed consent manager (e.g. the OVERDARE gateway's `/v1/consent`). When
    * provided, it owns consent state instead of local `config.jsonc`; `refresh()` is awaited from
@@ -247,7 +253,7 @@ export interface CreateAppServerConfigOptions {
 }
 
 export function createAppServerConfig(opts: CreateAppServerConfigOptions): DiligentAppServerConfig {
-  const { cwd, runtimeConfig, bundledToolProviders = [], consentBackend, overrides } = opts;
+  const { cwd, runtimeConfig, bundledToolProviders = [], transformTools, consentBackend, overrides } = opts;
   const modelInfoList = getModelInfoList();
   const initialEffort = runtimeConfig.effort;
   const experimentDefinitions = runtimeConfig.experimentDefinitions ?? [];
@@ -318,7 +324,7 @@ export function createAppServerConfig(opts: CreateAppServerConfigOptions): Dilig
     },
     resolvePaths: (requestCwd) => ensureDiligentDir(requestCwd),
     createAgent: (args: CreateAgentArgs): Promise<RuntimeAgent> =>
-      createRuntimeAgent({ request: args, runtimeConfig, getPaths, bundledToolProviders }),
+      createRuntimeAgent({ request: args, runtimeConfig, getPaths, bundledToolProviders, transformTools }),
     streamFunction: runtimeConfig.streamFunction,
     createNativeCompaction: (provider: ProviderName) =>
       runtimeConfig.providerManager.createNativeCompactionForProvider(provider),

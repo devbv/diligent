@@ -10,14 +10,12 @@ describe("serializeEvalReport", () => {
     const report: EvalSuiteReport = {
       schemaVersion: 1,
       suiteVersion: "core-v0",
-      canonical: true,
-      canonicalReason: "exact canonical suite",
       repository: "example/repo",
       commitSha: "abc123",
       ref: "refs/heads/main",
       runId: "1",
       runAttempt: "1",
-      bunVersion: "1.3.9",
+      bunVersion: "1.3.14",
       startedAt: "2026-07-17T00:00:00.000Z",
       endedAt: "2026-07-17T00:00:01.000Z",
       rootSeed: "seed",
@@ -56,7 +54,12 @@ describe("serializeEvalReport", () => {
             },
           ],
           messages: [],
-          world: {},
+          world: {
+            image: {
+              type: "image",
+              source: { type: "base64", media_type: "image/png", data: "iVBORw0KGgoAAAANSUhEUg" },
+            },
+          },
         },
       ],
     };
@@ -64,6 +67,8 @@ describe("serializeEvalReport", () => {
     const json = serializeEvalReport(report, { secrets: [secret] });
     expect(json).not.toContain(secret);
     expect(json).not.toContain("Bearer ");
+    expect(json).not.toContain("iVBORw0KGgoAAAANSUhEUg");
     expect(json).toContain("[REDACTED]");
+    expect(json).toContain("[base64 omitted]");
   });
 });

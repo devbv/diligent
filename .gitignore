@@ -24,6 +24,9 @@ dist/
 # Terminal Bench job outputs
 jobs/
 
+# Local evaluation reports
+artifacts/
+
 # Test temp directories
 **/tmp-watcher-test/
 

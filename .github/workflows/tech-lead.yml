@@ -99,7 +99,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          ./.bin/diligent --yolo --prompt "/tech-lead Review the accumulated commit range and register only high-confidence, implementation-ready findings as GitHub Issues. Creating no issues is valid."
+          ./.bin/diligent --yolo --prompt "/tech-lead Review the accumulated commit range. This workflow invocation explicitly authorizes GitHub Issue registration. Create or reuse exactly one independently readable Issue per high-confidence, implementation-ready finding, up to three. Record each Issue in its finding's Delivery field. Creating no findings and no Issues is valid."
 
       - name: Commit and push
         if: steps.guard.outputs.skip == 'false'

@@ -1,4 +1,4 @@
-name: Core Evals
+name: Runtime Evals
 
 on:
   workflow_dispatch:
@@ -7,13 +7,10 @@ on:
         description: "Provider filter; all runs both providers"
         required: true
         type: choice
-        options:
-          - all
-          - openai
-          - anthropic
+        options: [all, openai, anthropic]
         default: all
       task:
-        description: "Optional task ID; empty runs every core task"
+        description: "Optional task ID; empty runs every runtime task"
         required: false
         type: string
       model:
@@ -21,15 +18,14 @@ on:
         required: false
         type: string
       seed:
-        description: "Optional recorded root seed for world reconstruction"
+        description: "Optional recorded root seed"
         required: false
         type: string
   schedule:
-    - cron: "0 21 * * *"
+    - cron: "30 21 * * *"
   workflow_call:
     inputs:
       artifact_retention_days:
-        description: "Retention for a future release-gate report"
         required: false
         type: number
         default: 90
@@ -47,10 +43,10 @@ permissions:
   contents: read
 
 jobs:
-  core-evals:
-    name: Core eval suite
+  runtime-evals:
+    name: Runtime eval suite (shadow)
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 90
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -58,41 +54,30 @@ jobs:
       EVAL_TASK: ${{ inputs.task || '' }}
       EVAL_MODEL: ${{ inputs.model || '' }}
       EVAL_SEED: ${{ inputs.seed || '' }}
-
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
-
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14
-
+      - name: Install runtime system dependencies
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
       - run: bun install --frozen-lockfile
-
-      - name: Run core eval suite
+      - name: Run runtime eval suite
         shell: bash
         run: |
-          args=(core)
-          if [ "$EVAL_PROVIDER" != "all" ]; then
-            args+=(--provider "$EVAL_PROVIDER")
-          fi
-          if [ -n "$EVAL_TASK" ]; then
-            args+=(--task "$EVAL_TASK")
-          fi
-          if [ -n "$EVAL_MODEL" ]; then
-            args+=(--model "$EVAL_MODEL")
-          fi
-          if [ -n "$EVAL_SEED" ]; then
-            args+=(--seed "$EVAL_SEED")
-          fi
+          args=(runtime)
+          if [ "$EVAL_PROVIDER" != "all" ]; then args+=(--provider "$EVAL_PROVIDER"); fi
+          if [ -n "$EVAL_TASK" ]; then args+=(--task "$EVAL_TASK"); fi
+          if [ -n "$EVAL_MODEL" ]; then args+=(--model "$EVAL_MODEL"); fi
+          if [ -n "$EVAL_SEED" ]; then args+=(--seed "$EVAL_SEED"); fi
           bun run eval "${args[@]}"
-
-      - name: Upload eval report
+      - name: Upload runtime eval report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: core-evals-${{ github.run_id }}-${{ github.run_attempt }}
-          path: artifacts/evals/*.json
+          name: runtime-evals-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/evals/runtime-*.json
           if-no-files-found: warn
           retention-days: ${{ inputs.artifact_retention_days || 30 }}

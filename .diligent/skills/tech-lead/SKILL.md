@@ -84,7 +84,9 @@ Every actionable finding must establish all of the following:
 4. **Bounded response:** The smallest responsible change or decision.
 5. **Why now:** Evidence that waiting will compound cost or leave an active defect.
 
-If one is missing, keep the item as an observation or watch condition. Do not turn it into a Priority Action or GitHub Issue.
+An actionable finding must have High confidence. If one of the requirements is missing or confidence is only Medium, keep the item as an observation or watch condition. Do not turn it into an actionable finding or GitHub Issue.
+
+Treat each actionable finding as the complete unit of review and delivery. A reader must not need to join a finding with a separate action list or issue-mapping section to understand what is wrong, why it matters, what is in scope, and how completion will be verified.
 
 Apply these safeguards:
 
@@ -167,27 +169,27 @@ Keep the document proportional to the evidence. Use this compact structure:
 - Resolved / still active / disproven / outside scope
 
 ## Findings
-### Finding title
-**Confidence**: High | Medium
+### F-01 — Finding title
+**Disposition**: Act now
+**Lens**: Ownership | Change friction | Contract | Operational correctness | Forward pressure
+**Confidence**: High
 **Evidence**: ...
 **Impact and mechanism**: ...
 **Smallest responsible action**: ...
+**Scope and non-goals**: ...
+**Verification**: ...
+**Why now**: ...
+**Delivery**: Created issue #123 | Reused issue #123 | Not requested
 
 ## Watchlist
 - Lower-confidence or trigger-dependent observations
-
-## Priority Actions
-1. Zero to three implementation-ready actions, ordered by value and dependency
-
-## GitHub Issues
-- Created/reused issue mapping, or "None"
 ```
 
-Omit empty `Findings` or `Watchlist` sections. `Priority Actions: None` is valid, especially for a GREEN verdict. Do not add a mandatory novel perspective, rejected-candidate catalog, package-by-package section, or persistent issue merely to fill a template.
+Publish zero to three actionable findings, ordered by value and dependency. Omit empty `Findings` or `Watchlist` sections; a GREEN verdict with no actionable findings is valid. Keep lower-confidence or trigger-dependent concerns in `Watchlist` rather than partially filling the finding template. Do not add a separate Priority Actions or GitHub Issues section: the action and delivery status belong to the finding. Do not add a mandatory novel perspective, rejected-candidate catalog, package-by-package section, or persistent issue merely to fill a template.
 
 ## Register GitHub Issues Only When Authorized
 
-Create or update GitHub Issues only when the user or automation prompt explicitly requests issue registration.
+Create or update GitHub Issues only when the user or automation prompt explicitly requests issue registration. The repository tech-lead workflow prompt is an explicit request, whether triggered by the schedule or `workflow_dispatch`. An interactive or otherwise manually invoked review does not authorize issue registration unless the request says so.
 
 Before creating an issue:
 
@@ -196,10 +198,11 @@ Before creating an issue:
 3. Confirm the action is independently executable without a missing product or architecture decision.
 4. Confirm the review contains high-confidence evidence, mechanism, and acceptance criteria.
 
-Create at most three issues per review. Creating none is a successful outcome.
+Create at most three issues per review. Creating none is a successful outcome. Create or reuse exactly one issue per actionable finding; never combine independent findings into an umbrella issue and never split one finding into multiple issues during the review.
 
 Each issue must include:
 
+- the review finding ID and title
 - action-oriented title
 - review path and commit range
 - current code evidence
@@ -207,6 +210,35 @@ Each issue must include:
 - bounded scope and explicit non-goals
 - test or verification expectations
 - completion criteria observable in code or behavior
+
+The issue body must be independently readable without opening the review. Mirror the finding's evidence, impact and mechanism, action, scope and non-goals, verification, and why-now rationale. After creating or reusing the issue, record the issue number and link in that finding's `Delivery` field.
+
+Use this issue body structure:
+
+```markdown
+## Source
+- Review: `docs/review/...`
+- Finding: `F-01 — ...`
+- Commit range: `...`
+
+## Evidence
+...
+
+## Impact and mechanism
+...
+
+## Scope
+...
+
+## Non-goals
+- ...
+
+## Verification
+- ...
+
+## Why now
+...
+```
 
 Reuse an equivalent open issue. Do not create issues for:
 
