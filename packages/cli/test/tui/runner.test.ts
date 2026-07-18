@@ -18,7 +18,7 @@ import { NonInteractiveRunner } from "../../src/tui/runner";
 import { createInProcessRpcClientFactory } from "../helpers/in-process-server";
 
 const TEST_MODEL: Model = {
-  modelId: "claude-sonnet-4-6",
+  modelId: "claude-sonnet-5",
   provider: "anthropic",
   contextWindow: 100_000,
   maxOutputTokens: 4096,

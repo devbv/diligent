@@ -307,7 +307,7 @@ describe("Agent", () => {
       expect(errorEvent.error.providerErrorType).toBe("network");
       expect(errorEvent.error.isRetryable).toBe(true);
     }
-    expect(calls).toBe(2);
+    expect(calls).toBe(3);
   });
 
   test("retry after streamed delta discards previous assistant draft", async () => {

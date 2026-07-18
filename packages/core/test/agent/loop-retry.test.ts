@@ -119,6 +119,24 @@ describe("agent loop retry + usage", () => {
     expect(events.some((e) => e.type === "error")).toBe(false);
   });
 
+  test("counts maxRetries after the initial provider attempt", async () => {
+    const { streamFn, callCount } = createMockStreamFn(1, "server_error");
+    const { events } = await runAgent(streamFn, { retry: { maxRetries: 1, baseDelayMs: 1, maxDelayMs: 1 } });
+
+    expect(callCount()).toBe(2);
+    expect(events.some((event) => event.type === "usage")).toBe(true);
+    expect(events.some((event) => event.type === "error")).toBe(false);
+  });
+
+  test("allows zero retries", async () => {
+    const { streamFn, callCount } = createMockStreamFn(1, "server_error");
+    const { events } = await runAgent(streamFn, { retry: { maxRetries: 0, baseDelayMs: 1, maxDelayMs: 1 } });
+
+    expect(callCount()).toBe(1);
+    expect(events.some((event) => event.type === "usage")).toBe(false);
+    expect(events.some((event) => event.type === "error")).toBe(true);
+  });
+
   test("injects the Agent logger and session context into retry records", async () => {
     const { streamFn } = createMockStreamFn(1, "server_error");
     const records: LogRecord[] = [];
@@ -136,12 +154,13 @@ describe("agent loop retry + usage", () => {
     expect(records.find((record) => record.event === "retry_scheduled")).toMatchObject({
       scope: "llm:retry",
       sessionId: "agent-session",
+      message: "[llm:retry] provider retry scheduled",
       fields: {
         provider: "anthropic",
         model: "test-model",
         attempt: 1,
         nextAttempt: 2,
-        maxAttempts: 2,
+        maxAttempts: 3,
         delayMs: 1,
       },
     });

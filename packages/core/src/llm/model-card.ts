@@ -1,5 +1,5 @@
 // @summary Shared model-card types and helpers for provider-owned model definitions
-import type { Model, ProviderName, ThinkingEffort } from "./types";
+import type { Model, ProviderName } from "./types";
 
 export const MODEL_CARD_SCHEMA_VERSION = 1 as const;
 
@@ -24,9 +24,6 @@ export interface ModelCard extends Model {
 }
 
 export type ProviderModelCardInput = Omit<ModelCard, "provider" | "schemaVersion">;
-
-export const NATIVE_PROVIDER_THINKING_EFFORTS: ThinkingEffort[] = ["low", "medium", "high", "xhigh", "max"];
-export const GPT_5_5_THINKING_EFFORTS: ThinkingEffort[] = ["low", "medium", "high", "xhigh"];
 
 export function defineProviderModels(provider: ProviderName, cards: ProviderModelCardInput[]): ModelCard[] {
   return cards.map((card) => ({

@@ -3,7 +3,7 @@
 import { expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 
-const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-4-6";
+const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-5";
 
 import { AppHeader } from "../../../src/client/components/AppHeader";
 import { AssetThumbnail } from "../../../src/client/components/AssetThumbnail";

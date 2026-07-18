@@ -9,7 +9,7 @@ import {
   type StreamContext,
 } from "../../../../src/llm/types";
 
-const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-4-6";
+const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-5";
 
 type MockListenerArgs = unknown[];
 type MockListener = (...args: MockListenerArgs) => void;

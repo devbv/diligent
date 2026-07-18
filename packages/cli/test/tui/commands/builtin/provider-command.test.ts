@@ -9,7 +9,7 @@ import type { CommandRegistry } from "../../../../src/tui/commands/registry";
 import type { CommandContext } from "../../../../src/tui/commands/types";
 import type { ConfirmDialogOptions } from "../../../../src/tui/components/confirm-dialog";
 
-const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-4-6";
+const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-5";
 
 function createMockContext(pm: ProviderManager): {
   ctx: CommandContext;

@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadRuntimeConfig } from "@diligent/runtime";
 
-const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-4-6";
+const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-5";
 
 function makeTmpEnv(base: string) {
   const knowledge = join(base, ".diligent", "knowledge");

@@ -18,7 +18,7 @@ import {
   writeProjectToolsConfig,
 } from "../../src/config/writer";
 
-const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-4-6";
+const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-5";
 
 const TMP_PREFIX = join(process.cwd(), ".tmp-p032-writer-");
 const tempDirs: string[] = [];

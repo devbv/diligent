@@ -34,15 +34,22 @@ describe("model thinking helpers", () => {
     expect(getThinkingEffortOptions(gpt55).map((option) => option.value)).toEqual(["low", "medium", "high", "xhigh"]);
   });
 
+  it("includes xhigh by default without explicit model capabilities", () => {
+    const unspecified = model("synthetic", undefined);
+    expect(getThinkingEffortOptions(unspecified).map((option) => option.value)).toContain("xhigh");
+    expect(supportsThinkingEffort(unspecified, "xhigh")).toBe(true);
+  });
+
   it("validates and normalizes model-specific effort values", () => {
     expect(supportsThinkingEffort(gpt56, "xhigh")).toBe(true);
     expect(supportsThinkingEffort(gpt55, "xhigh")).toBe(true);
     expect(supportsThinkingEffort(gpt55, "max")).toBe(false);
     expect(normalizeThinkingEffort(gpt55, "xhigh")).toBe("xhigh");
     expect(normalizeThinkingEffort(gpt55, "max")).toBe("medium");
+    expect(normalizeThinkingEffort(model("synthetic", ["medium", "max"]), "xhigh")).toBe("medium");
   });
 
-  it("preserves legacy state for non-thinking models except xhigh", () => {
+  it("preserves effort state for non-thinking models", () => {
     const nonThinking: ModelInfo = {
       ...model("vertex-gemma-4-26b-it", undefined),
       provider: "vertex",
@@ -50,6 +57,6 @@ describe("model thinking helpers", () => {
     };
 
     expect(normalizeThinkingEffort(nonThinking, "high")).toBe("high");
-    expect(normalizeThinkingEffort(nonThinking, "xhigh")).toBe("medium");
+    expect(normalizeThinkingEffort(nonThinking, "xhigh")).toBe("xhigh");
   });
 });

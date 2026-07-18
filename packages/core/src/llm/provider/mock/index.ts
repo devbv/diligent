@@ -1,8 +1,8 @@
 // @summary Mock StreamFunction factory for tests — eliminates EventStream boilerplate
 
-import { EventStream } from "../../event-stream";
-import type { AssistantMessage } from "../../types";
-import type { ProviderEvent, ProviderResult, StreamFunction } from "../types";
+import { EventStream } from "../../../event-stream";
+import type { AssistantMessage } from "../../../types";
+import type { ProviderEvent, ProviderResult, StreamFunction } from "../../types";
 
 /** Create a mock StreamFunction that responds with the given message */
 export function createMockStream(response: AssistantMessage): StreamFunction {

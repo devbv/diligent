@@ -25,7 +25,7 @@ import { readKnowledge } from "@diligent/runtime/knowledge";
 import { z } from "zod";
 
 const FAKE_MODEL = {
-  modelId: "claude-sonnet-4-6" as const,
+  modelId: "claude-sonnet-5" as const,
   provider: "anthropic" as const,
   contextWindow: 128_000,
   maxOutputTokens: 4096,
@@ -88,7 +88,7 @@ describe("RPC binding", () => {
         cwd: projectRoot,
         mode: "default",
         effort: "medium",
-        currentModel: { provider: "anthropic", modelId: "claude-sonnet-4-6" },
+        currentModel: { provider: "anthropic", modelId: "claude-sonnet-5" },
         availableModels: [],
       }),
       resolvePaths: async (cwd) => ensureDiligentDir(cwd),
@@ -108,7 +108,7 @@ describe("RPC binding", () => {
                 message: {
                   role: "assistant",
                   content: [{ type: "text", text: "hello" }],
-                  model: { provider: "anthropic", modelId: "claude-sonnet-4-6" },
+                  model: { provider: "anthropic", modelId: "claude-sonnet-5" },
                   usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
                   stopReason: "end_turn",
                   timestamp: Date.now(),
@@ -132,7 +132,7 @@ describe("RPC binding", () => {
     expect(init.cwd).toBe(projectRoot);
     expect(init.mode).toBe("default");
     expect(init.effort).toBe("medium");
-    expect(init.currentModel).toEqual({ provider: "anthropic", modelId: "claude-sonnet-4-6" });
+    expect(init.currentModel).toEqual({ provider: "anthropic", modelId: "claude-sonnet-5" });
 
     const started = await client.request(DILIGENT_CLIENT_REQUEST_METHODS.THREAD_START, { cwd: projectRoot });
     expect(started.threadId).toMatch(/^\d{20}-[0-9a-f]{6}$/);
@@ -248,7 +248,7 @@ describe("RPC binding", () => {
                         input: {},
                       },
                     ],
-                    model: { provider: "anthropic", modelId: "claude-sonnet-4-6" },
+                    model: { provider: "anthropic", modelId: "claude-sonnet-5" },
                     usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
                     stopReason: "tool_use",
                     timestamp: Date.now(),
@@ -261,7 +261,7 @@ describe("RPC binding", () => {
                   message: {
                     role: "assistant",
                     content: [{ type: "text", text: "done" }],
-                    model: { provider: "anthropic", modelId: "claude-sonnet-4-6" },
+                    model: { provider: "anthropic", modelId: "claude-sonnet-5" },
                     usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
                     stopReason: "end_turn",
                     timestamp: Date.now(),
@@ -306,7 +306,7 @@ describe("RPC binding", () => {
         cwd: projectRoot,
         mode: "default",
         effort: "medium",
-        currentModel: { provider: "anthropic", modelId: "claude-sonnet-4-6" },
+        currentModel: { provider: "anthropic", modelId: "claude-sonnet-5" },
         availableModels: [],
       }),
       resolvePaths: async (cwd) => ensureDiligentDir(cwd),
@@ -326,7 +326,7 @@ describe("RPC binding", () => {
                 message: {
                   role: "assistant",
                   content: [{ type: "text", text: "ok" }],
-                  model: { provider: "anthropic", modelId: "claude-sonnet-4-6" },
+                  model: { provider: "anthropic", modelId: "claude-sonnet-5" },
                   usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
                   stopReason: "end_turn",
                   timestamp: Date.now(),

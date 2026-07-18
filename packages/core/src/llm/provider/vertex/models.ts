@@ -1,5 +1,10 @@
 // @summary Vertex-owned model-card definitions
 import { defineProviderModels } from "../../model-card";
+import { defineProviderModelClasses } from "../../model-class";
+
+export const VERTEX_MODEL_CLASSES = defineProviderModelClasses({
+  general: { defaultModelId: "vertex-gemma-4-26b-it" },
+});
 
 export const VERTEX_MODELS = defineProviderModels("vertex", [
   {

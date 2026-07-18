@@ -11,18 +11,14 @@ import {
 } from "../../src/llm/models";
 
 describe("provider-scoped model catalog", () => {
-  it("permits the same provider-native ID under OpenAI and ChatGPT", () => {
-    const openai = resolveModel({ provider: "openai", modelId: "gpt-5.5" });
-    const chatgpt = resolveModel({ provider: "chatgpt", modelId: "gpt-5.5" });
-    expect(openai.modelId).toBe(chatgpt.modelId);
-    expect(openai.provider).not.toBe(chatgpt.provider);
-    expect(openai.contextWindow).toBe(1_000_000);
-    expect(chatgpt.contextWindow).toBe(300_000);
-  });
-
   it("resolves aliases only inside the explicit provider", () => {
-    expect(resolveModel({ provider: "openai", modelId: "gpt-5.6" }).modelId).toBe("gpt-5.6-sol");
-    expect(resolveModel({ provider: "chatgpt", modelId: "gpt-5.6" }).modelId).toBe("gpt-5.6-sol");
+    const model = listModels().find((candidate) => candidate.aliases && candidate.aliases.length > 0);
+    expect(model).toBeDefined();
+    if (!model) throw new Error("Expected at least one aliased model card");
+    const alias = model.aliases?.[0];
+    expect(alias).toBeDefined();
+    if (!alias) throw new Error("Expected the selected model card to have an alias");
+    expect(resolveModel({ provider: model.provider, modelId: alias })).toBe(model);
   });
 
   it("rejects unknown cards without inferring capabilities", () => {
@@ -37,16 +33,15 @@ describe("provider-scoped model catalog", () => {
   });
 
   it("compares both identity fields", () => {
-    expect(sameModelRef({ provider: "openai", modelId: "gpt-5.5" }, { provider: "openai", modelId: "gpt-5.5" })).toBe(
-      true,
-    );
-    expect(sameModelRef({ provider: "openai", modelId: "gpt-5.5" }, { provider: "chatgpt", modelId: "gpt-5.5" })).toBe(
-      false,
-    );
+    expect(
+      sameModelRef({ provider: "openai", modelId: "shared-model" }, { provider: "openai", modelId: "shared-model" }),
+    ).toBe(true);
+    expect(
+      sameModelRef({ provider: "openai", modelId: "shared-model" }, { provider: "chatgpt", modelId: "shared-model" }),
+    ).toBe(false);
   });
 
-  it("lists immutable-looking versioned cards and protocol model info", () => {
-    expect(listModels("vertex")).toHaveLength(1);
+  it("maps catalog cards to protocol model info", () => {
     for (const card of listModels()) expect(card.schemaVersion).toBe(MODEL_CARD_SCHEMA_VERSION);
     expect(getModelInfoList().every((model) => model.modelId.length > 0 && model.provider.length > 0)).toBe(true);
   });

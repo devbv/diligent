@@ -17,11 +17,15 @@ Use child loggers to attach immutable context at composition boundaries:
 ```ts
 const threadLogger = logger.child({ sessionId, threadId });
 
-threadLogger.warn("retry_scheduled", {
-  message: "[llm:retry] retrying provider request",
-  fields: { attempt, delayMs },
+threadLogger.info("retry_scheduled", {
+  message: "[llm:retry] provider retry scheduled",
+  fields: { attempt, nextAttempt, maxAttempts, delayMs },
 });
 ```
+
+Keep messages stable and put variable diagnostics in `fields` or `error`. Related event names should share a
+machine-readable prefix such as `retry_*`; do not emit a second record solely to repeat error details already attached
+to the transition record.
 
 Do not recover correlation data by parsing `message`. Do not use a process-global current session because hosts may run concurrent sessions.
 

@@ -1,5 +1,12 @@
 // @summary Anthropic-owned model-card definitions
-import { defineProviderModels, NATIVE_PROVIDER_THINKING_EFFORTS } from "../../model-card";
+import { defineProviderModels } from "../../model-card";
+import { defineProviderModelClasses } from "../../model-class";
+
+export const ANTHROPIC_MODEL_CLASSES = defineProviderModelClasses({
+  pro: { defaultModelId: "claude-opus-4-8" },
+  general: { defaultModelId: "claude-sonnet-5" },
+  lite: { defaultModelId: "claude-haiku-4-5-20251001" },
+});
 
 export const ANTHROPIC_MODELS = defineProviderModels("anthropic", [
   {
@@ -12,7 +19,6 @@ export const ANTHROPIC_MODELS = defineProviderModels("anthropic", [
     cacheReadCostPer1M: 0.5,
     cacheWriteCostPer1M: 6.25,
     supportsThinking: true,
-    supportedEfforts: NATIVE_PROVIDER_THINKING_EFFORTS,
     supportsVision: true,
     supportsAdaptiveThinking: true,
     supportsXhighEffort: true,
@@ -28,7 +34,6 @@ export const ANTHROPIC_MODELS = defineProviderModels("anthropic", [
     cacheReadCostPer1M: 1,
     cacheWriteCostPer1M: 12.5,
     supportsThinking: true,
-    supportedEfforts: NATIVE_PROVIDER_THINKING_EFFORTS,
     supportsVision: true,
     supportsAdaptiveThinking: true,
     supportsXhighEffort: true,
@@ -44,26 +49,10 @@ export const ANTHROPIC_MODELS = defineProviderModels("anthropic", [
     cacheReadCostPer1M: 0.3,
     cacheWriteCostPer1M: 3.75,
     supportsThinking: true,
-    supportedEfforts: NATIVE_PROVIDER_THINKING_EFFORTS,
     supportsVision: true,
     supportsAdaptiveThinking: true,
     supportsXhighEffort: true,
-    aliases: ["sonnet-5"],
-  },
-  {
-    modelId: "claude-sonnet-4-6",
-    display: "Claude Sonnet 4.6",
-    contextWindow: 1_000_000,
-    maxOutputTokens: 128_000,
-    inputCostPer1M: 3,
-    outputCostPer1M: 15,
-    cacheReadCostPer1M: 0.3,
-    cacheWriteCostPer1M: 3.75,
-    supportsThinking: true,
-    supportedEfforts: NATIVE_PROVIDER_THINKING_EFFORTS,
-    supportsVision: true,
-    supportsAdaptiveThinking: true,
-    aliases: ["claude-sonnet", "sonnet", "sonnet-4-6"],
+    aliases: ["claude-sonnet", "sonnet", "sonnet-5"],
   },
   {
     modelId: "claude-haiku-4-5-20251001",
@@ -75,7 +64,6 @@ export const ANTHROPIC_MODELS = defineProviderModels("anthropic", [
     cacheReadCostPer1M: 0.1,
     cacheWriteCostPer1M: 1.25,
     supportsThinking: true,
-    supportedEfforts: NATIVE_PROVIDER_THINKING_EFFORTS,
     supportsVision: true,
     thinkingBudgets: { low: 1_024, medium: 3_000, high: 8_000, max: 16_000 },
     aliases: ["claude-haiku", "haiku", "claude-haiku-4-5"],

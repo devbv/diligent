@@ -1,13 +1,13 @@
 // @summary Gemini provider adapter built on the Vercel AI SDK Google provider
 import { createGoogleGenerativeAI, google } from "@ai-sdk/google";
 import type { TextStreamPart, ToolSet } from "ai";
-import type { ContentBlock } from "../../types";
-import { isNetworkError } from "../errors";
-import { GEMINI_THINKING_BUDGETS } from "../models";
-import { classifyProviderHttpError } from "../provider-errors";
-import type { Model, StreamFunction, StreamOptions, ToolDefinition } from "../types";
-import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError, ProviderErrorReason, ProviderErrorType } from "../types";
-import { convertToAISDKTools, createAISDKStream } from "./ai-sdk";
+import type { ContentBlock } from "../../../types";
+import { isNetworkError } from "../../errors";
+import { GEMINI_THINKING_BUDGETS } from "../../models";
+import { classifyProviderHttpError } from "../../provider-errors";
+import type { Model, StreamFunction, StreamOptions, ToolDefinition } from "../../types";
+import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError, ProviderErrorReason, ProviderErrorType } from "../../types";
+import { convertToAISDKTools, createAISDKStream } from "../ai-sdk";
 
 type ProviderToolUseBlock = Extract<ContentBlock, { type: "provider_tool_use" }>;
 type WebSearchResultBlock = Extract<ContentBlock, { type: "web_search_result" }>;

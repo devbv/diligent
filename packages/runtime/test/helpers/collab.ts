@@ -17,7 +17,7 @@ import type { AgentEvent } from "../../src/agent-event";
 import type { SessionManager } from "../../src/session/manager";
 
 export const TEST_MODEL: Model = {
-  modelId: "claude-sonnet-4-6",
+  modelId: "claude-sonnet-5",
   provider: "anthropic",
   contextWindow: 100_000,
   maxOutputTokens: 4096,

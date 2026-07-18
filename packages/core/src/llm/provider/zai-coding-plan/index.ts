@@ -1,11 +1,11 @@
 // @summary z.ai Coding Plan adapter built on the Vercel AI SDK compatible provider
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { isNetworkError } from "../errors";
-import { classifyProviderHttpError } from "../provider-errors";
-import type { Model, StreamFunction, StreamOptions } from "../types";
-import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError, ProviderErrorReason, ProviderErrorType } from "../types";
-import { createAISDKStream } from "./ai-sdk";
-import { isContextOverflow } from "./openai/responses";
+import { isNetworkError } from "../../errors";
+import { classifyProviderHttpError } from "../../provider-errors";
+import type { Model, StreamFunction, StreamOptions } from "../../types";
+import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError, ProviderErrorReason, ProviderErrorType } from "../../types";
+import { createAISDKStream } from "../ai-sdk";
+import { isContextOverflow } from "../openai/responses";
 
 const DEFAULT_ZAI_CODING_PLAN_BASE_URL = "https://api.z.ai/api/coding/paas/v4";
 

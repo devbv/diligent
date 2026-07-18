@@ -59,6 +59,14 @@ Most source files include a `@summary` annotation on the first line: `// @summar
 - For end-to-end scenarios, place tests in `packages/e2e/` only.
 - For existing mixed layouts, prefer incremental migration to this convention when touching related files.
 
+### Test Design
+
+- Test behavior and stable invariants, not volatile configuration snapshots.
+- Do not assert concrete configuration values merely to mirror the current state. Examples include exact default model IDs, complete supported-model or provider lists, catalog counts, feature-flag defaults, and the presence or absence of a particular configured entry.
+- When testing configuration-driven behavior, derive expectations from the configuration under test instead of duplicating its concrete values in the test.
+- Prefer inline synthetic fixtures when testing generic capability, policy, selection, or normalization logic. Model effort and model-class routing are examples, not special cases.
+- Exact configuration values are appropriate when they are part of an external compatibility contract, request transformation, protocol shape, or a targeted regression. Make that behavior explicit in the test name.
+
 ### Why this convention
 
 - One obvious place for tests reduces decision overhead.

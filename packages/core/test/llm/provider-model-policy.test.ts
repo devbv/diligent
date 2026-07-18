@@ -5,17 +5,6 @@ import { getDefaultModelRef, PROVIDER_MODEL_POLICIES } from "../../src/llm/provi
 import type { ProviderName } from "../../src/llm/types";
 
 describe("provider model policy", () => {
-  it("defines one provider-owned default model for every provider", () => {
-    expect(PROVIDER_MODEL_POLICIES).toEqual({
-      anthropic: { defaultModel: "claude-opus-4-8" },
-      openai: { defaultModel: "gpt-5.6-sol" },
-      chatgpt: { defaultModel: "gpt-5.6-sol" },
-      gemini: { defaultModel: "gemini-3.5-flash" },
-      vertex: { defaultModel: "vertex-gemma-4-26b-it" },
-      "zai-coding-plan": { defaultModel: "glm-5.2" },
-    });
-  });
-
   it("resolves defaults that belong to the requested provider", () => {
     for (const provider of Object.keys(PROVIDER_MODEL_POLICIES) as ProviderName[]) {
       expect(resolveModel(getDefaultModelRef(provider)).provider).toBe(provider);

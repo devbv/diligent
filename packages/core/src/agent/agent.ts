@@ -66,7 +66,7 @@ export class Agent {
     return withRetry(
       fn,
       {
-        maxAttempts: this.retryConfig.maxRetries,
+        maxAttempts: this.retryConfig.maxRetries + 1,
         baseDelayMs: this.retryConfig.baseDelayMs,
         maxDelayMs: this.retryConfig.maxDelayMs,
       },

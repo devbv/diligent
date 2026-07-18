@@ -3,7 +3,7 @@ import { describe, expect, mock, test } from "bun:test";
 import { APIError } from "@anthropic-ai/sdk/core/error.mjs";
 import type { Model, StreamContext, StreamOptions, ToolDefinition } from "../../../../src/llm/types";
 
-const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-4-6";
+const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-5";
 
 const anthropicCalls: unknown[] = [];
 const anthropicConstructorOptions: unknown[] = [];

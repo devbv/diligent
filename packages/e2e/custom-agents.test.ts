@@ -41,7 +41,7 @@ function createCustomAgentScenarioStream(): StreamFunction {
             message: {
               role: "assistant",
               content: [{ type: "tool_call", id: "tc-spawn", name: "spawn_agent", input }],
-              model: { provider: "anthropic", modelId: "claude-sonnet-4-6" },
+              model: { provider: "anthropic", modelId: "claude-sonnet-5" },
               usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
               stopReason: "tool_use",
               timestamp: Date.now(),
@@ -62,7 +62,7 @@ function createCustomAgentScenarioStream(): StreamFunction {
           message: {
             role: "assistant",
             content: [{ type: "tool_call", id: "tc-wait", name: "wait", input }],
-            model: { provider: "anthropic", modelId: "claude-sonnet-4-6" },
+            model: { provider: "anthropic", modelId: "claude-sonnet-5" },
             usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
             stopReason: "tool_use",
             timestamp: Date.now(),
@@ -81,7 +81,7 @@ function createCustomAgentScenarioStream(): StreamFunction {
           message: {
             role: "assistant",
             content: [{ type: "tool_call", id: "tc-grep", name: "grep", input }],
-            model: { provider: "anthropic", modelId: "claude-sonnet-4-6" },
+            model: { provider: "anthropic", modelId: "claude-sonnet-5" },
             usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
             stopReason: "tool_use",
             timestamp: Date.now(),
@@ -99,7 +99,7 @@ function createCustomAgentScenarioStream(): StreamFunction {
           message: {
             role: "assistant",
             content: [{ type: "text", text }],
-            model: { provider: "anthropic", modelId: "claude-sonnet-4-6" },
+            model: { provider: "anthropic", modelId: "claude-sonnet-5" },
             usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
             stopReason: "end_turn",
             timestamp: Date.now(),
@@ -116,7 +116,7 @@ function createCustomAgentScenarioStream(): StreamFunction {
         message: {
           role: "assistant",
           content: [{ type: "text", text }],
-          model: { provider: "anthropic", modelId: "claude-sonnet-4-6" },
+          model: { provider: "anthropic", modelId: "claude-sonnet-5" },
           usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
           stopReason: "end_turn",
           timestamp: Date.now(),

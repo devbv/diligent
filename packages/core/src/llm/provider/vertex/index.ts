@@ -1,11 +1,11 @@
 // @summary Vertex OpenAI endpoint adapter built on the Vercel AI SDK compatible provider
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { isNetworkError } from "../errors";
-import { classifyProviderHttpError } from "../provider-errors";
-import type { StreamFunction } from "../types";
-import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError, ProviderErrorReason, ProviderErrorType } from "../types";
-import { createAISDKStream } from "./ai-sdk";
-import { isContextOverflow } from "./openai/responses";
+import { isNetworkError } from "../../errors";
+import { classifyProviderHttpError } from "../../provider-errors";
+import type { StreamFunction } from "../../types";
+import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError, ProviderErrorReason, ProviderErrorType } from "../../types";
+import { createAISDKStream } from "../ai-sdk";
+import { isContextOverflow } from "../openai/responses";
 
 export interface VertexStreamConfig {
   baseUrl?: string;

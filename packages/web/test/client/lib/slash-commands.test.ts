@@ -9,7 +9,7 @@ import {
   parseSlashCommand,
 } from "../../../src/client/lib/slash-commands";
 
-const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-4-6";
+const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-5";
 
 describe("parseSlashCommand", () => {
   test("parses command without args", () => {
