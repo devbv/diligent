@@ -33,6 +33,7 @@ contract, and lower-layer integration tests belong under that package's `test/` 
 | File | DiligentAppServer behavior |
 |---|---|
 | `custom-agents.test.ts` | Custom-agent spawning and per-spawn tool restrictions |
+| `knowledge.test.ts` | Knowledge CRUD and filesystem persistence |
 | `mode-and-config.test.ts` | Mode, effort, and tool-availability changes |
 | `multi-connection.test.ts` | Subscription fanout, unsubscribe isolation, and disconnect cleanup over in-memory peers |
 | `plugin-hooks.test.ts` | Plugin hook blocking, context injection, errors, and stop-hook re-entry |

@@ -4,7 +4,7 @@ import * as path from "node:path";
 
 describe("VS Code extension package", () => {
   test("manifest declares the dedicated Diligent container and simplified thread actions", async () => {
-    const manifestPath = path.resolve(import.meta.dir, "../../package.json");
+    const manifestPath = path.resolve(import.meta.dir, "../package.json");
     const manifest = JSON.parse(await fs.readFile(manifestPath, "utf8"));
 
     expect(manifest.activationEvents).toContain("onView:diligent.threads");

@@ -114,28 +114,23 @@ describe("protocol-lifecycle", () => {
       protocolVersion: 1,
     });
 
-    try {
-      await client.request("nonexistent/method", {});
-      expect.unreachable("Should have thrown");
-    } catch (e) {
-      expect(e).toBeInstanceOf(Error);
-    }
+    await expect(client.request("nonexistent/method", {})).rejects.toThrow("Invalid params");
+    expect(client.responses.at(-1)).toMatchObject({
+      error: { code: -32602, message: "Invalid params" },
+    });
   });
 
-  test("missing required params returns error", async () => {
+  test("missing required params returns -32602 error", async () => {
     await setup();
-    await client.request("initialize", {
-      clientName: "test",
-      clientVersion: "0.0.1",
-      protocolVersion: 1,
-    });
 
-    try {
-      // thread/start requires cwd
-      await client.request("thread/start", {});
-      expect.unreachable("Should have thrown");
-    } catch (e) {
-      expect(e).toBeInstanceOf(Error);
-    }
+    await expect(
+      client.request("initialize", {
+        clientVersion: "0.0.1",
+        protocolVersion: 1,
+      }),
+    ).rejects.toThrow("Invalid params");
+    expect(client.responses.at(-1)).toMatchObject({
+      error: { code: -32602, message: "Invalid params" },
+    });
   });
 });

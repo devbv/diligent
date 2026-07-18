@@ -6,14 +6,17 @@ import {
   type DiligentServerRequest,
   type DiligentServerRequestResponse,
   type JSONRPCMessage,
+  type JSONRPCResponse,
 } from "@diligent/protocol";
-import { type DiligentAppServer, RpcClientSession } from "@diligent/runtime";
+import { bindAppServer, type DiligentAppServer, RpcClientSession } from "@diligent/runtime";
 
 export interface ProtocolTestClient {
   /** Send a typed JSON-RPC request and await the response. */
   request<M extends string>(method: M, params: Record<string, unknown>): Promise<unknown>;
   /** All notifications received from the server. */
   notifications: DiligentServerNotification[];
+  /** All JSON-RPC responses received from the server, including structured errors. */
+  responses: JSONRPCResponse[];
   /** Wait until a notification with the given method arrives. */
   waitForNotification(method: string, timeout?: number): Promise<DiligentServerNotification>;
   /** Wait until a notification matching a predicate arrives. */
@@ -28,15 +31,11 @@ export interface ProtocolTestClient {
   simulateClose(): void;
   /** Disconnect and clean up. */
   close(): void;
-  /** The underlying connectionId. */
-  connectionId: string;
 }
 
-let nextConnectionId = 1;
-
 export function createProtocolClient(server: DiligentAppServer): ProtocolTestClient {
-  const connectionId = `test-${nextConnectionId++}`;
   const notifications: DiligentServerNotification[] = [];
+  const responses: JSONRPCResponse[] = [];
   const notificationWaiters: Array<{
     predicate: (n: DiligentServerNotification) => boolean;
     resolve: (n: DiligentServerNotification) => void;
@@ -82,8 +81,11 @@ export function createProtocolClient(server: DiligentAppServer): ProtocolTestCli
   // Connect to server with a direct bidirectional peer:
   // - server.send(msg) → rpcClient.handleMessage(msg)  (server → client)
   // - server.onMessage(listener) → captured for client → server routing
-  const disconnect = server.connect(connectionId, {
+  const disconnect = bindAppServer(server, {
     send(message: JSONRPCMessage) {
+      if ("id" in message && ("result" in message || "error" in message)) {
+        responses.push(message);
+      }
       void rpcClient.handleMessage(message);
     },
     onMessage(listener) {
@@ -96,7 +98,7 @@ export function createProtocolClient(server: DiligentAppServer): ProtocolTestCli
 
   return {
     notifications,
-    connectionId,
+    responses,
 
     async request(method, params) {
       return rpcClient.request(method as never, params as never);

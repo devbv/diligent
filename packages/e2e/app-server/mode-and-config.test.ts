@@ -74,8 +74,10 @@ describe("mode-and-config", () => {
     // Verify the thread read shows the effort/state
     const readResult = (await client.request("thread/read", { threadId })) as {
       items: Array<{ type: string }>;
+      currentMode: Mode;
     };
 
+    expect(readResult.currentMode).toBe("plan");
     expect(readResult.items.some((item) => item.type === "userMessage")).toBe(true);
     expect(readResult.items.some((item) => item.type === "agentMessage")).toBe(true);
   });
