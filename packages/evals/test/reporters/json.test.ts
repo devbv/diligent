@@ -15,7 +15,7 @@ describe("serializeEvalReport", () => {
       ref: "refs/heads/main",
       runId: "1",
       runAttempt: "1",
-      bunVersion: "1.3.9",
+      bunVersion: "1.3.14",
       startedAt: "2026-07-17T00:00:00.000Z",
       endedAt: "2026-07-17T00:00:01.000Z",
       rootSeed: "seed",
