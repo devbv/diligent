@@ -505,6 +505,36 @@ describe("Agent loop", () => {
 });
 
 describe("Agent compactionSummary persistence", () => {
+  test("auto-compaction excludes the fresh user message and appends it after native state", async () => {
+    const compactionSummary = { type: "compaction", encrypted_content: "opaque-blob" };
+    const compactionInputs: NativeCompactionInput[] = [];
+    const nativeCompactFn: NativeCompactFn = async (input) => {
+      compactionInputs.push(input);
+      return { status: "ok", summary: "compacted", compactionSummary };
+    };
+    const streamFn = createMockStreamFunction([
+      makeAssistant([{ type: "text", text: "first response" }]),
+      makeAssistant([{ type: "text", text: "second response" }]),
+    ]);
+    const agent = new Agent({ ...TEST_MODEL, contextWindow: 200_000 }, [{ label: "sys", content: "sys" }], [], {
+      effort: "medium",
+      llmMsgStreamFn: streamFn,
+      llmCompactionFn: nativeCompactFn,
+      compaction: { reservePercent: 70 },
+    });
+    const first = { role: "user" as const, content: `first-${"x".repeat(300_000)}`, timestamp: Date.now() };
+    const fresh = { role: "user" as const, content: "fresh user request", timestamp: Date.now() };
+
+    await agent.prompt(first);
+    await agent.prompt(fresh);
+
+    expect(compactionInputs).toHaveLength(1);
+    expect(compactionInputs[0]?.messages).toContainEqual(first);
+    expect(compactionInputs[0]?.messages).not.toContainEqual(fresh);
+    expect(streamFn.contexts[1]?.messages.filter((message) => message.role === "user")).toEqual([fresh]);
+    expect(streamFn.contexts[1]?.messages).not.toContainEqual(first);
+  });
+
   test("prompt() persists compactionSummary produced by auto-compaction across calls", async () => {
     const compactionSummary = { type: "compaction", encrypted_content: "opaque-blob" };
 
@@ -532,7 +562,7 @@ describe("Agent compactionSummary persistence", () => {
       effort: "medium",
       llmMsgStreamFn: streamFn,
       llmCompactionFn: nativeCompactFn,
-      compaction: { reservePercent: 70, keepRecentTokens: 0 },
+      compaction: { reservePercent: 70 },
     });
 
     const bigContent = "x".repeat(200_001);
@@ -562,7 +592,7 @@ describe("Agent automatic compaction eligibility", () => {
         if (context.systemPrompt[0]?.label !== "sys") summaryCalls += 1;
         return streamFn(model, context, options);
       },
-      compaction: { reservePercent: 50, keepRecentTokens: 0 },
+      compaction: { reservePercent: 50 },
     });
     const original = "x".repeat(12_000 * 4);
 
@@ -614,8 +644,10 @@ describe("Agent context overflow compaction", () => {
 
   test("bypasses the minimum once and retries after shrinking on confirmed context_overflow", async () => {
     let compactCalls = 0;
-    const nativeCompactFn: NativeCompactFn = async (_input: NativeCompactionInput) => {
+    const compactionInputs: NativeCompactionInput[] = [];
+    const nativeCompactFn: NativeCompactFn = async (input: NativeCompactionInput) => {
       compactCalls++;
+      compactionInputs.push(input);
       return { status: "ok", summary: "forced summary" };
     };
     const streamFn = createContextOverflowStream(1);
@@ -624,15 +656,20 @@ describe("Agent context overflow compaction", () => {
       llmMsgStreamFn: streamFn,
       llmCompactionFn: nativeCompactFn,
     });
+    const history = { role: "user" as const, content: "older history ".repeat(100), timestamp: Date.now() };
+    agent.restore([history]);
 
-    const result = await agent.prompt({
-      role: "user",
+    const fresh = {
+      role: "user" as const,
       content: "x".repeat((NATIVE_COMPACTION_MIN_INPUT_TOKENS - 1) * 4),
       timestamp: Date.now(),
-    });
+    };
+    const result = await agent.prompt(fresh);
 
     expect(streamFn.callCount()).toBe(2);
     expect(compactCalls).toBe(1);
+    expect(compactionInputs[0]?.messages).toEqual([history]);
+    expect(compactionInputs[0]?.messages).not.toContainEqual(fresh);
     expect(result.at(-1)?.role).toBe("assistant");
     expect(
       streamFn.contexts[1].messages.some(
@@ -673,6 +710,8 @@ describe("Agent context overflow compaction", () => {
         };
       },
     });
+    const history = { role: "user" as const, content: "history", timestamp: Date.now() };
+    agent.restore([history]);
 
     let thrown: unknown;
     try {
@@ -684,7 +723,7 @@ describe("Agent context overflow compaction", () => {
     expect(thrown).toBe(originalOverflow);
     expect(providerCalls).toBe(1);
     expect(compactCalls).toBe(1);
-    expect(agent.getMessages()).toEqual([]);
+    expect(agent.getMessages()).toEqual([history]);
   });
 
   test("surfaces the original overflow when the bounded recovery compaction throws", async () => {
@@ -715,6 +754,7 @@ describe("Agent context overflow compaction", () => {
         throw new Error("recovery compaction failed");
       },
     });
+    agent.restore([{ role: "user", content: "history", timestamp: Date.now() }]);
 
     let thrown: unknown;
     try {
@@ -728,7 +768,7 @@ describe("Agent context overflow compaction", () => {
     expect(compactCalls).toBe(1);
   });
 
-  test("does not force compaction more than once for one sampling turn", async () => {
+  test("does not compact the fresh user message when no prior history exists", async () => {
     let compactCalls = 0;
     const nativeCompactFn: NativeCompactFn = async (_input: NativeCompactionInput) => {
       compactCalls++;
@@ -749,7 +789,7 @@ describe("Agent context overflow compaction", () => {
       }),
     ).rejects.toThrow("Context overflow");
 
-    expect(streamFn.callCount()).toBe(2);
-    expect(compactCalls).toBe(1);
+    expect(streamFn.callCount()).toBe(1);
+    expect(compactCalls).toBe(0);
   });
 });

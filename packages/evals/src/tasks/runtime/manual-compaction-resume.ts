@@ -142,7 +142,7 @@ async function createCompactionRuntimeConfig(world: ManualCompactionResumeWorld,
   const config = await createFixtureRuntimeConfig(world, profile);
   return {
     ...config,
-    compaction: { enabled: true, reservePercent: 16, keepRecentTokens: 1, timeoutMs: 180_000 },
+    compaction: { enabled: true, reservePercent: 16, timeoutMs: 180_000 },
   };
 }
 

@@ -11,7 +11,7 @@ function makeUser(content: string): Message {
 
 describe("TurnStager", () => {
   test("starts with the user message staged", () => {
-    const stager = new TurnStager(null, [], makeUser("hello"));
+    const stager = new TurnStager(null, makeUser("hello"));
     const snapshot = stager.getSnapshot();
 
     expect(snapshot.entries).toHaveLength(1);
@@ -22,7 +22,7 @@ describe("TurnStager", () => {
   });
 
   test("stages assistant and tool_result messages as their events arrive", () => {
-    const stager = new TurnStager(null, [], makeUser("hello"));
+    const stager = new TurnStager(null, makeUser("hello"));
     const messageEnd: CoreAgentEvent = {
       type: "message_end",
       turnId: "t1",
@@ -70,8 +70,8 @@ describe("TurnStager", () => {
     }
   });
 
-  test("stages compaction entry on compaction_end", () => {
-    const stager = new TurnStager(null, [], makeUser("hello"));
+  test("stages compaction before the fresh user message", () => {
+    const stager = new TurnStager(null, makeUser("hello"));
     stager.handleEvent(
       {
         type: "compaction_end",
@@ -82,14 +82,17 @@ describe("TurnStager", () => {
       },
       20_000,
     );
+    stager.handleEvent({ type: "turn_start", turnId: "t1" }, 20_000);
 
     const snapshot = stager.getSnapshot();
     expect(snapshot.entries).toHaveLength(2);
-    expect(snapshot.entries[1]?.type).toBe("compaction");
+    expect(snapshot.entries.map((entry) => entry.type)).toEqual(["compaction", "message"]);
+    expect(snapshot.entries[0]?.parentId).toBeNull();
+    expect(snapshot.entries[1]?.parentId).toBe(snapshot.entries[0]?.id);
   });
 
   test("preserves compaction summary on compaction_end", () => {
-    const stager = new TurnStager(null, [], makeUser("hello"));
+    const stager = new TurnStager(null, makeUser("hello"));
     stager.handleEvent(
       {
         type: "compaction_end",
@@ -103,14 +106,14 @@ describe("TurnStager", () => {
     );
 
     const snapshot = stager.getSnapshot();
-    expect(snapshot.entries[1]?.type).toBe("compaction");
-    if (snapshot.entries[1]?.type === "compaction") {
-      expect(snapshot.entries[1].compactionSummary).toEqual({ type: "compaction", encrypted_content: "opaque" });
+    expect(snapshot.entries[0]?.type).toBe("compaction");
+    if (snapshot.entries[0]?.type === "compaction") {
+      expect(snapshot.entries[0].compactionSummary).toEqual({ type: "compaction", encrypted_content: "opaque" });
     }
   });
 
   test("stages context injections as internal entries with source and runtime metadata", () => {
-    const stager = new TurnStager(null, [], makeUser("hello"));
+    const stager = new TurnStager(null, makeUser("hello"));
     stager.handleEvent(
       {
         type: "context_injected",

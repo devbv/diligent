@@ -59,6 +59,23 @@ describe("buildSessionContext", () => {
     expect(ctx.messages[2].role).toBe("user");
   });
 
+  it("rebuilds local compaction from the summary without retained user messages", () => {
+    const compaction: CompactionEntry = {
+      type: "compaction",
+      id: "compact",
+      parentId: "old",
+      timestamp: "2026-02-25T10:00:01.000Z",
+      summary: "summary only",
+      tokensBefore: 100_000,
+      tokensAfter: 100,
+    };
+    const fresh = makeMsg("fresh", "compact", "user", "fresh request");
+
+    const context = buildSessionContext([makeMsg("old", null, "user", "old request"), compaction, fresh]);
+
+    expect(context.providerMessages.map(msgContent)).toEqual(["summary only", "fresh request"]);
+  });
+
   it("follows correct branch in tree structure", () => {
     // Tree:
     //   a1 (user: hello)
@@ -173,9 +190,9 @@ describe("buildSessionContext", () => {
     expect(ctx.messages).toEqual([]);
   });
 
-  it("handles CompactionEntry — recent user msgs + summary + new turns", () => {
+  it("ignores legacy retained user messages and rebuilds summary plus new turns", () => {
     const recentUserMsg = { role: "user" as const, content: "kept user msg", timestamp: 1708900000000 };
-    const compaction: CompactionEntry = {
+    const compaction = {
       type: "compaction",
       id: "c1",
       parentId: "a2",
@@ -184,7 +201,7 @@ describe("buildSessionContext", () => {
       recentUserMessages: [recentUserMsg],
       tokensBefore: 50000,
       tokensAfter: 5000,
-    };
+    } as CompactionEntry;
 
     const entries: SessionEntry[] = [
       makeMsg("a1", null, "user", "old message 1"),
@@ -195,17 +212,10 @@ describe("buildSessionContext", () => {
     ];
 
     const ctx = buildSessionContext(entries);
-    // recent user msg + summary + new user + new assistant
-    expect(ctx.messages).toHaveLength(4);
-    // First: recent user message
-    expect(ctx.messages[0].role).toBe("user");
-    expect(msgContent(ctx.messages[0])).toBe("kept user msg");
-    // Second: summary
+    expect(ctx.messages).toHaveLength(3);
+    expect(msgContent(ctx.messages[0])).toContain("Refactor config module");
     expect(ctx.messages[1].role).toBe("user");
-    expect(msgContent(ctx.messages[1])).toContain("Refactor config module");
-    // Third + Fourth: new turns
-    expect(ctx.messages[2].role).toBe("user");
-    expect(ctx.messages[3].role).toBe("assistant");
+    expect(ctx.messages[2].role).toBe("assistant");
   });
 
   it("preserves mode changes that happened before the latest compaction", () => {
@@ -215,7 +225,6 @@ describe("buildSessionContext", () => {
       parentId: "a2",
       timestamp: "2026-02-25T10:01:00.000Z",
       summary: "## Summary",
-      recentUserMessages: [],
       tokensBefore: 50000,
       tokensAfter: 5000,
     };
@@ -245,18 +254,15 @@ describe("buildSessionContext", () => {
       parentId: "a2",
       timestamp: "2026-02-25T10:01:00.000Z",
       summary: "First summary",
-      recentUserMessages: [],
       tokensBefore: 50000,
       tokensAfter: 5000,
     };
-    const middleUserMsg = { role: "user" as const, content: "middle message", timestamp: 1708900000000 };
     const compaction2: CompactionEntry = {
       type: "compaction",
       id: "c2",
       parentId: "a4",
       timestamp: "2026-02-25T10:02:00.000Z",
       summary: "Second summary",
-      recentUserMessages: [middleUserMsg],
       tokensBefore: 30000,
       tokensAfter: 3000,
     };
@@ -272,13 +278,11 @@ describe("buildSessionContext", () => {
     ];
 
     const ctx = buildSessionContext(entries);
-    // recent user msg from c2 + summary + latest user msg
-    expect(ctx.messages).toHaveLength(3);
-    expect(msgContent(ctx.messages[0])).toBe("middle message");
-    const summaryContent = msgContent(ctx.messages[1]);
+    expect(ctx.messages).toHaveLength(2);
+    const summaryContent = msgContent(ctx.messages[0]);
     expect(summaryContent).toContain("Second summary");
     expect(summaryContent).not.toContain("First summary");
-    expect(ctx.messages[2].role).toBe("user");
+    expect(ctx.messages[1].role).toBe("user");
   });
 
   it("returns compaction summary separately for native compaction entries", () => {
@@ -381,7 +385,6 @@ describe("buildSessionTranscript", () => {
       parentId: "a2",
       timestamp: "2026-02-25T10:01:00.000Z",
       displaySummary: "Compacted summary",
-      recentUserMessages: [{ role: "user", content: "kept user msg", timestamp: 1708900000000 }],
       tokensBefore: 50000,
       tokensAfter: 5000,
     };

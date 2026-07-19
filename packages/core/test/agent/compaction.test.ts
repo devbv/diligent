@@ -1,4 +1,4 @@
-// @summary Tests for agent-layer compaction helpers — token estimation, shouldCompact, selectForCompaction
+// @summary Tests for agent-layer compaction helpers — token estimation, decisions, and execution
 import { describe, expect, it } from "bun:test";
 import { NATIVE_COMPACTION_MIN_INPUT_TOKENS } from "@diligent/core/compaction-contract";
 import { EventStream } from "@diligent/core/event-stream";
@@ -12,15 +12,7 @@ import type {
   StreamFunction,
 } from "@diligent/core/provider-contract";
 import { resolveMaxTokens } from "@diligent/core/provider-contract";
-import {
-  buildMessagesFromCompaction,
-  estimateTokens,
-  getCompactionDecision,
-  runCompaction,
-  selectForCompaction,
-  shouldCompact,
-  splitCompactionMessages,
-} from "../../src/agent/compaction";
+import { estimateTokens, getCompactionDecision, runCompaction, shouldCompact } from "../../src/agent/compaction";
 import { AgentStream } from "../../src/agent/types";
 
 // --- Helper factories ---
@@ -67,11 +59,6 @@ function makeStreamFn(summaryText: string): StreamFunction {
     });
     return stream;
   };
-}
-
-function userContent(msg: Message): string {
-  if (msg.role !== "user") return "";
-  return typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
 }
 
 const TEST_MODEL: Model = {
@@ -188,66 +175,6 @@ describe("shouldCompact", () => {
   });
 });
 
-// --- selectForCompaction ---
-
-describe("selectForCompaction", () => {
-  it("returns empty for empty messages", () => {
-    const result = selectForCompaction([], 1000);
-    expect(result.recentUserMessages).toEqual([]);
-    expect(result.messagesToSummarize).toEqual([]);
-  });
-
-  it("collects all user messages when within budget", () => {
-    const messages: Message[] = [userMsg("hello"), assistantMsg("hi"), userMsg("how are you?"), assistantMsg("fine")];
-    const result = selectForCompaction(messages, 100_000);
-    expect(result.recentUserMessages).toHaveLength(2);
-    expect(userContent(result.recentUserMessages[0])).toBe("hello");
-    expect(userContent(result.recentUserMessages[1])).toBe("how are you?");
-    expect(result.messagesToSummarize).toHaveLength(4);
-  });
-
-  it("selects most recent messages when budget exceeded", () => {
-    const longText = "x".repeat(400); // 100 tokens each
-    const messages: Message[] = [
-      userMsg(`${longText}1`),
-      assistantMsg("resp1"),
-      userMsg(`${longText}2`),
-      assistantMsg("resp2"),
-      userMsg("short"),
-    ];
-    // Budget of 150 tokens → can fit ~1.5 messages → most recent first
-    const result = selectForCompaction(messages, 150);
-    expect(result.recentUserMessages.length).toBeGreaterThanOrEqual(1);
-    const lastMsg = result.recentUserMessages[result.recentUserMessages.length - 1];
-    expect(userContent(lastMsg)).toBe("short");
-  });
-
-  it("truncates overlong individual messages", () => {
-    const longText = "x".repeat(500); // 125 tokens
-    const messages: Message[] = [userMsg(longText)];
-    // Budget of 50 tokens = 200 chars max
-    const result = selectForCompaction(messages, 50);
-    expect(result.recentUserMessages).toHaveLength(1);
-    expect(userContent(result.recentUserMessages[0])).toContain("[... truncated]");
-    expect(userContent(result.recentUserMessages[0]).length).toBeLessThan(longText.length);
-  });
-
-  it("returns messages in chronological order", () => {
-    const messages: Message[] = [
-      userMsg("first"),
-      assistantMsg("resp"),
-      userMsg("second"),
-      assistantMsg("resp"),
-      userMsg("third"),
-    ];
-    const result = selectForCompaction(messages, 100_000);
-    expect(result.recentUserMessages).toHaveLength(3);
-    expect(userContent(result.recentUserMessages[0])).toBe("first");
-    expect(userContent(result.recentUserMessages[1])).toBe("second");
-    expect(userContent(result.recentUserMessages[2])).toBe("third");
-  });
-});
-
 describe("runCompaction", () => {
   it("rejects a standard local candidate below the minimum without calling the summarizer", async () => {
     const messages: Message[] = [userMsg("x".repeat((NATIVE_COMPACTION_MIN_INPUT_TOKENS - 1) * 4))];
@@ -260,7 +187,7 @@ describe("runCompaction", () => {
       messages,
       model: TEST_MODEL,
       systemPrompt: [],
-      compactionConfig: { reservePercent: 16, keepRecentTokens: 50 },
+      compactionConfig: { reservePercent: 16 },
       llmMsgStreamFn: (model, context, options) => {
         summaryCalls += 1;
         return makeStreamFn("unused summary")(model, context, options);
@@ -284,7 +211,7 @@ describe("runCompaction", () => {
       model: { ...TEST_MODEL, provider: "openai" },
       systemPrompt: [],
       compactionSummary: priorCompactionSummary,
-      compactionConfig: { reservePercent: 16, keepRecentTokens: 50 },
+      compactionConfig: { reservePercent: 16 },
       llmMsgStreamFn: makeStreamFn("unused summary"),
       llmCompactionFn: async () => {
         nativeCalls += 1;
@@ -312,7 +239,7 @@ describe("runCompaction", () => {
       model: { ...TEST_MODEL, provider: "openai" },
       systemPrompt: [],
       compactionSummary: priorCompactionSummary,
-      compactionConfig: { reservePercent: 16, keepRecentTokens: 0 },
+      compactionConfig: { reservePercent: 16 },
       llmMsgStreamFn: makeStreamFn("unused summary"),
       llmCompactionFn: async () => {
         nativeCalls += 1;
@@ -333,7 +260,7 @@ describe("runCompaction", () => {
       messages,
       model: TEST_MODEL,
       systemPrompt: [],
-      compactionConfig: { reservePercent: 16, keepRecentTokens: 0 },
+      compactionConfig: { reservePercent: 16 },
       llmMsgStreamFn: makeStreamFn("short summary"),
       stream: new AgentStream(),
     });
@@ -351,7 +278,7 @@ describe("runCompaction", () => {
       messages,
       model: TEST_MODEL,
       systemPrompt: [],
-      compactionConfig: { reservePercent: 16, keepRecentTokens: 0 },
+      compactionConfig: { reservePercent: 16 },
       llmMsgStreamFn: makeStreamFn(nonshrinkingSummary),
       stream: new AgentStream(),
     });
@@ -370,7 +297,7 @@ describe("runCompaction", () => {
       model: { ...TEST_MODEL, provider: "openai" },
       systemPrompt: [],
       compactionSummary: priorCompactionSummary,
-      compactionConfig: { reservePercent: 16, keepRecentTokens: 0 },
+      compactionConfig: { reservePercent: 16 },
       llmMsgStreamFn: makeStreamFn("unused summary"),
       llmCompactionFn: async () => ({
         status: "ok",
@@ -409,7 +336,7 @@ describe("runCompaction", () => {
       model: TEST_MODEL,
       systemPrompt: [],
       localImageLoader: { load: async () => null },
-      compactionConfig: { reservePercent: 16, keepRecentTokens: 50 },
+      compactionConfig: { reservePercent: 16 },
       llmMsgStreamFn: summaryStream,
       stream: new AgentStream(),
     });
@@ -427,7 +354,6 @@ describe("runCompaction", () => {
       systemPrompt: [],
       compactionConfig: {
         reservePercent: 16,
-        keepRecentTokens: 50,
       },
       llmMsgStreamFn: makeStreamFn("unused summary"),
       llmCompactionFn: async () => ({ status: "ok", summary: "native summary" }),
@@ -435,9 +361,8 @@ describe("runCompaction", () => {
     });
 
     expect(result.compacted).toBe(true);
-    expect(result.messages).toHaveLength(2);
+    expect(result.messages).toHaveLength(1);
     expect(result.messages[0]?.role).toBe("user");
-    expect(result.messages[1]?.role).toBe("user");
     expect(result.summary).toBe("native summary");
     expect(result.compactionSummary).toBeUndefined();
   });
@@ -451,7 +376,6 @@ describe("runCompaction", () => {
       systemPrompt: [],
       compactionConfig: {
         reservePercent: 16,
-        keepRecentTokens: 50,
       },
       llmMsgStreamFn: makeStreamFn("unused summary"),
       llmCompactionFn: async () => ({
@@ -483,7 +407,6 @@ describe("runCompaction", () => {
       localImageLoader,
       compactionConfig: {
         reservePercent: 16,
-        keepRecentTokens: 50,
       },
       llmMsgStreamFn: makeStreamFn("unused summary"),
       llmCompactionFn: async (input) => {
@@ -501,24 +424,5 @@ describe("runCompaction", () => {
     expect(capturedSessionId).toBe("session-123");
     expect(capturedCompactionSummary).toEqual({ type: "compaction", encrypted_content: "opaque" });
     expect(capturedLocalImageLoader).toBe(localImageLoader);
-  });
-});
-
-describe("splitCompactionMessages", () => {
-  it("extracts recent user tail and summary from canonical compacted messages", () => {
-    const compacted = buildMessagesFromCompaction(
-      [
-        { role: "user", content: "tail 1", timestamp: 1 },
-        { role: "user", content: "tail 2", timestamp: 2 },
-      ],
-      "summary body",
-      3,
-    );
-
-    const result = splitCompactionMessages(compacted);
-    expect(result.recentUserMessages).toHaveLength(2);
-    expect(userContent(result.recentUserMessages[0])).toBe("tail 1");
-    expect(userContent(result.recentUserMessages[1])).toBe("tail 2");
-    expect(result.summary).toBe("summary body");
   });
 });

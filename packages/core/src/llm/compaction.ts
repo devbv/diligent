@@ -44,7 +44,6 @@ File paths and code identifiers are critical.`,
 
 export interface CompactMessagesResult {
   summary: string;
-  recentUserMessages: Message[];
   tokensBefore: number;
   tokensAfter: number;
 }
@@ -68,7 +67,7 @@ export interface LLMCompactConfig {
 
 export interface LLMCompactInput {
   model: Model;
-  /** Messages to summarize (pre-selected by caller via selectForCompaction). */
+  /** Messages selected by the caller for summarization. */
   messages: Message[];
   systemPrompt: SystemSection[];
   compactionSummary?: Record<string, unknown>;
@@ -143,8 +142,7 @@ export async function generateSummary(
 }
 
 /**
- * Summarize messages and return the summary plus retained recent user messages.
- * Caller is responsible for pre-selecting messages via selectForCompaction.
+ * Summarize the messages selected by the caller.
  */
 export async function compactMessages(
   messages: Message[],

@@ -70,7 +70,6 @@ function makeRuntimeConfig(overrides?: Partial<RuntimeConfig>): RuntimeConfig {
     compaction: {
       enabled: true,
       reservePercent: 16,
-      keepRecentTokens: 20000,
       timeoutMs: 180000,
     },
     permissionEngine,

@@ -72,7 +72,6 @@ export function createTestServer(opts: {
     compaction: {
       enabled: true,
       reservePercent: 16,
-      keepRecentTokens: 20_000,
       timeoutMs: 180_000,
     },
     permissionEngine: createYoloPermissionEngine(),

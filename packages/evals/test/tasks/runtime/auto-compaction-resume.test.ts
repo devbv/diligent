@@ -51,7 +51,7 @@ describe("auto-compaction-resume runtime eval", () => {
       } as const;
       const baseline = await createFixtureRuntimeConfig(world, profile);
       const config = await autoCompactionResumeTask.createRuntimeConfig(world, profile);
-      expect(config.compaction).toMatchObject({ enabled: true, keepRecentTokens: 1 });
+      expect(config.compaction).toMatchObject({ enabled: true });
       expect(config.compaction.reservePercent).toBeGreaterThan(99);
       expect(config.model).toEqual(baseline.model);
     } finally {

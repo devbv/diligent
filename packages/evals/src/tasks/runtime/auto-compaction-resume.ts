@@ -22,7 +22,6 @@ const INFLATE_MARKER = "AUTO_COMPACTION_INFLATE_RESULT";
 const INFLATE_OUTPUT = `${INFLATE_MARKER}\n${"x".repeat(COMPACTION_MIN_INPUT_TOKENS * 4)}`;
 const INFLATE_MAX_OUTPUT_BYTES = Buffer.byteLength(INFLATE_OUTPUT) + 1_024;
 const RESERVE_PERCENT = 99.95;
-const KEEP_RECENT_TOKENS = 1;
 
 export interface AutoCompactionResumeWorld extends RuntimeFixtureWorld {
   facts: string[];
@@ -161,7 +160,6 @@ async function createAutoCompactionRuntimeConfig(
     compaction: {
       enabled: true,
       reservePercent: RESERVE_PERCENT,
-      keepRecentTokens: KEEP_RECENT_TOKENS,
       timeoutMs: 30_000,
     },
   };

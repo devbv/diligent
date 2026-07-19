@@ -237,7 +237,6 @@ async function createRuntimeAgent(args: {
       toolOutputStore: selectedOutputStore ?? toolOutputStore,
       compaction: {
         reservePercent: runtimeConfig.compaction.reservePercent,
-        keepRecentTokens: runtimeConfig.compaction.keepRecentTokens,
         timeoutMs: runtimeConfig.compaction.timeoutMs,
       },
       loopHooks,

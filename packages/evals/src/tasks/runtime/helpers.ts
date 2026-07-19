@@ -84,7 +84,7 @@ export async function createFixtureRuntimeConfigForCwd(
       required: definition.name === "general",
     })),
     agentDefinitions,
-    compaction: { enabled: false, reservePercent: 16, keepRecentTokens: 20_000, timeoutMs: 180_000 },
+    compaction: { enabled: false, reservePercent: 16, timeoutMs: 180_000 },
     permissionEngine: createYoloPermissionEngine(),
     providerManager,
     authStore: { mode: "ephemeral" },

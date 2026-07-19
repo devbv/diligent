@@ -32,7 +32,6 @@ If runtime config does not override compaction, the current defaults are:
 
 - `enabled: true`
 - `reservePercent: 16`
-- `keepRecentTokens: 20000`
 - `timeoutMs: 180000`
 
 These values are applied by `SessionManager` when preparing or manually compacting a thread.
@@ -67,15 +66,9 @@ This is intentionally conservative: if the estimate is larger than the provider 
 
 ## What gets retained
 
-Compaction does not simply drop all recent conversation.
-
-The current selection behavior is:
-
-- summarize the full active message set
-- keep a recent tail of user messages within `keepRecentTokens`
-- truncate an overlong retained user message if necessary
-
-Retention is user-message-focused. The preserved tail is not “all recent messages”; it is specifically the recent user slice chosen within the configured token budget.
+When a new user message makes automatic compaction necessary, Diligent compacts the existing history first and then
+appends the new message unchanged. The new message participates in the threshold decision but is not sent to the
+summarizer.
 
 ## Local vs native compaction
 
@@ -85,8 +78,8 @@ Diligent supports both local compaction flow and provider-native compaction when
 
 Local compaction generates a structured handoff summary with an LLM call, then rebuilds the compacted conversation as:
 
-- retained recent user messages
 - one synthetic user summary message
+- messages appended after compaction, including the fresh user message that triggered it
 
 For local compaction, the stored summary is prefixed with handoff framing so the next model understands that it is resuming work summarized by a previous model.
 
@@ -136,7 +129,6 @@ A compaction entry can store:
 
 - `summary`
 - `displaySummary`
-- `recentUserMessages`
 - `compactionSummary`
 - `tokensBefore`
 - `tokensAfter`
@@ -151,7 +143,7 @@ Compaction affects model-visible context reconstruction differently from human t
 
 `buildSessionContext()` walks the session path, finds the latest compaction entry, and then reconstructs active model input from that point forward.
 
-- with local compaction, runtime rebuilds messages from `recentUserMessages + summary`
+- with local compaction, runtime rebuilds messages from the summary followed by entries persisted after compaction
 - with native compaction, runtime restores `compactionSummary` and may inject only a condensed display marker into the visible message list
 - entries before the latest compaction point are not replayed into active model context
 

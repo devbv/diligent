@@ -5,7 +5,6 @@ import {
   type Agent,
   formatSerializableErrorForLog,
   type QueuedSteeringMessage,
-  selectForCompaction,
   toSerializableError,
   updateUserMessageContent,
 } from "@diligent/core/agent";
@@ -113,7 +112,6 @@ export class TurnOrchestrator {
     const compactionConfig = this.ctx.config.compaction ?? {
       enabled: true,
       reservePercent: 16,
-      keepRecentTokens: 20000,
       timeoutMs: 180_000,
     };
 
@@ -122,7 +120,7 @@ export class TurnOrchestrator {
     agent.restoreCompactionState(context.providerMessages, context.compactionSummary);
     agent.setCompactionConfig({
       reservePercent: compactionConfig.reservePercent,
-      keepRecentTokens: compactionConfig.keepRecentTokens,
+      timeoutMs: compactionConfig.timeoutMs,
     });
     this._initializedAgent = agent;
 
@@ -134,8 +132,6 @@ export class TurnOrchestrator {
         this.persistCompactionEntry({
           summary: event.summary,
           displaySummary: event.compactionSummary ? "Compacted" : event.summary,
-          recentUserMessages: selectForCompaction(context.messages, compactionConfig.keepRecentTokens)
-            .recentUserMessages,
           compactionSummary: event.compactionSummary,
           tokensBefore: event.tokensBefore,
           tokensAfter: event.tokensAfter,
@@ -231,10 +227,9 @@ export class TurnOrchestrator {
     this.ctx.repairEntries();
 
     const context = buildSessionContext(this.ctx.state.getCommittedEntries(), this.ctx.state.getCommittedLeafId(), {});
-    const turnStager = new TurnStager(this.ctx.state.getCommittedLeafId(), context.messages, userMessage);
+    const turnStager = new TurnStager(this.ctx.state.getCommittedLeafId(), userMessage);
     const snapshot = turnStager.getSnapshot();
     this.ctx.state.setPending(snapshot.entries, snapshot.leafId);
-    this.flushTurnProgress(turnStager);
 
     const agentResult = this.resolveAgent();
     const agent = agentResult instanceof Promise ? await agentResult : agentResult;
@@ -250,7 +245,6 @@ export class TurnOrchestrator {
     if (compactionConfig?.enabled) {
       agent.setCompactionConfig({
         reservePercent: compactionConfig.reservePercent,
-        keepRecentTokens: compactionConfig.keepRecentTokens,
         timeoutMs: compactionConfig.timeoutMs,
       });
     }
@@ -284,8 +278,7 @@ export class TurnOrchestrator {
         this.ctx.sessionCache.handlePromptSignature(this.ctx.persistence.sessionId, event.hashes);
       }
 
-      const keepRecentTokens = this.ctx.config.compaction?.keepRecentTokens ?? 20_000;
-      turnStager.handleEvent(event, keepRecentTokens);
+      turnStager.handleEvent(event);
       if (event.type === "context_injected") {
         for (const injection of event.injections) {
           const presentation = readContextPresentation(injection.metadata);
@@ -333,6 +326,7 @@ export class TurnOrchestrator {
   ): void {
     const pendingEntries = turnStager.flushPendingEntries();
     this.ctx.appendEntries(pendingEntries);
+    this._initializedAgent = null;
     const serializable = agentError?.error ?? toSerializableError(err);
     const lastPersisted = summarizeLastPersistedMessage(this.ctx.state.getCommittedEntries());
     logger.error("run_failed", {
@@ -359,7 +353,6 @@ export class TurnOrchestrator {
   private persistCompactionEntry(event: {
     summary: string;
     displaySummary?: string;
-    recentUserMessages?: Message[];
     compactionSummary?: Record<string, unknown>;
     tokensBefore: number;
     tokensAfter: number;
@@ -371,7 +364,6 @@ export class TurnOrchestrator {
       timestamp: new Date().toISOString(),
       summary: event.summary,
       displaySummary: event.compactionSummary ? "Compacted" : event.displaySummary,
-      recentUserMessages: event.recentUserMessages,
       compactionSummary: event.compactionSummary,
       tokensBefore: event.tokensBefore,
       tokensAfter: event.tokensAfter,
@@ -437,5 +429,9 @@ export function summarizeLastPersistedMessage(entries: SessionEntry[]): string {
 }
 
 function shouldFlushTurnProgress(event: CoreAgentEvent): boolean {
-  return (event.type === "message_end" && event.message.stopReason === "tool_use") || event.type === "tool_end";
+  return (
+    event.type === "turn_start" ||
+    (event.type === "message_end" && event.message.stopReason === "tool_use") ||
+    event.type === "tool_end"
+  );
 }

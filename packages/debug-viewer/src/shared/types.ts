@@ -103,11 +103,6 @@ export interface CompactionEntry {
   parentId?: string;
   type: "compaction";
   summary: string;
-  recentUserMessages?: Array<{
-    role: string;
-    content: string | ContentBlock[];
-    timestamp?: number;
-  }>;
   details?: {
     readFiles: string[];
     modifiedFiles: string[];

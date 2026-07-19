@@ -89,7 +89,6 @@ export interface CompactionEntry {
   timestamp: string;
   summary?: string;
   displaySummary?: string;
-  recentUserMessages?: Message[];
   compactionSummary?: Record<string, unknown>;
   tokensBefore: number;
   tokensAfter: number;
@@ -182,7 +181,6 @@ export interface SessionManagerConfig {
   compaction?: {
     enabled: boolean;
     reservePercent: number;
-    keepRecentTokens: number;
     timeoutMs?: number;
   };
   knowledgePath?: string;

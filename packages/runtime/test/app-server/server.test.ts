@@ -194,7 +194,6 @@ function makeFactoryRuntimeConfig(overrides?: {
     compaction: {
       enabled: true,
       reservePercent: 16,
-      keepRecentTokens: 20000,
     },
     permissionEngine: createPermissionEngine([]),
     providerManager,
