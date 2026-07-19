@@ -44,7 +44,7 @@ describe("spawn_agent tool", () => {
     expect(typeof parsed.nickname).toBe("string");
   });
 
-  it("defaults agent_type to general", async () => {
+  it("leaves a new spawn's omitted agent_type for the registry to default", async () => {
     let received: Parameters<AgentRegistry["spawn"]>[0] | undefined;
     const registry = {
       spawn: (params: Parameters<AgentRegistry["spawn"]>[0]) => {
@@ -56,7 +56,7 @@ describe("spawn_agent tool", () => {
 
     await spawnTool.execute({ message: "task" }, makeCtx());
 
-    expect(received).toMatchObject({ prompt: "task", description: "", agentType: "general" });
+    expect(received).toMatchObject({ prompt: "task", description: "", agentType: undefined });
   });
 
   it("does not materialize the general default when a resume omits agent_type", () => {
