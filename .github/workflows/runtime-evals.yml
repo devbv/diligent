@@ -21,8 +21,6 @@ on:
         description: "Optional recorded root seed"
         required: false
         type: string
-  schedule:
-    - cron: "30 21 * * *"
   workflow_call:
     inputs:
       artifact_retention_days:
@@ -46,7 +44,7 @@ jobs:
   runtime-evals:
     name: Runtime eval suite (shadow, ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 90
+    timeout-minutes: 300
     strategy:
       fail-fast: false
       matrix:

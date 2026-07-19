@@ -28,7 +28,9 @@ export function resolveWorkspacePath(root: string, candidate: string): string {
 }
 
 export function normalizePlatformAlias(path: string): string {
-  return process.platform === "darwin" && path.startsWith("/private/var/") ? path.slice("/private".length) : path;
+  return process.platform === "darwin" && (path.startsWith("/private/var/") || path.startsWith("/private/tmp/"))
+    ? path.slice("/private".length)
+    : path;
 }
 
 export function validateTemporaryRoot(root: string): string {

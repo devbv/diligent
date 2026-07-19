@@ -22,6 +22,7 @@ export const knowledgeRecallTask: RuntimeEvalTask<KnowledgeRecallWorld> = {
   description: "Use project knowledge injected into the runtime prompt to create an exact file.",
   fixtureVersion: "knowledge-recall-v0",
   limits: { ...DEFAULT_RUNTIME_LIMITS, maxTurns: 8, maxToolCalls: 6, timeoutMs: 180_000 },
+  statePolicy: { allowedMutations: ["infrastructure", "sessions"] },
   toolPolicy: {
     allowedTools: ["write", "edit", "multi_edit", "apply_patch"],
     allowedCapabilities: ["write"],
@@ -61,20 +62,34 @@ export const knowledgeRecallTask: RuntimeEvalTask<KnowledgeRecallWorld> = {
   snapshotWorld: async (world) => ({ token: world.token, result: await exactFile(world.root, "RELEASE.txt") }),
   evaluate(input) {
     if (!input.toolCalls.some((call) => call.capability === "write" && !call.error))
-      return { passed: false, code: "knowledge_recall.no_write", message: "No result write succeeded." };
+      return {
+        passed: false,
+        code: "knowledge_recall.no_write",
+        message: "No result write succeeded.",
+        dimension: "behavior",
+      };
     if (input.toolCalls.some((call) => call.capability !== "write"))
       return {
         passed: false,
         code: "knowledge_recall.forbidden_capability",
         message: "A capability other than write was used.",
+        dimension: "runtime_policy",
       };
     const result = input.workspace.final.entries.find((entry) => entry.path === "RELEASE.txt");
+    if (result?.sha256 === sha256Text(input.world.token))
+      return {
+        passed: false,
+        code: "knowledge_recall.wrong_release",
+        message: "RELEASE.txt omitted the prompt-declared trailing newline.",
+        dimension: "format_contract",
+      };
     return result?.sha256 === input.world.expectedHash
       ? { passed: true }
       : {
           passed: false,
           code: "knowledge_recall.wrong_release",
           message: "RELEASE.txt did not contain the exact stored release channel.",
+          dimension: "semantic_goal",
         };
   },
 };

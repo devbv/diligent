@@ -17,6 +17,7 @@ export function createRuntimeProtocolClient(
     respondToServerRequest?: (
       request: DiligentServerRequest,
     ) => DiligentServerRequestResponse | Promise<DiligentServerRequestResponse>;
+    onNotification?: (notification: DiligentServerNotification, index: number) => void;
   } = {},
 ) {
   const notifications: DiligentServerNotification[] = [];
@@ -32,6 +33,7 @@ export function createRuntimeProtocolClient(
     {
       onNotification(notification) {
         notifications.push(notification);
+        options.onNotification?.(notification, notifications.length - 1);
         for (const notify of waiters) notify();
       },
       async onServerRequest(request) {

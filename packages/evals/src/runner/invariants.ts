@@ -4,16 +4,51 @@ import type { AssistantMessage, Message, ToolCallBlock, ToolResultMessage } from
 import { MessageSchema } from "@diligent/protocol";
 import type { EvalExecution, EvalFailure } from "../task";
 
-export function checkStructuralInvariants(execution: EvalExecution<unknown>): EvalFailure[] {
+export interface StructuralInvariantOptions {
+  allowMultipleAgentLifecycles?: boolean;
+}
+
+export function checkStructuralInvariants(
+  execution: EvalExecution<unknown>,
+  options: StructuralInvariantOptions = {},
+): EvalFailure[] {
   const failures: EvalFailure[] = [];
   validateMessages(execution.messages, failures);
-  validateAgentLifecycle(execution, failures);
+  validateMessageTextMirrors(execution, failures);
+  validateAgentLifecycle(execution, failures, options);
   validateTurnLifecycle(execution, failures);
   validateMessageLifecycle(execution, failures);
   validateToolEvents(execution, failures);
   validateToolMessages(execution.messages, failures);
+  validateToolResultMirrors(execution, failures);
   validateFinalMessage(execution.messages, failures);
   return deduplicateFailures(failures);
+}
+
+function validateMessageTextMirrors(execution: EvalExecution<unknown>, failures: EvalFailure[]): void {
+  const deltas = new Map<string, string[]>();
+  for (const { event } of execution.events) {
+    if (event.type !== "message_delta" || event.delta.type !== "text_delta") continue;
+    const values = deltas.get(event.itemId) ?? [];
+    values.push(event.delta.delta);
+    deltas.set(event.itemId, values);
+  }
+  for (const { event } of execution.events) {
+    if (event.type !== "message_end") continue;
+    const expected = event.message.content
+      .filter((block) => block.type === "text")
+      .map((block) => block.text)
+      .join("");
+    if (expected.length === 0) continue;
+    const streamed = (deltas.get(event.itemId) ?? []).join("");
+    if (streamed !== expected)
+      failures.push(
+        contractFailure(
+          "streamed_text_mismatch",
+          `${event.itemId} streamed text did not match its normalized final message.`,
+        ),
+      );
+  }
 }
 
 function validateMessages(messages: Message[], failures: EvalFailure[]): void {
@@ -25,8 +60,16 @@ function validateMessages(messages: Message[], failures: EvalFailure[]): void {
   }
 }
 
-function validateAgentLifecycle(execution: EvalExecution<unknown>, failures: EvalFailure[]): void {
+function validateAgentLifecycle(
+  execution: EvalExecution<unknown>,
+  failures: EvalFailure[],
+  options: StructuralInvariantOptions,
+): void {
   const events = execution.events.map((snapshot) => snapshot.event);
+  if (options.allowMultipleAgentLifecycles) {
+    validateSequentialAgentLifecycles(events, failures);
+    return;
+  }
   const starts = events.reduce((count, event) => count + (event.type === "agent_start" ? 1 : 0), 0);
   const ends = events.reduce((count, event) => count + (event.type === "agent_end" ? 1 : 0), 0);
   if (starts !== 1)
@@ -41,6 +84,73 @@ function validateAgentLifecycle(execution: EvalExecution<unknown>, failures: Eva
   if (events.some((event) => event.type === "error" && event.fatal)) {
     failures.push(contractFailure("fatal_event", "A fatal core error event was emitted."));
   }
+}
+
+type SequentialAgentLifecycleEvent =
+  | EvalExecution<unknown>["events"][number]["event"]
+  | { type: "status_change"; status: "idle" | "busy" };
+
+function validateSequentialAgentLifecycles(events: SequentialAgentLifecycleEvent[], failures: EvalFailure[]): void {
+  let lifecycleOpen = false;
+  let lifecycleCount = 0;
+  let scope = createLifecycleScope();
+  for (let index = 0; index < events.length; index++) {
+    const event = events[index]!;
+    if (event.type === "agent_start") {
+      if (lifecycleOpen)
+        failures.push(
+          contractFailure("agent_lifecycle_overlap", "An agent lifecycle started before the prior one ended."),
+        );
+      lifecycleOpen = true;
+      lifecycleCount += 1;
+      scope = createLifecycleScope();
+      continue;
+    }
+    if (event.type === "agent_end") {
+      if (!lifecycleOpen)
+        failures.push(contractFailure("agent_end_without_start", "An agent lifecycle ended without starting."));
+      if (scope.turns.size > 0 || scope.messages.size > 0 || scope.tools.size > 0)
+        failures.push(
+          contractFailure("agent_lifecycle_unbalanced", "An agent lifecycle ended with unfinished nested events."),
+        );
+      lifecycleOpen = false;
+      continue;
+    }
+    const isRerunBoundaryStatus =
+      lifecycleCount > 0 &&
+      event.type === "status_change" &&
+      event.status === "busy" &&
+      events[index + 1]?.type === "agent_start";
+    if (!lifecycleOpen && !isRerunBoundaryStatus)
+      failures.push(
+        contractFailure("agent_event_outside_lifecycle", `${event.type} was emitted outside an agent lifecycle.`),
+      );
+    if (event.type === "turn_start") scope.turns.add(event.turnId);
+    if (event.type === "turn_end" && !scope.turns.delete(event.turnId))
+      failures.push(
+        contractFailure("agent_lifecycle_unbalanced", `${event.turnId} ended in a different agent lifecycle.`),
+      );
+    if (event.type === "message_start") scope.messages.add(event.itemId);
+    if (event.type === "message_end" && !scope.messages.delete(event.itemId))
+      failures.push(
+        contractFailure("agent_lifecycle_unbalanced", `${event.itemId} ended in a different agent lifecycle.`),
+      );
+    if (event.type === "tool_start") scope.tools.add(event.toolCallId);
+    if (event.type === "tool_end" && !scope.tools.delete(event.toolCallId))
+      failures.push(
+        contractFailure("agent_lifecycle_unbalanced", `${event.toolCallId} ended in a different agent lifecycle.`),
+      );
+  }
+  if (lifecycleCount === 0)
+    failures.push(contractFailure("agent_start_count", "Expected at least one agent_start, received 0."));
+  if (lifecycleOpen)
+    failures.push(contractFailure("agent_without_end", "The final agent lifecycle did not emit agent_end."));
+  if (events.some((event) => event.type === "error" && event.fatal))
+    failures.push(contractFailure("fatal_event", "A fatal core error event was emitted."));
+}
+
+function createLifecycleScope(): { turns: Set<string>; messages: Set<string>; tools: Set<string> } {
+  return { turns: new Set(), messages: new Set(), tools: new Set() };
 }
 
 function validateTurnLifecycle(execution: EvalExecution<unknown>, failures: EvalFailure[]): void {
@@ -133,6 +243,32 @@ function validateToolMessages(messages: Message[], failures: EvalFailure[]): voi
   }
 }
 
+function validateToolResultMirrors(execution: EvalExecution<unknown>, failures: EvalFailure[]): void {
+  const ends = new Map<string, Extract<EvalExecution<unknown>["events"][number]["event"], { type: "tool_end" }>>();
+  for (const { event } of execution.events) {
+    if (event.type === "tool_end") ends.set(event.toolCallId, event);
+  }
+  for (const message of execution.messages) {
+    if (!isToolResultMessage(message)) continue;
+    const end = ends.get(message.toolCallId);
+    if (!end) continue;
+    if (end.isError !== message.isError)
+      failures.push(
+        contractFailure(
+          "tool_result_error_mismatch",
+          `${message.toolCallId} changed its normalized error flag between event and message surfaces.`,
+        ),
+      );
+    if (JSON.stringify(end.outputImages) !== JSON.stringify(message.outputImages))
+      failures.push(
+        contractFailure(
+          "tool_result_image_mismatch",
+          `${message.toolCallId} changed its image evidence between event and message surfaces.`,
+        ),
+      );
+  }
+}
+
 function validateFinalMessage(messages: Message[], failures: EvalFailure[]): void {
   const finalMessage = messages.at(-1);
   if (!isAssistantMessage(finalMessage) || !Array.isArray(finalMessage.content)) {
@@ -158,7 +294,7 @@ function isToolResultMessage(message: Message): message is ToolResultMessage {
 }
 
 function contractFailure(code: string, message: string): EvalFailure {
-  return { category: "core_contract", code: `core_contract.${code}`, message };
+  return { dimension: "runtime_policy", category: "core_contract", code: `core_contract.${code}`, message };
 }
 
 function deduplicateFailures(failures: EvalFailure[]): EvalFailure[] {

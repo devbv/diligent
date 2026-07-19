@@ -7,6 +7,7 @@ import { ProviderError, ProviderErrorType } from "@diligent/core/provider-contra
 import type { Tool } from "@diligent/core/tool-contract";
 import { createLogger } from "@diligent/logging";
 import {
+  type EvalDiagnostic,
   type EvalExecution,
   type EvalExecutionError,
   type EvalExecutionResult,
@@ -43,6 +44,7 @@ export async function runEvalExecution<TWorld>(
   let toolCallCount = 0;
   let returnedMessages: Message[] | undefined;
   let agentEndMessages: Message[] | undefined;
+  const diagnostics: EvalDiagnostic[] = [];
 
   const terminate = (reason: EvalTerminationReason, failure: EvalFailure): void => {
     if (termination !== undefined) return;
@@ -74,6 +76,7 @@ export async function runEvalExecution<TWorld>(
       turnCount += 1;
       if (turnCount > task.limits.maxTurns) {
         terminate("turn_limit", {
+          dimension: "harness_terminal",
           category: "budget_exceeded",
           code: "budget_exceeded.turn_limit",
           message: `Turn count exceeded ${task.limits.maxTurns}.`,
@@ -84,6 +87,7 @@ export async function runEvalExecution<TWorld>(
       toolCallCount += 1;
       if (toolCallCount > task.limits.maxToolCalls) {
         terminate("tool_call_limit", {
+          dimension: "harness_terminal",
           category: "budget_exceeded",
           code: "budget_exceeded.tool_call_limit",
           message: `Tool-call count exceeded ${task.limits.maxToolCalls}.`,
@@ -94,6 +98,7 @@ export async function runEvalExecution<TWorld>(
 
   const timeout = setTimeout(() => {
     terminate("timeout", {
+      dimension: "harness_terminal",
       category: "budget_exceeded",
       code: "budget_exceeded.timeout",
       message: `Task exceeded ${task.limits.timeoutMs}ms.`,
@@ -112,6 +117,7 @@ export async function runEvalExecution<TWorld>(
       } else {
         termination = "core_error";
         primaryFailure = {
+          dimension: "runtime_policy",
           category: "core_contract",
           code: "core_contract.uncaught_exception",
           message: capturedError.message,
@@ -148,15 +154,28 @@ export async function runEvalExecution<TWorld>(
     if (failures.length === 0) {
       try {
         const semantic = task.evaluate(execution);
+        diagnostics.push(...(semantic.diagnostics ?? []));
         if (!semantic.passed) {
-          failures.push({
-            category: "task_semantic",
-            code: semantic.code.startsWith("task_semantic.") ? semantic.code : `task_semantic.${semantic.code}`,
-            message: semantic.message,
-          });
+          const dimension = (semantic as { dimension?: unknown }).dimension;
+          failures.push(
+            typeof dimension === "string"
+              ? {
+                  dimension: semantic.dimension,
+                  category: "task_semantic",
+                  code: semantic.code.startsWith("task_semantic.") ? semantic.code : `task_semantic.${semantic.code}`,
+                  message: semantic.message,
+                }
+              : {
+                  dimension: "harness_terminal",
+                  category: "evaluator_error",
+                  code: "evaluator_error.missing_dimension",
+                  message: `Evaluator failure ${semantic.code} omitted its required dimension.`,
+                },
+          );
         }
       } catch (error) {
         failures.push({
+          dimension: "harness_terminal",
           category: "evaluator_error",
           code: "evaluator_error.exception",
           message: error instanceof Error ? error.message : String(error),
@@ -170,6 +189,7 @@ export async function runEvalExecution<TWorld>(
     worldSnapshot = cloneValue(task.snapshotWorld(world));
   } catch (error) {
     failures.push({
+      dimension: "harness_terminal",
       category: "evaluator_error",
       code: "evaluator_error.world_snapshot",
       message: error instanceof Error ? error.message : String(error),
@@ -178,6 +198,7 @@ export async function runEvalExecution<TWorld>(
 
   if (execution.termination === "runner_error" && failures.length === 0) {
     failures.push({
+      dimension: "harness_terminal",
       category: "runner_error",
       code: "runner_error.unknown",
       message: "Runner ended without a result.",
@@ -188,6 +209,7 @@ export async function runEvalExecution<TWorld>(
     passed: failures.length === 0,
     failure: failures[0],
     failures,
+    ...(diagnostics.length > 0 && { diagnostics }),
     execution,
     worldSnapshot,
   };
@@ -234,16 +256,31 @@ function aggregateUsage(events: CoreAgentEvent[]): Usage {
 
 function classifyProviderFailure(error: ProviderError): EvalFailure {
   if (error.errorType === ProviderErrorType.Auth) {
-    return { category: "provider_auth", code: "provider_auth.rejected", message: error.message };
+    return {
+      dimension: "harness_terminal",
+      category: "provider_auth",
+      code: "provider_auth.rejected",
+      message: error.message,
+    };
   }
   if (
     error.errorType === ProviderErrorType.RateLimit ||
     error.errorType === ProviderErrorType.Network ||
     error.errorType === ProviderErrorType.ServerError
   ) {
-    return { category: "provider_transient", code: `provider_transient.${error.errorType}`, message: error.message };
+    return {
+      dimension: "harness_terminal",
+      category: "provider_transient",
+      code: `provider_transient.${error.errorType}`,
+      message: error.message,
+    };
   }
-  return { category: "provider_terminal", code: `provider_terminal.${error.errorType}`, message: error.message };
+  return {
+    dimension: "harness_terminal",
+    category: "provider_terminal",
+    code: `provider_terminal.${error.errorType}`,
+    message: error.message,
+  };
 }
 
 function toEvalExecutionError(error: unknown): EvalExecutionError {

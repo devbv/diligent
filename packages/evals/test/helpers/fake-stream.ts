@@ -38,7 +38,7 @@ export function sequenceStream(
   options: { emitTextDeltas?: boolean } = {},
 ): StreamFunction {
   let index = 0;
-  return (_model: Model, _context: StreamContext, streamOptions: StreamOptions) => {
+  return (model: Model, _context: StreamContext, streamOptions: StreamOptions) => {
     const stream = new EventStream<ProviderEvent, ProviderResult>(
       (event) => event.type === "done" || event.type === "error",
       (event) => {
@@ -47,7 +47,8 @@ export function sequenceStream(
       },
     );
     if (streamOptions.signal) stream.attachSignal(streamOptions.signal);
-    const message = messages[index++];
+    const scriptedMessage = messages[index++];
+    const message = { ...scriptedMessage, model };
     queueMicrotask(() => {
       stream.push({ type: "start" });
       for (const block of message.content) {

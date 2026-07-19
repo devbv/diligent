@@ -78,6 +78,7 @@ function toExecutionReport(result: EvalExecutionResult<unknown>, maxOutputTokens
     termination: result.execution.termination,
     ...(result.failure && { failure: { ...result.failure } }),
     failures: result.failures.map((failure) => ({ ...failure })),
+    ...(result.diagnostics?.length && { diagnostics: result.diagnostics.map((diagnostic) => ({ ...diagnostic })) }),
     elapsedMs: result.execution.elapsedMs,
     usage: { ...result.execution.usage },
     turnCount: result.execution.turnCount,

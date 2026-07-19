@@ -39,14 +39,25 @@ export async function createFixtureRuntimeConfig(
   world: RuntimeFixtureWorld,
   profile: EvalProfile,
 ): Promise<RuntimeConfig> {
+  return createFixtureRuntimeConfigForCwd(world, profile, world.root);
+}
+
+export async function createFixtureRuntimeConfigForCwd(
+  world: RuntimeFixtureWorld,
+  profile: EvalProfile,
+  cwd: string,
+): Promise<RuntimeConfig> {
   const model = resolveModel({ provider: profile.provider, modelId: profile.model });
   const providerManager = new ProviderManager({});
-  const discovered = await discoverSkills({ cwd: world.root });
+  const discovered = await discoverSkills({
+    cwd,
+    globalConfigDir: join(world.root, ".eval-global"),
+  });
   const skills: SkillMetadata[] = discovered.skills;
-  const instructions = await discoverInstructions(world.root);
+  const instructions = await discoverInstructions(cwd);
   const basePrompt = buildBaseSystemPrompt({
     currentDate: "2026-07-18",
-    cwd: world.root,
+    cwd,
     platform: process.platform,
   });
   const systemPrompt = buildSystemPrompt(basePrompt, instructions, [renderSkillsSection(skills)].filter(Boolean));
@@ -85,6 +96,35 @@ export async function createFixtureRuntimeConfig(
   };
 }
 
+export async function createIsolatedFixtureRuntimeConfig(
+  world: RuntimeFixtureWorld,
+  profile: EvalProfile,
+): Promise<RuntimeConfig> {
+  return createFixtureRuntimeConfigForCwd(world, profile, world.root);
+}
+
+export async function verifyExactFiles(
+  world: RuntimeFixtureWorld,
+  expectedFiles: Record<string, string>,
+  signal: AbortSignal,
+): Promise<RuntimeVerifierResult> {
+  const started = performance.now();
+  const mismatches: string[] = [];
+  for (const [path, expected] of Object.entries(expectedFiles)) {
+    if (signal.aborted) break;
+    const actual = await exactFile(world.root, path);
+    if (actual !== expected) mismatches.push(path);
+  }
+  return {
+    argv: ["eval-exact-files", ...Object.keys(expectedFiles).sort()],
+    exitCode: signal.aborted || mismatches.length > 0 ? 1 : 0,
+    elapsedMs: Math.round(performance.now() - started),
+    stdout: mismatches.length === 0 ? "Exact file verification passed.\n" : "",
+    stderr: mismatches.length > 0 ? `Mismatched files: ${mismatches.join(", ")}\n` : "",
+    timedOut: signal.aborted,
+  };
+}
+
 export async function runVerifier(
   world: RuntimeFixtureWorld,
   argv: string[],
@@ -117,6 +157,18 @@ export function seededToken(seed: string, prefix: string): string {
 
 export function sha256Text(value: string): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+export function matchesExactPatchInput(input: unknown, expectedPatch: string): boolean {
+  if (input === null || typeof input !== "object" || Array.isArray(input)) return false;
+  const entries = Object.entries(input as Record<string, unknown>);
+  const patch = entries[0]?.[1];
+  return (
+    entries.length === 1 &&
+    entries[0]?.[0] === "patch" &&
+    typeof patch === "string" &&
+    patch.trimEnd() === expectedPatch
+  );
 }
 
 export const DEFAULT_RUNTIME_LIMITS = {

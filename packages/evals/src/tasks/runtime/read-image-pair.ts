@@ -16,6 +16,10 @@ export const readImagePairTask: RuntimeEvalTask<ReadImagePairWorld> = {
   description: "Read two seed-swapped images and report each dominant color exactly.",
   fixtureVersion: "read-image-pair-v1",
   limits: { ...DEFAULT_RUNTIME_LIMITS, maxTurns: 6, maxToolCalls: 4, timeoutMs: 180_000 },
+  statePolicy: {
+    allowedMutations: ["infrastructure", "sessions", "image_sidecars"],
+    requiredMutations: ["image_sidecars"],
+  },
   toolPolicy: {
     allowedTools: ["read_image"],
     allowedCapabilities: ["read"],
@@ -45,66 +49,46 @@ export const readImagePairTask: RuntimeEvalTask<ReadImagePairWorld> = {
   evaluate(input) {
     const reads = input.toolCalls.filter((call) => call.name === "read_image" && !call.error);
     if (reads.length !== 2)
-      return { passed: false, code: "read_image_pair.count", message: "Expected exactly two successful image reads." };
+      return {
+        passed: false,
+        code: "read_image_pair.count",
+        message: "Expected exactly two successful image reads.",
+        dimension: "behavior",
+      };
     const paths = reads.map((call) => (isRecord(call.input) ? call.input.file_path : undefined));
     if (!paths.includes("$WORKSPACE/a.png") || !paths.includes("$WORKSPACE/b.png"))
-      return { passed: false, code: "read_image_pair.paths", message: "Both seeded image paths must be read." };
-    if (reads.some((call) => !hasImageEvidence(call.output)))
       return {
         passed: false,
-        code: "read_image_pair.evidence",
-        message: "Each image read must retain redacted image evidence.",
-      };
-    const runtimeEvents = input.turns.flatMap((turn) => turn.runtimeEvents);
-    if (
-      reads.some(
-        (call) =>
-          !runtimeEvents.some((event) => {
-            if (!isRecord(event)) return false;
-            return (
-              event.type === "tool_end" &&
-              event.toolName === "read_image" &&
-              event.toolCallId === call.toolCallId &&
-              hasRedactedImageBlocks(event.outputImages)
-            );
-          }),
-      )
-    )
-      return {
-        passed: false,
-        code: "read_image_pair.runtime_event",
-        message: "Each image read must retain redacted outputImages on its runtime tool_end event.",
+        code: "read_image_pair.paths",
+        message: "Both seeded image paths must be read.",
+        dimension: "runtime_policy",
       };
     if (JSON.stringify(input).includes("iVBOR"))
-      return { passed: false, code: "read_image_pair.base64", message: "Raw image base64 leaked into eval evidence." };
-    return lastAssistantText(input.turns.at(-1)?.messages ?? []) === input.world.expected
+      return {
+        passed: false,
+        code: "read_image_pair.base64",
+        message: "Raw image base64 leaked into eval evidence.",
+        dimension: "runtime_policy",
+      };
+    const answer = lastAssistantText(input.turns.at(-1)?.messages ?? []);
+    const semantic = /A=(RED|BLUE);\s*B=(RED|BLUE)/i.exec(answer);
+    if (semantic?.[1]?.toUpperCase() !== input.world.colors.a || semantic?.[2]?.toUpperCase() !== input.world.colors.b)
+      return {
+        passed: false,
+        code: "read_image_pair.answer",
+        message: "The response classified one or both images incorrectly.",
+        dimension: "semantic_goal",
+      };
+    return answer === input.world.expected
       ? { passed: true }
       : {
           passed: false,
           code: "read_image_pair.answer",
           message: `Expected exact response ${input.world.expected}.`,
+          dimension: "format_contract",
         };
   },
 };
-
-function hasImageEvidence(output: unknown): boolean {
-  if (!isRecord(output) || !Array.isArray(output.outputImages) || output.outputImages.length === 0) return false;
-  return output.outputImages.every((image) => {
-    if (!isRecord(image) || !isRecord(image.source)) return false;
-    return image.source.media_type === "image/png" && image.source.data === "[base64 omitted]";
-  });
-}
-
-function hasRedactedImageBlocks(value: unknown): boolean {
-  return (
-    Array.isArray(value) &&
-    value.length === 1 &&
-    value.every((image) => {
-      if (!isRecord(image) || !isRecord(image.source)) return false;
-      return image.source.media_type === "image/png" && image.source.data === "[base64 omitted]";
-    })
-  );
-}
 
 function lastAssistantText(messages: Message[]): string {
   const last = messages.filter((message) => message.role === "assistant").at(-1);

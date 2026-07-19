@@ -30,8 +30,20 @@ describe("serializeEvalReport", () => {
           maxOutputTokens: 512,
           passed: false,
           termination: "provider_error",
-          failure: { category: "provider_auth", code: "provider_auth.rejected", message: `Bearer ${secret}` },
-          failures: [{ category: "provider_auth", code: "provider_auth.rejected", message: `Bearer ${secret}` }],
+          failure: {
+            dimension: "harness_terminal",
+            category: "provider_auth",
+            code: "provider_auth.rejected",
+            message: `Bearer ${secret}`,
+          },
+          failures: [
+            {
+              dimension: "harness_terminal",
+              category: "provider_auth",
+              code: "provider_auth.rejected",
+              message: `Bearer ${secret}`,
+            },
+          ],
           elapsedMs: 1,
           usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
           turnCount: 1,

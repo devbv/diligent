@@ -76,16 +76,21 @@ export const parallelToolsTask: EvalTask<ParallelToolsWorld> = {
   }),
   evaluate: (execution) => {
     const trace = getToolTrace(execution);
-    if (
-      trace.length !== execution.world.fragments.length ||
-      trace.some((entry) => entry.toolName !== "lookup_fragment")
-    ) {
+    if (trace.length !== execution.world.fragments.length) {
       return {
         passed: false,
         code: "parallel_tools.wrong_trace",
         message: "Expected exactly three lookup_fragment calls.",
+        dimension: "behavior",
       };
     }
+    if (trace.some((entry) => entry.toolName !== "lookup_fragment"))
+      return {
+        passed: false,
+        code: "parallel_tools.wrong_trace",
+        message: "The parallel batch used an undeclared tool surface.",
+        dimension: "runtime_policy",
+      };
     const requestedIds = trace.flatMap((entry) =>
       isRecord(entry.input) && typeof entry.input.fragmentId === "string" ? [entry.input.fragmentId] : [],
     );
@@ -95,13 +100,20 @@ export const parallelToolsTask: EvalTask<ParallelToolsWorld> = {
         passed: false,
         code: "parallel_tools.wrong_fragment_ids",
         message: "The lookup batch did not use every exact fragment ID once.",
+        dimension: "behavior",
       };
     }
-    if (execution.world.maxConcurrentLookups !== execution.world.fragments.length) {
+    const toolBatches = execution.messages.flatMap((message) => {
+      if (message.role !== "assistant") return [];
+      const calls = message.content.filter((block) => block.type === "tool_call");
+      return calls.length > 0 ? [calls] : [];
+    });
+    if (toolBatches.length !== 1 || toolBatches[0]?.length !== execution.world.fragments.length) {
       return {
         passed: false,
         code: "parallel_tools.not_parallel",
-        message: "The fragment lookups were not executed as one concurrent batch.",
+        message: "The fragment lookups were not requested in one assistant tool-call batch.",
+        dimension: "behavior",
       };
     }
     if (!sameValues(execution.world.completedFragmentIds, expectedIds)) {
@@ -109,6 +121,7 @@ export const parallelToolsTask: EvalTask<ParallelToolsWorld> = {
         passed: false,
         code: "parallel_tools.incomplete",
         message: "Not every fragment lookup completed.",
+        dimension: "semantic_goal",
       };
     }
     const finalText = getFinalText(execution);
@@ -117,6 +130,7 @@ export const parallelToolsTask: EvalTask<ParallelToolsWorld> = {
         passed: false,
         code: "parallel_tools.missing_codes",
         message: "The final answer omitted one or more fragment codes.",
+        dimension: "semantic_goal",
       };
     }
     return { passed: true };

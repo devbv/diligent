@@ -48,21 +48,44 @@ export const singleToolTask: EvalTask<SingleToolWorld> = {
   snapshotWorld: (world) => ({ ...world }),
   evaluate: (execution) => {
     const trace = getToolTrace(execution);
-    if (trace.length !== 1 || trace[0]?.toolName !== "lookup_record") {
-      return { passed: false, code: "single_tool.wrong_trace", message: "Expected exactly one lookup_record call." };
+    if (trace.length !== 1) {
+      return {
+        passed: false,
+        code: "single_tool.wrong_trace",
+        message: "Expected exactly one lookup_record call.",
+        dimension: "behavior",
+      };
     }
+    if (trace[0]?.toolName !== "lookup_record")
+      return {
+        passed: false,
+        code: "single_tool.wrong_trace",
+        message: "The only tool call used an undeclared tool surface.",
+        dimension: "runtime_policy",
+      };
     const input = trace[0].input;
     if (!isRecord(input) || input.recordId !== execution.world.recordId) {
-      return { passed: false, code: "single_tool.wrong_record_id", message: "lookup_record used the wrong record ID." };
+      return {
+        passed: false,
+        code: "single_tool.wrong_record_id",
+        message: "lookup_record used the wrong record ID.",
+        dimension: "behavior",
+      };
     }
     if (execution.world.successfulLookups !== 1) {
-      return { passed: false, code: "single_tool.lookup_failed", message: "The lookup did not complete exactly once." };
+      return {
+        passed: false,
+        code: "single_tool.lookup_failed",
+        message: "The lookup did not complete exactly once.",
+        dimension: "semantic_goal",
+      };
     }
     if (!getFinalText(execution).includes(execution.world.verificationCode)) {
       return {
         passed: false,
         code: "single_tool.missing_code",
         message: "The final answer omitted the verification code.",
+        dimension: "semantic_goal",
       };
     }
     return { passed: true };

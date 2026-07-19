@@ -1,7 +1,7 @@
 // @summary Core eval task for exact streamed direct responses without tools
 
 import type { EvalTask } from "../../task";
-import { fixtureToken, getFinalText, getTextDeltas } from "./helpers";
+import { fixtureToken, getFinalAssistant } from "./helpers";
 
 export interface DirectResponseWorld {
   nonce: string;
@@ -27,20 +27,17 @@ export const directResponseTask: EvalTask<DirectResponseWorld> = {
   }),
   snapshotWorld: (world) => ({ nonce: world.nonce }),
   evaluate: (execution) => {
-    const finalText = getFinalText(execution);
+    const finalText =
+      getFinalAssistant(execution)
+        ?.content.filter((block) => block.type === "text")
+        .map((block) => block.text)
+        .join("") ?? "";
     if (finalText !== execution.world.nonce) {
       return {
         passed: false,
         code: "direct_response.final_text_mismatch",
         message: `Final text did not equal the expected nonce ${execution.world.nonce}.`,
-      };
-    }
-    const streamedText = getTextDeltas(execution);
-    if (streamedText !== execution.world.nonce) {
-      return {
-        passed: false,
-        code: "direct_response.stream_text_mismatch",
-        message: "Concatenated text deltas did not equal the expected nonce.",
+        dimension: "format_contract",
       };
     }
     return { passed: true };

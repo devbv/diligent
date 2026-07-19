@@ -42,7 +42,22 @@ export type EvalFailureCategory =
   | "evaluator_error"
   | "runner_error";
 
+export type EvalDimension =
+  | "semantic_goal"
+  | "runtime_policy"
+  | "behavior"
+  | "format_contract"
+  | "efficiency"
+  | "harness_terminal";
+
+export interface EvalDiagnostic {
+  dimension: EvalDimension;
+  code: string;
+  message: string;
+}
+
 export interface EvalFailure {
+  dimension: EvalDimension;
   category: EvalFailureCategory;
   code: string;
   message: string;
@@ -84,11 +99,13 @@ export interface EvalExecution<TWorld> {
 }
 
 export type EvalSemanticResult =
-  | { passed: true }
+  | { passed: true; diagnostics?: EvalDiagnostic[] }
   | {
       passed: false;
       code: string;
       message: string;
+      dimension: EvalDimension;
+      diagnostics?: EvalDiagnostic[];
     };
 
 export interface EvalTask<TWorld> {
@@ -110,6 +127,7 @@ export interface EvalExecutionResult<TWorld> {
   passed: boolean;
   failure?: EvalFailure;
   failures: EvalFailure[];
+  diagnostics?: EvalDiagnostic[];
   execution: EvalExecution<TWorld>;
   worldSnapshot: unknown;
 }
@@ -123,6 +141,7 @@ export interface EvalExecutionReport {
   termination: EvalTerminationReason;
   failure?: EvalFailure;
   failures: EvalFailure[];
+  diagnostics?: EvalDiagnostic[];
   elapsedMs: number;
   usage: Usage;
   turnCount: number;

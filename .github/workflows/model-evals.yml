@@ -1,0 +1,117 @@
+name: Scheduled Model Evals
+
+on:
+  schedule:
+    - cron: "0 21 * * *"
+
+concurrency:
+  group: ${{ github.repository }}-model-evals
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  core:
+    name: Core evals (${{ matrix.provider }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        provider: [openai, anthropic]
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      REPORT_PATH: artifacts/evals/scheduled-core-${{ matrix.provider }}-${{ matrix.os }}.json
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - run: bun install --frozen-lockfile
+
+      - name: Run core eval suite
+        shell: bash
+        run: bun run eval core --provider "${{ matrix.provider }}" --report "$REPORT_PATH"
+
+      - name: Upload core eval report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scheduled-core-evals-${{ matrix.provider }}-${{ matrix.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.REPORT_PATH }}
+          if-no-files-found: warn
+          retention-days: 30
+
+  runtime:
+    name: Runtime evals (${{ matrix.provider }}, ${{ matrix.os }})
+    needs: core
+    if: ${{ always() }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        provider: [openai, anthropic]
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      REPORT_PATH: artifacts/evals/scheduled-runtime-${{ matrix.provider }}-${{ matrix.os }}.json
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install runtime system dependencies on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
+
+      - name: Install runtime system dependencies on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: choco install ripgrep --yes --no-progress
+
+      - run: bun install --frozen-lockfile
+
+      - name: Run runtime eval suite
+        shell: bash
+        run: bun run eval runtime --provider "${{ matrix.provider }}" --report "$REPORT_PATH"
+
+      - name: Upload runtime eval report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scheduled-runtime-evals-${{ matrix.provider }}-${{ matrix.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.REPORT_PATH }}
+          if-no-files-found: warn
+          retention-days: 30
+
+  aggregate:
+    name: Require both eval phases
+    needs: [core, runtime]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check matrix phase results
+        shell: bash
+        env:
+          CORE_RESULT: ${{ needs.core.result }}
+          RUNTIME_RESULT: ${{ needs.runtime.result }}
+        run: |
+          if [ "$CORE_RESULT" != "success" ] || [ "$RUNTIME_RESULT" != "success" ]; then
+            echo "Core matrix result: $CORE_RESULT"
+            echo "Runtime matrix result: $RUNTIME_RESULT"
+            exit 1
+          fi

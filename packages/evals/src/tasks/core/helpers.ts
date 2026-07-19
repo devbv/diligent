@@ -29,15 +29,6 @@ export function getFinalText<TWorld>(execution: EvalExecution<TWorld>): string {
   );
 }
 
-export function getTextDeltas<TWorld>(execution: EvalExecution<TWorld>): string {
-  return execution.events
-    .flatMap(({ event }) =>
-      event.type === "message_delta" && event.delta.type === "text_delta" ? [event.delta.delta] : [],
-    )
-    .join("")
-    .trim();
-}
-
 export function getToolTrace<TWorld>(execution: EvalExecution<TWorld>): EvalToolTrace[] {
   return execution.events.flatMap(({ event }) =>
     event.type === "tool_start" ? [{ toolCallId: event.toolCallId, toolName: event.toolName, input: event.input }] : [],

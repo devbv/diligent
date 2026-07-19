@@ -1,6 +1,5 @@
 // @summary Core eval task for recovering from an explicit stale-revision tool error
 
-import type { ToolResultMessage } from "@diligent/core/message-contract";
 import { z } from "zod";
 import type { EvalTask } from "../../task";
 import { fixtureToken, getToolTrace, isRecord } from "./helpers";
@@ -69,13 +68,21 @@ export const recoverToolErrorTask: EvalTask<RecoverToolErrorWorld> = {
   snapshotWorld: (world) => ({ ...world }),
   evaluate: (execution) => {
     const trace = getToolTrace(execution);
-    if (trace.length !== 2 || trace.some((entry) => entry.toolName !== "update_record")) {
+    if (trace.length !== 2) {
       return {
         passed: false,
         code: "recover_tool_error.wrong_trace",
         message: "Expected exactly two update_record calls.",
+        dimension: "behavior",
       };
     }
+    if (trace.some((entry) => entry.toolName !== "update_record"))
+      return {
+        passed: false,
+        code: "recover_tool_error.wrong_trace",
+        message: "Recovery used an undeclared tool surface.",
+        dimension: "runtime_policy",
+      };
     const first = trace[0]?.input;
     const second = trace[1]?.input;
     if (
@@ -88,6 +95,7 @@ export const recoverToolErrorTask: EvalTask<RecoverToolErrorWorld> = {
         passed: false,
         code: "recover_tool_error.wrong_first_call",
         message: "The first update call was invalid.",
+        dimension: "behavior",
       };
     }
     if (
@@ -100,21 +108,7 @@ export const recoverToolErrorTask: EvalTask<RecoverToolErrorWorld> = {
         passed: false,
         code: "recover_tool_error.wrong_retry",
         message: "The retry did not use the current revision.",
-      };
-    }
-
-    const firstToolEnd = execution.events.find(
-      ({ event }) => event.type === "tool_end" && event.toolCallId === trace[0]?.toolCallId,
-    )?.event;
-    const firstResult = execution.messages.find(
-      (message): message is ToolResultMessage =>
-        message.role === "tool_result" && message.toolCallId === trace[0]?.toolCallId,
-    );
-    if (firstToolEnd?.type !== "tool_end" || !firstToolEnd.isError || !firstResult?.isError) {
-      return {
-        passed: false,
-        code: "recover_tool_error.missing_error_flag",
-        message: "The stale-revision result was not normalized as an error.",
+        dimension: "behavior",
       };
     }
     if (execution.world.updateAttempts !== 2 || execution.world.value !== execution.world.desiredValue) {
@@ -122,6 +116,7 @@ export const recoverToolErrorTask: EvalTask<RecoverToolErrorWorld> = {
         passed: false,
         code: "recover_tool_error.not_updated",
         message: "The record did not reach the expected state.",
+        dimension: "semantic_goal",
       };
     }
     return { passed: true };

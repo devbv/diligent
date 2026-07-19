@@ -15,7 +15,10 @@ function textTask(id: string, passed: boolean): EvalTask<{ expected: string }> {
     createTools: () => [],
     createUserMessage: () => ({ role: "user", content: "respond", timestamp: Date.now() }),
     snapshotWorld: (world) => ({ ...world }),
-    evaluate: () => (passed ? { passed: true } : { passed: false, code: "expected_failure", message: "failed" }),
+    evaluate: () =>
+      passed
+        ? { passed: true }
+        : { passed: false, code: "expected_failure", message: "failed", dimension: "semantic_goal" },
   };
 }
 
@@ -99,6 +102,33 @@ describe("runEvalSuite", () => {
     expect(report.executions).toHaveLength(2);
     expect(report.executions[0]?.taskSeed).toBe(report.executions[1]?.taskSeed);
     expect(report.executions[0]?.world).toEqual(report.executions[1]?.world);
+  });
+
+  test("keeps schema v1 and pass semantics while reporting non-empty diagnostics additively", async () => {
+    const task = textTask("diagnostic-pass", true);
+    task.evaluate = () =>
+      ({
+        passed: true,
+        diagnostics: [{ dimension: "efficiency", code: "extra_safe_read", message: "One bounded read recovered." }],
+      }) as never;
+    const report = await runEvalSuite({
+      tasks: [task],
+      profiles: [{ provider: "anthropic", model: TEST_MODEL.modelId, effort: "medium" }],
+      rootSeed: "root",
+      metadata: METADATA,
+      resolveModel: () => TEST_MODEL,
+      createStream: () => sequenceStream([assistantMessage([{ type: "text", text: "done" }])]),
+    });
+
+    expect(report.schemaVersion).toBe(1);
+    expect(report.passed).toBe(true);
+    expect(report.executions[0]).toMatchObject({
+      passed: true,
+      failures: [],
+      diagnostics: [{ dimension: "efficiency", code: "extra_safe_read", message: "One bounded read recovered." }],
+    });
+    expect(report.executions[0]).not.toHaveProperty("failure");
+    expect(report.executions[0]).toHaveProperty("failures");
   });
 
   test("rejects duplicate task IDs", async () => {

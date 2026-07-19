@@ -24,8 +24,6 @@ on:
         description: "Optional recorded root seed for world reconstruction"
         required: false
         type: string
-  schedule:
-    - cron: "0 21 * * *"
   workflow_call:
     inputs:
       artifact_retention_days:

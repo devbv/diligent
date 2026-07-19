@@ -22,6 +22,12 @@ function tool(name: string, executed: string[]): Tool {
   };
 }
 
+const DEFAULT_LIMITS = {
+  maxToolCalls: 10,
+  maxUserInputRequests: 10,
+  maxChildAgents: 10,
+};
+
 describe("runtime tool policy", () => {
   test("allows an exact command but rejects suffixes before execution", async () => {
     const root = await mkdtemp(join(tmpdir(), "diligent-runtime-eval-"));
@@ -32,11 +38,14 @@ describe("runtime tool policy", () => {
         tools: [tool("bash", executed)],
         root,
         traces,
-        maxToolCalls: 2,
+        ...DEFAULT_LIMITS,
         policy: { allowedCapabilities: ["execute"], allowedCommands: ["bun test"] },
         isTerminated: () => false,
         onBudgetExceeded: () => {},
       });
+      expect(bash?.description).toBe(
+        'bash\n\nRuntime eval command contract: only these exact command strings are permitted: "bun test".',
+      );
       await bash!.execute({ command: "bun test" }, {} as never);
       await bash!.execute({ command: "bun test && curl example.com" }, {} as never);
       expect(executed).toEqual(["bash"]);
@@ -55,7 +64,7 @@ describe("runtime tool policy", () => {
         tools: [tool("write", executed), tool("apply_patch", executed)],
         root,
         traces,
-        maxToolCalls: 3,
+        ...DEFAULT_LIMITS,
         policy: { allowedCapabilities: ["write"], allowedCommands: [] },
         isTerminated: () => false,
         onBudgetExceeded: () => {},
@@ -78,6 +87,7 @@ describe("runtime tool policy", () => {
         tools: [tool("read", executed), tool("bash", executed)],
         root,
         traces: [],
+        ...DEFAULT_LIMITS,
         maxToolCalls: 1,
         policy: { allowedCapabilities: ["read"], allowedCommands: [] },
         isTerminated: () => false,
@@ -118,7 +128,7 @@ describe("runtime tool policy", () => {
         tools: [imageTool],
         root,
         traces,
-        maxToolCalls: 1,
+        ...DEFAULT_LIMITS,
         policy: { allowedCapabilities: ["read"], allowedCommands: [] },
         isTerminated: () => false,
         onBudgetExceeded: () => {},
@@ -136,6 +146,79 @@ describe("runtime tool policy", () => {
           },
         ],
       });
+      expect(traces[0]?.outcome).toBe("success");
+    } finally {
+      await removeTemporaryRoot(root);
+    }
+  });
+
+  test.each([
+    { name: "request_user_input", limitKey: "maxUserInputRequests" as const },
+    { name: "spawn_agent", limitKey: "maxChildAgents" as const },
+  ])("allows the first $name operation and rejects the next before execution", async ({ name, limitKey }) => {
+    const root = await mkdtemp(join(tmpdir(), "diligent-runtime-eval-"));
+    const executed: string[] = [];
+    const traces: RuntimeToolTrace[] = [];
+    const budgetReasons: string[] = [];
+    try {
+      const [wrapped] = transformRuntimeTools({
+        tools: [tool(name, executed)],
+        root,
+        traces,
+        ...DEFAULT_LIMITS,
+        [limitKey]: 1,
+        policy: {
+          allowedCapabilities: [name === "request_user_input" ? "user_input" : "collab"],
+          allowedCommands: [],
+        },
+        isTerminated: () => false,
+        onBudgetExceeded: (reason) => budgetReasons.push(reason),
+      });
+
+      const allowed = await wrapped!.execute({}, { toolCallId: `${name}-1` } as never);
+      const rejected = await wrapped!.execute({}, { toolCallId: `${name}-2` } as never);
+
+      expect(allowed).toEqual({ output: "ok" });
+      expect(executed).toEqual([name]);
+      expect(rejected.metadata).toMatchObject({ error: true, runtimeEvalRejected: true });
+      expect(traces.map((trace) => trace.outcome)).toEqual(["success", "policy_rejection"]);
+      expect(traces[1]?.error).toContain(name === "request_user_input" ? "user_input_requests" : "child_agents");
+      expect(budgetReasons).toEqual([name === "request_user_input" ? "user_input_limit" : "child_agent_limit"]);
+    } finally {
+      await removeTemporaryRoot(root);
+    }
+  });
+
+  test("distinguishes thrown and metadata tool errors from harness policy rejection", async () => {
+    const root = await mkdtemp(join(tmpdir(), "diligent-runtime-eval-"));
+    const traces: RuntimeToolTrace[] = [];
+    const thrown = tool("read", []);
+    thrown.execute = async () => {
+      throw new Error(`failed under ${root}`);
+    };
+    const metadataError = tool("grep", []);
+    metadataError.execute = async () => ({ output: `missing ${root}/fixture.txt`, metadata: { error: true } });
+    try {
+      const wrapped = transformRuntimeTools({
+        tools: [thrown, metadataError],
+        root,
+        traces,
+        ...DEFAULT_LIMITS,
+        policy: { allowedCapabilities: ["read"], allowedCommands: [] },
+        isTerminated: () => false,
+        onBudgetExceeded: () => {},
+      });
+
+      const thrownResult = await wrapped[0]!.execute({}, { toolCallId: "throw-1" } as never);
+      const metadataResult = await wrapped[1]!.execute({}, { toolCallId: "metadata-1" } as never);
+
+      expect(thrownResult.metadata).toEqual({ error: true });
+      expect(thrownResult.metadata).not.toHaveProperty("runtimeEvalRejected");
+      expect(metadataResult.metadata).toEqual({ error: true });
+      expect(traces.map((trace) => trace.outcome)).toEqual(["runtime_error", "runtime_error"]);
+      expect(JSON.stringify(traces)).not.toContain(root);
+      expect(traces[0]?.error).toContain("$WORKSPACE");
+      expect(traces[1]?.output).toMatchObject({ output: "missing $WORKSPACE/fixture.txt" });
     } finally {
       await removeTemporaryRoot(root);
     }

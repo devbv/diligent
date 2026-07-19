@@ -97,6 +97,7 @@ export const toolChainTask: EvalTask<ToolChainWorld> = {
         passed: false,
         code: "tool_chain.wrong_order",
         message: "Tool calls did not match the required exact order.",
+        dimension: "behavior",
       };
     }
 
@@ -104,7 +105,12 @@ export const toolChainTask: EvalTask<ToolChainWorld> = {
     const quoteInput = trace[1]?.input;
     const submitInput = trace[2]?.input;
     if (!isRecord(getOrderInput) || getOrderInput.orderId !== execution.world.orderId) {
-      return { passed: false, code: "tool_chain.wrong_order_id", message: "get_order used the wrong order ID." };
+      return {
+        passed: false,
+        code: "tool_chain.wrong_order_id",
+        message: "get_order used the wrong order ID.",
+        dimension: "behavior",
+      };
     }
     if (
       !isRecord(quoteInput) ||
@@ -115,6 +121,7 @@ export const toolChainTask: EvalTask<ToolChainWorld> = {
         passed: false,
         code: "tool_chain.wrong_quote_input",
         message: "Quote input did not use dependent values.",
+        dimension: "behavior",
       };
     }
     if (!isRecord(submitInput) || submitInput.quoteToken !== execution.world.quoteToken) {
@@ -122,13 +129,19 @@ export const toolChainTask: EvalTask<ToolChainWorld> = {
         passed: false,
         code: "tool_chain.wrong_submit_input",
         message: "Submit input did not use the quote token.",
+        dimension: "behavior",
       };
     }
     if (
       execution.world.submittedRefund?.orderId !== execution.world.orderId ||
       execution.world.submittedRefund.amount !== execution.world.refundAmount
     ) {
-      return { passed: false, code: "tool_chain.missing_refund", message: "The expected refund was not submitted." };
+      return {
+        passed: false,
+        code: "tool_chain.missing_refund",
+        message: "The expected refund was not submitted.",
+        dimension: "semantic_goal",
+      };
     }
     return { passed: true };
   },

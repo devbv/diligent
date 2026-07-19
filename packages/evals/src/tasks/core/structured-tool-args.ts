@@ -86,19 +86,28 @@ export const structuredToolArgsTask: EvalTask<StructuredToolArgsWorld> = {
   snapshotWorld: (world) => ({ ...world, labels: [...world.labels] }),
   evaluate: (execution) => {
     const trace = getToolTrace(execution);
-    if (trace.length !== 1 || trace[0]?.toolName !== "submit_job") {
+    if (trace.length !== 1) {
       return {
         passed: false,
         code: "structured_tool_args.wrong_trace",
         message: "Expected exactly one submit_job call.",
+        dimension: "behavior",
       };
     }
+    if (trace[0]?.toolName !== "submit_job")
+      return {
+        passed: false,
+        code: "structured_tool_args.wrong_trace",
+        message: "The only tool call used an undeclared tool surface.",
+        dimension: "runtime_policy",
+      };
     const input = trace[0].input;
     if (!isStructuredJobInput(input)) {
       return {
         passed: false,
         code: "structured_tool_args.malformed_input",
         message: "submit_job did not receive the required nested input shape.",
+        dimension: "behavior",
       };
     }
     const expected = execution.world;
@@ -115,16 +124,23 @@ export const structuredToolArgsTask: EvalTask<StructuredToolArgsWorld> = {
         passed: false,
         code: "structured_tool_args.wrong_values",
         message: "submit_job changed one or more typed values.",
+        dimension: "behavior",
       };
     }
     if (!execution.world.submitted) {
-      return { passed: false, code: "structured_tool_args.not_submitted", message: "The job was not submitted." };
+      return {
+        passed: false,
+        code: "structured_tool_args.not_submitted",
+        message: "The job was not submitted.",
+        dimension: "semantic_goal",
+      };
     }
     if (!getFinalText(execution).includes(execution.world.receiptToken)) {
       return {
         passed: false,
         code: "structured_tool_args.missing_receipt",
         message: "The final answer omitted the receipt token.",
+        dimension: "semantic_goal",
       };
     }
     return { passed: true };

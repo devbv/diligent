@@ -44,6 +44,7 @@ export async function runRuntimeEvalSuite(input: {
         passed: result.passed,
         ...(result.failure && { failure: result.failure }),
         failures: result.failures,
+        ...(result.diagnostics?.length && { diagnostics: result.diagnostics }),
         ...(compactions.length > 0 && { compactions }),
         ...(childSessions.length > 0 && { childSessions }),
         world: result.worldSnapshot,

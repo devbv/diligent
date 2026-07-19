@@ -3,6 +3,8 @@
 import { describe, expect, test } from "bun:test";
 import { defaultReportPath, selectCoreTasks, selectRuntimeTasks } from "../src/cli";
 import { parseCliOptions } from "../src/cli-options";
+import { CORE_EVAL_TASKS } from "../src/tasks/core";
+import { RUNTIME_EVAL_TASKS } from "../src/tasks/runtime";
 
 describe("parseCliOptions", () => {
   test("selects the complete core suite by default", () => {
@@ -43,8 +45,8 @@ describe("parseCliOptions", () => {
 
 describe("task selection", () => {
   test("selects every task when no task filter is given", () => {
-    expect(selectCoreTasks()).toHaveLength(7);
-    expect(selectRuntimeTasks()).toHaveLength(12);
+    expect(selectCoreTasks()).toHaveLength(CORE_EVAL_TASKS.length);
+    expect(selectRuntimeTasks()).toHaveLength(RUNTIME_EVAL_TASKS.length);
   });
 
   test("selects exactly one requested task", () => {

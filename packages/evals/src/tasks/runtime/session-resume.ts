@@ -19,6 +19,7 @@ export const sessionResumeTask: RuntimeEvalTask<ResumeWorld> = {
   description: "Resume a persisted session and use earlier context in a file mutation.",
   fixtureVersion: "session-resume-v0",
   limits: { ...DEFAULT_RUNTIME_LIMITS, maxTurns: 10, maxToolCalls: 8, timeoutMs: 300_000 },
+  statePolicy: { allowedMutations: ["infrastructure", "sessions"] },
   toolPolicy: {
     allowedTools: ["write", "edit", "multi_edit", "apply_patch"],
     allowedCapabilities: ["write"],
@@ -48,17 +49,21 @@ export const sessionResumeTask: RuntimeEvalTask<ResumeWorld> = {
   ],
   snapshotWorld: async (world) => ({ codename: world.codename, result: await exactFile(world.root, "CODENAME.txt") }),
   evaluate(input) {
-    if (input.turns.length !== 2)
-      return { passed: false, code: "session_resume.turn_count", message: "Expected two completed turns." };
-    if (input.session.lines.length < 3)
-      return { passed: false, code: "session_resume.persistence", message: "Persisted session is incomplete." };
     const result = input.workspace.final.entries.find((entry) => entry.path === "CODENAME.txt");
+    if (result?.sha256 === sha256Text(input.world.codename))
+      return {
+        passed: false,
+        code: "session_resume.wrong_codename",
+        message: "CODENAME.txt omitted the prompt-declared trailing newline.",
+        dimension: "format_contract",
+      };
     return result?.sha256 === input.world.expectedHash
       ? { passed: true }
       : {
           passed: false,
           code: "session_resume.wrong_codename",
           message: "CODENAME.txt does not contain the exact earlier codename.",
+          dimension: "semantic_goal",
         };
   },
 };

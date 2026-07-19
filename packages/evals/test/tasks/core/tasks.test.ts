@@ -21,7 +21,7 @@ describe("core eval tasks", () => {
     ]);
   });
 
-  test("direct-response requires matching streamed and final text", async () => {
+  test("direct-response assigns exact final bytes to the format contract", async () => {
     const task = CORE_EVAL_TASKS.find((candidate) => candidate.id === "direct-response")!;
     const world = task.createWorld("direct-seed");
     const result = await runEvalExecution({
@@ -33,6 +33,30 @@ describe("core eval tasks", () => {
     });
     expect(result.passed).toBe(true);
 
+    const wrongFinal = await runEvalExecution({
+      task,
+      profile: PROFILE,
+      model: TEST_MODEL,
+      seed: "direct-seed",
+      streamFunction: sequenceStream([assistantMessage([{ type: "text", text: `${world.nonce}-wrong` }])]),
+    });
+    expect(wrongFinal.failure).toMatchObject({
+      code: "task_semantic.direct_response.final_text_mismatch",
+      dimension: "format_contract",
+    });
+
+    const extraWhitespace = await runEvalExecution({
+      task,
+      profile: PROFILE,
+      model: TEST_MODEL,
+      seed: "direct-seed",
+      streamFunction: sequenceStream([assistantMessage([{ type: "text", text: `${world.nonce}\n` }])]),
+    });
+    expect(extraWhitespace.failure).toMatchObject({
+      code: "task_semantic.direct_response.final_text_mismatch",
+      dimension: "format_contract",
+    });
+
     const missingDelta = await runEvalExecution({
       task,
       profile: PROFILE,
@@ -42,7 +66,10 @@ describe("core eval tasks", () => {
         emitTextDeltas: false,
       }),
     });
-    expect(missingDelta.failure?.code).toBe("core_contract.message_end_without_start");
+    expect(missingDelta.failure).toMatchObject({
+      code: "core_contract.streamed_text_mismatch",
+      dimension: "runtime_policy",
+    });
   });
 
   test("single-tool verifies the exact lookup and hidden code", async () => {
@@ -62,6 +89,41 @@ describe("core eval tasks", () => {
       ]),
     });
     expect(result.passed).toBe(true);
+
+    const wrongArgument = structuredClone(result.execution);
+    const start = wrongArgument.events.find((snapshot) => snapshot.event.type === "tool_start");
+    if (start?.event.type === "tool_start") start.event.input = { recordId: "wrong-record" };
+    expect(task.evaluate(wrongArgument)).toMatchObject({
+      passed: false,
+      code: "single_tool.wrong_record_id",
+      dimension: "behavior",
+    });
+
+    const missingReceipt = structuredClone(result.execution);
+    const final = missingReceipt.messages.at(-1);
+    if (final?.role === "assistant") final.content = [{ type: "text", text: "Done" }];
+    expect(task.evaluate(missingReceipt)).toMatchObject({
+      passed: false,
+      code: "single_tool.missing_code",
+      dimension: "semantic_goal",
+    });
+
+    const missingCall = structuredClone(result.execution);
+    missingCall.events = missingCall.events.filter((snapshot) => snapshot.event.type !== "tool_start");
+    expect(task.evaluate(missingCall)).toMatchObject({
+      passed: false,
+      code: "single_tool.wrong_trace",
+      dimension: "behavior",
+    });
+
+    const wrongTool = structuredClone(result.execution);
+    const wrongToolStart = wrongTool.events.find((snapshot) => snapshot.event.type === "tool_start");
+    if (wrongToolStart?.event.type === "tool_start") wrongToolStart.event.toolName = "undeclared_lookup";
+    expect(task.evaluate(wrongTool)).toMatchObject({
+      passed: false,
+      code: "single_tool.wrong_trace",
+      dimension: "runtime_policy",
+    });
   });
 
   test("tool-chain verifies ordered dependent values and final state", async () => {
@@ -97,9 +159,22 @@ describe("core eval tasks", () => {
     });
     expect(result.passed).toBe(true);
     expect(result.worldSnapshot).toMatchObject({ submittedRefund: { orderId: world.orderId } });
+
+    const wrongOrder = structuredClone(result.execution);
+    const starts = wrongOrder.events.filter((snapshot) => snapshot.event.type === "tool_start");
+    if (starts[0]?.event.type === "tool_start" && starts[1]?.event.type === "tool_start") {
+      const firstName = starts[0].event.toolName;
+      starts[0].event.toolName = starts[1].event.toolName;
+      starts[1].event.toolName = firstName;
+    }
+    expect(task.evaluate(wrongOrder)).toMatchObject({
+      passed: false,
+      code: "tool_chain.wrong_order",
+      dimension: "behavior",
+    });
   });
 
-  test("recover-tool-error requires an error result and corrected revision", async () => {
+  test("recover-tool-error keeps recovery decisions semantic and normalization deterministic", async () => {
     const task = CORE_EVAL_TASKS.find((candidate) => candidate.id === "recover-tool-error")!;
     const world = task.createWorld("recovery-seed");
     const result = await runEvalExecution({
@@ -141,9 +216,35 @@ describe("core eval tasks", () => {
           snapshot.event.type === "tool_end" && snapshot.event.toolCallId === "update-1" && snapshot.event.isError,
       ),
     ).toBe(true);
+
+    const mirroredWithoutErrorFlag = structuredClone(result.execution);
+    for (const snapshot of mirroredWithoutErrorFlag.events) {
+      if (snapshot.event.type === "tool_end" && snapshot.event.toolCallId === "update-1")
+        snapshot.event.isError = false;
+    }
+    for (const message of mirroredWithoutErrorFlag.messages) {
+      if (message.role === "tool_result" && message.toolCallId === "update-1") message.isError = false;
+    }
+    expect(task.evaluate(mirroredWithoutErrorFlag)).toEqual({ passed: true });
+
+    const wrongRetry = structuredClone(result.execution);
+    const retry = wrongRetry.events.find(
+      (snapshot) => snapshot.event.type === "tool_start" && snapshot.event.toolCallId === "update-2",
+    );
+    if (retry?.event.type === "tool_start")
+      retry.event.input = {
+        recordId: world.recordId,
+        revision: world.staleRevision,
+        value: world.desiredValue,
+      };
+    expect(task.evaluate(wrongRetry)).toMatchObject({
+      passed: false,
+      code: "recover_tool_error.wrong_retry",
+      dimension: "behavior",
+    });
   });
 
-  test("image-tool-result requires two core image blocks and exact visual attribution", async () => {
+  test("image-tool-result keeps transport plumbing out of live classification", async () => {
     const task = CORE_EVAL_TASKS.find((candidate) => candidate.id === "image-tool-result")!;
     const world = task.createWorld("image-seed");
     const result = await runEvalExecution({
@@ -169,7 +270,25 @@ describe("core eval tasks", () => {
       const { outputImages: _omitted, ...event } = snapshot.event;
       return { ...snapshot, event };
     });
-    expect(task.evaluate(withoutImages).passed).toBe(false);
+    expect(task.evaluate(withoutImages)).toEqual({ passed: true });
+
+    const wrongAnswer = structuredClone(result.execution);
+    const final = wrongAnswer.messages.at(-1);
+    if (final?.role === "assistant") final.content = [{ type: "text", text: "A=GREEN; B=GREEN" }];
+    expect(task.evaluate(wrongAnswer)).toMatchObject({
+      passed: false,
+      code: "image_tool_result.answer",
+      dimension: "semantic_goal",
+    });
+
+    const wrongEnvelope = structuredClone(result.execution);
+    const envelopeFinal = wrongEnvelope.messages.at(-1);
+    if (envelopeFinal?.role === "assistant") envelopeFinal.content = [{ type: "text", text: `${world.expected}\n` }];
+    expect(task.evaluate(wrongEnvelope)).toMatchObject({
+      passed: false,
+      code: "image_tool_result.format",
+      dimension: "format_contract",
+    });
   });
 
   test("structured-tool-args verifies nested schema values and the hidden receipt", async () => {
@@ -233,6 +352,7 @@ describe("core eval tasks", () => {
     });
 
     expect(result.failure?.code).toBe("task_semantic.structured_tool_args.wrong_values");
+    expect(result.failure?.dimension).toBe("behavior");
     expect(result.worldSnapshot).toMatchObject({ submitted: false });
   });
 
@@ -303,6 +423,14 @@ describe("core eval tasks", () => {
     });
 
     expect(result.failure?.code).toBe("task_semantic.parallel_tools.not_parallel");
+    expect(result.failure?.dimension).toBe("behavior");
     expect(result.worldSnapshot).toMatchObject({ maxConcurrentLookups: 1 });
+
+    result.execution.world.maxConcurrentLookups = result.execution.world.fragments.length;
+    expect(task.evaluate(result.execution)).toMatchObject({
+      passed: false,
+      code: "parallel_tools.not_parallel",
+      dimension: "behavior",
+    });
   });
 });

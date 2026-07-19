@@ -3,7 +3,7 @@
 import { z } from "zod";
 import type { EvalTask } from "../../task";
 import { type EvalImageColor, seededImagePair, solidColorImageBlock } from "../image-fixture";
-import { getFinalText, getToolTrace, isRecord } from "./helpers";
+import { getFinalAssistant, getToolTrace } from "./helpers";
 
 export interface ImageToolResultWorld {
   colors: { a: EvalImageColor; b: EvalImageColor };
@@ -49,43 +49,43 @@ export const imageToolResultTask: EvalTask<ImageToolResultWorld> = {
   snapshotWorld: (world) => ({ colors: world.colors, requested: world.requested }),
   evaluate(execution) {
     const trace = getToolTrace(execution);
-    if (trace.length !== 1 || trace[0]?.toolName !== "get_swatch_pair")
+    if (trace.length !== 1)
       return {
         passed: false,
         code: "image_tool_result.trace",
         message: "Expected exactly one get_swatch_pair call.",
+        dimension: "behavior",
       };
-    if (!execution.world.requested)
-      return { passed: false, code: "image_tool_result.not_requested", message: "The image tool did not execute." };
-    const toolEnd = execution.events.find(
-      ({ event }) =>
-        event.type === "tool_end" && event.toolCallId === trace[0]!.toolCallId && event.toolName === "get_swatch_pair",
-    )?.event;
-    if (!toolEnd || toolEnd.type !== "tool_end" || !hasTwoPngImages(toolEnd.outputImages))
+    if (trace[0]?.toolName !== "get_swatch_pair")
       return {
         passed: false,
-        code: "image_tool_result.evidence",
-        message: "The core tool_end event did not retain both PNG image blocks.",
+        code: "image_tool_result.trace",
+        message: "The only tool call used an undeclared tool surface.",
+        dimension: "runtime_policy",
       };
-    return getFinalText(execution) === execution.world.expected
+    const finalText =
+      getFinalAssistant(execution)
+        ?.content.filter((block) => block.type === "text")
+        .map((block) => block.text)
+        .join("") ?? "";
+    const semantic = /A=(RED|BLUE);\s*B=(RED|BLUE)/i.exec(finalText);
+    if (
+      semantic?.[1]?.toUpperCase() !== execution.world.colors.a ||
+      semantic[2]?.toUpperCase() !== execution.world.colors.b
+    )
+      return {
+        passed: false,
+        code: "image_tool_result.answer",
+        message: "The response did not classify both images in the correct order.",
+        dimension: "semantic_goal",
+      };
+    return finalText === execution.world.expected
       ? { passed: true }
       : {
           passed: false,
-          code: "image_tool_result.answer",
-          message: `Expected exact response ${execution.world.expected}.`,
+          code: "image_tool_result.format",
+          message: `Expected exact response bytes ${execution.world.expected}.`,
+          dimension: "format_contract",
         };
   },
 };
-
-function hasTwoPngImages(value: unknown): boolean {
-  if (!Array.isArray(value) || value.length !== 2) return false;
-  return value.every(
-    (image) =>
-      isRecord(image) &&
-      isRecord(image.source) &&
-      image.source.type === "base64" &&
-      image.source.media_type === "image/png" &&
-      typeof image.source.data === "string" &&
-      image.source.data.startsWith("iVBOR"),
-  );
-}
