@@ -149,25 +149,37 @@ Set
 `planReminderIntervalTurns` to `0` to disable it or to another non-negative integer to tune the
 cadence.
 
-Shell lifecycle hooks support two execution modes:
+Shell and plugin lifecycle hooks support two execution modes. The mode controls scheduling, not the meaning of a hook's
+return value:
 
-- `mode: "sync"` (default): runtime waits for the hook result before continuing. Sync hooks can block the turn or return `additionalContext`. The default timeout is 10 seconds unless `timeout` is set.
-- `mode: "async"`: runtime starts the hook and immediately continues the turn. Async hook output is ignored and cannot block or inject context.
+- `mode: "sync"` (default): runtime waits for the hook execution before continuing. A synchronous shell hook has a
+  default timeout of 10 seconds unless `timeout` is set.
+- `mode: "async"`: runtime starts the hook and immediately continues without waiting for its output.
 
 Current hook events:
 
-- `UserPromptSubmit`: runs after the user submits a prompt and before the agent turn starts.
-- `Stop`: runs after a successful turn completion.
+- `UserPromptSubmit`: runs after the user submits a prompt and before the agent turn starts. Synchronous hook results
+  may block that prompt or add `additionalContext`; asynchronous results are ignored.
+- `Stop`: runs after a successful turn completion as an external lifecycle notification. Runtime isolates and ignores
+  all Stop outputs and errors. They never add model context, accept or reject an answer, or trigger another model run.
 
 ## Manual compaction
 
 `thread/compact/start` is explicit user-triggered compaction.
 
 - rejected while a turn is running
-- marks thread busy and emits `thread/status/changed` (`busy`)
-- emits `thread/compaction/started`
-- runs compaction and emits `thread/compacted`
-- always returns thread to idle with `thread/status/changed` (`idle`)
+- marks the thread busy before the request and always returns it to idle afterward
+- an adopted result emits `thread/compaction/started` followed by `thread/compacted`
+- an ineligible or nonshrinking `compacted: false` result emits neither compaction notification
+- busy and idle are emitted through `thread/status/changed` and bracket either result
+
+Manual and automatic compaction use the same 50,000-estimated-token candidate minimum. A manual request below that
+minimum completes with `compacted: false`; it does not force a summary or persist a compaction entry. An eligible
+local or provider-native result is adopted only when effective provider context shrinks. Rejection preserves the
+original messages and provider-native context state.
+
+Confirmed provider context overflow is the only minimum bypass. Runtime permits one bounded attempt, still requires
+effective shrinkage, and otherwise resurfaces the original overflow without a compaction or provider retry loop.
 
 On failure, runtime emits `error` and still restores idle status.
 

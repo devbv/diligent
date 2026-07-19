@@ -5,7 +5,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
 
-import { getGlobalPluginPath, getGlobalPluginRoot, loadPlugin } from "../../src/tools/plugin-loader";
+import {
+  collectPluginHooks,
+  getGlobalPluginPath,
+  getGlobalPluginRoot,
+  loadPlugin,
+} from "../../src/tools/plugin-loader";
 
 const CWD = "/tmp/test-cwd";
 const TEST_HOME = join(tmpdir(), `diligent-plugin-loader-home-${Date.now()}`);
@@ -151,6 +156,14 @@ mock.module("@test/render-plugin", () => ({
       }),
     },
   ],
+}));
+
+const explicitPromptHook = async () => ({ continue: true });
+const explicitStopHook = async () => ({ continue: true });
+
+mock.module("@test/explicit-hook-plugin", () => ({
+  onUserPromptSubmit: explicitPromptHook,
+  onStop: explicitStopHook,
 }));
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -390,5 +403,41 @@ describe("loadPlugin", () => {
           "Plugin '@test/duplicate-tool-names' exports duplicate tool name 'dup_tool'. Later duplicates are ignored.",
       },
     ]);
+  });
+});
+
+describe("collectPluginHooks", () => {
+  it("loads only explicitly configured hooks in explicit discovery mode", async () => {
+    const pluginDir = getGlobalPluginPath("explicit-mode-global-hooks");
+    await mkdir(pluginDir, { recursive: true });
+    await Bun.write(
+      join(pluginDir, "package.json"),
+      JSON.stringify({ name: "explicit-mode-global-hooks", version: "0.1.0", type: "module", main: "./index.js" }),
+    );
+    await Bun.write(
+      join(pluginDir, "index.js"),
+      [
+        "export async function onUserPromptSubmit() { return { continue: true }; }",
+        "export async function onStop() { return { continue: true }; }",
+      ].join("\n"),
+    );
+
+    const globalHooks = await collectPluginHooks(
+      { plugins: [{ package: "@test/explicit-hook-plugin", enabled: true }] },
+      CWD,
+    );
+    expect(globalHooks.onUserPromptSubmit).toHaveLength(2);
+    expect(globalHooks.onStop).toHaveLength(2);
+
+    const hooks = await collectPluginHooks(
+      { plugins: [{ package: "@test/explicit-hook-plugin", enabled: true }] },
+      CWD,
+      { pluginDiscovery: "explicit" },
+    );
+
+    expect(hooks.onUserPromptSubmit).toEqual([explicitPromptHook]);
+    expect(hooks.onStop).toEqual([explicitStopHook]);
+
+    await rm(pluginDir, { recursive: true, force: true });
   });
 });

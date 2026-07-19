@@ -1,6 +1,6 @@
 // @summary Tests for session file persistence and entry management
 import { afterEach, describe, expect, it } from "bun:test";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AppendedEntryInfo, SessionMessageEntry } from "@diligent/runtime/session";
@@ -77,6 +77,16 @@ describe("createSessionFile + readSessionFile", () => {
     const dir = await setupDir();
     const { header } = await createSessionFile(dir, "/project", "parent-id");
     expect(header.parentSession).toBe("parent-id");
+  });
+
+  it("rejects a traversal id without creating a file outside the sessions directory", async () => {
+    const dir = await setupDir();
+    const outsidePath = join(TEST_ROOT, "created-outside.jsonl");
+
+    await expect(createSessionFile(dir, "/project", undefined, undefined, "../created-outside")).rejects.toThrow(
+      /Invalid session ID/,
+    );
+    expect(await Bun.file(outsidePath).exists()).toBe(false);
   });
 });
 
@@ -246,6 +256,15 @@ describe("deleteSession", () => {
     const dir = await setupDir();
     const result = await deleteSession(dir, "nonexistent-id");
     expect(result).toBe(false);
+  });
+
+  it("rejects a traversal id without deleting a file outside the sessions directory", async () => {
+    const dir = await setupDir();
+    const outsidePath = join(TEST_ROOT, "outside.jsonl");
+    await writeFile(outsidePath, "protected", "utf8");
+
+    await expect(deleteSession(dir, "../outside")).rejects.toThrow(/Invalid session ID/);
+    expect(await Bun.file(outsidePath).text()).toBe("protected");
   });
 });
 

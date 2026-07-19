@@ -1,8 +1,9 @@
 // @summary AgentStatus, AgentEntry, CollabToolDeps, and CollabEvent types for non-blocking multi-agent collab
 
 import type { Message } from "@diligent/core/message-contract";
+import type { ModelClass } from "@diligent/core/model-registry";
 import type { ModelRef, ThinkingEffort } from "@diligent/core/provider-contract";
-import type { Tool } from "@diligent/core/tool-contract";
+import type { Tool, ToolOutputFileStore } from "@diligent/core/tool-contract";
 import type { ResolvedAgentDefinition } from "../agent/resolved-agent";
 import type { AgentEvent, ChildAgentEvent } from "../agent-event";
 import type { ApprovalRequest, ApprovalResponse } from "../approval/types";
@@ -20,7 +21,6 @@ export interface ChildStopInfo {
   effort: ThinkingEffort;
   userId?: string;
   context: Message[];
-  isRerun: boolean;
 }
 
 export type AgentStatus =
@@ -44,6 +44,15 @@ export interface AgentEntry {
   status: AgentStatus;
   abortController: AbortController;
   createdAt: number;
+  resumePolicy?: CollabResumePolicy;
+}
+
+/** Security-relevant child policy that must not broaden when a persisted child is resumed. */
+export interface CollabResumePolicy {
+  agentType: string;
+  modelClass: ModelClass;
+  allowedTools?: string[];
+  allowNestedAgents: boolean;
 }
 
 /** Events emitted by the collab layer — collab boundary events + child tool/turn events with childThreadId. */
@@ -72,13 +81,12 @@ export interface CollabToolDeps {
   approve?: (request: ApprovalRequest) => Promise<ApprovalResponse>;
   /** Stream function for child agents — when omitted, falls back to the global stream resolver. */
   streamFn?: import("@diligent/core/provider-contract").StreamFunction;
-  /**
-   * Called when a child agent's turn completes normally.
-   * Return `{ continueWith }` to re-run the child (e.g. when a Stop hook blocks).
-   */
+  /** Parent-selected full-output store, retained by every nested collaboration registry. */
+  toolOutputStore?: ToolOutputFileStore;
   /** User ID to propagate into child stop hook inputs. */
   userId?: string;
-  onChildStop?: (info: ChildStopInfo) => Promise<{ continueWith?: Message } | undefined>;
+  /** Runs the same external Stop lifecycle used for parent turns. */
+  onChildStop?: (info: ChildStopInfo) => Promise<void>;
   /** Product hook factories are retained through nesting; each child receives fresh hook instances. */
   agentLoopHookFactories?: readonly AgentLoopHookFactory[];
 }

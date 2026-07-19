@@ -14,7 +14,7 @@ import type {
   SessionInfoEntry,
   SessionMessageEntry,
 } from "./types";
-import { generateSessionId, SESSION_VERSION } from "./types";
+import { generateSessionId, isSafeSessionId, SESSION_VERSION } from "./types";
 
 /**
  * Write a session header to a new JSONL file.
@@ -27,6 +27,9 @@ export async function createSessionFile(
   sessionId?: string,
 ): Promise<{ path: string; header: SessionHeader }> {
   const id = sessionId ?? generateSessionId();
+  if (!isSafeSessionId(id)) {
+    throw new Error(`Invalid session ID: ${id}`);
+  }
   const header: SessionHeader = {
     type: "session",
     version: SESSION_VERSION,
@@ -423,6 +426,9 @@ export class SessionPersistence {
  * Returns true if deleted, false if the file did not exist.
  */
 export async function deleteSession(sessionsDir: string, sessionId: string): Promise<boolean> {
+  if (!isSafeSessionId(sessionId)) {
+    throw new Error(`Invalid session ID: ${sessionId}`);
+  }
   const path = join(sessionsDir, `${sessionId}.jsonl`);
   const exists = await Bun.file(path).exists();
   if (!exists) return false;

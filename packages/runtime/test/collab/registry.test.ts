@@ -5,15 +5,23 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { LocalImageLoader } from "@diligent/core/image-contract";
 import { getDefaultEffortForClass, resolveModel, resolveModelForClass } from "@diligent/core/model-registry";
-import type { Tool } from "@diligent/core/tool-contract";
+import type { StreamFunction } from "@diligent/core/provider-contract";
+import type { Tool, ToolOutputFileStore } from "@diligent/core/tool-contract";
 import type { RuntimeAgent } from "@diligent/runtime/agent/runtime-agent";
 import { AgentRegistry, isFinal } from "@diligent/runtime/collab";
+import { ensureDiligentDir } from "@diligent/runtime/infrastructure";
 import type { SessionManagerConfig } from "@diligent/runtime/session";
 import { getBuiltinAgentDefinitions } from "../../src/agent/agent-types";
 import { resolveAgentDefinition, resolveAvailableAgentDefinitions } from "../../src/agent/resolved-agent";
 import type { AgentEvent } from "../../src/agent-event";
 import { resolveChildToolAccess } from "../../src/collab/registry";
-import { makeAssistant, makeCollabDeps, makeMockSessionManagerFactory } from "../helpers/collab";
+import {
+  makeAssistant,
+  makeCollabDeps,
+  makeDeferredSessionManagerFactory,
+  makeMockSessionManagerFactory,
+  makeStreamFn,
+} from "../helpers/collab";
 
 function makeTool(name: string): Tool {
   return {
@@ -70,6 +78,51 @@ function makeInspectingSessionManagerFactory(observer: (agent: RuntimeAgent) => 
 }
 
 describe("AgentRegistry", () => {
+  it("uses lifecycle-only Stop semantics for child agents", async () => {
+    const root = await mkdtemp(join(tmpdir(), "diligent-child-stop-lifecycle-"));
+    try {
+      const paths = await ensureDiligentDir(root);
+      let providerCalls = 0;
+      let stopCalls = 0;
+      let stopInfo: Record<string, unknown> | undefined;
+      const baseStream = makeStreamFn([makeAssistant("first"), makeAssistant("legacy rerun")]);
+      const streamFn: StreamFunction = (model, context, options) => {
+        providerCalls += 1;
+        return baseStream(model, context, options);
+      };
+      const registry = new AgentRegistry(
+        makeCollabDeps({
+          cwd: root,
+          paths,
+          streamFn,
+          onChildStop: (async (info: Record<string, unknown>) => {
+            stopCalls += 1;
+            stopInfo = info;
+            return stopCalls === 1
+              ? {
+                  continueWith: {
+                    role: "user",
+                    content: "legacy child Stop feedback must be ignored",
+                    timestamp: Date.now(),
+                  },
+                }
+              : undefined;
+          }) as never,
+        }),
+      );
+
+      const { threadId } = registry.spawn({ prompt: "child task", description: "", agentType: "general" });
+      const result = await registry.wait([threadId], 5_000);
+
+      expect(result.status[threadId]?.kind).toBe("completed");
+      expect(providerCalls).toBe(1);
+      expect(stopCalls).toBe(1);
+      expect(stopInfo).not.toHaveProperty("isRerun");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("rejects an unavailable agent type instead of falling back to general", () => {
     const registry = new AgentRegistry(makeCollabDeps());
     expect(() => registry.spawn({ prompt: "task", description: "", agentType: "experiment-disabled-agent" })).toThrow(
@@ -130,6 +183,34 @@ describe("AgentRegistry", () => {
     });
   });
 
+  it("propagates the injected output store through child and nested-child assembly", async () => {
+    const outputStore: ToolOutputFileStore = { save: async () => "/tmp/eval-output.txt" };
+    let inspectedAgent: RuntimeAgent | undefined;
+    const registry = new AgentRegistry(
+      makeCollabDeps({
+        parentTools: [makeTool("spawn_agent"), makeTool("wait")],
+        toolOutputStore: outputStore,
+        sessionManagerFactory: makeInspectingSessionManagerFactory((agent) => {
+          inspectedAgent = agent;
+        }),
+      }),
+    );
+
+    const { threadId } = registry.spawn({
+      prompt: "inspect",
+      description: "inspect",
+      agentType: "general",
+      allowNestedAgents: true,
+    });
+    await registry.wait([threadId], 5000);
+
+    expect((inspectedAgent as unknown as { toolOutputStore?: ToolOutputFileStore }).toolOutputStore).toBe(outputStore);
+    expect(
+      (inspectedAgent?.registry as unknown as { deps?: { toolOutputStore?: ToolOutputFileStore } })?.deps
+        ?.toolOutputStore,
+    ).toBe(outputStore);
+  });
+
   it("wait resolves when agent completes", async () => {
     const registry = new AgentRegistry(
       makeCollabDeps({
@@ -147,6 +228,26 @@ describe("AgentRegistry", () => {
     expect(isFinal(status[threadId])).toBe(true);
   });
 
+  it("clears a long wait timer after the agent completes first", async () => {
+    const clearTimeoutSpy = spyOn(globalThis, "clearTimeout");
+    try {
+      const registry = new AgentRegistry(
+        makeCollabDeps({
+          sessionManagerFactory: makeMockSessionManagerFactory(makeAssistant("finished")),
+        }),
+      );
+      const { threadId } = registry.spawn({ prompt: "task", description: "", agentType: "general" });
+      const callsBeforeWait = clearTimeoutSpy.mock.calls.length;
+
+      const result = await registry.wait([threadId], 900_000);
+
+      expect(result.timedOut).toBe(false);
+      expect(clearTimeoutSpy.mock.calls.length).toBeGreaterThan(callsBeforeWait);
+    } finally {
+      clearTimeoutSpy.mockRestore();
+    }
+  });
+
   it("wait returns completed status with output", async () => {
     const registry = new AgentRegistry(
       makeCollabDeps({
@@ -160,6 +261,82 @@ describe("AgentRegistry", () => {
     if (s.kind === "completed") {
       expect(s.output).toContain("my output");
     }
+  });
+
+  it("wait has ALL semantics and preserves requested order when children complete in reverse", async () => {
+    const events: AgentEvent[] = [];
+    const deferred = makeDeferredSessionManagerFactory();
+    const registry = new AgentRegistry(
+      makeCollabDeps({
+        onCollabEvent: (event) => events.push(event),
+        sessionManagerFactory: deferred.factory,
+      }),
+    );
+    const first = registry.spawn({ prompt: "first", description: "first", agentType: "general" });
+    const second = registry.spawn({ prompt: "second", description: "second", agentType: "general" });
+    await Promise.all(deferred.controls.map((control) => control.started));
+
+    let settled = false;
+    const waiting = registry.wait([first.threadId, second.threadId], 5_000).then((result) => {
+      settled = true;
+      return result;
+    });
+    deferred.controls[1]!.complete("second output");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    deferred.controls[0]!.complete("first output");
+    const result = await waiting;
+    expect(result.timedOut).toBe(false);
+    expect(Object.keys(result.status)).toEqual([first.threadId, second.threadId]);
+    expect(result.status[first.threadId]).toEqual({ kind: "completed", output: "first output" });
+    expect(result.status[second.threadId]).toEqual({ kind: "completed", output: "second output" });
+    const waitEnd = events.findLast((event) => event.type === "collab_wait_end");
+    expect(waitEnd?.type).toBe("collab_wait_end");
+    if (waitEnd?.type !== "collab_wait_end") throw new Error("Missing wait_end event.");
+    expect(waitEnd.agentStatuses.map((status) => status.threadId)).toEqual([first.threadId, second.threadId]);
+  });
+
+  it("keeps a timed-out wait snapshot stable and suppresses its late updates", async () => {
+    const deferred = makeDeferredSessionManagerFactory();
+    const registry = new AgentRegistry(makeCollabDeps({ sessionManagerFactory: deferred.factory }));
+    const child = registry.spawn({ prompt: "late", description: "late", agentType: "general" });
+    await deferred.controls[0]!.started;
+    const updates: string[] = [];
+
+    const result = await registry.wait([child.threadId], 1, (update) => updates.push(update));
+    expect(result.timedOut).toBe(true);
+    const returnedSnapshot = structuredClone(result.status);
+    const returnedUpdateCount = updates.length;
+
+    deferred.controls[0]!.complete("late output");
+    const later = await registry.wait([child.threadId], 1_000);
+    expect(later.status[child.threadId]).toEqual({ kind: "completed", output: "late output" });
+    expect(result.status).toEqual(returnedSnapshot);
+    expect(updates).toHaveLength(returnedUpdateCount);
+  });
+
+  it("keeps an aborted wait snapshot stable and suppresses its late updates", async () => {
+    const deferred = makeDeferredSessionManagerFactory();
+    const registry = new AgentRegistry(makeCollabDeps({ sessionManagerFactory: deferred.factory }));
+    const child = registry.spawn({ prompt: "late", description: "late", agentType: "general" });
+    await deferred.controls[0]!.started;
+    const updates: string[] = [];
+    const controller = new AbortController();
+
+    const waiting = registry.wait([child.threadId], 60_000, (update) => updates.push(update), controller.signal);
+    controller.abort();
+    const result = await waiting;
+    expect(result.timedOut).toBe(true);
+    const returnedSnapshot = structuredClone(result.status);
+    const returnedUpdateCount = updates.length;
+
+    deferred.controls[0]!.complete("late output");
+    const later = await registry.wait([child.threadId], 1_000);
+    expect(later.status[child.threadId]).toEqual({ kind: "completed", output: "late output" });
+    expect(result.status).toEqual(returnedSnapshot);
+    expect(updates).toHaveLength(returnedUpdateCount);
   });
 
   it("emits wait_end when waiting on an already completed agent", async () => {
@@ -303,6 +480,292 @@ describe("AgentRegistry", () => {
     registry.restoreAgent("sess-9999", "RestoredBot");
     expect(registry.getNickname("sess-9999")).toBe("RestoredBot");
     expect(registry.getStatus("sess-9999")).toEqual({ kind: "shutdown" });
+  });
+
+  it("resumes a known restored child with its historical session id and nickname", async () => {
+    const events: AgentEvent[] = [];
+    let capturedConfig: SessionManagerConfig | undefined;
+    const registry = new AgentRegistry(
+      makeCollabDeps({
+        onCollabEvent: (event) => events.push(event),
+        sessionManagerFactory: (config) => {
+          capturedConfig = config;
+          const manager = makeMockSessionManagerFactory(makeAssistant("follow-up"))!(config);
+          return Object.assign(manager, { resume: async () => true });
+        },
+      }),
+    );
+    registry.restoreAgent("sess-historical-1", "RestoredBot");
+
+    const resumed = registry.spawn({
+      prompt: "follow up",
+      description: "continue",
+      agentType: "general",
+      resumeId: "sess-historical-1",
+    });
+    await registry.wait([resumed.threadId], 5000);
+
+    expect(resumed).toEqual({ threadId: "sess-historical-1", nickname: "RestoredBot" });
+    expect(capturedConfig?.sessionId).toBe("sess-historical-1");
+    expect(registry.getKnownAgents()).toEqual([
+      {
+        threadId: "sess-historical-1",
+        nickname: "RestoredBot",
+        description: "continue",
+        status: { kind: "completed", output: "follow-up" },
+      },
+    ]);
+    expect(
+      events.filter((event) => "childThreadId" in event).every((event) => event.childThreadId === "sess-historical-1"),
+    ).toBe(true);
+  });
+
+  it("preserves restored child policy and rejects role, model, tool, or nesting escalation", () => {
+    let factoryCalls = 0;
+    const registry = new AgentRegistry(
+      makeCollabDeps({
+        sessionManagerFactory: (config) => {
+          factoryCalls++;
+          return makeMockSessionManagerFactory(makeAssistant("unexpected"))!(config);
+        },
+      }),
+    );
+    registry.restoreAgent("sess-readonly-1", "ReadonlyBot", {
+      agentType: "explore",
+      modelClass: "lite",
+      allowedTools: ["read"],
+      allowNestedAgents: false,
+    });
+
+    const attempts = [
+      { agentType: "general", modelClass: "lite" as const, allowedTools: ["read"], allowNestedAgents: false },
+      { agentType: "explore", modelClass: "general" as const, allowedTools: ["read"], allowNestedAgents: false },
+      { agentType: "explore", modelClass: "lite" as const, allowedTools: ["read", "edit"], allowNestedAgents: false },
+      { agentType: "explore", modelClass: "lite" as const, allowedTools: ["read"], allowNestedAgents: true },
+    ];
+
+    for (const policy of attempts) {
+      expect(() =>
+        registry.spawn({
+          prompt: "follow up",
+          description: "continue",
+          resumeId: "sess-readonly-1",
+          ...policy,
+        }),
+      ).toThrow(/immutable policy/);
+    }
+    expect(factoryCalls).toBe(0);
+  });
+
+  it("applies the immutable restored policy when resume omits policy fields", async () => {
+    let inspectedAgent: RuntimeAgent | undefined;
+    const events: AgentEvent[] = [];
+    const inspectingFactory = makeInspectingSessionManagerFactory((agent) => {
+      inspectedAgent = agent;
+    });
+    const registry = new AgentRegistry(
+      makeCollabDeps({
+        model: { provider: "openai", modelId: "gpt-5.6-sol" },
+        parentTools: [makeTool("read"), makeTool("edit"), makeTool("spawn_agent")],
+        onCollabEvent: (event) => events.push(event),
+        sessionManagerFactory: (config) =>
+          Object.assign(inspectingFactory(config), {
+            resume: async () => true,
+          }),
+      }),
+    );
+    registry.restoreAgent("sess-readonly-2", "ReadonlyBot", {
+      agentType: "explore",
+      modelClass: "lite",
+      allowedTools: ["read"],
+      allowNestedAgents: false,
+    });
+
+    const resumed = registry.spawn({
+      prompt: "follow up",
+      description: "continue",
+      resumeId: "sess-readonly-2",
+    });
+    await registry.wait([resumed.threadId], 5000);
+
+    expect(inspectedAgent?.model.modelId).toBe("gpt-5.6-luna");
+    expect(inspectedAgent?.tools.map((tool) => tool.name)).toEqual(["read"]);
+    expect(inspectedAgent?.systemPrompt).toContainEqual({
+      label: "nested_subagent_policy",
+      content:
+        "Nested sub-agent delegation is disabled for this run. Do not call spawn_agent, wait, send_input, or close_agent, and do not attempt to coordinate additional sub-agents.",
+    });
+    expect(events).toContainEqual(expect.objectContaining({ type: "collab_spawn_begin", agentType: "explore" }));
+  });
+
+  it("does not discard a restored policy when its original agent type is unavailable", () => {
+    let factoryCalls = 0;
+    const registry = new AgentRegistry(
+      makeCollabDeps({
+        sessionManagerFactory: (config) => {
+          factoryCalls++;
+          return makeMockSessionManagerFactory(makeAssistant("unexpected"))!(config);
+        },
+      }),
+    );
+    registry.restoreAgent("sess-retired-role", "RetiredBot", {
+      agentType: "retired-readonly-role",
+      modelClass: "lite",
+      allowedTools: ["read"],
+      allowNestedAgents: false,
+    });
+
+    expect(() =>
+      registry.spawn({
+        prompt: "follow up",
+        description: "continue",
+        resumeId: "sess-retired-role",
+      }),
+    ).toThrow(/Unknown or unavailable agent type: retired-readonly-role/);
+    expect(factoryCalls).toBe(0);
+  });
+
+  it("compares an immutable resume tool allowlist as a normalized set", async () => {
+    let inspectedAgent: RuntimeAgent | undefined;
+    const inspectingFactory = makeInspectingSessionManagerFactory((agent) => {
+      inspectedAgent = agent;
+    });
+    const registry = new AgentRegistry(
+      makeCollabDeps({
+        parentTools: [makeTool("read"), makeTool("grep"), makeTool("edit")],
+        sessionManagerFactory: (config) =>
+          Object.assign(inspectingFactory(config), {
+            resume: async () => true,
+          }),
+      }),
+    );
+    registry.restoreAgent("sess-tool-set", "SetBot", {
+      agentType: "explore",
+      modelClass: "lite",
+      allowedTools: ["read", "grep"],
+      allowNestedAgents: false,
+    });
+
+    for (const allowedTools of [
+      ["read", "grep", "edit"],
+      ["read", "edit"],
+    ]) {
+      expect(() =>
+        registry.spawn({
+          prompt: "follow up",
+          description: "continue",
+          resumeId: "sess-tool-set",
+          allowedTools,
+        }),
+      ).toThrow(/immutable policy/);
+    }
+
+    const resumed = registry.spawn({
+      prompt: "follow up",
+      description: "continue",
+      resumeId: "sess-tool-set",
+      allowedTools: ["grep", "read", "grep"],
+    });
+    await registry.wait([resumed.threadId], 5000);
+
+    expect(inspectedAgent?.tools.map((tool) => tool.name)).toEqual(["read", "grep"]);
+  });
+
+  it("rejects resuming a child that is still active", async () => {
+    const registry = new AgentRegistry(
+      makeCollabDeps({
+        sessionManagerFactory: makeMockSessionManagerFactory(makeAssistant("finished")),
+      }),
+    );
+    const active = registry.spawn({ prompt: "first task", description: "active", agentType: "general" });
+
+    expect(() =>
+      registry.spawn({
+        prompt: "overlapping follow-up",
+        description: "must not replace active entry",
+        agentType: "general",
+        resumeId: active.threadId,
+      }),
+    ).toThrow(/Cannot resume active agent/);
+
+    await registry.wait([active.threadId], 5000);
+  });
+
+  it("reports an error instead of creating a replacement when the resumed session is missing", async () => {
+    let createCalls = 0;
+    const registry = new AgentRegistry(
+      makeCollabDeps({
+        sessionManagerFactory: (config) => {
+          const manager = makeMockSessionManagerFactory(makeAssistant("must not run"))!(config);
+          return Object.assign(manager, {
+            create: async () => {
+              createCalls++;
+            },
+            resume: async () => false,
+          });
+        },
+      }),
+    );
+    registry.restoreAgent("sess-missing-1", "MissingBot");
+
+    const resumed = registry.spawn({
+      prompt: "follow up",
+      description: "continue",
+      agentType: "general",
+      resumeId: "sess-missing-1",
+    });
+    const { status } = await registry.wait([resumed.threadId], 5000);
+
+    expect(status[resumed.threadId]).toEqual({
+      kind: "errored",
+      error: "Unable to resume agent session: sess-missing-1",
+    });
+    expect(createCalls).toBe(0);
+  });
+
+  it("rejects an unsafe restored resume id before constructing a session manager", () => {
+    let factoryCalls = 0;
+    const registry = new AgentRegistry(
+      makeCollabDeps({
+        sessionManagerFactory: (config) => {
+          factoryCalls++;
+          return makeMockSessionManagerFactory(makeAssistant("unexpected"))!(config);
+        },
+      }),
+    );
+    registry.restoreAgent("../../untrusted", "UnsafeBot");
+
+    expect(() =>
+      registry.spawn({
+        prompt: "follow up",
+        description: "continue",
+        agentType: "general",
+        resumeId: "../../untrusted",
+      }),
+    ).toThrow(/Invalid resume target/);
+    expect(factoryCalls).toBe(0);
+  });
+
+  it("rejects an unknown resume target before constructing a session manager", () => {
+    let factoryCalls = 0;
+    const registry = new AgentRegistry(
+      makeCollabDeps({
+        sessionManagerFactory: (config) => {
+          factoryCalls++;
+          return makeMockSessionManagerFactory(makeAssistant("unexpected"))!(config);
+        },
+      }),
+    );
+
+    expect(() =>
+      registry.spawn({
+        prompt: "follow up",
+        description: "continue",
+        agentType: "general",
+        resumeId: "missing-session-1",
+      }),
+    ).toThrow(/Unknown resume target/);
+    expect(factoryCalls).toBe(0);
   });
 
   it("getKnownAgents reflects final completion after a timed out wait", async () => {

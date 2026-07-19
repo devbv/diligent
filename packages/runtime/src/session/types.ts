@@ -33,6 +33,11 @@ export function generateSessionId(): string {
   return `${ts}${counter}-${rand}`;
 }
 
+/** Whether an externally supplied session ID is a safe single path segment. */
+export function isSafeSessionId(sessionId: string): boolean {
+  return sessionId.length <= 255 && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(sessionId);
+}
+
 // --- Session Header (first line of JSONL) ---
 
 export interface SessionHeader {
@@ -186,12 +191,10 @@ export interface SessionManagerConfig {
   /** When spawned as a sub-agent, identity info persisted in session header */
   collabMeta?: CollabSessionMeta;
   /**
-   * Called after each successful turn (normal completion, not abort or error).
-   * Return `{ continueWith }` to re-run the agent with a follow-up message
-   * (e.g. when a Stop hook blocks). On re-runs, `isRerun` is true so hooks
-   * can set `stop_hook_active` and avoid infinite loops.
+   * Runs external Stop lifecycle work after a successful turn (not abort or error).
+   * The callback is awaited, but its output cannot add messages or re-run the model.
    */
-  onStop?: (context: Message[], isRerun: boolean) => Promise<{ continueWith?: Message } | undefined>;
+  onStop?: (context: Message[]) => Promise<void>;
   /**
    * Called after each session entry is durably appended to the JSONL file.
    * Fire-and-forget — must never block or throw into the write path. Used to

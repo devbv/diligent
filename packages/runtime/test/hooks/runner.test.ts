@@ -4,7 +4,13 @@ import { describe, expect, test } from "bun:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HookInput, PluginHookFn } from "../../src/hooks/runner";
-import { getLastAssistantMessage, getTurnUsage, runHooks, runPluginHooks } from "../../src/hooks/runner";
+import {
+  getLastAssistantMessage,
+  getTurnUsage,
+  runHooks,
+  runLifecycleHooks,
+  runPluginHooks,
+} from "../../src/hooks/runner";
 
 const FIXTURE_CWD = tmpdir();
 
@@ -194,6 +200,80 @@ describe("runPluginHooks", () => {
 
     await Bun.sleep(150);
     expect(completed).toBe(true);
+  });
+});
+
+describe("runLifecycleHooks", () => {
+  test("waits for every sync hook while ignoring blocking output and isolated failures", async () => {
+    const calls: string[] = [];
+    let releaseLastHook: (() => void) | undefined;
+    const lastHookReleased = new Promise<void>((resolve) => {
+      releaseLastHook = resolve;
+    });
+
+    const blockingHook: PluginHookFn = async () => {
+      calls.push("blocking");
+      return { blocked: true, reason: "lifecycle output is not model feedback" };
+    };
+    const failingHook: PluginHookFn = async () => {
+      calls.push("failing");
+      throw new Error("isolated lifecycle failure");
+    };
+    const waitingHook: PluginHookFn = async () => {
+      calls.push("waiting");
+      await lastHookReleased;
+      calls.push("completed");
+      return { additionalContext: "also ignored" };
+    };
+
+    let settled = false;
+    const run = runLifecycleHooks([], [blockingHook, failingHook, waitingHook], BASE_INPUT, FIXTURE_CWD).then(() => {
+      settled = true;
+    });
+
+    await Bun.sleep(10);
+    expect(calls).toEqual(["blocking", "failing", "waiting"]);
+    expect(settled).toBe(false);
+
+    releaseLastHook?.();
+    await run;
+    expect(calls).toEqual(["blocking", "failing", "waiting", "completed"]);
+  });
+
+  test("fires async plugin hooks without waiting for their result", async () => {
+    let completed = false;
+    const asyncHook: PluginHookFn = async () => {
+      await Bun.sleep(100);
+      completed = true;
+      return { blocked: true, reason: "ignored" };
+    };
+    asyncHook.mode = "async";
+
+    const startedAt = Date.now();
+    await runLifecycleHooks([], [asyncHook], BASE_INPUT, FIXTURE_CWD);
+
+    expect(Date.now() - startedAt).toBeLessThan(80);
+    expect(completed).toBe(false);
+    await Bun.sleep(150);
+    expect(completed).toBe(true);
+  });
+
+  test("runs later shell lifecycle hooks after an earlier hook returns a blocking exit code", async () => {
+    const markerPath = join(FIXTURE_CWD, `diligent-stop-lifecycle-${crypto.randomUUID()}`);
+    try {
+      await runLifecycleHooks(
+        [handler('echo "ignored" >&2; exit 2'), handler(`echo "ran" > "${markerPath}"`)],
+        [],
+        BASE_INPUT,
+        FIXTURE_CWD,
+      );
+
+      expect(await Bun.file(markerPath).text()).toContain("ran");
+    } finally {
+      await Bun.file(markerPath)
+        .delete()
+        .catch(() => {});
+    }
   });
 });
 

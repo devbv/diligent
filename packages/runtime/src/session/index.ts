@@ -28,4 +28,4 @@ export type {
   SessionManagerConfig,
   SessionMessageEntry,
 } from "./types";
-export { generateEntryId, generateSessionId, SESSION_VERSION } from "./types";
+export { generateEntryId, generateSessionId, isSafeSessionId, SESSION_VERSION } from "./types";

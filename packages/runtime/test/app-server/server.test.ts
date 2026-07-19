@@ -202,7 +202,7 @@ function makeFactoryRuntimeConfig(overrides?: {
 }
 
 describe("DiligentAppServer", () => {
-  it("passes ChatGPT provider plan type to Stop plugin hooks", async () => {
+  it("waits for sync Stop hooks, passes provider metadata, and ignores lifecycle output", async () => {
     const projectRoot = await mkdtemp(join(process.env.TMPDIR ?? "/tmp", "diligent-app-server-plan-type-"));
     const capturePath = join(projectRoot, "stop-input.json");
     const pluginRoot = join(projectRoot, "node_modules", "@test", "plan-hook");
@@ -214,7 +214,7 @@ describe("DiligentAppServer", () => {
       join(pluginRoot, "index.js"),
       `export async function onStop(input) {
   await Bun.write(process.env.TEST_STOP_INPUT_PATH, JSON.stringify(input));
-  return {};
+  return { blocked: true, reason: "lifecycle output must not trigger another model turn" };
 }
 `,
     );
@@ -245,7 +245,7 @@ describe("DiligentAppServer", () => {
         authStore,
       });
 
-      await (
+      const result = await (
         server as unknown as {
           runStopHooksFor(info: {
             sessionId: string;
@@ -256,8 +256,7 @@ describe("DiligentAppServer", () => {
             effort: "medium";
             userId?: string;
             context: Array<Record<string, unknown>>;
-            isRerun: boolean;
-          }): Promise<void>;
+          }): Promise<unknown>;
         }
       ).runStopHooksFor({
         sessionId: "session-1",
@@ -277,11 +276,15 @@ describe("DiligentAppServer", () => {
             timestamp: Date.now(),
           },
         ],
-        isRerun: false,
       });
 
-      const input = JSON.parse(await readFile(capturePath, "utf-8")) as { provider_plan_type?: string };
+      const input = JSON.parse(await readFile(capturePath, "utf-8")) as {
+        provider_plan_type?: string;
+        stop_hook_active?: boolean;
+      };
+      expect(result).toBeUndefined();
       expect(input.provider_plan_type).toBe("pro");
+      expect(input).not.toHaveProperty("stop_hook_active");
     } finally {
       if (originalCapturePath === undefined) {
         delete process.env.TEST_STOP_INPUT_PATH;
@@ -2609,7 +2612,104 @@ describe("DiligentAppServer", () => {
     }
   });
 
-  it("emits thread status busy->idle around manual thread compaction", async () => {
+  it("emits adopted manual-compaction notifications between busy and idle with returned payloads", async () => {
+    const projectRoot = await mkdtemp(join(process.env.TMPDIR ?? "/tmp", "diligent-app-server-"));
+
+    const server = new DiligentAppServer({
+      cwd: projectRoot,
+      resolvePaths: async (cwd) => ensureDiligentDir(cwd),
+      createAgent: () =>
+        new RuntimeAgent(FAKE_MODEL, [{ label: "base", content: "test" }], [], {
+          effort: "medium",
+          ...fakeConfig(() => {
+            const stream = new EventStream(
+              (event) => event.type === "done",
+              (event) => ({ message: (event as { message: unknown }).message }),
+            );
+            return stream as never;
+          }),
+        }),
+    });
+
+    const connection = connectTestPeer(server);
+
+    try {
+      const start = await server.handleRequest(TEST_CONNECTION_ID, {
+        id: 298,
+        method: "thread/start",
+        params: { cwd: projectRoot },
+      });
+      const threadId = (readResult(start) as { threadId: string }).threadId;
+      const adopted = {
+        compacted: true,
+        entryCount: 7,
+        tokensBefore: 60_000,
+        tokensAfter: 12_000,
+        summary: "adopted continuity summary",
+      };
+
+      const runtime = (
+        server as unknown as { threads: Map<string, { manager: { compactNow: () => Promise<unknown> } }> }
+      ).threads.get(threadId);
+      if (!runtime) throw new Error("missing runtime");
+      runtime.manager.compactNow = mock(async () => adopted);
+
+      const response = await server.handleRequest(TEST_CONNECTION_ID, {
+        id: 299,
+        method: "thread/compact/start",
+        params: { threadId },
+      });
+      expect(readResult(response)).toEqual(adopted);
+
+      const notifications = connection.notifications.filter(
+        (notification) => "threadId" in notification.params && notification.params.threadId === threadId,
+      );
+      const busyIndex = notifications.findIndex(
+        (notification) =>
+          notification.method === DILIGENT_SERVER_NOTIFICATION_METHODS.THREAD_STATUS_CHANGED &&
+          notification.params.status === "busy",
+      );
+      const startedIndex = notifications.findIndex(
+        (notification) => notification.method === DILIGENT_SERVER_NOTIFICATION_METHODS.THREAD_COMPACTION_STARTED,
+      );
+      const compactedIndex = notifications.findIndex(
+        (notification) => notification.method === DILIGENT_SERVER_NOTIFICATION_METHODS.THREAD_COMPACTED,
+      );
+      const idleIndex = notifications.findIndex(
+        (notification) =>
+          notification.method === DILIGENT_SERVER_NOTIFICATION_METHODS.THREAD_STATUS_CHANGED &&
+          notification.params.status === "idle",
+      );
+
+      expect(busyIndex).toBeGreaterThan(-1);
+      expect(startedIndex).toBeGreaterThan(busyIndex);
+      expect(compactedIndex).toBeGreaterThan(startedIndex);
+      expect(idleIndex).toBeGreaterThan(compactedIndex);
+
+      const startedNotification = notifications[startedIndex];
+      if (startedNotification?.method === DILIGENT_SERVER_NOTIFICATION_METHODS.THREAD_COMPACTION_STARTED) {
+        expect(startedNotification.params).toEqual({ threadId, estimatedTokens: adopted.tokensBefore });
+      } else {
+        throw new Error("missing thread/compaction/started notification");
+      }
+      const compactedNotification = notifications[compactedIndex];
+      if (compactedNotification?.method === DILIGENT_SERVER_NOTIFICATION_METHODS.THREAD_COMPACTED) {
+        expect(compactedNotification.params).toEqual({
+          threadId,
+          entryCount: adopted.entryCount,
+          tokensBefore: adopted.tokensBefore,
+          tokensAfter: adopted.tokensAfter,
+          summary: adopted.summary,
+        });
+      } else {
+        throw new Error("missing thread/compacted notification");
+      }
+    } finally {
+      await rm(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("brackets below-threshold manual compaction with busy/idle and no compaction notifications", async () => {
     const projectRoot = await mkdtemp(join(process.env.TMPDIR ?? "/tmp", "diligent-app-server-"));
 
     const server = new DiligentAppServer({
@@ -2665,7 +2765,15 @@ describe("DiligentAppServer", () => {
       tokensBefore: number;
       tokensAfter: number;
     };
-    expect(typeof compactResult.compacted).toBe("boolean");
+    expect(compactResult.compacted).toBe(false);
+    expect(
+      connection.notifications.some(
+        (notification) =>
+          (notification.method === DILIGENT_SERVER_NOTIFICATION_METHODS.THREAD_COMPACTION_STARTED ||
+            notification.method === DILIGENT_SERVER_NOTIFICATION_METHODS.THREAD_COMPACTED) &&
+          notification.params.threadId === startResult.threadId,
+      ),
+    ).toBe(false);
 
     const statusEvents = connection.notifications.filter(
       (

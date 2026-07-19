@@ -210,7 +210,6 @@ describe("createStudioRpcToolProvider", () => {
       transcript_path: "/tmp/session.jsonl",
       cwd: "/tmp/project",
       hook_event_name: "Stop",
-      stop_hook_active: false,
     });
 
     expect(calls).toEqual([

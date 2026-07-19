@@ -2,7 +2,7 @@
 import { dirname, join } from "node:path";
 import { getModelInfoList, resolveModel } from "@diligent/core/model-registry";
 import type { ProviderName, SystemSection } from "@diligent/core/provider-contract";
-import type { Tool } from "@diligent/core/tool-contract";
+import type { Tool, ToolOutputFileStore } from "@diligent/core/tool-contract";
 import { createLogger } from "@diligent/logging";
 import {
   EXECUTE_MODE_DISALLOWED_TOOLS,
@@ -23,6 +23,7 @@ import { discoverSkills } from "../skills";
 import { type BundledToolProvider, createBundledAgentLoopHooks } from "../tools/bundled-provider";
 import { buildDefaultTools } from "../tools/defaults";
 import { buildMcpNeedsAuthNote, getMcpManager } from "../tools/mcp";
+import type { PluginDiscoveryMode } from "../tools/plugin-loader";
 import type { ConfigReloadResult, ConsentConfigManager } from "./config-handlers";
 import type { CreateAgentArgs, DiligentAppServerConfig } from "./server";
 
@@ -112,9 +113,19 @@ async function createRuntimeAgent(args: {
   runtimeConfig: RuntimeConfig;
   getPaths: () => Promise<DiligentPaths>;
   bundledToolProviders?: BundledToolProvider[];
+  pluginDiscovery: PluginDiscoveryMode;
   transformTools?: CreateAppServerConfigOptions["transformTools"];
+  toolOutputStore?: ToolOutputFileStore;
 }): Promise<RuntimeAgent> {
-  const { request, runtimeConfig, getPaths, bundledToolProviders, transformTools } = args;
+  const {
+    request,
+    runtimeConfig,
+    getPaths,
+    bundledToolProviders,
+    pluginDiscovery,
+    transformTools,
+    toolOutputStore: selectedOutputStore,
+  } = args;
   const {
     cwd,
     mode,
@@ -148,6 +159,7 @@ async function createRuntimeAgent(args: {
       streamFn: runtimeConfig.streamFunction,
       onChildStop,
       userId,
+      toolOutputStore: selectedOutputStore,
       agentLoopHookFactories: bundledToolProviders
         ?.map((provider) => provider.createAgentLoopHooks)
         .filter((factory) => factory !== undefined),
@@ -158,6 +170,7 @@ async function createRuntimeAgent(args: {
     existingRegistry: existingAgent?.registry,
     host: { approve, ask },
     bundledToolProviders,
+    pluginDiscovery,
     disabledToolNames: runtimeConfig.disabledToolNames,
     provider: model.provider as ProviderName,
     mcpServers: runtimeConfig.diligent.mcpServers,
@@ -221,7 +234,7 @@ async function createRuntimeAgent(args: {
       llmMsgStreamFn: runtimeConfig.streamFunction,
       llmCompactionFn,
       localImageLoader: createLocalImageLoader(cwd),
-      toolOutputStore,
+      toolOutputStore: selectedOutputStore ?? toolOutputStore,
       compaction: {
         reservePercent: runtimeConfig.compaction.reservePercent,
         keepRecentTokens: runtimeConfig.compaction.keepRecentTokens,
@@ -237,7 +250,11 @@ export interface CreateAppServerConfigOptions {
   cwd: string;
   runtimeConfig: RuntimeConfig;
   bundledToolProviders?: BundledToolProvider[];
+  /** Whether plugin assembly includes globally discovered packages (default `global`). */
+  pluginDiscovery?: PluginDiscoveryMode;
   transformTools?: (tools: Tool[], context: { cwd: string; mode: Mode; provider: ProviderName }) => Tool[];
+  /** Optional assembly-owned store for full tool outputs; defaults to the production runtime store. */
+  toolOutputStore?: ToolOutputFileStore;
   /**
    * Optional remote-backed consent manager (e.g. the OVERDARE gateway's `/v1/consent`). When
    * provided, it owns consent state instead of local `config.jsonc`; `refresh()` is awaited from
@@ -253,7 +270,16 @@ export interface CreateAppServerConfigOptions {
 }
 
 export function createAppServerConfig(opts: CreateAppServerConfigOptions): DiligentAppServerConfig {
-  const { cwd, runtimeConfig, bundledToolProviders = [], transformTools, consentBackend, overrides } = opts;
+  const {
+    cwd,
+    runtimeConfig,
+    bundledToolProviders = [],
+    pluginDiscovery = "global",
+    transformTools,
+    toolOutputStore,
+    consentBackend,
+    overrides,
+  } = opts;
   const modelInfoList = getModelInfoList();
   const initialEffort = runtimeConfig.effort;
   const experimentDefinitions = runtimeConfig.experimentDefinitions ?? [];
@@ -309,6 +335,7 @@ export function createAppServerConfig(opts: CreateAppServerConfigOptions): Dilig
 
   const config: DiligentAppServerConfig = {
     cwd,
+    pluginDiscovery,
     defaultEffort: initialEffort,
     getInitializeResult: async () => {
       await refreshPrivacyPolicyUrl(); // resolve the versioned privacy-policy URL (3s-bounded, cached)
@@ -324,7 +351,15 @@ export function createAppServerConfig(opts: CreateAppServerConfigOptions): Dilig
     },
     resolvePaths: (requestCwd) => ensureDiligentDir(requestCwd),
     createAgent: (args: CreateAgentArgs): Promise<RuntimeAgent> =>
-      createRuntimeAgent({ request: args, runtimeConfig, getPaths, bundledToolProviders, transformTools }),
+      createRuntimeAgent({
+        request: args,
+        runtimeConfig,
+        getPaths,
+        bundledToolProviders,
+        pluginDiscovery,
+        transformTools,
+        toolOutputStore,
+      }),
     streamFunction: runtimeConfig.streamFunction,
     createNativeCompaction: (provider: ProviderName) =>
       runtimeConfig.providerManager.createNativeCompactionForProvider(provider),

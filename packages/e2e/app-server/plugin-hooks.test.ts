@@ -1,4 +1,4 @@
-// @summary App-server e2e tests for plugin hook blocking, context, errors, and stop-hook re-entry
+// @summary App-server e2e tests for plugin hook blocking, context, errors, and Stop notification
 import { afterEach, describe, expect, test } from "bun:test";
 import { access, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -10,7 +10,6 @@ import { createTestServer } from "./helpers/server-factory";
 
 const PLUGIN_NAME = "hook-test-plugin";
 const ERROR_HOOK_PLUGIN_NAME = "error-hook-plugin";
-const RERUN_HOOK_PLUGIN_NAME = "rerun-hook-plugin";
 
 let tmpDir: string;
 let client: ProtocolTestClient;
@@ -135,34 +134,6 @@ describe("plugin-hooks", () => {
 
     const turnCompleted = turnNotifs.find((n) => n.method === DILIGENT_SERVER_NOTIFICATION_METHODS.TURN_COMPLETED);
     expect(turnCompleted).toBeTruthy();
-  });
-
-  test("Stop hook blocking triggers re-run with stop_hook_active=true (re-entrance guard)", async () => {
-    await setupWithPlugin(RERUN_HOOK_PLUGIN_NAME);
-    const threadId = await client.initAndStartThread(tmpDir);
-
-    await client.sendTurnAndWait(threadId, "hello");
-
-    // Wait for thread to reach idle (both the original turn and the stop-hook re-run must finish)
-    await client.waitFor(
-      (n) =>
-        n.method === DILIGENT_SERVER_NOTIFICATION_METHODS.THREAD_STATUS_CHANGED &&
-        (n.params as { status: string }).status === "idle",
-      8000,
-    );
-
-    // The rerun-hook-plugin writes a JSON array of all Stop hook invocations.
-    const markerPath = join(tmpDir, "rerun-hook-calls");
-    await expect(access(markerPath)).resolves.toBeNull();
-
-    const calls = JSON.parse(await readFile(markerPath, "utf8")) as Array<{ stop_hook_active: boolean }>;
-
-    // First call: stop_hook_active=false (initial Stop hook invocation)
-    expect(calls[0]?.stop_hook_active).toBe(false);
-    // Second call: stop_hook_active=true (re-run triggered by the block)
-    expect(calls[1]?.stop_hook_active).toBe(true);
-    // No further calls (guard prevents infinite loop)
-    expect(calls).toHaveLength(2);
   });
 
   test("Stop hook fires after turn completion and writes marker file", async () => {

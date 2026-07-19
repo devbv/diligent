@@ -147,6 +147,75 @@ export function makeMockSessionManagerFactory(
   };
 }
 
+export interface DeferredChildControl {
+  started: Promise<void>;
+  complete(output: string): void;
+}
+
+/** Create child managers whose completion order is controlled explicitly by a test. */
+export function makeDeferredSessionManagerFactory(): {
+  factory: NonNullable<CollabToolDeps["sessionManagerFactory"]>;
+  controls: DeferredChildControl[];
+} {
+  let counter = 0;
+  const controls: DeferredChildControl[] = [];
+  const factory: NonNullable<CollabToolDeps["sessionManagerFactory"]> = () => {
+    const sessionId = `deferred-session-${++counter}`;
+    const listeners = new Set<(event: AgentEvent) => void>();
+    let finishRun: (() => void) | undefined;
+    let markStarted: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    controls.push({
+      started,
+      complete(output: string) {
+        if (!finishRun) throw new Error(`Deferred child ${sessionId} has not started.`);
+        const assistant = makeAssistant(output);
+        for (const listener of listeners) {
+          listener({ type: "message_start", itemId: `${sessionId}-item`, message: assistant });
+          listener({ type: "message_end", itemId: `${sessionId}-item`, message: assistant });
+        }
+        finishRun();
+      },
+    });
+
+    return {
+      entries: [],
+      leafId: null,
+      create: async () => {},
+      resume: async () => false,
+      list: async () => [],
+      getContext: () => [],
+      subscribe: (listener: (event: AgentEvent) => void) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+      run: async () => {
+        await new Promise<void>((resolve) => {
+          finishRun = resolve;
+          markStarted?.();
+        });
+      },
+      waitForWrites: async () => {},
+      steer: () => {},
+      hasPendingMessages: () => false,
+      popPendingMessages: () => null,
+      appendModeChange: () => {},
+      get sessionPath() {
+        return null;
+      },
+      get sessionId() {
+        return sessionId;
+      },
+      get entryCount() {
+        return 0;
+      },
+    } as unknown as SessionManager;
+  };
+  return { factory, controls };
+}
+
 export function makeCollabDeps(overrides: Partial<CollabToolDeps> = {}): CollabToolDeps {
   return {
     cwd: "/tmp/collab-test",

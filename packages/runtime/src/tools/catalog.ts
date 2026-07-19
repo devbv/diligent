@@ -7,7 +7,7 @@ import type { DiligentConfig } from "../config/schema";
 import type { BundledToolProvider } from "./bundled-provider";
 import type { RuntimeToolHost } from "./capabilities";
 import { isImmutableTool } from "./immutable";
-import { discoverGlobalPlugins, loadPlugin } from "./plugin-loader";
+import { discoverGlobalPlugins, loadPlugin, type PluginDiscoveryMode } from "./plugin-loader";
 
 export type ToolStateReason =
   | "enabled"
@@ -68,6 +68,7 @@ export type ToolMapEntry = {
 export interface BuildToolCatalogOptions {
   bundledProviders?: BundledToolProvider[];
   disabledToolNames?: ReadonlySet<string>;
+  pluginDiscovery?: PluginDiscoveryMode;
 }
 
 export interface ProviderToolBatch {
@@ -505,7 +506,7 @@ export async function buildToolCatalog(
 
   // Auto-discover plugins from ~/.diligent/plugins/ and merge with explicit config.
   // Explicit config entries always take precedence (for enable/disable, per-tool toggles, etc.).
-  const discoveredNames = await discoverGlobalPlugins();
+  const discoveredNames = options.pluginDiscovery === "explicit" ? [] : await discoverGlobalPlugins();
   const explicitPackageNames = new Set(explicitPlugins.map((p) => p.package));
   const autoPlugins = discoveredNames
     .filter((name) => !explicitPackageNames.has(name))

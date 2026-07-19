@@ -17,6 +17,12 @@ function makeCtx(): ToolContext {
 describe("edit tools", () => {
   let tmpDir: string;
 
+  test("documents the empty-old-string create mode", () => {
+    const tool = createEditTool();
+    expect(tool.description).toContain("To create a new file");
+    expect(tool.description).toContain("old_string to an empty string");
+  });
+
   beforeEach(async () => {
     tmpDir = await mkdtemp(join(tmpdir(), "edit-test-"));
   });

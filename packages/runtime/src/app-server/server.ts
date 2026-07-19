@@ -24,7 +24,7 @@ import {
   getLastAssistantMessage,
   getTurnUsage,
   type HookInput,
-  runCombinedHooks,
+  runLifecycleHooks,
   runPluginHooks,
 } from "../hooks/runner";
 import type { DiligentPaths } from "../infrastructure";
@@ -48,7 +48,7 @@ import { isRpcNotification, isRpcRequest, isRpcResponse, type RpcPeer } from "..
 import { SessionManager, type SessionManagerConfig } from "../session/manager";
 import type { AppendedEntryInfo } from "../session/types";
 import { type BundledToolProvider, collectBundledHooks } from "../tools/bundled-provider";
-import { collectPluginHooks } from "../tools/plugin-loader";
+import { collectPluginHooks, type PluginDiscoveryMode } from "../tools/plugin-loader";
 import type { UserInputRequest, UserInputResponse } from "../tools/user-input-types";
 import type { ConfigReloadResult, ConsentConfigManager } from "./config-handlers";
 import type { ExperimentConfigManager } from "./experiment-handlers";
@@ -89,9 +89,7 @@ export interface CreateAgentArgs {
   /** The thread's current agent, if one already exists. Passed so createAgent can reuse the registry. */
   existingAgent?: RuntimeAgent;
   /** Called when a child agent's turn completes normally. Propagated to the collab registry. */
-  onChildStop?: (
-    info: ChildStopInfo,
-  ) => Promise<{ continueWith?: import("@diligent/core/message-contract").Message } | undefined>;
+  onChildStop?: (info: ChildStopInfo) => Promise<void>;
   /** User ID propagated to child agent stop hooks. */
   userId?: string;
 }
@@ -100,6 +98,8 @@ export interface DiligentAppServerConfig {
   serverName?: string;
   serverVersion?: string;
   cwd?: string;
+  /** Assembly-owned plugin discovery behavior (default `global`). */
+  pluginDiscovery?: PluginDiscoveryMode;
   getInitializeResult?: () => Record<string, unknown> | Promise<Record<string, unknown>>;
   resolvePaths: (cwd: string) => Promise<DiligentPaths>;
   createAgent: (args: CreateAgentArgs) => RuntimeAgent | Promise<RuntimeAgent>;
@@ -625,14 +625,14 @@ export class DiligentAppServer {
           });
           runtime.agent = newAgent;
           for (const histAgent of runtime.manager.getHistoricalCollabAgents()) {
-            newAgent.registry?.restoreAgent(histAgent.threadId, histAgent.nickname);
+            newAgent.registry?.restoreAgent(histAgent.threadId, histAgent.nickname, histAgent.policy);
           }
         }
         return runtime.agent;
       },
       compaction: this.config.compaction,
       knowledgePath: paths.knowledge,
-      onStop: (context, isRerun) =>
+      onStop: (context) =>
         this.runStopHooksFor({
           sessionId: runtime.manager.sessionId,
           sessionPath: runtime.manager.sessionPath ?? "",
@@ -643,7 +643,6 @@ export class DiligentAppServer {
           permissionMode: runtime.mode,
           userId: runtime.currentTurnUserId,
           context,
-          isRerun,
         }),
       onEntryAppended: (info) => this.runEntryAppendedHooks(runtime, info),
     });
@@ -818,13 +817,14 @@ export class DiligentAppServer {
 
   /**
    * Unified Stop hook runner — called by SessionManager.onStop for both parent and child agents.
-   * Returns `{ continueWith }` when a hook blocks to re-run the agent with the reason.
+   * Stop is an external lifecycle event: sync handlers are awaited, async handlers detach,
+   * and all handler output is ignored rather than fed back to the model.
    */
-  private async runStopHooksFor(
-    info: ChildStopInfo & { permissionMode?: string; userId?: string },
-  ): Promise<{ continueWith?: import("@diligent/core/message-contract").Message } | undefined> {
+  private async runStopHooksFor(info: ChildStopInfo & { permissionMode?: string; userId?: string }): Promise<void> {
     const stopShellHandlers = this.config.hooks?.Stop ?? [];
-    const { onStop: stopPluginHandlers } = await collectPluginHooks(this.config.toolConfig?.getTools(), info.cwd);
+    const { onStop: stopPluginHandlers } = await collectPluginHooks(this.config.toolConfig?.getTools(), info.cwd, {
+      pluginDiscovery: this.config.pluginDiscovery ?? "global",
+    });
     const { onStop: stopBundledHandlers } = collectBundledHooks(this.config.bundledToolProviders);
     const stopHandlers = [...stopPluginHandlers, ...stopBundledHandlers];
 
@@ -838,7 +838,6 @@ export class DiligentAppServer {
       cwd: info.cwd,
       hook_event_name: "Stop",
       permission_mode: info.permissionMode,
-      stop_hook_active: info.isRerun,
       last_assistant_message: getLastAssistantMessage(info.context),
       usage: getTurnUsage(info.context),
       model: info.model,
@@ -848,13 +847,7 @@ export class DiligentAppServer {
       user_id: info.userId,
     };
 
-    const stopResult = await runCombinedHooks(stopShellHandlers, stopHandlers, stopInput, info.cwd);
-
-    if (stopResult.blocked && stopResult.reason) {
-      return {
-        continueWith: { role: "user" as const, content: stopResult.reason, timestamp: Date.now() },
-      };
-    }
+    await runLifecycleHooks(stopShellHandlers, stopHandlers, stopInput, info.cwd);
   }
 
   private buildRequestDispatchContext(): ClientRequestDispatchContext {
@@ -920,7 +913,9 @@ export class DiligentAppServer {
         return this.config.userId ?? userInfo().username;
       },
       getPluginHooks: async (cwd: string) => {
-        const pluginHooks = await collectPluginHooks(this.config.toolConfig?.getTools(), cwd);
+        const pluginHooks = await collectPluginHooks(this.config.toolConfig?.getTools(), cwd, {
+          pluginDiscovery: this.config.pluginDiscovery ?? "global",
+        });
         const bundledHooks = collectBundledHooks(this.config.bundledToolProviders);
         return {
           onUserPromptSubmit: [...pluginHooks.onUserPromptSubmit, ...bundledHooks.onUserPromptSubmit],

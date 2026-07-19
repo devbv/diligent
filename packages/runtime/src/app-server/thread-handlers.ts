@@ -186,21 +186,23 @@ export async function handleThreadCompactStart(
   });
 
   try {
-    await ctx.emit({
-      method: DILIGENT_SERVER_NOTIFICATION_METHODS.THREAD_COMPACTION_STARTED,
-      params: { threadId: runtime.id, estimatedTokens: 0 },
-    });
     const result = await runtime.manager.compactNow();
-    await ctx.emit({
-      method: DILIGENT_SERVER_NOTIFICATION_METHODS.THREAD_COMPACTED,
-      params: {
-        threadId: runtime.id,
-        entryCount: result.entryCount,
-        tokensBefore: result.tokensBefore,
-        tokensAfter: result.tokensAfter,
-        summary: result.summary,
-      },
-    });
+    if (result.compacted) {
+      await ctx.emit({
+        method: DILIGENT_SERVER_NOTIFICATION_METHODS.THREAD_COMPACTION_STARTED,
+        params: { threadId: runtime.id, estimatedTokens: result.tokensBefore },
+      });
+      await ctx.emit({
+        method: DILIGENT_SERVER_NOTIFICATION_METHODS.THREAD_COMPACTED,
+        params: {
+          threadId: runtime.id,
+          entryCount: result.entryCount,
+          tokensBefore: result.tokensBefore,
+          tokensAfter: result.tokensAfter,
+          summary: result.summary,
+        },
+      });
+    }
     return result;
   } catch (error) {
     await ctx.emit({

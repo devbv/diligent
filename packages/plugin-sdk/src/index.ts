@@ -39,12 +39,6 @@ export interface PluginHookInput {
   cwd: string;
   permission_mode?: string;
   user_id?: string;
-  /**
-   * Set to `true` when the current turn was triggered by a Stop hook that returned `blocked: true`.
-   * Plugins should check this field and avoid blocking again to prevent infinite re-run loops.
-   * Only present on Stop hook events; absent on UserPromptSubmit and other events.
-   */
-  stop_hook_active?: boolean;
   /** Token usage for the completed turn. Only present on Stop hook events. */
   usage?: {
     inputTokens: number;
@@ -66,13 +60,13 @@ export interface PluginHookInput {
 }
 
 /**
- * Return value from a plugin lifecycle hook handler.
- * Omitting `blocked` (or returning `{}`) allows the operation to proceed.
+ * Return value from a plugin hook handler. UserPromptSubmit interprets these fields;
+ * Stop is an external lifecycle notification and ignores the entire return value.
  */
 export interface PluginHookResult {
-  /** Return true to block the operation. */
+  /** Return true to block a UserPromptSubmit operation. Ignored for Stop. */
   blocked?: boolean;
-  /** Reason shown to the user when blocked. */
+  /** Reason shown to the user when UserPromptSubmit is blocked. Ignored for Stop. */
   reason?: string;
   /** Text prepended to the conversation context (UserPromptSubmit only). */
   additionalContext?: string;

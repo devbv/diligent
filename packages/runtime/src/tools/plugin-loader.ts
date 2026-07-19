@@ -47,6 +47,12 @@ export interface CollectedPluginHooks {
   onStop: PluginHookFn[];
 }
 
+export type PluginDiscoveryMode = "global" | "explicit";
+
+export interface CollectPluginHooksOptions {
+  pluginDiscovery?: PluginDiscoveryMode;
+}
+
 const pluginHooksCache = new Map<string, CollectedPluginHooks>();
 
 /**
@@ -55,24 +61,27 @@ const pluginHooksCache = new Map<string, CollectedPluginHooks>();
  * Plugins may optionally export:
  *   export async function onUserPromptSubmit(input: PluginHookInput): Promise<PluginHookResult>
  *   export async function onStop(input: PluginHookInput): Promise<PluginHookResult>
+ * UserPromptSubmit interprets its result; Stop is lifecycle-only and ignores its return value.
  *
- * Results are cached per (toolsConfig, cwd) tuple. The cache is invalidated when
- * the serialized config key changes, which happens when plugin list or enabled state changes.
+ * Results are cached per (toolsConfig, cwd, pluginDiscovery) tuple. The cache is invalidated when
+ * the serialized key changes, including plugin list, enabled state, or discovery mode changes.
  *
  * Plugins that fail to load are skipped silently (non-blocking).
  */
 export async function collectPluginHooks(
   toolsConfig: DiligentConfig["tools"],
   cwd: string,
+  options: CollectPluginHooksOptions = {},
 ): Promise<CollectedPluginHooks> {
-  const cacheKey = JSON.stringify({ toolsConfig: toolsConfig ?? null, cwd });
+  const pluginDiscovery = options.pluginDiscovery ?? "global";
+  const cacheKey = JSON.stringify({ toolsConfig: toolsConfig ?? null, cwd, pluginDiscovery });
   const cached = pluginHooksCache.get(cacheKey);
   if (cached) return cached;
 
   const config = toolsConfig ?? {};
   const explicitPlugins = config.plugins ?? [];
 
-  const discoveredNames = await discoverGlobalPlugins();
+  const discoveredNames = pluginDiscovery === "global" ? await discoverGlobalPlugins() : [];
   const explicitPackageNames = new Set(explicitPlugins.map((p) => p.package));
   const autoPlugins = discoveredNames
     .filter((name) => !explicitPackageNames.has(name))

@@ -14,7 +14,12 @@ import {
   getBuiltinAgentDefinitions,
 } from "../../src/agent/agent-types";
 import { resolveAvailableAgentDefinitions } from "../../src/agent/resolved-agent";
-import { makeAssistant, makeCollabDeps, makeMockSessionManagerFactory } from "../helpers/collab";
+import {
+  makeAssistant,
+  makeCollabDeps,
+  makeDeferredSessionManagerFactory,
+  makeMockSessionManagerFactory,
+} from "../helpers/collab";
 
 function makeCtx(updates: string[] = []): ToolContext {
   return {
@@ -54,6 +59,16 @@ describe("spawn_agent tool", () => {
     expect(received).toMatchObject({ prompt: "task", description: "", agentType: "general" });
   });
 
+  it("does not materialize the general default when a resume omits agent_type", () => {
+    const { tools } = createCollabTools(makeCollabDeps());
+    const spawnTool = tools.find((t) => t.name === "spawn_agent")!;
+    const parsed = spawnTool.parameters.safeParse({ message: "continue", resume_id: "child-session" });
+
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) throw parsed.error;
+    expect(parsed.data).not.toHaveProperty("agent_type");
+  });
+
   it("treats empty allowed_tools as inherit-all", async () => {
     let received: Parameters<AgentRegistry["spawn"]>[0] | undefined;
     const registry = {
@@ -70,18 +85,26 @@ describe("spawn_agent tool", () => {
   });
 
   it("passes resume_id when provided", async () => {
-    let received: Parameters<AgentRegistry["spawn"]>[0] | undefined;
-    const registry = {
-      spawn: (params: Parameters<AgentRegistry["spawn"]>[0]) => {
-        received = params;
-        return { threadId: "thread-1", nickname: "Acacia" };
-      },
-    } as unknown as AgentRegistry;
-    const spawnTool = createSpawnAgentTool(registry, getBuiltinAgentDefinitions());
-
-    await spawnTool.execute({ message: "resume this", agent_type: "general", resume_id: "some-session-id" }, makeCtx());
-
-    expect(received?.resumeId).toBe("some-session-id");
+    const factory = makeMockSessionManagerFactory(makeAssistant("resumed"));
+    const wrappedFactory: typeof factory = (config) => {
+      const manager = factory!(config);
+      manager.resume = async ({ sessionId }) => sessionId === "some-session-id";
+      return manager;
+    };
+    const { tools, registry } = createCollabTools(
+      makeCollabDeps({
+        sessionManagerFactory: wrappedFactory,
+      }),
+    );
+    registry.restoreAgent("some-session-id", "LegacyAgent");
+    const spawnTool = tools.find((t) => t.name === "spawn_agent")!;
+    const result = await spawnTool.execute(
+      { message: "resume this", agent_type: "general", resume_id: "some-session-id" },
+      makeCtx(),
+    );
+    const parsed = JSON.parse(result.output);
+    expect(parsed.thread_id).toBe("some-session-id");
+    expect(parsed.nickname).toBe("LegacyAgent");
   });
 
   it("exposes detailed role guidance in tool description", () => {
@@ -206,6 +229,34 @@ describe("wait tool", () => {
     await waitTool.execute({ ids: ["thread-1"] }, makeCtx(updates));
 
     expect(updates).toEqual(["Acacia running"]);
+  });
+
+  it("orders status keys and summary lines by requested ids, not reverse completion", async () => {
+    const deferred = makeDeferredSessionManagerFactory();
+    const { tools, registry } = createCollabTools(
+      makeCollabDeps({
+        sessionManagerFactory: deferred.factory,
+      }),
+    );
+    const waitTool = tools.find((tool) => tool.name === "wait")!;
+    const first = registry.spawn({ prompt: "first", description: "first", agentType: "general" });
+    const second = registry.spawn({ prompt: "second", description: "second", agentType: "general" });
+    await Promise.all(deferred.controls.map((control) => control.started));
+
+    const waiting = waitTool.execute({ ids: [second.threadId, first.threadId] }, makeCtx());
+    deferred.controls[0]!.complete("first output");
+    await Promise.resolve();
+    deferred.controls[1]!.complete("second output");
+    const parsed = JSON.parse((await waiting).output) as {
+      status: Record<string, { kind: string; output?: string }>;
+      summary: string[];
+    };
+
+    expect(Object.keys(parsed.status)).toEqual([second.threadId, first.threadId]);
+    expect(parsed.summary).toEqual([
+      `${registry.getNickname(second.threadId)}: Completed — second output`,
+      `${registry.getNickname(first.threadId)}: Completed — first output`,
+    ]);
   });
 
   it("preserves full nested agent output while keeping summary concise", async () => {

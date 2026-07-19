@@ -6,7 +6,7 @@ import type { AgentRegistry } from "./registry";
 import type { AgentStatus } from "./types";
 
 const DEFAULT_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
-const MIN_TIMEOUT_MS = 1 * 60 * 1000; // 5 minutes
+const MIN_TIMEOUT_MS = 1 * 60 * 1000; // 1 minute
 const MAX_TIMEOUT_MS = 60 * 60 * 1000; // 1 hour
 
 const WaitParams = z.object({
@@ -50,7 +50,8 @@ export function createWaitTool(registry: AgentRegistry): Tool<typeof WaitParams>
 
       // Build human-readable summary
       const lines: string[] = [];
-      for (const [id, s] of Object.entries(status)) {
+      for (const id of args.ids) {
+        const s = status[id]!;
         const nickname = registry.getNickname(id) ?? id;
         lines.push(summarizeStatus(s, nickname));
       }

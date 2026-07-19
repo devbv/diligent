@@ -1,4 +1,4 @@
-// @summary Executes UserPromptSubmit and Stop lifecycle hooks as shell commands or plugin functions
+// @summary Executes result-aware UserPromptSubmit hooks and result-ignoring Stop lifecycle hooks
 
 import type { DiligentConfig } from "../config/schema";
 
@@ -17,9 +17,9 @@ export interface HookInput {
 
 export interface HookResult {
   blocked: boolean;
-  /** Reason shown to user / sent back to Claude when blocked */
+  /** Reason shown when a UserPromptSubmit hook blocks the prompt; ignored for Stop. */
   reason?: string;
-  /** Plain text or additionalContext field to prepend to the conversation */
+  /** Context prepended for UserPromptSubmit; ignored for Stop. */
   additionalContext?: string;
 }
 
@@ -78,7 +78,7 @@ async function runSingleHook(handler: HookHandler, input: HookInput, cwd: string
     clearTimeout(timeoutHandle);
   }
 
-  // Exit 2: blocking error — stderr is the reason
+  // Exit 2: structured blocking result. Only UserPromptSubmit dispatch interprets it.
   if (exitCode === 2) {
     return {
       blocked: true,
@@ -86,7 +86,7 @@ async function runSingleHook(handler: HookHandler, input: HookInput, cwd: string
     };
   }
 
-  // Non-zero (other than 2): non-blocking error — ignore and continue
+  // Non-zero (other than 2): isolated error — ignore and continue.
   if (exitCode !== 0) {
     return { blocked: false };
   }
@@ -95,7 +95,7 @@ async function runSingleHook(handler: HookHandler, input: HookInput, cwd: string
   const trimmed = stdoutText.trim();
   if (!trimmed) return { blocked: false };
 
-  // Plain text (non-JSON) → additional context
+  // Plain text becomes UserPromptSubmit context; Stop lifecycle dispatch ignores it.
   if (!trimmed.startsWith("{")) {
     return { blocked: false, additionalContext: trimmed };
   }
@@ -110,7 +110,7 @@ async function runSingleHook(handler: HookHandler, input: HookInput, cwd: string
   const blocked = parsed.decision === "block";
   const reason = typeof parsed.reason === "string" ? parsed.reason : undefined;
 
-  // additionalContext: top-level or nested in hookSpecificOutput
+  // UserPromptSubmit context may be top-level or nested in hookSpecificOutput.
   const hookSpecific = parsed.hookSpecificOutput as Record<string, unknown> | undefined;
   const additionalContext =
     typeof parsed.additionalContext === "string"
@@ -129,7 +129,7 @@ function runAsyncPluginHook(handler: PluginHookFn, input: HookInput): void {
   void handler(input).catch(() => {});
 }
 
-/** Run plugin hook handlers sequentially; stop and return on first block. Errors are non-blocking. */
+/** Run result-aware plugin hooks for UserPromptSubmit. Errors are non-blocking. */
 export async function runPluginHooks(handlers: PluginHookFn[], input: HookInput): Promise<HookResult> {
   let combinedContext: string | undefined;
   for (const handler of handlers) {
@@ -153,8 +153,8 @@ export async function runPluginHooks(handlers: PluginHookFn[], input: HookInput)
 }
 
 /**
- * Runs shell command handlers followed by plugin handlers (shell-then-plugin dispatch).
- * Stops on first block. Merges additionalContext from both stages when not blocked.
+ * Runs result-aware UserPromptSubmit shell hooks followed by plugin hooks.
+ * Stops on the first block and merges context from both stages when allowed.
  */
 export async function runCombinedHooks(
   shellHandlers: HookHandler[],
@@ -181,7 +181,39 @@ export async function runCombinedHooks(
   return result;
 }
 
-/** Run shell command handlers sequentially; stop and return on first block. */
+/**
+ * Runs external lifecycle hooks without interpreting their output as model feedback.
+ * Sync hooks are awaited, async hooks are detached, and individual failures never
+ * prevent later lifecycle handlers from running.
+ */
+export async function runLifecycleHooks(
+  shellHandlers: HookHandler[],
+  pluginHandlers: PluginHookFn[],
+  input: HookInput,
+  cwd: string,
+): Promise<void> {
+  for (const handler of shellHandlers) {
+    try {
+      await runSingleHook(handler, input, cwd);
+    } catch {
+      // Lifecycle hook failures are isolated from the turn and later hooks.
+    }
+  }
+
+  for (const handler of pluginHandlers) {
+    if (handler.mode === "async") {
+      runAsyncPluginHook(handler, input);
+      continue;
+    }
+    try {
+      await handler(input);
+    } catch {
+      // Lifecycle hook failures are isolated from the turn and later hooks.
+    }
+  }
+}
+
+/** Run result-aware UserPromptSubmit shell hooks; stop and return on the first block. */
 export async function runHooks(handlers: HookHandler[], input: HookInput, cwd: string): Promise<HookResult> {
   let combinedContext: string | undefined;
 

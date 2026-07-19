@@ -68,7 +68,7 @@ export class TurnOrchestrator {
   async run(userMessage: Message, opts?: { signal?: AbortSignal }): Promise<void> {
     const turnScope = createStreamTurnScope();
     try {
-      await this.runInternal(userMessage, { ...opts, turnScope }, false);
+      await this.runInternal(userMessage, { ...opts, turnScope });
     } finally {
       await turnScope.dispose();
     }
@@ -77,7 +77,6 @@ export class TurnOrchestrator {
   private async runInternal(
     userMessage: Message,
     opts: { signal?: AbortSignal; turnScope: StreamTurnScope },
-    isRerun: boolean,
   ): Promise<void> {
     this.emitBusyStatus();
 
@@ -98,10 +97,7 @@ export class TurnOrchestrator {
     this.throwIfAborted(opts.signal);
 
     if (normalCompletion && this.ctx.config.onStop) {
-      const result = await this.ctx.config.onStop(this.ctx.getContext(), isRerun);
-      if (result?.continueWith && !opts.signal?.aborted) {
-        await this.runInternal(result.continueWith, opts, true);
-      }
+      await this.ctx.config.onStop(this.ctx.getContext());
     }
   }
 
@@ -130,17 +126,11 @@ export class TurnOrchestrator {
     });
     this._initializedAgent = agent;
 
-    let tokensBefore = 0;
-    let tokensAfter = 0;
-    let summary = "";
     const unsub = agent.agentStream.subscribe((event: CoreAgentEvent) => {
       if (event.type !== "context_injected") {
         this.ctx.emit(this.enrichEvent(event, agent));
       }
       if (event.type === "compaction_end") {
-        tokensBefore = event.tokensBefore;
-        tokensAfter = event.tokensAfter;
-        summary = event.summary;
         this.persistCompactionEntry({
           summary: event.summary,
           displaySummary: event.compactionSummary ? "Compacted" : event.summary,
@@ -153,19 +143,20 @@ export class TurnOrchestrator {
       }
     });
 
+    let compactionResult: Awaited<ReturnType<Agent["compact"]>>;
     try {
-      await agent.compact();
+      compactionResult = await agent.compact();
     } finally {
       unsub();
     }
 
     await this.ctx.persistence.waitForWrites();
     return {
-      compacted: true,
+      compacted: compactionResult.compacted,
       entryCount: this.ctx.state.entryCount,
-      tokensBefore,
-      tokensAfter,
-      summary,
+      tokensBefore: compactionResult.tokensBefore,
+      tokensAfter: compactionResult.tokensAfter,
+      summary: compactionResult.summary,
     };
   }
 

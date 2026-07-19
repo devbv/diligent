@@ -22,6 +22,7 @@ import { createGrepTool } from "./grep";
 import { createLsTool } from "./ls";
 import { createMcpToolProvider, getMcpManager } from "./mcp";
 import { createPlanTool } from "./plan";
+import type { PluginDiscoveryMode } from "./plugin-loader";
 import { createReadTool } from "./read";
 import { createReadImageTool } from "./read-image";
 import { createRequestUserInputTool } from "./request-user-input";
@@ -56,6 +57,8 @@ export interface BuildDefaultToolsOptions {
   bundledToolProviders?: BundledToolProvider[];
   disabledToolNames?: ReadonlySet<string>;
   provider?: ProviderName;
+  /** Whether plugin assembly includes globally discovered packages (default `global`). */
+  pluginDiscovery?: PluginDiscoveryMode;
   /** External MCP servers whose tools are exposed to the agent (P069). */
   mcpServers?: DiligentConfig["mcpServers"];
   /**
@@ -104,6 +107,7 @@ export async function buildDefaultTools(options: BuildDefaultToolsOptions): Prom
     bundledToolProviders,
     disabledToolNames,
     provider,
+    pluginDiscovery = "global",
     mcpServers,
     mcpToolLoading = "eager",
     mcpLazyThreshold,
@@ -168,6 +172,7 @@ export async function buildDefaultTools(options: BuildDefaultToolsOptions): Prom
         return buildToolCatalog(builtinTools, toolsConfig, cwd, host, {
           bundledProviders: providers,
           disabledToolNames,
+          pluginDiscovery,
         });
       })();
 

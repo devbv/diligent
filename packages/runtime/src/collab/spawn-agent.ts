@@ -13,7 +13,7 @@ const SpawnAgentParams = z.object({
       "The full worker brief for the sub-agent. Include the objective, relevant context, exact scope, and expected deliverable or result shape.",
     ),
   description: z.string().optional().describe("Brief description for status display"),
-  agent_type: z.string().default("general").describe(formatAgentTypeParameterDescription()),
+  agent_type: z.string().optional().describe(formatAgentTypeParameterDescription()),
   resume_id: z.string().optional().describe("Session ID to resume a previous sub-agent session"),
   allow_nested_agents: z
     .boolean()
@@ -46,7 +46,7 @@ export function createSpawnAgentTool(
   agentDefinitions: ResolvedAgentDefinition[],
 ): Tool<typeof SpawnAgentParams> {
   const parameters = SpawnAgentParams.extend({
-    agent_type: z.string().default("general").describe(formatAgentTypeParameterDescription(agentDefinitions)),
+    agent_type: z.string().optional().describe(formatAgentTypeParameterDescription(agentDefinitions)),
   });
 
   return {
@@ -55,13 +55,12 @@ export function createSpawnAgentTool(
     parameters,
     execute: async (args, _ctx: ToolContext): Promise<ToolResult> => {
       const prompt = args.message;
-      const agentType = args.agent_type ?? "general";
       const { threadId, nickname } = registry.spawn({
         prompt,
         description: args.description ?? "",
-        agentType,
+        agentType: args.agent_type,
         resumeId: args.resume_id,
-        allowNestedAgents: args.allow_nested_agents === true,
+        allowNestedAgents: args.allow_nested_agents,
         modelClass: args.model_class,
         allowedTools: normalizeAllowedTools(args.allowed_tools),
       });

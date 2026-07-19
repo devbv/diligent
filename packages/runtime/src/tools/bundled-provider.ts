@@ -29,6 +29,7 @@ export interface BundledToolProvider {
   supersedesPluginPackages?: string[];
   createTools(ctx: BundledToolProviderContext): Promise<Tool[]> | Tool[];
   onUserPromptSubmit?: PluginHookFn;
+  /** External turn-completion lifecycle hook. Return values are ignored. */
   onStop?: PluginHookFn;
   /**
    * Fired after each session entry is durably appended (hook_event_name "EntryAppended").

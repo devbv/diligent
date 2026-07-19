@@ -17,10 +17,11 @@ import { resolveAgentDefinition } from "../agent/resolved-agent";
 import { RuntimeAgent } from "../agent/runtime-agent";
 import { createLocalImageLoader, toolOutputStore } from "../infrastructure";
 import { SessionManager } from "../session/manager";
+import { isSafeSessionId } from "../session/types";
 import { buildDefaultTools } from "../tools/defaults";
 import { COLLAB_TOOL_NAMES } from "../tools/tool-metadata";
 import { NicknamePool } from "./nicknames";
-import type { AgentEntry, AgentStatus, CollabAgentEvent, CollabToolDeps } from "./types";
+import type { AgentEntry, AgentStatus, CollabAgentEvent, CollabResumePolicy, CollabToolDeps } from "./types";
 import { isFinal } from "./types";
 
 const logger = createLogger({ scope: "runtime.collab" });
@@ -212,7 +213,7 @@ export class AgentRegistry {
   spawn(params: {
     prompt: string;
     description: string;
-    agentType: string;
+    agentType?: string;
     resumeId?: string;
     allowNestedAgents?: boolean;
     modelClass?: ModelClass;
@@ -230,31 +231,62 @@ export class AgentRegistry {
       throw new Error(`Max active agents reached (${this.maxAgents}). Close some agents first.`);
     }
 
-    const agentDefinition = resolveAgentDefinition(this.deps.agentDefinitions, params.agentType);
-    if (!agentDefinition) {
-      throw new Error(`Unknown or unavailable agent type: ${params.agentType}`);
+    if (params.resumeId && !isSafeSessionId(params.resumeId)) {
+      throw new Error(`Invalid resume target: ${params.resumeId}`);
     }
-    const nickname = this.pool.reserve();
+    const restoredEntry = params.resumeId ? this.agents.get(params.resumeId) : undefined;
+    if (params.resumeId && !restoredEntry) {
+      throw new Error(`Unknown resume target: ${params.resumeId}`);
+    }
+    if (restoredEntry && !isFinal(restoredEntry.status)) {
+      throw new Error(`Cannot resume active agent: ${params.resumeId}`);
+    }
+    const restoredPolicy = restoredEntry?.resumePolicy;
+    if (restoredPolicy) assertCompatibleResumePolicy(params, restoredPolicy);
+    const agentType = restoredPolicy?.agentType ?? params.agentType ?? "general";
+    const agentDefinition = resolveAgentDefinition(this.deps.agentDefinitions, agentType);
+    if (!agentDefinition) {
+      throw new Error(`Unknown or unavailable agent type: ${agentType}`);
+    }
+    const nickname = restoredEntry?.nickname ?? this.pool.reserve();
     const abortController = new AbortController();
+
+    const parentModel = resolveModel(this.deps.model);
+    const targetClass: ModelClass =
+      restoredPolicy?.modelClass ??
+      params.modelClass ??
+      agentDefinition.defaultModelClass ??
+      getModelClass(parentModel);
+    const effectiveAllowedTools = normalizeToolAllowlist(restoredPolicy?.allowedTools ?? params.allowedTools);
+    const effectivePolicy: CollabResumePolicy = {
+      agentType,
+      modelClass: targetClass,
+      ...(effectiveAllowedTools ? { allowedTools: effectiveAllowedTools } : {}),
+      allowNestedAgents: restoredPolicy?.allowNestedAgents ?? params.allowNestedAgents === true,
+    };
+    const accessParams = {
+      allowNestedAgents: effectivePolicy.allowNestedAgents,
+      allowedTools: effectivePolicy.allowedTools,
+    };
 
     // Build child tool list
     const { childTools, nestedCollabEnabled, allowedChildToolNames } = resolveChildToolAccess(
       this.deps.parentTools,
-      params,
+      accessParams,
       agentDefinition,
     );
 
     if (childTools.length === 0 && !nestedCollabEnabled) {
       logger.warn("agent_spawned_without_tools", {
         message:
-          `[collab] Spawning agent '${params.agentType}' with zero tools after filtering. ` +
-          buildZeroToolDiagnostics(this.deps.parentTools, params, agentDefinition),
+          `[collab] Spawning agent '${agentType}' with zero tools after filtering. ` +
+          buildZeroToolDiagnostics(this.deps.parentTools, accessParams, agentDefinition),
         sessionId: this.deps.getParentSessionId?.(),
-        fields: { agentType: params.agentType },
+        fields: { agentType },
       });
     }
 
-    const nestedAgentPolicy = params.allowNestedAgents
+    const nestedAgentPolicy = effectivePolicy.allowNestedAgents
       ? "Nested sub-agent tools were explicitly enabled for this run. Use them only if the parent instruction clearly requires further delegation; otherwise do the work yourself."
       : "Nested sub-agent delegation is disabled for this run. Do not call spawn_agent, wait, send_input, or close_agent, and do not attempt to coordinate additional sub-agents.";
     const childSystemPrompt = [
@@ -271,12 +303,12 @@ export class AgentRegistry {
       },
     ];
 
-    // Resolve model class: explicit override > resolved agent default > parent model class.
-    const parentModel = resolveModel(this.deps.model);
-    const targetClass: ModelClass =
-      params.modelClass ?? agentDefinition.defaultModelClass ?? getModelClass(parentModel);
+    // Resume uses the original model class; a new child uses the requested or role-default class.
     const childModel = resolveModelForClass(parentModel, targetClass);
-    const useClassDefaultEffort = params.modelClass !== undefined || agentDefinition.defaultModelClass !== undefined;
+    const useClassDefaultEffort =
+      restoredPolicy !== undefined ||
+      params.modelClass !== undefined ||
+      agentDefinition.defaultModelClass !== undefined;
     const childEffort = resolveChildEffort(this.deps.effort, targetClass, childModel, useClassDefaultEffort);
 
     const factory = this.deps.sessionManagerFactory ?? ((cfg) => new SessionManager(cfg));
@@ -291,7 +323,7 @@ export class AgentRegistry {
       cwd: this.deps.cwd,
       paths: this.deps.paths,
       onStop: onChildStop
-        ? (context, isRerun) =>
+        ? (context) =>
             onChildStop({
               sessionId: childManager.sessionId,
               sessionPath: childManager.sessionPath ?? "",
@@ -301,7 +333,6 @@ export class AgentRegistry {
               effort: childEffort,
               userId: this.deps.userId,
               context,
-              isRerun,
             })
         : undefined,
       agent: async (): Promise<RuntimeAgent> => {
@@ -347,7 +378,7 @@ export class AgentRegistry {
             effort: childEffort,
             llmMsgStreamFn: this.deps.streamFn,
             localImageLoader: createLocalImageLoader(this.deps.cwd),
-            toolOutputStore,
+            toolOutputStore: this.deps.toolOutputStore ?? toolOutputStore,
             loopHooks,
           },
           result.registry,
@@ -358,31 +389,33 @@ export class AgentRegistry {
         nickname,
         description: params.description || undefined,
       },
+      sessionId: params.resumeId,
     };
 
     childManager = factory(childManagerConfig);
 
     // Use child sessionId as the canonical threadId
-    const threadId = childManager.sessionId;
+    const threadId = params.resumeId ?? childManager.sessionId;
     const callId = threadId;
 
     this.emit({
       type: "collab_spawn_begin",
       callId,
       prompt: params.prompt,
-      agentType: params.agentType,
+      agentType,
     });
 
     const entry: AgentEntry = {
       threadId,
       nickname,
-      agentType: params.agentType,
+      agentType,
       description: params.description,
       sessionManager: childManager,
       promise: Promise.resolve({ kind: "pending" as const }), // replaced below
       status: { kind: "pending" },
       abortController,
       createdAt: Date.now(),
+      resumePolicy: effectivePolicy,
     };
 
     // Background promise — always resolves, never rejects
@@ -392,7 +425,7 @@ export class AgentRegistry {
         callId,
         childThreadId: threadId,
         nickname,
-        agentType: params.agentType,
+        agentType,
         description: params.description || undefined,
         prompt: params.prompt,
         status,
@@ -406,7 +439,9 @@ export class AgentRegistry {
       // Create or resume session
       if (params.resumeId) {
         const resumed = await childManager.resume({ sessionId: params.resumeId });
-        if (!resumed) await childManager.create();
+        if (!resumed) {
+          throw new Error(`Unable to resume agent session: ${params.resumeId}`);
+        }
       } else {
         await childManager.create();
       }
@@ -474,7 +509,7 @@ export class AgentRegistry {
       emitSpawnEnd("completed", statusMessage(status));
       return status;
     })().catch((err: unknown): AgentStatus => {
-      const message = String(err);
+      const message = err instanceof Error ? err.message : String(err);
       const status: AgentStatus = { kind: "errored", error: message };
       entry.status = status;
       emitSpawnEnd("errored", message);
@@ -491,7 +526,7 @@ export class AgentRegistry {
 
   /**
    * Wait for one or more agents to reach a final state.
-   * Returns once any of the ids are done (or timeout fires).
+   * Returns once all requested ids are final (or timeout/abort fires).
    * onUpdate is called with a status summary string on each change.
    */
   async wait(
@@ -515,17 +550,15 @@ export class AgentRegistry {
       }),
     });
 
-    const result: Record<string, AgentStatus> = {};
     const pending: AgentEntry[] = [];
 
     for (const id of ids) {
       const entry = this.agents.get(id)!;
-      if (isFinal(entry.status)) {
-        result[id] = entry.status;
-      } else {
-        pending.push(entry);
-      }
+      if (!isFinal(entry.status)) pending.push(entry);
     }
+
+    const snapshotStatuses = (): Record<string, AgentStatus> =>
+      Object.fromEntries(ids.map((id) => [id, this.agents.get(id)!.status]));
 
     const emitWaitEnd = (statuses: Record<string, AgentStatus>, timedOut: boolean): void => {
       this.emit({
@@ -546,6 +579,7 @@ export class AgentRegistry {
     };
 
     if (pending.length === 0) {
+      const result = snapshotStatuses();
       emitWaitEnd(result, false);
       return { status: result, timedOut: false };
     }
@@ -561,21 +595,22 @@ export class AgentRegistry {
     };
 
     let timedOut = false;
-    let resolved = false;
+    let terminal = false;
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+    let abortHandler: (() => void) | undefined;
 
-    const timeoutPromise = new Promise<void>((resolve) =>
-      setTimeout(() => {
-        if (!resolved) {
+    const timeoutPromise = new Promise<void>((resolve) => {
+      timeoutHandle = setTimeout(() => {
+        if (!terminal) {
           timedOut = true;
           resolve();
         }
-      }, timeoutMs),
-    );
+      }, timeoutMs);
+    });
 
     const racers = pending.map((entry) =>
-      entry.promise.then((status) => {
-        result[entry.threadId] = status;
-        onUpdate?.(statusSummary());
+      entry.promise.then(() => {
+        if (!terminal) onUpdate?.(statusSummary());
       }),
     );
 
@@ -586,29 +621,26 @@ export class AgentRegistry {
             resolve();
             return;
           }
-          signal.addEventListener(
-            "abort",
-            () => {
-              if (!resolved) {
-                timedOut = true;
-                resolve();
-              }
-            },
-            { once: true },
-          );
+          abortHandler = () => {
+            if (!terminal) {
+              timedOut = true;
+              resolve();
+            }
+          };
+          signal.addEventListener("abort", abortHandler, { once: true });
         })
       : new Promise<void>(() => {}); // never resolves
 
-    await Promise.race([Promise.all(racers), timeoutPromise, abortPromise]);
-    resolved = true;
-
-    // Collect final statuses — agents are retained (not deleted) for later reference
-    for (const id of ids) {
-      if (!(id in result)) {
-        const entry = this.agents.get(id)!;
-        result[id] = entry.status;
-      }
+    try {
+      await Promise.race([Promise.all(racers), timeoutPromise, abortPromise]);
+    } finally {
+      terminal = true;
+      if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
+      if (signal && abortHandler) signal.removeEventListener("abort", abortHandler);
     }
+
+    // Snapshot once in requested-id order. The returned object is never mutated by late child completion.
+    const result = snapshotStatuses();
 
     emitWaitEnd(result, timedOut);
 
@@ -698,8 +730,22 @@ export class AgentRegistry {
    * Used on session resume to re-populate the in-memory registry
    * so that thread IDs from a prior server lifetime remain valid.
    */
-  restoreAgent(threadId: string, nickname: string): void {
+  restoreAgent(
+    threadId: string,
+    nickname: string,
+    policy?: Omit<CollabResumePolicy, "modelClass"> & { modelClass?: ModelClass },
+  ): void {
     if (this.agents.has(threadId)) return; // already known
+    const agentDefinition = policy ? resolveAgentDefinition(this.deps.agentDefinitions, policy.agentType) : undefined;
+    const parentModel = resolveModel(this.deps.model);
+    const normalizedPolicyAllowedTools = normalizeToolAllowlist(policy?.allowedTools);
+    const resumePolicy = policy
+      ? {
+          ...policy,
+          modelClass: policy.modelClass ?? agentDefinition?.defaultModelClass ?? getModelClass(parentModel),
+          ...(normalizedPolicyAllowedTools ? { allowedTools: normalizedPolicyAllowedTools } : {}),
+        }
+      : undefined;
     this.agents.set(threadId, {
       threadId,
       nickname,
@@ -710,6 +756,7 @@ export class AgentRegistry {
       status: { kind: "shutdown" },
       abortController: new AbortController(),
       createdAt: 0,
+      ...(resumePolicy && { resumePolicy }),
     });
   }
 
@@ -724,6 +771,36 @@ export class AgentRegistry {
     await Promise.allSettled(entries.map((e) => e.promise));
     this.agents.clear();
   }
+}
+
+function assertCompatibleResumePolicy(
+  params: {
+    agentType?: string;
+    allowNestedAgents?: boolean;
+    modelClass?: ModelClass;
+    allowedTools?: string[];
+  },
+  policy: CollabResumePolicy,
+): void {
+  const requestedAllowedTools = normalizeToolAllowlist(params.allowedTools);
+  const persistedAllowedTools = normalizeToolAllowlist(policy.allowedTools);
+  const sameAllowedTools =
+    params.allowedTools === undefined ||
+    JSON.stringify(requestedAllowedTools ?? []) === JSON.stringify(persistedAllowedTools ?? []);
+  if (
+    (params.agentType !== undefined && params.agentType !== policy.agentType) ||
+    (params.modelClass !== undefined && params.modelClass !== policy.modelClass) ||
+    (params.allowNestedAgents !== undefined && params.allowNestedAgents !== policy.allowNestedAgents) ||
+    !sameAllowedTools
+  ) {
+    throw new Error("Cannot resume child with policy different from its immutable policy.");
+  }
+}
+
+function normalizeToolAllowlist(tools: string[] | undefined): string[] | undefined {
+  if (!tools || tools.length === 0) return undefined;
+  const normalized = [...new Set(tools)].sort();
+  return normalized.length > 0 ? normalized : undefined;
 }
 
 function defaultEffortForModelClass(modelClass: ModelClass): ThinkingEffort {

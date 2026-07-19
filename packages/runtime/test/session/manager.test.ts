@@ -18,6 +18,7 @@ import { z } from "zod";
 import type { AgentEvent } from "../../src/agent-event";
 
 const TEST_ROOT = join(tmpdir(), `diligent-sm-test-${Date.now()}`);
+const COMPACTION_MIN_INPUT_TOKENS = 50_000;
 
 const TEST_MODEL: Model = {
   modelId: "test-model",
@@ -155,6 +156,44 @@ describe("SessionManager", () => {
 
     // Events should include turn lifecycle
     expect(events.some((e) => e.type === "turn_start")).toBe(true);
+  });
+
+  test("Stop lifecycle output never becomes a user turn or provider rerun", async () => {
+    const dir = await setupDir();
+    let providerCalls = 0;
+    let stopCalls = 0;
+    const streamFn: StreamFunction = () => {
+      providerCalls += 1;
+      return createProviderEventStream(makeAssistant(`response ${providerCalls}`));
+    };
+    const mgr = new SessionManager({
+      ...makeManagerConfig(dir, streamFn),
+      onStop: (async () => {
+        stopCalls += 1;
+        return stopCalls === 1
+          ? {
+              continueWith: {
+                role: "user",
+                content: "legacy Stop feedback must be ignored",
+                timestamp: Date.now(),
+              },
+            }
+          : undefined;
+      }) as never,
+    });
+    await mgr.create();
+
+    await mgr.run({ role: "user", content: "hello", timestamp: Date.now() });
+    await mgr.waitForWrites();
+
+    expect(providerCalls).toBe(1);
+    expect(stopCalls).toBe(1);
+    expect(mgr.getContext().map((message) => message.role)).toEqual(["user", "assistant"]);
+    expect(
+      mgr
+        .getContext()
+        .some((message) => message.role === "user" && message.content === "legacy Stop feedback must be ignored"),
+    ).toBe(false);
   });
 
   test("persists loop-hook context internally without publishing or exposing it", async () => {
@@ -692,22 +731,73 @@ describe("SessionManager", () => {
     }
   });
 
-  test("compactNow() appends compaction entry", async () => {
+  test("compactNow() below 50,000 tokens returns false without appending a compaction entry", async () => {
+    const dir = await setupDir();
+    let summaryCalls = 0;
+    const mgr = new SessionManager(
+      makeManagerConfig(dir, ((model, context, options) => {
+        summaryCalls += 1;
+        return createMockStreamFn([makeAssistant("hello")])(model, context, options);
+      }) as StreamFunction),
+    );
+    await mgr.create();
+
+    const result = await mgr.compactNow();
+    expect(result.compacted).toBe(false);
+    expect(result.entryCount).toBe(0);
+    expect(result.tokensBefore).toBe(0);
+    expect(result.tokensAfter).toBe(0);
+    expect(summaryCalls).toBe(0);
+
+    const { entries } = await readSessionFile(mgr.sessionPath!);
+    expect(entries.some((entry) => entry.type === "compaction")).toBe(false);
+  });
+
+  test("compactNow() appends an entry only when an eligible result shrinks context", async () => {
     const dir = await setupDir();
     const mgr = new SessionManager(
       makeManagerConfig(dir, createMockStreamFn([makeAssistant("hello"), makeAssistant("## Goal\ncompact")])),
     );
     await mgr.create();
 
-    await mgr.run({ role: "user", content: "please compact this thread", timestamp: Date.now() });
+    await mgr.run({
+      role: "user",
+      content: "x".repeat(COMPACTION_MIN_INPUT_TOKENS * 4),
+      timestamp: Date.now(),
+    });
     await mgr.waitForWrites();
 
     const result = await mgr.compactNow();
     expect(result.compacted).toBe(true);
-    expect(result.entryCount).toBeGreaterThanOrEqual(3);
+    expect(result.tokensAfter).toBeLessThan(result.tokensBefore);
 
     const { entries } = await readSessionFile(mgr.sessionPath!);
     expect(entries.some((entry) => entry.type === "compaction")).toBe(true);
+  });
+
+  test("compactNow() preserves eligible context when the summary does not shrink it", async () => {
+    const dir = await setupDir();
+    const largeContent = "x".repeat(COMPACTION_MIN_INPUT_TOKENS * 4);
+    const mgr = new SessionManager(
+      makeManagerConfig(
+        dir,
+        createMockStreamFn([makeAssistant("hello"), makeAssistant("s".repeat(largeContent.length + 4_000))]),
+      ),
+    );
+    await mgr.create();
+    await mgr.run({ role: "user", content: largeContent, timestamp: Date.now() });
+    await mgr.waitForWrites();
+    const contextBefore = mgr.getContext();
+    const entryCountBefore = mgr.entryCount;
+
+    const result = await mgr.compactNow();
+
+    expect(result.compacted).toBe(false);
+    expect(result.entryCount).toBe(entryCountBefore);
+    expect(result.tokensAfter).toBe(result.tokensBefore);
+    expect(mgr.getContext()).toEqual(contextBefore);
+    const { entries } = await readSessionFile(mgr.sessionPath!);
+    expect(entries.some((entry) => entry.type === "compaction")).toBe(false);
   });
 
   test("aborted signal settles run() without hanging", async () => {
@@ -748,7 +838,10 @@ describe("SessionManager", () => {
       description: "Inflate context",
       parameters: z.object({}),
       async execute() {
-        return { output: `tool-result-${"x".repeat(400)}` };
+        return {
+          output: `tool-result-${"x".repeat(COMPACTION_MIN_INPUT_TOKENS * 4)}`,
+          maxOutputBytes: COMPACTION_MIN_INPUT_TOKENS * 5,
+        };
       },
     };
 
@@ -758,20 +851,25 @@ describe("SessionManager", () => {
       cwd: dir,
       paths: resolvePaths(dir),
       compaction: { enabled: true, reservePercent: 20, keepRecentTokens: 200 },
-      agent: new Agent({ ...TEST_MODEL, contextWindow: 120 }, [{ label: "test", content: "test" }], [compactingTool], {
-        effort: "medium",
-        llmMsgStreamFn: ((_model, context, _options) => {
-          if (context.systemPrompt.some((section) => section.label === "test")) {
-            providerContexts.push([...context.messages]);
-          }
-          if (providerCallCount++ === 0) {
-            return createProviderEventStream(
-              makeAssistantMessage([{ type: "tool_call", id: "tc_1", name: "inflate", input: {} }], "tool_use"),
-            );
-          }
-          return createProviderEventStream(makeAssistant("after compaction"));
-        }) as StreamFunction,
-      }),
+      agent: new Agent(
+        { ...TEST_MODEL, contextWindow: 60_000 },
+        [{ label: "test", content: "test" }],
+        [compactingTool],
+        {
+          effort: "medium",
+          llmMsgStreamFn: ((_model, context, _options) => {
+            if (context.systemPrompt.some((section) => section.label === "test")) {
+              providerContexts.push([...context.messages]);
+            }
+            if (providerCallCount++ === 0) {
+              return createProviderEventStream(
+                makeAssistantMessage([{ type: "tool_call", id: "tc_1", name: "inflate", input: {} }], "tool_use"),
+              );
+            }
+            return createProviderEventStream(makeAssistant("after compaction"));
+          }) as StreamFunction,
+        },
+      ),
     });
     await mgr.create();
 

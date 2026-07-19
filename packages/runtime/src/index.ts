@@ -37,6 +37,7 @@ export { getBuiltinAgentDefinitions } from "./agent/agent-types";
 export type { ContextPresentation } from "./agent/context-presentation";
 export { createPresentableContextInjection, readContextPresentation } from "./agent/context-presentation";
 export type { Mode } from "./agent/mode";
+export { EXECUTE_MODE_DISALLOWED_TOOLS, PLAN_MODE_DISALLOWED_TOOLS } from "./agent/mode";
 export type { ResolvedAgentDefinition } from "./agent/resolved-agent";
 export { resolveAgentDefinition, resolveAvailableAgentDefinitions } from "./agent/resolved-agent";
 export { RuntimeAgent } from "./agent/runtime-agent";
@@ -156,6 +157,7 @@ export {
   createSessionFile,
   generateEntryId,
   generateSessionId,
+  isSafeSessionId,
   listSessions,
   readSessionFile,
   SESSION_VERSION,

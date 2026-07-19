@@ -1,21 +1,34 @@
 // @summary Tests for createAppServerConfig factory — validates config assembly and override merging
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it, mock } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { LocalImageLoader } from "@diligent/core/image-contract";
 import type { Model } from "@diligent/core/provider-contract";
 import { ProviderManager } from "@diligent/core/provider-contract";
-import type { Tool } from "@diligent/core/tool-contract";
+import type { Tool, ToolOutputFileStore } from "@diligent/core/tool-contract";
 import { z } from "zod";
 import { getBuiltinAgentDefinitions } from "../../src/agent/agent-types";
 import { createAppServerConfig, filterToolsByMode } from "../../src/app-server/factory";
 import type { PermissionEngine } from "../../src/approval";
 import type { RuntimeConfig } from "../../src/config/runtime";
+import { toolOutputStore } from "../../src/infrastructure";
 
 import { writeKnowledge } from "../../src/knowledge/store";
 import type { BundledToolProvider } from "../../src/tools/bundled-provider";
 import { makeAssistant, makeStreamFn } from "../helpers/collab";
+
+mock.module("@test/factory-plugin", () => ({
+  manifest: { name: "@test/factory-plugin", apiVersion: "1.0", version: "0.1.0" },
+  createTools: () => [
+    {
+      name: "factory_plugin_tool",
+      description: "Factory plugin tool",
+      parameters: z.object({}),
+      execute: async () => ({ output: "ok" }),
+    },
+  ],
+}));
 
 const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-5";
 
@@ -81,6 +94,7 @@ describe("createAppServerConfig", () => {
     const config = createAppServerConfig({ cwd: "/tmp/test", runtimeConfig });
 
     expect(config.cwd).toBe("/tmp/test");
+    expect(config.pluginDiscovery).toBe("global");
     expect(config.resolvePaths).toBeTypeOf("function");
     expect(config.createAgent).toBeTypeOf("function");
     expect(config.compaction).toEqual(runtimeConfig.compaction);
@@ -91,6 +105,28 @@ describe("createAppServerConfig", () => {
     expect(config.modelConfig?.currentModel).toMatchObject({ provider: "anthropic", modelId: TEST_ANTHROPIC_MODEL_ID });
     expect(config.defaultEffort).toBe("medium");
     expect(config.skillNames).toEqual([]);
+  });
+
+  it("propagates explicit plugin discovery through config and agent assembly", async () => {
+    const runtimeConfig = makeRuntimeConfig({
+      diligent: { tools: { plugins: [{ package: "@test/factory-plugin", enabled: true }] } },
+    });
+    const config = createAppServerConfig({
+      cwd: "/tmp/test",
+      runtimeConfig,
+      pluginDiscovery: "explicit",
+    });
+
+    expect(config.pluginDiscovery).toBe("explicit");
+    const agent = await config.createAgent({
+      cwd: "/tmp/test",
+      mode: "default",
+      effort: "medium",
+      model: { provider: "anthropic", modelId: TEST_ANTHROPIC_MODEL_ID },
+      approve: async () => "once",
+      ask: async () => null,
+    });
+    expect(agent.tools.map((tool) => tool.name)).toContain("factory_plugin_tool");
   });
 
   it("injects a local image loader bound to the main agent cwd", async () => {
@@ -111,6 +147,33 @@ describe("createAppServerConfig", () => {
     const bytes = await loader?.load({ type: "local_image", path: "image.png", mediaType: "image/png" });
 
     expect(Buffer.from(bytes!).toString("utf8")).toBe("main-image");
+  });
+
+  it("injects an optional tool output store while preserving the production default", async () => {
+    const injectedStore: ToolOutputFileStore = { save: async () => "/tmp/injected-output.txt" };
+    const request = {
+      cwd: "/tmp/test",
+      mode: "default" as const,
+      effort: "medium" as const,
+      model: { provider: "anthropic" as const, modelId: TEST_ANTHROPIC_MODEL_ID },
+      approve: async () => "once" as const,
+      ask: async () => null,
+    };
+
+    const defaultAgent = await createAppServerConfig({
+      cwd: "/tmp/test",
+      runtimeConfig: makeRuntimeConfig(),
+    }).createAgent(request);
+    const injectedAgent = await createAppServerConfig({
+      cwd: "/tmp/test",
+      runtimeConfig: makeRuntimeConfig(),
+      toolOutputStore: injectedStore,
+    }).createAgent(request);
+
+    expect((defaultAgent as unknown as { toolOutputStore?: ToolOutputFileStore }).toolOutputStore).toBe(
+      toolOutputStore,
+    );
+    expect((injectedAgent as unknown as { toolOutputStore?: ToolOutputFileStore }).toolOutputStore).toBe(injectedStore);
   });
 
   it("only exposes models for connected providers", () => {

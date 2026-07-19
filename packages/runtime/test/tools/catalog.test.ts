@@ -633,6 +633,39 @@ describe("buildToolCatalog", () => {
     await rm(pluginDir, { recursive: true, force: true });
   });
 
+  it("loads only explicitly configured plugins in explicit discovery mode", async () => {
+    const pluginDir = getGlobalPluginPath("explicit-mode-global-plugin");
+    await mkdir(pluginDir, { recursive: true });
+    await Bun.write(
+      join(pluginDir, "package.json"),
+      JSON.stringify({ name: "explicit-mode-global-plugin", version: "0.1.0", type: "module", main: "./index.js" }),
+    );
+    await Bun.write(
+      join(pluginDir, "index.js"),
+      [
+        "export const manifest = { name: 'explicit-mode-global-plugin', apiVersion: '1.0', version: '0.1.0' };",
+        "const params = { parse(value) { return value; } };",
+        "export async function createTools() {",
+        "  return [{ name: 'excluded_global_tool', description: 'global tool', parameters: params, execute: async () => ({ output: 'ok' }) }];",
+        "}",
+      ].join("\n"),
+    );
+
+    const result = await buildToolCatalog(
+      standardBuiltins(),
+      { plugins: [{ package: "@test/catalog-plugin", enabled: true }] },
+      "/tmp",
+      undefined,
+      { pluginDiscovery: "explicit" },
+    );
+
+    expect(toolNames(result.tools)).toContain("plugin_tool");
+    expect(toolNames(result.tools)).not.toContain("excluded_global_tool");
+    expect(result.plugins.map((plugin) => plugin.package)).not.toContain("explicit-mode-global-plugin");
+
+    await rm(pluginDir, { recursive: true, force: true });
+  });
+
   it("explicit config entry overrides auto-discovery for the same package", async () => {
     const pluginDir = getGlobalPluginPath("override-plugin");
     await mkdir(pluginDir, { recursive: true });

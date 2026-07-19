@@ -5,7 +5,7 @@ import { createLogger, type Logger } from "@diligent/logging";
 import type { PendingSteer, ThinkingEffort } from "@diligent/protocol";
 import type { Mode } from "../agent/mode";
 import type { AgentEvent } from "../agent-event";
-import { CollabSessionHandler } from "./collab-session-handler";
+import { CollabSessionHandler, type HistoricalCollabAgent } from "./collab-session-handler";
 import { buildSessionContext, buildSessionTranscript } from "./context-builder";
 import { SessionPersistence, type SessionReconcileResult } from "./persistence";
 import { SessionCache } from "./session-cache";
@@ -141,7 +141,7 @@ export class SessionManager {
   }
 
   /** Scan session entries for spawn_agent tool results to restore collab thread IDs on resume. */
-  getHistoricalCollabAgents(): Array<{ threadId: string; nickname: string }> {
+  getHistoricalCollabAgents(): HistoricalCollabAgent[] {
     return this.collabHandler.getHistoricalCollabAgents();
   }
 
