@@ -1,7 +1,6 @@
 // @summary Turn staging helper for session runs with compaction-aware pending entries
 
 import type { CoreAgentEvent } from "@diligent/core/agent";
-import { buildMessagesFromCompaction, selectForCompaction } from "@diligent/core/agent";
 import type { Message } from "@diligent/core/message-contract";
 import { readContextPresentation } from "../agent/context-presentation";
 import type { CompactionEntry, SessionEntry } from "./types";
@@ -15,15 +14,13 @@ export interface TurnStagerSnapshot {
 export class TurnStager {
   private pendingEntries: SessionEntry[] = [];
   private currentLeafId: string | null;
-  private stagedConversation: Message[];
 
-  constructor(baseLeafId: string | null, baseConversation: Message[], userMessage: Message) {
+  constructor(baseLeafId: string | null, userMessage: Message) {
     this.currentLeafId = baseLeafId;
-    this.stagedConversation = [...baseConversation];
     this.stageMessage(userMessage);
   }
 
-  handleEvent(event: CoreAgentEvent, keepRecentTokens: number): void {
+  handleEvent(event: CoreAgentEvent): void {
     if (event.type === "message_end") {
       this.stageMessage(event.message);
       return;
@@ -63,14 +60,9 @@ export class TurnStager {
     }
 
     if (event.type === "compaction_end") {
-      const recentUserMessages = selectForCompaction(this.stagedConversation, keepRecentTokens).recentUserMessages;
-      this.stagedConversation = event.compactionSummary
-        ? []
-        : buildMessagesFromCompaction(recentUserMessages, event.summary, Date.now());
-      this.stageCompaction({
+      this.stageCompactionBeforePending({
         summary: event.summary,
         displaySummary: event.compactionSummary ? "Compacted" : event.summary,
-        recentUserMessages,
         compactionSummary: event.compactionSummary,
         tokensBefore: event.tokensBefore,
         tokensAfter: event.tokensAfter,
@@ -100,7 +92,6 @@ export class TurnStager {
       presentation?: import("@diligent/protocol").ContextPresentation;
     },
   ): void {
-    if (!metadata) this.stagedConversation.push(message);
     this.stageEntry({
       type: "message",
       id: generateEntryId(),
@@ -114,7 +105,6 @@ export class TurnStager {
   private stageCompaction(event: {
     summary: string;
     displaySummary?: string;
-    recentUserMessages?: Message[];
     compactionSummary?: Record<string, unknown>;
     tokensBefore: number;
     tokensAfter: number;
@@ -126,12 +116,34 @@ export class TurnStager {
       timestamp: new Date().toISOString(),
       summary: event.summary,
       displaySummary: event.displaySummary,
-      recentUserMessages: event.recentUserMessages,
       compactionSummary: event.compactionSummary,
       tokensBefore: event.tokensBefore,
       tokensAfter: event.tokensAfter,
     };
     this.stageEntry(entry);
+  }
+
+  private stageCompactionBeforePending(event: {
+    summary: string;
+    displaySummary?: string;
+    compactionSummary?: Record<string, unknown>;
+    tokensBefore: number;
+    tokensAfter: number;
+  }): void {
+    if (this.pendingEntries.length === 0) {
+      this.stageCompaction(event);
+      return;
+    }
+
+    const pending = this.pendingEntries;
+    const baseLeafId = pending[0]?.parentId ?? null;
+    this.pendingEntries = [];
+    this.currentLeafId = baseLeafId;
+    this.stageCompaction(event);
+    for (const entry of pending) {
+      entry.parentId = this.currentLeafId;
+      this.stageEntry(entry);
+    }
   }
 
   private stageEntry(entry: SessionEntry): void {

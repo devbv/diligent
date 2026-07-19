@@ -86,14 +86,6 @@ export function shouldCompact(allMessages: Message[], contextWindow: number, res
   return getCompactionDecision(allMessages, contextWindow, reservePercent).shouldCompact;
 }
 
-function truncateUserMessage(msg: Message, maxTokens: number): Message {
-  if (msg.role !== "user") return msg;
-  if (typeof msg.content !== "string") return msg;
-  const maxChars = maxTokens * 4;
-  if (msg.content.length <= maxChars) return msg;
-  return { ...msg, content: `${msg.content.slice(0, maxChars)}\n[... truncated]` };
-}
-
 /**
  * Strip outputImages from tool_result messages before they are sent to the
  * summarizer. The summary itself is text, so re-uploading multi-MB base64
@@ -111,38 +103,10 @@ function stripOutputImagesForSummarization(messages: Message[]): Message[] {
   });
 }
 
-/**
- * Select messages to summarize and recent user messages to retain.
- */
-export function selectForCompaction(
-  messages: Message[],
-  keepRecentTokens: number,
-): { messagesToSummarize: Message[]; recentUserMessages: Message[] } {
-  const messagesToSummarize = stripOutputImagesForSummarization(messages);
-  const userMessages = messages.filter((msg) => msg.role === "user");
-
-  // Walk backwards within token budget
-  const selected: Message[] = [];
-  let accumulatedTokens = 0;
-
-  for (let i = userMessages.length - 1; i >= 0; i--) {
-    const msg = userMessages[i];
-    const tokens = estimateTokens([msg]);
-    if (accumulatedTokens + tokens > keepRecentTokens && selected.length > 0) {
-      break;
-    }
-    const truncated = truncateUserMessage(msg, keepRecentTokens);
-    selected.push(truncated);
-    accumulatedTokens += Math.min(tokens, keepRecentTokens);
-  }
-
-  selected.reverse();
-
-  return { messagesToSummarize, recentUserMessages: selected };
-}
-
 export interface RunCompactionInput {
   messages: Message[];
+  /** Messages kept verbatim after the compacted history, such as a newly submitted user message. */
+  preservedMessages?: Message[];
   model: Model;
   systemPrompt: SystemSection[];
   compactionSummary?: Record<string, unknown>;
@@ -176,48 +140,22 @@ function estimateEffectiveContextTokens(messages: Message[], compactionSummary?:
 }
 
 /**
- * Build the summary-based compacted conversation shape used for persisted session replay.
- */
-export function buildMessagesFromCompaction(
-  recentUserMessages: Message[],
-  summary: string,
-  timestamp: number,
-): Message[] {
-  return [...recentUserMessages, { role: "user" as const, content: summary, timestamp }];
-}
-
-/**
- * Split a compacted conversation shape back into the retained user tail and summary message.
- * The canonical compacted shape is [recentUserMessages..., summaryUserMessage].
- */
-export function splitCompactionMessages(messages: Message[]): { recentUserMessages: Message[]; summary: string } {
-  const summaryMessage = messages[messages.length - 1];
-  if (!summaryMessage || summaryMessage.role !== "user" || typeof summaryMessage.content !== "string") {
-    throw new Error("Compaction messages must end with a string user summary message");
-  }
-
-  const recentUserMessages = messages.slice(0, -1);
-  return { recentUserMessages, summary: summaryMessage.content };
-}
-
-/**
  * Run compaction unconditionally: selects messages, calls LLM compact, applies summary prefix,
  * and emits compaction_start/end events. Returns the compacted message array — does not mutate in-place.
  */
 export async function runCompaction(input: RunCompactionInput): Promise<RunCompactionResult> {
-  const { messagesToSummarize, recentUserMessages } = selectForCompaction(
-    input.messages,
-    input.compactionConfig.keepRecentTokens,
-  );
+  const messagesToSummarize = stripOutputImagesForSummarization(input.messages);
+  const preservedMessages = input.preservedMessages ?? [];
   const candidateTokens =
     estimateTokens(messagesToSummarize) +
     (input.llmCompactionFn ? estimateCompactionSummaryTokens(input.compactionSummary) : 0);
-  const tokensBefore = estimateEffectiveContextTokens(input.messages, input.compactionSummary);
+  const originalMessages = [...input.messages, ...preservedMessages];
+  const tokensBefore = estimateEffectiveContextTokens(originalMessages, input.compactionSummary);
   if (!input.bypassMinimum && candidateTokens < COMPACTION_MIN_INPUT_TOKENS) {
     return {
       compacted: false,
       summary: "",
-      messages: input.messages,
+      messages: originalMessages,
       compactionSummary: input.compactionSummary,
       tokensBefore,
       tokensAfter: tokensBefore,
@@ -242,13 +180,15 @@ export async function runCompaction(input: RunCompactionInput): Promise<RunCompa
     result.mode === "local"
       ? `${COMPACTION_SUMMARY_PREFIX}\n\n${result.displaySummary ?? ""}`.trim()
       : (result.displaySummary ?? "");
-  const messages = result.compactionSummary ? [] : buildMessagesFromCompaction(recentUserMessages, summary, Date.now());
+  const messages = result.compactionSummary
+    ? [...preservedMessages]
+    : [{ role: "user" as const, content: summary, timestamp: Date.now() }, ...preservedMessages];
   const tokensAfterCandidate = estimateEffectiveContextTokens(messages, result.compactionSummary);
   if (tokensAfterCandidate >= tokensBefore) {
     return {
       compacted: false,
       summary: "",
-      messages: input.messages,
+      messages: originalMessages,
       compactionSummary: input.compactionSummary,
       tokensBefore,
       tokensAfter: tokensBefore,

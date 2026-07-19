@@ -53,7 +53,7 @@ describe("provider builtin tool mapping", () => {
       ],
       {
         effort: "medium",
-        compaction: { reservePercent: 16, keepRecentTokens: 20_000 },
+        compaction: { reservePercent: 16 },
         llmMsgStreamFn: (_model, context) => {
           capturedContext = context;
           const stream = new EventStream<ProviderEvent, ProviderResult>(
@@ -105,7 +105,7 @@ describe("provider builtin tool mapping", () => {
     };
     const agent = new Agent(TEST_MODEL, [], [tool], {
       effort: "medium",
-      compaction: { reservePercent: 16, keepRecentTokens: 20_000 },
+      compaction: { reservePercent: 16 },
       llmMsgStreamFn: (_model, context) => {
         capturedContext = context;
         const stream = new EventStream<ProviderEvent, ProviderResult>(
@@ -144,7 +144,7 @@ describe("provider builtin tool mapping", () => {
 
     const agent = new Agent(TEST_MODEL, [], [makeTool("read")], {
       effort: "medium",
-      compaction: { reservePercent: 16, keepRecentTokens: 20_000 },
+      compaction: { reservePercent: 16 },
       llmMsgStreamFn: (_model, context) => {
         capturedContext = context;
         const stream = new EventStream<ProviderEvent, ProviderResult>(

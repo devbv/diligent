@@ -64,7 +64,6 @@ test("compaction defaults when not configured", async () => {
 
     expect(config.compaction.enabled).toBe(true);
     expect(config.compaction.reservePercent).toBe(14);
-    expect(config.compaction.keepRecentTokens).toBe(20000);
   } finally {
     process.env.HOME = origHome;
     rmSync(base, { recursive: true, force: true });

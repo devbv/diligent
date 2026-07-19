@@ -1,5 +1,4 @@
 // @summary Builds model context and raw transcript views from tree-structured session entries with compaction support
-import { buildMessagesFromCompaction } from "@diligent/core/agent";
 import type { Message } from "@diligent/core/message-contract";
 import type { AssistantMessage, Mode, ModelRef, ThinkingEffort } from "@diligent/protocol";
 import type { CompactionEntry, SessionEntry } from "./types";
@@ -111,14 +110,14 @@ export function buildSessionContext(
           timestamp: Date.parse(lastCompaction.timestamp),
         });
       }
-    } else if (lastCompaction.summary && lastCompaction.recentUserMessages) {
-      const rebuilt = buildMessagesFromCompaction(
-        lastCompaction.recentUserMessages,
-        lastCompaction.summary,
-        Date.parse(lastCompaction.timestamp),
-      );
-      messages.push(...rebuilt);
-      providerMessages.push(...rebuilt);
+    } else if (lastCompaction.summary) {
+      const summaryMessage: Message = {
+        role: "user",
+        content: lastCompaction.summary,
+        timestamp: Date.parse(lastCompaction.timestamp),
+      };
+      messages.push(summaryMessage);
+      providerMessages.push(summaryMessage);
     }
 
     // 3. Process entries AFTER compactionIndex only (new turns)

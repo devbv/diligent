@@ -30,7 +30,6 @@ function makeConfig(modelId: string, providerManager: AppConfig["providerManager
     compaction: {
       enabled: true,
       reservePercent: 10,
-      keepRecentTokens: 4000,
     },
     providerManager,
   } as AppConfig;

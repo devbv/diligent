@@ -56,7 +56,8 @@ type LoopRequest = {
 };
 
 export async function runAgentLoop(
-  messages: Message[],
+  history: Message[],
+  userMessage: Message,
   runtime: LoopRuntime,
   userSignal?: AbortSignal,
 ): Promise<{
@@ -77,7 +78,7 @@ export async function runAgentLoop(
     signal,
     compactionSummary: runtime.compactionSummary,
   };
-  const conversation = [...messages];
+  const conversation = [...history];
   const doomLoopTracker = new DoomLoopDetector();
   const registry = new Map(config.tools.map((tool) => [tool.name, tool]));
   const providerStream = streamFunction;
@@ -86,18 +87,30 @@ export async function runAgentLoop(
   const nextItemId = () => `item-${++itemCounter}`;
 
   stream.emit({ type: "agent_start" });
-  runtime.loopHooks.onPromptStart(conversation);
 
   try {
+    const compactedBeforePrompt = await compactIfNeeded(
+      conversation,
+      loopRequest,
+      stream,
+      [...conversation, userMessage],
+      [userMessage],
+    );
+    if (!compactedBeforePrompt) {
+      conversation.push(userMessage);
+    }
+    const freshUserIndex = conversation.length - 1;
+    runtime.loopHooks.onPromptStart(conversation);
+
     while (true) {
       if (signal?.aborted) {
         break;
       }
 
       const turnId = `turn-${++turnNumber}`;
+      const justCompacted =
+        turnNumber === 1 ? compactedBeforePrompt : await compactIfNeeded(conversation, loopRequest, stream);
       stream.emit({ type: "turn_start", turnId });
-
-      const justCompacted = await compactIfNeeded(conversation, loopRequest, stream);
 
       const steering = hooks.drainSteeringMessages();
       if (steering.length > 0) {
@@ -142,7 +155,12 @@ export async function runAgentLoop(
           if (!isContextOverflowError(err) || retriedAfterContextOverflow) throw err;
           let compacted = false;
           try {
-            compacted = await compactAfterContextOverflow(conversation, loopRequest, stream);
+            compacted = await compactAfterContextOverflow(
+              conversation,
+              loopRequest,
+              stream,
+              turnNumber === 1 ? conversation.length - freshUserIndex : 0,
+            );
           } catch {
             throw err;
           }
@@ -225,13 +243,19 @@ function isContextOverflowError(err: unknown): err is ProviderError {
   return err instanceof ProviderError && err.errorType === ProviderErrorType.ContextOverflow;
 }
 
-async function compactIfNeeded(messages: Message[], request: LoopRequest, stream: AgentStream): Promise<boolean> {
+async function compactIfNeeded(
+  messages: Message[],
+  request: LoopRequest,
+  stream: AgentStream,
+  decisionMessages: Message[] = messages,
+  preservedMessages: Message[] = [],
+): Promise<boolean> {
   const config = request.config.compaction;
   if (!config) {
     return false;
   }
 
-  const decision = getCompactionDecision(messages, request.config.model.contextWindow, config.reservePercent);
+  const decision = getCompactionDecision(decisionMessages, request.config.model.contextWindow, config.reservePercent);
   if (!decision.shouldCompact) return false;
 
   request.logger.info("compaction_triggered", {
@@ -247,13 +271,14 @@ async function compactIfNeeded(messages: Message[], request: LoopRequest, stream
     },
   });
 
-  return applyCompaction(messages, request, stream);
+  return applyCompaction(messages, request, stream, { preservedMessages });
 }
 
 async function compactAfterContextOverflow(
   messages: Message[],
   request: LoopRequest,
   stream: AgentStream,
+  preserveTailCount: number,
 ): Promise<boolean> {
   if (!request.config.compaction) return false;
   request.logger.warn("compaction_forced", {
@@ -265,19 +290,31 @@ async function compactAfterContextOverflow(
       model: request.config.model.modelId,
     },
   });
-  return applyCompaction(messages, request, stream, { bypassMinimum: true });
+  const splitIndex = Math.max(0, messages.length - preserveTailCount);
+  const compactableMessages = messages.slice(0, splitIndex);
+  const preservedMessages = messages.slice(splitIndex);
+  if (compactableMessages.length === 0 && request.compactionSummary === undefined) return false;
+  const compacted = await applyCompaction(compactableMessages, request, stream, {
+    bypassMinimum: true,
+    preservedMessages,
+  });
+  if (compacted) {
+    messages.splice(0, messages.length, ...compactableMessages);
+  }
+  return compacted;
 }
 
 async function applyCompaction(
   messages: Message[],
   request: LoopRequest,
   stream: AgentStream,
-  options?: { bypassMinimum?: boolean },
+  options?: { bypassMinimum?: boolean; preservedMessages?: Message[] },
 ): Promise<boolean> {
   const config = request.config.compaction;
   if (!config) return false;
   const result = await runCompaction({
     messages,
+    preservedMessages: options?.preservedMessages,
     model: request.config.model,
     systemPrompt: request.config.systemPrompt,
     compactionSummary: request.compactionSummary,

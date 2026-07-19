@@ -281,7 +281,6 @@ describe("Context builder: message entries on resume", () => {
         parentId: "a2",
         timestamp: "2026-02-27T10:01:00.000Z",
         summary: `${COMPACTION_SUMMARY_PREFIX}\n\nPrevious conversation summary`,
-        recentUserMessages: [],
         tokensBefore: 50000,
         tokensAfter: 5000,
       },

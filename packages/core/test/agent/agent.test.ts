@@ -31,7 +31,7 @@ const BASE_CONFIG = {
   systemPrompt: [] as { label: string; content: string }[],
   tools: [] as never[],
   effort: "medium" as const,
-  compaction: { reservePercent: 16, keepRecentTokens: 20_000 },
+  compaction: { reservePercent: 16 },
 };
 
 function makeStreamFn(response: AssistantMessage) {

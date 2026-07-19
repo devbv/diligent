@@ -321,7 +321,7 @@ describe("SessionManager", () => {
 
     const runPromise = mgr.run({ role: "user", content: "visible immediately", timestamp: Date.now() });
 
-    await waitFor(() => mgr.entryCount === 1);
+    await waitFor(() => releaseProvider !== undefined);
     await mgr.waitForWrites();
     const beforeCompletion = await readSessionFile(mgr.sessionPath!);
     expect(beforeCompletion.entries).toHaveLength(1);
@@ -800,6 +800,48 @@ describe("SessionManager", () => {
     expect(entries.some((entry) => entry.type === "compaction")).toBe(false);
   });
 
+  test("auto-compaction persists the compaction entry before the fresh user message", async () => {
+    const dir = await setupDir();
+    const fresh = { role: "user" as const, content: "fresh request", timestamp: Date.now() };
+    const compactionInputs: Message[][] = [];
+    const agent = new Agent(TEST_MODEL, [{ label: "test", content: "test" }], [], {
+      effort: "medium",
+      llmMsgStreamFn: createMockStreamFn([makeAssistant("first response"), makeAssistant("second response")]),
+      llmCompactionFn: async (input) => {
+        compactionInputs.push(input.messages);
+        return {
+          status: "ok",
+          summary: "compacted",
+          compactionSummary: { type: "compaction", encrypted_content: "opaque" },
+        };
+      },
+      compaction: { reservePercent: 20 },
+    });
+    const mgr = new SessionManager({
+      cwd: dir,
+      paths: resolvePaths(dir),
+      agent,
+      compaction: { enabled: true, reservePercent: 20 },
+    });
+    await mgr.create();
+
+    await mgr.run({ role: "user", content: "x".repeat(COMPACTION_MIN_INPUT_TOKENS * 8), timestamp: Date.now() });
+    await mgr.run(fresh);
+    await mgr.waitForWrites();
+
+    expect(compactionInputs).toHaveLength(1);
+    expect(compactionInputs[0]).not.toContainEqual(fresh);
+    const { entries } = await readSessionFile(mgr.sessionPath!);
+    const compactionIndex = entries.findIndex((entry) => entry.type === "compaction");
+    const freshIndex = entries.findIndex(
+      (entry) => entry.type === "message" && entry.message.role === "user" && entry.message.content === fresh.content,
+    );
+    expect(compactionIndex).toBeGreaterThan(-1);
+    expect(freshIndex).toBe(compactionIndex + 1);
+    expect(entries[freshIndex]?.parentId).toBe(entries[compactionIndex]?.id);
+    expect(entries[compactionIndex]).not.toHaveProperty("recentUserMessages");
+  });
+
   test("aborted signal settles run() without hanging", async () => {
     const dir = await setupDir();
     const controller = new AbortController();
@@ -850,7 +892,7 @@ describe("SessionManager", () => {
     const mgr = new SessionManager({
       cwd: dir,
       paths: resolvePaths(dir),
-      compaction: { enabled: true, reservePercent: 20, keepRecentTokens: 200 },
+      compaction: { enabled: true, reservePercent: 20 },
       agent: new Agent(
         { ...TEST_MODEL, contextWindow: 60_000 },
         [{ label: "test", content: "test" }],

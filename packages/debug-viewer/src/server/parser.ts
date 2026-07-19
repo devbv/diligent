@@ -269,20 +269,11 @@ export function detectEntryType(raw: Record<string, unknown>, context?: DetectEn
         : [];
       details = { readFiles, modifiedFiles };
     }
-    let recentUserMessages: CompactionEntry["recentUserMessages"];
-    if (Array.isArray(raw.recentUserMessages)) {
-      recentUserMessages = raw.recentUserMessages.filter(isRecord).map((message) => ({
-        role: asString(message.role) ?? "user",
-        content: parseUserContent(message.content),
-        timestamp: typeof message.timestamp === "number" ? message.timestamp : undefined,
-      }));
-    }
     return {
       id,
       parentId: asParentId(raw.parentId),
       type: "compaction",
       summary,
-      recentUserMessages,
       details,
       timestamp: parseTimestamp(raw.timestamp),
     };

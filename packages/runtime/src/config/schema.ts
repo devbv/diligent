@@ -163,7 +163,6 @@ export const DiligentConfigSchema = z
       .object({
         enabled: z.boolean().optional(),
         reservePercent: z.number().min(1).max(100).optional(),
-        keepRecentTokens: z.number().int().positive().optional(),
         timeoutMs: z.number().int().positive().optional(),
       })
       .optional(),

@@ -118,7 +118,6 @@ export class AgentStream {
 
 export interface CompactionConfig {
   reservePercent: number;
-  keepRecentTokens: number;
   timeoutMs?: number;
 }
 

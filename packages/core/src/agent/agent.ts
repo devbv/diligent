@@ -52,7 +52,6 @@ export class Agent {
     this.toolOutputStore = opts?.toolOutputStore;
     this.compactionConfig = opts?.compaction ?? {
       reservePercent: 14,
-      keepRecentTokens: 20_000,
       timeoutMs: 180_000,
     };
     this.retryConfig = opts?.retry ?? DEFAULT_LLM_RETRY_CONFIG;
@@ -109,8 +108,7 @@ export class Agent {
     const ownsTurnScope = options?.turnScope === undefined;
     const turnScope = options?.turnScope ?? createStreamTurnScope();
     try {
-      const nextMessages = [...this.messages, userMessage];
-      const result = await runAgentLoop(nextMessages, this.createLoopRuntime(turnScope), signal);
+      const result = await runAgentLoop(this.messages, userMessage, this.createLoopRuntime(turnScope), signal);
       this.messages = result.messages;
       if (result.compactionSummary !== undefined) {
         this.compactionSummary = result.compactionSummary;
