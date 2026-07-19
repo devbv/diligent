@@ -1,6 +1,6 @@
 // @summary Agent-layer compaction helpers — shouldCompact, message selection, runCompaction
 
-import { compact as llmCompact, NATIVE_COMPACTION_MIN_INPUT_TOKENS } from "../llm/compaction";
+import { COMPACTION_MIN_INPUT_TOKENS, compact as llmCompact } from "../llm/compaction";
 import type { NativeCompactFn } from "../llm/provider/native-compaction";
 import { estimateTokens } from "../llm/tokens";
 import type { Model, StreamFunction, SystemSection } from "../llm/types";
@@ -153,12 +153,26 @@ export interface RunCompactionInput {
   llmCompactionFn?: NativeCompactFn;
   stream: AgentStream;
   signal?: AbortSignal;
+  /** Context-overflow recovery may make one bounded attempt below the normal minimum. */
+  bypassMinimum?: boolean;
 }
 
 export interface RunCompactionResult {
+  compacted: boolean;
   summary: string;
   messages: Message[];
   compactionSummary?: Record<string, unknown>;
+  tokensBefore: number;
+  tokensAfter: number;
+}
+
+function estimateCompactionSummaryTokens(compactionSummary?: Record<string, unknown>): number {
+  if (!compactionSummary) return 0;
+  return Math.ceil(JSON.stringify(compactionSummary).length / 4);
+}
+
+function estimateEffectiveContextTokens(messages: Message[], compactionSummary?: Record<string, unknown>): number {
+  return estimateTokens(messages) + estimateCompactionSummaryTokens(compactionSummary);
 }
 
 /**
@@ -195,14 +209,23 @@ export async function runCompaction(input: RunCompactionInput): Promise<RunCompa
     input.messages,
     input.compactionConfig.keepRecentTokens,
   );
-  const tokensBefore = estimateTokens(input.messages);
-  const effectiveLlmCompactionFn =
-    input.llmCompactionFn != null && tokensBefore < NATIVE_COMPACTION_MIN_INPUT_TOKENS
-      ? undefined
-      : input.llmCompactionFn;
+  const candidateTokens =
+    estimateTokens(messagesToSummarize) +
+    (input.llmCompactionFn ? estimateCompactionSummaryTokens(input.compactionSummary) : 0);
+  const tokensBefore = estimateEffectiveContextTokens(input.messages, input.compactionSummary);
+  if (!input.bypassMinimum && candidateTokens < COMPACTION_MIN_INPUT_TOKENS) {
+    return {
+      compacted: false,
+      summary: "",
+      messages: input.messages,
+      compactionSummary: input.compactionSummary,
+      tokensBefore,
+      tokensAfter: tokensBefore,
+    };
+  }
+
   const timeoutMs = input.compactionConfig.timeoutMs ?? DEFAULT_COMPACTION_TIMEOUT_MS;
   const compactionSignal = createCompactionSignal(input.signal, timeoutMs);
-  input.stream.emit({ type: "compaction_start", estimatedTokens: tokensBefore });
   const result = await llmCompact({
     model: input.model,
     messages: messagesToSummarize,
@@ -213,20 +236,39 @@ export async function runCompaction(input: RunCompactionInput): Promise<RunCompa
     config: input.compactionConfig,
     signal: compactionSignal,
     streamFn: input.llmMsgStreamFn,
-    llmCompactionFn: effectiveLlmCompactionFn,
+    llmCompactionFn: input.llmCompactionFn,
   });
   const summary =
     result.mode === "local"
       ? `${COMPACTION_SUMMARY_PREFIX}\n\n${result.displaySummary ?? ""}`.trim()
       : (result.displaySummary ?? "");
   const messages = result.compactionSummary ? [] : buildMessagesFromCompaction(recentUserMessages, summary, Date.now());
-  const tokensAfter = estimateTokens(messages);
+  const tokensAfterCandidate = estimateEffectiveContextTokens(messages, result.compactionSummary);
+  if (tokensAfterCandidate >= tokensBefore) {
+    return {
+      compacted: false,
+      summary: "",
+      messages: input.messages,
+      compactionSummary: input.compactionSummary,
+      tokensBefore,
+      tokensAfter: tokensBefore,
+    };
+  }
+
+  input.stream.emit({ type: "compaction_start", estimatedTokens: tokensBefore });
   input.stream.emit({
     type: "compaction_end",
-    tokensBefore: tokensBefore,
-    tokensAfter,
+    tokensBefore,
+    tokensAfter: tokensAfterCandidate,
     summary,
     compactionSummary: result.compactionSummary,
   });
-  return { summary, messages, compactionSummary: result.compactionSummary };
+  return {
+    compacted: true,
+    summary,
+    messages,
+    compactionSummary: result.compactionSummary,
+    tokensBefore,
+    tokensAfter: tokensAfterCandidate,
+  };
 }

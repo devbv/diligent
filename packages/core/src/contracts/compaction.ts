@@ -9,6 +9,7 @@ export type {
   LLMCompactResult,
 } from "../llm/compaction";
 export {
+  COMPACTION_MIN_INPUT_TOKENS,
   compact,
   compactMessages,
   DEFAULT_COMPACTION_PROMPTS,

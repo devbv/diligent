@@ -249,6 +249,145 @@ describe("selectForCompaction", () => {
 });
 
 describe("runCompaction", () => {
+  it("rejects a standard local candidate below the minimum without calling the summarizer", async () => {
+    const messages: Message[] = [userMsg("x".repeat((NATIVE_COMPACTION_MIN_INPUT_TOKENS - 1) * 4))];
+    let summaryCalls = 0;
+    const stream = new AgentStream();
+    const events: Array<{ type: string }> = [];
+    stream.subscribe((event) => events.push(event));
+
+    const result = await runCompaction({
+      messages,
+      model: TEST_MODEL,
+      systemPrompt: [],
+      compactionConfig: { reservePercent: 16, keepRecentTokens: 50 },
+      llmMsgStreamFn: (model, context, options) => {
+        summaryCalls += 1;
+        return makeStreamFn("unused summary")(model, context, options);
+      },
+      stream,
+    });
+
+    expect(result.compacted).toBe(false);
+    expect(result.messages).toEqual(messages);
+    expect(summaryCalls).toBe(0);
+    expect(events).toEqual([]);
+  });
+
+  it("rejects a standard native candidate below the minimum without calling the adapter", async () => {
+    const messages: Message[] = [userMsg("small")];
+    const priorCompactionSummary = { type: "compaction", encrypted_content: "prior" };
+    let nativeCalls = 0;
+
+    const result = await runCompaction({
+      messages,
+      model: { ...TEST_MODEL, provider: "openai" },
+      systemPrompt: [],
+      compactionSummary: priorCompactionSummary,
+      compactionConfig: { reservePercent: 16, keepRecentTokens: 50 },
+      llmMsgStreamFn: makeStreamFn("unused summary"),
+      llmCompactionFn: async () => {
+        nativeCalls += 1;
+        return { status: "ok", summary: "unused native summary" };
+      },
+      stream: new AgentStream(),
+    });
+
+    expect(result.compacted).toBe(false);
+    expect(result.messages).toEqual(messages);
+    expect(result.compactionSummary).toBe(priorCompactionSummary);
+    expect(nativeCalls).toBe(0);
+  });
+
+  it("includes prior native compaction state when checking native candidate eligibility", async () => {
+    const messages: Message[] = [userMsg("small follow-up")];
+    const priorCompactionSummary = {
+      type: "compaction",
+      encrypted_content: "p".repeat(NATIVE_COMPACTION_MIN_INPUT_TOKENS * 4),
+    };
+    let nativeCalls = 0;
+
+    const result = await runCompaction({
+      messages,
+      model: { ...TEST_MODEL, provider: "openai" },
+      systemPrompt: [],
+      compactionSummary: priorCompactionSummary,
+      compactionConfig: { reservePercent: 16, keepRecentTokens: 0 },
+      llmMsgStreamFn: makeStreamFn("unused summary"),
+      llmCompactionFn: async () => {
+        nativeCalls += 1;
+        return { status: "ok", compactionSummary: { type: "compaction", encrypted_content: "short" } };
+      },
+      stream: new AgentStream(),
+    });
+
+    expect(nativeCalls).toBe(1);
+    expect(result.compacted).toBe(true);
+    expect(result.compactionSummary).toEqual({ type: "compaction", encrypted_content: "short" });
+  });
+
+  it("adopts a shrinking local result at the minimum candidate size", async () => {
+    const messages: Message[] = [userMsg("x".repeat(NATIVE_COMPACTION_MIN_INPUT_TOKENS * 4))];
+
+    const result = await runCompaction({
+      messages,
+      model: TEST_MODEL,
+      systemPrompt: [],
+      compactionConfig: { reservePercent: 16, keepRecentTokens: 0 },
+      llmMsgStreamFn: makeStreamFn("short summary"),
+      stream: new AgentStream(),
+    });
+
+    expect(result.compacted).toBe(true);
+    expect(result.messages).not.toEqual(messages);
+    expect(result.tokensAfter).toBeLessThan(result.tokensBefore);
+  });
+
+  it("rejects a nonshrinking local result and preserves the source context", async () => {
+    const messages: Message[] = [userMsg("x".repeat(NATIVE_COMPACTION_MIN_INPUT_TOKENS * 4))];
+    const nonshrinkingSummary = "s".repeat(NATIVE_COMPACTION_MIN_INPUT_TOKENS * 4);
+
+    const result = await runCompaction({
+      messages,
+      model: TEST_MODEL,
+      systemPrompt: [],
+      compactionConfig: { reservePercent: 16, keepRecentTokens: 0 },
+      llmMsgStreamFn: makeStreamFn(nonshrinkingSummary),
+      stream: new AgentStream(),
+    });
+
+    expect(result.compacted).toBe(false);
+    expect(result.messages).toEqual(messages);
+    expect(result.tokensAfter).toBe(result.tokensBefore);
+  });
+
+  it("rejects a nonshrinking native result and preserves prior native state", async () => {
+    const messages: Message[] = [userMsg("x".repeat(NATIVE_COMPACTION_MIN_INPUT_TOKENS * 4))];
+    const priorCompactionSummary = { type: "compaction", encrypted_content: "prior" };
+
+    const result = await runCompaction({
+      messages,
+      model: { ...TEST_MODEL, provider: "openai" },
+      systemPrompt: [],
+      compactionSummary: priorCompactionSummary,
+      compactionConfig: { reservePercent: 16, keepRecentTokens: 0 },
+      llmMsgStreamFn: makeStreamFn("unused summary"),
+      llmCompactionFn: async () => ({
+        status: "ok",
+        compactionSummary: {
+          type: "compaction",
+          encrypted_content: "n".repeat((NATIVE_COMPACTION_MIN_INPUT_TOKENS + 1_000) * 4),
+        },
+      }),
+      stream: new AgentStream(),
+    });
+
+    expect(result.compacted).toBe(false);
+    expect(result.messages).toEqual(messages);
+    expect(result.compactionSummary).toBe(priorCompactionSummary);
+    expect(result.tokensAfter).toBe(result.tokensBefore);
+  });
+
   it("does not expose the image loader to local summary models", async () => {
     let capturedContext: StreamContext | undefined;
     const summaryStream: StreamFunction = (model, context, options) => {
@@ -262,7 +401,7 @@ describe("runCompaction", () => {
           role: "user",
           timestamp: 0,
           content: [
-            { type: "text", text: "summarize this" },
+            { type: "text", text: "x".repeat(NATIVE_COMPACTION_MIN_INPUT_TOKENS * 4) },
             { type: "local_image", path: "relative/image.png", mediaType: "image/png" },
           ],
         },
@@ -295,6 +434,7 @@ describe("runCompaction", () => {
       stream,
     });
 
+    expect(result.compacted).toBe(true);
     expect(result.messages).toHaveLength(2);
     expect(result.messages[0]?.role).toBe("user");
     expect(result.messages[1]?.role).toBe("user");
@@ -321,6 +461,7 @@ describe("runCompaction", () => {
       stream,
     });
 
+    expect(result.compacted).toBe(true);
     expect(result.messages).toEqual([]);
     expect(result.compactionSummary).toEqual({ type: "compaction", encrypted_content: "opaque" });
   });

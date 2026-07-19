@@ -316,12 +316,15 @@ describe("Agent loop", () => {
 
     const toolEnd = events.find((e) => e.type === "tool_end") as Extract<CoreAgentEvent, { type: "tool_end" }>;
     expect(toolEnd.metadata).toEqual({ error: true, status: invalidScopeStatus });
+    expect(toolEnd.isError).toBe(true);
 
     const turnEnd = events.find((e) => e.type === "turn_end") as Extract<CoreAgentEvent, { type: "turn_end" }>;
     expect(turnEnd.toolResults[0].metadata).toEqual({ error: true, status: invalidScopeStatus });
+    expect(turnEnd.toolResults[0].isError).toBe(true);
 
     const toolResult = result.find((message) => message.role === "tool_result");
     expect(toolResult?.metadata).toEqual({ error: true, status: invalidScopeStatus });
+    expect(toolResult?.isError).toBe(true);
   });
 
   test("parallel tools: all supportParallel=true → parallel execution (all tool_start before tool_end)", async () => {
@@ -549,6 +552,29 @@ describe("Agent compactionSummary persistence", () => {
   });
 });
 
+describe("Agent automatic compaction eligibility", () => {
+  test("does not compact a threshold-triggered candidate below 50,000 estimated tokens", async () => {
+    let summaryCalls = 0;
+    const streamFn = createMockStreamFunction([makeAssistant([{ type: "text", text: "sampled original" }])]);
+    const agent = new Agent({ ...TEST_MODEL, contextWindow: 20_000 }, [{ label: "sys", content: "sys" }], [], {
+      effort: "medium",
+      llmMsgStreamFn: (model, context, options) => {
+        if (context.systemPrompt[0]?.label !== "sys") summaryCalls += 1;
+        return streamFn(model, context, options);
+      },
+      compaction: { reservePercent: 50, keepRecentTokens: 0 },
+    });
+    const original = "x".repeat(12_000 * 4);
+
+    const result = await agent.prompt({ role: "user", content: original, timestamp: Date.now() });
+
+    expect(summaryCalls).toBe(0);
+    expect(streamFn.contexts).toHaveLength(1);
+    expect(streamFn.contexts[0]?.messages[0]).toMatchObject({ role: "user", content: original });
+    expect(result[0]).toMatchObject({ role: "user", content: original });
+  });
+});
+
 describe("Agent context overflow compaction", () => {
   function createContextOverflowStream(
     failuresBeforeSuccess: number,
@@ -586,7 +612,7 @@ describe("Agent context overflow compaction", () => {
     return Object.assign(streamFn, { callCount: () => calls, contexts });
   }
 
-  test("forces compaction and retries once on provider context_overflow", async () => {
+  test("bypasses the minimum once and retries after shrinking on confirmed context_overflow", async () => {
     let compactCalls = 0;
     const nativeCompactFn: NativeCompactFn = async (_input: NativeCompactionInput) => {
       compactCalls++;
@@ -601,7 +627,7 @@ describe("Agent context overflow compaction", () => {
 
     const result = await agent.prompt({
       role: "user",
-      content: "x".repeat(NATIVE_COMPACTION_MIN_INPUT_TOKENS * 4),
+      content: "x".repeat((NATIVE_COMPACTION_MIN_INPUT_TOKENS - 1) * 4),
       timestamp: Date.now(),
     });
 
@@ -614,6 +640,92 @@ describe("Agent context overflow compaction", () => {
           message.role === "user" && typeof message.content === "string" && message.content.includes("forced summary"),
       ),
     ).toBe(true);
+  });
+
+  test("surfaces the original overflow without retrying when forced compaction does not shrink", async () => {
+    let compactCalls = 0;
+    let providerCalls = 0;
+    const originalOverflow = new ProviderError("Original context overflow", "context_overflow", false);
+    const streamFn: StreamFunction = () => {
+      providerCalls += 1;
+      const stream = new EventStream<ProviderEvent, ProviderResult>(
+        (event) => event.type === "done" || event.type === "error",
+        (event) => {
+          if (event.type === "done") return { message: event.message };
+          throw (event as { type: "error"; error: Error }).error;
+        },
+      );
+      stream.result().catch(() => {});
+      queueMicrotask(() => {
+        stream.push({ type: "start" });
+        stream.push({ type: "error", error: originalOverflow });
+      });
+      return stream;
+    };
+    const agent = new Agent(TEST_MODEL, [{ label: "sys", content: "sys" }], [], {
+      effort: "medium",
+      llmMsgStreamFn: streamFn,
+      llmCompactionFn: async () => {
+        compactCalls += 1;
+        return {
+          status: "ok",
+          summary: "s".repeat(NATIVE_COMPACTION_MIN_INPUT_TOKENS * 4),
+        };
+      },
+    });
+
+    let thrown: unknown;
+    try {
+      await agent.prompt({ role: "user", content: "small source", timestamp: Date.now() });
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBe(originalOverflow);
+    expect(providerCalls).toBe(1);
+    expect(compactCalls).toBe(1);
+    expect(agent.getMessages()).toEqual([]);
+  });
+
+  test("surfaces the original overflow when the bounded recovery compaction throws", async () => {
+    let compactCalls = 0;
+    let providerCalls = 0;
+    const originalOverflow = new ProviderError("Original context overflow", "context_overflow", false);
+    const streamFn: StreamFunction = () => {
+      providerCalls += 1;
+      const stream = new EventStream<ProviderEvent, ProviderResult>(
+        (event) => event.type === "done" || event.type === "error",
+        (event) => {
+          if (event.type === "done") return { message: event.message };
+          throw (event as { type: "error"; error: Error }).error;
+        },
+      );
+      stream.result().catch(() => {});
+      queueMicrotask(() => {
+        stream.push({ type: "start" });
+        stream.push({ type: "error", error: originalOverflow });
+      });
+      return stream;
+    };
+    const agent = new Agent(TEST_MODEL, [{ label: "sys", content: "sys" }], [], {
+      effort: "medium",
+      llmMsgStreamFn: streamFn,
+      llmCompactionFn: async () => {
+        compactCalls += 1;
+        throw new Error("recovery compaction failed");
+      },
+    });
+
+    let thrown: unknown;
+    try {
+      await agent.prompt({ role: "user", content: "small source", timestamp: Date.now() });
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBe(originalOverflow);
+    expect(providerCalls).toBe(1);
+    expect(compactCalls).toBe(1);
   });
 
   test("does not force compaction more than once for one sampling turn", async () => {

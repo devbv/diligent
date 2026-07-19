@@ -209,8 +209,8 @@ export class Agent {
     this.sessionId = sessionId;
   }
 
-  /** Compact internal messages unconditionally, emitting compaction_start/end via stream. */
-  async compact(signal?: AbortSignal): Promise<void> {
+  /** Attempt to compact internal messages, adopting only a smaller effective context. */
+  async compact(signal?: AbortSignal): Promise<import("./compaction").RunCompactionResult> {
     const result = await runCompaction({
       messages: this.messages,
       model: this.model,
@@ -224,7 +224,10 @@ export class Agent {
       localImageLoader: this.localImageLoader,
       signal,
     });
-    this.messages = result.messages;
-    this.compactionSummary = result.compactionSummary;
+    if (result.compacted) {
+      this.messages = result.messages;
+      this.compactionSummary = result.compactionSummary;
+    }
+    return result;
   }
 }

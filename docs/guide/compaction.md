@@ -39,13 +39,18 @@ These values are applied by `SessionManager` when preparing or manually compacti
 
 ## When automatic compaction triggers
 
-The current trigger uses a reserve-threshold decision.
+The current trigger uses both a reserve-threshold decision and a minimum eligible candidate size.
 
 At a high level, compaction is considered when estimated active context exceeds:
 
 - `contextWindow - floor(contextWindow * reservePercent / 100)`
 
 In other words, Diligent keeps a proportional reserve instead of waiting until the context window is completely full.
+
+Crossing that reserve threshold only makes compaction eligible for consideration. After selecting the segment to
+summarize, automatic compaction proceeds only when that candidate contains at least 50,000 estimated tokens. The
+50,000-token minimum is shared by local and provider-native compaction; a native path cannot fall back to local
+summarization of an ineligible smaller candidate.
 
 ## Token source behavior
 
@@ -92,10 +97,36 @@ Native compaction allows the provider to return provider-owned compaction state 
 Current behavior:
 
 - native compaction is used only when a native compaction function is available
-- native compaction is skipped for small inputs below `NATIVE_COMPACTION_MIN_INPUT_TOKENS` (`50000`)
+- all compaction modes use `COMPACTION_MIN_INPUT_TOKENS` (`50000`) as the standard candidate minimum
 - when native compaction succeeds, Diligent can persist provider compaction state as `compactionSummary`
 
 When `compactionSummary` exists, the rebuilt provider-visible context is restored from that provider-owned state rather than from a local summary message chain.
+
+## Eligibility, adoption, and rejection
+
+Automatic and manual compaction share the same standard eligibility and adoption contract:
+
+- the selected candidate must contain at least 50,000 estimated tokens
+- the proposed local or native result is adopted only when estimated effective provider context becomes smaller
+- effective context includes both rebuilt messages and provider-owned `compactionSummary` state
+- a rejected candidate returns the original messages and original native compaction state unchanged
+- rejection reports `compacted: false`, an empty summary, and `tokensAfter === tokensBefore`
+
+For manual compaction, a thread below the 50,000-token candidate minimum therefore returns normally with
+`compacted: false`. It does not force a summarizer call, persist a compaction entry, or replace the active context with
+a larger summary.
+
+These rules are provider-neutral. Diligent does not use provider-specific adoption thresholds or retry loops.
+
+## Confirmed context-overflow recovery
+
+A confirmed provider `context_overflow` error permits one bounded recovery attempt that may bypass the 50,000-token
+minimum. The shrink guard still applies. If that one attempt produces a smaller effective context, the sampling call
+is retried once with the adopted result.
+
+If recovery compaction throws, is rejected, or does not shrink effective context, Diligent preserves the original
+context and resurfaces the original context-overflow failure. It does not retry compaction, loop on the provider, or
+introduce provider-specific recovery behavior.
 
 ## Persistence behavior
 
@@ -166,6 +197,8 @@ Compaction runs under its own abort signal and timeout budget.
 - default timeout: `180000` ms
 - manual compaction errors are surfaced back through the server error flow
 - manual compaction always restores thread status to `idle` in a `finally` path
+- ineligible or nonshrinking manual candidates are normal `compacted: false` results, not errors
+- failed or nonshrinking overflow recovery resurfaces the original provider context-overflow error
 
 ## Key code paths
 

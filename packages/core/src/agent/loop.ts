@@ -140,7 +140,12 @@ export async function runAgentLoop(
           break;
         } catch (err) {
           if (!isContextOverflowError(err) || retriedAfterContextOverflow) throw err;
-          const compacted = await compactAfterContextOverflow(conversation, loopRequest, stream);
+          let compacted = false;
+          try {
+            compacted = await compactAfterContextOverflow(conversation, loopRequest, stream);
+          } catch {
+            throw err;
+          }
           if (!compacted) throw err;
           retriedAfterContextOverflow = true;
         }
@@ -242,8 +247,7 @@ async function compactIfNeeded(messages: Message[], request: LoopRequest, stream
     },
   });
 
-  await applyCompaction(messages, request, stream);
-  return true;
+  return applyCompaction(messages, request, stream);
 }
 
 async function compactAfterContextOverflow(
@@ -261,13 +265,17 @@ async function compactAfterContextOverflow(
       model: request.config.model.modelId,
     },
   });
-  await applyCompaction(messages, request, stream);
-  return true;
+  return applyCompaction(messages, request, stream, { bypassMinimum: true });
 }
 
-async function applyCompaction(messages: Message[], request: LoopRequest, stream: AgentStream): Promise<void> {
+async function applyCompaction(
+  messages: Message[],
+  request: LoopRequest,
+  stream: AgentStream,
+  options?: { bypassMinimum?: boolean },
+): Promise<boolean> {
   const config = request.config.compaction;
-  if (!config) return;
+  if (!config) return false;
   const result = await runCompaction({
     messages,
     model: request.config.model,
@@ -280,7 +288,10 @@ async function applyCompaction(messages: Message[], request: LoopRequest, stream
     llmCompactionFn: request.llmCompactionFn,
     stream,
     signal: request.signal,
+    bypassMinimum: options?.bypassMinimum,
   });
+  if (!result.compacted) return false;
   messages.splice(0, messages.length, ...result.messages);
   request.compactionSummary = result.compactionSummary;
+  return true;
 }

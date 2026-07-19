@@ -88,7 +88,9 @@ const STATIC_COMPACTION_RESOLVERS: Partial<Record<string, CompactionResolver>> =
   // Intentionally empty for now: authenticated providers should pass llmCompactionFn via AgentOptions.
 };
 
-export const NATIVE_COMPACTION_MIN_INPUT_TOKENS = 50_000;
+export const COMPACTION_MIN_INPUT_TOKENS = 50_000;
+/** @deprecated Use COMPACTION_MIN_INPUT_TOKENS. */
+export const NATIVE_COMPACTION_MIN_INPUT_TOKENS = COMPACTION_MIN_INPUT_TOKENS;
 
 /** Resolve a provider-native compaction function for the given provider from static definitions. */
 export function resolveCompaction(provider: string): NativeCompactFn | undefined {
