@@ -338,7 +338,7 @@ describe("DiligentAppServer multi-connection (web)", () => {
     });
   });
 
-  test("thread/compact/start: emits compacted notification", async () => {
+  test("thread/compact/start: returns false without a notification below the compaction threshold", async () => {
     await withSandboxedProject(async (projectRoot) => {
       const server = createMinimalServer({ cwd: projectRoot });
       const p1 = createFakePeer();
@@ -363,14 +363,12 @@ describe("DiligentAppServer multi-connection (web)", () => {
       });
 
       const response = await waitFor(p1, (m) => "id" in m && (m as { id: unknown }).id === 3 && "result" in m);
-      expect((response as { result: { compacted: boolean } }).result.compacted).toBe(true);
-
-      const notification = await waitFor(
-        p1,
-        (m) => "method" in m && m.method === DILIGENT_SERVER_NOTIFICATION_METHODS.THREAD_COMPACTED,
-      );
-      expect(notification).toBeTruthy();
-      expect((notification as { params: { summary: string } }).params.summary.length).toBeGreaterThan(0);
+      expect((response as { result: { compacted: boolean } }).result.compacted).toBe(false);
+      expect(
+        p1.sent.some(
+          (message) => "method" in message && message.method === DILIGENT_SERVER_NOTIFICATION_METHODS.THREAD_COMPACTED,
+        ),
+      ).toBe(false);
     });
   });
 });
