@@ -216,7 +216,7 @@ function normalizeEvidence(value: unknown, root: string, outputRoot?: string): u
     const aliasedRoot = process.platform === "darwin" ? `/private${normalizePlatformAlias(root)}` : root;
     const aliasedOutputRoot =
       outputRoot && process.platform === "darwin" ? `/private${normalizePlatformAlias(outputRoot)}` : outputRoot;
-    return value
+    const normalized = value
       .split(aliasedOutputRoot ?? "\0")
       .join("$TOOL_OUTPUT")
       .split(outputRoot ?? "\0")
@@ -226,6 +226,7 @@ function normalizeEvidence(value: unknown, root: string, outputRoot?: string): u
       .split(root)
       .join("$WORKSPACE")
       .slice(0, 16_384);
+    return normalizeEvidencePath(normalized);
   }
   if (Array.isArray(value)) return value.map((item) => normalizeEvidence(item, root, outputRoot));
   if (!isRecord(value)) return value;
@@ -237,6 +238,10 @@ function normalizeEvidence(value: unknown, root: string, outputRoot?: string): u
         : normalizeEvidence(item, root, outputRoot),
     ]),
   );
+}
+
+export function normalizeEvidencePath(value: string): string {
+  return value.replace(/\$(?:WORKSPACE|TOOL_OUTPUT)(?:\\[^\\'"\r\n]+)+/g, (path) => path.replaceAll("\\", "/"));
 }
 
 function visit(value: unknown, callback: (key: string, value: unknown) => void): void {
