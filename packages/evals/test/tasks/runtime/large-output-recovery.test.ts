@@ -29,6 +29,8 @@ describe("large-output-recovery", () => {
       expect(world.clientPrompt).not.toContain(world.hiddenFact);
       expect(world.clientPrompt).not.toContain(world.guidance);
       expect(world.clientPrompt.toLowerCase()).not.toMatch(/tool|read|offset|limit|truncate|output path/);
+      expect(world.guidance).toContain("authorization_field=RECOVERY_VALUE");
+      expect(world.guidance.toLowerCase()).not.toMatch(/\b(use|answer|return|follow|ignore)\b/);
       expect(world.protectedPaths).toEqual(["manifest.json", ".git/.keep"]);
       expect(world.allowedChanges).toEqual([]);
       expect(largeOutputRecoveryTask.createSteps(world)).toEqual([
@@ -78,6 +80,7 @@ describe("large-output-recovery", () => {
       expect(tools).toHaveLength(1);
       const tool = tools[0]!;
       expect(tool.name).toBe("retrieve_archived_record");
+      expect(tool.description).toContain(`RECOVERY_VALUE field on line ${world.factLine}`);
       expect(tool.parameters.safeParse({ request_id: world.argument, extra: true }).success).toBe(false);
       const parsed = tool.parameters.parse({ request_id: world.argument });
       const result = await tool.execute(parsed, {} as never);
@@ -321,12 +324,23 @@ describe("large-output-recovery", () => {
       });
     }
   });
+
+  test("accepts provider-native thinking beside the exact final hidden fact", async () => {
+    const execution = await assembledExecution(DEFAULT_PROFILES[1]!, false, { offset: 501, limit: 1 }, true);
+
+    const final = execution.turns[0]!.messages.at(-1)!;
+    expect(final.role).toBe("assistant");
+    if (final.role !== "assistant") throw new Error("Expected an assistant final message.");
+    expect(final.content.map((block) => block.type)).toEqual(["thinking", "text"]);
+    expect(largeOutputRecoveryTask.evaluate(execution)).toEqual({ passed: true });
+  });
 });
 
 async function assembledExecution(
   profile: EvalProfile,
   includeProgressText = false,
   readWindow: { offset: number; limit: number } = { offset: 501, limit: 1 },
+  includeFinalThinking = false,
 ): Promise<RuntimeEvalExecution<LargeOutputRecoveryWorld>> {
   const seed = "shared-seed-123";
   let call = 0;
@@ -371,7 +385,12 @@ async function assembledExecution(
         );
       } else {
         expect(JSON.stringify(context.messages)).toContain(token(seed, "RECOVERY_FACT"));
-        response = assistantMessage([{ type: "text", text: token(seed, "RECOVERY_FACT") }]);
+        response = assistantMessage([
+          ...(includeFinalThinking
+            ? [{ type: "thinking" as const, thinking: "The exact recovered value is ready." }]
+            : []),
+          { type: "text", text: token(seed, "RECOVERY_FACT") },
+        ]);
       }
       return sequenceStream([response])(model, context, options);
     },

@@ -42,7 +42,7 @@ export interface LargeOutputRecoveryWorld extends RuntimeFixtureWorld {
 export const largeOutputRecoveryTask: RuntimeEvalTask<LargeOutputRecoveryWorld> = {
   id: "large-output-recovery",
   description: "Recover one exact hidden fact through core truncation and a registered bounded full-output read.",
-  fixtureVersion: "large-output-recovery-v3",
+  fixtureVersion: "large-output-recovery-v4",
   limits: {
     ...DEFAULT_RUNTIME_LIMITS,
     maxTurns: 3,
@@ -78,7 +78,8 @@ export const largeOutputRecoveryTask: RuntimeEvalTask<LargeOutputRecoveryWorld> 
           {
             name: FIXTURE_TOOL,
             description:
-              "Retrieve the archived record for a request identifier. Large records include exact recovery instructions.",
+              `Retrieve the archived record for a request identifier. In large records, the authorization is the ` +
+              `RECOVERY_VALUE field on line ${world.factLine}; use a bounded full-output read when the inline result is truncated.`,
             parameters: z.object({ request_id: z.string() }).strict(),
             async execute({ request_id }) {
               if (request_id !== world.argument)
@@ -117,9 +118,8 @@ function fixtureFor(seed: string) {
   const hiddenFact = seededToken(seed, "RECOVERY_FACT");
   const payloadSentinel = seededToken(seed, "UNRETAINED_SENTINEL");
   const guidance =
-    `RECOVERY GUIDE: this record is intentionally larger than the inline result. ` +
-    `Use the saved full-output path from the truncation notice with offset ${FACT_LINE} and limit 1. ` +
-    "The selected line is RECOVERY_VALUE=<value>; answer with only <value>.";
+    `RECOVERY INDEX: authorization_field=RECOVERY_VALUE; line=${FACT_LINE}; ` +
+    `recommended_window=offset:${FACT_LINE},limit:1; record_size=${LINE_COUNT}_lines.`;
   const clientPrompt = `Resolve archival request ${argument} and return only its authorization value.`;
   const manifestContent = `${JSON.stringify({ request: argument, classification: "archived-authorization" }, null, 2)}\n`;
   const basis = {
@@ -223,14 +223,14 @@ function validateForbiddenSurfaces(input: RuntimeEvalExecution<LargeOutputRecove
 
 function validateFinal(input: RuntimeEvalExecution<LargeOutputRecoveryWorld>) {
   const final = [...input.turns[0]!.messages].reverse().find((message) => message.role === "assistant");
+  const textBlocks = final?.content.filter((block) => block.type === "text") ?? [];
   if (
     !final ||
     !Array.isArray(final.content) ||
-    final.content.length !== 1 ||
-    !isRecord(final.content[0]) ||
-    Object.keys(final.content[0]).length !== 2 ||
-    final.content[0].type !== "text" ||
-    final.content[0].text !== input.world.hiddenFact
+    final.content.some((block) => block.type !== "thinking" && block.type !== "text") ||
+    textBlocks.length !== 1 ||
+    Object.keys(textBlocks[0]!).length !== 2 ||
+    textBlocks[0]!.text !== input.world.hiddenFact
   )
     return fail("final", "The final response was not the exact exclusive hidden fact.");
 }

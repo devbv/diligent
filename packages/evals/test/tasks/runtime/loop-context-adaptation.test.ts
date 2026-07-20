@@ -205,6 +205,17 @@ describe("loop-context-adaptation", () => {
     expect(loopContextAdaptationTask.evaluate(changed).passed).toBe(false);
   });
 
+  test("accepts one failed root-instructions probe before the exact adapted write", async () => {
+    const execution = await assembledExecution(DEFAULT_PROFILES[0]!, { probeMissingRootInstructions: true });
+
+    expect(execution.toolCalls.map((call) => [call.name, call.outcome])).toEqual([
+      ["read", "success"],
+      ["read", "runtime_error"],
+      ["apply_patch", "success"],
+    ]);
+    expect(loopContextAdaptationTask.evaluate(execution)).toMatchObject({ passed: true });
+  });
+
   test("rejects omitted, malformed, duplicated, and reordered evidence across the strict matrix", async () => {
     const baseline = await assembledExecution(DEFAULT_PROFILES[0]!);
     expect(loopContextAdaptationTask.evaluate(baseline)).toEqual({ passed: true });
@@ -294,7 +305,7 @@ describe("loop-context-adaptation", () => {
 
 async function assembledExecution(
   profile: EvalProfile,
-  scenario: { recoverCreate?: boolean } = {},
+  scenario: { recoverCreate?: boolean; probeMissingRootInstructions?: boolean } = {},
 ): Promise<RuntimeEvalExecution<LoopContextAdaptationWorld>> {
   const seed = "shared-seed-123";
   let call = 0;
@@ -386,6 +397,21 @@ async function assembledExecution(
           ],
           "tool_use",
         ),
+        ...(scenario.probeMissingRootInstructions
+          ? [
+              assistantMessage(
+                [
+                  {
+                    type: "tool_call",
+                    id: "loop-read-instructions",
+                    name: "read",
+                    input: { file_path: join(cwd, "AGENTS.md") },
+                  },
+                ],
+                "tool_use",
+              ),
+            ]
+          : []),
         ...writeCalls,
         assistantMessage([{ type: "text", text: updated }]),
       ]);

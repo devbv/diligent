@@ -155,18 +155,20 @@ export const loopContextAdaptationTask: RuntimeEvalTask<LoopContextAdaptationWor
   evaluate(input) {
     const failure = validateToolsAndResult(input) ?? validateIsolation(input);
     if (failure) return failure;
-    return absentFileEditRecovery(input)
-      ? {
-          passed: true,
-          diagnostics: [
-            {
-              dimension: "efficiency",
-              code: "loop_context_adaptation.absent_file_recovery",
-              message: "One bounded provider-neutral absent-file recovery preceded the adapted write.",
-            },
-          ],
-        }
-      : { passed: true };
+    const diagnostics = [];
+    if (absentFileEditRecovery(input))
+      diagnostics.push({
+        dimension: "efficiency" as const,
+        code: "loop_context_adaptation.absent_file_recovery",
+        message: "One bounded provider-neutral absent-file recovery preceded the adapted write.",
+      });
+    if (missingRootInstructionsRead(input))
+      diagnostics.push({
+        dimension: "efficiency" as const,
+        code: "loop_context_adaptation.missing_root_instructions",
+        message: "One bounded root-instructions probe failed before the adapted write.",
+      });
+    return diagnostics.length > 0 ? { passed: true, diagnostics } : { passed: true };
   },
 };
 
@@ -180,17 +182,18 @@ function injection(world: LoopContextAdaptationWorld): AgentContextInjection {
 
 function validateToolsAndResult(input: RuntimeEvalExecution<LoopContextAdaptationWorld>) {
   const recovery = absentFileEditRecovery(input);
+  const instructionsProbe = missingRootInstructionsRead(input);
   const read = input.toolCalls[0];
-  const write = recovery?.succeeded ?? input.toolCalls[1];
+  const write = recovery?.succeeded ?? input.toolCalls[instructionsProbe ? 2 : 1];
   const expectedReadInput = { file_path: `$WORKSPACE/${BRIEF_PATH}` };
   if (
-    input.toolCalls.length !== (recovery ? 3 : 2) ||
+    input.toolCalls.length !== (recovery || instructionsProbe ? 3 : 2) ||
     read?.sequence !== 1 ||
     read.name !== "read" ||
     read.capability !== "read" ||
     read.outcome !== "success" ||
     JSON.stringify(read.input) !== JSON.stringify(expectedReadInput) ||
-    write?.sequence !== (recovery ? 3 : 2) ||
+    write?.sequence !== (recovery || instructionsProbe ? 3 : 2) ||
     !["apply_patch", "edit"].includes(write.name) ||
     write.capability !== "write" ||
     write.outcome !== "success" ||
@@ -214,6 +217,22 @@ function validateToolsAndResult(input: RuntimeEvalExecution<LoopContextAdaptatio
     return fail("result", "The final artifact did not contain the exclusive injected value.");
   if (!isValidFinalAssistant(input.turns[0]!.messages.at(-1), input.world.injectedValue, input.world.initialValue))
     return fail("final_answer", "The final answer did not exclusively report the adapted result.");
+}
+
+function missingRootInstructionsRead(input: RuntimeEvalExecution<LoopContextAdaptationWorld>) {
+  if (input.toolCalls.length !== 3) return undefined;
+  const trace = input.toolCalls[1];
+  const error = "Error: File not found: $WORKSPACE/AGENTS.md";
+  return trace?.sequence === 2 &&
+    trace.name === "read" &&
+    trace.capability === "read" &&
+    trace.outcome === "runtime_error" &&
+    trace.threadId === input.session.threadId &&
+    trace.childThreadId === undefined &&
+    JSON.stringify(trace.input) === JSON.stringify({ file_path: "$WORKSPACE/AGENTS.md" }) &&
+    trace.error === error
+    ? trace
+    : undefined;
 }
 
 function absentFileEditRecovery(input: RuntimeEvalExecution<LoopContextAdaptationWorld>) {
