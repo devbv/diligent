@@ -169,7 +169,7 @@ describe("applyProceduralOps", () => {
     expect(result.skippedDeletes).toEqual(["ghost"]);
   });
 
-  test("normalizes explicit descendant Mobility after applying procedural JSON", async () => {
+  test("cascades the top-level Mobility onto every descendant after applying procedural JSON", async () => {
     const cwd = makeProject();
     const result = await applyProceduralOps(
       [
@@ -207,7 +207,9 @@ describe("applyProceduralOps", () => {
     const k = findNodeByActorGuid(root, result.addedGuids[2]) as Record<string, unknown>;
     expect(hello.Mobility).toBe("Static");
     expect(hey.Mobility).toBe("Static");
-    expect("Mobility" in k).toBe(false);
+    // Engine default is Movable, so the keyless leaf must be materialized to
+    // Static to follow the top-level; otherwise it would attach as Movable.
+    expect(k.Mobility).toBe("Static");
   });
 
   test("validates every operation before mutating the level", async () => {
