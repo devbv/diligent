@@ -3,7 +3,7 @@
 import { createHash } from "node:crypto";
 import { lstat, readdir, readFile, rm } from "node:fs/promises";
 import { homedir } from "node:os";
-import { isAbsolute, relative, resolve, sep } from "node:path";
+import { isAbsolute, posix, relative, resolve, sep, win32 } from "node:path";
 import type { RuntimeWorkspaceEntry, RuntimeWorldSnapshot } from "../runtime-task";
 
 export async function captureWorkspace(root: string): Promise<RuntimeWorldSnapshot> {
@@ -15,13 +15,20 @@ export async function captureWorkspace(root: string): Promise<RuntimeWorldSnapsh
 
 export function resolveWorkspacePath(root: string, candidate: string): string {
   const safeRoot = validateTemporaryRoot(root);
-  if (/^[A-Za-z]:[\\/]/.test(candidate) || candidate.startsWith("\\\\"))
+  return resolveWorkspacePathForFlavor(safeRoot, candidate, process.platform === "win32" ? "win32" : "posix");
+}
+
+export function resolveWorkspacePathForFlavor(root: string, candidate: string, flavor: "posix" | "win32"): string {
+  const path = flavor === "win32" ? win32 : posix;
+  if (!path.isAbsolute(root)) throw new Error(`Runtime eval root must be an absolute ${flavor} path.`);
+  if (flavor === "posix" && (/^[A-Za-z]:[\\/]/.test(candidate) || candidate.startsWith("\\\\")))
     throw new Error(`runtime_contract.workspace_escape: incompatible absolute path: ${candidate}`);
-  const normalized = candidate.replaceAll("\\", "/");
-  const resolved = isAbsolute(normalized) ? resolve(normalized) : resolve(safeRoot, normalized);
-  const comparableRoot = normalizePlatformAlias(safeRoot);
-  const comparableResolved = normalizePlatformAlias(resolved);
-  if (comparableResolved !== comparableRoot && !comparableResolved.startsWith(`${comparableRoot}${sep}`)) {
+  const normalized = flavor === "posix" ? candidate.replaceAll("\\", "/") : candidate;
+  const resolved = path.resolve(root, normalized);
+  const comparableRoot = flavor === "posix" ? normalizePlatformAlias(root) : root;
+  const comparableResolved = flavor === "posix" ? normalizePlatformAlias(resolved) : resolved;
+  const relativePath = path.relative(comparableRoot, comparableResolved);
+  if (relativePath === ".." || relativePath.startsWith(`..${path.sep}`) || path.isAbsolute(relativePath)) {
     throw new Error(`runtime_contract.workspace_escape: path leaves workspace: ${candidate}`);
   }
   return resolved;

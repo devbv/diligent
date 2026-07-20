@@ -94,6 +94,27 @@ describe("collaboration-resume-reference", () => {
     }
   });
 
+  test("accepts a private initial acknowledgement followed by one resumed report containing both facts", async () => {
+    const profile = DEFAULT_PROFILES.find((candidate) => candidate.provider === "openai")!;
+    const execution = await assembledExecution(profile, { deferredCombinedChildReport: true });
+    expect(collaborationResumeReferenceTask.evaluate(execution)).toEqual({ passed: true });
+
+    const missingFollowUp = structuredClone(execution);
+    const finalChildMessage = missingFollowUp.childSessions[0]!.lines.filter(
+      (line) => (line as { type?: string }).type === "message",
+    )
+      .map(
+        (line) => (line as { message?: { role?: string; content?: Array<{ type: string; text?: string }> } }).message,
+      )
+      .filter((message) => message?.role === "assistant" && message.content?.some((block) => block.type === "text"))
+      .at(-1)!;
+    finalChildMessage.content!.find((block) => block.type === "text")!.text = execution.world.tokens[0];
+    expect(collaborationResumeReferenceTask.evaluate(missingFollowUp)).toMatchObject({
+      passed: false,
+      code: "collaboration_resume_reference.wait_contract",
+    });
+  });
+
   test("rejects malformed or broadened Anthropic absent-file recovery evidence", async () => {
     const profile = DEFAULT_PROFILES.find((candidate) => candidate.provider === "anthropic")!;
     const baseline = await assembledExecution(profile, {
@@ -224,6 +245,7 @@ interface AssembledExecutionOptions {
   trailingPatchNewline?: boolean;
   omitEditReplaceAll?: boolean;
   anthropicWriteRecovery?: boolean;
+  deferredCombinedChildReport?: boolean;
 }
 
 function fixtureStream(
@@ -291,13 +313,17 @@ function childResponse(
     {
       type: "text",
       text:
-        assembledOptions.verboseInitialChildReport && call === 2
-          ? `Completed. Contents:\n\n\`\`\`text\n${token}\n\`\`\``
-          : assembledOptions.inlineInitialChildReport && call === 2
-            ? `\`${token}\``
-            : assembledOptions.trailingChildReport
-              ? `${token}\n`
-              : token,
+        assembledOptions.deferredCombinedChildReport && call === 2
+          ? "Completed the single requested read."
+          : assembledOptions.deferredCombinedChildReport && call === 4
+            ? `${tokens[0]}  \n${tokens[1]}`
+            : assembledOptions.verboseInitialChildReport && call === 2
+              ? `Completed. Contents:\n\n\`\`\`text\n${token}\n\`\`\``
+              : assembledOptions.inlineInitialChildReport && call === 2
+                ? `\`${token}\``
+                : assembledOptions.trailingChildReport
+                  ? `${token}\n`
+                  : token,
     },
   ]);
 }
