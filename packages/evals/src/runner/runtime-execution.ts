@@ -222,7 +222,11 @@ export async function runRuntimeEvalExecution(input: {
     let server = makeServer();
     client = makeClient(server);
     await deadline.run("client initialization", client.initialize());
-    for (const step of task.createSteps(world)) {
+    for (const [stepIndex, step] of task.createSteps(world).entries()) {
+      if (task.prepareStep)
+        await deadline.run(`task step ${stepIndex} preparation`, () =>
+          Promise.resolve(task.prepareStep!(world, step, stepIndex)),
+        );
       if (step.kind === "restart_and_resume") {
         serverRequests.push(...client.serverRequests);
         client.close();

@@ -16,8 +16,8 @@ import {
   clarifyThenExecuteTask,
   collaborationParallelSynthesisTask,
   collaborationResumeReferenceTask,
+  crossFileContractFixTask,
   customAgentRoutingTask,
-  executeAutonomousTask,
   fileRoundtripTask,
   hookContextFollowTask,
   imageResumeRecallTask,
@@ -54,7 +54,7 @@ describe("runtime eval tasks", () => {
       "file-roundtrip",
       "instruction-hierarchy",
       "plan-converge",
-      "execute-autonomous",
+      "cross-file-contract-fix",
       "plan-progress",
       "hook-context-follow",
       "skill-auto-select",
@@ -63,11 +63,15 @@ describe("runtime eval tasks", () => {
       "knowledge-forget",
       "steer-during-fix",
       "auto-compaction-resume",
+      "autonomous-explore-delegation",
+      "fresh-prompt-after-compaction",
       "image-resume-recall",
+      "input-cancel-resume",
       "loop-context-adaptation",
       "large-output-recovery",
       "bundled-tool-routing",
       "mcp-lazy-tool",
+      "mcp-needs-auth-abstain",
       "mcp-resource-grounding",
       "mcp-prompt-grounding",
       "custom-agent-routing",
@@ -94,8 +98,8 @@ describe("runtime eval tasks", () => {
     });
     expect(loopContextAdaptationTask.statePolicy).toEqual({ allowedMutations: ["infrastructure", "sessions"] });
     expect(knowledgeRecallTask.statePolicy?.allowedMutations).not.toContain("knowledge");
-    expect(RUNTIME_EVAL_TASKS).toHaveLength(30);
-    expect(RUNTIME_EVAL_TASKS.length * 2).toBe(60);
+    expect(RUNTIME_EVAL_TASKS).toHaveLength(34);
+    expect(RUNTIME_EVAL_TASKS.length * 2).toBe(68);
   });
 
   test("defines custom agent routing as a fixture-local collaboration task", async () => {
@@ -124,8 +128,12 @@ describe("runtime eval tasks", () => {
       expect(world.sourcePaths).toHaveLength(2);
       expect(new Set(world.sourcePaths).size).toBe(2);
       expect(world.allowedChanges).toEqual(["parallel-synthesis.txt"]);
-      expect(world.clientPrompt).toContain("Do not spawn any additional specialist");
-      expect(world.clientPrompt).toContain("create the artifact yourself as the parent");
+      expect(collaborationParallelSynthesisTask.fixtureVersion).toBe("collaboration-parallel-synthesis-v6");
+      expect(world.clientPrompt).toContain("concurrently");
+      expect(world.clientPrompt).toContain("isolated");
+      expect(world.clientPrompt).not.toContain("specialist");
+      expect(world.clientPrompt).not.toContain("spawn");
+      expect(world.clientPrompt).not.toContain("join");
       expect(collaborationParallelSynthesisTask.limits.maxChildAgents).toBe(2);
       expect(collaborationParallelSynthesisTask.limits.maxToolCalls).toBe(8);
       expect(collaborationParallelSynthesisTask.statePolicy).toEqual({
@@ -149,7 +157,7 @@ describe("runtime eval tasks", () => {
       expect(world.sourcePaths).toHaveLength(2);
       expect(world.allowedChanges).toEqual(["collaboration-resume-reference.txt"]);
       expect(collaborationResumeReferenceTask.limits.maxChildAgents).toBe(2);
-      expect(collaborationResumeReferenceTask.limits.maxToolCalls).toBe(8);
+      expect(collaborationResumeReferenceTask.limits.maxToolCalls).toBe(10);
       expect(collaborationResumeReferenceTask.statePolicy).toEqual({
         allowedMutations: ["infrastructure", "sessions"],
       });
@@ -429,13 +437,14 @@ describe("runtime eval tasks", () => {
     }
   });
 
-  test("scripts one user-input answer without exposing it in the task prompts", async () => {
+  test("scripts one natural target clarification without exposing its answer", async () => {
     const root = await mkdtemp(join(tmpdir(), "diligent-runtime-clarify-execute-"));
     try {
       const world = await clarifyThenExecuteTask.setup("shared-seed-123", root);
       const steps = clarifyThenExecuteTask.createSteps(world);
-      expect(steps.map((step) => (step.kind === "turn" ? step.mode : step.kind))).toEqual(["plan", "default"]);
-      expect(JSON.stringify(steps)).not.toContain(world.answer);
+      expect(steps.map((step) => (step.kind === "turn" ? step.mode : step.kind))).toEqual(["default"]);
+      expect(JSON.stringify(steps)).toContain("staging");
+      expect(JSON.stringify(steps)).toContain("production");
       expect(clarifyThenExecuteTask.limits.maxUserInputRequests).toBe(1);
       const response = await clarifyThenExecuteTask.respondToServerRequest?.(world, {
         method: "userInput/request",
@@ -444,7 +453,7 @@ describe("runtime eval tasks", () => {
           request: {
             questions: [
               {
-                id: "release_target",
+                id: "deployment_target",
                 header: "Target",
                 question: "Which release target should be used?",
                 options: [{ label: "Custom", description: "Provide the required target." }],
@@ -455,7 +464,7 @@ describe("runtime eval tasks", () => {
       });
       expect(response).toEqual({
         method: "userInput/request",
-        result: { answers: { release_target: world.answer } },
+        result: { answers: { deployment_target: world.answer } },
       });
     } finally {
       await removeTemporaryRoot(root);
@@ -470,11 +479,11 @@ describe("runtime eval tasks", () => {
         planToExecuteTask.createSteps(world).map((step) => (step.kind === "turn" ? step.mode : step.kind)),
       ).toEqual(["plan", "default"]);
       const planStep = planToExecuteTask.createSteps(world)[0];
-      expect(planStep.kind === "turn" ? planStep.message : "").toContain("You must call read on both src/value.ts");
+      expect(planStep.kind === "turn" ? planStep.message : "").not.toContain(world.token);
       expect(planToExecuteTask.toolPolicy.allowedCapabilities).toEqual(["read", "write", "execute"]);
-      expect(world.allowedChanges).toEqual(["src/value.ts"]);
+      expect(world.allowedChanges).toEqual(["src/value.ts", "spec/private-contract.txt"]);
       expect(world.protectedPaths).toEqual(["test/value.test.ts", "AGENTS.md", "package.json"]);
-      expect(await readFile(join(root, "src/value.ts"), "utf8")).not.toBe(world.expected);
+      expect(await readFile(join(root, world.diagnosisPath), "utf8")).toContain(world.token);
     } finally {
       await removeTemporaryRoot(root);
     }
@@ -822,7 +831,7 @@ describe("runtime eval tasks", () => {
     const tasks: readonly AnyRuntimeEvalTask[] = [
       instructionHierarchyTask,
       planConvergeTask,
-      executeAutonomousTask,
+      crossFileContractFixTask,
       planProgressTask,
       hookContextFollowTask,
     ];
@@ -841,7 +850,7 @@ describe("runtime eval tasks", () => {
             ? [world.target, world.rootMarker, world.nestedMarker]
             : task.id === "plan-converge"
               ? [world.apiFact, world.uiFact, world.preference]
-              : task.id === "execute-autonomous"
+              : task.id === "cross-file-contract-fix"
                 ? [world.marker]
                 : task.id === "plan-progress"
                   ? [world.base, world.middle, world.final, ...world.planSteps]
@@ -960,14 +969,12 @@ describe("runtime eval tasks", () => {
     expect(planConvergeTask.evaluate(execution).passed).toBe(false);
   });
 
-  test("accepts autonomous execute evidence and rejects any clarification request", async () => {
+  test("accepts behaviorally verified cross-file repair evidence", async () => {
     const world = {
       root: "$WORKSPACE",
       seed: "seed",
       marker: "marker",
-      operand: 7,
-      expected: "source",
-      expectedHash: "source-hash",
+      expected: "",
       protectedPaths: [],
       allowedChanges: [],
     };
@@ -984,22 +991,19 @@ describe("runtime eval tasks", () => {
     ];
     execution.toolCalls = [trace(1, "write", "write", {}), trace(2, "bash", "execute", { command: "bun test" })];
     execution.toolCalls[1]!.output = { metadata: { exitCode: 0 } };
-    execution.workspace.final.entries = [{ path: "src/transform.ts", kind: "file", size: 1, sha256: "source-hash" }];
-    expect(executeAutonomousTask.evaluate(execution)).toEqual({ passed: true });
+    expect(crossFileContractFixTask.evaluate(execution)).toEqual({ passed: true });
     execution.toolCalls[1]!.output = { metadata: { exitCode: 1 } };
-    expect(executeAutonomousTask.evaluate(execution)).toMatchObject({
+    expect(crossFileContractFixTask.evaluate(execution)).toMatchObject({
       passed: false,
-      code: "execute_autonomous.test",
+      code: "cross_file_contract_fix.test",
     });
     execution.toolCalls[1]!.output = { metadata: { exitCode: 0 } };
     execution.toolCalls.push(trace(3, "edit", "write", {}));
-    expect(executeAutonomousTask.evaluate(execution)).toMatchObject({
+    expect(crossFileContractFixTask.evaluate(execution)).toMatchObject({
       passed: false,
-      code: "execute_autonomous.test",
+      code: "cross_file_contract_fix.test",
     });
     execution.toolCalls.pop();
-    execution.userInputRequests = [userInputRequest("unexpected")];
-    expect(executeAutonomousTask.evaluate(execution).passed).toBe(false);
   });
 
   test("accepts recovered policy rejections and ordered progress, but rejects invalid plan states", async () => {
@@ -1077,21 +1081,14 @@ describe("runtime eval tasks", () => {
     recoveredTest.output = { metadata: { exitCode: 0 } };
     execution.toolCalls.push(recoveredTest, { ...finalPlan, sequence: 17 });
     expect(planProgressTask.evaluate(execution)).toEqual({ passed: true });
-    execution.toolCalls[9]!.output = { metadata: { exitCode: 0 } };
-    expect(planProgressTask.evaluate(execution)).toEqual({
-      passed: false,
-      code: "plan_progress.regression",
-      message: "Completed plan progress regressed without a failed verification in the preceding plan interval.",
-      dimension: "behavior",
-    });
-    execution.toolCalls[9]!.output = {};
-    expect(planProgressTask.evaluate(execution)).toMatchObject({ passed: false, code: "plan_progress.regression" });
     execution.toolCalls = baselineToolCalls;
     execution.toolCalls[2] = plan(3, ["in_progress", "in_progress", "pending", "pending"]);
     expect(planProgressTask.evaluate(execution).passed).toBe(false);
-    execution.toolCalls[2] = plan(3, ["in_progress", "pending", "pending", "pending"]);
-    execution.toolCalls[4] = plan(5, ["in_progress", "pending", "pending", "pending"]);
-    expect(planProgressTask.evaluate(execution).passed).toBe(false);
+    execution.toolCalls[2] = plan(3, ["done", "done", "done", "done"]);
+    expect(planProgressTask.evaluate(execution)).toMatchObject({
+      passed: false,
+      code: "plan_progress.premature_completion",
+    });
   });
 
   test("scores hook-follow behavior independently of provider-context plumbing", async () => {
@@ -1099,9 +1096,9 @@ describe("runtime eval tasks", () => {
       root: "$WORKSPACE",
       seed: "seed",
       hookFact: "hook-hidden",
-      injectedContext: "HOOK_VALUE=hook-hidden",
-      clientPrompt: "Use submission context.",
-      expected: "hook-hidden\n",
+      injectedContext: "Submission compliance rule: append the suffix :hook-hidden.",
+      clientPrompt: "Create HOOK.txt containing READY and one trailing newline.",
+      expected: "READY:hook-hidden\n",
       expectedHash: "hook-hash",
       protectedPaths: [],
       allowedChanges: [],
@@ -1119,7 +1116,10 @@ describe("runtime eval tasks", () => {
     failedCreate.outcome = "runtime_error";
     execution.toolCalls[0]!.sequence = 2;
     execution.toolCalls.unshift(failedCreate);
-    expect(hookContextFollowTask.evaluate(execution)).toEqual({ passed: true });
+    expect(hookContextFollowTask.evaluate(execution)).toMatchObject({
+      passed: true,
+      diagnostics: [{ code: "hook_context_follow.write_recovery", dimension: "efficiency" }],
+    });
     execution.toolCalls.push(trace(3, "read", "read", { file_path: "HOOK.txt" }));
     expect(hookContextFollowTask.evaluate(execution).passed).toBe(false);
     execution.toolCalls = [trace(1, "write", "write", { file_path: "HOOK.txt" })];
@@ -1284,8 +1284,4 @@ function advertisedSkillTools() {
     provider: "anthropic" as const,
     tools: ["skill", "read", "apply_patch"],
   };
-}
-
-function userInputRequest(id: string) {
-  return { method: "userInput/request", params: { request: { questions: [{ id }] } } };
 }

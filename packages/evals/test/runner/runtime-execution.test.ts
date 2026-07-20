@@ -14,7 +14,6 @@ import { runRuntimeEvalExecution } from "../../src/runner/runtime-execution";
 import type { RuntimeEvalExecution, RuntimeEvalTask } from "../../src/runtime-task";
 import {
   clarifyThenExecuteTask,
-  executeAutonomousTask,
   hookContextFollowTask,
   instructionHierarchyTask,
   type KnowledgeForgetWorld,
@@ -208,7 +207,8 @@ describe("runRuntimeEvalExecution", () => {
 
   test("uses a scripted user-input answer in a later default-mode write", async () => {
     const seed = "shared-seed-123";
-    const answer = seededToken(seed, "TARGET");
+    const answer = Number.parseInt(seed.slice(0, 4), 36) % 2 === 0 ? "staging" : "production";
+    const desired = seededToken(seed, "CHANNEL");
     const result = await runRuntimeEvalExecution({
       task: clarifyThenExecuteTask,
       seed,
@@ -223,10 +223,13 @@ describe("runRuntimeEvalExecution", () => {
               input: {
                 questions: [
                   {
-                    id: "release_target",
+                    id: "deployment_target",
                     header: "Target",
-                    question: "Which release target should be used?",
-                    options: [{ label: "Custom", description: "Provide the required target." }],
+                    question: "Should this update target staging or production?",
+                    options: [
+                      { label: "Staging", description: "Update the staging channel." },
+                      { label: "Production", description: "Update the production channel." },
+                    ],
                   },
                 ],
               },
@@ -234,7 +237,6 @@ describe("runRuntimeEvalExecution", () => {
           ],
           "tool_use",
         ),
-        assistantMessage([{ type: "text", text: "RECEIVED" }]),
         assistantMessage(
           [
             {
@@ -242,7 +244,9 @@ describe("runRuntimeEvalExecution", () => {
               id: "patch-target",
               name: "apply_patch",
               input: {
-                patch: `*** Begin Patch\n*** Add File: TARGET.txt\n+${answer}\n*** End Patch`,
+                patch:
+                  `*** Begin Patch\n*** Update File: deploy/${answer}.channel\n@@\n-channel=stable\n` +
+                  `+channel=${desired}\n*** End Patch`,
               },
             },
           ],
@@ -272,7 +276,7 @@ describe("runRuntimeEvalExecution", () => {
               type: "tool_call",
               id: "hook-output",
               name: "apply_patch",
-              input: { patch: `*** Begin Patch\n*** Add File: HOOK.txt\n+${hookFact}\n*** End Patch` },
+              input: { patch: `*** Begin Patch\n*** Add File: HOOK.txt\n+READY:${hookFact}\n*** End Patch` },
             },
           ],
           "tool_use",
@@ -283,8 +287,8 @@ describe("runRuntimeEvalExecution", () => {
 
     expect(result.failures).toEqual([]);
     expect(result.execution.turns[0]?.clientPrompt).not.toContain(hookFact);
-    expect(JSON.stringify(result.execution.providerCalls[0]?.messages.items)).toContain(`HOOK_VALUE=${hookFact}`);
-    expect(JSON.stringify(result.execution.session.lines)).toContain(`HOOK_VALUE=${hookFact}`);
+    expect(JSON.stringify(result.execution.providerCalls[0]?.messages.items)).toContain(`:${hookFact}`);
+    expect(JSON.stringify(result.execution.session.lines)).toContain(`:${hookFact}`);
     expect(result.execution.advertisedTools[0]?.mode).toBe("execute");
     expect(result.execution.toolCalls.map((call) => call.name)).toEqual(["apply_patch"]);
   });
@@ -668,46 +672,57 @@ describe("runRuntimeEvalExecution", () => {
 
   test("executes the plan-to-default task and verifies its exact implementation", async () => {
     const seed = "shared-seed-123";
-    const token = seededToken(seed, "PLAN");
-    const operand = (Number.parseInt(seed.slice(0, 4), 36) % 7) + 2;
+    const token = seededToken(seed, "CONTRACT");
+    const multiplier = (Number.parseInt(seed.slice(0, 4), 36) % 5) + 2;
+    const offset = (Number.parseInt(seed.slice(4, 8), 36) % 13) + 1;
+    let scripted: StreamFunction | undefined;
     const result = await runRuntimeEvalExecution({
       task: planToExecuteTask,
       seed,
       profile: { provider: "openai", model: "gpt-5.6-terra", effort: "medium" },
-      streamFunction: sequenceStream([
-        assistantMessage(
-          [{ type: "tool_call", id: "glob-1", name: "glob", input: { pattern: "src/value.ts" } }],
-          "tool_use",
-        ),
-        assistantMessage([{ type: "text", text: `FIX=WRONG_OPERATOR; TOKEN=${token}` }]),
-        assistantMessage(
-          [
-            {
-              type: "tool_call",
-              id: "patch-1",
-              name: "apply_patch",
-              input: {
-                patch: `*** Begin Patch\n*** Update File: src/value.ts\n@@\n export function adjustValue(value: number): number {\n-  return value - ${operand};\n+  return value + ${operand};\n }\n*** End Patch`,
+      streamFunction: (model, context, options) => {
+        const cwd = cwdFromContext(context);
+        scripted ??= sequenceStream([
+          assistantMessage(
+            [
+              {
+                type: "tool_call",
+                id: "read-contract",
+                name: "read",
+                input: { file_path: join(cwd, "spec/private-contract.txt") },
               },
-            },
-          ],
-          "tool_use",
-        ),
-        assistantMessage(
-          [{ type: "tool_call", id: "bash-1", name: "bash", input: { command: "bun test" } }],
-          "tool_use",
-        ),
-        assistantMessage([{ type: "text", text: "Implemented and verified." }]),
-      ]),
+            ],
+            "tool_use",
+          ),
+          assistantMessage([{ type: "text", text: `Contract ${token}: return value * ${multiplier} + ${offset}.` }]),
+          assistantMessage(
+            [
+              {
+                type: "tool_call",
+                id: "patch-1",
+                name: "apply_patch",
+                input: {
+                  patch: `*** Begin Patch\n*** Update File: src/value.ts\n@@\n export function adjustValue(value: number): number {\n-  return value;\n+  return value * ${multiplier} + ${offset};\n }\n*** End Patch`,
+                },
+              },
+            ],
+            "tool_use",
+          ),
+          assistantMessage(
+            [{ type: "tool_call", id: "bash-1", name: "bash", input: { command: "bun test" } }],
+            "tool_use",
+          ),
+          assistantMessage([{ type: "text", text: "Implemented and verified." }]),
+        ]);
+        return scripted(model, context, options);
+      },
     });
 
     expect(result.passed).toBe(true);
     expect(result.execution.turns).toHaveLength(2);
-    expect(result.execution.turns[0]?.clientPrompt).toContain("You must call read on both src/value.ts");
-    expect(result.execution.turns[1]?.clientPrompt).toBe(
-      "Implement the diagnosis from the previous turn. Follow AGENTS.md, keep tests and metadata unchanged, and verify with exactly `bun test`.",
-    );
-    expect(result.execution.toolCalls.map((call) => call.name)).toEqual(["glob", "apply_patch", "bash"]);
+    expect(result.execution.turns[0]?.clientPrompt).toContain("project specification");
+    expect(result.execution.turns[1]?.clientPrompt).toContain("specification source has now been withdrawn");
+    expect(result.execution.toolCalls.map((call) => call.name)).toEqual(["read", "apply_patch", "bash"]);
   });
 
   test("executes the knowledge-recall task through the assembled runtime", async () => {
@@ -1496,79 +1511,6 @@ describe("runRuntimeEvalExecution", () => {
     expect(result.passed).toBe(false);
     expect(result.failures.some((failure) => failure.code === "budget_exceeded.turn_limit")).toBe(true);
     expect(providerCalls).toBe(1);
-  });
-
-  test("allows execute-autonomous to use its tenth tool call before an eleventh final provider turn", async () => {
-    expect(executeAutonomousTask.limits).toMatchObject({ maxTurns: 11, maxToolCalls: 10 });
-    const seed = "f7abb02c48fe5b9ba0df2d37969e2a348d5076b9a8a3e9dcfad05d2daf31ce2b";
-    let scripted: StreamFunction | undefined;
-    const result = await runRuntimeEvalExecution({
-      task: executeAutonomousTask,
-      seed,
-      profile: { provider: "anthropic", model: "claude-sonnet-5", effort: "medium" },
-      streamFunction: (model, context, options) => {
-        const cwd = cwdFromContext(context);
-        scripted ??= sequenceStream([
-          ...["cd $WORKSPACE && ls", 'ls "$WORKSPACE"', "pwd && ls", "pwd", "ls", "echo hi"].map((command, index) =>
-            assistantMessage(
-              [{ type: "tool_call", id: `rejected-bash-${index}`, name: "bash", input: { command } }],
-              "tool_use",
-            ),
-          ),
-          assistantMessage(
-            [
-              {
-                type: "tool_call",
-                id: "read-source",
-                name: "read",
-                input: { file_path: join(cwd, "src/transform.ts") },
-              },
-            ],
-            "tool_use",
-          ),
-          assistantMessage(
-            [
-              {
-                type: "tool_call",
-                id: "read-test",
-                name: "read",
-                input: { file_path: join(cwd, "test/transform.test.ts") },
-              },
-            ],
-            "tool_use",
-          ),
-          assistantMessage(
-            [
-              {
-                type: "tool_call",
-                id: "repair-source",
-                name: "edit",
-                input: {
-                  file_path: join(cwd, "src/transform.ts"),
-                  old_string: "  return value + 12;",
-                  new_string: "  return value * 12;",
-                  replace_all: false,
-                },
-              },
-            ],
-            "tool_use",
-          ),
-          assistantMessage(
-            [{ type: "tool_call", id: "verify-repair", name: "bash", input: { command: "bun test" } }],
-            "tool_use",
-          ),
-          assistantMessage([{ type: "text", text: "Implemented and verified the repair." }]),
-        ]);
-        return scripted(model, context, options);
-      },
-    });
-
-    expect(result.failures).toEqual([]);
-    expect(result.execution.providerCalls).toHaveLength(11);
-    expect(result.execution.toolCalls).toHaveLength(10);
-    expect(result.execution.toolCalls.slice(0, 6).every((call) => call.outcome === "policy_rejection")).toBe(true);
-    expect(result.execution.toolCalls.at(-1)).toMatchObject({ name: "bash", outcome: "success" });
-    expect(result.execution.verifier?.exitCode).toBe(0);
   });
 
   test("captures initial and post-tool provider context with session, prompt, and tool evidence", async () => {

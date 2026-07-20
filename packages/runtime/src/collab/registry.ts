@@ -226,20 +226,22 @@ export class AgentRegistry {
       throw new Error("Max agent nesting depth reached. Cannot spawn further child agents.");
     }
 
+    const resumeId = params.resumeId || undefined;
+
     const activeCount = [...this.agents.values()].filter((e) => !isFinal(e.status)).length;
     if (activeCount >= this.maxAgents) {
       throw new Error(`Max active agents reached (${this.maxAgents}). Close some agents first.`);
     }
 
-    if (params.resumeId && !isSafeSessionId(params.resumeId)) {
-      throw new Error(`Invalid resume target: ${params.resumeId}`);
+    if (resumeId && !isSafeSessionId(resumeId)) {
+      throw new Error(`Invalid resume target: ${resumeId}`);
     }
-    const restoredEntry = params.resumeId ? this.agents.get(params.resumeId) : undefined;
-    if (params.resumeId && !restoredEntry) {
-      throw new Error(`Unknown resume target: ${params.resumeId}`);
+    const restoredEntry = resumeId ? this.agents.get(resumeId) : undefined;
+    if (resumeId && !restoredEntry) {
+      throw new Error(`Unknown resume target: ${resumeId}`);
     }
     if (restoredEntry && !isFinal(restoredEntry.status)) {
-      throw new Error(`Cannot resume active agent: ${params.resumeId}`);
+      throw new Error(`Cannot resume active agent: ${resumeId}`);
     }
     const restoredPolicy = restoredEntry?.resumePolicy;
     if (restoredPolicy) assertCompatibleResumePolicy(params, restoredPolicy);
@@ -389,13 +391,13 @@ export class AgentRegistry {
         nickname,
         description: params.description || undefined,
       },
-      sessionId: params.resumeId,
+      sessionId: resumeId,
     };
 
     childManager = factory(childManagerConfig);
 
     // Use child sessionId as the canonical threadId
-    const threadId = params.resumeId ?? childManager.sessionId;
+    const threadId = resumeId ?? childManager.sessionId;
     const callId = threadId;
 
     this.emit({
@@ -437,10 +439,10 @@ export class AgentRegistry {
       entry.status = { kind: "running" };
 
       // Create or resume session
-      if (params.resumeId) {
-        const resumed = await childManager.resume({ sessionId: params.resumeId });
+      if (resumeId) {
+        const resumed = await childManager.resume({ sessionId: resumeId });
         if (!resumed) {
-          throw new Error(`Unable to resume agent session: ${params.resumeId}`);
+          throw new Error(`Unable to resume agent session: ${resumeId}`);
         }
       } else {
         await childManager.create();

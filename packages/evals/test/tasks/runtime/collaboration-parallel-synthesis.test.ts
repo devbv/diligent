@@ -90,6 +90,19 @@ describe("collaboration-parallel-synthesis", () => {
     expect(collaborationParallelSynthesisTask.evaluate(execution)).toMatchObject({ passed: true });
   });
 
+  test("does not gate live behavior on persistence mirrors or verifier wording", async () => {
+    const execution = await assembledExecution(DEFAULT_PROFILES[0]!);
+    execution.session.lines = [];
+    execution.childSessions.forEach((session) => (session.lines = []));
+    execution.turns[0]!.coreEvents = [];
+    execution.turns[0]!.runtimeEvents = [];
+    execution.turns[0]!.notifications = [];
+    execution.verifier!.argv = ["deterministic-verifier"];
+    execution.verifier!.stdout = "alternate success wording\n";
+    execution.verifier!.stderr = "diagnostic detail\n";
+    expect(collaborationParallelSynthesisTask.evaluate(execution)).toMatchObject({ passed: true });
+  });
+
   test("accepts one bounded Anthropic relative-path edit recovery and target-only child reports", async () => {
     const profile = DEFAULT_PROFILES.find((candidate) => candidate.provider === "anthropic")!;
     const execution = await assembledExecution(profile, {
@@ -235,7 +248,10 @@ describe("collaboration-parallel-synthesis", () => {
       if (!result.passed) expect(result.dimension, label).toBeDefined();
     }
     const repeated = await assembledExecution(DEFAULT_PROFILES[0]!, { relativeReadRecovery: "both" });
-    expect(collaborationParallelSynthesisTask.evaluate(repeated).passed, "second child recovery").toBe(false);
+    expect(collaborationParallelSynthesisTask.evaluate(repeated), "bounded child recoveries").toMatchObject({
+      passed: true,
+      diagnostics: [{ code: "collaboration_parallel_synthesis.bounded_recovery" }],
+    });
   });
 
   test("rejects at least 140 independently no-op-guarded mutations across exact evidence surfaces", async () => {

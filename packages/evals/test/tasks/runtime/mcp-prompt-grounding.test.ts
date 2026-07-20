@@ -14,6 +14,30 @@ import { type McpPromptGroundingWorld, mcpPromptGroundingTask } from "../../../s
 import { assistantMessage, sequenceStream } from "../../helpers/fake-stream";
 
 describe("mcp-prompt-grounding", () => {
+  test("does not gate MCP prompt choice on persistence mirrors or verifier wording", async () => {
+    const execution = await assembledExecution(DEFAULT_PROFILES[0]!);
+    execution.session.lines = [];
+    execution.threadReads = [];
+    execution.turns[0]!.coreEvents = [];
+    execution.turns[0]!.runtimeEvents = [];
+    execution.turns[0]!.notifications = [];
+    execution.verifier!.argv = ["deterministic-verifier"];
+    execution.verifier!.stdout = "alternate success wording\n";
+    expect(mcpPromptGroundingTask.evaluate(execution)).toMatchObject({ passed: true });
+  });
+
+  test("reports an additional bounded in-scope prompt listing as diagnostic", async () => {
+    const execution = await assembledExecution(DEFAULT_PROFILES[0]!);
+    const extraList = structuredClone(execution.toolCalls[0]!);
+    extraList.toolCallId = "additional-prompt-list";
+    execution.toolCalls.splice(1, 0, extraList);
+    execution.toolCalls.forEach((call, index) => (call.sequence = index + 1));
+    expect(mcpPromptGroundingTask.evaluate(execution)).toMatchObject({
+      passed: true,
+      diagnostics: [{ code: "mcp_prompt.additional_safe_discovery" }],
+    });
+  });
+
   test("defines a fixture-local stdio MCP prompt grounding contract", async () => {
     const root = await mkdtemp(join(tmpdir(), "diligent-runtime-mcp-prompt-"));
     try {
@@ -44,7 +68,7 @@ describe("mcp-prompt-grounding", () => {
       });
       expect(mcpPromptGroundingTask.limits).toMatchObject({
         maxTurns: 5,
-        maxToolCalls: 4,
+        maxToolCalls: 6,
         maxChangedFiles: 1,
         maxChangedBytes: world.expected.length,
         maxUserInputRequests: 0,

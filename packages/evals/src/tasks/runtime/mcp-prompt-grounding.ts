@@ -6,13 +6,12 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import type { DiligentServerRequestResponse } from "@diligent/protocol";
 import { createPermissionEngine } from "@diligent/runtime";
 import { getMcpManager } from "@diligent/runtime/tools";
-import type { RuntimeEvalExecution, RuntimeEvalTask, RuntimeToolTrace } from "../../runtime-task";
+import type { RuntimeEvalExecution, RuntimeEvalTask } from "../../runtime-task";
 import type { EvalDimension } from "../../task";
 import {
   createIsolatedFixtureRuntimeConfig,
   DEFAULT_RUNTIME_LIMITS,
   exactFile,
-  matchesExactPatchInput,
   type RuntimeFixtureWorld,
   seededToken,
   sha256Text,
@@ -92,7 +91,7 @@ export const mcpPromptGroundingTask: RuntimeEvalTask<McpPromptGroundingWorld> = 
   limits: {
     ...DEFAULT_RUNTIME_LIMITS,
     maxTurns: 5,
-    maxToolCalls: 4,
+    maxToolCalls: 6,
     maxChangedFiles: 1,
     maxChangedBytes: 24,
     timeoutMs: 180_000,
@@ -177,18 +176,29 @@ export const mcpPromptGroundingTask: RuntimeEvalTask<McpPromptGroundingWorld> = 
   evaluate(input) {
     const failure = validateTraceAndApproval(input) ?? validateIsolationAndFinal(input);
     if (failure) return failure;
-    return input.toolCalls.some((call) => call.outcome === "runtime_error")
-      ? {
-          passed: true,
-          diagnostics: [
+    const extraDiscovery = input.toolCalls.filter((call) => call.name === "mcp_list_prompts").length - 1;
+    const recoveries = input.toolCalls.filter((call) => call.outcome === "runtime_error").length;
+    const diagnostics = [
+      ...(extraDiscovery > 0
+        ? [
             {
-              dimension: "efficiency",
-              code: "mcp_prompt.bounded_write_recovery",
-              message: "One bounded provider-native write recovery preceded the exact artifact write.",
+              dimension: "efficiency" as const,
+              code: "mcp_prompt.additional_safe_discovery",
+              message: `${extraDiscovery} additional bounded prompt listing${extraDiscovery === 1 ? "" : "s"} preceded the intended fetch.`,
             },
-          ],
-        }
-      : { passed: true };
+          ]
+        : []),
+      ...(recoveries > 0
+        ? [
+            {
+              dimension: "efficiency" as const,
+              code: "mcp_prompt.bounded_write_recovery",
+              message: `${recoveries} bounded artifact-write recovery attempt${recoveries === 1 ? "" : "s"} preceded success.`,
+            },
+          ]
+        : []),
+    ];
+    return diagnostics.length > 0 ? { passed: true, diagnostics } : { passed: true };
   },
   async cleanup(world) {
     await getMcpManager().disposeAll();
@@ -315,21 +325,32 @@ await server.connect(new StdioServerTransport());
 }
 
 function validateTraceAndApproval(input: RuntimeEvalExecution<McpPromptGroundingWorld>) {
-  const [list, get] = input.toolCalls;
-  const writeAttempts = input.toolCalls.slice(2);
-  const write = writeAttempts.at(-1);
-  const recovery = writeAttempts.length === 2 ? writeAttempts[0] : undefined;
-  const writeTool = input.profile.provider === "anthropic" ? "edit" : "apply_patch";
+  const lists = input.toolCalls.filter((call) => call.name === "mcp_list_prompts");
+  const gets = input.toolCalls.filter((call) => call.name === "mcp_get_prompt");
+  const get = gets.find((call) => call.outcome === "success");
+  const writeAttempts = input.toolCalls.filter((call) => call.name === "edit" || call.name === "apply_patch");
+  const write = writeAttempts.findLast((call) => call.outcome === "success");
   const exactArgs = Object.fromEntries(
     input.world.argumentNames.map((name, index) => [name, input.world.argumentValues[index]]),
   );
   const callIds = input.toolCalls.map((call) => call.toolCallId);
   const traceChecks: Array<[string, boolean]> = [
-    ["cardinality", (input.toolCalls.length !== 3 && input.toolCalls.length !== 4) || !list || !get || !write],
+    [
+      "cardinality",
+      input.toolCalls.length < 3 ||
+        input.toolCalls.length > 6 ||
+        lists.length < 1 ||
+        gets.length !== 1 ||
+        writeAttempts.length < 1 ||
+        writeAttempts.length > 2 ||
+        !get ||
+        !write,
+    ],
     [
       "names",
-      canonicalJson(input.toolCalls.map((call) => call.name)) !==
-        canonicalJson(["mcp_list_prompts", "mcp_get_prompt", ...writeAttempts.map(() => writeTool)]),
+      input.toolCalls.some(
+        (call) => !["mcp_list_prompts", "mcp_get_prompt", "edit", "apply_patch"].includes(call.name),
+      ),
     ],
     [
       "linkage",
@@ -338,7 +359,8 @@ function validateTraceAndApproval(input: RuntimeEvalExecution<McpPromptGrounding
           call.sequence !== index + 1 ||
           call.threadId !== input.session.threadId ||
           call.childThreadId !== undefined ||
-          (call !== recovery && (call.outcome !== "success" || call.error !== undefined)),
+          call.outcome === "policy_rejection" ||
+          (call.outcome === "runtime_error" && !writeAttempts.includes(call)),
       ),
     ],
     [
@@ -346,21 +368,28 @@ function validateTraceAndApproval(input: RuntimeEvalExecution<McpPromptGrounding
       callIds.some((callId) => typeof callId !== "string" || callId.length === 0) ||
         new Set(callIds).size !== callIds.length,
     ],
-    ["list-input", !hasExpectedListInput(list?.input)],
+    ["list-input", lists.some((list) => !hasExpectedListInput(list.input) || list.outcome !== "success")],
     [
       "get-input",
       canonicalJson(get?.input) !==
         canonicalJson({ server: SERVER, name: input.world.intendedName, args: exactArgs }) ||
         !hasExactArgumentOrder(get?.input, input.world),
     ],
-    ["write-input", !hasExpectedWriteInput(write?.input, input)],
+    [
+      "order",
+      !get ||
+        !write ||
+        lists.some((list) => list.sequence >= get.sequence) ||
+        get.sequence >= write.sequence ||
+        writeAttempts.some((attempt) => attempt.outcome === "runtime_error" && attempt.sequence >= write.sequence),
+    ],
+    ["write-input", !targetsArtifact(write?.input)],
     [
       "capabilities",
-      list?.capability !== "execute" ||
+      lists.some((list) => list.capability !== "execute") ||
         get?.capability !== "execute" ||
-        writeAttempts.some((attempt) => attempt.capability !== "write"),
+        writeAttempts.some((attempt) => attempt.capability !== "write" || !targetsArtifact(attempt.input)),
     ],
-    ["recovery", recovery !== undefined && !hasExpectedWriteRecovery(recovery, input)],
   ];
   const failedTraceCheck = traceChecks.find(([, failed]) => failed)?.[0];
   if (failedTraceCheck)
@@ -368,41 +397,6 @@ function validateTraceAndApproval(input: RuntimeEvalExecution<McpPromptGrounding
       "trace",
       `List/get/write order, actors, capabilities, or exact target inputs diverged: ${failedTraceCheck}`,
     );
-}
-
-function hasExpectedWriteRecovery(
-  trace: RuntimeToolTrace,
-  input: RuntimeEvalExecution<McpPromptGroundingWorld>,
-): boolean {
-  const relativePathError = `Error: file_path must be absolute: ${ARTIFACT_PATH}`;
-  const absolutePath = `$WORKSPACE/${ARTIFACT_PATH}`;
-  const missingFileError = `Error reading file: ENOENT: no such file or directory, open '${absolutePath}'`;
-  const relativePathInput =
-    canonicalJson(trace.input) ===
-    canonicalJson({
-      file_path: ARTIFACT_PATH,
-      old_string: "",
-      new_string: input.world.expected,
-      replace_all: false,
-    });
-  const missingFileInput =
-    isRecord(trace.input) &&
-    trace.input.file_path === absolutePath &&
-    typeof trace.input.old_string === "string" &&
-    trace.input.old_string.length > 0 &&
-    trace.input.old_string.length <= 256 &&
-    trace.input.new_string === input.world.expected &&
-    trace.input.replace_all === false &&
-    Object.keys(trace.input).sort().join(",") === "file_path,new_string,old_string,replace_all";
-  const expectedError = relativePathInput ? relativePathError : missingFileInput ? missingFileError : undefined;
-  return (
-    input.profile.provider === "anthropic" &&
-    trace.name === "edit" &&
-    trace.outcome === "runtime_error" &&
-    expectedError !== undefined &&
-    trace.error === expectedError &&
-    canonicalJson(trace.output) === canonicalJson({ output: expectedError, metadata: { error: true } })
-  );
 }
 
 function hasExactArgumentOrder(value: unknown, world: McpPromptGroundingWorld): boolean {
@@ -413,29 +407,17 @@ function hasExactArgumentOrder(value: unknown, world: McpPromptGroundingWorld): 
   );
 }
 
-function expectedPatch(world: McpPromptGroundingWorld): string {
-  return `*** Begin Patch\n*** Add File: ${ARTIFACT_PATH}\n+${world.fact}\n*** End Patch`;
-}
-
-function expectedWriteInput(input: RuntimeEvalExecution<McpPromptGroundingWorld>) {
-  return input.profile.provider === "anthropic"
-    ? {
-        file_path: `$WORKSPACE/${ARTIFACT_PATH}`,
-        old_string: "",
-        new_string: input.world.expected,
-        replace_all: false,
-      }
-    : { patch: expectedPatch(input.world) };
-}
-
 function hasExpectedListInput(value: unknown): boolean {
   return canonicalJson(value) === canonicalJson({}) || canonicalJson(value) === canonicalJson({ server: SERVER });
 }
 
-function hasExpectedWriteInput(value: unknown, input: RuntimeEvalExecution<McpPromptGroundingWorld>): boolean {
-  return input.profile.provider === "anthropic"
-    ? canonicalJson(value) === canonicalJson(expectedWriteInput(input))
-    : matchesExactPatchInput(value, expectedPatch(input.world));
+function targetsArtifact(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  if (typeof value.file_path === "string")
+    return value.file_path === ARTIFACT_PATH || value.file_path === `$WORKSPACE/${ARTIFACT_PATH}`;
+  if (typeof value.patch !== "string") return false;
+  const targets = [...value.patch.matchAll(/^\*\*\* (?:Add|Update|Delete) File: (.+)$/gm)].map((match) => match[1]);
+  return targets.length === 1 && targets[0] === ARTIFACT_PATH;
 }
 
 function validateIsolationAndFinal(input: RuntimeEvalExecution<McpPromptGroundingWorld>) {
