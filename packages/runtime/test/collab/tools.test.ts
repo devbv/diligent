@@ -73,6 +73,14 @@ describe("spawn_agent tool", () => {
     expect(parsed.data).not.toHaveProperty("agent_type");
   });
 
+  it("does not expose a per-spawn model class override", () => {
+    const { tools } = createCollabTools(makeCollabDeps());
+    const spawnTool = tools.find((t) => t.name === "spawn_agent")!;
+    const shape = (spawnTool.parameters as { shape: Record<string, unknown> }).shape;
+
+    expect(shape).not.toHaveProperty("model_class");
+  });
+
   it("treats empty allowed_tools as inherit-all", async () => {
     let received: Parameters<AgentRegistry["spawn"]>[0] | undefined;
     const registry = {

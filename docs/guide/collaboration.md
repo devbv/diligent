@@ -37,7 +37,6 @@ Current parameters are:
 - `agent_type?`: built-in or custom agent role name
 - `resume_id?`: existing child session to resume
 - `allow_nested_agents?`: explicit opt-in for nested delegation
-- `model_class?`: `pro`, `general`, or `lite`
 - `allowed_tools?`: optional child-tool allow-list that can only narrow access
 
 Important current behavior:
@@ -46,6 +45,7 @@ Important current behavior:
 - The runtime emits `collab_spawn_begin`, then an early `collab_spawn_end` with status `running` once the child has been registered.
 - The child may later finish successfully or fail independently of the initial spawn result.
 - Nested delegation is disabled by default unless explicitly enabled for the spawned child.
+- The parent cannot override the child model class per spawn. A custom role's configured `model_class` wins; otherwise the child inherits the parent model class.
 - Child tool access is filtered from the parent-visible tool set; nested collaboration tools remain excluded unless nested delegation was explicitly enabled.
 
 ### `wait`

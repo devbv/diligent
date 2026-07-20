@@ -21,14 +21,6 @@ const SpawnAgentParams = z.object({
     .describe(
       "Explicit opt-in for nested subagents. Disabled by default; child agents cannot access collab tools unless this is true.",
     ),
-  model_class: z
-    .enum(["pro", "general", "lite"])
-    .optional()
-    .describe(
-      "Override the model class for this sub-agent. " +
-        "'pro' for complex reasoning, 'general' for balanced tasks, 'lite' for simple/read-only. " +
-        "Defaults by role: general→same as parent, explore→lite.",
-    ),
   allowed_tools: z
     .array(z.string())
     .optional()
@@ -61,7 +53,6 @@ export function createSpawnAgentTool(
         agentType: args.agent_type,
         resumeId: args.resume_id,
         allowNestedAgents: args.allow_nested_agents,
-        modelClass: args.model_class,
         allowedTools: normalizeAllowedTools(args.allowed_tools),
       });
       return { output: JSON.stringify({ thread_id: threadId, nickname }) };
