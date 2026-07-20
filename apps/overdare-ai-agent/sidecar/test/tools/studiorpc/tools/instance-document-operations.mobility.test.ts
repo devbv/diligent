@@ -111,19 +111,30 @@ describe("Workspace Mobility rules", () => {
     expect(node(document, "GRANDCHILD").Mobility).toBe("Static");
   });
 
-  test("JSON apply does not add Mobility to descendants where it is unset", () => {
+  test("JSON apply materializes a Static top-level onto keyless descendants (default is Movable)", () => {
+    // The engine default is Movable, so a Static top-level must be written onto
+    // otherwise-keyless descendants or they would attach as Movable.
     const { document, topGuid, childGuid } = makeDocument();
     node(document, topGuid).Mobility = "Static";
     normalizeWorkspaceMobility(requireDocumentRoot(document));
-    expect("Mobility" in node(document, childGuid)).toBe(false);
-    expect("Mobility" in node(document, "GRANDCHILD")).toBe(false);
+    expect(node(document, childGuid).Mobility).toBe("Static");
+    expect(node(document, "GRANDCHILD").Mobility).toBe("Static");
   });
 
-  test("JSON apply leaves descendants unchanged when the top-level value is unset", () => {
+  test("JSON apply pulls a stale Static descendant back to Movable under a default top-level", () => {
     const { document, childGuid } = makeDocument();
-    node(document, childGuid).Mobility = "Movable";
+    // Top-level left unset -> effective Movable; a descendant carries a stale Static.
+    node(document, childGuid).Mobility = "Static";
     normalizeWorkspaceMobility(requireDocumentRoot(document));
     expect(node(document, childGuid).Mobility).toBe("Movable");
+  });
+
+  test("JSON apply leaves keyless descendants keyless under a Movable top-level (no churn)", () => {
+    const { document, topGuid, childGuid } = makeDocument();
+    node(document, topGuid).Mobility = "Movable";
+    normalizeWorkspaceMobility(requireDocumentRoot(document));
+    expect("Mobility" in node(document, childGuid)).toBe(false);
+    expect("Mobility" in node(document, "GRANDCHILD")).toBe(false);
   });
 });
 
