@@ -66,8 +66,7 @@ describe("collaboration-parallel-synthesis", () => {
     const execution = await assembledExecution(DEFAULT_PROFILES[0]!, {
       generatedIds: true,
       semanticSpawnInputs: true,
-      sameExploreRole: true,
-      omitSpawnAccessOptions: true,
+      omitSpawnNestedOption: true,
       longWait: true,
       reverseWaitIds: true,
       includeProgressText: true,
@@ -341,8 +340,7 @@ describe("collaboration-parallel-synthesis", () => {
 interface AssembledExecutionOptions {
   generatedIds?: boolean;
   semanticSpawnInputs?: boolean;
-  sameExploreRole?: boolean;
-  omitSpawnAccessOptions?: boolean;
+  omitSpawnNestedOption?: boolean;
   longWait?: boolean;
   reverseWaitIds?: boolean;
   includeProgressText?: boolean;
@@ -493,10 +491,7 @@ function parentResponse(
               ? "Retrieve north token"
               : "Retrieve northern coordination fact",
             agent_type: "explore",
-            model_class: "lite",
-            ...(!assembledOptions.omitSpawnAccessOptions
-              ? { allow_nested_agents: false, allowed_tools: ["read"] }
-              : {}),
+            ...(!assembledOptions.omitSpawnNestedOption ? { allow_nested_agents: false } : {}),
           },
         },
         {
@@ -510,11 +505,8 @@ function parentResponse(
             description: assembledOptions.semanticSpawnInputs
               ? "Retrieve south token"
               : "Retrieve southern coordination fact",
-            agent_type: assembledOptions.sameExploreRole ? "explore" : "general",
-            model_class: "lite",
-            ...(!assembledOptions.omitSpawnAccessOptions
-              ? { allow_nested_agents: false, allowed_tools: ["read"] }
-              : {}),
+            agent_type: "explore",
+            ...(!assembledOptions.omitSpawnNestedOption ? { allow_nested_agents: false } : {}),
           },
         },
       ],

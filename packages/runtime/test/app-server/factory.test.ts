@@ -537,14 +537,13 @@ describe("createAppServerConfig", () => {
       description: "inspect",
       agentType: "general",
       allowNestedAgents: true,
-      allowedTools: ["spawn_agent", "wait"],
     });
     await registry.wait([threadId], 5000);
 
     expect(observedChildToolNames[0]).toContain("spawn_agent");
     expect(observedChildToolNames[0]).toContain("wait");
-    expect(observedChildToolNames[0]).not.toContain("send_input");
-    expect(observedChildToolNames[0]).not.toContain("close_agent");
+    expect(observedChildToolNames[0]).toContain("send_input");
+    expect(observedChildToolNames[0]).toContain("close_agent");
   });
 });
 

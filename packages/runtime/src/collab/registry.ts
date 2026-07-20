@@ -43,10 +43,10 @@ export { COLLAB_TOOL_NAMES };
 
 /**
  * Resolves which tools a child agent is allowed to use, given the parent tool set,
- * spawn parameters, and agent definition policy.
+ * effective child policy and agent definition policy.
  *
  * Three concerns handled separately:
- * 1. Which non-collab tools survive (intersection of parent tools, agent definition, and per-spawn allowlists).
+ * 1. Which non-collab tools survive (intersection of parent tools, agent definition, and restored legacy policy).
  * 2. Whether collab tools should be re-created for the child (signalled by nestedCollabEnabled).
  *    Collab tools are unconditionally excluded from childTools even when nestedCollabEnabled=true because
  *    child agents need *fresh* collab tools bound to their own registry — inheriting parent collab tools
@@ -61,7 +61,7 @@ export function resolveChildToolAccess(
 ): { childTools: Tool[]; nestedCollabEnabled: boolean; allowedChildToolNames: Set<string> } {
   let allowedChildToolNames = new Set(parentTools.map((tool) => tool.name));
   const agentAllowedTools = agentDefinition.allowedTools?.length ? agentDefinition.allowedTools : undefined;
-  const spawnAllowedTools = params.allowedTools?.length ? params.allowedTools : undefined;
+  const policyAllowedTools = params.allowedTools?.length ? params.allowedTools : undefined;
 
   if (!params.allowNestedAgents) {
     allowedChildToolNames = new Set([...allowedChildToolNames].filter((toolName) => !COLLAB_TOOL_NAMES.has(toolName)));
@@ -75,8 +75,8 @@ export function resolveChildToolAccess(
     const allowedSet = new Set(agentAllowedTools);
     allowedChildToolNames = new Set([...allowedChildToolNames].filter((toolName) => allowedSet.has(toolName)));
   }
-  if (spawnAllowedTools) {
-    const allowedSet = new Set(spawnAllowedTools);
+  if (policyAllowedTools) {
+    const allowedSet = new Set(policyAllowedTools);
     allowedChildToolNames = new Set([...allowedChildToolNames].filter((toolName) => allowedSet.has(toolName)));
   }
 
@@ -108,10 +108,10 @@ function buildZeroToolDiagnostics(
   const lines = [
     `Parent tools: [${formatToolList(parentTools.map((tool) => tool.name))}].`,
     `Agent definition: name=${agentDefinition.name}, readonly=${agentDefinition.readonly}, allowedTools=[${formatMaybeAllowList(agentDefinition.allowedTools)}].`,
-    `Spawn params: allowNestedAgents=${params.allowNestedAgents === true}, allowedTools=[${formatMaybeAllowList(params.allowedTools)}].`,
+    `Effective policy: allowNestedAgents=${params.allowNestedAgents === true}, allowedTools=[${formatMaybeAllowList(params.allowedTools)}].`,
   ];
   const agentAllowedTools = agentDefinition.allowedTools?.length ? agentDefinition.allowedTools : undefined;
-  const spawnAllowedTools = params.allowedTools?.length ? params.allowedTools : undefined;
+  const policyAllowedTools = params.allowedTools?.length ? params.allowedTools : undefined;
 
   let current = new Set(parentTools.map((tool) => tool.name));
   const recordStep = (label: string, next: Set<string>) => {
@@ -139,10 +139,10 @@ function buildZeroToolDiagnostics(
       new Set([...current].filter((toolName) => allowedSet.has(toolName))),
     );
   }
-  if (spawnAllowedTools) {
-    const allowedSet = new Set(spawnAllowedTools);
+  if (policyAllowedTools) {
+    const allowedSet = new Set(policyAllowedTools);
     recordStep(
-      "after spawn allowedTools allow-list",
+      "after effective policy allowedTools allow-list",
       new Set([...current].filter((toolName) => allowedSet.has(toolName))),
     );
   }
@@ -217,7 +217,6 @@ export class AgentRegistry {
     resumeId?: string;
     allowNestedAgents?: boolean;
     modelClass?: ModelClass;
-    allowedTools?: string[];
   }): {
     threadId: string;
     nickname: string;
@@ -259,7 +258,7 @@ export class AgentRegistry {
       params.modelClass ??
       agentDefinition.defaultModelClass ??
       getModelClass(parentModel);
-    const effectiveAllowedTools = normalizeToolAllowlist(restoredPolicy?.allowedTools ?? params.allowedTools);
+    const effectiveAllowedTools = normalizeToolAllowlist(restoredPolicy?.allowedTools);
     const effectivePolicy: CollabResumePolicy = {
       agentType,
       modelClass: targetClass,
@@ -780,20 +779,13 @@ function assertCompatibleResumePolicy(
     agentType?: string;
     allowNestedAgents?: boolean;
     modelClass?: ModelClass;
-    allowedTools?: string[];
   },
   policy: CollabResumePolicy,
 ): void {
-  const requestedAllowedTools = normalizeToolAllowlist(params.allowedTools);
-  const persistedAllowedTools = normalizeToolAllowlist(policy.allowedTools);
-  const sameAllowedTools =
-    params.allowedTools === undefined ||
-    JSON.stringify(requestedAllowedTools ?? []) === JSON.stringify(persistedAllowedTools ?? []);
   if (
     (params.agentType !== undefined && params.agentType !== policy.agentType) ||
     (params.modelClass !== undefined && params.modelClass !== policy.modelClass) ||
-    (params.allowNestedAgents !== undefined && params.allowNestedAgents !== policy.allowNestedAgents) ||
-    !sameAllowedTools
+    (params.allowNestedAgents !== undefined && params.allowNestedAgents !== policy.allowNestedAgents)
   ) {
     throw new Error("Cannot resume child with policy different from its immutable policy.");
   }

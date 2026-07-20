@@ -391,8 +391,6 @@ function parentResponse(
               ? {
                   description: "Retrieve the private reference",
                   allow_nested_agents: false,
-                  model_class: "lite" as const,
-                  allowed_tools: ["read"],
                 }
               : {}),
           },

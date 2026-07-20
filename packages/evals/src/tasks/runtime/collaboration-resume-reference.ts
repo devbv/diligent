@@ -264,20 +264,7 @@ function validateFinal(input: RuntimeEvalExecution<CollaborationResumeReferenceW
 function exactSpawnInput(input: unknown, world: CollaborationResumeReferenceWorld, resume: boolean, childId?: string) {
   if (!isRecord(input) || typeof input.message !== "string") return false;
   const message = input.message;
-  const allowedKeys = new Set([
-    "message",
-    "description",
-    "agent_type",
-    "resume_id",
-    "allow_nested_agents",
-    "model_class",
-    "allowed_tools",
-  ]);
-  const allowedTools = input.allowed_tools;
-  const exactAllowedTools =
-    allowedTools === undefined ||
-    (Array.isArray(allowedTools) &&
-      (allowedTools.length === 0 || (allowedTools.length === 1 && allowedTools[0] === "read")));
+  const allowedKeys = new Set(["message", "description", "agent_type", "resume_id", "allow_nested_agents"]);
   return (
     Object.keys(input).every((key) => allowedKeys.has(key)) &&
     message.includes(SOURCE_PATHS[resume ? 1 : 0]) &&
@@ -286,9 +273,7 @@ function exactSpawnInput(input: unknown, world: CollaborationResumeReferenceWorl
     (resume ? input.resume_id === childId : input.resume_id === undefined) &&
     (input.description === undefined ||
       (typeof input.description === "string" && input.description.length > 0 && input.description.length <= 160)) &&
-    (input.allow_nested_agents === undefined || input.allow_nested_agents === false) &&
-    (input.model_class === undefined || input.model_class === "lite") &&
-    exactAllowedTools
+    (input.allow_nested_agents === undefined || input.allow_nested_agents === false)
   );
 }
 
