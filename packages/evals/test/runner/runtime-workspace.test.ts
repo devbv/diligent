@@ -8,6 +8,7 @@ import {
   captureWorkspace,
   removeTemporaryRoot,
   resolveWorkspacePath,
+  resolveWorkspacePathForFlavor,
   validateTemporaryRoot,
   workspaceDiff,
 } from "../../src/runner/runtime-workspace";
@@ -43,6 +44,21 @@ describe("runtime workspace", () => {
     } finally {
       await removeTemporaryRoot(root);
     }
+  });
+
+  test("accepts Windows absolute paths inside the workspace and rejects Windows escapes", () => {
+    const root = "C:\\Users\\runner\\AppData\\Local\\Temp\\diligent-runtime-eval";
+    expect(resolveWorkspacePathForFlavor(root, `${root}\\references\\initial.fact`, "win32")).toBe(
+      `${root}\\references\\initial.fact`,
+    );
+    expect(resolveWorkspacePathForFlavor(root, `${root}/references/follow-up.fact`, "win32")).toBe(
+      `${root}\\references\\follow-up.fact`,
+    );
+    expect(() => resolveWorkspacePathForFlavor(root, "C:\\Windows\\system.ini", "win32")).toThrow("workspace_escape");
+    expect(() => resolveWorkspacePathForFlavor(root, "D:\\outside.txt", "win32")).toThrow("workspace_escape");
+    expect(() => resolveWorkspacePathForFlavor(root, "\\\\server\\share\\outside.txt", "win32")).toThrow(
+      "workspace_escape",
+    );
   });
 
   test("records symlinks so fixture validation can reject them", async () => {

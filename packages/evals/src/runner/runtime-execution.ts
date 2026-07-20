@@ -28,7 +28,7 @@ import { createRuntimeEvalOutputStore, type RuntimeEvalOutputStore } from "./run
 import { createRuntimeProtocolClient, type RuntimeProtocolClient } from "./runtime-protocol-client";
 import { captureRuntimeProviderCall } from "./runtime-provider-evidence";
 import { captureRuntimeState, checkRuntimeStatePolicy, projectSnapshotWithoutRuntimeState } from "./runtime-state";
-import { transformRuntimeTools } from "./runtime-tool-policy";
+import { normalizeEvidencePath, transformRuntimeTools } from "./runtime-tool-policy";
 import {
   captureWorkspace,
   normalizePlatformAlias,
@@ -808,7 +808,7 @@ function normalizeWorkspaceEvidence<T>(value: T, root: string, outputRoot?: stri
     for (const candidate of [aliasedRoot, root]) {
       if (candidate) normalized = normalized.split(candidate).join("$WORKSPACE");
     }
-    return normalized as T;
+    return normalizeEvidencePath(normalized) as T;
   }
   if (Array.isArray(value)) return value.map((item) => normalizeWorkspaceEvidence(item, root, outputRoot)) as T;
   if (value === null || typeof value !== "object") return value;

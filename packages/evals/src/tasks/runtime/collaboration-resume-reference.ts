@@ -52,7 +52,7 @@ export interface CollaborationResumeReferenceWorld extends RuntimeFixtureWorld {
 export const collaborationResumeReferenceTask: RuntimeEvalTask<CollaborationResumeReferenceWorld> = {
   id: "collaboration-resume-reference",
   description: "Resume the same persisted read-only specialist after restart and record two ordered facts.",
-  fixtureVersion: "collaboration-resume-reference-v3",
+  fixtureVersion: "collaboration-resume-reference-v4",
   limits: {
     ...DEFAULT_RUNTIME_LIMITS,
     maxTurns: 12,
@@ -136,12 +136,12 @@ function fixtureFor(seed: string) {
     sourceHashes: [sha256Text(`${tokens[0]}\n`), sha256Text(`${tokens[1]}\n`)] as [string, string],
     artifactPath: ARTIFACT_PATH,
     prompts: [
-      `Use exactly one lite read-only specialist to read ${SOURCE_PATHS[0]} exactly once. Wait once for completion, keep the returned value private in your reply, and reply with exactly ${ACK}.`,
+      `Use exactly one lite read-only specialist to read ${SOURCE_PATHS[0]} exactly once and retain the value for later. Wait once for completion, keep the value private in your reply, and reply with exactly ${ACK}.`,
       `Resume that same persisted specialist to read only ${SOURCE_PATHS[1]} exactly once without rereading the initial file. Wait once, then create ${ARTIFACT_PATH} containing the two returned values in initial-then-follow-up order, one per line with a final newline. Reply with exactly ${FINAL}.`,
     ] as [string, string],
     workerBriefs: [
-      `Read only ${SOURCE_PATHS[0]} exactly once. Return only its exact token, without commentary or a trailing newline. Do not inspect any other reference.`,
-      `Continue the prior assignment by reading only ${SOURCE_PATHS[1]} exactly once. Return only its exact token, without commentary or a trailing newline. Do not reread the initial reference.`,
+      `Read only ${SOURCE_PATHS[0]} exactly once. Retain its exact token for the resumed assignment and report completion. Do not inspect any other reference.`,
+      `Continue the prior assignment by reading only ${SOURCE_PATHS[1]} exactly once. Return the retained initial token followed by the follow-up token. Do not reread the initial reference.`,
     ] as [string, string],
     acknowledgement: ACK,
     finalResponse: FINAL,
@@ -210,14 +210,9 @@ function validateTools(input: RuntimeEvalExecution<CollaborationResumeReferenceW
     return message?.role === "assistant" ? [message.content] : [];
   });
   if (
-    input.world.tokens.some(
-      (token, index) =>
-        !childReports.some((content) =>
-          exactAssistantContent(content, token, true, [input.world.tokens[index === 0 ? 1 : 0]!]),
-        ),
-    )
+    input.world.tokens.some((token) => !childReports.some((content) => exactAssistantContent(content, token, true, [])))
   )
-    return fail("wait_contract", "The resumed child did not report each assigned source fact in its own turn.");
+    return fail("wait_contract", "The resumed child reports did not contain both assigned source facts.");
   const write = traces.get(CALL_IDS.write);
   if (
     !write ||
@@ -320,7 +315,7 @@ function exactSpawnInput(input: unknown, world: CollaborationResumeReferenceWorl
     Object.keys(input).every((key) => allowedKeys.has(key)) &&
     message.includes(SOURCE_PATHS[resume ? 1 : 0]) &&
     !world.tokens.some((token) => message.includes(token)) &&
-    input.agent_type === AGENT_TYPE &&
+    (resume ? input.agent_type === undefined || input.agent_type === AGENT_TYPE : input.agent_type === AGENT_TYPE) &&
     (resume ? input.resume_id === childId : input.resume_id === undefined) &&
     (input.description === undefined ||
       (typeof input.description === "string" && input.description.length > 0 && input.description.length <= 160)) &&

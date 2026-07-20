@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Tool } from "@diligent/core/tool-contract";
 import { z } from "zod";
-import { transformRuntimeTools } from "../../src/runner/runtime-tool-policy";
+import { normalizeEvidencePath, transformRuntimeTools } from "../../src/runner/runtime-tool-policy";
 import { removeTemporaryRoot } from "../../src/runner/runtime-workspace";
 import type { RuntimeToolTrace } from "../../src/runtime-task";
 
@@ -29,6 +29,15 @@ const DEFAULT_LIMITS = {
 };
 
 describe("runtime tool policy", () => {
+  test("normalizes aliased Windows evidence paths to provider-neutral separators", () => {
+    expect(normalizeEvidencePath("$WORKSPACE\\references\\initial.fact")).toBe("$WORKSPACE/references/initial.fact");
+    expect(normalizeEvidencePath("$TOOL_OUTPUT\\full\\result.txt")).toBe("$TOOL_OUTPUT/full/result.txt");
+    expect(normalizeEvidencePath("Error opening '$WORKSPACE\\records\\active.json'")).toBe(
+      "Error opening '$WORKSPACE/records/active.json'",
+    );
+    expect(normalizeEvidencePath("literal\\content")).toBe("literal\\content");
+  });
+
   test("allows an exact command but rejects suffixes before execution", async () => {
     const root = await mkdtemp(join(tmpdir(), "diligent-runtime-eval-"));
     const executed: string[] = [];
