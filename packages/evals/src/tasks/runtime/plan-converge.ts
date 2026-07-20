@@ -25,7 +25,7 @@ const QUESTION_ID = "rollout_preference";
 export const planConvergeTask: RuntimeEvalTask<PlanConvergeWorld> = {
   id: "plan-converge",
   description: "Discover two fixture facts, ask for one unavailable preference, and converge on one final plan.",
-  fixtureVersion: "plan-converge-v2",
+  fixtureVersion: "plan-converge-v3",
   limits: {
     ...DEFAULT_RUNTIME_LIMITS,
     maxTurns: 6,
@@ -200,7 +200,7 @@ function boundedQuestion(value: unknown): Record<string, unknown> | undefined {
     (question.allow_multiple !== undefined && question.allow_multiple !== false) ||
     !Array.isArray(question.options) ||
     question.options.length < 1 ||
-    question.options.length > 3
+    question.options.length > 4
   )
     return undefined;
   if (

@@ -48,7 +48,7 @@ export interface LoopContextAdaptationWorld extends RuntimeFixtureWorld {
 export const loopContextAdaptationTask: RuntimeEvalTask<LoopContextAdaptationWorld> = {
   id: "loop-context-adaptation",
   description: "Adapt an exact pending workspace result after an internal loop-context requirement update.",
-  fixtureVersion: "loop-context-adaptation-v5",
+  fixtureVersion: "loop-context-adaptation-v6",
   limits: {
     ...DEFAULT_RUNTIME_LIMITS,
     maxTurns: 4,
@@ -339,13 +339,9 @@ function hasExactWriteInput(toolName: string, input: unknown, expected: string):
       })
     );
   }
-  return (
-    toolName === "apply_patch" &&
-    JSON.stringify(input) ===
-      JSON.stringify({
-        patch: `*** Begin Patch\n*** Add File: ${OUTPUT_PATH}\n+${expected.trimEnd()}\n*** End Patch`,
-      })
-  );
+  if (toolName !== "apply_patch" || !isRecord(input) || typeof input.patch !== "string") return false;
+  const expectedPatch = `*** Begin Patch\n*** Add File: ${OUTPUT_PATH}\n+${expected.trimEnd()}\n*** End Patch`;
+  return input.patch === expectedPatch || input.patch === `${expectedPatch}\n`;
 }
 
 function isValidFinalAssistant(value: unknown, expected: string, forbidden: string): boolean {

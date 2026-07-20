@@ -20,6 +20,7 @@ import { assistantMessage, sequenceStream } from "../../helpers/fake-stream";
 
 describe("loop-context-adaptation", () => {
   test("defines a deterministic isolated fixture and opaque natural prompt", async () => {
+    expect(loopContextAdaptationTask.fixtureVersion).toBe("loop-context-adaptation-v6");
     const root = await mkdtemp(join(tmpdir(), "diligent-runtime-loop-context-"));
     try {
       const world = await loopContextAdaptationTask.setup("shared-seed-123", root);
@@ -213,6 +214,10 @@ describe("loop-context-adaptation", () => {
       ["read", "runtime_error"],
       ["apply_patch", "success"],
     ]);
+    expect(loopContextAdaptationTask.evaluate(execution)).toMatchObject({ passed: true });
+
+    const patch = (execution.toolCalls[2]!.input as { patch: string }).patch;
+    (execution.toolCalls[2]!.input as { patch: string }).patch = `${patch}\n`;
     expect(loopContextAdaptationTask.evaluate(execution)).toMatchObject({ passed: true });
   });
 

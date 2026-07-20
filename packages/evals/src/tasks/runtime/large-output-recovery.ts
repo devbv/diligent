@@ -238,11 +238,11 @@ function validateFinal(input: RuntimeEvalExecution<LargeOutputRecoveryWorld>) {
 }
 
 function isExclusiveAuthorizationAnswer(text: string, hiddenFact: string): boolean {
-  return (
-    text === hiddenFact ||
-    text === `The authorization value is:\n\n\`${hiddenFact}\`` ||
-    text === `The authorization value is:\n${hiddenFact}`
-  );
+  if (text === hiddenFact) return true;
+  const label = "The authorization value is:";
+  if (!text.startsWith(label)) return false;
+  const labeledValue = text.slice(label.length).trim();
+  return labeledValue === hiddenFact || labeledValue === `\`${hiddenFact}\``;
 }
 
 function hasExactInitialManifest(snapshot: RuntimeWorldSnapshot, world: LargeOutputRecoveryWorld): boolean {

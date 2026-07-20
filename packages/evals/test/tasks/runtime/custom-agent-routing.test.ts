@@ -19,6 +19,7 @@ import { assistantMessage, sequenceStream } from "../../helpers/fake-stream";
 
 describe("custom-agent-routing", () => {
   test("runs one genuine discovered custom agent through the real collaboration runtime for both providers", async () => {
+    expect(customAgentRoutingTask.fixtureVersion).toBe("custom-agent-routing-v9");
     expect(DEFAULT_PROFILES).toHaveLength(2);
     for (const profile of DEFAULT_PROFILES) {
       const execution = await assembledExecution(profile);
@@ -67,6 +68,9 @@ describe("custom-agent-routing", () => {
     expect(execution.toolCalls[1]!.input).toMatchObject({ timeout_ms: 3_600_000 });
     expect(new Set(execution.toolCalls.map((call) => call.toolCallId)).size).toBe(4);
     expect((execution.toolCalls[3]!.input as { patch: string }).patch.endsWith("*** End Patch\n")).toBe(true);
+    expect(customAgentRoutingTask.evaluate(execution)).toMatchObject({ passed: true });
+
+    (execution.toolCalls[0]!.input as { description: string }).description = "Retrieve current authorization capsule";
     expect(customAgentRoutingTask.evaluate(execution)).toMatchObject({ passed: true });
   });
 

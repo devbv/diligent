@@ -350,6 +350,16 @@ describe("large-output-recovery", () => {
       code: "large_output_recovery.final",
     });
   });
+
+  test("accepts the declared authorization label and value on one line", async () => {
+    const execution = await assembledExecution(DEFAULT_PROFILES[1]!);
+    const final = execution.turns[0]!.messages.at(-1)!;
+    if (final.role !== "assistant" || final.content[0]?.type !== "text")
+      throw new Error("Expected an assistant final text block.");
+    final.content[0].text = `The authorization value is: ${execution.world.hiddenFact}`;
+
+    expect(largeOutputRecoveryTask.evaluate(execution)).toEqual({ passed: true });
+  });
 });
 
 async function assembledExecution(

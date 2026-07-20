@@ -81,7 +81,7 @@ export interface CustomAgentRoutingWorld extends RuntimeFixtureWorld {
 export const customAgentRoutingTask: RuntimeEvalTask<CustomAgentRoutingWorld> = {
   id: "custom-agent-routing",
   description: "Select one discovered custom role to retrieve a protected release fact and persist it exactly.",
-  fixtureVersion: "custom-agent-routing-v8",
+  fixtureVersion: "custom-agent-routing-v9",
   limits: {
     ...DEFAULT_RUNTIME_LIMITS,
     maxTurns: 7,
@@ -319,8 +319,8 @@ function exactSpawnInput(input: unknown, world: CustomAgentRoutingWorld): boolea
     return false;
   const description = typeof input.description === "string" ? input.description.toLowerCase() : "";
   const message = input.message.toLowerCase();
-  const groundedDescription =
-    input.description === undefined || ["release", "authorization"].every((term) => description.includes(term));
+  const descriptionTerms = ["release", "authorization", "capsule"].filter((term) => description.includes(term));
+  const groundedDescription = input.description === undefined || descriptionTerms.length >= 2;
   const groundedMessage =
     message.includes("release") &&
     message.includes("capsule") &&

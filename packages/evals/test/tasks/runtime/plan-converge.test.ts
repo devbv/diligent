@@ -10,7 +10,7 @@ const THREAD_ID = "thread-1";
 
 describe("plan-converge runtime eval", () => {
   test("budgets one exact paired Anthropic path recovery without expanding turns", () => {
-    expect(planConvergeTask.fixtureVersion).toBe("plan-converge-v2");
+    expect(planConvergeTask.fixtureVersion).toBe("plan-converge-v3");
     expect(planConvergeTask.limits).toMatchObject({
       maxTurns: 6,
       maxToolCalls: 5,
@@ -128,6 +128,24 @@ describe("plan-converge runtime eval", () => {
       mutate(execution);
       expect(planConvergeTask.evaluate(execution).passed, name).toBe(false);
     }
+  });
+
+  test("accepts the request-user-input contract maximum of four bounded options", () => {
+    const execution = directExecution();
+    const asked = (execution.toolCalls.at(-1)!.input as { questions: Array<{ options: unknown[] }> }).questions[0]!;
+    asked.options = [
+      { label: "Immediate", description: "Release to every environment at once." },
+      { label: "Canary", description: "Ramp gradually while monitoring metrics." },
+      { label: "Staged", description: "Release through environments in order." },
+      { label: "Flagged", description: "Enable for selected users first." },
+    ];
+    expect(planConvergeTask.evaluate(execution)).toEqual({ passed: true });
+
+    asked.options.push({ label: "Extra", description: "Exceeds the protocol contract." });
+    expect(planConvergeTask.evaluate(execution)).toMatchObject({
+      passed: false,
+      code: "plan_converge.question",
+    });
   });
 
   test("preserves the exact direct path and rejects provider-neutral trace slack", () => {
