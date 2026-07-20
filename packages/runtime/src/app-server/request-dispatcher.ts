@@ -23,14 +23,12 @@ import type { RpcPeer } from "../rpc/channel";
 import {
   buildProviderList,
   type ConfigReloadResult,
-  type ConsentConfigManager,
   handleAuthOAuthCancel,
   handleAuthOAuthStart,
   handleAuthRemove,
   handleAuthSet,
   handleConfigReload,
   handleConfigSet,
-  handleConsentSet,
   handleImageUpload,
 } from "./config-handlers";
 import { type ExperimentConfigManager, handleExperimentsList, handleExperimentsSet } from "./experiment-handlers";
@@ -106,7 +104,6 @@ export interface ClientRequestDispatchContext {
   skillConfig: SkillConfigManager | undefined;
   experimentConfig: ExperimentConfigManager | undefined;
   subagentConfig: SubagentConfigManager | undefined;
-  consentConfig: ConsentConfigManager | undefined;
   reloadConfig: (() => Promise<ConfigReloadResult>) | undefined;
 
   // Subscription management
@@ -388,9 +385,6 @@ export async function dispatchClientRequest(
 
     case DILIGENT_CLIENT_REQUEST_METHODS.CONFIG_RELOAD:
       return handleConfigReload(ctx.reloadConfig, ctx.threadHandlersCtx.threads);
-
-    case DILIGENT_CLIENT_REQUEST_METHODS.CONSENT_SET:
-      return await handleConsentSet(ctx.consentConfig, request.params);
 
     case DILIGENT_CLIENT_REQUEST_METHODS.AUTH_LIST: {
       const pm = ctx.providerManager;

@@ -1,5 +1,7 @@
 # OVDR-11475 — AI-data Consent + diligent-gateway Transmission (Handoff)
 
+> Historical handoff: its runtime-owned consent design is superseded by [P083](../refactor/P083-overdare-consent-ownership-handoff.md). Use P083 and `ARCHITECTURE.md` for the current ownership boundary.
+
 Status: in progress on branch `feat/ovdr-11475-consent-gateway` (pushed). Implements
 [OVDR-11475](https://overdare.atlassian.net/browse/OVDR-11475) §3.A (consent) and §B (collection, MVP).
 

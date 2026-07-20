@@ -2,7 +2,6 @@
 
 import { createLogger } from "@diligent/logging";
 import type {
-  ConsentState,
   DiligentServerNotification,
   DiligentServerRequest,
   InitializeResponse,
@@ -19,6 +18,7 @@ import {
   DILIGENT_VERSION,
 } from "@diligent/protocol";
 import { type Dispatch, type MutableRefObject, type RefObject, type SetStateAction, useEffect } from "react";
+import type { ConsentState } from "../../shared/consent-protocol";
 import {
   deriveAgentEvents,
   filterSteeringInjectedEvents,
@@ -33,6 +33,8 @@ import type { WebRpcClient } from "./rpc-client";
 import type { ThreadState } from "./thread-store";
 
 const logger = createLogger({ scope: "web.client.lifecycle" });
+
+type WebInitializeResponse = InitializeResponse & { consent?: ConsentState };
 
 function hasNotificationThreadId(params: unknown): params is { threadId: string } {
   return typeof (params as { threadId?: unknown } | null)?.threadId === "string";
@@ -273,7 +275,7 @@ export function useAppBootstrap({
           clientName: "diligent-web",
           clientVersion: DILIGENT_VERSION,
           protocolVersion: 1,
-        })) as InitializeResponse;
+        })) as WebInitializeResponse;
         if (cancelled) return;
 
         setCwd(meta.cwd ?? "");

@@ -13,10 +13,9 @@ import {
 import { createPlanReminderHook } from "../agent/plan-reminder-hook";
 import { RuntimeAgent } from "../agent/runtime-agent";
 import { openBrowser as defaultOpenBrowser } from "../auth";
-import { applyConsentPatch, refreshPrivacyPolicyUrl, resolveConsentState } from "../config/consent";
 import { loadDiligentConfig } from "../config/loader";
 import { loadRuntimeConfig, type RuntimeConfig } from "../config/runtime";
-import { getGlobalConfigPath, saveGlobalConsent, saveGlobalModel } from "../config/writer";
+import { getGlobalConfigPath, saveGlobalModel } from "../config/writer";
 import { createLocalImageLoader, type DiligentPaths, ensureDiligentDir, toolOutputStore } from "../infrastructure";
 import { buildKnowledgeSection, readKnowledge } from "../knowledge";
 import { discoverSkills } from "../skills";
@@ -24,7 +23,7 @@ import { type BundledToolProvider, createBundledAgentLoopHooks } from "../tools/
 import { buildDefaultTools } from "../tools/defaults";
 import { buildMcpNeedsAuthNote, getMcpManager } from "../tools/mcp";
 import type { PluginDiscoveryMode } from "../tools/plugin-loader";
-import type { ConfigReloadResult, ConsentConfigManager } from "./config-handlers";
+import type { ConfigReloadResult } from "./config-handlers";
 import type { CreateAgentArgs, DiligentAppServerConfig } from "./server";
 
 const logger = createLogger({ scope: "runtime.app-server.config" });
@@ -254,12 +253,6 @@ export interface CreateAppServerConfigOptions {
   transformTools?: (tools: Tool[], context: { cwd: string; mode: Mode; provider: ProviderName }) => Tool[];
   /** Optional assembly-owned store for full tool outputs; defaults to the production runtime store. */
   toolOutputStore?: ToolOutputFileStore;
-  /**
-   * Optional remote-backed consent manager (e.g. the OVERDARE gateway's `/v1/consent`). When
-   * provided, it owns consent state instead of local `config.jsonc`; `refresh()` is awaited from
-   * `getInitializeResult` so the initialize payload carries the server's latest state.
-   */
-  consentBackend?: ConsentConfigManager;
   overrides?: Partial<
     Pick<
       DiligentAppServerConfig,
@@ -276,7 +269,6 @@ export function createAppServerConfig(opts: CreateAppServerConfigOptions): Dilig
     pluginDiscovery = "global",
     transformTools,
     toolOutputStore,
-    consentBackend,
     overrides,
   } = opts;
   const modelInfoList = getModelInfoList();
@@ -308,23 +300,6 @@ export function createAppServerConfig(opts: CreateAppServerConfigOptions): Dilig
     return modelInfoList.filter((m) => configured.includes(m.provider));
   };
 
-  // Consent is owned by `consentBackend` (remote source of truth) when injected; otherwise it
-  // falls back to the local `config.jsonc`-backed manager below.
-  const consentConfig: ConsentConfigManager = consentBackend ?? {
-    get: () => resolveConsentState(runtimeConfig.diligent.consent),
-    set: (params) => {
-      const next = applyConsentPatch(runtimeConfig.diligent.consent, params, new Date().toISOString());
-      runtimeConfig.diligent = { ...runtimeConfig.diligent, consent: next };
-      saveGlobalConsent(next).catch((err) => {
-        logger.warn("persist_consent_failed", {
-          message: `[config] Failed to persist consent selection: ${err instanceof Error ? err.message : String(err)}`,
-          error: err,
-        });
-      });
-      return resolveConsentState(next);
-    },
-  };
-
   // Lazily resolve paths from the startup cwd — idempotent, cached after first call
   let pathsPromise: ReturnType<typeof ensureDiligentDir> | undefined;
   const getPaths = () => {
@@ -337,15 +312,12 @@ export function createAppServerConfig(opts: CreateAppServerConfigOptions): Dilig
     pluginDiscovery,
     defaultEffort: initialEffort,
     getInitializeResult: async () => {
-      await refreshPrivacyPolicyUrl(); // resolve the versioned privacy-policy URL (3s-bounded, cached)
-      await consentConfig.refresh?.(); // re-sync remote-backed consent (no-op for the local manager)
       return {
         cwd,
         mode: runtimeConfig.mode,
         effort: initialEffort,
         currentModel: runtimeConfig.model,
         availableModels: modelsForConfiguredProviders(),
-        consent: consentConfig.get(),
       };
     },
     resolvePaths: (requestCwd) => ensureDiligentDir(requestCwd),
@@ -432,7 +404,6 @@ export function createAppServerConfig(opts: CreateAppServerConfigOptions): Dilig
         }
       },
     },
-    consentConfig,
     providerManager: runtimeConfig.providerManager,
     providerAuthPresenter: runtimeConfig.providerAuthPresenter,
     authStore: runtimeConfig.authStore,

@@ -22,6 +22,7 @@ import {
 } from "@diligent/protocol";
 import {
   type AgentOptions,
+  type BundledToolProvider,
   createCollabTools,
   createPermissionEngine,
   createRequestUserInputTool,
@@ -201,6 +202,44 @@ function makeFactoryRuntimeConfig(overrides?: {
 }
 
 describe("DiligentAppServer", () => {
+  it("dispatches every registered EntryAppended hook without a product policy gate", async () => {
+    const calls: string[] = [];
+    const bundledToolProviders: BundledToolProvider[] = ["first", "second"].map((id) => ({
+      id,
+      createTools: () => [],
+      onEntryAppended: async () => {
+        calls.push(id);
+        return { blocked: false };
+      },
+    }));
+    const server = new DiligentAppServer({
+      resolvePaths: (cwd) => ensureDiligentDir(cwd),
+      createAgent: () => {
+        throw new Error("not used");
+      },
+      bundledToolProviders,
+    });
+
+    (
+      server as unknown as {
+        runEntryAppendedHooks(runtime: { currentTurnUserId?: string }, info: Record<string, unknown>): void;
+      }
+    ).runEntryAppendedHooks(
+      { currentTurnUserId: "user-1" },
+      {
+        sessionId: "session-1",
+        sessionPath: "/tmp/session-1.jsonl",
+        cwd: "/tmp/project",
+        userId: "user-1",
+        seq: 1,
+        entry: { type: "message" },
+      },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(calls).toEqual(["first", "second"]);
+  });
+
   it("waits for sync Stop hooks, passes provider metadata, and ignores lifecycle output", async () => {
     const projectRoot = await mkdtemp(join(process.env.TMPDIR ?? "/tmp", "diligent-app-server-plan-type-"));
     const capturePath = join(projectRoot, "stop-input.json");

@@ -45,7 +45,6 @@ export type { AgentEvent, ChildAgentEvent, RuntimeAgentEvent } from "./agent-eve
 export type { AgentDiscoveryOptions, AgentFrontmatter, AgentLoadError, AgentLoadResult, AgentMetadata } from "./agents";
 export { discoverAgents, parseAgentFrontmatter, renderAgentsSection, validateAgentName } from "./agents";
 export type {
-  ConsentConfigManager,
   CreateAgentArgs,
   CreateAppServerConfigOptions,
   DiligentAppServerConfig,
@@ -90,11 +89,9 @@ export type {
   WriteToolsConfigResult,
 } from "./config";
 export {
-  applyConsentPatch,
   applyToolConfigPatch,
   buildSystemPrompt,
   buildSystemPromptWithKnowledge,
-  currentPrivacyPolicyUrl,
   DEFAULT_CONFIG,
   DiligentConfigSchema,
   discoverInstructions,
@@ -105,9 +102,7 @@ export {
   loadRuntimeConfig,
   mergeConfig,
   normalizeStoredToolsConfig,
-  refreshPrivacyPolicyUrl,
   resolveConfiguredUserId,
-  resolveConsentState,
   saveGlobalExperimentOverrides,
   saveGlobalModel,
   writeGlobalToolsConfig,
@@ -123,7 +118,6 @@ export { appendKnowledge, buildKnowledgeSection, rankKnowledge, readKnowledge, w
 export { ProtocolNotificationAdapter } from "./notification-adapter";
 export type { SystemPromptVars } from "./prompt";
 export { buildBaseSystemPrompt } from "./prompt";
-export type { ConsentSetParams, ConsentState } from "./protocol";
 export { PROVIDER_DESCRIPTORS } from "./provider";
 export type { NdjsonParser, RpcMessageSink, RpcMessageSource, RpcPeer, WebSocketSender } from "./rpc";
 export {

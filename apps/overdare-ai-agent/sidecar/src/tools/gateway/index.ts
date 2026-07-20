@@ -3,8 +3,7 @@
 //
 // Implemented as a plugin hook with `mode: "async"`: the runtime's hook runner detaches it, so a
 // slow/unreachable gateway never blocks the write or turn path. MVP scope: mask → single POST,
-// no durable outbox / batch / retry yet. Consent gating (serviceImprovement) happens upstream in
-// the runtime, so this hook only runs when the user has opted in.
+// no durable outbox / batch / retry yet. This product provider owns its fail-closed consent gate.
 //
 // Auth: the per-user bearer is the **Creator Hub token** fetched via Studio RPC — the same token
 // bubo/analytics uses (shared `readHubToken`, cached). `DILIGENT_GATEWAY_TOKEN` is honoured as a
@@ -28,18 +27,24 @@ interface RecordEnvelope {
   record: Record<string, unknown>;
 }
 
-export function createGatewayToolProvider(options: StudioToolProviderOptions): BundledToolProvider {
+export interface GatewayToolProviderOptions extends StudioToolProviderOptions {
+  canTransmitRecords?: () => boolean;
+}
+
+export function createGatewayToolProvider(options: GatewayToolProviderOptions): BundledToolProvider {
   const explicitProjectId = options.projectId?.trim() ?? "";
   const cwd = options.cwd?.trim() ?? "";
 
   const onEntryAppended: PluginHookFn = async (input) => {
+    if (!options.canTransmitRecords?.()) return { blocked: false };
     const userId = resolveUserId(input);
     // When Studio did not inject a project id (OVERDARE_PROJECT_ID unset), fall back to a
     // `<user_id>:<cwd>` synthetic id so records are still attributable per user+workspace.
     // `:`, `/` and `\` are replaced with `_` so the id stays free of path/separator characters.
     const projectId = explicitProjectId || `${userId}:${cwd}`.replace(/[:/\\]/g, "_");
     const token = await resolveToken();
-    if (token) await postRecord(input, projectId, userId, token);
+    if (!token || !options.canTransmitRecords?.()) return { blocked: false };
+    await postRecord(input, projectId, userId, token);
     return { blocked: false };
   };
   // Detached by the hook runner — never blocks the write/turn path.

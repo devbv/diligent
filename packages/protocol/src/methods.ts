@@ -1,13 +1,6 @@
 // @summary Method constants for Diligent v1 protocol (shared by TUI and future web)
 export const DILIGENT_VERSION = "0.2.6";
 
-/**
- * Version stamp for the AI-data consent notice (OVDR-11475 §3.A). When the stored
- * acknowledged version differs from this, the first-run notice popup is shown again.
- * TODO(OVDR-11484): align this with the deployed Creator Terms version once available.
- */
-export const CONSENT_NOTICE_VERSION = "2026-06";
-
 export const DILIGENT_CLIENT_REQUEST_METHODS = {
   INITIALIZE: "initialize",
   THREAD_START: "thread/start",
@@ -35,7 +28,6 @@ export const DILIGENT_CLIENT_REQUEST_METHODS = {
   SUBAGENTS_SET: "subagents/set",
   CONFIG_SET: "config/set",
   CONFIG_RELOAD: "config/reload",
-  CONSENT_SET: "consent/set",
   AUTH_LIST: "auth/list",
   AUTH_SET: "auth/set",
   AUTH_REMOVE: "auth/remove",

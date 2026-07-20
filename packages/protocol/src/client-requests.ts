@@ -48,18 +48,6 @@ export const SkillInfoSchema = z.object({
 });
 export type SkillInfo = z.infer<typeof SkillInfoSchema>;
 
-/**
- * Resolved AI-data consent state (OVDR-11475 §3.A) surfaced to clients.
- * `noticeAcknowledged` drives the one-time first-run popup; `serviceImprovement`
- * drives the Settings → AI Data toggle (default ON / opt-out).
- */
-export const ConsentStateSchema = z.object({
-  noticeAcknowledged: z.boolean(),
-  serviceImprovement: z.boolean(),
-  privacyPolicyUrl: z.string(),
-});
-export type ConsentState = z.infer<typeof ConsentStateSchema>;
-
 export const InitializeResponseSchema = z.object({
   serverName: z.string(),
   serverVersion: z.string(),
@@ -71,7 +59,6 @@ export const InitializeResponseSchema = z.object({
   currentModel: ModelRefSchema.optional(),
   availableModels: z.array(ModelInfoSchema).optional(),
   skills: z.array(SkillInfoSchema).optional(),
-  consent: ConsentStateSchema.optional(),
 });
 export type InitializeResponse = z.infer<typeof InitializeResponseSchema>;
 
@@ -510,16 +497,6 @@ export const ConfigReloadResponseSchema = z.object({
 });
 export type ConfigReloadResponse = z.infer<typeof ConfigReloadResponseSchema>;
 
-// --- consent/set ---
-export const ConsentSetParamsSchema = z.object({
-  noticeAcknowledged: z.boolean().optional(),
-  serviceImprovement: z.boolean().optional(),
-});
-export type ConsentSetParams = z.infer<typeof ConsentSetParamsSchema>;
-
-export const ConsentSetResponseSchema = ConsentStateSchema;
-export type ConsentSetResponse = z.infer<typeof ConsentSetResponseSchema>;
-
 // --- auth/list ---
 export const AuthListParamsSchema = z.object({});
 export type AuthListParams = z.infer<typeof AuthListParamsSchema>;
@@ -701,7 +678,6 @@ export const DiligentClientRequestSchema = z.discriminatedUnion("method", [
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.SUBAGENTS_SET), params: SubagentsSetParamsSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.CONFIG_SET), params: ConfigSetParamsSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.CONFIG_RELOAD), params: ConfigReloadParamsSchema }),
-  z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.CONSENT_SET), params: ConsentSetParamsSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.AUTH_LIST), params: AuthListParamsSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.AUTH_SET), params: AuthSetParamsSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.AUTH_REMOVE), params: AuthRemoveParamsSchema }),
@@ -770,7 +746,6 @@ export const DiligentClientResponseSchema = z.discriminatedUnion("method", [
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.SUBAGENTS_SET), result: SubagentsSetResponseSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.CONFIG_SET), result: ConfigSetResponseSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.CONFIG_RELOAD), result: ConfigReloadResponseSchema }),
-  z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.CONSENT_SET), result: ConsentSetResponseSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.AUTH_LIST), result: AuthListResponseSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.AUTH_SET), result: AuthSetResponseSchema }),
   z.object({ method: z.literal(DILIGENT_CLIENT_REQUEST_METHODS.AUTH_REMOVE), result: AuthRemoveResponseSchema }),
