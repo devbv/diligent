@@ -72,8 +72,10 @@ const TEST_MODEL: Model = {
 
 it("default compaction prompt preserves exact critical values despite final-response secrecy constraints", () => {
   expect(DEFAULT_COMPACTION_PROMPTS.summarization).toContain("internal handoff");
-  expect(DEFAULT_COMPACTION_PROMPTS.summarization).toContain("preserve their exact values");
+  expect(DEFAULT_COMPACTION_PROMPTS.summarization).toContain("copy them verbatim");
   expect(DEFAULT_COMPACTION_PROMPTS.summarization).toContain("final user-facing response");
+  expect(DEFAULT_COMPACTION_PROMPTS.summarization).toContain("Do not execute the task");
+  expect(DEFAULT_COMPACTION_PROMPTS.summarization).toContain("empty tool list");
 });
 
 // --- estimateTokens ---

@@ -30,6 +30,9 @@ describe("auto-compaction-resume runtime eval", () => {
       expect(new Set(world.facts).size).toBe(3);
       expect(world.protectedPaths).toEqual(["control.txt"]);
       expect(world.allowedChanges).toEqual([world.targetPath]);
+      expect(autoCompactionResumeTask.fixtureVersion).toBe("auto-compaction-resume-v2");
+      expect(JSON.stringify(steps)).toContain("reply exactly Done");
+      expect(JSON.stringify(steps)).not.toContain("without repeating");
       expect(autoCompactionResumeTask.toolPolicy).toEqual({
         allowedTools: ["inflate_context", "apply_patch", "edit"],
         allowedCapabilities: ["execute", "write"],

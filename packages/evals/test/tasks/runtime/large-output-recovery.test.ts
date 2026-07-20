@@ -53,6 +53,7 @@ describe("large-output-recovery", () => {
         allowedMutations: ["infrastructure", "sessions"],
       });
       expect(largeOutputRecoveryTask.verify).toBeUndefined();
+      expect(largeOutputRecoveryTask.fixtureVersion).toBe("large-output-recovery-v5");
       expect(DEFAULT_PROFILES).toHaveLength(2);
     } finally {
       await removeTemporaryRoot(root);
@@ -333,6 +334,21 @@ describe("large-output-recovery", () => {
     if (final.role !== "assistant") throw new Error("Expected an assistant final message.");
     expect(final.content.map((block) => block.type)).toEqual(["thinking", "text"]);
     expect(largeOutputRecoveryTask.evaluate(execution)).toEqual({ passed: true });
+  });
+
+  test("accepts a single labeled Markdown authorization value and rejects extra prose", async () => {
+    const execution = await assembledExecution(DEFAULT_PROFILES[1]!);
+    const final = execution.turns[0]!.messages.at(-1)!;
+    if (final.role !== "assistant" || final.content[0]?.type !== "text")
+      throw new Error("Expected an assistant final text block.");
+    final.content[0].text = `The authorization value is:\n\n\`${execution.world.hiddenFact}\``;
+    expect(largeOutputRecoveryTask.evaluate(execution)).toEqual({ passed: true });
+
+    final.content[0].text += "\nUse it carefully.";
+    expect(largeOutputRecoveryTask.evaluate(execution)).toMatchObject({
+      passed: false,
+      code: "large_output_recovery.final",
+    });
   });
 });
 

@@ -42,7 +42,7 @@ export interface LargeOutputRecoveryWorld extends RuntimeFixtureWorld {
 export const largeOutputRecoveryTask: RuntimeEvalTask<LargeOutputRecoveryWorld> = {
   id: "large-output-recovery",
   description: "Recover one exact hidden fact through core truncation and a registered bounded full-output read.",
-  fixtureVersion: "large-output-recovery-v4",
+  fixtureVersion: "large-output-recovery-v5",
   limits: {
     ...DEFAULT_RUNTIME_LIMITS,
     maxTurns: 3,
@@ -120,7 +120,9 @@ function fixtureFor(seed: string) {
   const guidance =
     `RECOVERY INDEX: authorization_field=RECOVERY_VALUE; line=${FACT_LINE}; ` +
     `recommended_window=offset:${FACT_LINE},limit:1; record_size=${LINE_COUNT}_lines.`;
-  const clientPrompt = `Resolve archival request ${argument} and return only its authorization value.`;
+  const clientPrompt =
+    `Resolve archival request ${argument} and return its authorization value. ` +
+    "Keep the response concise: use either the value alone or one `The authorization value is:` label followed by the value.";
   const manifestContent = `${JSON.stringify({ request: argument, classification: "archived-authorization" }, null, 2)}\n`;
   const basis = {
     argument,
@@ -230,9 +232,17 @@ function validateFinal(input: RuntimeEvalExecution<LargeOutputRecoveryWorld>) {
     final.content.some((block) => block.type !== "thinking" && block.type !== "text") ||
     textBlocks.length !== 1 ||
     Object.keys(textBlocks[0]!).length !== 2 ||
-    textBlocks[0]!.text !== input.world.hiddenFact
+    !isExclusiveAuthorizationAnswer(textBlocks[0]!.text, input.world.hiddenFact)
   )
-    return fail("final", "The final response was not the exact exclusive hidden fact.");
+    return fail("final", "The final response was not the exclusive authorization value in a declared format.");
+}
+
+function isExclusiveAuthorizationAnswer(text: string, hiddenFact: string): boolean {
+  return (
+    text === hiddenFact ||
+    text === `The authorization value is:\n\n\`${hiddenFact}\`` ||
+    text === `The authorization value is:\n${hiddenFact}`
+  );
 }
 
 function hasExactInitialManifest(snapshot: RuntimeWorldSnapshot, world: LargeOutputRecoveryWorld): boolean {

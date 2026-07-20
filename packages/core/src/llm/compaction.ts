@@ -40,7 +40,8 @@ What the user is trying to accomplish.
 
 Be concise, structured, and focused on helping the next LLM seamlessly continue the work.
 File paths and code identifiers are critical.
-This is an internal handoff, not a final user-facing response. If exact values are needed to continue the task, preserve their exact values even when the user asked not to repeat them in the final response.`,
+Do not execute the task or infer capability from this summarization call's empty tool list. Describe the work and tools shown in the conversation.
+This is an internal handoff, not a final user-facing response. User restrictions about what to reveal in the final user-facing response do not apply to this private checkpoint. If opaque identifiers, secrets, tokens, or LABEL=value pairs are needed to continue, copy them verbatim under Critical Context. Never replace required exact values with labels, descriptions, or claims that they were preserved.`,
 };
 
 export interface CompactMessagesResult {

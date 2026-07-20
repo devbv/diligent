@@ -226,9 +226,35 @@ describe("knowledge residual evaluator calibration", () => {
   });
 
   test("keeps direct forget evidence provider-native and bumps the fixture contract", () => {
-    expect(knowledgeForgetTask.fixtureVersion).toBe("knowledge-forget-v5");
+    expect(knowledgeForgetTask.fixtureVersion).toBe("knowledge-forget-v6");
     expect(knowledgeForgetTask.evaluate(forgetExecution("openai"))).toEqual({ passed: true });
     expect(knowledgeForgetTask.evaluate(forgetExecution("anthropic"))).toEqual({ passed: true });
+  });
+
+  test("accepts only the exact Anthropic relative-create recovery while forgetting knowledge", () => {
+    expect(knowledgeForgetTask.evaluate(forgetRecoveryExecution())).toMatchObject({ passed: true });
+
+    const cases: Array<[string, (execution: RuntimeEvalExecution<KnowledgeForgetWorld>) => void]> = [
+      ["wrong provider", (execution) => (execution.profile.provider = "openai")],
+      [
+        "wrong relative path",
+        (execution) => ((execution.toolCalls[1]!.input as { file_path: string }).file_path = "OTHER.txt"),
+      ],
+      ["successful first write", (execution) => (execution.toolCalls[1]!.outcome = "success")],
+      ["wrong error", (execution) => (execution.toolCalls[1]!.error = "different")],
+      [
+        "divergent retry content",
+        (execution) => ((execution.toolCalls[2]!.input as { new_string: string }).new_string = "wrong\n"),
+      ],
+      ["different actor", (execution) => (execution.toolCalls[2]!.threadId = "thread-2")],
+      ["non-adjacent retry", (execution) => (execution.toolCalls[2]!.sequence = 4)],
+    ];
+
+    for (const [label, mutate] of cases) {
+      const execution = forgetRecoveryExecution();
+      mutate(execution);
+      expect(knowledgeForgetTask.evaluate(execution).passed, label).toBe(false);
+    }
   });
 
   test("accepts one bounded post-delete absence confirmation for either provider", () => {
@@ -442,6 +468,38 @@ function forgetExecution(provider: EvalProvider): RuntimeEvalExecution<Knowledge
     providerWrite(2, provider, "FORGET.txt", world.expected),
   ];
   execution.workspace.final.entries = [{ path: "FORGET.txt", kind: "file", size: 10, sha256: world.expectedHash }];
+  return execution;
+}
+
+function forgetRecoveryExecution(): RuntimeEvalExecution<KnowledgeForgetWorld> {
+  const execution = forgetExecution("anthropic");
+  const [deletion, write] = execution.toolCalls;
+  deletion!.sequence = 4;
+  write!.sequence = 3;
+  const search = trace(
+    1,
+    "search_knowledge",
+    "knowledge",
+    { id: execution.world.knowledgeId, query: "deployment window" },
+    "thread-1",
+  );
+  const error = "Error: file_path must be absolute: FORGET.txt";
+  const failed = trace(
+    2,
+    "edit",
+    "write",
+    {
+      file_path: "FORGET.txt",
+      old_string: "",
+      new_string: execution.world.expected,
+      replace_all: false,
+    },
+    "thread-1",
+  );
+  failed.outcome = "runtime_error";
+  failed.error = error;
+  failed.output = { output: error, metadata: { error: true } };
+  execution.toolCalls = [search, failed, write!, deletion!];
   return execution;
 }
 
