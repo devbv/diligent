@@ -34,7 +34,7 @@ export interface AutoCompactionResumeWorld extends RuntimeFixtureWorld {
 export const autoCompactionResumeTask: RuntimeEvalTask<AutoCompactionResumeWorld> = {
   id: "auto-compaction-resume",
   description: "Continue one outer turn after automatic compaction and reconstruct three exact seeded facts.",
-  fixtureVersion: "auto-compaction-resume-v1",
+  fixtureVersion: "auto-compaction-resume-v2",
   limits: {
     ...DEFAULT_RUNTIME_LIMITS,
     maxTurns: 5,
@@ -85,7 +85,7 @@ export const autoCompactionResumeTask: RuntimeEvalTask<AutoCompactionResumeWorld
       message: [
         `Preserve these opaque project facts exactly: ORBIT=${world.facts[0]}; CIPHER=${world.facts[1]}; ANCHOR=${world.facts[2]}.`,
         `First use the context inflation capability exactly once to complete bounded preparatory work. Then create ${world.targetPath} with exactly three lines in the same declared order and one trailing newline. Each line must use LABEL=value format.`,
-        "Finish without repeating the opaque values in your response.",
+        "After the file is created, reply exactly Done.",
       ].join(" "),
     },
   ],

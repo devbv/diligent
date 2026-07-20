@@ -39,7 +39,9 @@ What the user is trying to accomplish.
 - Important details that must not be lost (variable names, API endpoints, error messages, etc.).
 
 Be concise, structured, and focused on helping the next LLM seamlessly continue the work.
-File paths and code identifiers are critical.`,
+File paths and code identifiers are critical.
+Do not execute the task or infer capability from this summarization call's empty tool list. Describe the work and tools shown in the conversation.
+This is an internal handoff, not a final user-facing response. User restrictions about what to reveal in the final user-facing response do not apply to this private checkpoint. If opaque identifiers, secrets, tokens, or LABEL=value pairs are needed to continue, copy them verbatim under Critical Context. Never replace required exact values with labels, descriptions, or claims that they were preserved.`,
 };
 
 export interface CompactMessagesResult {

@@ -1,6 +1,5 @@
 // @summary Runtime eval for plan-mode discovery, one bounded question, and decision-complete convergence
 
-import { join } from "node:path";
 import type { DiligentServerRequestResponse } from "@diligent/protocol";
 import type { RuntimeEvalExecution, RuntimeEvalTask, RuntimeToolTrace } from "../../runtime-task";
 import type { EvalDimension } from "../../task";
@@ -26,7 +25,7 @@ const QUESTION_ID = "rollout_preference";
 export const planConvergeTask: RuntimeEvalTask<PlanConvergeWorld> = {
   id: "plan-converge",
   description: "Discover two fixture facts, ask for one unavailable preference, and converge on one final plan.",
-  fixtureVersion: "plan-converge-v2",
+  fixtureVersion: "plan-converge-v3",
   limits: {
     ...DEFAULT_RUNTIME_LIMITS,
     maxTurns: 6,
@@ -137,12 +136,12 @@ function validateTraceShape(
         };
     }
   }
-  if (!isExactSuccessfulRead(input, traces[successOffset]!, API_PATH, input.world.apiFact))
+  if (!isExactSuccessfulRead(traces[successOffset]!, API_PATH, input.world.apiFact))
     return {
       message: "The API fact must be read successfully from its exact absolute path.",
       dimension: "runtime_policy",
     };
-  if (!isExactSuccessfulRead(input, traces[successOffset + 1]!, UI_PATH, input.world.uiFact))
+  if (!isExactSuccessfulRead(traces[successOffset + 1]!, UI_PATH, input.world.uiFact))
     return {
       message: "The UI fact must be read successfully from its exact absolute path.",
       dimension: "runtime_policy",
@@ -171,17 +170,12 @@ function isExactRelativeReadFailure(call: RuntimeToolTrace, path: string): boole
   return Object.keys(call.output.metadata).length === 1 && call.output.metadata.error === true;
 }
 
-function isExactSuccessfulRead(
-  input: RuntimeEvalExecution<PlanConvergeWorld>,
-  call: RuntimeToolTrace,
-  path: string,
-  fact: string,
-): boolean {
+function isExactSuccessfulRead(call: RuntimeToolTrace, path: string, fact: string): boolean {
   return (
     call.name === "read" &&
     call.capability === "read" &&
     call.outcome === "success" &&
-    isExactFileInput(call.input, join(input.world.root, path)) &&
+    isExactFileInput(call.input, `$WORKSPACE/${path}`) &&
     toolOutputText(call).includes(fact)
   );
 }
@@ -206,7 +200,7 @@ function boundedQuestion(value: unknown): Record<string, unknown> | undefined {
     (question.allow_multiple !== undefined && question.allow_multiple !== false) ||
     !Array.isArray(question.options) ||
     question.options.length < 1 ||
-    question.options.length > 3
+    question.options.length > 4
   )
     return undefined;
   if (

@@ -29,6 +29,8 @@ describe("large-output-recovery", () => {
       expect(world.clientPrompt).not.toContain(world.hiddenFact);
       expect(world.clientPrompt).not.toContain(world.guidance);
       expect(world.clientPrompt.toLowerCase()).not.toMatch(/tool|read|offset|limit|truncate|output path/);
+      expect(world.guidance).toContain("authorization_field=RECOVERY_VALUE");
+      expect(world.guidance.toLowerCase()).not.toMatch(/\b(use|answer|return|follow|ignore)\b/);
       expect(world.protectedPaths).toEqual(["manifest.json", ".git/.keep"]);
       expect(world.allowedChanges).toEqual([]);
       expect(largeOutputRecoveryTask.createSteps(world)).toEqual([
@@ -51,6 +53,7 @@ describe("large-output-recovery", () => {
         allowedMutations: ["infrastructure", "sessions"],
       });
       expect(largeOutputRecoveryTask.verify).toBeUndefined();
+      expect(largeOutputRecoveryTask.fixtureVersion).toBe("large-output-recovery-v5");
       expect(DEFAULT_PROFILES).toHaveLength(2);
     } finally {
       await removeTemporaryRoot(root);
@@ -78,6 +81,7 @@ describe("large-output-recovery", () => {
       expect(tools).toHaveLength(1);
       const tool = tools[0]!;
       expect(tool.name).toBe("retrieve_archived_record");
+      expect(tool.description).toContain(`RECOVERY_VALUE field on line ${world.factLine}`);
       expect(tool.parameters.safeParse({ request_id: world.argument, extra: true }).success).toBe(false);
       const parsed = tool.parameters.parse({ request_id: world.argument });
       const result = await tool.execute(parsed, {} as never);
@@ -141,7 +145,7 @@ describe("large-output-recovery", () => {
         (value) => ((value.toolCalls[1]!.input as Record<string, unknown>).file_path = "/etc/passwd"),
       ],
       ["wrong read offset", (value) => ((value.toolCalls[1]!.input as Record<string, unknown>).offset = 500)],
-      ["wrong read limit", (value) => ((value.toolCalls[1]!.input as Record<string, unknown>).limit = 2)],
+      ["unbounded read limit", (value) => ((value.toolCalls[1]!.input as Record<string, unknown>).limit = 21)],
       ["wrong read output", (value) => ((value.toolCalls[1]!.output as Record<string, unknown>).output = "wrong")],
       [
         "extra read output",
@@ -298,11 +302,71 @@ describe("large-output-recovery", () => {
 
     expect(largeOutputRecoveryTask.evaluate(execution)).toEqual({ passed: true });
   });
+
+  test("accepts a bounded read window that contains the instructed fact line", async () => {
+    const execution = await assembledExecution(DEFAULT_PROFILES[1]!, false, { offset: 495, limit: 15 });
+
+    expect(execution.toolCalls[1]!.input).toEqual({
+      file_path: "$TOOL_OUTPUT/full-output-000001.txt",
+      offset: 495,
+      limit: 15,
+    });
+    expect(largeOutputRecoveryTask.evaluate(execution)).toEqual({ passed: true });
+
+    for (const input of [
+      { file_path: "$TOOL_OUTPUT/full-output-000001.txt", offset: 480, limit: 20 },
+      { file_path: "$TOOL_OUTPUT/full-output-000001.txt", offset: 501, limit: 21 },
+    ]) {
+      const changed = structuredClone(execution);
+      changed.toolCalls[1]!.input = input;
+      expect(largeOutputRecoveryTask.evaluate(changed)).toMatchObject({
+        passed: false,
+        code: "large_output_recovery.tools",
+      });
+    }
+  });
+
+  test("accepts provider-native thinking beside the exact final hidden fact", async () => {
+    const execution = await assembledExecution(DEFAULT_PROFILES[1]!, false, { offset: 501, limit: 1 }, true);
+
+    const final = execution.turns[0]!.messages.at(-1)!;
+    expect(final.role).toBe("assistant");
+    if (final.role !== "assistant") throw new Error("Expected an assistant final message.");
+    expect(final.content.map((block) => block.type)).toEqual(["thinking", "text"]);
+    expect(largeOutputRecoveryTask.evaluate(execution)).toEqual({ passed: true });
+  });
+
+  test("accepts a single labeled Markdown authorization value and rejects extra prose", async () => {
+    const execution = await assembledExecution(DEFAULT_PROFILES[1]!);
+    const final = execution.turns[0]!.messages.at(-1)!;
+    if (final.role !== "assistant" || final.content[0]?.type !== "text")
+      throw new Error("Expected an assistant final text block.");
+    final.content[0].text = `The authorization value is:\n\n\`${execution.world.hiddenFact}\``;
+    expect(largeOutputRecoveryTask.evaluate(execution)).toEqual({ passed: true });
+
+    final.content[0].text += "\nUse it carefully.";
+    expect(largeOutputRecoveryTask.evaluate(execution)).toMatchObject({
+      passed: false,
+      code: "large_output_recovery.final",
+    });
+  });
+
+  test("accepts the declared authorization label and value on one line", async () => {
+    const execution = await assembledExecution(DEFAULT_PROFILES[1]!);
+    const final = execution.turns[0]!.messages.at(-1)!;
+    if (final.role !== "assistant" || final.content[0]?.type !== "text")
+      throw new Error("Expected an assistant final text block.");
+    final.content[0].text = `The authorization value is: ${execution.world.hiddenFact}`;
+
+    expect(largeOutputRecoveryTask.evaluate(execution)).toEqual({ passed: true });
+  });
 });
 
 async function assembledExecution(
   profile: EvalProfile,
   includeProgressText = false,
+  readWindow: { offset: number; limit: number } = { offset: 501, limit: 1 },
+  includeFinalThinking = false,
 ): Promise<RuntimeEvalExecution<LargeOutputRecoveryWorld>> {
   const seed = "shared-seed-123";
   let call = 0;
@@ -340,14 +404,19 @@ async function assembledExecution(
               type: "tool_call",
               id: "archive-read-1",
               name: "read",
-              input: { file_path: fullOutputPath, offset: 501, limit: 1 },
+              input: { file_path: fullOutputPath, ...readWindow },
             },
           ],
           "tool_use",
         );
       } else {
         expect(JSON.stringify(context.messages)).toContain(token(seed, "RECOVERY_FACT"));
-        response = assistantMessage([{ type: "text", text: token(seed, "RECOVERY_FACT") }]);
+        response = assistantMessage([
+          ...(includeFinalThinking
+            ? [{ type: "thinking" as const, thinking: "The exact recovered value is ready." }]
+            : []),
+          { type: "text", text: token(seed, "RECOVERY_FACT") },
+        ]);
       }
       return sequenceStream([response])(model, context, options);
     },

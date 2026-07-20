@@ -20,6 +20,7 @@ import { assistantMessage, sequenceStream } from "../../helpers/fake-stream";
 
 describe("loop-context-adaptation", () => {
   test("defines a deterministic isolated fixture and opaque natural prompt", async () => {
+    expect(loopContextAdaptationTask.fixtureVersion).toBe("loop-context-adaptation-v7");
     const root = await mkdtemp(join(tmpdir(), "diligent-runtime-loop-context-"));
     try {
       const world = await loopContextAdaptationTask.setup("shared-seed-123", root);
@@ -107,7 +108,7 @@ describe("loop-context-adaptation", () => {
           type: "tool_call",
           id: "brief-read",
           name: "read",
-          input: { file_path: join(root, "deployment-brief.txt") },
+          input: { file_path: join(root, "deployment-brief.txt").replaceAll("/", "\\") },
         },
         result: {
           role: "tool_result",
@@ -205,6 +206,39 @@ describe("loop-context-adaptation", () => {
     expect(loopContextAdaptationTask.evaluate(changed).passed).toBe(false);
   });
 
+  test("accepts one failed root-instructions probe before the exact adapted write", async () => {
+    const execution = await assembledExecution(DEFAULT_PROFILES[0]!, { probeMissingRootInstructions: true });
+
+    expect(execution.toolCalls.map((call) => [call.name, call.outcome])).toEqual([
+      ["read", "success"],
+      ["read", "runtime_error"],
+      ["apply_patch", "success"],
+    ]);
+    expect(loopContextAdaptationTask.evaluate(execution)).toMatchObject({ passed: true });
+
+    const patch = (execution.toolCalls[2]!.input as { patch: string }).patch;
+    (execution.toolCalls[2]!.input as { patch: string }).patch = `${patch}\n`;
+    expect(loopContextAdaptationTask.evaluate(execution)).toMatchObject({ passed: true });
+  });
+
+  test("accepts one exact post-write confirmation read and rejects another path", async () => {
+    const execution = await assembledExecution(DEFAULT_PROFILES[0]!);
+    const confirmation = structuredClone(execution.toolCalls[0]!);
+    confirmation.sequence = 3;
+    confirmation.toolCallId = "loop-confirm-result";
+    confirmation.input = { file_path: "$WORKSPACE/RESULT.txt" };
+    confirmation.output = { output: `1\t${execution.world.expected.trimEnd()}\n2\t` };
+    execution.toolCalls.push(confirmation);
+
+    expect(loopContextAdaptationTask.evaluate(execution)).toMatchObject({ passed: true });
+
+    confirmation.input = { file_path: "$WORKSPACE/other.txt" };
+    expect(loopContextAdaptationTask.evaluate(execution)).toMatchObject({
+      passed: false,
+      code: "loop_context_adaptation.tools",
+    });
+  });
+
   test("rejects omitted, malformed, duplicated, and reordered evidence across the strict matrix", async () => {
     const baseline = await assembledExecution(DEFAULT_PROFILES[0]!);
     expect(loopContextAdaptationTask.evaluate(baseline)).toEqual({ passed: true });
@@ -294,7 +328,7 @@ describe("loop-context-adaptation", () => {
 
 async function assembledExecution(
   profile: EvalProfile,
-  scenario: { recoverCreate?: boolean } = {},
+  scenario: { recoverCreate?: boolean; probeMissingRootInstructions?: boolean } = {},
 ): Promise<RuntimeEvalExecution<LoopContextAdaptationWorld>> {
   const seed = "shared-seed-123";
   let call = 0;
@@ -386,6 +420,21 @@ async function assembledExecution(
           ],
           "tool_use",
         ),
+        ...(scenario.probeMissingRootInstructions
+          ? [
+              assistantMessage(
+                [
+                  {
+                    type: "tool_call",
+                    id: "loop-read-instructions",
+                    name: "read",
+                    input: { file_path: join(cwd, "AGENTS.md") },
+                  },
+                ],
+                "tool_use",
+              ),
+            ]
+          : []),
         ...writeCalls,
         assistantMessage([{ type: "text", text: updated }]),
       ]);

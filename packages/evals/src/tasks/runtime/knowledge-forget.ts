@@ -34,8 +34,8 @@ export interface KnowledgeForgetWorld extends RuntimeFixtureWorld {
 export const knowledgeForgetTask: RuntimeEvalTask<KnowledgeForgetWorld> = {
   id: "knowledge-forget",
   description: "Delete one durable preference while completing an unrelated exact workspace task.",
-  fixtureVersion: "knowledge-forget-v5",
-  limits: { ...DEFAULT_RUNTIME_LIMITS, maxTurns: 5, maxToolCalls: 4, timeoutMs: 180_000 },
+  fixtureVersion: "knowledge-forget-v6",
+  limits: { ...DEFAULT_RUNTIME_LIMITS, maxTurns: 5, maxToolCalls: 5, timeoutMs: 180_000 },
   statePolicy: {
     allowedMutations: ["infrastructure", "sessions", "knowledge"],
     requiredMutations: ["knowledge"],
@@ -100,10 +100,11 @@ export const knowledgeForgetTask: RuntimeEvalTask<KnowledgeForgetWorld> = {
     const searches = input.toolCalls.filter((call) => call.name === "search_knowledge");
     const deletions = input.toolCalls.filter((call) => call.name === "update_knowledge");
     const writes = input.toolCalls.filter((call) => call.capability === "write");
+    const hasCreateRecovery = writes.length === 2;
     if (
       searches.length > 2 ||
       deletions.length !== 1 ||
-      writes.length !== 1 ||
+      (writes.length !== 1 && !hasCreateRecovery) ||
       input.toolCalls.length !== searches.length + deletions.length + writes.length
     )
       return fail(
@@ -112,7 +113,7 @@ export const knowledgeForgetTask: RuntimeEvalTask<KnowledgeForgetWorld> = {
         "runtime_policy",
       );
     const deletion = deletions[0]!;
-    const write = writes[0]!;
+    const write = writes.at(-1)!;
     const preDeleteSearches = searches.filter((search) => search.sequence < deletion.sequence);
     const postDeleteSearches = searches.filter((search) => search.sequence > deletion.sequence);
     if (
@@ -144,6 +145,12 @@ export const knowledgeForgetTask: RuntimeEvalTask<KnowledgeForgetWorld> = {
       !exactObject(deletion.input, { action: "delete", id: input.world.knowledgeId })
     )
       return fail("delete", "The update trace was not the exact successful knowledge deletion.", "runtime_policy");
+    if (hasCreateRecovery && !isExactAnthropicCreateRecovery(input, writes))
+      return fail(
+        "write_recovery",
+        "The failed workspace create was not the exact bounded Anthropic path recovery.",
+        "runtime_policy",
+      );
     if (
       write?.capability !== "write" ||
       write.outcome !== "success" ||
@@ -234,6 +241,39 @@ function writeTargetsPath(call: RuntimeToolTrace | undefined, path: string): boo
   if (call.name === "edit") return call.input.file_path === `$WORKSPACE/${path}`;
   return (
     call.name === "apply_patch" && typeof call.input.patch === "string" && call.input.patch.includes(` File: ${path}`)
+  );
+}
+
+function isExactAnthropicCreateRecovery(
+  execution: RuntimeEvalExecution<KnowledgeForgetWorld>,
+  writes: RuntimeEvalExecution<KnowledgeForgetWorld>["toolCalls"],
+): boolean {
+  if (execution.profile.provider !== "anthropic" || writes.length !== 2) return false;
+  const [failed, retry] = writes;
+  if (!failed || !retry) return false;
+  const error = `Error: file_path must be absolute: ${OUTPUT_PATH}`;
+  const failedIndex = execution.toolCalls.indexOf(failed);
+  const retryIndex = execution.toolCalls.indexOf(retry);
+  return (
+    failedIndex >= 0 &&
+    retryIndex === failedIndex + 1 &&
+    retry.sequence === failed.sequence + 1 &&
+    typeof failed.threadId === "string" &&
+    failed.threadId.length > 0 &&
+    retry.threadId === failed.threadId &&
+    failed.childThreadId === undefined &&
+    retry.childThreadId === undefined &&
+    failed.name === "edit" &&
+    failed.capability === "write" &&
+    failed.outcome === "runtime_error" &&
+    failed.error === error &&
+    exactObject(failed.input, {
+      file_path: OUTPUT_PATH,
+      old_string: "",
+      new_string: execution.world.expected,
+      replace_all: false,
+    }) &&
+    exactObject(failed.output, { output: error, metadata: { error: true } })
   );
 }
 

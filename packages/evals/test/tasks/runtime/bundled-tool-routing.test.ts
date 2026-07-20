@@ -92,6 +92,20 @@ describe("bundled-tool-routing", () => {
     expect(bundledToolRoutingTask.evaluate(execution)).toEqual({ passed: true });
   });
 
+  test("accepts a bounded confirmation wrapper around the exclusive intended receipt", async () => {
+    const execution = await assembledExecution(DEFAULT_PROFILES[1]!, false, "Confirmed: ");
+
+    expect(finalText(execution)).toBe(`Confirmed: ${execution.world.receipt}`);
+    expect(bundledToolRoutingTask.evaluate(execution)).toEqual({ passed: true });
+
+    const missingReceipt = structuredClone(execution);
+    setFinal(missingReceipt, "Confirmed");
+    expect(bundledToolRoutingTask.evaluate(missingReceipt)).toMatchObject({
+      passed: false,
+      code: "bundled_tool_routing.final",
+    });
+  });
+
   test("rejects the independent routing, nesting, lifecycle, persistence, and isolation mutation matrix", async () => {
     const baseline = await assembledExecution(DEFAULT_PROFILES[0]!);
     expect(bundledToolRoutingTask.evaluate(baseline)).toEqual({ passed: true });
@@ -205,6 +219,7 @@ describe("bundled-tool-routing", () => {
 async function assembledExecution(
   profile: EvalProfile,
   includeProgressText = false,
+  finalPrefix = "",
 ): Promise<RuntimeEvalExecution<BundledToolRoutingWorld>> {
   const seed = "shared-seed-123";
   let call = 0;
@@ -228,7 +243,7 @@ async function assembledExecution(
               ],
               "tool_use",
             )
-          : assistantMessage([{ type: "text", text: token(seed, "JOURNEY_RECEIPT") }]);
+          : assistantMessage([{ type: "text", text: `${finalPrefix}${token(seed, "JOURNEY_RECEIPT")}` }]);
       return sequenceStream([response])(model, context, options);
     },
   });
