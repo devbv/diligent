@@ -31,16 +31,20 @@ function makeCtx(updates: string[] = []): ToolContext {
 }
 
 describe("spawn_agent tool", () => {
-  it("returns thread_id and nickname as JSON", async () => {
+  it("returns a non-empty thread_id when resume_id is empty", async () => {
     const { tools } = createCollabTools(
       makeCollabDeps({
         sessionManagerFactory: makeMockSessionManagerFactory(makeAssistant("ok")),
       }),
     );
     const spawnTool = tools.find((t) => t.name === "spawn_agent")!;
-    const result = await spawnTool.execute({ message: "do something", agent_type: "general" }, makeCtx());
+    const result = await spawnTool.execute(
+      { message: "do something", agent_type: "general", resume_id: "" },
+      makeCtx(),
+    );
     const parsed = JSON.parse(result.output);
     expect(typeof parsed.thread_id).toBe("string");
+    expect(parsed.thread_id.length).toBeGreaterThan(0);
     expect(typeof parsed.nickname).toBe("string");
   });
 
