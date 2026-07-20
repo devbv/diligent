@@ -56,6 +56,7 @@ describe("custom-agent-routing", () => {
       includeProgressText: true,
       liveSpawnWording: true,
       waitBeforeChildTrace: true,
+      maximumWaitTimeout: true,
       trailingPatchNewline: true,
     });
     expect(execution.toolCalls.map((call) => call.name)).toEqual(["spawn_agent", "wait", "read", "apply_patch"]);
@@ -63,7 +64,7 @@ describe("custom-agent-routing", () => {
       description: "Retrieve release authorization capsule",
       agent_type: "release-authorization-liaison",
     });
-    expect(execution.toolCalls[1]!.input).toMatchObject({ timeout_ms: 900_000 });
+    expect(execution.toolCalls[1]!.input).toMatchObject({ timeout_ms: 3_600_000 });
     expect(new Set(execution.toolCalls.map((call) => call.toolCallId)).size).toBe(4);
     expect((execution.toolCalls[3]!.input as { patch: string }).patch.endsWith("*** End Patch\n")).toBe(true);
     expect(customAgentRoutingTask.evaluate(execution)).toMatchObject({ passed: true });
@@ -295,6 +296,7 @@ interface AssembledExecutionOptions {
   includeProgressText?: boolean;
   liveSpawnWording?: boolean;
   waitBeforeChildTrace?: boolean;
+  maximumWaitTimeout?: boolean;
   trailingPatchNewline?: boolean;
   omitSpawnDescription?: boolean;
   omitWaitTimeout?: boolean;
@@ -432,7 +434,13 @@ function parentResponse(
           input: {
             ids: [spawnedThreadId(context)],
             ...(!assembledOptions.omitWaitTimeout
-              ? { timeout_ms: assembledOptions.liveSpawnWording ? 900_000 : 30_000 }
+              ? {
+                  timeout_ms: assembledOptions.maximumWaitTimeout
+                    ? 3_600_000
+                    : assembledOptions.liveSpawnWording
+                      ? 900_000
+                      : 30_000,
+                }
               : {}),
           },
         },

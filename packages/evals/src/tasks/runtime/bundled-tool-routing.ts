@@ -67,7 +67,7 @@ export interface BundledToolRoutingWorld extends RuntimeFixtureWorld {
 export const bundledToolRoutingTask: RuntimeEvalTask<BundledToolRoutingWorld> = {
   id: "bundled-tool-routing",
   description: "Route a natural request to one of two normally assembled bundled tools with exact nested input.",
-  fixtureVersion: "bundled-tool-routing-v2",
+  fixtureVersion: "bundled-tool-routing-v3",
   limits: {
     ...DEFAULT_RUNTIME_LIMITS,
     maxTurns: 2,
@@ -206,7 +206,7 @@ function fixtureFor(seed: string) {
   const clientPrompt =
     `Please arrange the field trip tied to ${assignmentRef}. ${leadIdentity} will lead and ${observerIdentity} will ` +
     `observe in ${destinationCity}, ${destinationCountry}, traveling ${outboundDate} through ${inboundDate}. ` +
-    "They prefer a quiet cabin and do not need accessibility support. Reply with only the confirmation.";
+    "They prefer a quiet cabin and do not need accessibility support. After the tool succeeds, reply with its output verbatim and no other text.";
   const manifestContent = `${JSON.stringify({ fixture: "field-journey", assignment: assignmentRef }, null, 2)}\n`;
   return {
     assignmentRef,
@@ -306,7 +306,7 @@ function hasExactFinalAssistant(value: unknown, receipt: string): boolean {
     isRecord(block) &&
     Object.keys(block).sort().join(",") === "text,type" &&
     block.type === "text" &&
-    block.text === receipt
+    (block.text === receipt || block.text === `Confirmed: ${receipt}`)
   );
 }
 

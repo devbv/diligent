@@ -107,7 +107,7 @@ describe("loop-context-adaptation", () => {
           type: "tool_call",
           id: "brief-read",
           name: "read",
-          input: { file_path: join(root, "deployment-brief.txt") },
+          input: { file_path: join(root, "deployment-brief.txt").replaceAll("/", "\\") },
         },
         result: {
           role: "tool_result",

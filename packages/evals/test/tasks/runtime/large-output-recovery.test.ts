@@ -141,7 +141,7 @@ describe("large-output-recovery", () => {
         (value) => ((value.toolCalls[1]!.input as Record<string, unknown>).file_path = "/etc/passwd"),
       ],
       ["wrong read offset", (value) => ((value.toolCalls[1]!.input as Record<string, unknown>).offset = 500)],
-      ["wrong read limit", (value) => ((value.toolCalls[1]!.input as Record<string, unknown>).limit = 2)],
+      ["unbounded read limit", (value) => ((value.toolCalls[1]!.input as Record<string, unknown>).limit = 21)],
       ["wrong read output", (value) => ((value.toolCalls[1]!.output as Record<string, unknown>).output = "wrong")],
       [
         "extra read output",
@@ -298,11 +298,35 @@ describe("large-output-recovery", () => {
 
     expect(largeOutputRecoveryTask.evaluate(execution)).toEqual({ passed: true });
   });
+
+  test("accepts a bounded read window that contains the instructed fact line", async () => {
+    const execution = await assembledExecution(DEFAULT_PROFILES[1]!, false, { offset: 495, limit: 15 });
+
+    expect(execution.toolCalls[1]!.input).toEqual({
+      file_path: "$TOOL_OUTPUT/full-output-000001.txt",
+      offset: 495,
+      limit: 15,
+    });
+    expect(largeOutputRecoveryTask.evaluate(execution)).toEqual({ passed: true });
+
+    for (const input of [
+      { file_path: "$TOOL_OUTPUT/full-output-000001.txt", offset: 480, limit: 20 },
+      { file_path: "$TOOL_OUTPUT/full-output-000001.txt", offset: 501, limit: 21 },
+    ]) {
+      const changed = structuredClone(execution);
+      changed.toolCalls[1]!.input = input;
+      expect(largeOutputRecoveryTask.evaluate(changed)).toMatchObject({
+        passed: false,
+        code: "large_output_recovery.tools",
+      });
+    }
+  });
 });
 
 async function assembledExecution(
   profile: EvalProfile,
   includeProgressText = false,
+  readWindow: { offset: number; limit: number } = { offset: 501, limit: 1 },
 ): Promise<RuntimeEvalExecution<LargeOutputRecoveryWorld>> {
   const seed = "shared-seed-123";
   let call = 0;
@@ -340,7 +364,7 @@ async function assembledExecution(
               type: "tool_call",
               id: "archive-read-1",
               name: "read",
-              input: { file_path: fullOutputPath, offset: 501, limit: 1 },
+              input: { file_path: fullOutputPath, ...readWindow },
             },
           ],
           "tool_use",

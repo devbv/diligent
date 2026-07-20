@@ -182,10 +182,26 @@ function validateTools(input: RuntimeEvalExecution<LargeOutputRecoveryWorld>) {
     read.error !== undefined ||
     read.childThreadId !== undefined ||
     read.threadId !== input.session.threadId ||
-    JSON.stringify(read.input) !==
-      JSON.stringify({ file_path: OUTPUT_PATH, offset: input.world.readOffset, limit: input.world.readLimit })
+    !isBoundedFactReadInput(read.input, input.world.factLine)
   )
     return fail("tools", "The advertised or executed tools, order, actor, outcome, or strict arguments were wrong.");
+}
+
+function isBoundedFactReadInput(value: unknown, factLine: number): boolean {
+  if (!isRecord(value) || Object.keys(value).sort().join(",") !== "file_path,limit,offset") return false;
+  const { file_path, offset, limit } = value;
+  return (
+    file_path === OUTPUT_PATH &&
+    typeof offset === "number" &&
+    Number.isInteger(offset) &&
+    typeof limit === "number" &&
+    Number.isInteger(limit) &&
+    offset >= 1 &&
+    limit >= 1 &&
+    limit <= 20 &&
+    offset <= factLine &&
+    factLine < offset + limit
+  );
 }
 
 function validateForbiddenSurfaces(input: RuntimeEvalExecution<LargeOutputRecoveryWorld>) {

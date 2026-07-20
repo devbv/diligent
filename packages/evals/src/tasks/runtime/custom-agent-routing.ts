@@ -349,7 +349,7 @@ function exactWaitInput(input: unknown, childId: string): boolean {
     (typeof input.timeout_ms === "number" &&
       Number.isInteger(input.timeout_ms) &&
       input.timeout_ms >= 1 &&
-      input.timeout_ms <= 900_000)
+      input.timeout_ms <= 3_600_000)
   );
 }
 

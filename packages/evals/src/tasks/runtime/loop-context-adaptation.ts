@@ -134,7 +134,7 @@ export const loopContextAdaptationTask: RuntimeEvalTask<LoopContextAdaptationWor
                 toolCall.name === "read" &&
                 isRecord(toolCall.input) &&
                 typeof toolCall.input.file_path === "string" &&
-                toolCall.input.file_path.endsWith(`/${BRIEF_PATH}`) &&
+                toolCall.input.file_path.replaceAll("\\", "/").endsWith(`/${BRIEF_PATH}`) &&
                 String(result.output).includes(world.initialValue)
               )
                 armed = true;

@@ -30,6 +30,7 @@ import { captureRuntimeProviderCall } from "./runtime-provider-evidence";
 import { captureRuntimeState, checkRuntimeStatePolicy, projectSnapshotWithoutRuntimeState } from "./runtime-state";
 import { normalizeEvidencePath, transformRuntimeTools } from "./runtime-tool-policy";
 import {
+  canonicalizeTemporaryRoot,
   captureWorkspace,
   normalizePlatformAlias,
   removeTemporaryRoot,
@@ -92,6 +93,8 @@ export async function runRuntimeEvalExecution(input: {
   let stateRoots = [".diligent"];
   try {
     root = await deadline.run("fixture root creation", mkdtemp(join(tmpdir(), `diligent-runtime-eval-${task.id}-`)));
+    if (process.platform === "win32")
+      root = await deadline.run("fixture root canonicalization", canonicalizeTemporaryRoot(root));
     outputRoot = await deadline.run(
       "output root creation",
       mkdtemp(join(tmpdir(), `diligent-runtime-eval-output-${task.id}-`)),

@@ -5,6 +5,7 @@ import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  canonicalizeTemporaryRoot,
   captureWorkspace,
   removeTemporaryRoot,
   resolveWorkspacePath,
@@ -59,6 +60,19 @@ describe("runtime workspace", () => {
     expect(() => resolveWorkspacePathForFlavor(root, "\\\\server\\share\\outside.txt", "win32")).toThrow(
       "workspace_escape",
     );
+  });
+
+  test("canonicalizes an existing temporary-root alias before runtime assembly", async () => {
+    const parent = await mkdtemp(join(tmpdir(), "diligent-runtime-eval-alias-"));
+    const root = join(parent, "root");
+    const alias = join(parent, "alias");
+    try {
+      await mkdir(root);
+      await symlink(root, alias, process.platform === "win32" ? "junction" : "dir");
+      expect(await canonicalizeTemporaryRoot(alias)).toBe(await canonicalizeTemporaryRoot(root));
+    } finally {
+      await removeTemporaryRoot(parent);
+    }
   });
 
   test("records symlinks so fixture validation can reject them", async () => {

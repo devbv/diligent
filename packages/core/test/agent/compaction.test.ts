@@ -14,6 +14,7 @@ import type {
 import { resolveMaxTokens } from "@diligent/core/provider-contract";
 import { estimateTokens, getCompactionDecision, runCompaction, shouldCompact } from "../../src/agent/compaction";
 import { AgentStream } from "../../src/agent/types";
+import { DEFAULT_COMPACTION_PROMPTS } from "../../src/llm/compaction";
 
 // --- Helper factories ---
 
@@ -68,6 +69,12 @@ const TEST_MODEL: Model = {
   maxOutputTokens: 40_000,
   supportsThinking: false,
 };
+
+it("default compaction prompt preserves exact critical values despite final-response secrecy constraints", () => {
+  expect(DEFAULT_COMPACTION_PROMPTS.summarization).toContain("internal handoff");
+  expect(DEFAULT_COMPACTION_PROMPTS.summarization).toContain("preserve their exact values");
+  expect(DEFAULT_COMPACTION_PROMPTS.summarization).toContain("final user-facing response");
+});
 
 // --- estimateTokens ---
 

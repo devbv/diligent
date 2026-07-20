@@ -1,7 +1,7 @@
 // @summary Captures and validates isolated runtime eval workspaces
 
 import { createHash } from "node:crypto";
-import { lstat, readdir, readFile, rm } from "node:fs/promises";
+import { lstat, readdir, readFile, realpath, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, posix, relative, resolve, sep, win32 } from "node:path";
 import type { RuntimeWorkspaceEntry, RuntimeWorldSnapshot } from "../runtime-task";
@@ -11,6 +11,10 @@ export async function captureWorkspace(root: string): Promise<RuntimeWorldSnapsh
   const entries: RuntimeWorkspaceEntry[] = [];
   await walk(safeRoot, safeRoot, entries);
   return { entries: entries.sort((a, b) => a.path.localeCompare(b.path)) };
+}
+
+export async function canonicalizeTemporaryRoot(root: string): Promise<string> {
+  return validateTemporaryRoot(await realpath(validateTemporaryRoot(root)));
 }
 
 export function resolveWorkspacePath(root: string, candidate: string): string {
