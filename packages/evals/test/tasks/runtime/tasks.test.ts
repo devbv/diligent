@@ -128,6 +128,9 @@ describe("runtime eval tasks", () => {
       expect(world.sourcePaths).toHaveLength(2);
       expect(new Set(world.sourcePaths).size).toBe(2);
       expect(world.allowedChanges).toEqual(["parallel-synthesis.txt"]);
+      expect(collaborationParallelSynthesisTask.fixtureVersion).toBe("collaboration-parallel-synthesis-v6");
+      expect(world.clientPrompt).toContain("concurrently");
+      expect(world.clientPrompt).toContain("isolated");
       expect(world.clientPrompt).not.toContain("specialist");
       expect(world.clientPrompt).not.toContain("spawn");
       expect(world.clientPrompt).not.toContain("join");
