@@ -509,7 +509,6 @@ describe("runRuntimeEvalExecution", () => {
                   message: "Return child done.",
                   description: "bounded child",
                   agent_type: "general",
-                  allowed_tools: ["read"],
                 },
               },
             ],

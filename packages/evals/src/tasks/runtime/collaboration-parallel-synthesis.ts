@@ -238,17 +238,12 @@ function exactSpawnInput(input: unknown, world: CollaborationParallelSynthesisWo
   const message = isRecord(input) && typeof input.message === "string" ? input.message : undefined;
   if (
     !isRecord(input) ||
-    !Object.keys(input).every((key) =>
-      ["agent_type", "allow_nested_agents", "allowed_tools", "description", "message", "model_class"].includes(key),
-    ) ||
+    !Object.keys(input).every((key) => ["agent_type", "allow_nested_agents", "description", "message"].includes(key)) ||
     !message ||
     !message.includes(SOURCE_PATHS[index]) ||
     message.includes(SOURCE_PATHS[index === 0 ? 1 : 0]) ||
-    (input.agent_type !== "explore" && input.agent_type !== "general") ||
+    input.agent_type !== "explore" ||
     (input.allow_nested_agents !== undefined && input.allow_nested_agents !== false) ||
-    (input.allowed_tools !== undefined && canonical(input.allowed_tools) !== canonical(["read"])) ||
-    (input.model_class !== undefined && input.model_class !== "lite") ||
-    (input.agent_type === "general" && input.model_class !== "lite") ||
     (input.description !== undefined &&
       (typeof input.description !== "string" ||
         input.description.length < 8 ||
