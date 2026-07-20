@@ -56,6 +56,7 @@ describe("collaboration-resume-reference", () => {
         generatedIds: true,
         semanticSpawnInputs: true,
         omitSpawnOptionalDefaults: true,
+        omitResumeAgentType: true,
         longWait: true,
         includeProviderProgress: true,
         explicitReadDefaults: true,
@@ -71,7 +72,8 @@ describe("collaboration-resume-reference", () => {
       expect(spawns).toHaveLength(2);
       expect(spawns[0]!.toolCallId).not.toBe(COLLABORATION_RESUME_REFERENCE_TOOL_CALL_IDS.spawnInitial);
       expect((spawns[1]!.input as { resume_id: string }).resume_id).toBe(id);
-      expect(spawns.every((spawn) => (spawn.input as { agent_type: string }).agent_type === "explore")).toBe(true);
+      expect((spawns[0]!.input as { agent_type: string }).agent_type).toBe("explore");
+      expect((spawns[1]!.input as { agent_type?: string }).agent_type).toBeUndefined();
       expect(
         spawns.every((spawn) => {
           const input = spawn.input as Record<string, unknown>;
@@ -90,6 +92,16 @@ describe("collaboration-resume-reference", () => {
       }
       expect(collaborationResumeReferenceTask.evaluate(execution), profile.provider).toMatchObject({
         passed: true,
+      });
+
+      const incompatibleResumeType = structuredClone(execution);
+      const resumeSpawn = incompatibleResumeType.toolCalls.find(
+        (call) => call.name === "spawn_agent" && "resume_id" in (call.input as Record<string, unknown>),
+      )!;
+      (resumeSpawn.input as Record<string, unknown>).agent_type = "build";
+      expect(collaborationResumeReferenceTask.evaluate(incompatibleResumeType), profile.provider).toMatchObject({
+        passed: false,
+        code: "collaboration_resume_reference.spawn_contract",
       });
     }
   });
@@ -236,6 +248,7 @@ interface AssembledExecutionOptions {
   generatedIds?: boolean;
   semanticSpawnInputs?: boolean;
   omitSpawnOptionalDefaults?: boolean;
+  omitResumeAgentType?: boolean;
   longWait?: boolean;
   includeProviderProgress?: boolean;
   explicitReadDefaults?: boolean;
@@ -360,7 +373,7 @@ function parentResponse(
               : resume
                 ? "Continue the prior assignment by reading only references/follow-up.fact exactly once. Return only its exact token, without commentary or a trailing newline. Do not reread the initial reference."
                 : "Read only references/initial.fact exactly once. Return only its exact token, without commentary or a trailing newline. Do not inspect any other reference.",
-            agent_type: "explore",
+            ...(!resume || !assembledOptions.omitResumeAgentType ? { agent_type: "explore" } : {}),
             ...(resume ? { resume_id: spawnedThreadId(context) } : {}),
             ...(!assembledOptions.omitSpawnOptionalDefaults
               ? {

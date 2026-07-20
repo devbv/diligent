@@ -315,7 +315,7 @@ function exactSpawnInput(input: unknown, world: CollaborationResumeReferenceWorl
     Object.keys(input).every((key) => allowedKeys.has(key)) &&
     message.includes(SOURCE_PATHS[resume ? 1 : 0]) &&
     !world.tokens.some((token) => message.includes(token)) &&
-    input.agent_type === AGENT_TYPE &&
+    (resume ? input.agent_type === undefined || input.agent_type === AGENT_TYPE : input.agent_type === AGENT_TYPE) &&
     (resume ? input.resume_id === childId : input.resume_id === undefined) &&
     (input.description === undefined ||
       (typeof input.description === "string" && input.description.length > 0 && input.description.length <= 160)) &&
