@@ -48,7 +48,7 @@ export interface LoopContextAdaptationWorld extends RuntimeFixtureWorld {
 export const loopContextAdaptationTask: RuntimeEvalTask<LoopContextAdaptationWorld> = {
   id: "loop-context-adaptation",
   description: "Adapt an exact pending workspace result after an internal loop-context requirement update.",
-  fixtureVersion: "loop-context-adaptation-v6",
+  fixtureVersion: "loop-context-adaptation-v7",
   limits: {
     ...DEFAULT_RUNTIME_LIMITS,
     maxTurns: 4,
@@ -168,6 +168,12 @@ export const loopContextAdaptationTask: RuntimeEvalTask<LoopContextAdaptationWor
         code: "loop_context_adaptation.missing_root_instructions",
         message: "One bounded root-instructions probe failed before the adapted write.",
       });
+    if (postWriteConfirmationRead(input))
+      diagnostics.push({
+        dimension: "efficiency" as const,
+        code: "loop_context_adaptation.post_write_confirmation",
+        message: "One bounded target read confirmed the adapted write before completion.",
+      });
     return diagnostics.length > 0 ? { passed: true, diagnostics } : { passed: true };
   },
 };
@@ -183,17 +189,20 @@ function injection(world: LoopContextAdaptationWorld): AgentContextInjection {
 function validateToolsAndResult(input: RuntimeEvalExecution<LoopContextAdaptationWorld>) {
   const recovery = absentFileEditRecovery(input);
   const instructionsProbe = missingRootInstructionsRead(input);
+  const confirmation = postWriteConfirmationRead(input);
   const read = input.toolCalls[0];
   const write = recovery?.succeeded ?? input.toolCalls[instructionsProbe ? 2 : 1];
+  const expectedToolCount = recovery || instructionsProbe || confirmation ? 3 : 2;
+  const expectedWriteSequence = recovery || instructionsProbe ? 3 : 2;
   const expectedReadInput = { file_path: `$WORKSPACE/${BRIEF_PATH}` };
   if (
-    input.toolCalls.length !== (recovery || instructionsProbe ? 3 : 2) ||
+    input.toolCalls.length !== expectedToolCount ||
     read?.sequence !== 1 ||
     read.name !== "read" ||
     read.capability !== "read" ||
     read.outcome !== "success" ||
     JSON.stringify(read.input) !== JSON.stringify(expectedReadInput) ||
-    write?.sequence !== (recovery || instructionsProbe ? 3 : 2) ||
+    write?.sequence !== expectedWriteSequence ||
     !["apply_patch", "edit"].includes(write.name) ||
     write.capability !== "write" ||
     write.outcome !== "success" ||
@@ -217,6 +226,23 @@ function validateToolsAndResult(input: RuntimeEvalExecution<LoopContextAdaptatio
     return fail("result", "The final artifact did not contain the exclusive injected value.");
   if (!isValidFinalAssistant(input.turns[0]!.messages.at(-1), input.world.injectedValue, input.world.initialValue))
     return fail("final_answer", "The final answer did not exclusively report the adapted result.");
+}
+
+function postWriteConfirmationRead(input: RuntimeEvalExecution<LoopContextAdaptationWorld>) {
+  if (input.toolCalls.length !== 3) return undefined;
+  const trace = input.toolCalls[2];
+  const output = isRecord(trace?.output) ? trace.output.output : undefined;
+  return trace?.sequence === 3 &&
+    trace.name === "read" &&
+    trace.capability === "read" &&
+    trace.outcome === "success" &&
+    trace.error === undefined &&
+    trace.threadId === input.session.threadId &&
+    trace.childThreadId === undefined &&
+    JSON.stringify(trace.input) === JSON.stringify({ file_path: `$WORKSPACE/${OUTPUT_PATH}` }) &&
+    output === `1\t${input.world.expected.trimEnd()}\n2\t`
+    ? trace
+    : undefined;
 }
 
 function missingRootInstructionsRead(input: RuntimeEvalExecution<LoopContextAdaptationWorld>) {

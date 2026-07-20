@@ -20,7 +20,7 @@ import { assistantMessage, sequenceStream } from "../../helpers/fake-stream";
 
 describe("loop-context-adaptation", () => {
   test("defines a deterministic isolated fixture and opaque natural prompt", async () => {
-    expect(loopContextAdaptationTask.fixtureVersion).toBe("loop-context-adaptation-v6");
+    expect(loopContextAdaptationTask.fixtureVersion).toBe("loop-context-adaptation-v7");
     const root = await mkdtemp(join(tmpdir(), "diligent-runtime-loop-context-"));
     try {
       const world = await loopContextAdaptationTask.setup("shared-seed-123", root);
@@ -219,6 +219,24 @@ describe("loop-context-adaptation", () => {
     const patch = (execution.toolCalls[2]!.input as { patch: string }).patch;
     (execution.toolCalls[2]!.input as { patch: string }).patch = `${patch}\n`;
     expect(loopContextAdaptationTask.evaluate(execution)).toMatchObject({ passed: true });
+  });
+
+  test("accepts one exact post-write confirmation read and rejects another path", async () => {
+    const execution = await assembledExecution(DEFAULT_PROFILES[0]!);
+    const confirmation = structuredClone(execution.toolCalls[0]!);
+    confirmation.sequence = 3;
+    confirmation.toolCallId = "loop-confirm-result";
+    confirmation.input = { file_path: "$WORKSPACE/RESULT.txt" };
+    confirmation.output = { output: `1\t${execution.world.expected.trimEnd()}\n2\t` };
+    execution.toolCalls.push(confirmation);
+
+    expect(loopContextAdaptationTask.evaluate(execution)).toMatchObject({ passed: true });
+
+    confirmation.input = { file_path: "$WORKSPACE/other.txt" };
+    expect(loopContextAdaptationTask.evaluate(execution)).toMatchObject({
+      passed: false,
+      code: "loop_context_adaptation.tools",
+    });
   });
 
   test("rejects omitted, malformed, duplicated, and reordered evidence across the strict matrix", async () => {
