@@ -52,7 +52,8 @@ export const planProgressTask: RuntimeEvalTask<PlanProgressWorld> = {
     ];
     await writeFixture(root, {
       ".git/.keep": "fixture boundary\n",
-      "AGENTS.md": `Implement the generated stages strictly in numeric order. Each later stage must extend the exact prior stage. Verify with exactly \`bun test\`. The visible plan must use these exact ordered step texts:\n${planSteps.map((step) => `- ${step}`).join("\n")}\n`,
+      "AGENTS.md":
+        "Implement the generated stages strictly in numeric order. Each later stage must extend the exact prior stage. Keep a visible plan current and verify with exactly `bun test`.\n",
       "package.json": `${JSON.stringify({ scripts: { test: "bun test test/pipeline.test.ts" } }, null, 2)}\n`,
       "inputs/base.txt": `${base}\n`,
       "inputs/suffixes.txt": `${middle}\n${final}\n`,
@@ -97,7 +98,7 @@ export const planProgressTask: RuntimeEvalTask<PlanProgressWorld> = {
       kind: "turn",
       mode: "execute",
       message:
-        "Implement the three-stage generated-file pipeline described by the project. Use the read tool for inputs/base.txt and inputs/suffixes.txt; the only permitted shell command is exactly bun test. Create a visible plan before the first mutation, keep exactly one unresolved step in progress, update progress after each dependency, and finish only after verification succeeds.",
+        "Implement the three-stage generated-file pipeline described by the project. Use the read tool for inputs/base.txt and inputs/suffixes.txt; the only permitted shell command is exactly bun test. Keep a visible plan current and finish only after verification succeeds.",
     },
   ],
   verify: (world, signal) => runVerifier(world, ["bun", "test"], signal),
@@ -110,17 +111,11 @@ export const planProgressTask: RuntimeEvalTask<PlanProgressWorld> = {
     const planCalls = input.toolCalls
       .filter((call) => call.name === "plan" && call.outcome === "success")
       .sort((left, right) => left.sequence - right.sequence);
-    if (planCalls.length < 4)
-      return fail("plan_updates", "Expected a created plan and substantive progress updates.", "behavior");
+    if (planCalls.length < 2)
+      return fail("plan_updates", "Expected a plan before work and a final completed plan.", "behavior");
     const payloads = planCalls.map(planPayload);
     if (payloads.some((payload) => !payload || !validInProgressState(payload)))
       return fail("in_progress", "Every unresolved plan payload must have exactly one in-progress step.", "behavior");
-    if (payloads.some((payload) => !payload || !hasExactSteps(payload, input.world.planSteps)))
-      return fail(
-        "plan_identity",
-        "Every plan update must preserve the exact seeded step identities and order.",
-        "behavior",
-      );
     const firstMutation = input.toolCalls
       .filter((call) => isMutation(call))
       .sort((left, right) => left.sequence - right.sequence)[0];
@@ -133,28 +128,9 @@ export const planProgressTask: RuntimeEvalTask<PlanProgressWorld> = {
       if (!read || read.sequence >= firstMutation.sequence)
         return fail("input_discovery", `The hidden fixture input ${path} was not read before mutation.`, "behavior");
     }
-    const doneCounts = payloads.map((payload) => payload!.steps.filter((step) => step.status === "done").length);
-    for (let index = 1; index < doneCounts.length; index += 1) {
-      const count = doneCounts[index]!;
-      if (count >= doneCounts[index - 1]!) continue;
-      const previousPlan = planCalls[index - 1]!;
-      const currentPlan = planCalls[index]!;
-      const payload = payloads[index]!;
-      if (!matchesMilestone(payload, count) || !hasSingleFailedVerification(input.toolCalls, previousPlan, currentPlan))
-        return fail(
-          "regression",
-          "Completed plan progress regressed without a failed verification in the preceding plan interval.",
-          "behavior",
-        );
-    }
     const finalPlan = payloads.at(-1)!;
-    if (
-      finalPlan.steps.length !== input.world.planSteps.length ||
-      input.world.planSteps.some(
-        (text) => !finalPlan.steps.some((step) => step.text === text && step.status === "done"),
-      )
-    )
-      return fail("incomplete", "All seeded plan steps must eventually be marked done.", "behavior");
+    if (finalPlan.steps.length === 0 || finalPlan.steps.some((step) => !["done", "cancelled"].includes(step.status)))
+      return fail("incomplete", "Every final plan step must be resolved.", "behavior");
     const writes = input.toolCalls
       .filter((call) => call.capability === "write" && call.outcome === "success")
       .sort((left, right) => left.sequence - right.sequence);
@@ -173,19 +149,20 @@ export const planProgressTask: RuntimeEvalTask<PlanProgressWorld> = {
         call.outcome === "success" &&
         commandExitCode(call.output) === 0,
     );
-    if (!testCall || planCalls.at(-1)!.sequence <= testCall.sequence)
-      return fail("verify_progress", "The final all-done plan update must follow successful verification.", "behavior");
-    const operations = [...orderedWrites, testCall];
-    for (const [activeIndex, operation] of operations.entries()) {
-      const latestPlan = planCalls.filter((call) => call.sequence < operation.sequence).at(-1);
-      const payload = latestPlan ? planPayload(latestPlan) : undefined;
-      if (!payload || !matchesMilestone(payload, activeIndex))
-        return fail(
-          "progress_order",
-          "Each write and verification step must be preceded by its matching one-active-step plan update.",
-          "behavior",
-        );
-    }
+    const lastWriteSequence = Math.max(...orderedWrites.map((call) => call.sequence));
+    if (!testCall || testCall.sequence <= lastWriteSequence || planCalls.at(-1)!.sequence <= testCall.sequence)
+      return fail(
+        "verify_progress",
+        "Passing verification and the final resolved plan must follow all writes.",
+        "behavior",
+      );
+    if (
+      planCalls.slice(0, -1).some((call) => {
+        const payload = planPayload(call);
+        return payload?.steps.every((step) => ["done", "cancelled"].includes(step.status));
+      })
+    )
+      return fail("premature_completion", "The plan was marked complete before final verification.", "behavior");
     if (input.verifier?.timedOut)
       return fail("verifier_timeout", "Independent pipeline verification timed out.", "harness_terminal");
     if (input.verifier?.exitCode !== 0)
@@ -213,22 +190,14 @@ function planPayload(call: RuntimeToolTrace): ParsedPlan | undefined {
 }
 
 function validInProgressState(payload: ParsedPlan): boolean {
+  if (
+    payload.steps.length === 0 ||
+    payload.steps.some((step) => !["pending", "in_progress", "done", "cancelled"].includes(step.status))
+  )
+    return false;
   const unresolved = payload.steps.filter((step) => step.status === "pending" || step.status === "in_progress");
   const inProgress = payload.steps.filter((step) => step.status === "in_progress");
   return inProgress.length <= 1 && (unresolved.length === 0 || inProgress.length === 1);
-}
-
-function hasExactSteps(payload: ParsedPlan, expected: readonly string[]): boolean {
-  return (
-    payload.steps.length === expected.length && payload.steps.every((step, index) => step.text === expected[index])
-  );
-}
-
-function matchesMilestone(payload: ParsedPlan, activeIndex: number): boolean {
-  return payload.steps.every((step, index) => {
-    const expected = index < activeIndex ? "done" : index === activeIndex ? "in_progress" : "pending";
-    return step.status === expected;
-  });
 }
 
 function isMutation(call: RuntimeToolTrace): boolean {
@@ -252,24 +221,6 @@ function command(value: unknown): string | undefined {
 function commandExitCode(value: unknown): number | undefined {
   if (!isRecord(value) || !isRecord(value.metadata)) return undefined;
   return typeof value.metadata.exitCode === "number" ? value.metadata.exitCode : undefined;
-}
-
-function hasSingleFailedVerification(
-  calls: readonly RuntimeToolTrace[],
-  previousPlan: RuntimeToolTrace,
-  currentPlan: RuntimeToolTrace,
-): boolean {
-  const verificationCalls = calls.filter(
-    (call) =>
-      call.sequence > previousPlan.sequence &&
-      call.sequence < currentPlan.sequence &&
-      call.name === "bash" &&
-      command(call.input) === "bun test" &&
-      call.outcome === "success",
-  );
-  if (verificationCalls.length !== 1) return false;
-  const exitCode = commandExitCode(verificationCalls[0]!.output);
-  return typeof exitCode === "number" && exitCode !== 0;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

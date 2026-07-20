@@ -14,7 +14,7 @@ describe("baseline verification semantics", () => {
   });
 
   test("plan-to-execute requires an exact passing bun test after the final successful write", () => {
-    expect(planToExecuteTask.fixtureVersion).toBe("plan-to-execute-v2");
+    expect(planToExecuteTask.fixtureVersion).toBe("plan-to-execute-v3");
     assertVerificationRegressions(planToExecuteExecution, (execution) => planToExecuteTask.evaluate(execution));
   });
 });
@@ -83,15 +83,16 @@ function planToExecuteExecution() {
   const world = {
     root: "$WORKSPACE",
     seed: "seed",
-    token: "PLAN_seed",
-    operand: 3,
-    planAnswer: "FIX=WRONG_OPERATOR; TOKEN=PLAN_seed",
+    token: "CONTRACT_seed",
+    multiplier: 3,
+    offset: 5,
+    diagnosisPath: "spec/private-contract.txt",
     expected: "fixed source",
     expectedHash: "fixed-hash",
     protectedPaths: [],
     allowedChanges: ["src/value.ts"],
   };
-  const plan = turn("plan", [assistant(world.planAnswer)]);
+  const plan = turn("plan", [assistant(`Contract ${world.token}: value * ${world.multiplier} + ${world.offset}`)]);
   plan.coreEvents = [
     {
       sequence: 1,
@@ -99,15 +100,16 @@ function planToExecuteExecution() {
       event: {
         type: "tool_start",
         itemId: "plan-read-item",
-        toolCallId: "plan-read",
+        toolCallId: "read-source",
         toolName: "read",
-        input: { file_path: "$WORKSPACE/src/value.ts" },
+        input: { file_path: "$WORKSPACE/spec/private-contract.txt" },
       },
     },
   ];
   const execution = baseExecution(world, [plan, turn("execute", [assistant("Implemented and verified.")])]);
   execution.session.lines.push({ type: "mode_change", mode: "default" });
   execution.toolCalls = verificationTraces();
+  execution.toolCalls[0]!.input = { file_path: "$WORKSPACE/spec/private-contract.txt" };
   execution.workspace.final.entries = [file("src/value.ts", world.expectedHash)];
   return execution;
 }

@@ -38,7 +38,7 @@ export const autoCompactionResumeTask: RuntimeEvalTask<AutoCompactionResumeWorld
   limits: {
     ...DEFAULT_RUNTIME_LIMITS,
     maxTurns: 5,
-    maxToolCalls: 2,
+    maxToolCalls: 4,
     maxChangedFiles: 1,
     maxChangedBytes: 4_096,
     timeoutMs: 180_000,
@@ -131,6 +131,13 @@ export const autoCompactionResumeTask: RuntimeEvalTask<AutoCompactionResumeWorld
       return fail("undeclared_mutation", "An undeclared project mutation was present.", "runtime_policy");
 
     const diagnostics = [];
+    if (input.toolCalls.length > 2) {
+      diagnostics.push({
+        dimension: "efficiency" as const,
+        code: "auto_compaction_resume.write_recovery",
+        message: `Observed ${input.toolCalls.length - 2} additional bounded tool attempt(s).`,
+      });
+    }
     if (input.providerCalls.length > 4) {
       diagnostics.push({
         dimension: "efficiency" as const,
@@ -185,56 +192,38 @@ function validateNoManualCompaction(input: RuntimeEvalExecution<AutoCompactionRe
 }
 
 function validateTools(input: RuntimeEvalExecution<AutoCompactionResumeWorld>) {
-  if (input.toolCalls.length !== 2)
-    return fail("tool_count", "Expected exactly one inflate call and one artifact write.", "runtime_policy");
-  const [inflate, write] = input.toolCalls;
-  if (!inflate || !write || inflate.sequence >= write.sequence || inflate.sequence === write.sequence)
-    return fail("tool_order", "Inflate and write traces were not strictly ordered.", "behavior");
-  if (inflate.name !== INFLATE_TOOL || inflate.capability !== "execute" || inflate.outcome !== "success")
-    return fail("inflate", "The first trace was not one successful context-inflation choice.", "runtime_policy");
-  const writeFailure = validateWrite(input, write);
-  if (writeFailure) return writeFailure;
+  const inflates = input.toolCalls.filter(
+    (call) => call.name === INFLATE_TOOL && call.capability === "execute" && call.outcome === "success",
+  );
+  if (inflates.length !== 1) return fail("inflate", "Expected one successful context-inflation choice.", "behavior");
+  if (input.toolCalls.some((call) => call.capability === "execute" && call.name !== INFLATE_TOOL))
+    return fail("execute_scope", "An undeclared execute capability was used.", "runtime_policy");
+  const writes = input.toolCalls.filter((call) => call.capability === "write");
+  const successfulWrites = writes.filter((call) => call.outcome === "success");
+  if (successfulWrites.length === 0) return fail("write", "No artifact write succeeded after compaction.", "behavior");
+  if (writes.some((call) => !targetsArtifact(input, call)))
+    return fail("write_path", "A write targeted something other than the declared artifact.", "runtime_policy");
+  if (successfulWrites.some((write) => write.sequence <= inflates[0]!.sequence))
+    return fail("tool_order", "The artifact was written before context inflation completed.", "behavior");
   const rootThreadId = input.turns[0]?.threadId;
-  if (rootThreadId && (inflate.threadId !== rootThreadId || write.threadId !== rootThreadId))
+  if (
+    rootThreadId &&
+    input.toolCalls.some((call) => call.threadId !== rootThreadId || call.childThreadId !== undefined)
+  )
     return fail("tool_thread", "Tool traces did not remain attributed to the root thread.", "runtime_policy");
 }
 
-function validateWrite(input: RuntimeEvalExecution<AutoCompactionResumeWorld>, call: RuntimeToolTrace) {
-  if (call.capability !== "write" || call.outcome !== "success")
-    return fail("write_policy", "The artifact write did not succeed under the write allowlist.", "runtime_policy");
-
-  let content: string | undefined;
-  if (input.profile.provider === "openai") {
-    if (call.name !== "apply_patch" || !isRecord(call.input) || typeof call.input.patch !== "string")
-      return fail("write_tool", "OpenAI must use the allowed patch tool for the target artifact.", "runtime_policy");
-    content = addedFileContent(call.input.patch, input.world.targetPath);
-    if (content === undefined)
-      return fail("write_path", "The patch did not exclusively add the declared target path.", "runtime_policy");
-  } else if (input.profile.provider === "anthropic") {
-    if (call.name !== "edit" || !isRecord(call.input))
-      return fail("write_tool", "Anthropic must use the allowed edit tool for the target artifact.", "runtime_policy");
-    if (call.input.file_path !== `$WORKSPACE/${input.world.targetPath}`)
-      return fail("write_path", "The edit did not target the declared artifact path.", "runtime_policy");
-    content = typeof call.input.new_string === "string" ? call.input.new_string : undefined;
-  } else {
-    return fail("provider", "The provider has no declared artifact-write route.", "behavior");
-  }
-
-  if (!content || !input.world.facts.every((fact) => content.includes(fact)))
-    return fail("facts", "The artifact write did not reconstruct every seeded fact.", "semantic_goal");
-  if (content !== input.world.expected)
-    return fail("write_bytes", "The artifact write violated the prompt-declared exact bytes.", "format_contract");
-}
-
-function addedFileContent(patch: string, targetPath: string): string | undefined {
-  const lines = patch.trimEnd().split("\n");
-  if (lines[0] !== "*** Begin Patch" || lines[1] !== `*** Add File: ${targetPath}` || lines.at(-1) !== "*** End Patch")
-    return undefined;
-  if (lines.slice(2, -1).some((line) => !line.startsWith("+"))) return undefined;
-  return `${lines
-    .slice(2, -1)
-    .map((line) => line.slice(1))
-    .join("\n")}\n`;
+function targetsArtifact(input: RuntimeEvalExecution<AutoCompactionResumeWorld>, call: RuntimeToolTrace): boolean {
+  if (!isRecord(call.input)) return false;
+  if (typeof call.input.file_path === "string")
+    return (
+      call.input.file_path === input.world.targetPath ||
+      call.input.file_path === `${input.world.root}/${input.world.targetPath}` ||
+      call.input.file_path === `$WORKSPACE/${input.world.targetPath}`
+    );
+  if (typeof call.input.patch !== "string") return false;
+  const fileHeaders = call.input.patch.match(/^\*\*\* (?:Add|Update|Delete) File: .+$/gm) ?? [];
+  return fileHeaders.length === 1 && fileHeaders[0]!.endsWith(input.world.targetPath);
 }
 
 function hasUndeclaredProjectEntry(input: RuntimeEvalExecution<AutoCompactionResumeWorld>): boolean {

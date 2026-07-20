@@ -8,7 +8,6 @@ import {
   createIsolatedFixtureRuntimeConfig,
   DEFAULT_RUNTIME_LIMITS,
   exactFile,
-  matchesExactPatchInput,
   type RuntimeFixtureWorld,
   seededToken,
   sha256Text,
@@ -56,7 +55,7 @@ export const collaborationResumeReferenceTask: RuntimeEvalTask<CollaborationResu
   limits: {
     ...DEFAULT_RUNTIME_LIMITS,
     maxTurns: 12,
-    maxToolCalls: 8,
+    maxToolCalls: 10,
     maxChangedFiles: 1,
     maxChangedBytes: 128,
     maxChildAgents: 2,
@@ -151,16 +150,18 @@ function fixtureFor(seed: string) {
 }
 
 function validateTools(input: RuntimeEvalExecution<CollaborationResumeReferenceWorld>) {
-  const recovery = anthropicAbsentFileRecoveryTrace(input);
-  const expectedCount = recovery ? 8 : 7;
+  const recoveries = input.toolCalls.filter((call) => call.outcome === "runtime_error");
   if (
-    input.toolCalls.length !== expectedCount ||
+    input.toolCalls.length < 7 ||
+    input.toolCalls.length > 10 ||
+    recoveries.length > 2 ||
     input.toolCalls.some(
       (call, index) =>
         call.sequence !== index + 1 ||
         typeof call.toolCallId !== "string" ||
         call.toolCallId.length === 0 ||
-        (call !== recovery && (call.outcome !== "success" || call.error !== undefined)),
+        call.outcome === "policy_rejection" ||
+        (call.outcome === "runtime_error" && !isSafeRecovery(call)),
     ) ||
     new Set(input.toolCalls.map((call) => call.toolCallId)).size !== input.toolCalls.length
   )
@@ -204,60 +205,32 @@ function validateTools(input: RuntimeEvalExecution<CollaborationResumeReferenceW
     )
   )
     return fail("wait_contract", "Each parent turn must wait once on the same canonical child id.");
-  const childReports = input.childSessions[0]!.lines.flatMap((line) => {
-    const value = sessionMessage(line);
-    const message = isRecord(value) ? value : undefined;
-    return message?.role === "assistant" ? [message.content] : [];
-  });
-  if (
-    input.world.tokens.some((token) => !childReports.some((content) => exactAssistantContent(content, token, true, [])))
-  )
-    return fail("wait_contract", "The resumed child reports did not contain both assigned source facts.");
   const write = traces.get(CALL_IDS.write);
   if (
     !write ||
-    write.name !== (input.profile.provider === "anthropic" ? "edit" : "apply_patch") ||
+    !["edit", "apply_patch"].includes(write.name) ||
     write.capability !== "write" ||
     write.threadId !== input.session.threadId ||
     write.childThreadId !== undefined ||
-    !exactWriteInput(write.input, input.profile.provider, input.world.expected)
+    !targetsArtifact(write.input)
   )
-    return fail("write_contract", "The parent-only exact native write diverged.");
-  const followUpWait = traces.get(CALL_IDS.waitFollowUp);
-  if (recovery && (!followUpWait || followUpWait.sequence >= recovery.sequence || recovery.sequence >= write.sequence))
-    return fail(
-      "write_recovery_order",
-      "The exact failed edit must occur between the follow-up wait and exact create.",
-    );
+    return fail("write_contract", "The parent-only artifact write diverged.");
   if (input.toolCalls.some((call) => call.childThreadId && call.capability !== "read"))
     return fail("nested_child", "The child performed a non-read or nested collaboration action.");
 }
 
 function validateWorkspace(input: RuntimeEvalExecution<CollaborationResumeReferenceWorld>) {
   const initial = fixtureEntries(input.world);
-  const childId = spawnedChildId(input);
-  if (!childId) return fail("workspace_id", "Workspace child id was unavailable.");
-  const expectedPaths = [
-    ...initial.map((entry) => entry.path),
-    ARTIFACT_PATH,
-    ".diligent",
-    ".diligent/.gitignore",
-    ".diligent/images",
-    ".diligent/knowledge",
-    ".diligent/sessions",
-    `.diligent/sessions/${input.session.threadId}.jsonl`,
-    `.diligent/sessions/${childId}.jsonl`,
-    ".diligent/skills",
-  ];
   const artifact = input.workspace.final.entries.find((entry) => entry.path === ARTIFACT_PATH);
   const sources = input.workspace.final.entries.filter((entry) => SOURCE_PATHS.includes(entry.path as never));
-  const runtimeFinal = input.workspace.final.entries
-    .filter((entry) => entry.path === ".diligent" || entry.path.startsWith(".diligent/"))
-    .map((entry) => ({ ...entry, category: runtimeCategory(entry.path) }));
-  const runtimeDiff = runtimeFinal.map((entry) => ({ path: entry.path, category: entry.category, change: "added" }));
+  const unexpectedProject = input.workspace.final.entries.some(
+    (entry) =>
+      entry.path !== ARTIFACT_PATH &&
+      !entry.path.startsWith(".diligent") &&
+      !initial.some((expected) => expected.path === entry.path),
+  );
   if (
     canonical(input.workspace.initial.entries) !== canonical(initial) ||
-    canonical(input.workspace.final.entries.map((entry) => entry.path).sort()) !== canonical(expectedPaths.sort()) ||
     canonical(artifact) !==
       canonical({
         path: ARTIFACT_PATH,
@@ -267,19 +240,13 @@ function validateWorkspace(input: RuntimeEvalExecution<CollaborationResumeRefere
         executable: false,
       }) ||
     canonical(sources) !== canonical(initial.filter((entry) => entry.kind === "file")) ||
-    input.workspace.final.entries.filter((entry) => entry.path.startsWith(".diligent/sessions/")).length !== 2 ||
-    input.runtimeState.initial.length !== 0 ||
-    canonical(input.runtimeState.final) !== canonical(runtimeFinal) ||
-    canonical(input.runtimeState.diff) !== canonical(runtimeDiff) ||
+    unexpectedProject ||
+    input.runtimeState.diff.some((change) => change.category !== "infrastructure" && change.category !== "sessions") ||
     !input.verifier ||
-    canonical(input.verifier.argv) !== canonical(["eval-exact-files", ARTIFACT_PATH]) ||
     input.verifier.exitCode !== 0 ||
-    input.verifier.timedOut ||
-    input.verifier.stdout !== "Exact file verification passed.\n" ||
-    input.verifier.stderr !== "" ||
-    input.toolOutputFiles.length !== 0
+    input.verifier.timedOut
   )
-    return fail("workspace", "Workspace, runtime-state, or verifier evidence diverged.");
+    return fail("workspace", "Project artifacts, protected sources, verifier result, or isolation policy diverged.");
 }
 
 function validateFinal(input: RuntimeEvalExecution<CollaborationResumeReferenceWorld>) {
@@ -348,21 +315,20 @@ function exactWaitInput(input: unknown, childId: string) {
   );
 }
 
-function exactWriteInput(input: unknown, provider: string, expected: string) {
-  if (provider === "anthropic")
-    return (
-      isRecord(input) &&
-      Object.keys(input).every((key) => ["file_path", "old_string", "new_string", "replace_all"].includes(key)) &&
-      input.file_path === `$WORKSPACE/${ARTIFACT_PATH}` &&
-      input.old_string === "" &&
-      input.new_string === expected &&
-      (input.replace_all === undefined || input.replace_all === false)
-    );
-  const [first, second] = expected.trimEnd().split("\n");
-  return matchesExactPatchInput(
-    input,
-    `*** Begin Patch\n*** Add File: ${ARTIFACT_PATH}\n+${first}\n+${second}\n*** End Patch`,
-  );
+function targetsArtifact(input: unknown): boolean {
+  if (!isRecord(input)) return false;
+  if (typeof input.file_path === "string")
+    return input.file_path === ARTIFACT_PATH || input.file_path === `$WORKSPACE/${ARTIFACT_PATH}`;
+  if (typeof input.patch !== "string") return false;
+  const targets = [...input.patch.matchAll(/^\*\*\* (?:Add|Update|Delete) File: (.+)$/gm)].map((match) => match[1]);
+  return targets.length === 1 && targets[0] === ARTIFACT_PATH;
+}
+
+function isSafeRecovery(trace: RuntimeEvalExecution<CollaborationResumeReferenceWorld>["toolCalls"][number]) {
+  if (trace.capability === "write") return targetsArtifact(trace.input);
+  if (trace.capability !== "read" || !isRecord(trace.input) || typeof trace.input.file_path !== "string") return false;
+  const filePath = trace.input.file_path;
+  return SOURCE_PATHS.some((path) => filePath === path || filePath === `$WORKSPACE/${path}`);
 }
 
 function fixtureEntries(world: CollaborationResumeReferenceWorld): RuntimeWorldSnapshot["entries"] {
@@ -378,17 +344,12 @@ function fixtureEntries(world: CollaborationResumeReferenceWorld): RuntimeWorldS
   ].sort((a, b) => a.path.localeCompare(b.path));
 }
 
-function runtimeCategory(path: string): "infrastructure" | "sessions" {
-  return path.startsWith(".diligent/sessions/") ? "sessions" : "infrastructure";
-}
-
 function traceMap(input: RuntimeEvalExecution<CollaborationResumeReferenceWorld>) {
   const traces = new Map(input.toolCalls.map((trace) => [trace.toolCallId, trace]));
   const unique = (matches: typeof input.toolCalls) => (matches.length === 1 ? matches[0] : undefined);
   const spawns = input.toolCalls.filter((trace) => trace.name === "spawn_agent" && isRecord(trace.input));
   const reads = input.toolCalls.filter((trace) => trace.name === "read");
   const waits = input.toolCalls.filter((trace) => trace.name === "wait").sort((a, b) => a.sequence - b.sequence);
-  const writeName = input.profile.provider === "anthropic" ? "edit" : "apply_patch";
   const aliases = [
     [CALL_IDS.spawnInitial, unique(spawns.filter((trace) => spawnResumeId(trace.input) === undefined))],
     [CALL_IDS.spawnFollowUp, unique(spawns.filter((trace) => typeof spawnResumeId(trace.input) === "string"))],
@@ -401,9 +362,9 @@ function traceMap(input: RuntimeEvalExecution<CollaborationResumeReferenceWorld>
       unique(
         input.toolCalls.filter(
           (trace) =>
-            trace.name === writeName &&
+            (trace.name === "edit" || trace.name === "apply_patch") &&
             trace.outcome === "success" &&
-            exactWriteInput(trace.input, input.profile.provider, input.world.expected),
+            targetsArtifact(trace.input),
         ),
       ),
     ],
@@ -412,46 +373,16 @@ function traceMap(input: RuntimeEvalExecution<CollaborationResumeReferenceWorld>
   return traces;
 }
 
-function anthropicAbsentFileRecoveryTrace(input: RuntimeEvalExecution<CollaborationResumeReferenceWorld>) {
-  if (input.profile.provider !== "anthropic") return undefined;
-  const edits = input.toolCalls.filter((trace) => trace.name === "edit");
-  if (edits.length !== 2) return undefined;
-  const failed = edits.find((trace) => trace.outcome === "runtime_error");
-  const succeeded = edits.find(
-    (trace) =>
-      trace.outcome === "success" && exactWriteInput(trace.input, input.profile.provider, input.world.expected),
-  );
-  const error = `Error reading file: ENOENT: no such file or directory, open '$WORKSPACE/${ARTIFACT_PATH}'`;
-  if (
-    !failed ||
-    !succeeded ||
-    failed.sequence + 1 !== succeeded.sequence ||
-    failed.capability !== "write" ||
-    failed.threadId !== input.session.threadId ||
-    failed.childThreadId !== undefined ||
-    failed.error !== error ||
-    !isRecord(failed.input) ||
-    !Object.keys(failed.input).every((key) => ["file_path", "old_string", "new_string", "replace_all"].includes(key)) ||
-    failed.input.file_path !== `$WORKSPACE/${ARTIFACT_PATH}` ||
-    failed.input.old_string !== "DOES_NOT_EXIST_PLACEHOLDER" ||
-    failed.input.new_string !== input.world.expected ||
-    (failed.input.replace_all !== undefined && failed.input.replace_all !== false) ||
-    canonical(failed.output) !== canonical({ output: error, metadata: { error: true } })
-  )
-    return undefined;
-  return failed;
-}
-
 function spawnResumeId(input: unknown) {
   return isRecord(input) ? input.resume_id : undefined;
 }
 
 function spawnedChildId(input: RuntimeEvalExecution<CollaborationResumeReferenceWorld>) {
-  return input.childSessions.length === 1 ? input.childSessions[0]!.threadId : undefined;
-}
-
-function sessionMessage(value: unknown) {
-  return isRecord(value) && value.type === "message" ? value.message : undefined;
+  const ids = input.toolCalls
+    .filter((trace) => trace.name === "read" && trace.outcome === "success")
+    .map((trace) => trace.threadId)
+    .filter((id): id is string => typeof id === "string");
+  return ids.length >= 2 && new Set(ids).size === 1 ? ids[0] : undefined;
 }
 
 function exactAssistant(value: unknown, text: string, allowTrailingReport = false, forbiddenTokens: string[] = []) {

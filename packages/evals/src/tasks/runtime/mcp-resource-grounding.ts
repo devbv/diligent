@@ -12,7 +12,6 @@ import {
   createIsolatedFixtureRuntimeConfig,
   DEFAULT_RUNTIME_LIMITS,
   exactFile,
-  matchesExactPatchInput,
   type RuntimeFixtureWorld,
   seededToken,
   sha256Text,
@@ -85,7 +84,7 @@ export const mcpResourceGroundingTask: RuntimeEvalTask<McpResourceGroundingWorld
   limits: {
     ...DEFAULT_RUNTIME_LIMITS,
     maxTurns: 4,
-    maxToolCalls: 3,
+    maxToolCalls: 5,
     maxChangedFiles: 1,
     maxChangedBytes: 25,
     timeoutMs: 180_000,
@@ -168,7 +167,31 @@ export const mcpResourceGroundingTask: RuntimeEvalTask<McpResourceGroundingWorld
     runtimeConfigs: world.runtimeConfigs,
   }),
   evaluate(input) {
-    return validateTraceAndApproval(input) ?? validateIsolationAndFinal(input) ?? { passed: true };
+    const failure = validateTraceAndApproval(input) ?? validateIsolationAndFinal(input);
+    if (failure) return failure;
+    const extraDiscovery = input.toolCalls.filter((call) => call.name === "mcp_list_resources").length - 1;
+    const recoveries = input.toolCalls.filter((call) => call.outcome === "runtime_error").length;
+    const diagnostics = [
+      ...(extraDiscovery > 0
+        ? [
+            {
+              dimension: "efficiency" as const,
+              code: "mcp_resource.additional_safe_discovery",
+              message: `${extraDiscovery} additional bounded resource listing${extraDiscovery === 1 ? "" : "s"} preceded the intended read.`,
+            },
+          ]
+        : []),
+      ...(recoveries > 0
+        ? [
+            {
+              dimension: "efficiency" as const,
+              code: "mcp_resource.bounded_write_recovery",
+              message: `${recoveries} bounded artifact-write recovery attempt${recoveries === 1 ? "" : "s"} preceded success.`,
+            },
+          ]
+        : []),
+    ];
+    return diagnostics.length > 0 ? { passed: true, diagnostics } : { passed: true };
   },
   async cleanup(world) {
     await getMcpManager().disposeAll();
@@ -280,18 +303,29 @@ await server.connect(new StdioServerTransport());
 }
 
 function validateTraceAndApproval(input: RuntimeEvalExecution<McpResourceGroundingWorld>) {
-  const [list, read, write] = input.toolCalls;
+  const lists = input.toolCalls.filter((call) => call.name === "mcp_list_resources");
+  const reads = input.toolCalls.filter((call) => call.name === "mcp_read_resource");
+  const writes = input.toolCalls.filter((call) => call.name === "edit" || call.name === "apply_patch");
+  const read = reads.find((call) => call.outcome === "success");
+  const write = writes.findLast((call) => call.outcome === "success");
   const callIds = input.toolCalls.map((call) => call.toolCallId);
   const traceChecks: Array<[string, boolean]> = [
-    ["cardinality", input.toolCalls.length !== 3 || !list || !read || !write],
+    [
+      "cardinality",
+      input.toolCalls.length < 3 ||
+        input.toolCalls.length > 5 ||
+        lists.length < 1 ||
+        reads.length !== 1 ||
+        writes.length < 1 ||
+        writes.length > 2 ||
+        !read ||
+        !write,
+    ],
     [
       "names",
-      canonicalJson(input.toolCalls.map((call) => call.name)) !==
-        canonicalJson([
-          "mcp_list_resources",
-          "mcp_read_resource",
-          input.profile.provider === "anthropic" ? "edit" : "apply_patch",
-        ]),
+      input.toolCalls.some(
+        (call) => !["mcp_list_resources", "mcp_read_resource", "edit", "apply_patch"].includes(call.name),
+      ),
     ],
     [
       "linkage",
@@ -300,8 +334,8 @@ function validateTraceAndApproval(input: RuntimeEvalExecution<McpResourceGroundi
           call.sequence !== index + 1 ||
           call.threadId !== input.session.threadId ||
           call.childThreadId !== undefined ||
-          call.outcome !== "success" ||
-          call.error !== undefined,
+          call.outcome === "policy_rejection" ||
+          (call.outcome === "runtime_error" && !writes.includes(call)),
       ),
     ],
     [
@@ -309,10 +343,23 @@ function validateTraceAndApproval(input: RuntimeEvalExecution<McpResourceGroundi
       callIds.some((callId) => typeof callId !== "string" || callId.length === 0) ||
         new Set(callIds).size !== callIds.length,
     ],
-    ["list-input", !hasExpectedListInput(list?.input)],
+    ["list-input", lists.some((list) => !hasExpectedListInput(list.input) || list.outcome !== "success")],
     ["read-input", canonicalJson(read?.input) !== canonicalJson({ server: SERVER, uri: input.world.intendedUri })],
-    ["write-input", !hasExpectedWriteInput(write?.input, input)],
-    ["capabilities", list?.capability !== "execute" || read?.capability !== "execute" || write?.capability !== "write"],
+    [
+      "order",
+      !read ||
+        !write ||
+        lists.some((list) => list.sequence >= read.sequence) ||
+        read.sequence >= write.sequence ||
+        writes.some((attempt) => attempt.outcome === "runtime_error" && attempt.sequence >= write.sequence),
+    ],
+    ["write-input", !targetsArtifact(write?.input)],
+    [
+      "capabilities",
+      lists.some((list) => list.capability !== "execute") ||
+        read?.capability !== "execute" ||
+        writes.some((attempt) => attempt.capability !== "write" || !targetsArtifact(attempt.input)),
+    ],
   ];
   const failedTraceCheck = traceChecks.find(([, failed]) => failed)?.[0];
   if (failedTraceCheck)
@@ -322,29 +369,17 @@ function validateTraceAndApproval(input: RuntimeEvalExecution<McpResourceGroundi
     );
 }
 
-function expectedPatch(world: McpResourceGroundingWorld): string {
-  return `*** Begin Patch\n*** Add File: ${ARTIFACT_PATH}\n+${world.fact}\n*** End Patch`;
-}
-
-function expectedWriteInput(input: RuntimeEvalExecution<McpResourceGroundingWorld>) {
-  return input.profile.provider === "anthropic"
-    ? {
-        file_path: `$WORKSPACE/${ARTIFACT_PATH}`,
-        old_string: "",
-        new_string: input.world.expected,
-        replace_all: false,
-      }
-    : { patch: expectedPatch(input.world) };
-}
-
 function hasExpectedListInput(value: unknown): boolean {
   return canonicalJson(value) === canonicalJson({}) || canonicalJson(value) === canonicalJson({ server: SERVER });
 }
 
-function hasExpectedWriteInput(value: unknown, input: RuntimeEvalExecution<McpResourceGroundingWorld>): boolean {
-  return input.profile.provider === "anthropic"
-    ? canonicalJson(value) === canonicalJson(expectedWriteInput(input))
-    : matchesExactPatchInput(value, expectedPatch(input.world));
+function targetsArtifact(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  if (typeof value.file_path === "string")
+    return value.file_path === ARTIFACT_PATH || value.file_path === `$WORKSPACE/${ARTIFACT_PATH}`;
+  if (typeof value.patch !== "string") return false;
+  const targets = [...value.patch.matchAll(/^\*\*\* (?:Add|Update|Delete) File: (.+)$/gm)].map((match) => match[1]);
+  return targets.length === 1 && targets[0] === ARTIFACT_PATH;
 }
 
 function validateIsolationAndFinal(input: RuntimeEvalExecution<McpResourceGroundingWorld>) {

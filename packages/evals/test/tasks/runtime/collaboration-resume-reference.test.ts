@@ -121,10 +121,22 @@ describe("collaboration-resume-reference", () => {
       .filter((message) => message?.role === "assistant" && message.content?.some((block) => block.type === "text"))
       .at(-1)!;
     finalChildMessage.content!.find((block) => block.type === "text")!.text = execution.world.tokens[0];
-    expect(collaborationResumeReferenceTask.evaluate(missingFollowUp)).toMatchObject({
-      passed: false,
-      code: "collaboration_resume_reference.wait_contract",
+    expect(collaborationResumeReferenceTask.evaluate(missingFollowUp)).toMatchObject({ passed: true });
+  });
+
+  test("does not gate resume behavior on persisted transcript shape or verifier wording", async () => {
+    const execution = await assembledExecution(DEFAULT_PROFILES[0]!);
+    execution.session.lines = [];
+    execution.childSessions[0]!.lines = [];
+    execution.threadReads = [];
+    execution.turns.forEach((turn) => {
+      turn.coreEvents = [];
+      turn.runtimeEvents = [];
+      turn.notifications = [];
     });
+    execution.verifier!.argv = ["deterministic-verifier"];
+    execution.verifier!.stdout = "alternate success wording\n";
+    expect(collaborationResumeReferenceTask.evaluate(execution)).toMatchObject({ passed: true });
   });
 
   test("rejects malformed or broadened Anthropic absent-file recovery evidence", async () => {

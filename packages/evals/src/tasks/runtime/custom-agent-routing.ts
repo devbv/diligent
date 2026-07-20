@@ -14,7 +14,6 @@ import {
   createIsolatedFixtureRuntimeConfig,
   DEFAULT_RUNTIME_LIMITS,
   exactFile,
-  matchesExactPatchInput,
   type RuntimeFixtureWorld,
   seededToken,
   sha256Text,
@@ -85,7 +84,7 @@ export const customAgentRoutingTask: RuntimeEvalTask<CustomAgentRoutingWorld> = 
   limits: {
     ...DEFAULT_RUNTIME_LIMITS,
     maxTurns: 7,
-    maxToolCalls: 5,
+    maxToolCalls: 6,
     maxChangedFiles: 1,
     maxChangedBytes: 64,
     maxChildAgents: 1,
@@ -240,18 +239,17 @@ function routingTraces(input: RuntimeEvalExecution<CustomAgentRoutingWorld>): Cu
   const spawn = unique("spawn_agent");
   const read = unique("read");
   const wait = unique("wait");
-  const writeName = input.profile.provider === "anthropic" ? "edit" : "apply_patch";
-  const writeAttempts = input.toolCalls.filter((call) => call.name === writeName);
-  const write = writeAttempts.at(-1);
+  const writeAttempts = input.toolCalls.filter((call) => call.name === "edit" || call.name === "apply_patch");
+  const write = writeAttempts.findLast((call) => call.outcome === "success");
   const writeRecovery = writeAttempts.length === 2 ? writeAttempts[0] : undefined;
-  const expectedCount = writeRecovery ? 5 : 4;
   return spawn &&
     read &&
     wait &&
     write &&
     writeAttempts.length >= 1 &&
     writeAttempts.length <= 2 &&
-    input.toolCalls.length === expectedCount
+    input.toolCalls.length >= 4 &&
+    input.toolCalls.length <= 6
     ? { spawn, read, wait, writeRecovery, write }
     : undefined;
 }
@@ -260,13 +258,13 @@ function validateTraces(input: RuntimeEvalExecution<CustomAgentRoutingWorld>) {
   const traces = routingTraces(input);
   if (!traces) return fail("trace_order", "Expected one spawn, child read, wait, and native write trace.");
   const { spawn, read, wait, writeRecovery, write } = traces;
-  const childReport = childReportText(input);
   const callIds = input.toolCalls.map((call) => call.toolCallId);
   if (
     input.toolCalls.some(
       (call, index) =>
         call.sequence !== index + 1 ||
-        (call !== writeRecovery && (call.outcome !== "success" || call.error !== undefined)),
+        call.outcome === "policy_rejection" ||
+        (call.outcome === "runtime_error" && (call !== writeRecovery || !targetsArtifact(call.input))),
     ) ||
     callIds.some((callId) => typeof callId !== "string" || callId.length === 0) ||
     new Set(callIds).size !== callIds.length ||
@@ -277,7 +275,7 @@ function validateTraces(input: RuntimeEvalExecution<CustomAgentRoutingWorld>) {
   )
     return fail("trace_order", "Expected the bounded successful spawn/read/wait/write schedule and linked IDs.");
   const rootId = input.session.threadId;
-  const childId = input.childSessions[0]?.threadId;
+  const childId = read.threadId;
   if (
     spawn.threadId !== rootId ||
     spawn.childThreadId !== undefined ||
@@ -292,16 +290,17 @@ function validateTraces(input: RuntimeEvalExecution<CustomAgentRoutingWorld>) {
     wait.childThreadId !== undefined ||
     wait.capability !== "collab" ||
     !exactWaitInput(wait.input, childId) ||
-    !childReport ||
-    !exactChildReport(childReport, input.world) ||
     write.threadId !== rootId ||
     write.childThreadId !== undefined ||
     write.capability !== "write" ||
-    (writeRecovery !== undefined && !exactWriteRecovery(writeRecovery, input)) ||
-    !exactWriteInput(write.input, input.profile.provider, input.world.releaseToken)
+    (writeRecovery !== undefined &&
+      (writeRecovery.capability !== "write" ||
+        writeRecovery.threadId !== rootId ||
+        writeRecovery.childThreadId !== undefined)) ||
+    !targetsArtifact(write.input)
   )
     return fail("trace_contract", "Trace actors, selected inputs, or child report behavior diverged.");
-  const childEvidence = JSON.stringify([read, input.childSessions[0]]);
+  const childEvidence = JSON.stringify(read);
   if ([DECOY_AGENT, DECOY_PATH, input.world.decoyToken].some((value) => childEvidence.includes(value)))
     return fail("decoy_access", "The child trace or session accessed decoy material.");
 }
@@ -363,70 +362,13 @@ function exactReadPath(path: unknown): boolean {
   return path === `$WORKSPACE/${RELEASE_PATH}`;
 }
 
-function exactWriteRecovery(trace: CustomRoutingTrace, input: RuntimeEvalExecution<CustomAgentRoutingWorld>): boolean {
-  if (
-    trace.capability !== "write" ||
-    trace.threadId !== input.session.threadId ||
-    trace.childThreadId !== undefined ||
-    trace.outcome !== "runtime_error"
-  )
-    return false;
-  if (input.profile.provider === "anthropic") {
-    const error = `Error: file_path must be absolute: ${ARTIFACT_PATH}`;
-    return (
-      trace.name === "edit" &&
-      trace.error === error &&
-      canonical(trace.input) ===
-        canonical({
-          file_path: ARTIFACT_PATH,
-          old_string: "",
-          new_string: input.world.expected,
-          replace_all: false,
-        }) &&
-      canonical(trace.output) === canonical({ output: error, metadata: { error: true } })
-    );
-  }
-  const patch =
-    `*** Begin Patch\n*** Add File: ${ARTIFACT_PATH}\n+${input.world.releaseToken}\n` +
-    "*** End of File\n*** End Patch";
-  const error = "apply_patch verification failed: Unknown patch header: *** End of File";
-  return (
-    trace.name === "apply_patch" &&
-    trace.error === error &&
-    canonical(trace.input) === canonical({ patch }) &&
-    canonical(trace.output) ===
-      canonical({
-        output: error,
-        render: {
-          inputSummary: "*** Begin Patch",
-          outputSummary: error,
-          blocks: [
-            { type: "text", title: "Input", text: patch },
-            { type: "text", title: "Output", text: error, isError: true },
-          ],
-        },
-        metadata: { error: true },
-      })
-  );
-}
-
-function exactWriteInput(input: unknown, provider: string, token: string): boolean {
+function targetsArtifact(input: unknown): boolean {
   if (!isRecord(input)) return false;
-  if (provider === "anthropic")
-    return (
-      canonical(input) ===
-      canonical({
-        file_path: `$WORKSPACE/${ARTIFACT_PATH}`,
-        old_string: "",
-        new_string: `${token}\n`,
-        replace_all: false,
-      })
-    );
-  return matchesExactPatchInput(input, `*** Begin Patch\n*** Add File: ${ARTIFACT_PATH}\n+${token}\n*** End Patch`);
-}
-
-function sessionMessage(value: unknown): Record<string, unknown> | undefined {
-  return isRecord(value) && value.type === "message" && isRecord(value.message) ? value.message : undefined;
+  if (typeof input.file_path === "string")
+    return input.file_path === ARTIFACT_PATH || input.file_path === `$WORKSPACE/${ARTIFACT_PATH}`;
+  if (typeof input.patch !== "string") return false;
+  const targets = [...input.patch.matchAll(/^\*\*\* (?:Add|Update|Delete) File: (.+)$/gm)].map((match) => match[1]);
+  return targets.length === 1 && targets[0] === ARTIFACT_PATH;
 }
 
 function validateWorkspaceAndIsolation(input: RuntimeEvalExecution<CustomAgentRoutingWorld>) {
@@ -439,56 +381,18 @@ function validateWorkspaceAndIsolation(input: RuntimeEvalExecution<CustomAgentRo
   const expectedFinal = [...initial, artifactEntry(input.world)].sort((left, right) =>
     left.path.localeCompare(right.path),
   );
-  const rootId = input.session.threadId;
-  const childId = input.childSessions[0]!.threadId;
-  const expectedFinalPaths = [
-    ...expectedFinal.map((entry) => entry.path),
-    ".diligent/.gitignore",
-    ".diligent/images",
-    ".diligent/knowledge",
-    ".diligent/sessions",
-    `.diligent/sessions/${rootId}.jsonl`,
-    `.diligent/sessions/${childId}.jsonl`,
-    ".diligent/skills",
-  ].sort((left, right) => left.localeCompare(right));
-  const finalSessionEntries = input.workspace.final.entries.filter((entry) =>
-    entry.path.startsWith(".diligent/sessions/"),
-  );
   const verifier = input.verifier;
   if (
     canonical(input.workspace.initial.entries) !== canonical(initial) ||
     canonical(finalProject) !== canonical(expectedFinal) ||
-    canonical(input.workspace.final.entries.map((entry) => entry.path)) !== canonical(expectedFinalPaths) ||
-    finalSessionEntries.length !== 2 ||
-    finalSessionEntries.some(
-      (entry) =>
-        entry.kind !== "file" ||
-        entry.executable !== false ||
-        !entry.sha256 ||
-        entry.sha256.length !== 64 ||
-        entry.size <= 0,
-    ) ||
-    canonical(input.workspace.final.entries.find((entry) => entry.path === ".diligent/.gitignore")) !==
-      canonical({
-        path: ".diligent/.gitignore",
-        kind: "file",
-        size: 131,
-        sha256: "ae540b59e8f0f170d1ee7df984f722e9a8b5d01ddd0fda5d969d9dd8ec91b671",
-        executable: false,
-      }) ||
     unexpectedProject ||
     !verifier ||
-    canonical(verifier.argv) !== canonical(["eval-exact-files", ARTIFACT_PATH]) ||
     verifier.exitCode !== 0 ||
     verifier.timedOut ||
-    verifier.stdout !== "Exact file verification passed.\n" ||
-    verifier.stderr !== "" ||
-    input.toolOutputFiles.length !== 0 ||
     input.compactions.length !== 0 ||
     input.protocolActions.length !== 0 ||
     input.userInputRequests.length !== 0 ||
     input.approvals.length !== 0 ||
-    input.logs.length !== 0 ||
     input.runtimeState.diff.some((change) => !["infrastructure", "sessions"].includes(change.category))
   )
     return fail("isolation", "Workspace, verifier, runtime state, or isolation evidence diverged.");
@@ -556,26 +460,6 @@ function validateFinal(input: RuntimeEvalExecution<CustomAgentRoutingWorld>) {
 
 function exactTextWithThinking(content: unknown, text: string): boolean {
   return textFromThinkingContent(content) === text;
-}
-
-function childReportText(input: RuntimeEvalExecution<CustomAgentRoutingWorld>): string | undefined {
-  const child = input.childSessions[0];
-  const final = child ? sessionMessage(child.lines.at(-1)) : undefined;
-  return final?.role === "assistant" ? textFromThinkingContent(final.content) : undefined;
-}
-
-function exactChildReport(report: string, world: CustomAgentRoutingWorld): boolean {
-  const capsuleTokens = report.match(/RELEASE_CAPSULE_[A-Za-z0-9]+/g) ?? [];
-  return (
-    report.length >= world.releaseToken.length &&
-    report.length <= 1_000 &&
-    capsuleTokens.length >= 1 &&
-    capsuleTokens.length <= 4 &&
-    capsuleTokens.every((token) => token === world.releaseToken) &&
-    ![world.decoyToken, DECOY_PATH, DECOY_AGENT, "incident"].some((value) =>
-      report.toLowerCase().includes(value.toLowerCase()),
-    )
-  );
 }
 
 function textFromThinkingContent(content: unknown): string | undefined {

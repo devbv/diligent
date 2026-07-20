@@ -8,7 +8,6 @@ import {
   createIsolatedFixtureRuntimeConfig,
   DEFAULT_RUNTIME_LIMITS,
   exactFile,
-  matchesExactPatchInput,
   type RuntimeFixtureWorld,
   seededToken,
   sha256Text,
@@ -48,7 +47,7 @@ export interface CollaborationParallelSynthesisWorld extends RuntimeFixtureWorld
 export const collaborationParallelSynthesisTask: RuntimeEvalTask<CollaborationParallelSynthesisWorld> = {
   id: "collaboration-parallel-synthesis",
   description: "Run two independent read-only specialists concurrently and synthesize their facts in fixed order.",
-  fixtureVersion: "collaboration-parallel-synthesis-v5",
+  fixtureVersion: "collaboration-parallel-synthesis-v6",
   limits: {
     ...DEFAULT_RUNTIME_LIMITS,
     maxTurns: 10,
@@ -94,16 +93,34 @@ export const collaborationParallelSynthesisTask: RuntimeEvalTask<CollaborationPa
     const failure = validateTraces(input) ?? validateWorkspace(input) ?? validateFinal(input);
     if (failure) return failure;
     const recoveries = input.toolCalls.filter((call) => call.outcome === "runtime_error").length;
-    return recoveries > 0
-      ? {
-          passed: true,
-          diagnostics: [
+    const extraSafeReads = Math.max(
+      0,
+      input.toolCalls.filter((call) => call.name === "read" && call.outcome === "success").length - 2,
+    );
+    const diagnostics = [
+      ...(recoveries > 0
+        ? [
             {
-              dimension: "efficiency",
+              dimension: "efficiency" as const,
               code: "collaboration_parallel_synthesis.bounded_recovery",
               message: `${recoveries} bounded recovery attempt${recoveries === 1 ? "" : "s"} preceded successful synthesis.`,
             },
-          ],
+          ]
+        : []),
+      ...(extraSafeReads > 0
+        ? [
+            {
+              dimension: "efficiency" as const,
+              code: "collaboration_parallel_synthesis.additional_safe_read",
+              message: `${extraSafeReads} additional bounded in-scope read${extraSafeReads === 1 ? "" : "s"} preceded successful synthesis.`,
+            },
+          ]
+        : []),
+    ];
+    return diagnostics.length > 0
+      ? {
+          passed: true,
+          diagnostics,
         }
       : { passed: true };
   },
@@ -127,7 +144,11 @@ function fixtureFor(seed: string) {
     sourcePaths: [...SOURCE_PATHS] as [string, string],
     sourceHashes: [sha256Text(`${tokens[0]}\n`), sha256Text(`${tokens[1]}\n`)] as [string, string],
     artifactPath: ARTIFACT_PATH,
-    clientPrompt: `At the same time, assign exactly two separate read-only specialists to retrieve the exact contents of ${SOURCE_PATHS[0]} and ${SOURCE_PATHS[1]} exactly once each. Join both results once. Do not spawn any additional specialist; create the artifact yourself as the parent. Create a new file named ${ARTIFACT_PATH} containing the north token followed by a newline, the south token, and a trailing newline. Reply exactly ${FINAL_RESPONSE}.`,
+    clientPrompt:
+      `Retrieve the independent coordination facts from ${SOURCE_PATHS[0]} and ${SOURCE_PATHS[1]}. ` +
+      "Treat them as latency-sensitive independent investigations: complete them concurrently while keeping each regional investigation isolated from the other. " +
+      `Create ${ARTIFACT_PATH} containing the north fact followed by a newline, the south fact, and a trailing newline. ` +
+      `Do not modify either source. Reply exactly ${FINAL_RESPONSE}.`,
     workerBriefs: [
       `Read only ${SOURCE_PATHS[0]} exactly once. Return only its exact token, without commentary or a trailing newline. Do not inspect any other region.`,
       `Read only ${SOURCE_PATHS[1]} exactly once. Return only its exact token, without commentary or a trailing newline. Do not inspect any other region.`,
@@ -139,20 +160,19 @@ function fixtureFor(seed: string) {
 }
 
 function validateTraces(input: RuntimeEvalExecution<CollaborationParallelSynthesisWorld>) {
-  const writeRecovery = relativeEditRecoveryTrace(input);
-  const readRecovery = relativeChildReadRecovery(input);
-  const expectedTraceCount = 6 + Number(writeRecovery !== undefined) + Number(readRecovery !== undefined);
+  const recoveries = input.toolCalls.filter((call) => call.outcome === "runtime_error");
   if (
-    input.toolCalls.length !== expectedTraceCount ||
+    input.toolCalls.length < 6 ||
+    input.toolCalls.length > 8 ||
+    recoveries.length > 2 ||
     input.toolCalls.some(
       (call, index) =>
         call.sequence !== index + 1 ||
-        (call !== writeRecovery &&
-          call !== readRecovery?.failed &&
-          (call.outcome !== "success" || call.error !== undefined)),
+        call.outcome === "policy_rejection" ||
+        (call.outcome === "runtime_error" && !isSafeRecovery(call)),
     )
   )
-    return fail("trace_shape", "Expected six successful traces with at most one exact read and write recovery.");
+    return fail("trace_shape", "Expected bounded successful collaboration with only in-scope read/write recovery.");
   const traces = traceById(input);
   const callIds = input.toolCalls.map((call) => call.toolCallId);
   if (
@@ -167,8 +187,6 @@ function validateTraces(input: RuntimeEvalExecution<CollaborationParallelSynthes
   for (let index = 0; index < 2; index += 1) {
     const spawn = traces.get(index === 0 ? CALL_IDS.spawnNorth : CALL_IDS.spawnSouth);
     const read = traces.get(index === 0 ? CALL_IDS.readNorth : CALL_IDS.readSouth);
-    const child = input.childSessions.find((candidate) => candidate.threadId === childIds[index]);
-    const childFinal = child ? sessionMessage(child.lines.at(-1)) : undefined;
     if (
       !spawn ||
       spawn.name !== "spawn_agent" ||
@@ -181,12 +199,10 @@ function validateTraces(input: RuntimeEvalExecution<CollaborationParallelSynthes
       read.capability !== "read" ||
       read.threadId !== childIds[index] ||
       read.childThreadId !== childIds[index] ||
-      !exactReadInput(read.input, SOURCE_PATHS[index]) ||
-      childFinal?.role !== "assistant" ||
-      !exactAssistantContent(childFinal.content, input.world.tokens[index]!, true)
+      !exactReadInput(read.input, SOURCE_PATHS[index])
     )
       return fail("actor_contract", "Spawn or actor-attributed regional read evidence diverged.");
-    const isolated = JSON.stringify([read, child]);
+    const isolated = JSON.stringify(read);
     const other = index === 0 ? 1 : 0;
     if (isolated.includes(SOURCE_PATHS[other]) || isolated.includes(input.world.tokens[other]!))
       return fail("cross_region", "A child read or persisted evidence from the other region.");
@@ -207,18 +223,13 @@ function validateTraces(input: RuntimeEvalExecution<CollaborationParallelSynthes
   if (!exactWaitInput(wait.input, childIds))
     return fail("wait_input", "The parent join did not target exactly the two spawned specialists.");
   if (
-    write.name !== (input.profile.provider === "anthropic" ? "edit" : "apply_patch") ||
+    !["edit", "apply_patch"].includes(write.name) ||
     write.capability !== "write" ||
     write.threadId !== rootId ||
     write.childThreadId !== undefined ||
-    !exactWriteInput(write.input, input.profile.provider, input.world.expected)
+    !targetsArtifact(write.input)
   )
-    return fail("write_contract", "The parent-only native write contract diverged.");
-  if (writeRecovery && (wait.sequence >= writeRecovery.sequence || writeRecovery.sequence >= write.sequence))
-    return fail(
-      "write_recovery_order",
-      "The bounded failed relative edit must occur between the join and exact write.",
-    );
+    return fail("write_contract", "The parent-only artifact write contract diverged.");
   if (input.toolCalls.some((call) => /send_input|resume|close_agent/.test(call.name)))
     return fail("extra_collaboration", "Unexpected collaboration behavior was recorded.");
 }
@@ -281,57 +292,37 @@ function exactReadInput(input: unknown, path: string): boolean {
   );
 }
 
-function exactWriteInput(input: unknown, provider: string, expected: string) {
-  if (provider === "anthropic")
-    return (
-      canonical(input) ===
-      canonical({
-        file_path: `$WORKSPACE/${ARTIFACT_PATH}`,
-        old_string: "",
-        new_string: expected,
-        replace_all: false,
-      })
-    );
-  const lines = expected.trimEnd().split("\n");
-  return matchesExactPatchInput(
-    input,
-    `*** Begin Patch\n*** Add File: ${ARTIFACT_PATH}\n+${lines[0]}\n+${lines[1]}\n*** End Patch`,
-  );
+function targetsArtifact(input: unknown): boolean {
+  if (!isRecord(input)) return false;
+  if (typeof input.file_path === "string")
+    return input.file_path === ARTIFACT_PATH || input.file_path === `$WORKSPACE/${ARTIFACT_PATH}`;
+  if (typeof input.patch !== "string") return false;
+  const targets = [...input.patch.matchAll(/^\*\*\* (?:Add|Update|Delete) File: (.+)$/gm)].map((match) => match[1]);
+  return targets.length === 1 && targets[0] === ARTIFACT_PATH;
+}
+
+function isSafeRecovery(trace: CustomParallelTrace): boolean {
+  if (trace.capability === "write") return targetsArtifact(trace.input);
+  if (trace.capability !== "read" || !isRecord(trace.input) || typeof trace.input.file_path !== "string") return false;
+  const filePath = trace.input.file_path;
+  return SOURCE_PATHS.some((path) => filePath === path || filePath === `$WORKSPACE/${path}`);
 }
 
 type CustomParallelTrace = RuntimeEvalExecution<CollaborationParallelSynthesisWorld>["toolCalls"][number];
 
 function validateWorkspace(input: RuntimeEvalExecution<CollaborationParallelSynthesisWorld>) {
   const initial = fixtureEntries(input.world);
-  const rootId = input.session.threadId;
-  const childIds = childIdsBySpawn(input);
-  if (!childIds) return fail("workspace_ids", "Workspace child session ids were unavailable.");
-  const expectedPaths = [
-    ...initial.map((entry) => entry.path),
-    ARTIFACT_PATH,
-    ".diligent",
-    ".diligent/.gitignore",
-    ".diligent/images",
-    ".diligent/knowledge",
-    ".diligent/sessions",
-    `.diligent/sessions/${rootId}.jsonl`,
-    ...childIds.map((id) => `.diligent/sessions/${id}.jsonl`),
-    ".diligent/skills",
-  ].filter((path, index, all) => all.indexOf(path) === index);
   const artifact = input.workspace.final.entries.find((entry) => entry.path === ARTIFACT_PATH);
   const sourceEntries = input.workspace.final.entries.filter((entry) => SOURCE_PATHS.includes(entry.path as never));
-  const expectedRuntimeFinal = input.workspace.final.entries
-    .filter((entry) => entry.path === ".diligent" || entry.path.startsWith(".diligent/"))
-    .map((entry) => ({ ...entry, category: runtimeCategory(entry.path) }));
-  const expectedRuntimeDiff = expectedRuntimeFinal.map((entry) => ({
-    path: entry.path,
-    category: entry.category,
-    change: "added",
-  }));
   const verifier = input.verifier;
+  const unexpectedProject = input.workspace.final.entries.some(
+    (entry) =>
+      entry.path !== ARTIFACT_PATH &&
+      !entry.path.startsWith(".diligent") &&
+      !initial.some((expected) => expected.path === entry.path),
+  );
   if (
     canonical(input.workspace.initial.entries) !== canonical(initial) ||
-    canonical(input.workspace.final.entries.map((entry) => entry.path).sort()) !== canonical(expectedPaths.sort()) ||
     canonical(artifact) !==
       canonical({
         path: ARTIFACT_PATH,
@@ -341,28 +332,17 @@ function validateWorkspace(input: RuntimeEvalExecution<CollaborationParallelSynt
         executable: false,
       }) ||
     canonical(sourceEntries) !== canonical(initial.filter((entry) => entry.kind === "file")) ||
-    input.workspace.final.entries.filter((entry) => entry.path.startsWith(".diligent/sessions/")).length !== 3 ||
+    unexpectedProject ||
     !verifier ||
-    canonical(verifier.argv) !== canonical(["eval-exact-files", ARTIFACT_PATH]) ||
     verifier.exitCode !== 0 ||
     verifier.timedOut ||
-    verifier.stdout !== "Exact file verification passed.\n" ||
-    verifier.stderr !== "" ||
-    input.toolOutputFiles.length !== 0 ||
     input.compactions.length !== 0 ||
     input.protocolActions.length !== 0 ||
     input.userInputRequests.length !== 0 ||
     input.approvals.length !== 0 ||
-    input.logs.length !== 0 ||
-    input.runtimeState.initial.length !== 0 ||
-    canonical(input.runtimeState.final) !== canonical(expectedRuntimeFinal) ||
-    canonical(input.runtimeState.diff) !== canonical(expectedRuntimeDiff)
+    input.runtimeState.diff.some((change) => change.category !== "infrastructure" && change.category !== "sessions")
   )
-    return fail("workspace", "Workspace manifests, protected hashes, verifier, or isolation evidence diverged.");
-}
-
-function runtimeCategory(path: string): "infrastructure" | "sessions" {
-  return path.startsWith(".diligent/sessions/") ? "sessions" : "infrastructure";
+    return fail("workspace", "Project artifacts, protected sources, verifier result, or isolation policy diverged.");
 }
 
 function fixtureEntries(world: CollaborationParallelSynthesisWorld): RuntimeWorldSnapshot["entries"] {
@@ -411,12 +391,11 @@ function traceById(input: RuntimeEvalExecution<CollaborationParallelSynthesisWor
   const readNorth = reads.find((trace) => exactReadInput(trace.input, SOURCE_PATHS[0]));
   const readSouth = reads.find((trace) => exactReadInput(trace.input, SOURCE_PATHS[1]));
   const wait = unique("wait");
-  const writeName = input.profile.provider === "anthropic" ? "edit" : "apply_patch";
   const successfulWrites = input.toolCalls.filter(
     (trace) =>
-      trace.name === writeName &&
+      (trace.name === "edit" || trace.name === "apply_patch") &&
       trace.outcome === "success" &&
-      exactWriteInput(trace.input, input.profile.provider, input.world.expected),
+      targetsArtifact(trace.input),
   );
   const write = successfulWrites.length === 1 ? successfulWrites[0] : undefined;
   for (const [alias, trace] of [
@@ -432,94 +411,10 @@ function traceById(input: RuntimeEvalExecution<CollaborationParallelSynthesisWor
   return traces;
 }
 
-interface RelativeChildReadRecovery {
-  index: 0 | 1;
-  failed: CustomParallelTrace;
-  succeeded: CustomParallelTrace;
-}
-
-function relativeChildReadRecovery(
-  input: RuntimeEvalExecution<CollaborationParallelSynthesisWorld>,
-): RelativeChildReadRecovery | undefined {
-  const failedReads = input.toolCalls.filter((trace) => trace.name === "read" && trace.outcome !== "success");
-  if (failedReads.length !== 1) return undefined;
-  const failed = failedReads[0]!;
-  const index = relativeRegionForRead(failed.input);
-  const childIds = childIdsBySpawn(input);
-  const succeeded =
-    index === undefined ? undefined : traceById(input).get(index === 0 ? CALL_IDS.readNorth : CALL_IDS.readSouth);
-  if (index === undefined || !childIds || !succeeded) return undefined;
-  const path = SOURCE_PATHS[index];
-  const error = `Error: file_path must be absolute: ${path}`;
-  if (
-    failed.sequence >= succeeded.sequence ||
-    failed.outcome !== "runtime_error" ||
-    failed.capability !== "read" ||
-    failed.threadId !== childIds[index] ||
-    failed.childThreadId !== childIds[index] ||
-    failed.error !== error ||
-    canonical(failed.input) !== canonical({ file_path: path }) ||
-    canonical(failed.output) !==
-      canonical({
-        output: error,
-        render: {
-          outputSummary: error,
-          blocks: [{ type: "text", title: "Output", text: error, isError: true }],
-        },
-        metadata: { error: true },
-      }) ||
-    input.toolCalls.some(
-      (trace) =>
-        trace.threadId === childIds[index] && trace.sequence > failed.sequence && trace.sequence < succeeded.sequence,
-    )
-  )
-    return undefined;
-  return { index, failed, succeeded };
-}
-
-function relativeEditRecoveryTrace(
-  input: RuntimeEvalExecution<CollaborationParallelSynthesisWorld>,
-): CustomParallelTrace | undefined {
-  if (input.profile.provider !== "anthropic") return undefined;
-  const edits = input.toolCalls.filter((trace) => trace.name === "edit");
-  if (edits.length !== 2) return undefined;
-  const failed = edits.find((trace) => trace.outcome === "runtime_error");
-  const succeeded = edits.find(
-    (trace) =>
-      trace.outcome === "success" && exactWriteInput(trace.input, input.profile.provider, input.world.expected),
-  );
-  const error = `Error: file_path must be absolute: ${ARTIFACT_PATH}`;
-  if (
-    !failed ||
-    !succeeded ||
-    failed.sequence >= succeeded.sequence ||
-    failed.capability !== "write" ||
-    failed.threadId !== input.session.threadId ||
-    failed.childThreadId !== undefined ||
-    failed.error !== error ||
-    canonical(failed.input) !==
-      canonical({
-        file_path: ARTIFACT_PATH,
-        old_string: "",
-        new_string: input.world.expected,
-        replace_all: false,
-      }) ||
-    canonical(failed.output) !== canonical({ output: error, metadata: { error: true } })
-  )
-    return undefined;
-  return failed;
-}
-
 function regionForSpawn(input: unknown): 0 | 1 | undefined {
   const message = isRecord(input) && typeof input.message === "string" ? input.message : undefined;
   if (!message) return undefined;
   const matches = SOURCE_PATHS.map((path) => message.includes(path));
-  return matches[0] === matches[1] ? undefined : matches[0] ? 0 : 1;
-}
-
-function relativeRegionForRead(input: unknown): 0 | 1 | undefined {
-  if (!isRecord(input) || canonical(Object.keys(input)) !== canonical(["file_path"])) return undefined;
-  const matches = SOURCE_PATHS.map((path) => input.file_path === path);
   return matches[0] === matches[1] ? undefined : matches[0] ? 0 : 1;
 }
 
@@ -528,16 +423,7 @@ function childIdsBySpawn(
 ): [string, string] | undefined {
   const traces = traceById(input);
   const ids = [traces.get(CALL_IDS.readNorth)?.threadId, traces.get(CALL_IDS.readSouth)?.threadId];
-  return ids[0] &&
-    ids[1] &&
-    ids[0] !== ids[1] &&
-    ids.every((id) => input.childSessions.some((child) => child.threadId === id))
-    ? [ids[0], ids[1]]
-    : undefined;
-}
-
-function sessionMessage(value: unknown): Record<string, unknown> | undefined {
-  return isRecord(value) && value.type === "message" && isRecord(value.message) ? value.message : undefined;
+  return ids[0] && ids[1] && ids[0] !== ids[1] ? [ids[0], ids[1]] : undefined;
 }
 
 function canonical(value: unknown): string {

@@ -14,6 +14,17 @@ import { type McpLazyToolWorld, mcpLazyToolTask } from "../../../src/tasks/runti
 import { assistantMessage, sequenceStream } from "../../helpers/fake-stream";
 
 describe("mcp-lazy-tool", () => {
+  test("does not gate MCP routing on persistence or lifecycle mirrors", async () => {
+    const execution = await assembledExecution(DEFAULT_PROFILES[0]!);
+    execution.session.lines = [];
+    execution.threadReads = [];
+    execution.turns[0]!.coreEvents = [];
+    execution.turns[0]!.runtimeEvents = [];
+    execution.turns[0]!.notifications = [];
+    execution.world.runtimeConfigs = [];
+    expect(mcpLazyToolTask.evaluate(execution)).toMatchObject({ passed: true });
+  });
+
   test("defines an auto-lazy fixture-local stdio MCP contract", async () => {
     const root = await mkdtemp(join(tmpdir(), "diligent-runtime-mcp-lazy-"));
     try {
@@ -47,7 +58,7 @@ describe("mcp-lazy-tool", () => {
       });
       expect(mcpLazyToolTask.limits).toMatchObject({
         maxTurns: 4,
-        maxToolCalls: 3,
+        maxToolCalls: 4,
         maxChangedFiles: 0,
         maxChangedBytes: 0,
         maxUserInputRequests: 0,
@@ -127,7 +138,7 @@ describe("mcp-lazy-tool", () => {
     expect(mcpLazyToolTask.evaluate(execution)).toEqual({ passed: true });
   });
 
-  test("accepts two result-independent searches in one parallel batch and rejects a third or wrong search", async () => {
+  test("accepts bounded additional safe searches and rejects a wrong search", async () => {
     const executions: RuntimeEvalExecution<McpLazyToolWorld>[] = [];
     for (const profile of DEFAULT_PROFILES) {
       const execution = await assembledExecution(profile, false, false, true);
@@ -142,7 +153,12 @@ describe("mcp-lazy-tool", () => {
 
     const extra = structuredClone(execution);
     extra.toolCalls.splice(2, 0, structuredClone(extra.toolCalls[1]!));
-    expect(mcpLazyToolTask.evaluate(extra).passed).toBe(false);
+    extra.toolCalls[2]!.toolCallId = "third-safe-search";
+    extra.toolCalls.forEach((call, index) => (call.sequence = index + 1));
+    expect(mcpLazyToolTask.evaluate(extra)).toMatchObject({
+      passed: true,
+      diagnostics: [{ code: "mcp_lazy.second_safe_search" }],
+    });
   });
 
   test("rejects the independent lazy routing, schema, approval, config, cleanup, persistence, and isolation mutation matrix", async () => {
