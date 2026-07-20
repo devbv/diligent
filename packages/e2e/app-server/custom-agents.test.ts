@@ -1,4 +1,4 @@
-// @summary App-server e2e coverage for custom agents and per-spawn child-tool caps
+// @summary App-server e2e coverage for custom agents and role-defined child-tool caps
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -32,7 +32,6 @@ function createCustomAgentScenarioStream(): StreamFunction {
             message: "Review this change",
             description: "custom reviewer",
             agent_type: "code-reviewer",
-            allowed_tools: ["read"],
           };
           stream.push({ type: "tool_call_start", id: "tc-spawn", name: "spawn_agent" });
           stream.push({ type: "tool_call_end", id: "tc-spawn", name: "spawn_agent", input });
@@ -136,7 +135,7 @@ afterEach(async () => {
 });
 
 describe("custom agents", () => {
-  test("custom agent spawns and per-spawn allowed_tools narrows child access through the protocol boundary", async () => {
+  test("custom agent spawns and its role-defined tools narrow child access through the protocol boundary", async () => {
     tmpDir = await mkdtemp(join(tmpdir(), "diligent-e2e-custom-agents-"));
     await mkdir(join(tmpDir, ".diligent", "agents", "code-reviewer"), { recursive: true });
     await writeFile(
@@ -145,7 +144,7 @@ describe("custom agents", () => {
         "---",
         "name: code-reviewer",
         "description: Reviews code for quality and best practices",
-        "tools: read, glob, grep",
+        "tools: read",
         "model_class: general",
         "---",
         "You are a code reviewer.",
@@ -163,7 +162,7 @@ describe("custom agents", () => {
             description: "Reviews code for quality and best practices",
             filePath: join(tmpDir, ".diligent", "agents", "code-reviewer", "AGENT.md"),
             content: "You are a code reviewer.",
-            tools: ["read", "glob", "grep"],
+            tools: ["read"],
             defaultModelClass: "general",
             source: "project",
           },

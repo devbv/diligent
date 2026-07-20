@@ -21,17 +21,7 @@ const SpawnAgentParams = z.object({
     .describe(
       "Explicit opt-in for nested subagents. Disabled by default; child agents cannot access collab tools unless this is true.",
     ),
-  allowed_tools: z
-    .array(z.string())
-    .optional()
-    .describe(
-      "Optional per-spawn child-tool allow-list. Can only narrow the selected agent's default tool access. Omit this field to inherit all permitted tools; an empty list is treated the same as omitted. Collab tools remain excluded unless allow_nested_agents=true.",
-    ),
 });
-
-function normalizeAllowedTools(toolNames: string[] | undefined): string[] | undefined {
-  return toolNames && toolNames.length > 0 ? toolNames : undefined;
-}
 
 export function createSpawnAgentTool(
   registry: AgentRegistry,
@@ -53,7 +43,6 @@ export function createSpawnAgentTool(
         agentType: args.agent_type,
         resumeId: args.resume_id,
         allowNestedAgents: args.allow_nested_agents,
-        allowedTools: normalizeAllowedTools(args.allowed_tools),
       });
       return { output: JSON.stringify({ thread_id: threadId, nickname }) };
     },

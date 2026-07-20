@@ -73,27 +73,13 @@ describe("spawn_agent tool", () => {
     expect(parsed.data).not.toHaveProperty("agent_type");
   });
 
-  it("does not expose a per-spawn model class override", () => {
+  it("does not expose per-spawn model or tool overrides", () => {
     const { tools } = createCollabTools(makeCollabDeps());
     const spawnTool = tools.find((t) => t.name === "spawn_agent")!;
     const shape = (spawnTool.parameters as { shape: Record<string, unknown> }).shape;
 
     expect(shape).not.toHaveProperty("model_class");
-  });
-
-  it("treats empty allowed_tools as inherit-all", async () => {
-    let received: Parameters<AgentRegistry["spawn"]>[0] | undefined;
-    const registry = {
-      spawn: (params: Parameters<AgentRegistry["spawn"]>[0]) => {
-        received = params;
-        return { threadId: "thread-1", nickname: "Acacia" };
-      },
-    } as unknown as AgentRegistry;
-    const spawnTool = createSpawnAgentTool(registry, getBuiltinAgentDefinitions());
-
-    await spawnTool.execute({ message: "task", agent_type: "explore", allowed_tools: [] }, makeCtx());
-
-    expect(received?.allowedTools).toBeUndefined();
+    expect(shape).not.toHaveProperty("allowed_tools");
   });
 
   it("passes resume_id when provided", async () => {
@@ -188,9 +174,6 @@ describe("spawn_agent tool", () => {
     expect(spawnTool.description).toContain("code-reviewer");
     expect(shape.agent_type.description).toBe(formatAgentTypeParameterDescription(agentDefinitions));
     expect(shape.agent_type.description).toContain("code-reviewer");
-    expect(shape.allowed_tools.description).toContain("allow-list");
-    expect(shape.allowed_tools.description).toContain("empty list is treated the same as omitted");
-    expect(shape.allowed_tools.description).toContain("allow_nested_agents=true");
   });
 });
 
