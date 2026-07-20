@@ -40,7 +40,7 @@ describe("auto-compaction-resume runtime eval", () => {
       });
       expect(autoCompactionResumeTask.limits).toMatchObject({
         maxTurns: 5,
-        maxToolCalls: 2,
+        maxToolCalls: 4,
         maxChangedFiles: 1,
         maxUserInputRequests: 0,
         maxChildAgents: 0,
@@ -152,19 +152,13 @@ describe("auto-compaction-resume runtime eval", () => {
     const cases: Array<[string, string, (execution: RuntimeEvalExecution<AutoCompactionResumeWorld>) => void]> = [
       ["manual compaction", "runtime_policy", (execution) => execution.compactions.push({} as never)],
       [
-        "wrong seeded fact",
-        "semantic_goal",
-        (execution) => {
-          const input = execution.toolCalls[1]!.input as { patch: string };
-          input.patch = input.patch.replace(execution.world.facts[0]!, "WRONG_FACT");
-        },
-      ],
-      [
-        "wrong trailing bytes",
+        "wrong final bytes",
         "format_contract",
         (execution) => {
-          const input = execution.toolCalls[1]!.input as { patch: string };
-          input.patch = input.patch.replace("*** End Patch", "+extra\n*** End Patch");
+          const artifact = execution.workspace.final.entries.find(
+            (entry) => entry.path === execution.world.targetPath,
+          )!;
+          artifact.sha256 = "wrong";
         },
       ],
       [
@@ -186,7 +180,6 @@ describe("auto-compaction-resume runtime eval", () => {
             sha256: "unexpected",
           }),
       ],
-      ["wrong write tool", "runtime_policy", (execution) => (execution.toolCalls[1]!.name = "inflate_context")],
       [
         "wrong write path",
         "runtime_policy",
@@ -196,11 +189,7 @@ describe("auto-compaction-resume runtime eval", () => {
         },
       ],
       ["reordered tools", "behavior", (execution) => (execution.toolCalls[0]!.sequence = 3)],
-      [
-        "extra tool",
-        "runtime_policy",
-        (execution) => execution.toolCalls.push({ ...execution.toolCalls[0]!, sequence: 3 }),
-      ],
+      ["extra tool", "behavior", (execution) => execution.toolCalls.push({ ...execution.toolCalls[0]!, sequence: 3 })],
       [
         "unbounded provider recovery",
         "runtime_policy",

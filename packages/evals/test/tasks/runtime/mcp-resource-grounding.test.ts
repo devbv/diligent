@@ -17,6 +17,30 @@ import {
 import { assistantMessage, sequenceStream } from "../../helpers/fake-stream";
 
 describe("mcp-resource-grounding", () => {
+  test("does not gate MCP resource choice on persistence mirrors or verifier wording", async () => {
+    const execution = await assembledExecution(DEFAULT_PROFILES[0]!);
+    execution.session.lines = [];
+    execution.threadReads = [];
+    execution.turns[0]!.coreEvents = [];
+    execution.turns[0]!.runtimeEvents = [];
+    execution.turns[0]!.notifications = [];
+    execution.verifier!.argv = ["deterministic-verifier"];
+    execution.verifier!.stdout = "alternate success wording\n";
+    expect(mcpResourceGroundingTask.evaluate(execution)).toMatchObject({ passed: true });
+  });
+
+  test("reports an additional bounded in-scope resource listing as diagnostic", async () => {
+    const execution = await assembledExecution(DEFAULT_PROFILES[0]!);
+    const extraList = structuredClone(execution.toolCalls[0]!);
+    extraList.toolCallId = "additional-resource-list";
+    execution.toolCalls.splice(1, 0, extraList);
+    execution.toolCalls.forEach((call, index) => (call.sequence = index + 1));
+    expect(mcpResourceGroundingTask.evaluate(execution)).toMatchObject({
+      passed: true,
+      diagnostics: [{ code: "mcp_resource.additional_safe_discovery" }],
+    });
+  });
+
   test("defines a fixture-local stdio MCP resource grounding contract", async () => {
     const root = await mkdtemp(join(tmpdir(), "diligent-runtime-mcp-resource-"));
     try {
@@ -47,7 +71,7 @@ describe("mcp-resource-grounding", () => {
       });
       expect(mcpResourceGroundingTask.limits).toMatchObject({
         maxTurns: 4,
-        maxToolCalls: 3,
+        maxToolCalls: 5,
         maxChangedFiles: 1,
         maxChangedBytes: world.expected.length,
         maxUserInputRequests: 0,

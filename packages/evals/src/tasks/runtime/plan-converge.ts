@@ -78,7 +78,7 @@ export const planConvergeTask: RuntimeEvalTask<PlanConvergeWorld> = {
   evaluate(input) {
     const traceError = validateTraceShape(input);
     if (traceError) return fail("trace_shape", traceError.message, traceError.dimension);
-    const request = input.toolCalls.at(-1)!;
+    const request = input.toolCalls.find((call) => call.name === "request_user_input" && call.outcome === "success")!;
     const askedQuestion = boundedQuestion(request.input);
     if (!askedQuestion)
       return fail(
@@ -95,79 +95,70 @@ export const planConvergeTask: RuntimeEvalTask<PlanConvergeWorld> = {
     }
     if (input.verifier?.timedOut)
       return fail("verifier_timeout", "Fixture verification timed out.", "harness_terminal");
-    return input.verifier?.exitCode === 0
-      ? { passed: true }
-      : fail("verifier", "Fixture verification failed.", "runtime_policy");
+    if (input.verifier?.exitCode !== 0) return fail("verifier", "Fixture verification failed.", "runtime_policy");
+    const recoveries = input.toolCalls.filter((call) => call.name === "read" && call.outcome !== "success").length;
+    const successfulReads = input.toolCalls.filter((call) => call.name === "read" && call.outcome === "success").length;
+    const diagnostics = [];
+    if (recoveries > 0)
+      diagnostics.push({
+        dimension: "efficiency" as const,
+        code: "plan_converge.read_recovery",
+        message: `Observed ${recoveries} bounded read recovery attempt(s).`,
+      });
+    if (successfulReads > 2)
+      diagnostics.push({
+        dimension: "efficiency" as const,
+        code: "plan_converge.additional_safe_read",
+        message: `Observed ${successfulReads - 2} additional safe read(s).`,
+      });
+    return diagnostics.length > 0 ? { passed: true, diagnostics } : { passed: true };
   },
 };
 
 function validateTraceShape(
   input: RuntimeEvalExecution<PlanConvergeWorld>,
 ): { message: string; dimension: EvalDimension } | undefined {
-  const traces = input.toolCalls;
-  const hasRecovery = traces.length === 5;
-  if (traces.length !== 3 && !hasRecovery)
-    return {
-      message: "Expected exactly two successful reads and one question, with only the bounded paired recovery allowed.",
-      dimension: "behavior",
-    };
-  if (hasRecovery && input.profile.provider !== "anthropic")
-    return { message: "Only Anthropic may use the paired relative-read recovery.", dimension: "runtime_policy" };
+  const traces = [...input.toolCalls].sort((left, right) => left.sequence - right.sequence);
   const parentThreadId = input.turns[0]!.threadId;
-  if (
-    traces.some(
-      (trace, index) =>
-        trace.sequence !== index + 1 || trace.threadId !== parentThreadId || trace.childThreadId !== undefined,
-    )
-  )
+  if (traces.some((trace) => trace.threadId !== parentThreadId || trace.childThreadId !== undefined))
     return {
-      message: "Every trace must be sequential and attributed only to the parent thread.",
+      message: "Every trace must be attributed only to the parent thread.",
       dimension: "runtime_policy",
     };
-
-  const successOffset = hasRecovery ? 2 : 0;
-  if (hasRecovery) {
-    const recoveryPaths = [API_PATH, UI_PATH] as const;
-    for (const [index, path] of recoveryPaths.entries()) {
-      if (!isExactRelativeReadFailure(traces[index]!, path))
-        return {
-          message: "The recovery must be the exact ordered api/ui relative-path error pair.",
-          dimension: "runtime_policy",
-        };
-    }
-  }
-  if (!isExactSuccessfulRead(traces[successOffset]!, API_PATH, input.world.apiFact))
+  if (traces.some((trace) => trace.name !== "read" && trace.name !== "request_user_input"))
+    return { message: "Plan convergence used an undeclared tool.", dimension: "runtime_policy" };
+  const reads = traces.filter((trace) => trace.name === "read");
+  if (reads.some((trace) => !isDeclaredRead(trace)))
+    return { message: "A read targeted an undeclared path.", dimension: "runtime_policy" };
+  const questions = traces.filter((trace) => trace.name === "request_user_input");
+  if (questions.length !== 1 || questions[0]!.capability !== "user_input" || questions[0]!.outcome !== "success")
+    return { message: "Expected one successful clarification after discovery.", dimension: "behavior" };
+  const question = questions[0]!;
+  const apiRead = reads.find((trace) => isExactSuccessfulRead(trace, API_PATH, input.world.apiFact));
+  if (!apiRead)
     return {
       message: "The API fact must be read successfully from its exact absolute path.",
       dimension: "runtime_policy",
     };
-  if (!isExactSuccessfulRead(traces[successOffset + 1]!, UI_PATH, input.world.uiFact))
+  const uiRead = reads.find((trace) => isExactSuccessfulRead(trace, UI_PATH, input.world.uiFact));
+  if (!uiRead)
     return {
       message: "The UI fact must be read successfully from its exact absolute path.",
       dimension: "runtime_policy",
     };
-  if (!isSuccessfulQuestionTrace(traces[successOffset + 2]!))
+  if (question.sequence <= Math.max(apiRead.sequence, uiRead.sequence))
     return {
-      message: "The final trace must be one successful parent-thread user-input request.",
+      message: "The rollout preference was requested before both fixture facts were discovered.",
       dimension: "behavior",
     };
   return undefined;
 }
 
-function isExactRelativeReadFailure(call: RuntimeToolTrace, path: string): boolean {
-  const error = `Error: file_path must be absolute: ${path}`;
-  if (
-    call.name !== "read" ||
-    call.capability !== "read" ||
-    call.outcome !== "runtime_error" ||
-    !isExactFileInput(call.input, path) ||
-    call.error !== error ||
-    !isRecord(call.output) ||
-    call.output.output !== error ||
-    !isRecord(call.output.metadata)
-  )
-    return false;
-  return Object.keys(call.output.metadata).length === 1 && call.output.metadata.error === true;
+function isDeclaredRead(call: RuntimeToolTrace): boolean {
+  if (call.capability !== "read" || !isRecord(call.input) || typeof call.input.file_path !== "string") return false;
+  const filePath = call.input.file_path;
+  const declared = [API_PATH, UI_PATH];
+  return declared.some((path) => filePath === path || filePath === `$WORKSPACE/${path}`);
 }
 
 function isExactSuccessfulRead(call: RuntimeToolTrace, path: string, fact: string): boolean {
@@ -175,13 +166,10 @@ function isExactSuccessfulRead(call: RuntimeToolTrace, path: string, fact: strin
     call.name === "read" &&
     call.capability === "read" &&
     call.outcome === "success" &&
-    isExactFileInput(call.input, `$WORKSPACE/${path}`) &&
+    isRecord(call.input) &&
+    call.input.file_path === `$WORKSPACE/${path}` &&
     toolOutputText(call).includes(fact)
   );
-}
-
-function isSuccessfulQuestionTrace(call: RuntimeToolTrace): boolean {
-  return call.name === "request_user_input" && call.capability === "user_input" && call.outcome === "success";
 }
 
 function boundedQuestion(value: unknown): Record<string, unknown> | undefined {
@@ -216,10 +204,6 @@ function boundedQuestion(value: unknown): Record<string, unknown> | undefined {
   )
     return undefined;
   return question;
-}
-
-function isExactFileInput(value: unknown, filePath: string): boolean {
-  return isRecord(value) && Object.keys(value).length === 1 && value.file_path === filePath;
 }
 
 function toolOutputText(call: RuntimeToolTrace): string {

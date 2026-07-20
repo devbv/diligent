@@ -2,15 +2,18 @@
 
 import type { AnyRuntimeEvalTask } from "../../runtime-task";
 import { autoCompactionResumeTask } from "./auto-compaction-resume";
+import { autonomousExploreDelegationTask } from "./autonomous-explore-delegation";
 import { bundledToolRoutingTask } from "./bundled-tool-routing";
 import { clarifyThenExecuteTask } from "./clarify-then-execute";
 import { collaborationParallelSynthesisTask } from "./collaboration-parallel-synthesis";
 import { collaborationResumeReferenceTask } from "./collaboration-resume-reference";
+import { crossFileContractFixTask } from "./cross-file-contract-fix";
 import { customAgentRoutingTask } from "./custom-agent-routing";
-import { executeAutonomousTask } from "./execute-autonomous";
 import { fileRoundtripTask } from "./file-roundtrip";
+import { freshPromptAfterCompactionTask } from "./fresh-prompt-after-compaction";
 import { hookContextFollowTask } from "./hook-context-follow";
 import { imageResumeRecallTask } from "./image-resume-recall";
+import { inputCancelResumeTask } from "./input-cancel-resume";
 import { instructionHierarchyTask } from "./instruction-hierarchy";
 import { knowledgeForgetTask } from "./knowledge-forget";
 import { knowledgeIntentSplitTask } from "./knowledge-intent-split";
@@ -19,6 +22,7 @@ import { largeOutputRecoveryTask } from "./large-output-recovery";
 import { loopContextAdaptationTask } from "./loop-context-adaptation";
 import { manualCompactionResumeTask } from "./manual-compaction-resume";
 import { mcpLazyToolTask } from "./mcp-lazy-tool";
+import { mcpNeedsAuthAbstainTask } from "./mcp-needs-auth-abstain";
 import { mcpPromptGroundingTask } from "./mcp-prompt-grounding";
 import { mcpResourceGroundingTask } from "./mcp-resource-grounding";
 import { planConvergeTask } from "./plan-converge";
@@ -34,6 +38,8 @@ import { steerDuringFixTask } from "./steer-during-fix";
 
 export type { AutoCompactionResumeWorld } from "./auto-compaction-resume";
 export { autoCompactionResumeTask } from "./auto-compaction-resume";
+export type { AutonomousExploreDelegationWorld } from "./autonomous-explore-delegation";
+export { autonomousExploreDelegationTask } from "./autonomous-explore-delegation";
 export type { BundledToolRoutingWorld } from "./bundled-tool-routing";
 export { bundledToolRoutingTask } from "./bundled-tool-routing";
 export type { ClarifyThenExecuteWorld } from "./clarify-then-execute";
@@ -42,16 +48,20 @@ export type { CollaborationParallelSynthesisWorld } from "./collaboration-parall
 export { collaborationParallelSynthesisTask } from "./collaboration-parallel-synthesis";
 export type { CollaborationResumeReferenceWorld } from "./collaboration-resume-reference";
 export { collaborationResumeReferenceTask } from "./collaboration-resume-reference";
+export type { CrossFileContractFixWorld } from "./cross-file-contract-fix";
+export { crossFileContractFixTask } from "./cross-file-contract-fix";
 export type { CustomAgentRoutingWorld } from "./custom-agent-routing";
 export { customAgentRoutingTask } from "./custom-agent-routing";
-export type { ExecuteAutonomousWorld } from "./execute-autonomous";
-export { executeAutonomousTask } from "./execute-autonomous";
 export type { FileRoundtripWorld } from "./file-roundtrip";
 export { fileRoundtripTask } from "./file-roundtrip";
+export type { FreshPromptAfterCompactionWorld } from "./fresh-prompt-after-compaction";
+export { freshPromptAfterCompactionTask } from "./fresh-prompt-after-compaction";
 export type { HookContextFollowWorld } from "./hook-context-follow";
 export { hookContextFollowTask } from "./hook-context-follow";
 export type { ImageResumeRecallWorld } from "./image-resume-recall";
 export { imageResumeRecallTask } from "./image-resume-recall";
+export type { InputCancelResumeWorld } from "./input-cancel-resume";
+export { inputCancelResumeTask } from "./input-cancel-resume";
 export type { InstructionHierarchyWorld } from "./instruction-hierarchy";
 export { instructionHierarchyTask } from "./instruction-hierarchy";
 export type { KnowledgeForgetWorld } from "./knowledge-forget";
@@ -68,6 +78,8 @@ export type { ManualCompactionResumeWorld } from "./manual-compaction-resume";
 export { manualCompactionResumeTask } from "./manual-compaction-resume";
 export type { McpLazyToolWorld } from "./mcp-lazy-tool";
 export { mcpLazyToolTask } from "./mcp-lazy-tool";
+export type { McpNeedsAuthAbstainWorld } from "./mcp-needs-auth-abstain";
+export { mcpNeedsAuthAbstainTask } from "./mcp-needs-auth-abstain";
 export type { McpPromptGroundingWorld } from "./mcp-prompt-grounding";
 export { mcpPromptGroundingTask } from "./mcp-prompt-grounding";
 export type { McpResourceGroundingWorld } from "./mcp-resource-grounding";
@@ -99,7 +111,7 @@ export const RUNTIME_EVAL_TASKS: readonly AnyRuntimeEvalTask[] = [
   fileRoundtripTask,
   instructionHierarchyTask,
   planConvergeTask,
-  executeAutonomousTask,
+  crossFileContractFixTask,
   planProgressTask,
   hookContextFollowTask,
   skillAutoSelectTask,
@@ -108,11 +120,15 @@ export const RUNTIME_EVAL_TASKS: readonly AnyRuntimeEvalTask[] = [
   knowledgeForgetTask,
   steerDuringFixTask,
   autoCompactionResumeTask,
+  autonomousExploreDelegationTask,
+  freshPromptAfterCompactionTask,
   imageResumeRecallTask,
+  inputCancelResumeTask,
   loopContextAdaptationTask,
   largeOutputRecoveryTask,
   bundledToolRoutingTask,
   mcpLazyToolTask,
+  mcpNeedsAuthAbstainTask,
   mcpResourceGroundingTask,
   mcpPromptGroundingTask,
   customAgentRoutingTask,

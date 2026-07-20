@@ -66,32 +66,49 @@ export const instructionHierarchyTask: RuntimeEvalTask<InstructionHierarchyWorld
       kind: "turn",
       mode: "execute",
       message:
-        "Inspect target.txt exactly once and create RESULT.txt by following every applicable project instruction. Do not modify the target or instruction files.",
+        "Inspect target.txt and create RESULT.txt by following every applicable project instruction. Do not modify the target or instruction files.",
     },
   ],
   verify: (world, signal) => verifyExactFiles(world, { [RESULT_PATH]: world.expected }, signal),
   snapshotWorld: async (world) => ({ result: await exactFile(world.root, RESULT_PATH) }),
   evaluate(input) {
     const reads = input.toolCalls.filter((call) => call.name === "read" && call.outcome === "success");
-    if (reads.length !== 1 || !toolPath(reads[0]!.input).endsWith(TARGET_PATH))
-      return fail("target_read", "The model must read only the nested target file exactly once.", "runtime_policy");
+    if (!reads.some((call) => toolPath(call.input).endsWith(TARGET_PATH)))
+      return fail("target_read", "The model did not inspect the nested target file.", "behavior");
+    if (reads.some((call) => !isProjectRead(input.world.root, toolPath(call.input))))
+      return fail("read_scope", "A read escaped the fixture project.", "runtime_policy");
     if (input.verifier?.timedOut)
       return fail("verifier_timeout", "Independent exact-file verification timed out.", "harness_terminal");
     if (input.verifier?.exitCode !== 0)
       return fail("verifier", "Independent exact-file verification failed.", "semantic_goal");
     const result = input.workspace.final.entries.find((entry) => entry.path === RESULT_PATH);
-    return result?.sha256 === input.world.expectedHash
-      ? { passed: true }
-      : fail(
-          "wrong_result",
-          "RESULT.txt did not combine both hidden instruction transformations exactly.",
-          "format_contract",
-        );
+    if (result?.sha256 !== input.world.expectedHash)
+      return fail(
+        "wrong_result",
+        "RESULT.txt did not combine both hidden instruction transformations exactly.",
+        "format_contract",
+      );
+    return reads.length > 1
+      ? {
+          passed: true,
+          diagnostics: [
+            {
+              dimension: "efficiency",
+              code: "instruction_hierarchy.additional_safe_read",
+              message: `Observed ${reads.length - 1} additional safe project read(s).`,
+            },
+          ],
+        }
+      : { passed: true };
   },
 };
 
 function toolPath(value: unknown): string {
   return isRecord(value) && typeof value.file_path === "string" ? value.file_path : "";
+}
+
+function isProjectRead(root: string, path: string): boolean {
+  return path === root || path.startsWith(`${root}/`);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

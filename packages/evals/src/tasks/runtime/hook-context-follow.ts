@@ -36,10 +36,9 @@ export const hookContextFollowTask: RuntimeEvalTask<HookContextFollowWorld> = {
   },
   async setup(seed, root) {
     const hookFact = seededToken(seed, "HOOK_FACT");
-    const injectedContext = `HOOK_VALUE=${hookFact}`;
-    const clientPrompt =
-      "Use the additional context supplied for this submission to create HOOK.txt containing only its value and one trailing newline.";
-    const expected = `${hookFact}\n`;
+    const injectedContext = `Submission compliance rule: append the suffix :${hookFact} to the requested READY value before the final newline.`;
+    const clientPrompt = "Create HOOK.txt containing READY and one trailing newline for this deployment submission.";
+    const expected = `READY:${hookFact}\n`;
     await writeFixture(root, { ".git/.keep": "fixture boundary\n" });
     return {
       root,
@@ -67,14 +66,14 @@ export const hookContextFollowTask: RuntimeEvalTask<HookContextFollowWorld> = {
       (call) => call.capability === "write" && call.outcome === "success",
     );
     if (
-      successfulWrites.length !== 1 ||
+      successfulWrites.length === 0 ||
       input.toolCalls.some(
         (call) => call.capability !== "write" || (call.outcome !== "success" && call.outcome !== "runtime_error"),
       )
     )
       return fail(
         "tool_scope",
-        "The model must stay within declared writes and produce exactly one successful write.",
+        "The model must stay within declared writes and produce a successful write.",
         "runtime_policy",
       );
     if (input.verifier?.timedOut)
@@ -82,9 +81,25 @@ export const hookContextFollowTask: RuntimeEvalTask<HookContextFollowWorld> = {
     if (input.verifier?.exitCode !== 0)
       return fail("verifier", "Independent exact-file verification failed.", "format_contract");
     const output = input.workspace.final.entries.find((entry) => entry.path === OUTPUT_PATH);
-    return output?.sha256 === input.world.expectedHash
-      ? { passed: true }
-      : fail("output", "HOOK.txt did not contain the exact injected fact.", "format_contract");
+    if (output?.sha256 !== input.world.expectedHash)
+      return fail(
+        "output",
+        "HOOK.txt did not combine the user request with the injected constraint.",
+        "format_contract",
+      );
+    const recoveryCount = input.toolCalls.length - 1;
+    return recoveryCount > 0
+      ? {
+          passed: true,
+          diagnostics: [
+            {
+              dimension: "efficiency",
+              code: "hook_context_follow.write_recovery",
+              message: `Observed ${recoveryCount} additional bounded write attempt(s).`,
+            },
+          ],
+        }
+      : { passed: true };
   },
 };
 

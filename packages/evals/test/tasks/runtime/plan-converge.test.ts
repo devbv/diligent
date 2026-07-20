@@ -9,7 +9,7 @@ const UI_PATH = "facts/ui.txt";
 const THREAD_ID = "thread-1";
 
 describe("plan-converge runtime eval", () => {
-  test("budgets one exact paired Anthropic path recovery without expanding turns", () => {
+  test("budgets bounded provider-neutral read recovery", () => {
     expect(planConvergeTask.fixtureVersion).toBe("plan-converge-v3");
     expect(planConvergeTask.limits).toMatchObject({
       maxTurns: 6,
@@ -18,66 +18,25 @@ describe("plan-converge runtime eval", () => {
     });
   });
 
-  test("accepts the direct OpenAI path and exact paired Anthropic relative-read recovery", () => {
+  test("accepts direct discovery and reports bounded recovery diagnostically", () => {
     expect(planConvergeTask.evaluate(directExecution())).toEqual({ passed: true });
-    expect(planConvergeTask.evaluate(recoveryExecution())).toEqual({ passed: true });
+    expect(planConvergeTask.evaluate(recoveryExecution())).toMatchObject({
+      passed: true,
+      diagnostics: [{ dimension: "efficiency", code: "plan_converge.read_recovery" }],
+    });
   });
 
-  test("rejects malformed, extra, general, misordered, or misattributed recovery", () => {
+  test("allows provider-neutral recovery details but rejects wrong scope or actor", () => {
     const cases: Array<[string, (execution: RuntimeEvalExecution<PlanConvergeWorld>) => void]> = [
-      ["wrong provider", (execution) => (execution.profile.provider = "openai")],
       ["wrong recovery name", (execution) => (execution.toolCalls[0]!.name = "request_user_input")],
       ["wrong recovery capability", (execution) => (execution.toolCalls[0]!.capability = "user_input")],
-      ["successful recovery", (execution) => (execution.toolCalls[0]!.outcome = "success")],
-      ["policy recovery", (execution) => (execution.toolCalls[0]!.outcome = "policy_rejection")],
-      ["absolute failed path", (execution) => (execution.toolCalls[0]!.input = { file_path: absolute(API_PATH) })],
       ["wrong failed path", (execution) => (execution.toolCalls[0]!.input = { file_path: "facts/other.txt" })],
-      ["extra failed input", (execution) => (execution.toolCalls[0]!.input = { file_path: API_PATH, limit: 1 })],
-      ["wrong error", (execution) => (execution.toolCalls[0]!.error = "different")],
-      [
-        "wrong output error",
-        (execution) => ((execution.toolCalls[0]!.output as { output: string }).output = "different"),
-      ],
-      [
-        "missing error metadata",
-        (execution) => delete (execution.toolCalls[0]!.output as { metadata?: unknown }).metadata,
-      ],
-      [
-        "false error metadata",
-        (execution) => ((execution.toolCalls[0]!.output as { metadata: { error: boolean } }).metadata.error = false),
-      ],
-      [
-        "general runtime error metadata",
-        (execution) =>
-          ((execution.toolCalls[0]!.output as { metadata: Record<string, unknown> }).metadata.code = "general"),
-      ],
-      ["swapped recovery order", (execution) => swap(execution.toolCalls, 0, 1)],
-      ["recovery after success", (execution) => swap(execution.toolCalls, 1, 2)],
-      ["non-contiguous recovery", (execution) => (execution.toolCalls[1]!.sequence = 3)],
       ["missing recovery actor", (execution) => delete execution.toolCalls[0]!.threadId],
       ["wrong recovery actor", (execution) => (execution.toolCalls[1]!.threadId = "other-thread")],
       ["child recovery actor", (execution) => (execution.toolCalls[0]!.childThreadId = "child-thread")],
       ["relative successful read", (execution) => (execution.toolCalls[2]!.input = { file_path: API_PATH })],
       ["failed absolute read", (execution) => (execution.toolCalls[2]!.outcome = "runtime_error")],
       ["wrong absolute read output", (execution) => (execution.toolCalls[2]!.output = "different")],
-      [
-        "extra recovery",
-        (execution) =>
-          execution.toolCalls.splice(2, 0, {
-            ...structuredClone(execution.toolCalls[0]!),
-            sequence: 3,
-            toolCallId: "extra-recovery",
-          }),
-      ],
-      [
-        "general runtime error",
-        (execution) => {
-          const extra = failedRelativeRead(3, "facts/other.txt");
-          extra.error = "general runtime failure";
-          extra.output = { output: "general runtime failure", metadata: { error: true } };
-          execution.toolCalls.splice(2, 0, extra);
-        },
-      ],
     ];
 
     for (const [name, mutate] of cases) {
@@ -85,6 +44,11 @@ describe("plan-converge runtime eval", () => {
       mutate(execution);
       expect(planConvergeTask.evaluate(execution).passed, name).toBe(false);
     }
+
+    const providerNeutral = recoveryExecution();
+    providerNeutral.profile.provider = "openai";
+    providerNeutral.toolCalls[0]!.error = "different runtime wording";
+    expect(planConvergeTask.evaluate(providerNeutral).passed).toBe(true);
   });
 
   test("requires a successful exact bounded question and its scripted answer before planning", () => {
@@ -148,20 +112,18 @@ describe("plan-converge runtime eval", () => {
     });
   });
 
-  test("preserves the exact direct path and rejects provider-neutral trace slack", () => {
-    const cases: Array<[string, (execution: RuntimeEvalExecution<PlanConvergeWorld>) => void]> = [
-      ["OpenAI relative recovery", (execution) => execution.toolCalls.unshift(failedRelativeRead(0, API_PATH))],
-      ["wrong direct read order", (execution) => swap(execution.toolCalls, 0, 1)],
-      ["extra direct read", (execution) => execution.toolCalls.splice(2, 0, successfulRead(3, API_PATH, "api-hidden"))],
-      ["missing direct actor", (execution) => delete execution.toolCalls[0]!.threadId],
-      ["non-exact direct path", (execution) => (execution.toolCalls[0]!.input = { file_path: `/tmp/${API_PATH}` })],
-    ];
+  test("reports additional safe reads but rejects out-of-scope reads", () => {
+    const safe = directExecution();
+    safe.toolCalls.splice(2, 0, successfulRead(3, API_PATH, safe.world.apiFact));
+    safe.toolCalls.at(-1)!.sequence = 4;
+    expect(planConvergeTask.evaluate(safe)).toMatchObject({
+      passed: true,
+      diagnostics: [{ code: "plan_converge.additional_safe_read" }],
+    });
 
-    for (const [name, mutate] of cases) {
-      const execution = directExecution();
-      mutate(execution);
-      expect(planConvergeTask.evaluate(execution).passed, name).toBe(false);
-    }
+    const escaped = directExecution();
+    escaped.toolCalls[0]!.input = { file_path: `/tmp/${API_PATH}` };
+    expect(planConvergeTask.evaluate(escaped).passed).toBe(false);
   });
 });
 
@@ -356,10 +318,4 @@ function providerCall(provider: "anthropic" | "openai") {
       omittedObjectProperties: 0,
     },
   } as unknown as RuntimeEvalExecution<PlanConvergeWorld>["providerCalls"][number];
-}
-
-function swap<T>(values: T[], left: number, right: number): void {
-  const value = values[left]!;
-  values[left] = values[right]!;
-  values[right] = value;
 }

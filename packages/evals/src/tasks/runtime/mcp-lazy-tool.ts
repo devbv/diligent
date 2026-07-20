@@ -84,7 +84,7 @@ export const mcpLazyToolTask: RuntimeEvalTask<McpLazyToolWorld> = {
   limits: {
     ...DEFAULT_RUNTIME_LIMITS,
     maxTurns: 4,
-    maxToolCalls: 3,
+    maxToolCalls: 4,
     maxChangedFiles: 0,
     maxChangedBytes: 0,
     timeoutMs: 180_000,
@@ -160,14 +160,14 @@ export const mcpLazyToolTask: RuntimeEvalTask<McpLazyToolWorld> = {
   evaluate(input) {
     const failure = validateTraceAndApproval(input) ?? validateIsolation(input) ?? validateFinal(input);
     if (failure) return failure;
-    return input.toolCalls.length === 3
+    return input.toolCalls.length > 2
       ? {
           passed: true,
           diagnostics: [
             {
               dimension: "efficiency",
               code: "mcp_lazy.second_safe_search",
-              message: "A second bounded discovery search preceded the intended MCP call.",
+              message: `${input.toolCalls.length - 1} bounded discovery searches preceded the intended MCP call.`,
             },
           ],
         }
@@ -278,7 +278,7 @@ await server.connect(new StdioServerTransport());
 
 function validateTraceAndApproval(input: RuntimeEvalExecution<McpLazyToolWorld>) {
   const trace = splitMcpTrace(input);
-  if (!trace) return fail("trace", "Expected one or two searches followed by one exact run.");
+  if (!trace) return fail("trace", "Expected bounded searches followed by one exact run.");
   const { searches, run } = trace;
   const searchOutput = expectedSearchOutput();
   if (
@@ -309,10 +309,10 @@ function validateTraceAndApproval(input: RuntimeEvalExecution<McpLazyToolWorld>)
 }
 
 function splitMcpTrace(input: RuntimeEvalExecution<McpLazyToolWorld>) {
-  if (input.toolCalls.length !== 2 && input.toolCalls.length !== 3) return undefined;
+  if (input.toolCalls.length < 2 || input.toolCalls.length > 4) return undefined;
   const searches = input.toolCalls.slice(0, -1);
   const run = input.toolCalls.at(-1);
-  if (!run || searches.length < 1 || searches.length > 2) return undefined;
+  if (!run || searches.length < 1 || searches.length > 3) return undefined;
   return { searches, run };
 }
 

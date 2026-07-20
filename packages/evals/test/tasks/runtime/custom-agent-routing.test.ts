@@ -123,6 +123,22 @@ describe("custom-agent-routing", () => {
     expect(customAgentRoutingTask.evaluate(execution)).toEqual({ passed: true });
   });
 
+  test("does not gate routing on persistence mirrors, infrastructure bytes, or verifier wording", async () => {
+    const execution = await assembledExecution(DEFAULT_PROFILES[0]!);
+    execution.session.lines = [];
+    execution.childSessions[0]!.lines = [];
+    execution.threadReads = [];
+    execution.turns[0]!.coreEvents = [];
+    execution.turns[0]!.runtimeEvents = [];
+    execution.turns[0]!.notifications = [];
+    const gitignore = execution.workspace.final.entries.find((entry) => entry.path === ".diligent/.gitignore")!;
+    gitignore.size += 1;
+    gitignore.sha256 = "f".repeat(64);
+    execution.verifier!.argv = ["deterministic-verifier"];
+    execution.verifier!.stdout = "alternate success wording\n";
+    expect(customAgentRoutingTask.evaluate(execution)).toMatchObject({ passed: true });
+  });
+
   test("accepts a provider thinking block beside the exact persisted child result", async () => {
     const execution = await assembledExecution(DEFAULT_PROFILES[0]!);
     const childFinal = (execution.childSessions[0]!.lines.at(-1) as { message: { content: unknown[] } }).message;

@@ -283,6 +283,7 @@ export interface RuntimeEvalTask<TWorld> {
   createRuntimeConfig(world: TWorld, profile: EvalProfile): Promise<RuntimeConfig>;
   createBundledToolProviders?(world: TWorld): readonly BundledToolProvider[] | Promise<readonly BundledToolProvider[]>;
   createSteps(world: TWorld): RuntimeEvalStep[];
+  prepareStep?(world: TWorld, step: RuntimeEvalStep, index: number): void | Promise<void>;
   respondToServerRequest?(
     world: TWorld,
     request: DiligentServerRequest,

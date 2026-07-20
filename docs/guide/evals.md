@@ -27,23 +27,24 @@ multiple image blocks from an in-memory tool without runtime or filesystem behav
 A complete run requires both `OPENAI_API_KEY` and `ANTHROPIC_API_KEY`; a provider-filtered run requires only its
 selected credential.
 
-The runtime suite contains 30 tasks. An unfiltered run uses both default profiles and therefore performs 60 sequential
+The runtime suite contains 34 tasks. An unfiltered run uses both default profiles and therefore performs 68 sequential
 task/profile executions. The complete manifest is:
 
 - Project, prompt, and modes: `project-fix`, `plan-readonly`, `plan-to-execute`, `instruction-hierarchy`,
-  `plan-converge`, `execute-autonomous`, `plan-progress`, and `hook-context-follow`.
+  `plan-converge`, `cross-file-contract-fix`, `plan-progress`, and `hook-context-follow`.
 - Skills and knowledge: `knowledge-recall`, `skill-auto-select`, `skill-abstain`, `knowledge-intent-split`, and
   `knowledge-forget`.
 - Interaction, context, and continuity: `session-resume`, `manual-compaction-resume`, `clarify-then-execute`,
   `read-image-pair`, `file-roundtrip`, `steer-during-fix`, `auto-compaction-resume`, `image-resume-recall`,
-  `loop-context-adaptation`, and `large-output-recovery`.
+  `fresh-prompt-after-compaction`, `input-cancel-resume`, `loop-context-adaptation`, and `large-output-recovery`.
 - Runtime integrations: `bundled-tool-routing`, `mcp-lazy-tool`, `mcp-resource-grounding`, and
-  `mcp-prompt-grounding`. Plugin loading and tool-shape enforcement are deterministic runtime contracts, so
-  `plugin-tool-routing` is not a live-model task.
-- Collaboration: `custom-agent-routing`, `collaboration-parallel-synthesis`, and `collaboration-resume-reference`.
+  `mcp-prompt-grounding`, plus `mcp-needs-auth-abstain`. Plugin loading and tool-shape enforcement are deterministic
+  runtime contracts, so `plugin-tool-routing` is not a live-model task.
+- Collaboration: `custom-agent-routing`, `collaboration-parallel-synthesis`, `collaboration-resume-reference`, and
+  `autonomous-explore-delegation`.
 
 Selection counts are predictable: one task against one provider is one execution, one task without a provider filter
-is two, all tasks against one provider is 30, and the unfiltered manifest is 60.
+is two, all tasks against one provider is 34, and the unfiltered manifest is 68.
 
 ## Deterministic verification and live calibration
 
@@ -120,8 +121,8 @@ concurrency group. Its direct-job graph is:
 1. Core runs on Ubuntu as concurrent OpenAI and Anthropic jobs. Each job passes exactly one provider and executes the
    7-task suite, for 14 task/profile executions in the phase.
 2. After the complete core matrix finishes, runtime runs even if core failed. Four jobs cover Ubuntu and Windows
-   crossed with OpenAI and Anthropic. Each job passes exactly one provider and executes 30 tasks, for 120 executions:
-   the same 60 task/profile pairs sampled once on each operating system.
+   crossed with OpenAI and Anthropic. Each job passes exactly one provider and executes 34 tasks, for 136 executions:
+   the same 68 task/profile pairs sampled once on each operating system.
 3. A final always-running aggregate job fails the workflow unless both complete matrix phases succeeded. Per-job
    report uploads also run after failures and use provider/OS-specific paths and artifact names.
 
