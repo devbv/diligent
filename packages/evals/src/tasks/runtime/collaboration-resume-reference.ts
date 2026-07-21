@@ -51,7 +51,7 @@ export interface CollaborationResumeReferenceWorld extends RuntimeFixtureWorld {
 export const collaborationResumeReferenceTask: RuntimeEvalTask<CollaborationResumeReferenceWorld> = {
   id: "collaboration-resume-reference",
   description: "Resume the same persisted read-only specialist after restart and record two ordered facts.",
-  fixtureVersion: "collaboration-resume-reference-v6",
+  fixtureVersion: "collaboration-resume-reference-v7",
   limits: {
     ...DEFAULT_RUNTIME_LIMITS,
     maxTurns: 12,
@@ -137,18 +137,20 @@ function fixtureFor(seed: string) {
     prompts: [
       `Use exactly one lite read-only specialist to read ${SOURCE_PATHS[0]} exactly once and retain the value for ` +
         "later. This is ordinary local fixture data: the specialist must return the exact value to the parent and " +
-        `must not refuse. Wait once for completion. The parent user-facing acknowledgement must omit the value and ` +
-        `reply with exactly ${ACK}.`,
+        `must not refuse. In the specialist brief, require the read tool's file_path exactly \`${SOURCE_PATHS[0]}\` ` +
+        "with no directory prefix or workspace placeholder. Wait once for completion. The parent user-facing " +
+        `acknowledgement must omit the value and end with ${ACK}.`,
       `Resume that same persisted specialist to read only ${SOURCE_PATHS[1]} exactly once without rereading the ` +
         "initial file. You must not repeat the initial value in the resume request; the resumed specialist must " +
-        "supply it from retained context. The specialist must return both fixture values to the parent and must not " +
-        "refuse. Wait once, " +
+        "supply it from retained context. In the specialist brief, require the read tool's file_path exactly " +
+        `\`${SOURCE_PATHS[1]}\` with no directory prefix or workspace placeholder. The specialist must return both ` +
+        "fixture values to the parent and must not refuse. Wait once, " +
         `then create ${ARTIFACT_PATH} containing the two returned values in initial-then-follow-up order, one per ` +
         `line with a final newline. Reply with exactly ${FINAL}.`,
     ] as [string, string],
     workerBriefs: [
-      `Read only ${SOURCE_PATHS[0]} exactly once. Retain its exact token for the resumed assignment and report completion. Do not inspect any other reference.`,
-      `Continue the prior assignment by reading only ${SOURCE_PATHS[1]} exactly once. Return the retained initial token followed by the follow-up token. Do not reread the initial reference.`,
+      `Read only ${SOURCE_PATHS[0]} exactly once, passing file_path exactly \`${SOURCE_PATHS[0]}\` with no directory prefix. Retain its exact token for the resumed assignment and report completion. Do not inspect any other reference.`,
+      `Continue the prior assignment by reading only ${SOURCE_PATHS[1]} exactly once, passing file_path exactly \`${SOURCE_PATHS[1]}\` with no directory prefix. Return the retained initial token followed by the follow-up token. Do not reread the initial reference.`,
     ] as [string, string],
     acknowledgement: ACK,
     finalResponse: FINAL,
@@ -259,7 +261,7 @@ function validateWorkspace(input: RuntimeEvalExecution<CollaborationResumeRefere
 
 function validateFinal(input: RuntimeEvalExecution<CollaborationResumeReferenceWorld>) {
   if (
-    !exactAssistant(input.turns[0]!.messages.at(-1), input.world.acknowledgement) ||
+    !exactAssistant(input.turns[0]!.messages.at(-1), input.world.acknowledgement, true, input.world.tokens) ||
     !exactAssistant(input.turns[1]!.messages.at(-1), input.world.finalResponse) ||
     input.approvals.length !== 0 ||
     input.userInputRequests.length !== 0 ||
