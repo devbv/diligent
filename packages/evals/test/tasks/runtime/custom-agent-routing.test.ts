@@ -19,7 +19,7 @@ import { assistantMessage, sequenceStream } from "../../helpers/fake-stream";
 
 describe("custom-agent-routing", () => {
   test("runs one genuine discovered custom agent through the real collaboration runtime for both providers", async () => {
-    expect(customAgentRoutingTask.fixtureVersion).toBe("custom-agent-routing-v10");
+    expect(customAgentRoutingTask.fixtureVersion).toBe("custom-agent-routing-v11");
     expect(DEFAULT_PROFILES).toHaveLength(2);
     for (const profile of DEFAULT_PROFILES) {
       const execution = await assembledExecution(profile);
@@ -27,12 +27,15 @@ describe("custom-agent-routing", () => {
       expect(execution.world.releaseAgent.body).toContain(execution.world.releasePath);
       expect(execution.world.releaseAgent.body).toContain("Current working directory");
       expect(execution.world.releaseAgent.body).toContain("append the fixed suffix");
+      expect(execution.world.releaseAgent.body).toContain("one non-empty token line");
+      expect(execution.world.releaseAgent.body).toContain("not an additional blank line");
       expect(execution.world.clientPrompt).not.toContain(execution.world.releasePath);
       expect(execution.world.clientPrompt).toContain(execution.world.artifactPath);
       expect(execution.world.clientPrompt).toContain(execution.world.finalResponse);
       expect(execution.world.clientPrompt).toContain("create a new file named");
       expect(execution.world.clientPrompt).toContain("including its trailing newline");
       expect(execution.world.clientPrompt).toContain("main task must not directly read the capsule");
+      expect(execution.world.clientPrompt).toContain("exactly one trailing newline and no blank line");
       expect(execution.toolCalls.map((call) => call.name)).toEqual([
         "spawn_agent",
         "read",
