@@ -2,7 +2,7 @@
 
 import * as scriptEdit from "../methods/script.edit";
 import { buildScriptEditRender } from "../render";
-import { applyLevelChanges } from "../rpc";
+import { applyLevelChanges, call } from "../rpc";
 import type { Tool, ToolContext, ToolResult } from "../types";
 import type { WriteLock } from "../write-lock";
 import {
@@ -12,6 +12,7 @@ import {
   normalizeLineEndings,
   type OvdrjmNode,
   readAndWriteOvdrjm,
+  readOvdrjmRoot,
 } from "./ovdrjm-utils";
 
 // ---------------------------------------------------------------------------
@@ -25,6 +26,7 @@ interface SingleEdit {
 }
 
 type MatchMode = "trimEnd" | "trim" | "unicode";
+type ApplyAndSaveLevelChanges = () => Promise<void>;
 
 function normalizeUnicode(value: string): string {
   return value
@@ -166,6 +168,7 @@ async function executeScriptEdit(
   ctx: ToolContext,
   cwd: string,
   writeLock: WriteLock,
+  applyAndSaveLevelChanges: ApplyAndSaveLevelChanges,
 ): Promise<ToolResult> {
   const toolName = toToolName(scriptEdit.method);
   const parsed = scriptEdit.params.parse(args);
@@ -193,6 +196,8 @@ async function executeScriptEdit(
     let tabCount = 0;
     let eolCount = 0;
     let scriptName: string | undefined;
+    let expectedSource = "";
+    let previousSource = "";
 
     readAndWriteOvdrjm(cwd, (rootDoc) => {
       const root = rootDoc.Root;
@@ -215,6 +220,7 @@ async function executeScriptEdit(
 
       scriptName = typeof target.Name === "string" ? target.Name : undefined;
       const source = typeof target.Source === "string" ? target.Source : "";
+      previousSource = source;
 
       const { result, count: editCount } = applyEdit(source, { old_string, new_string, replace_all });
 
@@ -222,14 +228,23 @@ async function executeScriptEdit(
       const normalized = normalizeLeadingSpaces(result);
       const eolNormalized = normalizeLineEndings(normalized.result);
       target.Source = eolNormalized.result;
+      expectedSource = eolNormalized.result;
       tabCount = normalized.converted;
       eolCount = eolNormalized.converted;
       count = editCount;
     });
 
-    await applyLevelChanges();
+    // The local file edit is not proof that Studio accepted it. Persist the
+    // editor's resulting state, then read the same source of truth back.
+    await applyAndSaveLevelChanges();
+    const { root: readbackRoot } = readOvdrjmRoot(cwd);
+    const readbackTarget = findNodeByActorGuid(readbackRoot, targetGuid);
+    const readbackSource = typeof readbackTarget?.Source === "string" ? readbackTarget.Source : undefined;
+    if (readbackSource !== expectedSource) {
+      throw new Error(`Post-edit readback did not match the requested source for ${targetGuid}`);
+    }
 
-    let output = `Edited script ${targetGuid}: replaced ${count} occurrence(s)`;
+    let output = `Edited script ${targetGuid}: replaced ${count} occurrence(s); readback verified`;
     const normalizations: string[] = [];
     if (tabCount > 0) normalizations.push(`${tabCount} leading 4-space group(s) → tabs`);
     if (eolCount > 0) normalizations.push(`${eolCount} line ending(s) normalized`);
@@ -237,7 +252,12 @@ async function executeScriptEdit(
     return {
       output,
       render: buildScriptEditRender({ targetGuid, scriptName, old_string, new_string, replace_all }, output, count),
-      metadata: { method: "script.edit", targetGuid, count },
+      metadata: {
+        method: "script.edit",
+        targetGuid,
+        count,
+        readback: { verified: true, sourceChanged: previousSource !== readbackSource },
+      },
     };
   } catch (err) {
     return {
@@ -249,13 +269,20 @@ async function executeScriptEdit(
   }
 }
 
-export function createScriptEditTool(cwd: string, writeLock: WriteLock): Tool {
+export function createScriptEditTool(
+  cwd: string,
+  writeLock: WriteLock,
+  applyAndSaveLevelChanges: ApplyAndSaveLevelChanges = async () => {
+    await applyLevelChanges();
+    await call("level.save.file", {});
+  },
+): Tool {
   return {
     name: toToolName(scriptEdit.method),
     description: scriptEdit.description,
     parameters: scriptEdit.params,
     async execute(args, ctx) {
-      return executeScriptEdit(args, ctx, cwd, writeLock);
+      return executeScriptEdit(args, ctx, cwd, writeLock, applyAndSaveLevelChanges);
     },
   };
 }

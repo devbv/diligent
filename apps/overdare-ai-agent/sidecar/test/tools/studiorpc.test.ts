@@ -218,11 +218,14 @@ describe("createStudioRpcToolProvider", () => {
     ]);
   });
 
-  test("saves the level to file after a mutating asset-import tool call", async () => {
+  test("returns the refreshed hierarchy after a mutating asset-import tool call", async () => {
     const calls: Array<{ method: string; params?: Record<string, unknown>; timeoutMs?: number }> = [];
     const provider = createStudioRpcToolProvider({
       callRpc: async (method, params, options) => {
         calls.push({ method, params, timeoutMs: options?.timeoutMs });
+        if (method === "level.browse") {
+          return { level: [{ guid: "fresh-import-guid", class: "Model" }] };
+        }
         return "imported";
       },
     });
@@ -232,7 +235,7 @@ describe("createStudioRpcToolProvider", () => {
     });
     const importTool = tools.find((tool) => tool.name === "studiorpc_asset_drawer_import")!;
 
-    await importTool.execute(
+    const result = await importTool.execute(
       { assetid: "ovdrassetid://123", assetName: "Tree", assetType: "MODEL" },
       { toolCallId: "test", signal: new AbortController().signal, abort: () => {} },
     );
@@ -244,7 +247,11 @@ describe("createStudioRpcToolProvider", () => {
         timeoutMs: undefined,
       },
       { method: "level.save.file", params: {}, timeoutMs: undefined },
+      { method: "level.browse", params: {}, timeoutMs: undefined },
     ]);
+    expect(result.output).toContain("<studio_current_hierarchy>");
+    expect(result.output).toContain("fresh-import-guid");
+    expect(result.metadata).toMatchObject({ currentHierarchy: [{ guid: "fresh-import-guid", class: "Model" }] });
   });
 
   test("uses an extended timeout and guidance for level publish", async () => {

@@ -7,6 +7,7 @@ import {
   type PluginHookFn,
   type RuntimeToolHost,
 } from "@diligent/runtime";
+import * as levelBrowse from "./methods/level.browse";
 import { call } from "./rpc";
 import { methodModules, mutatingMethods, renderBuilders, savingMethods } from "./tool-registry";
 import { createCollisionProfileTools } from "./tools/collision-profile-tool";
@@ -215,7 +216,15 @@ export async function createStudioRpcTools(ctx: {
     wrapTool(createScriptGrepTool(ctx.cwd), ctx.host),
     wrapTool(withSnapshot(createScriptAddTool(ctx.cwd, writeLock)), ctx.host),
     wrapTool(withSnapshot(createScriptDeleteTool(ctx.cwd, writeLock)), ctx.host),
-    wrapTool(withSnapshot(createScriptEditTool(ctx.cwd, writeLock)), ctx.host),
+    wrapTool(
+      withSnapshot(
+        createScriptEditTool(ctx.cwd, writeLock, async () => {
+          await callRpc("level.apply", {});
+          await callRpc("level.save.file", {});
+        }),
+      ),
+      ctx.host,
+    ),
     ...createCollisionProfileTools(ctx.cwd, writeLock, applyLevelChanges).map((tool) =>
       wrapTool(isCollisionEdit(tool.name) ? withSnapshot(tool) : tool, ctx.host),
     ),
@@ -270,17 +279,27 @@ export async function createStudioRpcTools(ctx: {
               result = mod.postProcess(result, args as Record<string, unknown>);
             }
             // Persist editor-state changes to file immediately on success.
+            let currentHierarchy: unknown;
             if (savingMethods.has(method)) {
               await callRpc("level.save.file", {});
+              currentHierarchy = levelBrowse.postProcess(await callRpc("level.browse", {}), {});
             }
-            const output = typeof result === "string" ? result : JSON.stringify(result, null, 2);
+            const primaryOutput = typeof result === "string" ? result : JSON.stringify(result, null, 2);
+            const output =
+              currentHierarchy === undefined
+                ? primaryOutput
+                : `${primaryOutput}\n\n<studio_current_hierarchy>\n${JSON.stringify(currentHierarchy, null, 2)}\n</studio_current_hierarchy>\nUse only GUIDs from this refreshed hierarchy for follow-up instance operations.`;
             const renderBuilder = renderBuilders[toolName];
             const render = renderBuilder?.({ args: args as Record<string, unknown>, normalizedArgs, output, result });
 
             return {
               output: warning ? `${warning}\n${output}` : output,
               render,
-              metadata: { method: rpcMethod, result },
+              metadata: {
+                method: rpcMethod,
+                result,
+                ...(currentHierarchy === undefined ? {} : { currentHierarchy }),
+              },
             };
           } catch (error) {
             // Same rationale as withSnapshot's catch: a warning generated but
