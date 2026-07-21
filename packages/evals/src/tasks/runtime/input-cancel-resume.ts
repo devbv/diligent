@@ -28,7 +28,7 @@ const PATHS = { alpha: "targets/alpha.txt", beta: "targets/beta.txt" } as const;
 export const inputCancelResumeTask: RuntimeEvalTask<InputCancelResumeWorld> = {
   id: "input-cancel-resume",
   description: "Resume safely when a clarification is cancelled and the next user turn supplies the decision.",
-  fixtureVersion: "input-cancel-resume-v3",
+  fixtureVersion: "input-cancel-resume-v4",
   limits: {
     ...DEFAULT_RUNTIME_LIMITS,
     maxTurns: 8,
@@ -70,13 +70,16 @@ export const inputCancelResumeTask: RuntimeEvalTask<InputCancelResumeWorld> = {
       mode: "plan",
       message:
         `Put ${world.value} in one of the existing target files, ${PATHS.alpha} or ${PATHS.beta}. ` +
-        "Both are plausible and no selection is provided, so resolve the target before any mutation.",
+        "Both are plausible and no selection is provided. Read both files, then present those two paths through the " +
+        "interactive choice UI and wait for the user's selection before any mutation. Do not answer with a prose " +
+        "question or a plan.",
     },
     {
       kind: "turn",
       mode: "execute",
       message:
-        `Use ${world.targetPath} as the selected target and replace the entire contents with exactly ` +
+        `The previous interactive choice was cancelled; use ${world.targetPath} as the selected target and replace ` +
+        "the entire contents with exactly " +
         `${world.value} followed by one trailing newline. Do not ask the same question again, and leave the other ` +
         "target unchanged. A confirmation read is allowed but not required.",
     },

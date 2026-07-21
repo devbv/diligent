@@ -883,6 +883,11 @@ describe("runtime eval tasks", () => {
       expect(prompt).toContain("inputs/suffixes.txt");
       expect(prompt).toContain("read tool");
       expect(prompt).toContain("only permitted shell command is exactly bun test");
+      expect(prompt).toContain(
+        "create only generated/stage-one.txt, generated/stage-two.txt, and generated/stage-three.txt",
+      );
+      expect(prompt).toContain("Do not add scripts or configuration files");
+      expect(planProgressTask.fixtureVersion).toBe("plan-progress-v7");
       expect([world.base, world.middle, world.final].every((value) => !prompt.includes(value))).toBe(true);
       const boundedProviderNeutralCalls =
         world.planSteps.length + 1 + Object.keys(world.outputs).length + 2 + Object.keys(world.outputs).length + 1 + 6;

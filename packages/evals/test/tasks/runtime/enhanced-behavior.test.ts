@@ -100,8 +100,12 @@ describe("enhanced runtime eval behaviors", () => {
       expect(JSON.stringify(cancelSteps[0])).toContain("targets/alpha.txt");
       expect(JSON.stringify(cancelSteps[0])).toContain("targets/beta.txt");
       expect(JSON.stringify(cancelSteps[0])).toContain("no selection is provided");
+      expect(JSON.stringify(cancelSteps[0])).toContain("interactive choice UI");
+      expect(JSON.stringify(cancelSteps[0])).toContain("Do not answer with a prose question");
       expect(JSON.stringify(cancelSteps[1])).toContain(cancel.targetPath);
+      expect(JSON.stringify(cancelSteps[1])).toContain("previous interactive choice was cancelled");
       expect(JSON.stringify(cancelSteps[1])).toContain("replace the entire contents");
+      expect(inputCancelResumeTask.fixtureVersion).toBe("input-cancel-resume-v4");
       expect(inputCancelResumeTask.limits.maxToolCalls).toBe(7);
       expect(explore.sourcePaths).toHaveLength(6);
       expect(explore.sourcePaths.every((path) => path.startsWith("reference-map/"))).toBe(true);

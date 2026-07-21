@@ -27,7 +27,7 @@ const OUTPUT_PATHS = ["generated/stage-one.txt", "generated/stage-two.txt", "gen
 export const planProgressTask: RuntimeEvalTask<PlanProgressWorld> = {
   id: "plan-progress",
   description: "Create and maintain a one-active-step plan while implementing an ordered three-file pipeline.",
-  fixtureVersion: "plan-progress-v6",
+  fixtureVersion: "plan-progress-v7",
   limits: { ...DEFAULT_RUNTIME_LIMITS, maxTurns: 24, maxToolCalls: 24, timeoutMs: 300_000 },
   statePolicy: { allowedMutations: ["infrastructure", "sessions"] },
   toolPolicy: {
@@ -98,7 +98,7 @@ export const planProgressTask: RuntimeEvalTask<PlanProgressWorld> = {
       kind: "turn",
       mode: "execute",
       message:
-        "Implement the three-stage generated-file pipeline described by the project. Use the read tool for inputs/base.txt and inputs/suffixes.txt; the only permitted shell command is exactly bun test. Keep a visible plan current and finish only after verification succeeds.",
+        "Implement the three-stage generated-file pipeline described by the project. Use the read tool for inputs/base.txt and inputs/suffixes.txt, then create only generated/stage-one.txt, generated/stage-two.txt, and generated/stage-three.txt directly in numeric dependency order. Do not add scripts or configuration files. The only permitted shell command is exactly bun test. Keep a visible plan current and finish only after verification succeeds.",
     },
   ],
   verify: (world, signal) => runVerifier(world, ["bun", "test"], signal),
