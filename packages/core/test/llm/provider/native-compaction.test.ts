@@ -5,11 +5,7 @@ import { createAnthropicNativeCompaction } from "../../../src/llm/provider/anthr
 import { createChatGPTNativeCompaction } from "../../../src/llm/provider/chatgpt";
 import { createOpenAINativeCompaction } from "../../../src/llm/provider/openai";
 import { buildResponsesRequestBody, toResponseInputItems } from "../../../src/llm/provider/openai/responses";
-import {
-  describeCompactionPayload,
-  extractCompactionSummaryItem,
-  extractOpenAICompactionState,
-} from "../../../src/llm/provider/openai/shared";
+import { describeCompactionPayload, extractOpenAICompactionState } from "../../../src/llm/provider/openai/shared";
 import type { Model } from "../../../src/llm/types";
 
 const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-5";
@@ -34,6 +30,28 @@ function replacementHistoryPayload() {
         content: [{ type: "input_text", text: "Compacted handoff" }],
       },
       { type: "compaction", encrypted_content: "ENCRYPTED_COMPACTION_SUMMARY" },
+    ],
+  };
+}
+
+function responsesLiteReplacementHistoryPayload() {
+  return {
+    output: [
+      {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: "Compacted task state" }],
+      },
+      {
+        type: "message",
+        role: "assistant",
+        content: [{ type: "output_text", text: "Retained assistant state" }],
+      },
+      {
+        type: "compaction_summary",
+        id: "cmp_1",
+        encrypted_content: "ENCRYPTED_COMPACTION_SUMMARY",
+      },
     ],
   };
 }
@@ -220,10 +238,12 @@ describe("native compaction adapters", () => {
     };
 
     expect(describeCompactionPayload(payload)).toContain("structured_compaction_items=1");
-    expect(extractCompactionSummaryItem(payload)).toEqual({
-      type: "compaction",
-      encrypted_content: "encrypted",
-    });
+  });
+
+  test("compaction payload descriptor recognizes Responses Lite compaction summaries", () => {
+    expect(describeCompactionPayload(responsesLiteReplacementHistoryPayload())).toContain(
+      "structured_compaction_items=1",
+    );
   });
 
   test("extracts the complete replacement history instead of dropping retained messages", () => {
@@ -235,21 +255,8 @@ describe("native compaction adapters", () => {
     });
   });
 
-  test("accepts a message-only replacement history from Responses Lite compaction", () => {
-    const payload = {
-      output: [
-        {
-          type: "message",
-          role: "user",
-          content: [{ type: "input_text", text: "Compacted task state" }],
-        },
-        {
-          type: "message",
-          role: "assistant",
-          content: [{ type: "output_text", text: "Retained assistant state" }],
-        },
-      ],
-    };
+  test("accepts a Responses Lite replacement history with compaction_summary", () => {
+    const payload = responsesLiteReplacementHistoryPayload();
 
     expect(extractOpenAICompactionState(payload)).toEqual({
       type: "diligent_openai_compaction_state",
@@ -484,19 +491,8 @@ describe("native compaction adapters", () => {
     ]);
   });
 
-  test("ChatGPT GPT-5.6 compaction accepts a message-only replacement history", async () => {
-    const compactedOutput = [
-      {
-        type: "message",
-        role: "user",
-        content: [{ type: "input_text", text: "Compacted task state" }],
-      },
-      {
-        type: "message",
-        role: "assistant",
-        content: [{ type: "output_text", text: "Retained assistant state" }],
-      },
-    ];
+  test("ChatGPT GPT-5.6 compaction accepts the Responses Lite replacement history", async () => {
+    const compactedOutput = responsesLiteReplacementHistoryPayload().output;
     globalThis.fetch = mock(
       async () => new Response(JSON.stringify({ output: compactedOutput }), { status: 200 }),
     ) as unknown as typeof fetch;

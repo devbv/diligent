@@ -94,7 +94,8 @@ Current behavior:
 - when native compaction succeeds, Diligent can persist provider compaction state as `compactionSummary`
 - OpenAI-family compact endpoints return a replacement `output` history; Diligent preserves every response item in
   that history, including retained messages and opaque `compaction` items
-- message-only replacement histories returned by ChatGPT Responses Lite are valid native compaction results
+- ChatGPT Responses Lite replacement histories containing the provider's `compaction_summary` item are valid native
+  compaction results
 - existing sessions that stored a single opaque `compaction` item remain supported
 
 When `compactionSummary` exists, the rebuilt provider-visible context is restored from that provider-owned state

@@ -293,7 +293,8 @@ function countStructuredCompactionItems(output: unknown): number {
     (item) =>
       Boolean(item) &&
       typeof item === "object" &&
-      (item as Record<string, unknown>).type === "compaction" &&
+      ((item as Record<string, unknown>).type === "compaction" ||
+        (item as Record<string, unknown>).type === "compaction_summary") &&
       typeof (item as Record<string, unknown>).encrypted_content === "string",
   ).length;
 }
@@ -303,16 +304,4 @@ export function describeCompactionPayload(payload: Record<string, unknown>): str
   const topKeys = keys.length > 0 ? keys.slice(0, 8).join(",") : "none";
   const outputLen = Array.isArray(payload.output) ? payload.output.length : 0;
   return `payload_keys=${topKeys} output_items=${outputLen} output_shape=${summarizeOutputShape(payload.output)} structured_compaction_items=${countStructuredCompactionItems(payload.output)}`;
-}
-
-export function extractCompactionSummaryItem(payload: Record<string, unknown>): Record<string, unknown> | undefined {
-  if (!Array.isArray(payload.output)) return undefined;
-  for (const rawItem of payload.output) {
-    if (!rawItem || typeof rawItem !== "object") continue;
-    const item = rawItem as Record<string, unknown>;
-    if (item.type === "compaction" && typeof item.encrypted_content === "string") {
-      return { type: "compaction", encrypted_content: item.encrypted_content };
-    }
-  }
-  return undefined;
 }
