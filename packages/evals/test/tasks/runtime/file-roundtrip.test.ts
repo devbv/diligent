@@ -63,7 +63,7 @@ describe("file-roundtrip", () => {
           {
             dimension: "efficiency",
             code: "file_roundtrip.safe_read_recovery",
-            message: "One bounded read inside the records fixture failed before successful completion.",
+            message: "One bounded read inside the fixture boundary failed before successful completion.",
           },
         ],
       });
@@ -102,7 +102,7 @@ describe("file-roundtrip", () => {
         {
           dimension: "efficiency",
           code: "file_roundtrip.safe_read_recovery",
-          message: "One bounded read inside the records fixture failed before successful completion.",
+          message: "One bounded read inside the fixture boundary failed before successful completion.",
         },
       ],
     });
@@ -113,6 +113,29 @@ describe("file-roundtrip", () => {
     expect(fileRoundtripTask.evaluate(incidentalShape)).toEqual({
       passed: true,
       diagnostics: expect.any(Array),
+    });
+  });
+
+  test("accepts one missing root instruction-file probe before grounded completion", async () => {
+    const execution = await assembledExecution(DEFAULT_PROFILES[0]!);
+    const probe = structuredClone(execution.toolCalls[0]!);
+    probe.toolCallId = "missing-root-instructions";
+    probe.input = { file_path: "$WORKSPACE/AGENTS.md" };
+    probe.outcome = "runtime_error";
+    probe.error = "Error: File not found: $WORKSPACE/AGENTS.md";
+    probe.output = { output: probe.error, metadata: { error: true } };
+    execution.toolCalls.splice(1, 0, probe);
+    execution.toolCalls.forEach((call, index) => (call.sequence = index + 1));
+
+    expect(fileRoundtripTask.evaluate(execution)).toEqual({
+      passed: true,
+      diagnostics: [
+        {
+          dimension: "efficiency",
+          code: "file_roundtrip.safe_read_recovery",
+          message: "One bounded read inside the fixture boundary failed before successful completion.",
+        },
+      ],
     });
   });
 
@@ -234,7 +257,7 @@ async function assembledExecution(
       {
         dimension: "efficiency",
         code: "file_roundtrip.safe_read_recovery",
-        message: "One bounded read inside the records fixture failed before successful completion.",
+        message: "One bounded read inside the fixture boundary failed before successful completion.",
       },
     ]);
     expect(result.passed).toBe(true);

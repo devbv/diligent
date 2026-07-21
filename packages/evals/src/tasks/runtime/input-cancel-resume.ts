@@ -28,11 +28,11 @@ const PATHS = { alpha: "targets/alpha.txt", beta: "targets/beta.txt" } as const;
 export const inputCancelResumeTask: RuntimeEvalTask<InputCancelResumeWorld> = {
   id: "input-cancel-resume",
   description: "Resume safely when a clarification is cancelled and the next user turn supplies the decision.",
-  fixtureVersion: "input-cancel-resume-v2",
+  fixtureVersion: "input-cancel-resume-v3",
   limits: {
     ...DEFAULT_RUNTIME_LIMITS,
     maxTurns: 8,
-    maxToolCalls: 5,
+    maxToolCalls: 7,
     maxUserInputRequests: 1,
     timeoutMs: 240_000,
   },
@@ -76,8 +76,9 @@ export const inputCancelResumeTask: RuntimeEvalTask<InputCancelResumeWorld> = {
       kind: "turn",
       mode: "execute",
       message:
-        `Use ${world.targetPath} as the selected target. Complete the pending update without asking the same ` +
-        "question again, and leave the other target unchanged.",
+        `Use ${world.targetPath} as the selected target and replace the entire contents with exactly ` +
+        `${world.value} followed by one trailing newline. Do not ask the same question again, and leave the other ` +
+        "target unchanged. A confirmation read is allowed but not required.",
     },
   ],
   respondToServerRequest(_world, request): DiligentServerRequestResponse {

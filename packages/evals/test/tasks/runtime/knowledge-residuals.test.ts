@@ -82,6 +82,26 @@ describe("knowledge residual evaluator calibration", () => {
     }
   });
 
+  test("accepts safe knowledge verification searches after the durable update and before create recovery", () => {
+    const execution = intentSplitRecoveryExecution();
+    const [search, update, recovery, write] = execution.toolCalls;
+    if (!search || !update || !recovery || !write) throw new Error("Expected recovery fixture calls.");
+    const secondSearch = trace(3, "search_knowledge", "knowledge", { query: "OLD_AUDIENCE" }, "thread-1");
+    execution.toolCalls = [update, search, secondSearch, recovery, write];
+    resequence(execution.toolCalls);
+
+    expect(knowledgeIntentSplitTask.evaluate(execution)).toEqual({
+      passed: true,
+      diagnostics: [
+        {
+          dimension: "efficiency",
+          code: "knowledge_intent_split.second_safe_search",
+          message: "A second bounded read-only knowledge search was used before successful completion.",
+        },
+      ],
+    });
+  });
+
   test("accepts an exact-id plus nontransient optional lookup without broadening search keys", () => {
     const combined = intentSplitExecution("anthropic");
     combined.toolCalls[0]!.sequence = 2;

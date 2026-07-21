@@ -239,13 +239,15 @@ function isExactAnthropicCreateRecovery(
   const [recovery, write] = writes;
   if (!recovery || !write) return false;
   const error = `Error: file_path must be absolute: ${OUTPUT_PATH}`;
-  const expectedOrder = [...searches, update, recovery, write];
   const parentThreadId = recovery.threadId;
   return (
-    execution.toolCalls.every((call, index) => call === expectedOrder[index] && call.sequence === index + 1) &&
+    execution.toolCalls.at(-2) === recovery &&
+    execution.toolCalls.at(-1) === write &&
+    execution.toolCalls.slice(0, -2).every((call) => call === update || searches.includes(call)) &&
+    execution.toolCalls.every((call, index) => call.sequence === index + 1) &&
     typeof parentThreadId === "string" &&
     parentThreadId.length > 0 &&
-    expectedOrder.every((call) => call.threadId === parentThreadId && call.childThreadId === undefined) &&
+    execution.toolCalls.every((call) => call.threadId === parentThreadId && call.childThreadId === undefined) &&
     recovery.name === "edit" &&
     recovery.capability === "write" &&
     recovery.outcome === "runtime_error" &&

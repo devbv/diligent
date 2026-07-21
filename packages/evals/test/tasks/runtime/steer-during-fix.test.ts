@@ -33,7 +33,7 @@ describe("steer-during-fix runtime eval", () => {
         allowedCommands: [],
       });
       expect(steerDuringFixTask.statePolicy).toEqual({ allowedMutations: ["infrastructure", "sessions"] });
-      expect(steerDuringFixTask.fixtureVersion).toBe("steer-during-fix-v4");
+      expect(steerDuringFixTask.fixtureVersion).toBe("steer-during-fix-v5");
       expect(steerDuringFixTask.limits).toMatchObject({
         maxTurns: 5,
         maxToolCalls: 4,
@@ -184,6 +184,20 @@ describe("steer-during-fix runtime eval", () => {
       mutate(execution);
       expect(steerDuringFixTask.evaluate(execution).passed, name).toBe(false);
     }
+  });
+
+  test("accepts one missing root instruction-file probe before the successful target read", () => {
+    const execution = validExecution();
+    const probe = structuredClone(execution.toolCalls[0]!);
+    probe.toolCallId = "missing-root-instructions";
+    probe.input = { file_path: "$WORKSPACE/AGENTS.md" };
+    probe.outcome = "runtime_error";
+    probe.error = "Error: File not found: $WORKSPACE/AGENTS.md";
+    probe.output = { output: probe.error, metadata: { error: true } };
+    execution.toolCalls.unshift(probe);
+    execution.toolCalls.forEach((call, index) => (call.sequence = index + 1));
+
+    expect(steerDuringFixTask.evaluate(execution)).toEqual({ passed: true });
   });
 
   test("accepts one exact post-write confirmation read, including after Anthropic read recovery", () => {

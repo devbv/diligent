@@ -32,7 +32,7 @@ export interface SteerDuringFixWorld extends RuntimeFixtureWorld {
 export const steerDuringFixTask: RuntimeEvalTask<SteerDuringFixWorld> = {
   id: "steer-during-fix",
   description: "Adapt one exact file mutation to a replacement requirement injected after the target read.",
-  fixtureVersion: "steer-during-fix-v4",
+  fixtureVersion: "steer-during-fix-v5",
   limits: {
     ...DEFAULT_RUNTIME_LIMITS,
     maxTurns: 5,
@@ -195,21 +195,38 @@ function toolLayout(input: RuntimeEvalExecution<SteerDuringFixWorld>): SteerTool
   const expectedError = `Error: file_path must be absolute: ${input.world.targetPath}`;
   const first = calls[0];
   if (
-    input.profile.provider === "anthropic" &&
-    first?.name === "read" &&
-    first.capability === "read" &&
-    first.outcome === "runtime_error" &&
-    exactObject(first.input, { file_path: input.world.targetPath }) &&
-    first.error === expectedError &&
-    isRecord(first.output) &&
-    first.output.output === expectedError &&
-    isRecord(first.output.metadata) &&
-    first.output.metadata.error === true
+    first &&
+    (isExactMissingInstructionsProbe(first) ||
+      (input.profile.provider === "anthropic" &&
+        first.name === "read" &&
+        first.capability === "read" &&
+        first.outcome === "runtime_error" &&
+        exactObject(first.input, { file_path: input.world.targetPath }) &&
+        first.error === expectedError &&
+        isRecord(first.output) &&
+        first.output.output === expectedError &&
+        isRecord(first.output.metadata) &&
+        first.output.metadata.error === true))
   )
     recovery = calls.shift();
   if (calls.length < 2 || calls.length > 3) return undefined;
   const [read, write, confirmation] = calls;
   return read && write ? { recovery, read, write, confirmation } : undefined;
+}
+
+function isExactMissingInstructionsProbe(trace: RuntimeToolTrace): boolean {
+  const error = "Error: File not found: $WORKSPACE/AGENTS.md";
+  return (
+    trace.name === "read" &&
+    trace.capability === "read" &&
+    trace.outcome === "runtime_error" &&
+    exactObject(trace.input, { file_path: "$WORKSPACE/AGENTS.md" }) &&
+    trace.error === error &&
+    isRecord(trace.output) &&
+    trace.output.output === error &&
+    isRecord(trace.output.metadata) &&
+    trace.output.metadata.error === true
+  );
 }
 
 function isExactProviderNativeMutation(

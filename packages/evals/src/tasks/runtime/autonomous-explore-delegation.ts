@@ -22,11 +22,11 @@ export interface AutonomousExploreDelegationWorld extends RuntimeFixtureWorld {
 export const autonomousExploreDelegationTask: RuntimeEvalTask<AutonomousExploreDelegationWorld> = {
   id: "autonomous-explore-delegation",
   description: "Choose one read-only explore agent for a multi-file known-key lookup without being told to delegate.",
-  fixtureVersion: "autonomous-explore-delegation-v2",
+  fixtureVersion: "autonomous-explore-delegation-v3",
   limits: {
     ...DEFAULT_RUNTIME_LIMITS,
-    maxTurns: 10,
-    maxToolCalls: 12,
+    maxTurns: 20,
+    maxToolCalls: 20,
     maxChildAgents: 1,
     maxChangedFiles: 0,
     maxChangedBytes: 0,
@@ -52,7 +52,8 @@ export const autonomousExploreDelegationTask: RuntimeEvalTask<AutonomousExploreD
       clientPrompt:
         "Locate every definition of the known key region_marker across the regional subdirectories and filename " +
         "variants under reference-map/. Report the six values in region-number order with their defining file paths. " +
-        "Keep the lookup read-only and do not interpret the values.",
+        "Complete this as one isolated read-only exploration: the main task must not directly read regional source " +
+        "files and should only synthesize the exploration result. Do not interpret the values.",
       expected: facts.join("\n"),
       protectedPaths: [...SOURCE_PATHS],
       allowedChanges: [],

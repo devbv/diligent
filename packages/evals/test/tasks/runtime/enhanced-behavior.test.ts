@@ -101,12 +101,17 @@ describe("enhanced runtime eval behaviors", () => {
       expect(JSON.stringify(cancelSteps[0])).toContain("targets/beta.txt");
       expect(JSON.stringify(cancelSteps[0])).toContain("no selection is provided");
       expect(JSON.stringify(cancelSteps[1])).toContain(cancel.targetPath);
+      expect(JSON.stringify(cancelSteps[1])).toContain("replace the entire contents");
+      expect(inputCancelResumeTask.limits.maxToolCalls).toBe(7);
       expect(explore.sourcePaths).toHaveLength(6);
       expect(explore.sourcePaths.every((path) => path.startsWith("reference-map/"))).toBe(true);
       expect(explore.sourcePaths.every((path) => path.split("/").length === 3)).toBe(true);
       expect(new Set(explore.sourcePaths.map((path) => path.split(".").at(-1))).size).toBeGreaterThan(1);
       expect(explore.clientPrompt).toContain("region_marker");
       expect(explore.clientPrompt).toContain("filename variants");
+      expect(explore.clientPrompt).toContain("main task must not directly read");
+      expect(autonomousExploreDelegationTask.fixtureVersion).toBe("autonomous-explore-delegation-v3");
+      expect(autonomousExploreDelegationTask.limits.maxToolCalls).toBe(20);
       expect(explore.clientPrompt.toLowerCase()).not.toContain("review");
       expect(explore.clientPrompt.toLowerCase()).not.toContain("audit");
       expect(explore.clientPrompt.toLowerCase()).not.toContain("agent");
