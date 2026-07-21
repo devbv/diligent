@@ -285,14 +285,24 @@ describe("buildSessionContext", () => {
     expect(ctx.messages[1].role).toBe("user");
   });
 
-  it("returns compaction summary separately for native compaction entries", () => {
+  it("returns provider replacement history separately for native compaction entries", () => {
+    const compactionSummary = {
+      type: "diligent_openai_compaction_state",
+      items: [
+        {
+          type: "message",
+          role: "user",
+          content: [{ type: "input_text", text: "compacted state" }],
+        },
+      ],
+    };
     const compaction: CompactionEntry = {
       type: "compaction",
       id: "c1",
       parentId: "a2",
       timestamp: "2026-02-25T10:01:00.000Z",
       displaySummary: "Compacted",
-      compactionSummary: { type: "compaction", encrypted_content: "opaque" },
+      compactionSummary,
       tokensBefore: 50000,
       tokensAfter: 5000,
     };
@@ -305,7 +315,7 @@ describe("buildSessionContext", () => {
     ];
 
     const ctx = buildSessionContext(entries);
-    expect(ctx.compactionSummary).toEqual({ type: "compaction", encrypted_content: "opaque" });
+    expect(ctx.compactionSummary).toEqual(compactionSummary);
     expect(ctx.messages).toHaveLength(2);
     expect(ctx.providerMessages).toHaveLength(1);
     expect(msgContent(ctx.messages[0])).toBe("Compacted");

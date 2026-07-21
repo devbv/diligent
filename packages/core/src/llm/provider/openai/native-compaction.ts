@@ -3,7 +3,7 @@ import { flattenSections } from "../../system-sections";
 import type { NativeCompactFn } from "../native-compaction";
 import { readOpenAIFamilyCompactError } from "./compact-errors";
 import { type OpenAIImageDetail, toResponseInputItems } from "./responses";
-import { classifyOpenAIFamilyError, describeCompactionPayload, extractCompactionSummaryItem } from "./shared";
+import { classifyOpenAIFamilyError, describeCompactionPayload, extractOpenAICompactionState } from "./shared";
 
 const OPENAI_BASE_URL = "https://api.openai.com/v1";
 
@@ -67,7 +67,7 @@ export function createOpenAINativeCompaction(
     }
 
     const payload = (await response.json()) as Record<string, unknown>;
-    const compactionSummary = extractCompactionSummaryItem(payload);
+    const compactionSummary = extractOpenAICompactionState(payload);
     if (!compactionSummary) {
       return { status: "unsupported", reason: `missing_summary ${describeCompactionPayload(payload)}` };
     }

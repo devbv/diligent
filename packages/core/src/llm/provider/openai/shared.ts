@@ -4,6 +4,8 @@ import { classifyProviderHttpError } from "../../provider-errors";
 import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError, ProviderErrorReason, ProviderErrorType } from "../../types";
 import { isContextOverflow } from "./responses";
 
+export { extractOpenAICompactionState } from "./compaction-state";
+
 export interface ClassifyOpenAIFamilyErrorOptions {
   message: string;
   status?: number;

@@ -8,6 +8,7 @@ import type {
   ThinkingEffort,
   ToolDefinition,
 } from "../../types";
+import { openAICompactionStateToInputItems } from "./compaction-state";
 
 // OpenAI vision `detail`: "low" = fixed 512px (~85 tokens), "high" = tiled, "auto" = server picks by size.
 export type OpenAIImageDetail = "auto" | "low" | "high";
@@ -114,7 +115,8 @@ export async function toResponseInputItems(input: {
     input.provider,
   );
   if (input.compactionSummary) {
-    return [input.compactionSummary as unknown as ResponseInputItem, ...convertedMessages];
+    const compactedInput = openAICompactionStateToInputItems(input.compactionSummary) as unknown as ResponseInputItem[];
+    return [...compactedInput, ...convertedMessages];
   }
   return convertedMessages;
 }
