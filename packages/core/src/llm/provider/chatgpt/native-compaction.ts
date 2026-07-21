@@ -5,7 +5,7 @@ import { flattenSections } from "../../system-sections";
 import type { NativeCompactFn } from "../native-compaction";
 import { readOpenAIFamilyCompactErrorBody } from "../openai/compact-errors";
 import { isGpt56Model, toResponseInputItems, toResponsesLiteRequestBody } from "../openai/responses";
-import { describeCompactionPayload, extractCompactionSummaryItem } from "../openai/shared";
+import { describeCompactionPayload, extractOpenAICompactionState } from "../openai/shared";
 import { CHATGPT_SESSION_HEADER } from "./headers";
 
 const CHATGPT_COMPACT_URL = "https://chatgpt.com/backend-api/codex/responses/compact";
@@ -59,7 +59,7 @@ export function createChatGPTNativeCompaction(getTokens: () => OpenAIOAuthTokens
     }
 
     const payload = (await response.json()) as Record<string, unknown>;
-    const compactionSummary = extractCompactionSummaryItem(payload);
+    const compactionSummary = extractOpenAICompactionState(payload);
     if (!compactionSummary) {
       return { status: "unsupported", reason: `missing_summary ${describeCompactionPayload(payload)}` };
     }

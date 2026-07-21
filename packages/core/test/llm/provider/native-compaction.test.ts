@@ -5,7 +5,7 @@ import { createAnthropicNativeCompaction } from "../../../src/llm/provider/anthr
 import { createChatGPTNativeCompaction } from "../../../src/llm/provider/chatgpt";
 import { createOpenAINativeCompaction } from "../../../src/llm/provider/openai";
 import { buildResponsesRequestBody, toResponseInputItems } from "../../../src/llm/provider/openai/responses";
-import { describeCompactionPayload, extractCompactionSummaryItem } from "../../../src/llm/provider/openai/shared";
+import { describeCompactionPayload, extractOpenAICompactionState } from "../../../src/llm/provider/openai/shared";
 import type { Model } from "../../../src/llm/types";
 
 const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-5";
@@ -14,6 +14,46 @@ const originalFetch = globalThis.fetch;
 
 function currentCompactionPayload(encryptedContent = "ENCRYPTED_COMPACTION_SUMMARY") {
   return { output: [{ type: "compaction", encrypted_content: encryptedContent }] };
+}
+
+function replacementHistoryPayload() {
+  return {
+    output: [
+      {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: "Retained task context" }],
+      },
+      {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: "Compacted handoff" }],
+      },
+      { type: "compaction", encrypted_content: "ENCRYPTED_COMPACTION_SUMMARY" },
+    ],
+  };
+}
+
+function responsesLiteReplacementHistoryPayload() {
+  return {
+    output: [
+      {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: "Compacted task state" }],
+      },
+      {
+        type: "message",
+        role: "assistant",
+        content: [{ type: "output_text", text: "Retained assistant state" }],
+      },
+      {
+        type: "compaction_summary",
+        id: "cmp_1",
+        encrypted_content: "ENCRYPTED_COMPACTION_SUMMARY",
+      },
+    ],
+  };
 }
 
 const OPENAI_MODEL: Model = {
@@ -198,9 +238,29 @@ describe("native compaction adapters", () => {
     };
 
     expect(describeCompactionPayload(payload)).toContain("structured_compaction_items=1");
-    expect(extractCompactionSummaryItem(payload)).toEqual({
-      type: "compaction",
-      encrypted_content: "encrypted",
+  });
+
+  test("compaction payload descriptor recognizes Responses Lite compaction summaries", () => {
+    expect(describeCompactionPayload(responsesLiteReplacementHistoryPayload())).toContain(
+      "structured_compaction_items=1",
+    );
+  });
+
+  test("extracts the complete replacement history instead of dropping retained messages", () => {
+    const payload = replacementHistoryPayload();
+
+    expect(extractOpenAICompactionState(payload)).toEqual({
+      type: "diligent_openai_compaction_state",
+      items: payload.output,
+    });
+  });
+
+  test("accepts a Responses Lite replacement history with compaction_summary", () => {
+    const payload = responsesLiteReplacementHistoryPayload();
+
+    expect(extractOpenAICompactionState(payload)).toEqual({
+      type: "diligent_openai_compaction_state",
+      items: payload.output,
     });
   });
 
@@ -221,20 +281,9 @@ describe("native compaction adapters", () => {
     });
   });
 
-  test("OpenAI adapter returns normalized compaction summary when present", async () => {
+  test("OpenAI adapter returns the complete compacted replacement history", async () => {
     globalThis.fetch = mock(
-      async () =>
-        new Response(
-          JSON.stringify({
-            output: [
-              {
-                type: "compaction",
-                encrypted_content: "ENCRYPTED_COMPACTION_SUMMARY",
-              },
-            ],
-          }),
-          { status: 200 },
-        ),
+      async () => new Response(JSON.stringify(replacementHistoryPayload()), { status: 200 }),
     ) as unknown as typeof fetch;
 
     const compact = createOpenAINativeCompaction("sk-openai", "https://api.openai.com/v1");
@@ -247,8 +296,8 @@ describe("native compaction adapters", () => {
     expect(result.status).toBe("ok");
     if (result.status === "ok") {
       expect(result.compactionSummary).toEqual({
-        type: "compaction",
-        encrypted_content: "ENCRYPTED_COMPACTION_SUMMARY",
+        type: "diligent_openai_compaction_state",
+        items: replacementHistoryPayload().output,
       });
     }
   });
@@ -265,6 +314,27 @@ describe("native compaction adapters", () => {
 
     expect(body.input).toEqual([
       { type: "compaction", encrypted_content: "ENCRYPTED_COMPACTION_SUMMARY" },
+      {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: "follow up" }],
+      },
+    ]);
+  });
+
+  test("request body expands replacement history before converted follow-up messages", async () => {
+    const replacementHistory = replacementHistoryPayload().output;
+    const body = await buildResponsesRequestBody({
+      model: "gpt-5.6-sol",
+      messages: [{ role: "user", content: "follow up", timestamp: Date.now() }],
+      compactionSummary: {
+        type: "diligent_openai_compaction_state",
+        items: replacementHistory,
+      },
+    });
+
+    expect(body.input).toEqual([
+      ...replacementHistory,
       {
         type: "message",
         role: "user",
@@ -419,6 +489,34 @@ describe("native compaction adapters", () => {
         content: [{ type: "input_text", text: "hello" }],
       },
     ]);
+  });
+
+  test("ChatGPT GPT-5.6 compaction accepts the Responses Lite replacement history", async () => {
+    const compactedOutput = responsesLiteReplacementHistoryPayload().output;
+    globalThis.fetch = mock(
+      async () => new Response(JSON.stringify({ output: compactedOutput }), { status: 200 }),
+    ) as unknown as typeof fetch;
+    const adapter = createChatGPTNativeCompaction(() => ({
+      access_token: "access-token",
+      refresh_token: "refresh-token",
+      id_token: "id-token",
+      expires_at: Date.now() + 60_000,
+      account_id: "acct_1",
+    }));
+
+    const result = await adapter({
+      model: { ...OPENAI_MODEL, modelId: "gpt-5.6-terra", provider: "chatgpt" },
+      systemPrompt: [],
+      messages: [{ role: "user", content: "hello", timestamp: Date.now() }],
+    });
+
+    expect(result).toEqual({
+      status: "ok",
+      compactionSummary: {
+        type: "diligent_openai_compaction_state",
+        items: compactedOutput,
+      },
+    });
   });
 
   test("ChatGPT adapter treats 400 as error (not unsupported)", async () => {

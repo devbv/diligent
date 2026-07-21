@@ -92,8 +92,15 @@ Current behavior:
 - native compaction is used only when a native compaction function is available
 - all compaction modes use `COMPACTION_MIN_INPUT_TOKENS` (`50000`) as the standard candidate minimum
 - when native compaction succeeds, Diligent can persist provider compaction state as `compactionSummary`
+- OpenAI-family compact endpoints return a replacement `output` history; Diligent preserves every response item in
+  that history, including retained messages and opaque `compaction` items
+- ChatGPT Responses Lite replacement histories containing the provider's `compaction_summary` item are valid native
+  compaction results
+- existing sessions that stored a single opaque `compaction` item remain supported
 
-When `compactionSummary` exists, the rebuilt provider-visible context is restored from that provider-owned state rather than from a local summary message chain.
+When `compactionSummary` exists, the rebuilt provider-visible context is restored from that provider-owned state
+rather than from a local summary message chain. OpenAI-family replacement histories are expanded ahead of messages
+added after compaction so a follow-up request sees the complete provider-produced checkpoint.
 
 ## Eligibility, adoption, and rejection
 

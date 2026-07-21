@@ -93,12 +93,16 @@ describe("TurnStager", () => {
 
   test("preserves compaction summary on compaction_end", () => {
     const stager = new TurnStager(null, makeUser("hello"));
+    const compactionSummary = {
+      type: "diligent_openai_compaction_state",
+      items: [{ type: "message", role: "user", content: [] }],
+    };
     stager.handleEvent(
       {
         type: "compaction_end",
         turnId: "t1",
         summary: "Compacted",
-        compactionSummary: { type: "compaction", encrypted_content: "opaque" },
+        compactionSummary,
         tokensBefore: 100,
         tokensAfter: 20,
       },
@@ -108,7 +112,7 @@ describe("TurnStager", () => {
     const snapshot = stager.getSnapshot();
     expect(snapshot.entries[0]?.type).toBe("compaction");
     if (snapshot.entries[0]?.type === "compaction") {
-      expect(snapshot.entries[0].compactionSummary).toEqual({ type: "compaction", encrypted_content: "opaque" });
+      expect(snapshot.entries[0].compactionSummary).toEqual(compactionSummary);
     }
   });
 
