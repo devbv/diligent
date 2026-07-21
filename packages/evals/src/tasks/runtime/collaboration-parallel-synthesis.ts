@@ -47,7 +47,7 @@ export interface CollaborationParallelSynthesisWorld extends RuntimeFixtureWorld
 export const collaborationParallelSynthesisTask: RuntimeEvalTask<CollaborationParallelSynthesisWorld> = {
   id: "collaboration-parallel-synthesis",
   description: "Run two independent read-only specialists concurrently and synthesize their facts in fixed order.",
-  fixtureVersion: "collaboration-parallel-synthesis-v6",
+  fixtureVersion: "collaboration-parallel-synthesis-v8",
   limits: {
     ...DEFAULT_RUNTIME_LIMITS,
     maxTurns: 10,
@@ -146,7 +146,9 @@ function fixtureFor(seed: string) {
     artifactPath: ARTIFACT_PATH,
     clientPrompt:
       `Retrieve the independent coordination facts from ${SOURCE_PATHS[0]} and ${SOURCE_PATHS[1]}. ` +
-      "Treat them as latency-sensitive independent investigations: complete them concurrently while keeping each regional investigation isolated from the other. " +
+      "Treat them as latency-sensitive independent investigations: use the same read-only exploration role for both, " +
+      "complete them concurrently, and keep each regional investigation isolated from the other. " +
+      "The main task must not directly read either source; it should only synthesize the two returned results. " +
       `Create ${ARTIFACT_PATH} containing the north fact followed by a newline, the south fact, and a trailing newline. ` +
       `Do not modify either source. Reply exactly ${FINAL_RESPONSE}.`,
     workerBriefs: [

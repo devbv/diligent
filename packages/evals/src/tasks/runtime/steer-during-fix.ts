@@ -32,7 +32,7 @@ export interface SteerDuringFixWorld extends RuntimeFixtureWorld {
 export const steerDuringFixTask: RuntimeEvalTask<SteerDuringFixWorld> = {
   id: "steer-during-fix",
   description: "Adapt one exact file mutation to a replacement requirement injected after the target read.",
-  fixtureVersion: "steer-during-fix-v3",
+  fixtureVersion: "steer-during-fix-v5",
   limits: {
     ...DEFAULT_RUNTIME_LIMITS,
     maxTurns: 5,
@@ -195,16 +195,18 @@ function toolLayout(input: RuntimeEvalExecution<SteerDuringFixWorld>): SteerTool
   const expectedError = `Error: file_path must be absolute: ${input.world.targetPath}`;
   const first = calls[0];
   if (
-    input.profile.provider === "anthropic" &&
-    first?.name === "read" &&
-    first.capability === "read" &&
-    first.outcome === "runtime_error" &&
-    exactObject(first.input, { file_path: input.world.targetPath }) &&
-    first.error === expectedError &&
-    isRecord(first.output) &&
-    first.output.output === expectedError &&
-    isRecord(first.output.metadata) &&
-    first.output.metadata.error === true
+    first &&
+    (isExactMissingInstructionsProbe(first) ||
+      (input.profile.provider === "anthropic" &&
+        first.name === "read" &&
+        first.capability === "read" &&
+        first.outcome === "runtime_error" &&
+        exactObject(first.input, { file_path: input.world.targetPath }) &&
+        first.error === expectedError &&
+        isRecord(first.output) &&
+        first.output.output === expectedError &&
+        isRecord(first.output.metadata) &&
+        first.output.metadata.error === true))
   )
     recovery = calls.shift();
   if (calls.length < 2 || calls.length > 3) return undefined;
@@ -212,13 +214,27 @@ function toolLayout(input: RuntimeEvalExecution<SteerDuringFixWorld>): SteerTool
   return read && write ? { recovery, read, write, confirmation } : undefined;
 }
 
+function isExactMissingInstructionsProbe(trace: RuntimeToolTrace): boolean {
+  const error = "Error: File not found: $WORKSPACE/AGENTS.md";
+  return (
+    trace.name === "read" &&
+    trace.capability === "read" &&
+    trace.outcome === "runtime_error" &&
+    exactObject(trace.input, { file_path: "$WORKSPACE/AGENTS.md" }) &&
+    trace.error === error &&
+    isRecord(trace.output) &&
+    trace.output.output === error &&
+    isRecord(trace.output.metadata) &&
+    trace.output.metadata.error === true
+  );
+}
+
 function isExactProviderNativeMutation(
   input: RuntimeEvalExecution<SteerDuringFixWorld>,
   call: RuntimeToolTrace,
 ): boolean {
   const { world } = input;
-  if (input.profile.provider === "openai")
-    return call.name === "apply_patch" && exactObject(call.input, { patch: expectedPatch(world) });
+  if (input.profile.provider === "openai") return call.name === "apply_patch" && isExactOpenAiPatch(call.input, world);
   if (input.profile.provider === "anthropic")
     return (
       call.name === "edit" &&
@@ -237,8 +253,25 @@ function isExactProviderNativeMutation(
   return false;
 }
 
-function expectedPatch(world: SteerDuringFixWorld): string {
-  return `*** Begin Patch\n*** Update File: ${world.targetPath}\n@@\n-${world.baseValue}\n+${world.replacementValue}\n*** End Patch`;
+function isExactOpenAiPatch(value: unknown, world: SteerDuringFixWorld): boolean {
+  if (!isRecord(value) || Object.keys(value).length !== 1 || typeof value.patch !== "string") return false;
+  const lines = value.patch.trimEnd().split("\n");
+  if (lines[0] !== "*** Begin Patch" || lines.at(-1) !== "*** End Patch") return false;
+  const fileOperations = lines.filter(
+    (line) =>
+      line.startsWith("*** Add File:") ||
+      line.startsWith("*** Update File:") ||
+      line.startsWith("*** Delete File:") ||
+      line.startsWith("*** Move to:"),
+  );
+  if (JSON.stringify(fileOperations) !== JSON.stringify([`*** Update File: ${world.targetPath}`])) return false;
+  const additions = lines.filter((line) => line.startsWith("+") && !line.startsWith("+++"));
+  const deletions = lines.filter((line) => line.startsWith("-") && !line.startsWith("---"));
+  return (
+    JSON.stringify(additions) === JSON.stringify([`+${world.replacementValue}`]) &&
+    (JSON.stringify(deletions) === JSON.stringify([`-${world.baseValue}`]) ||
+      JSON.stringify(deletions) === JSON.stringify([`-${world.baseValue}`, "-"]))
+  );
 }
 
 function exactTargetInput(value: unknown, targetPath: string): boolean {

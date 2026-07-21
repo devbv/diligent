@@ -35,7 +35,7 @@ export interface KnowledgeIntentSplitWorld extends RuntimeFixtureWorld {
 export const knowledgeIntentSplitTask: RuntimeEvalTask<KnowledgeIntentSplitWorld> = {
   id: "knowledge-intent-split",
   description: "Persist one durable preference while keeping unrelated current-task intent out of knowledge.",
-  fixtureVersion: "knowledge-intent-split-v4",
+  fixtureVersion: "knowledge-intent-split-v5",
   limits: { ...DEFAULT_RUNTIME_LIMITS, maxTurns: 5, maxToolCalls: 5, timeoutMs: 180_000 },
   statePolicy: {
     allowedMutations: ["infrastructure", "sessions", "knowledge"],
@@ -239,13 +239,21 @@ function isExactAnthropicCreateRecovery(
   const [recovery, write] = writes;
   if (!recovery || !write) return false;
   const error = `Error: file_path must be absolute: ${OUTPUT_PATH}`;
-  const expectedOrder = [...searches, update, recovery, write];
   const parentThreadId = recovery.threadId;
+  const recoveryIndex = execution.toolCalls.indexOf(recovery);
+  const writeIndex = execution.toolCalls.indexOf(write);
+  const recoveryWindowIsBounded =
+    writeIndex === recoveryIndex + 1 ||
+    (writeIndex === recoveryIndex + 2 && execution.toolCalls[recoveryIndex + 1] === update);
   return (
-    execution.toolCalls.every((call, index) => call === expectedOrder[index] && call.sequence === index + 1) &&
+    recoveryIndex >= 0 &&
+    recoveryWindowIsBounded &&
+    writeIndex === execution.toolCalls.length - 1 &&
+    execution.toolCalls.slice(0, recoveryIndex).every((call) => call === update || searches.includes(call)) &&
+    execution.toolCalls.every((call, index) => call.sequence === index + 1) &&
     typeof parentThreadId === "string" &&
     parentThreadId.length > 0 &&
-    expectedOrder.every((call) => call.threadId === parentThreadId && call.childThreadId === undefined) &&
+    execution.toolCalls.every((call) => call.threadId === parentThreadId && call.childThreadId === undefined) &&
     recovery.name === "edit" &&
     recovery.capability === "write" &&
     recovery.outcome === "runtime_error" &&
@@ -256,8 +264,7 @@ function isExactAnthropicCreateRecovery(
       new_string: execution.world.expected,
       replace_all: false,
     }) &&
-    exactObject(recovery.output, { output: error, metadata: { error: true } }) &&
-    write.sequence === recovery.sequence + 1
+    exactObject(recovery.output, { output: error, metadata: { error: true } })
   );
 }
 

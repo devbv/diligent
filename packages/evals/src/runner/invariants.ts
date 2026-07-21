@@ -6,6 +6,7 @@ import type { EvalExecution, EvalFailure } from "../task";
 
 export interface StructuralInvariantOptions {
   allowMultipleAgentLifecycles?: boolean;
+  allowMissingFinalAssistant?: boolean;
 }
 
 export function checkStructuralInvariants(
@@ -21,7 +22,7 @@ export function checkStructuralInvariants(
   validateToolEvents(execution, failures);
   validateToolMessages(execution.messages, failures);
   validateToolResultMirrors(execution, failures);
-  validateFinalMessage(execution.messages, failures);
+  validateFinalMessage(execution.messages, failures, options);
   return deduplicateFailures(failures);
 }
 
@@ -269,12 +270,13 @@ function validateToolResultMirrors(execution: EvalExecution<unknown>, failures: 
   }
 }
 
-function validateFinalMessage(messages: Message[], failures: EvalFailure[]): void {
+function validateFinalMessage(messages: Message[], failures: EvalFailure[], options: StructuralInvariantOptions): void {
   const finalMessage = messages.at(-1);
   if (!isAssistantMessage(finalMessage) || !Array.isArray(finalMessage.content)) {
-    failures.push(
-      contractFailure("missing_final_assistant", "Completed execution did not end with an assistant message."),
-    );
+    if (!options.allowMissingFinalAssistant)
+      failures.push(
+        contractFailure("missing_final_assistant", "Completed execution did not end with an assistant message."),
+      );
     return;
   }
   if (finalMessage.stopReason !== "end_turn") {

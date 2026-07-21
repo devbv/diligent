@@ -33,6 +33,7 @@ describe("steer-during-fix runtime eval", () => {
         allowedCommands: [],
       });
       expect(steerDuringFixTask.statePolicy).toEqual({ allowedMutations: ["infrastructure", "sessions"] });
+      expect(steerDuringFixTask.fixtureVersion).toBe("steer-during-fix-v5");
       expect(steerDuringFixTask.limits).toMatchObject({
         maxTurns: 5,
         maxToolCalls: 4,
@@ -110,6 +111,17 @@ describe("steer-during-fix runtime eval", () => {
     expect(steerDuringFixTask.evaluate(anthropic)).toEqual({ passed: true });
   });
 
+  test("accepts an equivalent OpenAI patch that removes a rendered blank line", () => {
+    const openai = validExecution();
+    openai.toolCalls[1]!.input = {
+      patch:
+        `*** Begin Patch\n*** Update File: ${openai.world.targetPath}\n@@\n` +
+        `-${openai.world.baseValue}\n-\n+${openai.world.replacementValue}\n*** End Patch`,
+    };
+
+    expect(steerDuringFixTask.evaluate(openai)).toEqual({ passed: true });
+  });
+
   test("accepts an exact Anthropic line edit that preserves the existing trailing newline", () => {
     const anthropic = validExecution();
     anthropic.profile.provider = "anthropic";
@@ -174,6 +186,20 @@ describe("steer-during-fix runtime eval", () => {
     }
   });
 
+  test("accepts one missing root instruction-file probe before the successful target read", () => {
+    const execution = validExecution();
+    const probe = structuredClone(execution.toolCalls[0]!);
+    probe.toolCallId = "missing-root-instructions";
+    probe.input = { file_path: "$WORKSPACE/AGENTS.md" };
+    probe.outcome = "runtime_error";
+    probe.error = "Error: File not found: $WORKSPACE/AGENTS.md";
+    probe.output = { output: probe.error, metadata: { error: true } };
+    execution.toolCalls.unshift(probe);
+    execution.toolCalls.forEach((call, index) => (call.sequence = index + 1));
+
+    expect(steerDuringFixTask.evaluate(execution)).toEqual({ passed: true });
+  });
+
   test("accepts one exact post-write confirmation read, including after Anthropic read recovery", () => {
     expect(steerDuringFixTask.evaluate(confirmationExecution(validExecution()))).toEqual({ passed: true });
     expect(steerDuringFixTask.evaluate(confirmationExecution(anthropicRecoveryExecution()))).toEqual({ passed: true });
@@ -227,6 +253,16 @@ describe("steer-during-fix runtime eval", () => {
       ["duplicate trace sequence", (execution) => (execution.toolCalls[1]!.sequence = 1)],
       ["failed read", (execution) => (execution.toolCalls[0]!.outcome = "runtime_error")],
       ["failed write", (execution) => (execution.toolCalls[1]!.outcome = "runtime_error")],
+      [
+        "extra patch target",
+        (execution) => {
+          const input = execution.toolCalls[1]!.input as { patch: string };
+          input.patch = input.patch.replace(
+            "*** End Patch",
+            "*** Update File: control.txt\n@@\n-control\n+changed\n*** End Patch",
+          );
+        },
+      ],
       [
         "extra call",
         (execution) => execution.toolCalls.push({ ...execution.toolCalls[0]!, sequence: 3, toolCallId: "extra" }),

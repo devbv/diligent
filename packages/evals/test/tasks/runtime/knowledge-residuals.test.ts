@@ -11,7 +11,7 @@ import {
 
 describe("knowledge residual evaluator calibration", () => {
   test("keeps direct intent-split evidence provider-native and bumps the fixture contract", () => {
-    expect(knowledgeIntentSplitTask.fixtureVersion).toBe("knowledge-intent-split-v4");
+    expect(knowledgeIntentSplitTask.fixtureVersion).toBe("knowledge-intent-split-v5");
     expect(knowledgeIntentSplitTask.evaluate(intentSplitExecution("openai"))).toEqual({ passed: true });
     expect(knowledgeIntentSplitTask.evaluate(intentSplitExecution("anthropic"))).toEqual({ passed: true });
   });
@@ -80,6 +80,36 @@ describe("knowledge residual evaluator calibration", () => {
       mutate(execution);
       expect(knowledgeIntentSplitTask.evaluate(execution).passed, label).toBe(false);
     }
+  });
+
+  test("accepts the exact durable update between a failed relative create and its absolute retry", () => {
+    const execution = intentSplitRecoveryExecution();
+    const [search, update, recovery, write] = execution.toolCalls;
+    if (!search || !update || !recovery || !write) throw new Error("Expected recovery fixture calls.");
+    execution.toolCalls = [search, recovery, update, write];
+    resequence(execution.toolCalls);
+
+    expect(knowledgeIntentSplitTask.evaluate(execution)).toEqual({ passed: true });
+  });
+
+  test("accepts safe knowledge verification searches after the durable update and before create recovery", () => {
+    const execution = intentSplitRecoveryExecution();
+    const [search, update, recovery, write] = execution.toolCalls;
+    if (!search || !update || !recovery || !write) throw new Error("Expected recovery fixture calls.");
+    const secondSearch = trace(3, "search_knowledge", "knowledge", { query: "OLD_AUDIENCE" }, "thread-1");
+    execution.toolCalls = [update, search, secondSearch, recovery, write];
+    resequence(execution.toolCalls);
+
+    expect(knowledgeIntentSplitTask.evaluate(execution)).toEqual({
+      passed: true,
+      diagnostics: [
+        {
+          dimension: "efficiency",
+          code: "knowledge_intent_split.second_safe_search",
+          message: "A second bounded read-only knowledge search was used before successful completion.",
+        },
+      ],
+    });
   });
 
   test("accepts an exact-id plus nontransient optional lookup without broadening search keys", () => {

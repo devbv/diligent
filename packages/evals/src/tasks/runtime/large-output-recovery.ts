@@ -42,11 +42,11 @@ export interface LargeOutputRecoveryWorld extends RuntimeFixtureWorld {
 export const largeOutputRecoveryTask: RuntimeEvalTask<LargeOutputRecoveryWorld> = {
   id: "large-output-recovery",
   description: "Recover one exact hidden fact through core truncation and a registered bounded full-output read.",
-  fixtureVersion: "large-output-recovery-v5",
+  fixtureVersion: "large-output-recovery-v6",
   limits: {
     ...DEFAULT_RUNTIME_LIMITS,
-    maxTurns: 3,
-    maxToolCalls: 2,
+    maxTurns: 4,
+    maxToolCalls: 3,
     maxChangedFiles: 0,
     maxChangedBytes: 0,
     timeoutMs: 180_000,
@@ -104,12 +104,21 @@ export const largeOutputRecoveryTask: RuntimeEvalTask<LargeOutputRecoveryWorld> 
   }),
   evaluate(input) {
     if (!input.turns[0]) return fail("turn", "The recovery turn is missing.");
-    return (
-      validateManifest(input) ??
-      validateTools(input) ??
-      validateForbiddenSurfaces(input) ??
-      validateFinal(input) ?? { passed: true }
-    );
+    const failure =
+      validateManifest(input) ?? validateTools(input) ?? validateForbiddenSurfaces(input) ?? validateFinal(input);
+    if (failure) return failure;
+    return input.toolCalls.length === 3
+      ? {
+          passed: true,
+          diagnostics: [
+            {
+              dimension: "efficiency" as const,
+              code: "large_output_recovery.duplicate_retrieval",
+              message: "The same archived record was retrieved twice before bounded recovery.",
+            },
+          ],
+        }
+      : { passed: true };
   },
 };
 
@@ -161,23 +170,17 @@ function validateManifest(input: RuntimeEvalExecution<LargeOutputRecoveryWorld>)
 
 function validateTools(input: RuntimeEvalExecution<LargeOutputRecoveryWorld>) {
   const fixture = input.toolCalls[0];
-  const read = input.toolCalls[1];
+  const duplicate = input.toolCalls.length === 3 ? input.toolCalls[1] : undefined;
+  const read = input.toolCalls.at(-1);
   if (
-    input.toolCalls.length !== 2 ||
+    (input.toolCalls.length !== 2 && input.toolCalls.length !== 3) ||
     !fixture ||
     !read ||
-    fixture.toolCallId.length === 0 ||
+    !isExactFixtureCall(fixture, input, 1) ||
+    (duplicate !== undefined && !isExactFixtureCall(duplicate, input, 2)) ||
     read.toolCallId.length === 0 ||
-    fixture.toolCallId === read.toolCallId ||
-    fixture.sequence !== 1 ||
-    fixture.name !== FIXTURE_TOOL ||
-    fixture.capability !== "execute" ||
-    fixture.outcome !== "success" ||
-    fixture.error !== undefined ||
-    fixture.childThreadId !== undefined ||
-    fixture.threadId !== input.session.threadId ||
-    JSON.stringify(fixture.input) !== JSON.stringify({ request_id: input.world.argument }) ||
-    read.sequence !== 2 ||
+    new Set(input.toolCalls.map((call) => call.toolCallId)).size !== input.toolCalls.length ||
+    read.sequence !== input.toolCalls.length ||
     read.name !== "read" ||
     read.capability !== "read" ||
     read.outcome !== "success" ||
@@ -187,6 +190,24 @@ function validateTools(input: RuntimeEvalExecution<LargeOutputRecoveryWorld>) {
     !isBoundedFactReadInput(read.input, input.world.factLine)
   )
     return fail("tools", "The advertised or executed tools, order, actor, outcome, or strict arguments were wrong.");
+}
+
+function isExactFixtureCall(
+  call: RuntimeEvalExecution<LargeOutputRecoveryWorld>["toolCalls"][number],
+  input: RuntimeEvalExecution<LargeOutputRecoveryWorld>,
+  sequence: number,
+): boolean {
+  return (
+    call.toolCallId.length > 0 &&
+    call.sequence === sequence &&
+    call.name === FIXTURE_TOOL &&
+    call.capability === "execute" &&
+    call.outcome === "success" &&
+    call.error === undefined &&
+    call.childThreadId === undefined &&
+    call.threadId === input.session.threadId &&
+    JSON.stringify(call.input) === JSON.stringify({ request_id: input.world.argument })
+  );
 }
 
 function isBoundedFactReadInput(value: unknown, factLine: number): boolean {

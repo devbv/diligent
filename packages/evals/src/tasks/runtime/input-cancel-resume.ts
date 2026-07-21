@@ -28,18 +28,18 @@ const PATHS = { alpha: "targets/alpha.txt", beta: "targets/beta.txt" } as const;
 export const inputCancelResumeTask: RuntimeEvalTask<InputCancelResumeWorld> = {
   id: "input-cancel-resume",
   description: "Resume safely when a clarification is cancelled and the next user turn supplies the decision.",
-  fixtureVersion: "input-cancel-resume-v1",
+  fixtureVersion: "input-cancel-resume-v4",
   limits: {
     ...DEFAULT_RUNTIME_LIMITS,
     maxTurns: 8,
-    maxToolCalls: 5,
+    maxToolCalls: 7,
     maxUserInputRequests: 1,
     timeoutMs: 240_000,
   },
   statePolicy: { allowedMutations: ["infrastructure", "sessions"] },
   toolPolicy: {
-    allowedTools: ["request_user_input", "apply_patch", "edit", "write"],
-    allowedCapabilities: ["user_input", "write"],
+    allowedTools: ["request_user_input", "read", "apply_patch", "edit", "write"],
+    allowedCapabilities: ["user_input", "read", "write"],
     allowedCommands: [],
   },
   async setup(seed, root) {
@@ -67,13 +67,21 @@ export const inputCancelResumeTask: RuntimeEvalTask<InputCancelResumeWorld> = {
   createSteps: (world) => [
     {
       kind: "turn",
-      mode: "default",
-      message: `Put ${world.value} in the selected target file. Alpha and beta are both plausible, and no selection is provided.`,
+      mode: "plan",
+      message:
+        `Put ${world.value} in one of the existing target files, ${PATHS.alpha} or ${PATHS.beta}. ` +
+        "Both are plausible and no selection is provided. Read both files, then present those two paths through the " +
+        "interactive choice UI and wait for the user's selection before any mutation. Do not answer with a prose " +
+        "question or a plan.",
     },
     {
       kind: "turn",
-      mode: "default",
-      message: `Use ${world.target}. Complete the pending update without asking the same question again.`,
+      mode: "execute",
+      message:
+        `The previous interactive choice was cancelled; use ${world.targetPath} as the selected target and replace ` +
+        "the entire contents with exactly " +
+        `${world.value} followed by one trailing newline. Do not ask the same question again, and leave the other ` +
+        "target unchanged. A confirmation read is allowed but not required.",
     },
   ],
   respondToServerRequest(_world, request): DiligentServerRequestResponse {

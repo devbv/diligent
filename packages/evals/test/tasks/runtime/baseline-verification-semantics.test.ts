@@ -14,7 +14,7 @@ describe("baseline verification semantics", () => {
   });
 
   test("plan-to-execute requires an exact passing bun test after the final successful write", () => {
-    expect(planToExecuteTask.fixtureVersion).toBe("plan-to-execute-v3");
+    expect(planToExecuteTask.fixtureVersion).toBe("plan-to-execute-v4");
     assertVerificationRegressions(planToExecuteExecution, (execution) => planToExecuteTask.evaluate(execution));
   });
 });

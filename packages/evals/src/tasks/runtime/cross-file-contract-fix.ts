@@ -22,7 +22,7 @@ const CALLER_PATH = "src/retry-config.ts";
 export const crossFileContractFixTask: RuntimeEvalTask<CrossFileContractFixWorld> = {
   id: "cross-file-contract-fix",
   description: "Repair a parser and its caller while preserving the tested public contract.",
-  fixtureVersion: "cross-file-contract-fix-v1",
+  fixtureVersion: "cross-file-contract-fix-v2",
   limits: { ...DEFAULT_RUNTIME_LIMITS, maxTurns: 14, maxToolCalls: 18, timeoutMs: 300_000 },
   statePolicy: { allowedMutations: ["infrastructure", "sessions"] },
   toolPolicy: {
@@ -79,7 +79,9 @@ export const crossFileContractFixTask: RuntimeEvalTask<CrossFileContractFixWorld
       kind: "turn",
       mode: "execute",
       message:
-        "Diagnose and fix the retry configuration behavior. Preserve the public API and protected files, then verify the complete repair.",
+        "Diagnose and fix the retry configuration behavior. There are independent defects in both implementation " +
+        "files, so inspect and repair both while preserving the public API and protected files. Verify the complete " +
+        "repair with the project test suite; do not stop after a failing test run, and continue until it passes.",
     },
   ],
   verify: (world, signal) => runVerifier(world, ["bun", "test"], signal),

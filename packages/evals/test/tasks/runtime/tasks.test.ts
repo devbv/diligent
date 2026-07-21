@@ -128,9 +128,11 @@ describe("runtime eval tasks", () => {
       expect(world.sourcePaths).toHaveLength(2);
       expect(new Set(world.sourcePaths).size).toBe(2);
       expect(world.allowedChanges).toEqual(["parallel-synthesis.txt"]);
-      expect(collaborationParallelSynthesisTask.fixtureVersion).toBe("collaboration-parallel-synthesis-v6");
+      expect(collaborationParallelSynthesisTask.fixtureVersion).toBe("collaboration-parallel-synthesis-v8");
       expect(world.clientPrompt).toContain("concurrently");
       expect(world.clientPrompt).toContain("isolated");
+      expect(world.clientPrompt).toContain("same read-only exploration role");
+      expect(world.clientPrompt).toContain("main task must not directly read");
       expect(world.clientPrompt).not.toContain("specialist");
       expect(world.clientPrompt).not.toContain("spawn");
       expect(world.clientPrompt).not.toContain("join");
@@ -156,6 +158,10 @@ describe("runtime eval tasks", () => {
       ]);
       expect(world.sourcePaths).toHaveLength(2);
       expect(world.allowedChanges).toEqual(["collaboration-resume-reference.txt"]);
+      expect(collaborationResumeReferenceTask.fixtureVersion).toBe("collaboration-resume-reference-v8");
+      expect(world.prompts[0]).toContain("must return the exact value to the parent");
+      expect(world.prompts[0]).toContain("parent user-facing acknowledgement");
+      expect(world.prompts[1]).toContain("must not repeat the initial value in the resume request");
       expect(collaborationResumeReferenceTask.limits.maxChildAgents).toBe(2);
       expect(collaborationResumeReferenceTask.limits.maxToolCalls).toBe(10);
       expect(collaborationResumeReferenceTask.statePolicy).toEqual({
@@ -442,9 +448,12 @@ describe("runtime eval tasks", () => {
     try {
       const world = await clarifyThenExecuteTask.setup("shared-seed-123", root);
       const steps = clarifyThenExecuteTask.createSteps(world);
-      expect(steps.map((step) => (step.kind === "turn" ? step.mode : step.kind))).toEqual(["default"]);
+      expect(steps.map((step) => (step.kind === "turn" ? step.mode : step.kind))).toEqual(["plan", "execute"]);
       expect(JSON.stringify(steps)).toContain("staging");
       expect(JSON.stringify(steps)).toContain("production");
+      expect(clarifyThenExecuteTask.fixtureVersion).toBe("clarify-then-execute-v3");
+      expect(JSON.stringify(steps[0])).toContain("environment choice alone is sufficient");
+      expect(JSON.stringify(steps[0])).toContain("do not ask a confirmation");
       expect(clarifyThenExecuteTask.limits.maxUserInputRequests).toBe(1);
       const response = await clarifyThenExecuteTask.respondToServerRequest?.(world, {
         method: "userInput/request",
@@ -471,15 +480,18 @@ describe("runtime eval tasks", () => {
     }
   });
 
-  test("defines plan-to-execute as a plan diagnosis followed by default-mode mutation", async () => {
+  test("defines plan-to-execute as a grounded plan diagnosis followed by execute-mode mutation", async () => {
     const root = await mkdtemp(join(tmpdir(), "diligent-runtime-plan-execute-"));
     try {
       const world = await planToExecuteTask.setup("shared-seed-123", root);
       expect(
         planToExecuteTask.createSteps(world).map((step) => (step.kind === "turn" ? step.mode : step.kind)),
-      ).toEqual(["plan", "default"]);
+      ).toEqual(["plan", "execute"]);
       const planStep = planToExecuteTask.createSteps(world)[0];
-      expect(planStep.kind === "turn" ? planStep.message : "").not.toContain(world.token);
+      const planMessage = planStep.kind === "turn" ? planStep.message : "";
+      expect(planMessage).not.toContain(world.token);
+      expect(planMessage).toContain(world.diagnosisPath);
+      expect(planMessage).toContain("read-only");
       expect(planToExecuteTask.toolPolicy.allowedCapabilities).toEqual(["read", "write", "execute"]);
       expect(world.allowedChanges).toEqual(["src/value.ts", "spec/private-contract.txt"]);
       expect(world.protectedPaths).toEqual(["test/value.test.ts", "AGENTS.md", "package.json"]);
@@ -879,6 +891,11 @@ describe("runtime eval tasks", () => {
       expect(prompt).toContain("inputs/suffixes.txt");
       expect(prompt).toContain("read tool");
       expect(prompt).toContain("only permitted shell command is exactly bun test");
+      expect(prompt).toContain(
+        "create only generated/stage-one.txt, generated/stage-two.txt, and generated/stage-three.txt",
+      );
+      expect(prompt).toContain("Do not add scripts or configuration files");
+      expect(planProgressTask.fixtureVersion).toBe("plan-progress-v7");
       expect([world.base, world.middle, world.final].every((value) => !prompt.includes(value))).toBe(true);
       const boundedProviderNeutralCalls =
         world.planSteps.length + 1 + Object.keys(world.outputs).length + 2 + Object.keys(world.outputs).length + 1 + 6;
@@ -890,6 +907,8 @@ describe("runtime eval tasks", () => {
   });
 
   test("scores instruction-hierarchy decisions independently of provider prompt plumbing", async () => {
+    expect(instructionHierarchyTask.fixtureVersion).toBe("instruction-hierarchy-v2");
+    expect(instructionHierarchyTask.limits.maxToolCalls).toBe(4);
     const world = {
       root: "$WORKSPACE",
       seed: "seed",

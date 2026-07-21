@@ -22,8 +22,14 @@ describe("collaboration-resume-reference", () => {
       const execution = await assembledExecution(profile);
       expect(collaborationResumeReferenceTask.evaluate(execution), profile.provider).toMatchObject({ passed: true });
       expect(execution.world.prompts[0]).toContain(execution.world.sourcePaths[0]);
+      expect(execution.world.prompts[0]).toContain(
+        `absolute file_path ending in \`/${execution.world.sourcePaths[0]}\``,
+      );
       expect(execution.world.prompts[0]).toContain(execution.world.acknowledgement);
       expect(execution.world.prompts[1]).toContain(execution.world.sourcePaths[1]);
+      expect(execution.world.prompts[1]).toContain(
+        `absolute file_path ending in \`/${execution.world.sourcePaths[1]}\``,
+      );
       expect(execution.world.prompts[1]).toContain(execution.world.artifactPath);
       expect(execution.world.prompts[1]).toContain(execution.world.finalResponse);
       expect(execution.world.prompts[1]).toContain("final newline");
@@ -122,6 +128,43 @@ describe("collaboration-resume-reference", () => {
       .at(-1)!;
     finalChildMessage.content!.find((block) => block.type === "text")!.text = execution.world.tokens[0];
     expect(collaborationResumeReferenceTask.evaluate(missingFollowUp)).toMatchObject({ passed: true });
+  });
+
+  test("accepts bounded acknowledgement prose only when it does not reveal either fixture value", async () => {
+    const execution = await assembledExecution(DEFAULT_PROFILES[0]!);
+    const acknowledgement = execution.turns[0]!.messages.at(-1)!;
+    if (acknowledgement.role !== "assistant") throw new Error("Expected assistant acknowledgement.");
+    const text = acknowledgement.content.find((block) => block.type === "text")!;
+    if (text.type !== "text") throw new Error("Expected acknowledgement text.");
+    text.text = `I've retained the value internally.\n\n${execution.world.acknowledgement}`;
+    expect(collaborationResumeReferenceTask.evaluate(execution)).toEqual({ passed: true });
+
+    text.text = `${execution.world.tokens[0]}\n${execution.world.acknowledgement}`;
+    expect(collaborationResumeReferenceTask.evaluate(execution)).toMatchObject({
+      passed: false,
+      code: "collaboration_resume_reference.final",
+    });
+  });
+
+  test("accepts one relative-path failure before each successful absolute child read", async () => {
+    const execution = await assembledExecution(DEFAULT_PROFILES[0]!, { generatedIds: true });
+    for (const sourcePath of execution.world.sourcePaths) {
+      const successIndex = execution.toolCalls.findIndex(
+        (call) =>
+          call.name === "read" &&
+          call.outcome === "success" &&
+          (call.input as { file_path?: string }).file_path?.endsWith(`/${sourcePath}`),
+      );
+      const recovery = structuredClone(execution.toolCalls[successIndex]!);
+      recovery.toolCallId = `${recovery.toolCallId}-relative-error`;
+      recovery.input = { file_path: sourcePath };
+      recovery.outcome = "runtime_error";
+      recovery.error = `Error: file_path must be absolute: ${sourcePath}`;
+      execution.toolCalls.splice(successIndex, 0, recovery);
+    }
+    execution.toolCalls.forEach((call, index) => (call.sequence = index + 1));
+
+    expect(collaborationResumeReferenceTask.evaluate(execution)).toMatchObject({ passed: true });
   });
 
   test("does not gate resume behavior on persisted transcript shape or verifier wording", async () => {

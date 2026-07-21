@@ -25,7 +25,7 @@ const DIAGNOSIS_PATH = "spec/private-contract.txt";
 export const planToExecuteTask: RuntimeEvalTask<PlanToExecuteWorld> = {
   id: "plan-to-execute",
   description: "Persist an opaque read-only diagnosis and implement it after its source is withdrawn.",
-  fixtureVersion: "plan-to-execute-v3",
+  fixtureVersion: "plan-to-execute-v4",
   limits: { ...DEFAULT_RUNTIME_LIMITS, maxTurns: 14, maxToolCalls: 20, timeoutMs: 300_000 },
   statePolicy: { allowedMutations: ["infrastructure", "sessions"] },
   toolPolicy: {
@@ -72,11 +72,13 @@ export const planToExecuteTask: RuntimeEvalTask<PlanToExecuteWorld> = {
       kind: "turn",
       mode: "plan",
       message:
-        "Investigate the incomplete value transformation against the project specification. Produce a concrete implementation plan that preserves every contract detail. Do not change files or run commands.",
+        `Read ${DIAGNOSIS_PATH} and ${SOURCE_PATH}, then diagnose the incomplete value transformation. ` +
+        "Produce a concrete implementation plan that retains the contract ID and exact formula. Keep this turn " +
+        "read-only: do not modify files or execute shell commands.",
     },
     {
       kind: "turn",
-      mode: "default",
+      mode: "execute",
       message:
         "The specification source has now been withdrawn. Implement the diagnosis retained in your plan, preserve tests and metadata, and verify with `bun test`.",
     },

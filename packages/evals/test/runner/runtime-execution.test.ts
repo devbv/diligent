@@ -15,6 +15,7 @@ import type { RuntimeEvalExecution, RuntimeEvalTask } from "../../src/runtime-ta
 import {
   clarifyThenExecuteTask,
   hookContextFollowTask,
+  inputCancelResumeTask,
   instructionHierarchyTask,
   type KnowledgeForgetWorld,
   type KnowledgeIntentSplitWorld,
@@ -205,7 +206,7 @@ describe("runRuntimeEvalExecution", () => {
     expect(result.execution.session.lines.some((line) => (line as { type?: string }).type === "compaction")).toBe(true);
   });
 
-  test("uses a scripted user-input answer in a later default-mode write", async () => {
+  test("uses a scripted user-input answer in a later execute-mode write", async () => {
     const seed = "shared-seed-123";
     const answer = Number.parseInt(seed.slice(0, 4), 36) % 2 === 0 ? "staging" : "production";
     const desired = seededToken(seed, "CHANNEL");
@@ -237,6 +238,7 @@ describe("runRuntimeEvalExecution", () => {
           ],
           "tool_use",
         ),
+        assistantMessage([{ type: "text", text: `Plan: update only deploy/${answer}.channel.` }]),
         assistantMessage(
           [
             {
@@ -259,7 +261,65 @@ describe("runRuntimeEvalExecution", () => {
     expect(result.failures).toEqual([]);
     expect(result.execution.userInputRequests).toHaveLength(1);
     expect(result.execution.toolCalls.map((call) => call.name)).toEqual(["request_user_input", "apply_patch"]);
+    expect(result.execution.advertisedTools.map((snapshot) => snapshot.mode)).toEqual(["plan", "execute"]);
     expect(JSON.stringify(result.execution.session.lines)).toContain(answer);
+  });
+
+  test("resumes a cancelled plan-mode clarification in execute mode without asking again", async () => {
+    const seed = "shared-seed-123";
+    const target = Number.parseInt(seed.slice(-4), 36) % 2 === 0 ? "alpha" : "beta";
+    const desired = seededToken(seed, "RESUMED_VALUE");
+    const result = await runRuntimeEvalExecution({
+      task: inputCancelResumeTask,
+      seed,
+      profile: { provider: "openai", model: "gpt-5.6-terra", effort: "medium" },
+      streamFunction: sequenceStream([
+        assistantMessage(
+          [
+            {
+              type: "tool_call",
+              id: "ask-cancelled-target",
+              name: "request_user_input",
+              input: {
+                questions: [
+                  {
+                    id: "target_file",
+                    header: "Target",
+                    question: "Should the update use alpha or beta?",
+                    options: [
+                      { label: "Alpha", description: "Use the alpha target." },
+                      { label: "Beta", description: "Use the beta target." },
+                    ],
+                  },
+                ],
+              },
+            },
+          ],
+          "tool_use",
+        ),
+        assistantMessage(
+          [
+            {
+              type: "tool_call",
+              id: "patch-resumed-target",
+              name: "apply_patch",
+              input: {
+                patch:
+                  `*** Begin Patch\n*** Update File: targets/${target}.txt\n@@\n-unchanged\n` +
+                  `+${desired}\n*** End Patch`,
+              },
+            },
+          ],
+          "tool_use",
+        ),
+        assistantMessage([{ type: "text", text: "Done." }]),
+      ]),
+    });
+
+    expect(result.failures).toEqual([]);
+    expect(result.execution.userInputRequests).toHaveLength(1);
+    expect(result.execution.toolCalls.map((call) => call.name)).toEqual(["request_user_input", "apply_patch"]);
+    expect(result.execution.advertisedTools.map((snapshot) => snapshot.mode)).toEqual(["plan", "execute"]);
   });
 
   test("records original and hook-augmented prompts while following synchronous injected context", async () => {
@@ -669,7 +729,7 @@ describe("runRuntimeEvalExecution", () => {
     });
   });
 
-  test("executes the plan-to-default task and verifies its exact implementation", async () => {
+  test("executes the plan-to-execute task and verifies its exact implementation", async () => {
     const seed = "shared-seed-123";
     const token = seededToken(seed, "CONTRACT");
     const multiplier = (Number.parseInt(seed.slice(0, 4), 36) % 5) + 2;
@@ -719,7 +779,7 @@ describe("runRuntimeEvalExecution", () => {
 
     expect(result.passed).toBe(true);
     expect(result.execution.turns).toHaveLength(2);
-    expect(result.execution.turns[0]?.clientPrompt).toContain("project specification");
+    expect(result.execution.turns[0]?.clientPrompt).toContain("spec/private-contract.txt");
     expect(result.execution.turns[1]?.clientPrompt).toContain("specification source has now been withdrawn");
     expect(result.execution.toolCalls.map((call) => call.name)).toEqual(["read", "apply_patch", "bash"]);
   });

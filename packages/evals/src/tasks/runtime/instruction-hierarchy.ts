@@ -27,8 +27,8 @@ const RESULT_PATH = "nested/project/RESULT.txt";
 export const instructionHierarchyTask: RuntimeEvalTask<InstructionHierarchyWorld> = {
   id: "instruction-hierarchy",
   description: "Apply independently seeded root and nested project instructions from a nested runtime cwd.",
-  fixtureVersion: "instruction-hierarchy-v1",
-  limits: { ...DEFAULT_RUNTIME_LIMITS, maxTurns: 5, maxToolCalls: 3, timeoutMs: 180_000 },
+  fixtureVersion: "instruction-hierarchy-v2",
+  limits: { ...DEFAULT_RUNTIME_LIMITS, maxTurns: 5, maxToolCalls: 4, timeoutMs: 180_000 },
   statePolicy: { allowedMutations: ["infrastructure", "sessions"] },
   toolPolicy: {
     allowedTools: ["read", "write", "edit", "multi_edit", "apply_patch"],

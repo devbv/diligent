@@ -37,7 +37,10 @@ export function checkRuntimeInvariants(
           toolCallCount: parentCoreEvents.filter((item) => item.event.type === "tool_start").length,
           world: null,
         },
-        { allowMultipleAgentLifecycles: true },
+        {
+          allowMultipleAgentLifecycles: true,
+          allowMissingFinalAssistant: endsWithCancelledUserInput(turn.messages),
+        },
       ),
     );
     for (const notification of turn.notifications) {
@@ -133,6 +136,16 @@ export function checkRuntimeInvariants(
     if (entry.id) seen.add(entry.id);
   }
   return dedupe(failures);
+}
+
+function endsWithCancelledUserInput(messages: RuntimeEvalExecution<unknown>["turns"][number]["messages"]): boolean {
+  const final = messages.at(-1);
+  return (
+    final?.role === "tool_result" &&
+    final.toolName === "request_user_input" &&
+    typeof final.output === "string" &&
+    final.output.startsWith("[Cancelled by user]")
+  );
 }
 
 function checkAdvertisedToolSnapshots(execution: RuntimeEvalExecution<unknown>): EvalFailure[] {

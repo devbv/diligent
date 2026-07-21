@@ -94,7 +94,7 @@ export const fileRoundtripTask: RuntimeEvalTask<FileRoundtripWorld> = {
           {
             dimension: "efficiency",
             code: "file_roundtrip.safe_read_recovery",
-            message: "One bounded read inside the records fixture failed before successful completion.",
+            message: "One bounded read inside the fixture boundary failed before successful completion.",
           },
         ],
       };
@@ -182,7 +182,7 @@ function validateTrace(input: RuntimeEvalExecution<FileRoundtripWorld>) {
   )
     return fail(
       "recovery",
-      "Only one bounded failed read inside the records fixture is accepted as recovery.",
+      "Only one bounded failed read inside the fixture boundary is accepted as recovery.",
       "runtime_policy",
     );
 
@@ -276,8 +276,12 @@ function isBoundedSafeReadRecovery(traces: RuntimeEvalExecution<FileRoundtripWor
     failed?.name === "read" &&
     failed.capability === "read" &&
     failed.outcome === "runtime_error" &&
-    isSafeRecordsReadInput(failed.input)
+    (isSafeRecordsReadInput(failed.input) || isMissingRootInstructionsProbe(failed.input))
   );
+}
+
+function isMissingRootInstructionsProbe(input: unknown): boolean {
+  return isRecord(input) && Object.keys(input).length === 1 && input.file_path === "$WORKSPACE/AGENTS.md";
 }
 
 function isSafeRecordsReadInput(input: unknown): boolean {
