@@ -15,7 +15,7 @@ export function ComposerContextChips({ items, onRemove, onClear }: ComposerConte
   }
 
   return (
-    <div className="mb-3 flex flex-wrap items-center gap-2">
+    <div className="mb-3 flex max-h-24 flex-wrap items-center gap-2 overflow-y-auto">
       {items.map((item) => {
         const key = getAgentContextItemKey(item);
         return (
