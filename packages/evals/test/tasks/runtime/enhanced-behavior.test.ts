@@ -129,6 +129,10 @@ describe("enhanced runtime eval behaviors", () => {
     const root = await mkdtemp(join(tmpdir(), "diligent-cross-file-"));
     try {
       const world = await crossFileContractFixTask.setup("shared-seed-123", root);
+      const prompt = JSON.stringify(crossFileContractFixTask.createSteps(world));
+      expect(crossFileContractFixTask.fixtureVersion).toBe("cross-file-contract-fix-v2");
+      expect(prompt).toContain("independent defects in both implementation files");
+      expect(prompt).toContain("do not stop after a failing test run");
       await writeFixture(root, {
         "src/parse-duration.ts": [
           `// ${world.marker}`,
