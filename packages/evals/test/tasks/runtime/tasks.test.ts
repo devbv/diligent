@@ -158,9 +158,10 @@ describe("runtime eval tasks", () => {
       ]);
       expect(world.sourcePaths).toHaveLength(2);
       expect(world.allowedChanges).toEqual(["collaboration-resume-reference.txt"]);
-      expect(collaborationResumeReferenceTask.fixtureVersion).toBe("collaboration-resume-reference-v5");
+      expect(collaborationResumeReferenceTask.fixtureVersion).toBe("collaboration-resume-reference-v6");
       expect(world.prompts[0]).toContain("must return the exact value to the parent");
       expect(world.prompts[0]).toContain("parent user-facing acknowledgement");
+      expect(world.prompts[1]).toContain("must not repeat the initial value in the resume request");
       expect(collaborationResumeReferenceTask.limits.maxChildAgents).toBe(2);
       expect(collaborationResumeReferenceTask.limits.maxToolCalls).toBe(10);
       expect(collaborationResumeReferenceTask.statePolicy).toEqual({

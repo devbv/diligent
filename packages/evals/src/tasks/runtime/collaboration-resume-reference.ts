@@ -51,7 +51,7 @@ export interface CollaborationResumeReferenceWorld extends RuntimeFixtureWorld {
 export const collaborationResumeReferenceTask: RuntimeEvalTask<CollaborationResumeReferenceWorld> = {
   id: "collaboration-resume-reference",
   description: "Resume the same persisted read-only specialist after restart and record two ordered facts.",
-  fixtureVersion: "collaboration-resume-reference-v5",
+  fixtureVersion: "collaboration-resume-reference-v6",
   limits: {
     ...DEFAULT_RUNTIME_LIMITS,
     maxTurns: 12,
@@ -140,7 +140,9 @@ function fixtureFor(seed: string) {
         `must not refuse. Wait once for completion. The parent user-facing acknowledgement must omit the value and ` +
         `reply with exactly ${ACK}.`,
       `Resume that same persisted specialist to read only ${SOURCE_PATHS[1]} exactly once without rereading the ` +
-        "initial file. The specialist must return both fixture values to the parent and must not refuse. Wait once, " +
+        "initial file. You must not repeat the initial value in the resume request; the resumed specialist must " +
+        "supply it from retained context. The specialist must return both fixture values to the parent and must not " +
+        "refuse. Wait once, " +
         `then create ${ARTIFACT_PATH} containing the two returned values in initial-then-follow-up order, one per ` +
         `line with a final newline. Reply with exactly ${FINAL}.`,
     ] as [string, string],
