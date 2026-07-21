@@ -80,7 +80,7 @@ export interface CustomAgentRoutingWorld extends RuntimeFixtureWorld {
 export const customAgentRoutingTask: RuntimeEvalTask<CustomAgentRoutingWorld> = {
   id: "custom-agent-routing",
   description: "Select one discovered custom role to retrieve a protected release fact and persist it exactly.",
-  fixtureVersion: "custom-agent-routing-v9",
+  fixtureVersion: "custom-agent-routing-v10",
   limits: {
     ...DEFAULT_RUNTIME_LIMITS,
     maxTurns: 7,
@@ -197,7 +197,11 @@ function fixtureFor(seed: string) {
     releasePath: RELEASE_PATH,
     decoyPath: DECOY_PATH,
     artifactPath: ARTIFACT_PATH,
-    clientPrompt: `Please retrieve the current release authorization capsule through the most appropriate available specialist, create a new file named ${ARTIFACT_PATH} containing exactly the capsule contents including its trailing newline, and then reply exactly ${FINAL_RESPONSE}.`,
+    clientPrompt:
+      `Please retrieve the current release authorization capsule through the most appropriate available specialist, ` +
+      `create a new file named ${ARTIFACT_PATH} containing exactly the capsule contents including its trailing ` +
+      `newline, and then reply exactly ${FINAL_RESPONSE}. Use the specialist's returned result as the sole source; ` +
+      "the main task must not directly read the capsule.",
     workerBrief: `Read only ${RELEASE_PATH} exactly once. Return only the capsule token, without commentary or a trailing newline.`,
     finalResponse: FINAL_RESPONSE,
     expected,

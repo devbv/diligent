@@ -19,7 +19,7 @@ import { assistantMessage, sequenceStream } from "../../helpers/fake-stream";
 
 describe("custom-agent-routing", () => {
   test("runs one genuine discovered custom agent through the real collaboration runtime for both providers", async () => {
-    expect(customAgentRoutingTask.fixtureVersion).toBe("custom-agent-routing-v9");
+    expect(customAgentRoutingTask.fixtureVersion).toBe("custom-agent-routing-v10");
     expect(DEFAULT_PROFILES).toHaveLength(2);
     for (const profile of DEFAULT_PROFILES) {
       const execution = await assembledExecution(profile);
@@ -32,6 +32,7 @@ describe("custom-agent-routing", () => {
       expect(execution.world.clientPrompt).toContain(execution.world.finalResponse);
       expect(execution.world.clientPrompt).toContain("create a new file named");
       expect(execution.world.clientPrompt).toContain("including its trailing newline");
+      expect(execution.world.clientPrompt).toContain("main task must not directly read the capsule");
       expect(execution.toolCalls.map((call) => call.name)).toEqual([
         "spawn_agent",
         "read",
