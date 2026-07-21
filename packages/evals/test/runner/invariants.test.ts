@@ -87,6 +87,18 @@ describe("checkStructuralInvariants", () => {
     expect(checkStructuralInvariants(executionWithMessages([user, assistant]))).toEqual([]);
   });
 
+  test("allows a missing final assistant only when the caller identifies an intentional cancellation", () => {
+    const user = { role: "user", content: "choose", timestamp: 1 } as const;
+    const input = executionWithMessages([user]);
+
+    expect(checkStructuralInvariants(input).map((failure) => failure.code)).toContain(
+      "core_contract.missing_final_assistant",
+    );
+    expect(
+      checkStructuralInvariants(input, { allowMissingFinalAssistant: true }).map((failure) => failure.code),
+    ).not.toContain("core_contract.missing_final_assistant");
+  });
+
   test("rejects an orphaned tool result", () => {
     const user = { role: "user", content: "hi", timestamp: 1 } as const;
     const orphan = {

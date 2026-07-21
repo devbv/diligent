@@ -82,7 +82,7 @@ describe("enhanced runtime eval behaviors", () => {
     }
   });
 
-  test("defines natural clarification, cancellation resume, and autonomous exploration without scripting tool names", async () => {
+  test("uses decision modes and role-compatible prompts without scripting tool names", async () => {
     const roots = await Promise.all(
       ["clarify", "cancel", "explore"].map((name) => mkdtemp(join(tmpdir(), `diligent-${name}-`))),
     );
@@ -90,10 +90,25 @@ describe("enhanced runtime eval behaviors", () => {
       const clarify = await clarifyThenExecuteTask.setup("shared-seed-123", roots[0]!);
       const cancel = await inputCancelResumeTask.setup("shared-seed-123", roots[1]!);
       const explore = await autonomousExploreDelegationTask.setup("shared-seed-123", roots[2]!);
-      expect(JSON.stringify(clarifyThenExecuteTask.createSteps(clarify))).not.toContain("request_user_input");
-      expect(JSON.stringify(inputCancelResumeTask.createSteps(cancel)[0])).toContain("no selection is provided");
-      expect(JSON.stringify(inputCancelResumeTask.createSteps(cancel)[1])).toContain(cancel.target);
+      const clarifySteps = clarifyThenExecuteTask.createSteps(clarify);
+      const cancelSteps = inputCancelResumeTask.createSteps(cancel);
+      expect(clarifySteps.map((step) => (step.kind === "turn" ? step.mode : step.kind))).toEqual(["plan", "execute"]);
+      expect(JSON.stringify(clarifySteps)).not.toContain("request_user_input");
+      expect(JSON.stringify(clarifySteps[0])).toContain("deploy/staging.channel");
+      expect(JSON.stringify(clarifySteps[0])).toContain("deploy/production.channel");
+      expect(cancelSteps.map((step) => (step.kind === "turn" ? step.mode : step.kind))).toEqual(["plan", "execute"]);
+      expect(JSON.stringify(cancelSteps[0])).toContain("targets/alpha.txt");
+      expect(JSON.stringify(cancelSteps[0])).toContain("targets/beta.txt");
+      expect(JSON.stringify(cancelSteps[0])).toContain("no selection is provided");
+      expect(JSON.stringify(cancelSteps[1])).toContain(cancel.targetPath);
       expect(explore.sourcePaths).toHaveLength(6);
+      expect(explore.sourcePaths.every((path) => path.startsWith("reference-map/"))).toBe(true);
+      expect(explore.sourcePaths.every((path) => path.split("/").length === 3)).toBe(true);
+      expect(new Set(explore.sourcePaths.map((path) => path.split(".").at(-1))).size).toBeGreaterThan(1);
+      expect(explore.clientPrompt).toContain("region_marker");
+      expect(explore.clientPrompt).toContain("filename variants");
+      expect(explore.clientPrompt.toLowerCase()).not.toContain("review");
+      expect(explore.clientPrompt.toLowerCase()).not.toContain("audit");
       expect(explore.clientPrompt.toLowerCase()).not.toContain("agent");
       expect(explore.clientPrompt.toLowerCase()).not.toContain("delegat");
     } finally {

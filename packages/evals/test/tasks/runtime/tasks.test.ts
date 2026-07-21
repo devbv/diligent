@@ -442,7 +442,7 @@ describe("runtime eval tasks", () => {
     try {
       const world = await clarifyThenExecuteTask.setup("shared-seed-123", root);
       const steps = clarifyThenExecuteTask.createSteps(world);
-      expect(steps.map((step) => (step.kind === "turn" ? step.mode : step.kind))).toEqual(["default"]);
+      expect(steps.map((step) => (step.kind === "turn" ? step.mode : step.kind))).toEqual(["plan", "execute"]);
       expect(JSON.stringify(steps)).toContain("staging");
       expect(JSON.stringify(steps)).toContain("production");
       expect(clarifyThenExecuteTask.limits.maxUserInputRequests).toBe(1);
@@ -471,15 +471,18 @@ describe("runtime eval tasks", () => {
     }
   });
 
-  test("defines plan-to-execute as a plan diagnosis followed by default-mode mutation", async () => {
+  test("defines plan-to-execute as a grounded plan diagnosis followed by execute-mode mutation", async () => {
     const root = await mkdtemp(join(tmpdir(), "diligent-runtime-plan-execute-"));
     try {
       const world = await planToExecuteTask.setup("shared-seed-123", root);
       expect(
         planToExecuteTask.createSteps(world).map((step) => (step.kind === "turn" ? step.mode : step.kind)),
-      ).toEqual(["plan", "default"]);
+      ).toEqual(["plan", "execute"]);
       const planStep = planToExecuteTask.createSteps(world)[0];
-      expect(planStep.kind === "turn" ? planStep.message : "").not.toContain(world.token);
+      const planMessage = planStep.kind === "turn" ? planStep.message : "";
+      expect(planMessage).not.toContain(world.token);
+      expect(planMessage).toContain(world.diagnosisPath);
+      expect(planMessage).toContain("read-only");
       expect(planToExecuteTask.toolPolicy.allowedCapabilities).toEqual(["read", "write", "execute"]);
       expect(world.allowedChanges).toEqual(["src/value.ts", "spec/private-contract.txt"]);
       expect(world.protectedPaths).toEqual(["test/value.test.ts", "AGENTS.md", "package.json"]);

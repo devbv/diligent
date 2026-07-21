@@ -1,4 +1,4 @@
-// @summary Runtime eval for autonomous delegation of a broad read-only exploration task
+// @summary Runtime eval for autonomous delegation of a multi-file known-key reference lookup
 
 import type { RuntimeEvalExecution, RuntimeEvalTask } from "../../runtime-task";
 import type { EvalDimension, EvalProfile } from "../../task";
@@ -10,7 +10,8 @@ import {
   writeFixture,
 } from "./helpers";
 
-const SOURCE_PATHS = Array.from({ length: 6 }, (_, index) => `audit/region-${index + 1}.txt`);
+const SOURCE_FILES = ["primary.txt", "routing.md", "marker.conf", "entry.txt", "reference.md", "routing.conf"];
+const SOURCE_PATHS = SOURCE_FILES.map((file, index) => `reference-map/region-${index + 1}/${file}`);
 
 export interface AutonomousExploreDelegationWorld extends RuntimeFixtureWorld {
   facts: string[];
@@ -20,8 +21,8 @@ export interface AutonomousExploreDelegationWorld extends RuntimeFixtureWorld {
 
 export const autonomousExploreDelegationTask: RuntimeEvalTask<AutonomousExploreDelegationWorld> = {
   id: "autonomous-explore-delegation",
-  description: "Choose one read-only explore agent for a six-file investigation without being told to delegate.",
-  fixtureVersion: "autonomous-explore-delegation-v1",
+  description: "Choose one read-only explore agent for a multi-file known-key lookup without being told to delegate.",
+  fixtureVersion: "autonomous-explore-delegation-v2",
   limits: {
     ...DEFAULT_RUNTIME_LIMITS,
     maxTurns: 10,
@@ -41,7 +42,7 @@ export const autonomousExploreDelegationTask: RuntimeEvalTask<AutonomousExploreD
     const facts = SOURCE_PATHS.map((_, index) => seededToken(seed, `REGION_${index + 1}`));
     await writeFixture(
       root,
-      Object.fromEntries(SOURCE_PATHS.map((path, index) => [path, `audit_fact=${facts[index]}\n`])),
+      Object.fromEntries(SOURCE_PATHS.map((path, index) => [path, `region_marker=${facts[index]}\n`])),
     );
     return {
       root,
@@ -49,7 +50,9 @@ export const autonomousExploreDelegationTask: RuntimeEvalTask<AutonomousExploreD
       facts,
       sourcePaths: [...SOURCE_PATHS],
       clientPrompt:
-        "Review every regional note under audit/ and report the six audit_fact values in region-number order. Do not change any files.",
+        "Locate every definition of the known key region_marker across the regional subdirectories and filename " +
+        "variants under reference-map/. Report the six values in region-number order with their defining file paths. " +
+        "Keep the lookup read-only and do not interpret the values.",
       expected: facts.join("\n"),
       protectedPaths: [...SOURCE_PATHS],
       allowedChanges: [],
@@ -61,7 +64,7 @@ export const autonomousExploreDelegationTask: RuntimeEvalTask<AutonomousExploreD
   evaluate(input) {
     const spawns = input.toolCalls.filter((call) => call.name === "spawn_agent" && call.outcome === "success");
     if (spawns.length !== 1 || !isExploreSpawn(spawns[0]!.input))
-      return fail("spawn", "The broad read-only investigation was not delegated to one explore agent.", "behavior");
+      return fail("spawn", "The multi-file reference lookup was not delegated to one explore agent.", "behavior");
     const reads = input.toolCalls.filter((call) => call.name === "read" && call.outcome === "success");
     const childIds = new Set(reads.map((call) => call.childThreadId).filter((id): id is string => Boolean(id)));
     if (childIds.size !== 1)

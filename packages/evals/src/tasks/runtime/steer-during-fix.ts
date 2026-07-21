@@ -32,7 +32,7 @@ export interface SteerDuringFixWorld extends RuntimeFixtureWorld {
 export const steerDuringFixTask: RuntimeEvalTask<SteerDuringFixWorld> = {
   id: "steer-during-fix",
   description: "Adapt one exact file mutation to a replacement requirement injected after the target read.",
-  fixtureVersion: "steer-during-fix-v3",
+  fixtureVersion: "steer-during-fix-v4",
   limits: {
     ...DEFAULT_RUNTIME_LIMITS,
     maxTurns: 5,
@@ -217,8 +217,7 @@ function isExactProviderNativeMutation(
   call: RuntimeToolTrace,
 ): boolean {
   const { world } = input;
-  if (input.profile.provider === "openai")
-    return call.name === "apply_patch" && exactObject(call.input, { patch: expectedPatch(world) });
+  if (input.profile.provider === "openai") return call.name === "apply_patch" && isExactOpenAiPatch(call.input, world);
   if (input.profile.provider === "anthropic")
     return (
       call.name === "edit" &&
@@ -237,8 +236,25 @@ function isExactProviderNativeMutation(
   return false;
 }
 
-function expectedPatch(world: SteerDuringFixWorld): string {
-  return `*** Begin Patch\n*** Update File: ${world.targetPath}\n@@\n-${world.baseValue}\n+${world.replacementValue}\n*** End Patch`;
+function isExactOpenAiPatch(value: unknown, world: SteerDuringFixWorld): boolean {
+  if (!isRecord(value) || Object.keys(value).length !== 1 || typeof value.patch !== "string") return false;
+  const lines = value.patch.trimEnd().split("\n");
+  if (lines[0] !== "*** Begin Patch" || lines.at(-1) !== "*** End Patch") return false;
+  const fileOperations = lines.filter(
+    (line) =>
+      line.startsWith("*** Add File:") ||
+      line.startsWith("*** Update File:") ||
+      line.startsWith("*** Delete File:") ||
+      line.startsWith("*** Move to:"),
+  );
+  if (JSON.stringify(fileOperations) !== JSON.stringify([`*** Update File: ${world.targetPath}`])) return false;
+  const additions = lines.filter((line) => line.startsWith("+") && !line.startsWith("+++"));
+  const deletions = lines.filter((line) => line.startsWith("-") && !line.startsWith("---"));
+  return (
+    JSON.stringify(additions) === JSON.stringify([`+${world.replacementValue}`]) &&
+    (JSON.stringify(deletions) === JSON.stringify([`-${world.baseValue}`]) ||
+      JSON.stringify(deletions) === JSON.stringify([`-${world.baseValue}`, "-"]))
+  );
 }
 
 function exactTargetInput(value: unknown, targetPath: string): boolean {
