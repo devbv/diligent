@@ -158,6 +158,9 @@ describe("runtime eval tasks", () => {
       ]);
       expect(world.sourcePaths).toHaveLength(2);
       expect(world.allowedChanges).toEqual(["collaboration-resume-reference.txt"]);
+      expect(collaborationResumeReferenceTask.fixtureVersion).toBe("collaboration-resume-reference-v5");
+      expect(world.prompts[0]).toContain("must return the exact value to the parent");
+      expect(world.prompts[0]).toContain("parent user-facing acknowledgement");
       expect(collaborationResumeReferenceTask.limits.maxChildAgents).toBe(2);
       expect(collaborationResumeReferenceTask.limits.maxToolCalls).toBe(10);
       expect(collaborationResumeReferenceTask.statePolicy).toEqual({
@@ -903,6 +906,8 @@ describe("runtime eval tasks", () => {
   });
 
   test("scores instruction-hierarchy decisions independently of provider prompt plumbing", async () => {
+    expect(instructionHierarchyTask.fixtureVersion).toBe("instruction-hierarchy-v2");
+    expect(instructionHierarchyTask.limits.maxToolCalls).toBe(4);
     const world = {
       root: "$WORKSPACE",
       seed: "seed",

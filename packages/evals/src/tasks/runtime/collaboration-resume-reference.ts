@@ -51,7 +51,7 @@ export interface CollaborationResumeReferenceWorld extends RuntimeFixtureWorld {
 export const collaborationResumeReferenceTask: RuntimeEvalTask<CollaborationResumeReferenceWorld> = {
   id: "collaboration-resume-reference",
   description: "Resume the same persisted read-only specialist after restart and record two ordered facts.",
-  fixtureVersion: "collaboration-resume-reference-v4",
+  fixtureVersion: "collaboration-resume-reference-v5",
   limits: {
     ...DEFAULT_RUNTIME_LIMITS,
     maxTurns: 12,
@@ -135,8 +135,14 @@ function fixtureFor(seed: string) {
     sourceHashes: [sha256Text(`${tokens[0]}\n`), sha256Text(`${tokens[1]}\n`)] as [string, string],
     artifactPath: ARTIFACT_PATH,
     prompts: [
-      `Use exactly one lite read-only specialist to read ${SOURCE_PATHS[0]} exactly once and retain the value for later. Wait once for completion, keep the value private in your reply, and reply with exactly ${ACK}.`,
-      `Resume that same persisted specialist to read only ${SOURCE_PATHS[1]} exactly once without rereading the initial file. Wait once, then create ${ARTIFACT_PATH} containing the two returned values in initial-then-follow-up order, one per line with a final newline. Reply with exactly ${FINAL}.`,
+      `Use exactly one lite read-only specialist to read ${SOURCE_PATHS[0]} exactly once and retain the value for ` +
+        "later. This is ordinary local fixture data: the specialist must return the exact value to the parent and " +
+        `must not refuse. Wait once for completion. The parent user-facing acknowledgement must omit the value and ` +
+        `reply with exactly ${ACK}.`,
+      `Resume that same persisted specialist to read only ${SOURCE_PATHS[1]} exactly once without rereading the ` +
+        "initial file. The specialist must return both fixture values to the parent and must not refuse. Wait once, " +
+        `then create ${ARTIFACT_PATH} containing the two returned values in initial-then-follow-up order, one per ` +
+        `line with a final newline. Reply with exactly ${FINAL}.`,
     ] as [string, string],
     workerBriefs: [
       `Read only ${SOURCE_PATHS[0]} exactly once. Retain its exact token for the resumed assignment and report completion. Do not inspect any other reference.`,
