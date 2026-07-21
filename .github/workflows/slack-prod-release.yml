@@ -1,0 +1,46 @@
+name: Slack notify (prod release)
+
+# Fires only when a *published, non-prerelease* release goes live.
+# Prod releases are created as drafts and become "released" when a human
+# clicks Publish; dev releases are prereleases, so they never match here.
+on:
+  release:
+    types: [released]
+
+jobs:
+  notify:
+    # Extra guard: prod tags look like `prod-v1.2.3`.
+    if: startsWith(github.event.release.tag_name, 'prod-')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post release to Slack
+        env:
+          WEBHOOK_URL: ${{ secrets.SLACK_PROD_RELEASE_WEBHOOK }}
+          REL_NAME: ${{ github.event.release.name }}
+          REL_TAG: ${{ github.event.release.tag_name }}
+          REL_URL: ${{ github.event.release.html_url }}
+          # Keep the body in an env var (never inline into the shell) so
+          # release notes can't inject shell commands.
+          REL_BODY: ${{ github.event.release.body }}
+        run: |
+          # ponytail: GitHub-flavored markdown isn't perfectly Slack mrkdwn,
+          # but it reads fine. Upgrade to a proper renderer only if asked.
+          NOTES=$(printf '%s' "$REL_BODY" | head -c 2500)
+          PAYLOAD=$(jq -n \
+            --arg name "${REL_NAME:-$REL_TAG}" \
+            --arg tag "$REL_TAG" \
+            --arg url "$REL_URL" \
+            --arg notes "${NOTES:-_No release notes._}" \
+            '{
+              blocks: [
+                { type: "header",
+                  text: { type: "plain_text", text: ("🚀 Production release: " + ($name[0:140])) } },
+                { type: "section",
+                  text: { type: "mrkdwn",
+                          text: ("*Version:* `" + $tag + "`\n*Release:* <" + $url + "|View on GitHub>") } },
+                { type: "section",
+                  text: { type: "mrkdwn", text: ("*What changed:*\n" + $notes) } }
+              ]
+            }')
+          curl -sSf -X POST -H 'Content-type: application/json' \
+            --data "$PAYLOAD" "$WEBHOOK_URL"
