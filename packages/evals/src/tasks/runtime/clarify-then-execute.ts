@@ -31,7 +31,7 @@ const PATHS = {
 export const clarifyThenExecuteTask: RuntimeEvalTask<ClarifyThenExecuteWorld> = {
   id: "clarify-then-execute",
   description: "Clarify an undecidable deployment target before mutating only the selected configuration.",
-  fixtureVersion: "clarify-then-execute-v2",
+  fixtureVersion: "clarify-then-execute-v3",
   limits: {
     ...DEFAULT_RUNTIME_LIMITS,
     maxTurns: 8,
@@ -77,13 +77,16 @@ export const clarifyThenExecuteTask: RuntimeEvalTask<ClarifyThenExecuteWorld> = 
       message:
         `Change the deployment channel to ${world.desired}. The project has independent staging and production ` +
         `channel files at ${PATHS.staging} and ${PATHS.production}, but the request does not identify the target ` +
-        "environment. Resolve that choice with the user before any mutation and prepare a scoped implementation plan.",
+        "environment. Resolve that choice with the user before any mutation and prepare a scoped implementation plan. " +
+        "The environment choice alone is sufficient. After it is answered, do not ask a confirmation or follow-up " +
+        "question; finish the scoped plan without mutating.",
     },
     {
       kind: "turn",
       mode: "execute",
       message:
-        "Implement the environment selected in the preceding clarification. Update only its channel file to the " +
+        "Implement the environment selected in the preceding clarification without asking another question. Update " +
+        "only its channel file to the " +
         `requested ${world.desired} value and leave the other environment unchanged.`,
     },
   ],

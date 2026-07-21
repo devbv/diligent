@@ -446,6 +446,9 @@ describe("runtime eval tasks", () => {
       expect(steps.map((step) => (step.kind === "turn" ? step.mode : step.kind))).toEqual(["plan", "execute"]);
       expect(JSON.stringify(steps)).toContain("staging");
       expect(JSON.stringify(steps)).toContain("production");
+      expect(clarifyThenExecuteTask.fixtureVersion).toBe("clarify-then-execute-v3");
+      expect(JSON.stringify(steps[0])).toContain("environment choice alone is sufficient");
+      expect(JSON.stringify(steps[0])).toContain("do not ask a confirmation");
       expect(clarifyThenExecuteTask.limits.maxUserInputRequests).toBe(1);
       const response = await clarifyThenExecuteTask.respondToServerRequest?.(world, {
         method: "userInput/request",
