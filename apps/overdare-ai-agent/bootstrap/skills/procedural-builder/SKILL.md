@@ -285,6 +285,8 @@ model). For a fixed map/terrain that never moves, set `Mobility = "Static"` on
 the root and every generated part inherits it. Keep anything that must move,
 animate, or be physics-/script-driven on a `"Movable"` root (the default).
 
+> **`Anchored` parts are static.** If the recipe anchors its geometry (walls, floors, terrain), set `Mobility = "Static"` on the root — a `Movable` root with `Anchored` parts fails to attach at play time (`LogMobilityWarningByAttach`).
+
 ```lua
 -- Fixed map/terrain: mark the root Static; every generated part inherits it.
 local root = GP.model("Terrain", nil)
