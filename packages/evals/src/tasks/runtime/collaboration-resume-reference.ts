@@ -51,7 +51,7 @@ export interface CollaborationResumeReferenceWorld extends RuntimeFixtureWorld {
 export const collaborationResumeReferenceTask: RuntimeEvalTask<CollaborationResumeReferenceWorld> = {
   id: "collaboration-resume-reference",
   description: "Resume the same persisted read-only specialist after restart and record two ordered facts.",
-  fixtureVersion: "collaboration-resume-reference-v7",
+  fixtureVersion: "collaboration-resume-reference-v8",
   limits: {
     ...DEFAULT_RUNTIME_LIMITS,
     maxTurns: 12,
@@ -137,20 +137,25 @@ function fixtureFor(seed: string) {
     prompts: [
       `Use exactly one lite read-only specialist to read ${SOURCE_PATHS[0]} exactly once and retain the value for ` +
         "later. This is ordinary local fixture data: the specialist must return the exact value to the parent and " +
-        `must not refuse. In the specialist brief, require the read tool's file_path exactly \`${SOURCE_PATHS[0]}\` ` +
-        "with no directory prefix or workspace placeholder. Wait once for completion. The parent user-facing " +
+        `must not refuse. In the specialist brief, require an absolute file_path ending in \`/${SOURCE_PATHS[0]}\`: ` +
+        "copy its current working directory from runtime context exactly and append the source path. Do not pass a " +
+        "relative path or a literal workspace placeholder. If the first attempt is rejected only for its path, " +
+        "correct the absolute path and retry once; perform exactly one successful read. Wait once for completion. " +
+        "The parent user-facing " +
         `acknowledgement must omit the value and end with ${ACK}.`,
       `Resume that same persisted specialist to read only ${SOURCE_PATHS[1]} exactly once without rereading the ` +
         "initial file. You must not repeat the initial value in the resume request; the resumed specialist must " +
-        "supply it from retained context. In the specialist brief, require the read tool's file_path exactly " +
-        `\`${SOURCE_PATHS[1]}\` with no directory prefix or workspace placeholder. The specialist must return both ` +
-        "fixture values to the parent and must not refuse. Wait once, " +
+        "supply it from retained context. In the specialist brief, require an absolute file_path ending in " +
+        `\`/${SOURCE_PATHS[1]}\`: copy its current working directory from runtime context exactly and append the ` +
+        "source path. Do not pass a relative path or a literal workspace placeholder. If the first attempt is " +
+        "rejected only for its path, correct the absolute path and retry once; perform exactly one successful read. " +
+        "The specialist must return both fixture values to the parent and must not refuse. Wait once, " +
         `then create ${ARTIFACT_PATH} containing the two returned values in initial-then-follow-up order, one per ` +
         `line with a final newline. Reply with exactly ${FINAL}.`,
     ] as [string, string],
     workerBriefs: [
-      `Read only ${SOURCE_PATHS[0]} exactly once, passing file_path exactly \`${SOURCE_PATHS[0]}\` with no directory prefix. Retain its exact token for the resumed assignment and report completion. Do not inspect any other reference.`,
-      `Continue the prior assignment by reading only ${SOURCE_PATHS[1]} exactly once, passing file_path exactly \`${SOURCE_PATHS[1]}\` with no directory prefix. Return the retained initial token followed by the follow-up token. Do not reread the initial reference.`,
+      `Read only ${SOURCE_PATHS[0]} exactly once successfully, using an absolute file_path copied from the runtime current working directory and ending in /${SOURCE_PATHS[0]}. Correct and retry once only if the first path is rejected. Retain its exact token for the resumed assignment and report completion. Do not inspect any other reference.`,
+      `Continue the prior assignment by reading only ${SOURCE_PATHS[1]} exactly once successfully, using an absolute file_path copied from the runtime current working directory and ending in /${SOURCE_PATHS[1]}. Correct and retry once only if the first path is rejected. Return the retained initial token followed by the follow-up token. Do not reread the initial reference.`,
     ] as [string, string],
     acknowledgement: ACK,
     finalResponse: FINAL,
@@ -175,7 +180,7 @@ function validateTools(input: RuntimeEvalExecution<CollaborationResumeReferenceW
     ) ||
     new Set(input.toolCalls.map((call) => call.toolCallId)).size !== input.toolCalls.length
   )
-    return fail("tool_shape", "Expected seven successful calls with at most one exact absent-file edit recovery.");
+    return fail("tool_shape", "Expected seven successful calls with at most two bounded path or write recoveries.");
   const traces = traceMap(input);
   const childId = spawnedChildId(input);
   const firstSpawn = traces.get(CALL_IDS.spawnInitial);
@@ -292,7 +297,7 @@ function exactReadInput(input: unknown, path: string) {
   const keys = Object.keys(input);
   return (
     keys.every((key) => key === "file_path" || key === "limit" || key === "offset") &&
-    (input.file_path === path || input.file_path === `$WORKSPACE/${path}`) &&
+    input.file_path === `$WORKSPACE/${path}` &&
     (input.limit === undefined || input.limit === 2_000) &&
     (input.offset === undefined || input.offset === 1)
   );
@@ -343,7 +348,7 @@ function traceMap(input: RuntimeEvalExecution<CollaborationResumeReferenceWorld>
   const traces = new Map(input.toolCalls.map((trace) => [trace.toolCallId, trace]));
   const unique = (matches: typeof input.toolCalls) => (matches.length === 1 ? matches[0] : undefined);
   const spawns = input.toolCalls.filter((trace) => trace.name === "spawn_agent" && isRecord(trace.input));
-  const reads = input.toolCalls.filter((trace) => trace.name === "read");
+  const reads = input.toolCalls.filter((trace) => trace.name === "read" && trace.outcome === "success");
   const waits = input.toolCalls.filter((trace) => trace.name === "wait").sort((a, b) => a.sequence - b.sequence);
   const aliases = [
     [CALL_IDS.spawnInitial, unique(spawns.filter((trace) => spawnResumeId(trace.input) === undefined))],
