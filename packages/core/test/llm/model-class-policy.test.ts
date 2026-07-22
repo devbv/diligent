@@ -45,7 +45,14 @@ describe("model class policy", () => {
         if (!current || !defaultModelId)
           throw new Error(`Missing model-class fixture for ${provider}/${modelClass.id}`);
         expect(resolveModelForClass(current, modelClass.id)).toMatchObject({ provider, modelId: defaultModelId });
-        expect(getModelClass(resolveModel({ provider, modelId: defaultModelId }))).toBe(modelClass.id);
+        const memberships = MODEL_CLASSES.filter(
+          (candidate) =>
+            candidate.defaultModelIds[provider] === defaultModelId ||
+            candidate.additionalModelIds?.[provider]?.includes(defaultModelId),
+        );
+        if (memberships.length === 1) {
+          expect(getModelClass(resolveModel({ provider, modelId: defaultModelId }))).toBe(modelClass.id);
+        }
       }
       for (const [providerName, modelIds] of Object.entries(modelClass.additionalModelIds ?? {})) {
         const provider = providerName as ProviderName;
@@ -54,5 +61,19 @@ describe("model class policy", () => {
         }
       }
     }
+  });
+
+  it("uses Gemini 3.6 Flash for pro and general while keeping Flash-Lite for lite", () => {
+    const flash = resolveModel({ provider: "gemini", modelId: "gemini-3.6-flash" });
+
+    expect(GEMINI_MODEL_CLASSES).toEqual({
+      pro: { defaultModelId: "gemini-3.6-flash" },
+      general: { defaultModelId: "gemini-3.6-flash" },
+      lite: { defaultModelId: "gemini-3.5-flash-lite" },
+    });
+    expect(resolveModelForClass(flash, "pro").modelId).toBe("gemini-3.6-flash");
+    expect(resolveModelForClass(flash, "general").modelId).toBe("gemini-3.6-flash");
+    expect(resolveModelForClass(flash, "lite").modelId).toBe("gemini-3.5-flash-lite");
+    expect(getModelClass(flash)).toBe("general");
   });
 });

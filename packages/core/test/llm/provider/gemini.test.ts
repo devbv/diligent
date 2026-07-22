@@ -1,12 +1,11 @@
 // @summary Contract tests for the Gemini AI SDK adapter
 import { describe, expect, test } from "bun:test";
-import { GEMINI_THINKING_BUDGETS } from "../../../src/llm/models";
 import {
   buildGeminiProviderOptions,
   buildGeminiTools,
   classifyGeminiError,
   extractGeminiWebBlocks,
-  resolveGeminiThinkingBudget,
+  resolveGeminiThinkingLevel,
 } from "../../../src/llm/provider/gemini";
 import type { Model, ToolDefinition } from "../../../src/llm/types";
 import { ProviderErrorReason, ProviderErrorType } from "../../../src/llm/types";
@@ -17,23 +16,24 @@ const model: Model = {
   contextWindow: 1_000_000,
   maxOutputTokens: 64_000,
   supportsThinking: true,
-  thinkingBudgets: { low: 1_024, medium: 4_096, high: 8_192, max: 32_768 },
 };
 
 describe("Gemini thinking", () => {
-  test("maps Diligent effort to Gemini's exact thinking budget", () => {
-    expect(resolveGeminiThinkingBudget(model, "xhigh")).toBe(32_768);
+  test("maps Diligent effort to the latest Gemini thinking levels", () => {
+    expect(resolveGeminiThinkingLevel(model, "low")).toBe("low");
+    expect(resolveGeminiThinkingLevel(model, "medium")).toBe("medium");
+    expect(resolveGeminiThinkingLevel(model, "high")).toBe("high");
+    expect(resolveGeminiThinkingLevel(model, "xhigh")).toBe("high");
+    expect(resolveGeminiThinkingLevel(model, "max")).toBe("high");
     expect(buildGeminiProviderOptions(model, { effort: "high" })).toEqual({
-      google: { thinkingConfig: { thinkingBudget: 8_192, includeThoughts: true } },
+      google: { thinkingConfig: { thinkingLevel: "high", includeThoughts: true } },
     });
   });
 
-  test("uses model registry budgets as the fallback", () => {
-    const modelWithoutBudgets = { ...model, thinkingBudgets: undefined };
-    expect(resolveGeminiThinkingBudget(modelWithoutBudgets, "low")).toBe(GEMINI_THINKING_BUDGETS.low);
-    expect(resolveGeminiThinkingBudget(modelWithoutBudgets, "medium")).toBe(GEMINI_THINKING_BUDGETS.medium);
-    expect(resolveGeminiThinkingBudget(modelWithoutBudgets, "high")).toBe(GEMINI_THINKING_BUDGETS.high);
-    expect(resolveGeminiThinkingBudget(modelWithoutBudgets, "max")).toBe(GEMINI_THINKING_BUDGETS.max);
+  test("omits thinking configuration when effort is unset or thinking is unsupported", () => {
+    expect(resolveGeminiThinkingLevel(model, undefined)).toBeUndefined();
+    expect(resolveGeminiThinkingLevel({ ...model, supportsThinking: false }, "high")).toBeUndefined();
+    expect(buildGeminiProviderOptions(model, {})).toBeUndefined();
   });
 });
 

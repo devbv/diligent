@@ -16,7 +16,11 @@ import { RUNTIME_EVAL_TASKS } from "./tasks/runtime";
 const SUITE_VERSION = "core-v0";
 
 export async function main(args = process.argv.slice(2)): Promise<number> {
-  const secrets = [process.env.OPENAI_API_KEY ?? "", process.env.ANTHROPIC_API_KEY ?? ""].filter(Boolean);
+  const secrets = [
+    process.env.OPENAI_API_KEY ?? "",
+    process.env.ANTHROPIC_API_KEY ?? "",
+    process.env.GEMINI_API_KEY ?? "",
+  ].filter(Boolean);
   try {
     const options = parseCliOptions(args);
     if (options.help) {
@@ -153,14 +157,14 @@ async function writeGithubSummary(
 
 function printHelp(): void {
   console.log(`Usage:
-  bun run eval core [--provider openai|anthropic] [--task <id>]
+  bun run eval core [--provider openai|anthropic|gemini] [--task <id>]
                       [--model <model-id>]
                       [--seed <seed>] [--report <path>]
 
-  bun run eval runtime [--provider openai|anthropic] [--task <id>]
+  bun run eval runtime [--provider openai|anthropic|gemini] [--task <id>]
                          [--model <model-id>] [--seed <seed>] [--report <path>]
 
-Omitting --task runs every task in the selected suite. Omitting --provider runs both providers.`);
+Omitting --task runs every task in the selected suite. Omitting --provider runs the OpenAI and Anthropic defaults.`);
 }
 
 if (import.meta.main) {

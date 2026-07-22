@@ -22,6 +22,7 @@ import type {
 } from "../runtime-task";
 import type { EvalDiagnostic, EvalFailure, EvalProfile } from "../task";
 import { ZERO_USAGE } from "../task";
+import { createBudgetGraceDiagnostics, EVAL_BUDGET_GRACE, resolveEvalHardLimits } from "./budget-policy";
 import { RuntimeDeadline, RuntimeDeadlineError, raceBounded } from "./runtime-deadline";
 import { checkRuntimeInvariants } from "./runtime-invariants";
 import { createRuntimeEvalOutputStore, type RuntimeEvalOutputStore } from "./runtime-output-store";
@@ -48,6 +49,7 @@ export async function runRuntimeEvalExecution(input: {
   streamFunction: StreamFunction;
 }): Promise<RuntimeEvalExecutionResult> {
   const { task, profile, seed } = input;
+  const hardLimits = resolveEvalHardLimits(task.limits);
   const deadline = new RuntimeDeadline(task.limits.timeoutMs);
   const started = deadline.started;
   let root = "";
@@ -140,10 +142,12 @@ export async function runRuntimeEvalExecution(input: {
         task.limits.maxOutputTokens,
         () => {
           providerTurns += 1;
-          if (providerTurns <= task.limits.maxTurns) return;
+          if (providerTurns <= hardLimits.maxTurns) return;
           budgetTerminated = true;
           budgetReason = "turn_limit";
-          throw new Error(`Provider-turn budget exceeded (${task.limits.maxTurns}).`);
+          throw new Error(
+            `Provider-turn hard limit exceeded (${hardLimits.maxTurns}; target ${task.limits.maxTurns} + ${EVAL_BUDGET_GRACE.turns} grace).`,
+          );
         },
         (model, context, options) => {
           providerCalls.push(
@@ -180,7 +184,7 @@ export async function runRuntimeEvalExecution(input: {
               registeredReadPaths: evalOutputStore.registeredPaths,
               policy: task.toolPolicy,
               traces,
-              maxToolCalls: task.limits.maxToolCalls,
+              maxToolCalls: hardLimits.maxToolCalls,
               maxUserInputRequests: task.limits.maxUserInputRequests,
               maxChildAgents: task.limits.maxChildAgents,
               isTerminated: () => budgetTerminated,
@@ -441,9 +445,9 @@ export async function runRuntimeEvalExecution(input: {
         code: `budget_exceeded.${budgetReason}`,
         message:
           budgetReason === "turn_limit"
-            ? `Provider-turn count exceeded ${task.limits.maxTurns}.`
+            ? `Provider-turn count exceeded hard limit ${hardLimits.maxTurns} (target ${task.limits.maxTurns} + ${EVAL_BUDGET_GRACE.turns} grace).`
             : budgetReason === "tool_call_limit"
-              ? `Tool-call count exceeded ${task.limits.maxToolCalls}.`
+              ? `Tool-call count exceeded hard limit ${hardLimits.maxToolCalls} (target ${task.limits.maxToolCalls} + ${EVAL_BUDGET_GRACE.toolCalls} grace).`
               : budgetReason === "user_input_limit"
                 ? `User-input request count exceeded ${task.limits.maxUserInputRequests}.`
                 : budgetReason === "child_agent_limit"
@@ -461,6 +465,12 @@ export async function runRuntimeEvalExecution(input: {
       ),
     );
     if (termination === "completed") {
+      diagnostics.push(
+        ...createBudgetGraceDiagnostics(task.limits, {
+          turns: providerCalls.length,
+          toolCalls: traces.length,
+        }),
+      );
       try {
         const semantic = task.evaluate(execution);
         diagnostics.push(...(semantic.diagnostics ?? []));

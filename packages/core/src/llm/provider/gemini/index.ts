@@ -3,9 +3,8 @@ import { createGoogleGenerativeAI, google } from "@ai-sdk/google";
 import type { TextStreamPart, ToolSet } from "ai";
 import type { ContentBlock } from "../../../types";
 import { isNetworkError } from "../../errors";
-import { GEMINI_THINKING_BUDGETS } from "../../models";
 import { classifyProviderHttpError } from "../../provider-errors";
-import type { Model, StreamFunction, StreamOptions, ToolDefinition } from "../../types";
+import type { Model, StreamFunction, StreamOptions, ThinkingEffort, ToolDefinition } from "../../types";
 import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError, ProviderErrorReason, ProviderErrorType } from "../../types";
 import { convertToAISDKTools, createAISDKStream } from "../ai-sdk";
 
@@ -17,19 +16,24 @@ interface GeminiProviderState {
   sourceResults: Map<string, { url: string; title?: string }>;
 }
 
-export function resolveGeminiThinkingBudget(model: Model, effort: StreamOptions["effort"]): number | undefined {
+type GeminiThinkingLevel = "low" | "medium" | "high";
+
+export function resolveGeminiThinkingLevel(
+  model: Model,
+  effort: ThinkingEffort | undefined,
+): GeminiThinkingLevel | undefined {
   if (effort === undefined || !model.supportsThinking) return undefined;
-  const budgetKey = effort === "xhigh" ? "max" : effort;
-  return model.thinkingBudgets?.[budgetKey] ?? GEMINI_THINKING_BUDGETS[budgetKey];
+  if (effort === "xhigh" || effort === "max") return "high";
+  return effort;
 }
 
 export function buildGeminiProviderOptions(model: Model, options: StreamOptions) {
-  const thinkingBudget = resolveGeminiThinkingBudget(model, options.effort);
-  if (thinkingBudget === undefined) return undefined;
+  const thinkingLevel = resolveGeminiThinkingLevel(model, options.effort);
+  if (thinkingLevel === undefined) return undefined;
   return {
     google: {
       thinkingConfig: {
-        thinkingBudget,
+        thinkingLevel,
         includeThoughts: true,
       },
     },
@@ -56,8 +60,10 @@ export function createGeminiStream(apiKey?: string, baseUrl?: string): StreamFun
     classifyError: classifyGeminiError,
     buildTools: buildGeminiTools,
     buildProviderOptions: buildGeminiProviderOptions,
-    // Gemini uses an exact token budget instead of AI SDK's normalized reasoning effort.
+    // Latest Gemini models use provider-specific thinking levels instead of AI SDK reasoning.
     resolveReasoning: () => undefined,
+    // Gemini 3.6 Flash and 3.5 Flash-Lite reject sampling parameters in future API generations.
+    resolveTemperature: () => undefined,
     createProviderState: createGeminiProviderState,
     handleProviderPart: handleGeminiProviderPart,
     finalizeProviderState: finalizeGeminiProviderState,

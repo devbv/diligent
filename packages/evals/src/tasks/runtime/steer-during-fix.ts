@@ -234,21 +234,18 @@ function isExactProviderNativeMutation(
   call: RuntimeToolTrace,
 ): boolean {
   const { world } = input;
-  if (input.profile.provider === "openai") return call.name === "apply_patch" && isExactOpenAiPatch(call.input, world);
-  if (input.profile.provider === "anthropic")
-    return (
-      call.name === "edit" &&
-      [
-        { old_string: world.initialContent, new_string: world.expected },
-        { old_string: world.baseValue, new_string: world.replacementValue },
-      ].some(({ old_string, new_string }) =>
-        exactObject(call.input, {
-          file_path: `$WORKSPACE/${world.targetPath}`,
-          old_string,
-          new_string,
-          replace_all: false,
-        }),
-      )
+  if (call.name === "apply_patch") return isExactOpenAiPatch(call.input, world);
+  if (call.name === "edit")
+    return [
+      { old_string: world.initialContent, new_string: world.expected },
+      { old_string: world.baseValue, new_string: world.replacementValue },
+    ].some(({ old_string, new_string }) =>
+      exactObject(call.input, {
+        file_path: `$WORKSPACE/${world.targetPath}`,
+        old_string,
+        new_string,
+        replace_all: false,
+      }),
     );
   return false;
 }

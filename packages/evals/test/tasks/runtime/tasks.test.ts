@@ -908,7 +908,7 @@ describe("runtime eval tasks", () => {
 
   test("scores instruction-hierarchy decisions independently of provider prompt plumbing", async () => {
     expect(instructionHierarchyTask.fixtureVersion).toBe("instruction-hierarchy-v2");
-    expect(instructionHierarchyTask.limits.maxToolCalls).toBe(4);
+    expect(instructionHierarchyTask.limits).toMatchObject({ maxTurns: 5, maxToolCalls: 4 });
     const world = {
       root: "$WORKSPACE",
       seed: "seed",
