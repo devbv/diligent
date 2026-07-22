@@ -1,197 +1,193 @@
-# terminal-bench
+# Harbor external agent evaluations
 
-Harbor agent adapter for running diligent on [Terminal-Bench](https://tbench.ai) evaluations.
+This package lets [Harbor](https://github.com/harbor-framework/harbor) run the
+packaged Diligent CLI in isolated benchmark containers. Despite the historical
+directory name, the adapter is not limited to Terminal-Bench. It can run any
+Harbor task or dataset whose environment supports the Linux x64 binary.
+
+The integration targets Harbor `0.20.x` and executes the same compiled artifact
+that users receive, so it is suitable for external end-to-end regression runs.
 
 ## Prerequisites
 
 - Docker running (`docker info`)
 - Python 3.12+
-- Bun (for building the binary)
-- `ANTHROPIC_API_KEY` (or other provider key) set in environment
+- Bun 1.3.14
+- A provider credential, such as `ANTHROPIC_API_KEY`
 
 ## Setup
 
+From the repository root:
+
 ```bash
-# 1. Build the linux binary (from repo root)
+bun install --frozen-lockfile
 bun run build:linux-x64
 
-# 2. Create venv and install adapter (first time only)
-cd tools/terminal-bench
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .
+python3.12 -m venv thirdparty/terminal-bench/.venv
+thirdparty/terminal-bench/.venv/bin/pip install -e thirdparty/terminal-bench
 ```
 
-After code changes, rebuild the binary before running:
+Rebuild `dist/diligent-linux-x64` after changing Diligent runtime code.
+
+## Quick smoke run
 
 ```bash
-bun run build:linux-x64   # ~30ms, output: dist/diligent-linux-x64 (~99MB)
+export ANTHROPIC_API_KEY="..."
+
+thirdparty/terminal-bench/.venv/bin/harbor run \
+  --yes \
+  --dataset terminal-bench@2.0 \
+  --agent diligent_tbench:DiligentAgent \
+  --model anthropic/claude-sonnet-5 \
+  --include-task-name regex-log \
+  --n-tasks 1 \
+  --n-concurrent 1 \
+  --jobs-dir artifacts/harbor
 ```
 
-## Quick test
+Use `--include-task-name`, not `--task`, to select an item inside a dataset.
+`--task` addresses a standalone registry task.
 
-Run a single simple task to verify the setup works:
+To validate only binary installation and container compatibility without making
+a model request, append `--install-only`.
+
+## External benchmark options
+
+These benchmarks cover different end-to-end failure modes. The "other harness"
+column identifies a second implementation that can be used for parity checks;
+it does not imply identical prompts, budgets, or scores.
+
+| Benchmark | Other agent or harness support | Harbor support | Diligent E2E value |
+| --- | --- | --- | --- |
+| [Terminal-Bench 2.0](https://github.com/laude-institute/terminal-bench-2) | [JCode runs it through a Harbor adapter](https://github.com/1jehuang/jcode/blob/master/docs/TERMINAL_BENCH.md) | Native dataset and official harness | Strongest first smoke for shell use, package installation, files, and long-running processes |
+| [SWE-Bench Verified](https://www.swebench.com/) | [SWE-agent](https://swe-agent.com/latest/usage/benchmarking/), [mini-SWE-agent](https://mini-swe-agent.com/), and [OpenHands](https://github.com/OpenHands/benchmarks) | `swebench-verified` adapter | Best cross-harness coding comparison; realistic but too slow and expensive for every PR |
+| [Aider Polyglot](https://github.com/Aider-AI/polyglot-benchmark) | Aider's original harness | `aider_polyglot` adapter | Deterministic multi-language editing and tests; useful as a nightly middle tier |
+| [GAIA](https://huggingface.co/datasets/gaia-benchmark/GAIA) | [OpenHands benchmarks](https://github.com/OpenHands/benchmarks) | `gaia` adapter | General tool-use coverage, but browsing and mutable external data make it a weaker merge gate |
+| [AgentBench](https://github.com/THUDM/AgentBench) | Original AgentBench harness | No maintained first-party Harbor adapter | Broad historical agent coverage, but not the best portable coding-CLI E2E target |
+| OSWorld / TheAgentCompany | GUI and workplace-agent harnesses | Harbor adapters exist | Defer until Diligent has a stable browser or desktop interaction contract |
+
+For the current CLI, use this order:
+
+1. Terminal-Bench canaries for packaging and shell/tool smoke coverage.
+2. Aider Polyglot canaries for deterministic multi-language editing.
+3. SWE-Bench Verified canaries for cross-harness, real-repository regression.
+4. GAIA or GUI benchmarks only after their external tool dependencies are part
+   of the product contract.
+
+## E2E rollout
+
+Treat external benchmarks as a layered regression suite rather than a single
+leaderboard run:
+
+- Pull request: adapter contract tests and an install-only container smoke.
+- Manual or nightly: a pinned list of 5-15 Terminal-Bench and Aider Polyglot
+  canaries, one attempt each.
+- Weekly: a pinned 10-25 task SWE-Bench Verified canary set.
+- Release: larger benchmark sweeps with repeated attempts where variance matters.
+
+Pin the Harbor version, dataset version, task names, model, binary commit, timeout,
+and container image digest in retained artifacts. Promote a task to a merge gate
+only after the oracle passes and the infrastructure failure rate is acceptably
+low. Keep infrastructure errors separate from verifier failures.
+
+The manual `External Agent E2E` GitHub workflow implements the first live layer.
+It accepts any Harbor dataset and task-name filter and uploads the complete Harbor
+job directory for review. It is intentionally not a required pull-request check
+because every live run incurs model cost and external benchmark infrastructure
+can be flaky.
+
+## Run another Harbor dataset
+
+List published datasets:
 
 ```bash
-source tools/terminal-bench/.venv/bin/activate
-
-harbor run \
-  -d terminal-bench-sample@2.0 \
-  --agent-import-path "diligent_tbench:DiligentAgent" \
-  -m anthropic/claude-sonnet-4-6 \
-  -t "regex-log" \
-  -n 1
+thirdparty/terminal-bench/.venv/bin/harbor datasets list
 ```
 
-Expected: ~3 min, reward = 1.0. Results written to `jobs/<timestamp>/result.json`.
-
-## Run
-
-### Single task
+Then replace the dataset and task filter:
 
 ```bash
-source tools/terminal-bench/.venv/bin/activate
-
-harbor run \
-  -d terminal-bench-sample@2.0 \
-  --agent-import-path "diligent_tbench:DiligentAgent" \
-  -m anthropic/claude-sonnet-4-6 \
-  -t "<task-name>"
+thirdparty/terminal-bench/.venv/bin/harbor run \
+  --yes \
+  --dataset swebench-verified \
+  --agent diligent_tbench:DiligentAgent \
+  --model anthropic/claude-sonnet-5 \
+  --include-task-name "django__django-*" \
+  --n-tasks 1 \
+  --n-concurrent 1 \
+  --jobs-dir artifacts/harbor
 ```
 
-### Full dataset
+Harbor also accepts a local task or composite dataset through `--path`. A small,
+repository-owned composite dataset is the preferred eventual pull-request gate
+because its task definitions and verifiers can be pinned with the source.
 
-```bash
-harbor run \
-  -d terminal-bench@2.0 \
-  --agent-import-path "diligent_tbench:DiligentAgent" \
-  -m anthropic/claude-sonnet-4-6 \
-  -n 4
-```
+## Authentication and configuration
 
-### Parallel execution with Daytona
+The model must use Harbor's `provider/model` form. Direct key injection supports:
 
-```bash
-export DAYTONA_API_KEY="..."
+| Provider | Environment variable |
+| --- | --- |
+| Anthropic | `ANTHROPIC_API_KEY` |
+| OpenAI | `OPENAI_API_KEY` |
+| Gemini | `GEMINI_API_KEY` |
+| Z.AI Coding Plan | `ZAI_API_KEY` |
 
-harbor run \
-  -d terminal-bench@2.0 \
-  --agent-import-path "diligent_tbench:DiligentAgent" \
-  -m anthropic/claude-sonnet-4-6 \
-  --env daytona \
-  -n 32
-```
+For ChatGPT OAuth, Vertex, or another preconfigured credential, set
+`DILIGENT_AUTH_JSON_PATH` to a local Diligent `auth.jsonc` file.
 
-## Datasets
-
-| Dataset | Tasks | Description |
-|---------|-------|-------------|
-| `terminal-bench-sample@2.0` | 10 | Quick validation subset |
-| `terminal-bench@2.0` | 89 | Full benchmark |
-| `terminal-bench-pro@1.0` | 200 | Extended benchmark |
-
-List available tasks: `harbor datasets download terminal-bench-sample@2.0` (cached to `~/.cache/harbor/tasks/`)
-
-## Useful flags
-
-| Flag | Description |
-|------|-------------|
-| `-t "task-name"` | Run specific task (supports glob: `-t "regex-*"`) |
-| `-x "task-name"` | Exclude task |
-| `-n 4` | Concurrent trials |
-| `-l 5` | Limit to first N tasks |
-| `-k 3` | Retry each task N times |
-| `--debug` | Enable debug logging (warning: may leave containers running) |
-| `-o path/` | Custom output directory (default: `jobs/`) |
-
-## Results
-
-Results are written to `jobs/<timestamp>/`:
-
-```
-jobs/2026-03-02__10-50-03/
-  result.json              # Overall job summary (mean score, reward distribution)
-  config.json              # Job configuration
-  job.log                  # Harbor log
-  regex-log__XkG5wMQ/      # Per-trial directory
-    result.json            # Trial result (reward, tokens, timing)
-    trial.log
-    agent/
-      command-0/           # Config setup (auth.jsonc + config.jsonc creation)
-      command-1/           # Diligent execution
-      command-2/           # Session log collection
-      sessions/            # Copied .diligent session JSONL files
-    verifier/              # Test execution output
-```
-
-Key fields in trial `result.json`:
-- `verifier_result.rewards.reward` — score (0.0 or 1.0)
-- `agent_result.n_input_tokens` / `n_output_tokens` — token usage
-- `agent_execution.started_at` / `finished_at` — timing
-
-## How it works
-
-```
-Host                          Container
-────                          ─────────
-1. Copy binary to /logs/      → /installed-agent/diligent
-2. apt-get install ripgrep    → required by diligent's grep tool
-3. Write auth.jsonc from env  → ~/.diligent/auth.jsonc
-   Write model config         → ~/.diligent/config.jsonc
-4. diligent --prompt ...      → Session logs in .diligent/sessions/
-5. Copy *.jsonl to output     → Token usage extracted post-run
-```
-
-The adapter creates `auth.jsonc` and `config.jsonc` in the container from host-side environment variables at command generation time. API keys go to `auth.jsonc`, model selection goes to `config.jsonc`.
+The adapter never interpolates an API key into a shell command. It writes an
+`auth.jsonc` containing an `{env:VARIABLE}` reference and scopes the actual value
+to the agent process. A supplied auth file is uploaded directly and installed
+with mode `0600`. The generated `config.jsonc` selects the requested provider and
+model and forces file-backed credentials inside the disposable container.
 
 ## Environment variables
 
 | Variable | Required | Description |
-|----------|----------|-------------|
-| `ANTHROPIC_API_KEY` | Yes (for Anthropic models) | Written to auth.json in container |
-| `OPENAI_API_KEY` | For OpenAI models | Written to auth.json in container |
-| `GEMINI_API_KEY` | For Gemini models | Written to auth.json in container |
-| `DILIGENT_BINARY_PATH` | No | Override binary path (default: `dist/diligent-linux-x64`) |
-| `DAYTONA_API_KEY` | For `--env daytona` | Daytona cloud environment access |
+| --- | --- | --- |
+| Provider API key | Usually | Credential for the model selected by `--model` |
+| `DILIGENT_AUTH_JSON_PATH` | Alternative | Upload an existing auth store instead of injecting an API key |
+| `DILIGENT_BINARY_PATH` | No | Override the default `dist/diligent-linux-x64` artifact |
+| `DAYTONA_API_KEY` | With `--env daytona` | Daytona cloud environment access |
+
+## How the adapter runs
+
+1. Upload the compiled binary to `/installed-agent/diligent`.
+2. Install `ripgrep` through `apk`, `apt-get`, or `yum` when missing.
+3. Write isolated Diligent model and auth configuration in the task container.
+4. Run `diligent --yolo --prompt ...` in the Harbor task work directory.
+5. Copy Diligent session JSONL files into Harbor's agent artifacts and aggregate
+   token usage into the trial result.
+
+Harbor-provided MCP servers and skills are translated into Diligent configuration.
+
+## Development verification
+
+```bash
+thirdparty/terminal-bench/.venv/bin/pip install -e thirdparty/terminal-bench pytest
+thirdparty/terminal-bench/.venv/bin/pytest -q thirdparty/terminal-bench/test
+python3.12 -m compileall -q thirdparty/terminal-bench/src
+```
 
 ## Troubleshooting
 
-### Containers not cleaned up
-
-`--debug` mode may leave containers running. Check and clean up:
-
-```bash
-docker ps -a --filter "label=harbor" --format "{{.ID}} {{.Names}} {{.Status}}"
-docker stop <id> && docker rm <id>
-```
-
 ### Binary not found
 
-```
-FileNotFoundError: Cannot find diligent-linux-x64 binary.
-```
+Run `bun run build:linux-x64` or set `DILIGENT_BINARY_PATH` to a Linux x64 build.
 
-Rebuild: `bun run build:linux-x64` from repo root.
+### Provider credential missing
 
-### API key errors
+Export the environment variable associated with the provider prefix in `--model`,
+or set `DILIGENT_AUTH_JSON_PATH`.
 
-```
-Error: No API key for anthropic.
-```
+### Container architecture or libc mismatch
 
-Ensure `ANTHROPIC_API_KEY` is exported in the shell where you run `harbor run`. The adapter writes it to `auth.json` inside the container.
+The packaged artifact currently targets Linux x64. Use an x64, glibc-compatible
+task image. An ARM64 or musl-only benchmark image needs a separately built and
+selected Diligent artifact.
 
-### Agent setup timeout
+### Setup timeout
 
-The first run downloads the Docker image and installs ripgrep (~13s setup). Subsequent runs reuse the cached image. If setup times out, try `--agent-setup-timeout-multiplier 3.0`.
-
-## Directory structure
-
-```
-tools/terminal-bench/
-  src/diligent_tbench/
-    agent.py          Harbor adapter — binary resolution, config setup, execution
-    templates/
-      install.sh.j2   Container setup — copy binary, install ripgrep
-  pyproject.toml      Python package definition (harbor>=0.1.0)
-```
+The first run may pull a task image and install `ripgrep`. Increase
+`--agent-setup-timeout-multiplier` if the package mirror or runner is slow.
