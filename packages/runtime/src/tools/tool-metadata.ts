@@ -41,6 +41,8 @@ export const TOOL_CAPABILITIES: Record<string, ToolCapabilities> = {
   ls: {},
   search_knowledge: { hasCustomRender: true },
   web_action: {},
+  // Pure time wait — no filesystem or process side effects.
+  sleep: {},
 
   // Write tools (excluded from plan mode)
   bash: { planModeDisallowed: true, hasCustomRender: true },
