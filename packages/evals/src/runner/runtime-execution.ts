@@ -4,7 +4,7 @@ import { lstat, mkdtemp, readdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative, sep } from "node:path";
 import type { Message, Usage } from "@diligent/core/message-contract";
-import type { StreamFunction } from "@diligent/core/provider-contract";
+import type { ProviderManager, StreamFunction } from "@diligent/core/provider-contract";
 import { type LogRecord, resetDefaultLogSinkForTests, setDefaultLogSink } from "@diligent/logging";
 import type { DiligentServerNotification, DiligentServerRequest, ThreadReadResponse } from "@diligent/protocol";
 import { createAppServerConfig, DiligentAppServer, ensureDiligentDir } from "@diligent/runtime";
@@ -47,6 +47,7 @@ export async function runRuntimeEvalExecution(input: {
   profile: EvalProfile;
   seed: string;
   streamFunction: StreamFunction;
+  configureProviderManager?: (profile: EvalProfile, manager: ProviderManager) => void;
 }): Promise<RuntimeEvalExecutionResult> {
   const { task, profile, seed } = input;
   const hardLimits = resolveEvalHardLimits(task.limits);
@@ -136,6 +137,7 @@ export async function runRuntimeEvalExecution(input: {
     });
     logSinkInstalled = true;
     let config = await deadline.run("runtime config setup", task.createRuntimeConfig(world, profile));
+    input.configureProviderManager?.(profile, config.providerManager);
     const makeServer = () => {
       config.streamFunction = clampOutputTokens(
         input.streamFunction,
@@ -235,6 +237,7 @@ export async function runRuntimeEvalExecution(input: {
         serverRequests.push(...client.serverRequests);
         client.close();
         config = await deadline.run("restart runtime config setup", task.createRuntimeConfig(world, profile));
+        input.configureProviderManager?.(profile, config.providerManager);
         server = makeServer();
         client = makeClient(server);
         await deadline.run("restart client initialization", client.initialize());

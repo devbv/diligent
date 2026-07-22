@@ -47,6 +47,13 @@ describe("parseCliOptions", () => {
       provider: "gemini",
     });
   });
+
+  test("accepts local ChatGPT OAuth only when explicitly selected", () => {
+    expect(parseCliOptions(["runtime", "--provider", "chatgpt", "--model", "gpt-5.5"])).toMatchObject({
+      provider: "chatgpt",
+      model: "gpt-5.5",
+    });
+  });
 });
 
 describe("task selection", () => {

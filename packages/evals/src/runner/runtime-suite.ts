@@ -1,7 +1,7 @@
 // @summary Runs the runtime task/profile matrix sequentially into one discriminated report
 
 import { arch, platform } from "node:os";
-import type { StreamFunction } from "@diligent/core/provider-contract";
+import type { ProviderManager, StreamFunction } from "@diligent/core/provider-contract";
 import type {
   AnyRuntimeEvalTask,
   RuntimeEvalExecutionReport,
@@ -19,6 +19,7 @@ export async function runRuntimeEvalSuite(input: {
   rootSeed: string;
   metadata: EvalRunMetadata;
   createStream(profile: EvalProfile): StreamFunction;
+  configureProviderManager?: (profile: EvalProfile, manager: ProviderManager) => void;
   onExecutionStart?: (task: AnyRuntimeEvalTask, profile: EvalProfile) => void;
   onExecutionEnd?: (result: RuntimeEvalExecutionResult) => void;
 }): Promise<RuntimeEvalSuiteReport> {
@@ -34,6 +35,7 @@ export async function runRuntimeEvalSuite(input: {
         profile,
         seed: taskSeed,
         streamFunction: input.createStream(profile),
+        configureProviderManager: input.configureProviderManager,
       });
       const { compactions, childSessions, ...execution } = result.execution;
       executions.push({

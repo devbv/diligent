@@ -6,11 +6,12 @@ import {
   resolveModelSelector,
   supportsThinkingEffort,
 } from "@diligent/core/model-registry";
-import type { Model, StreamFunction } from "@diligent/core/provider-contract";
+import type { Model, ProviderManager, StreamFunction } from "@diligent/core/provider-contract";
 import { createAnthropicStream } from "@diligent/core/providers/anthropic";
 import { createGeminiStream } from "@diligent/core/providers/gemini";
 import { createOpenAIStream } from "@diligent/core/providers/openai";
 import type { EvalCliOptions } from "./cli-options";
+import type { ChatGPTEvalAuth } from "./providers/chatgpt-oauth";
 import type { EvalProfile, EvalProvider } from "./task";
 
 const EVAL_EFFORT = "medium" as const;
@@ -26,7 +27,9 @@ export function resolveSelectedProfiles(options: EvalCliOptions): EvalProfile[] 
       ? resolveModel({ provider: options.provider, modelId: options.model })
       : resolveModelSelector(options.model);
     if (!isEvalProvider(model.provider)) {
-      throw new Error(`Eval suites support only OpenAI, Anthropic, and Gemini API models, received ${model.provider}.`);
+      throw new Error(
+        `Eval suites support only OpenAI, Anthropic, Gemini, and ChatGPT models, received ${model.provider}.`,
+      );
     }
     if (options.provider && options.provider !== model.provider) {
       throw new Error(`Model ${options.model} belongs to ${model.provider}, not ${options.provider}.`);
@@ -56,10 +59,26 @@ export function validateCredentials(profiles: readonly EvalProfile[], env: EvalC
   }
 }
 
-export function createProfileStream(profile: EvalProfile, env: EvalCredentialEnv = process.env): StreamFunction {
+export function createProfileStream(
+  profile: EvalProfile,
+  env: EvalCredentialEnv = process.env,
+  chatgptAuth?: ChatGPTEvalAuth,
+): StreamFunction {
   if (profile.provider === "openai") return createOpenAIStream(env.OPENAI_API_KEY);
   if (profile.provider === "anthropic") return createAnthropicStream(env.ANTHROPIC_API_KEY);
-  return createGeminiStream(env.GEMINI_API_KEY);
+  if (profile.provider === "gemini") return createGeminiStream(env.GEMINI_API_KEY);
+  if (!chatgptAuth) throw new Error("ChatGPT eval profiles require initialized local OAuth.");
+  return chatgptAuth.streamFunction;
+}
+
+export function configureProfileProviderManager(
+  profile: EvalProfile,
+  manager: ProviderManager,
+  chatgptAuth?: ChatGPTEvalAuth,
+): void {
+  if (profile.provider !== "chatgpt") return;
+  if (!chatgptAuth) throw new Error("ChatGPT eval profiles require initialized local OAuth.");
+  chatgptAuth.bindProviderManager(manager);
 }
 
 export function resolveProfileModel(profile: EvalProfile): Model {
@@ -72,7 +91,7 @@ export function resolveProfileModel(profile: EvalProfile): Model {
 }
 
 export function isEvalProvider(value: string): value is EvalProvider {
-  return value === "openai" || value === "anthropic" || value === "gemini";
+  return value === "openai" || value === "anthropic" || value === "gemini" || value === "chatgpt";
 }
 
 function resolveDefaultProfile(provider: EvalProvider): EvalProfile {

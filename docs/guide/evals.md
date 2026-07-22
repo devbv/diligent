@@ -16,17 +16,18 @@ bun run eval core
 bun run eval runtime
 ```
 
-Use `--provider openai|anthropic|gemini` to select one provider and `--task <id>` to select one task; the filters
-compose. Gemini is opt-in: without either filter, the command continues to run every task against the OpenAI and
-Anthropic default profiles. `--model` selects one compatible model and therefore one provider profile. `--seed`
-reconstructs fixture values; it does not make model output deterministic. Reports are written under
+Use `--provider openai|anthropic|gemini|chatgpt` to select one provider and `--task <id>` to select one task; the
+filters compose. Gemini and ChatGPT are opt-in: without either filter, the command continues to run every task against
+the OpenAI and Anthropic default profiles. `--model` selects one compatible model and therefore one provider profile.
+`--seed` reconstructs fixture values; it does not make model output deterministic. Reports are written under
 `artifacts/evals/` unless `--report` is given.
 
 The core suite contains 7 tasks: `direct-response`, `single-tool`, `tool-chain`, `recover-tool-error`,
 `structured-tool-args`, `parallel-tools`, and `image-tool-result`. `image-tool-result` checks provider transport of
 multiple image blocks from an in-memory tool without runtime or filesystem behavior. All profiles use medium effort.
 A default complete run requires both `OPENAI_API_KEY` and `ANTHROPIC_API_KEY`; a provider-filtered run requires
-only its selected credential. An explicit Gemini run requires `GEMINI_API_KEY`.
+only its selected credential. An explicit Gemini run requires `GEMINI_API_KEY`. An explicit local ChatGPT run uses
+Diligent's configured OAuth credential store and may open a browser for login.
 
 The runtime suite contains 34 tasks. An unfiltered run uses both default profiles and therefore performs 68 sequential
 task/profile executions. The complete manifest is:
@@ -71,6 +72,12 @@ but pass/fail evaluation is deterministic code over captured evidence; there is 
 `OPENAI_API_KEY` for OpenAI selections, `ANTHROPIC_API_KEY` for Anthropic selections, and `GEMINI_API_KEY` for
 explicit Gemini selections. An unfiltered run requires the OpenAI and Anthropic keys.
 
+Local ChatGPT subscription evals are explicitly selected with `--provider chatgpt`. They use the same configured
+Diligent auth store, token refresh, browser opener, and localhost callback as the product runtime. Rotated refresh
+tokens are persisted before model use. Missing credentials or one clear authentication rejection may open the browser;
+schema, network, model, and eval assertion failures do not trigger login. This provider remains local-only: it is not
+part of default profiles, scheduled matrices, GitHub Actions inputs, or CI secrets.
+
 ```bash
 # One focused execution; only OPENAI_API_KEY is required
 bun run eval runtime --task instruction-hierarchy --provider openai
@@ -80,6 +87,12 @@ bun run eval runtime --task instruction-hierarchy
 
 # One focused Gemini execution; only GEMINI_API_KEY is required
 bun run eval runtime --task bundled-tool-routing --provider gemini
+
+# One focused local ChatGPT OAuth execution; may open a browser
+bun run eval runtime --task instruction-hierarchy --provider chatgpt
+
+# Select a specific ChatGPT subscription model
+bun run eval core --task direct-response --provider chatgpt --model gpt-5.5
 
 # Complete default calibration; the OpenAI and Anthropic keys are required (68 executions)
 bun run eval runtime
