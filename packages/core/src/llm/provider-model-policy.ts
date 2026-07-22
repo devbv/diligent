@@ -9,7 +9,7 @@ export const PROVIDER_MODEL_POLICIES: Readonly<Record<ProviderName, ProviderMode
   anthropic: { defaultModel: "claude-opus-4-8" },
   openai: { defaultModel: "gpt-5.6-sol" },
   chatgpt: { defaultModel: "gpt-5.6-sol" },
-  gemini: { defaultModel: "gemini-3.5-flash" },
+  gemini: { defaultModel: "gemini-3.6-flash" },
   vertex: { defaultModel: "vertex-gemma-4-26b-it" },
   "zai-coding-plan": { defaultModel: "glm-5.2" },
 };

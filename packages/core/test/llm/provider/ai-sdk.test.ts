@@ -120,6 +120,40 @@ describe("AI SDK message conversion", () => {
 });
 
 describe("AI SDK stream bridge", () => {
+  it("allows a provider adapter to remove unsupported temperature sampling", async () => {
+    const languageModel = new MockLanguageModelV4({
+      doStream: async () => ({
+        stream: simulateReadableStream({
+          chunks: [
+            { type: "stream-start", warnings: [] },
+            {
+              type: "finish",
+              finishReason: { unified: "stop", raw: "STOP" },
+              usage: {
+                inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+                outputTokens: { total: 1, text: 1, reasoning: 0 },
+              },
+            },
+          ],
+        }),
+      }),
+    });
+    const createStream = createAISDKStream({
+      createLanguageModel: () => languageModel,
+      classifyError: (error) =>
+        new ProviderError(String(error), { errorType: ProviderErrorType.Unknown, isRetryable: false }),
+      resolveTemperature: () => undefined,
+    });
+
+    await createStream(
+      model,
+      { systemPrompt: [], messages: [{ role: "user", content: "hello", timestamp: 1 }], tools: [] },
+      { temperature: 0.2 },
+    ).result();
+
+    expect(languageModel.doStreamCalls[0]?.temperature).toBeUndefined();
+  });
+
   it("rejects and closes when the provider emits an abort part", async () => {
     const stream = new EventStream<ProviderEvent, ProviderResult>(
       (event) => event.type === "done" || event.type === "error",

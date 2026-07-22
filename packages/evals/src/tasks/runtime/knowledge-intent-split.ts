@@ -133,7 +133,7 @@ export const knowledgeIntentSplitTask: RuntimeEvalTask<KnowledgeIntentSplitWorld
     if (
       write?.capability !== "write" ||
       write.outcome !== "success" ||
-      !isProviderNativeExactCreate(input, write, OUTPUT_PATH, input.world.expected)
+      !isProviderNativeExactCreate(write, OUTPUT_PATH, input.world.expected)
     )
       return fail(
         "write",
@@ -202,22 +202,18 @@ async function verifyIntentSplit(
 }
 
 function isProviderNativeExactCreate(
-  execution: RuntimeEvalExecution<unknown>,
   call: RuntimeEvalExecution<unknown>["toolCalls"][number],
   path: string,
   content: string,
 ): boolean {
-  if (execution.profile.provider === "openai")
-    return call.name === "apply_patch" && matchesExactPatchInput(call.input, exactAddPatch(path, content));
-  if (execution.profile.provider === "anthropic")
-    return (
-      exactObject(call.input, {
-        file_path: `$WORKSPACE/${path}`,
-        old_string: "",
-        new_string: content,
-        replace_all: false,
-      }) && call.name === "edit"
-    );
+  if (call.name === "apply_patch") return matchesExactPatchInput(call.input, exactAddPatch(path, content));
+  if (call.name === "edit")
+    return exactObject(call.input, {
+      file_path: `$WORKSPACE/${path}`,
+      old_string: "",
+      new_string: content,
+      replace_all: false,
+    });
   return false;
 }
 

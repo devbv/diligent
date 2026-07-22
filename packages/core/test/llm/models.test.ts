@@ -9,8 +9,19 @@ import {
   sameModelRef,
   UnknownModelError,
 } from "../../src/llm/models";
+import { getDefaultModelRef } from "../../src/llm/provider-model-policy";
 
 describe("provider-scoped model catalog", () => {
+  it("exposes only the two latest Gemini models and defaults to Gemini 3.6 Flash", () => {
+    expect(listModels("gemini").map((model) => model.modelId)).toEqual(["gemini-3.6-flash", "gemini-3.5-flash-lite"]);
+    expect(getDefaultModelRef("gemini")).toEqual({ provider: "gemini", modelId: "gemini-3.6-flash" });
+    expect(resolveModel({ provider: "gemini", modelId: "gemini" }).modelId).toBe("gemini-3.6-flash");
+
+    for (const removedModelId of ["gemini-3.1-pro-preview", "gemini-3.5-flash", "gemini-3.1-flash-lite"]) {
+      expect(findModel({ provider: "gemini", modelId: removedModelId })).toBeUndefined();
+    }
+  });
+
   it("resolves aliases only inside the explicit provider", () => {
     const model = listModels().find((candidate) => candidate.aliases && candidate.aliases.length > 0);
     expect(model).toBeDefined();

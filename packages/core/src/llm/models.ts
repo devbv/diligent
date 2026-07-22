@@ -11,7 +11,6 @@ import type { ModelInfo, ModelRef, ProviderName } from "./types";
 
 export type { ModelCard, ModelCardProvenance } from "./model-card";
 export { MODEL_CARD_SCHEMA_VERSION } from "./model-card";
-export { GEMINI_THINKING_BUDGETS } from "./provider/gemini/models";
 
 const PROVIDER_MODELS = {
   anthropic: ANTHROPIC_MODELS,

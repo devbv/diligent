@@ -1,8 +1,14 @@
 // @summary Resolves default or filtered provider profiles and credentials
 
-import { resolveModel, resolveModelSelector, supportsThinkingEffort } from "@diligent/core/model-registry";
+import {
+  getDefaultModelRef,
+  resolveModel,
+  resolveModelSelector,
+  supportsThinkingEffort,
+} from "@diligent/core/model-registry";
 import type { Model, StreamFunction } from "@diligent/core/provider-contract";
 import { createAnthropicStream } from "@diligent/core/providers/anthropic";
+import { createGeminiStream } from "@diligent/core/providers/gemini";
 import { createOpenAIStream } from "@diligent/core/providers/openai";
 import type { EvalCliOptions } from "./cli-options";
 import type { EvalProfile, EvalProvider } from "./task";
@@ -19,8 +25,8 @@ export function resolveSelectedProfiles(options: EvalCliOptions): EvalProfile[] 
     const model = options.provider
       ? resolveModel({ provider: options.provider, modelId: options.model })
       : resolveModelSelector(options.model);
-    if (model.provider !== "openai" && model.provider !== "anthropic") {
-      throw new Error(`Eval suites support only OpenAI and Anthropic API models, received ${model.provider}.`);
+    if (!isEvalProvider(model.provider)) {
+      throw new Error(`Eval suites support only OpenAI, Anthropic, and Gemini API models, received ${model.provider}.`);
     }
     if (options.provider && options.provider !== model.provider) {
       throw new Error(`Model ${options.model} belongs to ${model.provider}, not ${options.provider}.`);
@@ -29,9 +35,7 @@ export function resolveSelectedProfiles(options: EvalCliOptions): EvalProfile[] 
     return [{ provider: model.provider, model: model.modelId, effort: EVAL_EFFORT }];
   }
 
-  const selected = options.provider
-    ? DEFAULT_PROFILES.filter((profile) => profile.provider === options.provider)
-    : DEFAULT_PROFILES;
+  const selected = options.provider ? [resolveDefaultProfile(options.provider)] : DEFAULT_PROFILES;
   return selected.map((profile) => {
     const model = resolveModel({ provider: profile.provider, modelId: profile.model });
     validateMediumEffort(model);
@@ -47,11 +51,15 @@ export function validateCredentials(profiles: readonly EvalProfile[], env: EvalC
   if (required.has("anthropic") && !env.ANTHROPIC_API_KEY?.trim()) {
     throw new Error("ANTHROPIC_API_KEY is required for the selected eval profiles.");
   }
+  if (required.has("gemini") && !env.GEMINI_API_KEY?.trim()) {
+    throw new Error("GEMINI_API_KEY is required for the selected eval profiles.");
+  }
 }
 
 export function createProfileStream(profile: EvalProfile, env: EvalCredentialEnv = process.env): StreamFunction {
   if (profile.provider === "openai") return createOpenAIStream(env.OPENAI_API_KEY);
-  return createAnthropicStream(env.ANTHROPIC_API_KEY);
+  if (profile.provider === "anthropic") return createAnthropicStream(env.ANTHROPIC_API_KEY);
+  return createGeminiStream(env.GEMINI_API_KEY);
 }
 
 export function resolveProfileModel(profile: EvalProfile): Model {
@@ -64,7 +72,13 @@ export function resolveProfileModel(profile: EvalProfile): Model {
 }
 
 export function isEvalProvider(value: string): value is EvalProvider {
-  return value === "openai" || value === "anthropic";
+  return value === "openai" || value === "anthropic" || value === "gemini";
+}
+
+function resolveDefaultProfile(provider: EvalProvider): EvalProfile {
+  const configured = DEFAULT_PROFILES.find((profile) => profile.provider === provider);
+  if (configured) return { ...configured };
+  return { provider, model: getDefaultModelRef(provider).modelId, effort: EVAL_EFFORT };
 }
 
 function validateMediumEffort(model: Model): void {

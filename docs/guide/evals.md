@@ -16,16 +16,17 @@ bun run eval core
 bun run eval runtime
 ```
 
-Use `--provider openai|anthropic` to select one provider and `--task <id>` to select one task; the filters compose.
-Without either filter, the command runs every task against both default provider profiles. `--model` selects one
-compatible model and therefore one provider profile. `--seed` reconstructs fixture values; it does not make model
-output deterministic. Reports are written under `artifacts/evals/` unless `--report` is given.
+Use `--provider openai|anthropic|gemini` to select one provider and `--task <id>` to select one task; the filters
+compose. Gemini is opt-in: without either filter, the command continues to run every task against the OpenAI and
+Anthropic default profiles. `--model` selects one compatible model and therefore one provider profile. `--seed`
+reconstructs fixture values; it does not make model output deterministic. Reports are written under
+`artifacts/evals/` unless `--report` is given.
 
 The core suite contains 7 tasks: `direct-response`, `single-tool`, `tool-chain`, `recover-tool-error`,
 `structured-tool-args`, `parallel-tools`, and `image-tool-result`. `image-tool-result` checks provider transport of
 multiple image blocks from an in-memory tool without runtime or filesystem behavior. All profiles use medium effort.
-A complete run requires both `OPENAI_API_KEY` and `ANTHROPIC_API_KEY`; a provider-filtered run requires only its
-selected credential.
+A default complete run requires both `OPENAI_API_KEY` and `ANTHROPIC_API_KEY`; a provider-filtered run requires
+only its selected credential. An explicit Gemini run requires `GEMINI_API_KEY`.
 
 The runtime suite contains 34 tasks. An unfiltered run uses both default profiles and therefore performs 68 sequential
 task/profile executions. The complete manifest is:
@@ -44,7 +45,13 @@ task/profile executions. The complete manifest is:
   `autonomous-explore-delegation`.
 
 Selection counts are predictable: one task against one provider is one execution, one task without a provider filter
-is two, all tasks against one provider is 34, and the unfiltered manifest is 68.
+is two, all tasks against one explicitly selected provider (including Gemini) is 34, and the unfiltered manifest is
+68.
+
+Task `maxTurns` and `maxToolCalls` values are target budgets. Both core and runtime runners allow a fixed global
+grace of two additional provider turns and one additional tool call before enforcing a hard stop. The execution report
+retains the actual counts, so efficiency remains observable without failing an otherwise correct bounded recovery or
+confirmation.
 
 ## Deterministic verification and live calibration
 
@@ -61,8 +68,8 @@ bun test packages/evals/test
 
 Live calibration executes the selected task/profile matrix against provider APIs. Model execution is non-deterministic,
 but pass/fail evaluation is deterministic code over captured evidence; there is no LLM judge or semantic retry. Set
-`OPENAI_API_KEY` for OpenAI selections and `ANTHROPIC_API_KEY` for Anthropic selections. An unfiltered run requires
-both keys.
+`OPENAI_API_KEY` for OpenAI selections, `ANTHROPIC_API_KEY` for Anthropic selections, and `GEMINI_API_KEY` for
+explicit Gemini selections. An unfiltered run requires the OpenAI and Anthropic keys.
 
 ```bash
 # One focused execution; only OPENAI_API_KEY is required
@@ -71,7 +78,10 @@ bun run eval runtime --task instruction-hierarchy --provider openai
 # One task against both default profiles; both keys are required (2 executions)
 bun run eval runtime --task instruction-hierarchy
 
-# Complete calibration; both keys are required (60 executions)
+# One focused Gemini execution; only GEMINI_API_KEY is required
+bun run eval runtime --task bundled-tool-routing --provider gemini
+
+# Complete default calibration; the OpenAI and Anthropic keys are required (68 executions)
 bun run eval runtime
 ```
 

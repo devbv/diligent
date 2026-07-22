@@ -17,6 +17,7 @@ import {
   type EvalTerminationReason,
   ZERO_USAGE,
 } from "../task";
+import { createBudgetGraceDiagnostics, EVAL_BUDGET_GRACE, resolveEvalHardLimits } from "./budget-policy";
 import { checkStructuralInvariants } from "./invariants";
 
 export interface RunEvalExecutionInput<TWorld> {
@@ -31,6 +32,7 @@ export async function runEvalExecution<TWorld>(
   input: RunEvalExecutionInput<TWorld>,
 ): Promise<EvalExecutionResult<TWorld>> {
   const { task, profile, model, seed } = input;
+  const hardLimits = resolveEvalHardLimits(task.limits);
   const startedAt = new Date();
   const startedMonotonic = performance.now();
   const controller = new AbortController();
@@ -74,23 +76,27 @@ export async function runEvalExecution<TWorld>(
     if (event.type === "agent_end") agentEndMessages = cloneValue(event.messages);
     if (event.type === "turn_start") {
       turnCount += 1;
-      if (turnCount > task.limits.maxTurns) {
+      if (turnCount > hardLimits.maxTurns) {
         terminate("turn_limit", {
           dimension: "harness_terminal",
           category: "budget_exceeded",
           code: "budget_exceeded.turn_limit",
-          message: `Turn count exceeded ${task.limits.maxTurns}.`,
+          message:
+            `Turn count exceeded hard limit ${hardLimits.maxTurns} ` +
+            `(target ${task.limits.maxTurns} + ${EVAL_BUDGET_GRACE.turns} grace).`,
         });
       }
     }
     if (event.type === "tool_start") {
       toolCallCount += 1;
-      if (toolCallCount > task.limits.maxToolCalls) {
+      if (toolCallCount > hardLimits.maxToolCalls) {
         terminate("tool_call_limit", {
           dimension: "harness_terminal",
           category: "budget_exceeded",
           code: "budget_exceeded.tool_call_limit",
-          message: `Tool-call count exceeded ${task.limits.maxToolCalls}.`,
+          message:
+            `Tool-call count exceeded hard limit ${hardLimits.maxToolCalls} ` +
+            `(target ${task.limits.maxToolCalls} + ${EVAL_BUDGET_GRACE.toolCalls} grace).`,
         });
       }
     }
@@ -150,6 +156,7 @@ export async function runEvalExecution<TWorld>(
   const failures: EvalFailure[] = [];
   if (primaryFailure) failures.push(primaryFailure);
   if (execution.termination === "completed") {
+    diagnostics.push(...createBudgetGraceDiagnostics(task.limits, { turns: turnCount, toolCalls: toolCallCount }));
     failures.push(...checkStructuralInvariants(execution));
     if (failures.length === 0) {
       try {

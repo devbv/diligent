@@ -92,9 +92,13 @@ describe("steer-during-fix runtime eval", () => {
     }
   });
 
-  test("accepts strict OpenAI and Anthropic evidence", () => {
+  test("accepts strict write evidence from every supported eval provider", () => {
     const openai = validExecution();
     expect(steerDuringFixTask.evaluate(openai)).toEqual({ passed: true });
+
+    const gemini = validExecution();
+    gemini.profile.provider = "gemini";
+    expect(steerDuringFixTask.evaluate(gemini)).toEqual({ passed: true });
 
     const anthropic = validExecution();
     anthropic.profile.provider = "anthropic";

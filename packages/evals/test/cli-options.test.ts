@@ -41,6 +41,12 @@ describe("parseCliOptions", () => {
       task: "single-tool",
     });
   });
+
+  test("accepts Gemini only when explicitly selected", () => {
+    expect(parseCliOptions(["core", "--provider", "gemini"])).toMatchObject({
+      provider: "gemini",
+    });
+  });
 });
 
 describe("task selection", () => {

@@ -2,52 +2,35 @@
 import { defineProviderModels } from "../../model-card";
 import { defineProviderModelClasses } from "../../model-class";
 
-export const GEMINI_THINKING_BUDGETS = { low: 2_048, medium: 8_192, high: 16_384, max: 24_576 } as const;
-
 export const GEMINI_MODEL_CLASSES = defineProviderModelClasses({
-  pro: { defaultModelId: "gemini-3.1-pro-preview" },
-  general: { defaultModelId: "gemini-3.5-flash" },
-  lite: { defaultModelId: "gemini-3.1-flash-lite" },
+  pro: { defaultModelId: "gemini-3.6-flash" },
+  general: { defaultModelId: "gemini-3.6-flash" },
+  lite: { defaultModelId: "gemini-3.5-flash-lite" },
 });
 
 export const GEMINI_MODELS = defineProviderModels("gemini", [
   {
-    modelId: "gemini-3.1-pro-preview",
-    display: "Gemini 3.1 Pro",
-    contextWindow: 300_000,
-    maxOutputTokens: 65_536,
-    inputCostPer1M: 2,
-    outputCostPer1M: 12,
-    supportsThinking: true,
-    supportedEfforts: ["low", "medium", "high", "max"],
-    supportsVision: true,
-    thinkingBudgets: GEMINI_THINKING_BUDGETS,
-    aliases: ["gemini-pro"],
-  },
-  {
-    modelId: "gemini-3.5-flash",
-    display: "Gemini 3.5 Flash",
+    modelId: "gemini-3.6-flash",
+    display: "Gemini 3.6 Flash",
     contextWindow: 1_048_576,
     maxOutputTokens: 65_536,
     inputCostPer1M: 1.5,
-    outputCostPer1M: 9,
+    outputCostPer1M: 7.5,
     supportsThinking: true,
-    supportedEfforts: ["low", "medium", "high", "max"],
+    supportedEfforts: ["low", "medium", "high"],
     supportsVision: true,
-    thinkingBudgets: GEMINI_THINKING_BUDGETS,
-    aliases: ["gemini-flash", "gemini", "gemini-3-flash-preview"],
+    aliases: ["gemini-pro", "gemini-flash", "gemini"],
   },
   {
-    modelId: "gemini-3.1-flash-lite",
-    display: "Gemini 3.1 Flash Lite",
+    modelId: "gemini-3.5-flash-lite",
+    display: "Gemini 3.5 Flash-Lite",
     contextWindow: 1_048_576,
     maxOutputTokens: 65_536,
-    inputCostPer1M: 0.25,
-    outputCostPer1M: 1.5,
+    inputCostPer1M: 0.3,
+    outputCostPer1M: 2.5,
     supportsThinking: true,
-    supportedEfforts: ["low", "medium", "high", "max"],
+    supportedEfforts: ["low", "medium", "high"],
     supportsVision: true,
-    thinkingBudgets: GEMINI_THINKING_BUDGETS,
-    aliases: ["gemini-flash-lite", "gemini-3.1-flash-lite-preview"],
+    aliases: ["gemini-flash-lite"],
   },
 ]);

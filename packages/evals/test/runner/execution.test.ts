@@ -34,25 +34,49 @@ function toolTask(overrides: Partial<EvalTask<{ executions: number }>["limits"]>
 }
 
 describe("runEvalExecution", () => {
+  test("allows two turns and one tool call beyond the task target", async () => {
+    const result = await runEvalExecution({
+      task: toolTask({ maxTurns: 1, maxToolCalls: 0 }),
+      profile: PROFILE,
+      model: TEST_MODEL,
+      seed: "budget-grace-seed",
+      streamFunction: sequenceStream([
+        assistantMessage([{ type: "tool_call", id: "call-1", name: "touch_world", input: {} }], "tool_use"),
+        assistantMessage([{ type: "text", text: "done" }]),
+      ]),
+    });
+
+    expect(result.passed).toBe(true);
+    expect(result.execution).toMatchObject({ termination: "completed", turnCount: 2, toolCallCount: 1 });
+    expect(result.worldSnapshot).toEqual({ executions: 1 });
+    expect(result.diagnostics?.map((diagnostic) => diagnostic.code)).toEqual([
+      "budget_grace.turns",
+      "budget_grace.tool_calls",
+    ]);
+  });
+
   test("classifies a turn limit even when core resolves after abort", async () => {
     const result = await runEvalExecution({
-      task: toolTask({ maxTurns: 1 }),
+      task: toolTask({ maxTurns: 1, maxToolCalls: 10 }),
       profile: PROFILE,
       model: TEST_MODEL,
       seed: "turn-limit-seed",
       streamFunction: sequenceStream([
         assistantMessage([{ type: "tool_call", id: "call-1", name: "touch_world", input: {} }], "tool_use"),
+        assistantMessage([{ type: "tool_call", id: "call-2", name: "touch_world", input: {} }], "tool_use"),
+        assistantMessage([{ type: "tool_call", id: "call-3", name: "touch_world", input: {} }], "tool_use"),
       ]),
     });
 
     expect(result.passed).toBe(false);
     expect(result.execution.termination).toBe("turn_limit");
+    expect(result.execution.turnCount).toBe(4);
     expect(result.failure?.category).toBe("budget_exceeded");
   });
 
   test("prevents an over-budget tool from mutating the world", async () => {
     let evaluatorCalls = 0;
-    const task = toolTask({ maxToolCalls: 0 });
+    const task = toolTask({ maxTurns: 10, maxToolCalls: 0 });
     task.evaluate = () => {
       evaluatorCalls += 1;
       return { passed: true };
@@ -64,11 +88,13 @@ describe("runEvalExecution", () => {
       seed: "tool-limit-seed",
       streamFunction: sequenceStream([
         assistantMessage([{ type: "tool_call", id: "call-1", name: "touch_world", input: {} }], "tool_use"),
+        assistantMessage([{ type: "tool_call", id: "call-2", name: "touch_world", input: {} }], "tool_use"),
       ]),
     });
 
     expect(result.execution.termination).toBe("tool_call_limit");
-    expect(result.worldSnapshot).toEqual({ executions: 0 });
+    expect(result.execution.toolCallCount).toBe(2);
+    expect(result.worldSnapshot).toEqual({ executions: 1 });
     expect(result.failure?.dimension).toBe("harness_terminal");
     expect(evaluatorCalls).toBe(0);
   });

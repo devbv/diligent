@@ -1059,6 +1059,50 @@ describe("runRuntimeEvalExecution", () => {
     expect(existsSync(fixtureRoot)).toBe(false);
   });
 
+  test("allows the shared turn and tool grace beyond runtime task targets", async () => {
+    let fixtureRoot = "";
+    let scripted: StreamFunction | undefined;
+    const task: RuntimeEvalTask<RuntimeFixtureWorld> = {
+      id: "runtime-budget-grace",
+      description: "budget grace",
+      fixtureVersion: "budget-grace-v0",
+      limits: { ...DEFAULT_RUNTIME_LIMITS, maxTurns: 1, maxToolCalls: 0, timeoutMs: 5_000 },
+      toolPolicy: { allowedTools: ["read"], allowedCapabilities: ["read"], allowedCommands: [] },
+      async setup(seed, root) {
+        fixtureRoot = root;
+        await writeFixture(root, { "value.txt": "value\n" });
+        return { root, seed, expected: "done", protectedPaths: ["value.txt"], allowedChanges: [] };
+      },
+      createRuntimeConfig: createFixtureRuntimeConfig,
+      createSteps: () => [{ kind: "turn", message: "read and reply" }],
+      snapshotWorld: async () => ({}),
+      evaluate: () => ({ passed: true }),
+    };
+    const result = await runRuntimeEvalExecution({
+      task,
+      seed: "seed",
+      profile: { provider: "anthropic", model: "claude-sonnet-5", effort: "medium" },
+      streamFunction: (model, context, options) => {
+        scripted ??= sequenceStream([
+          assistantMessage(
+            [{ type: "tool_call", id: "read-1", name: "read", input: { file_path: join(fixtureRoot, "value.txt") } }],
+            "tool_use",
+          ),
+          assistantMessage([{ type: "text", text: "done" }]),
+        ]);
+        return scripted(model, context, options);
+      },
+    });
+
+    expect(result.passed).toBe(true);
+    expect(result.execution.providerCalls).toHaveLength(2);
+    expect(result.execution.toolCalls).toHaveLength(1);
+    expect(result.diagnostics?.map((diagnostic) => diagnostic.code)).toEqual([
+      "budget_grace.turns",
+      "budget_grace.tool_calls",
+    ]);
+  });
+
   test("uses a validated nested thread cwd while keeping workspace evidence rooted at the fixture", async () => {
     type NestedWorld = RuntimeFixtureWorld & { threadCwd: string };
     let nestedCwd = "";
@@ -1541,6 +1585,14 @@ describe("runRuntimeEvalExecution", () => {
         [{ type: "tool_call", id: "read-1", name: "read", input: { file_path: "value.txt" } }],
         "tool_use",
       ),
+      assistantMessage(
+        [{ type: "tool_call", id: "read-2", name: "read", input: { file_path: "value.txt" } }],
+        "tool_use",
+      ),
+      assistantMessage(
+        [{ type: "tool_call", id: "read-3", name: "read", input: { file_path: "value.txt" } }],
+        "tool_use",
+      ),
     ]);
     const task: RuntimeEvalTask<RuntimeFixtureWorld> = {
       id: "runtime-turn-limit",
@@ -1569,7 +1621,7 @@ describe("runRuntimeEvalExecution", () => {
 
     expect(result.passed).toBe(false);
     expect(result.failures.some((failure) => failure.code === "budget_exceeded.turn_limit")).toBe(true);
-    expect(providerCalls).toBe(1);
+    expect(providerCalls).toBe(3);
   });
 
   test("captures initial and post-tool provider context with session, prompt, and tool evidence", async () => {

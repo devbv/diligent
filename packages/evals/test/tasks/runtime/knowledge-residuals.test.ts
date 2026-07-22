@@ -10,10 +10,11 @@ import {
 } from "../../../src/tasks/runtime/knowledge-intent-split";
 
 describe("knowledge residual evaluator calibration", () => {
-  test("keeps direct intent-split evidence provider-native and bumps the fixture contract", () => {
+  test("keeps direct intent-split evidence provider-native across supported eval providers", () => {
     expect(knowledgeIntentSplitTask.fixtureVersion).toBe("knowledge-intent-split-v5");
     expect(knowledgeIntentSplitTask.evaluate(intentSplitExecution("openai"))).toEqual({ passed: true });
     expect(knowledgeIntentSplitTask.evaluate(intentSplitExecution("anthropic"))).toEqual({ passed: true });
+    expect(knowledgeIntentSplitTask.evaluate(intentSplitExecution("gemini"))).toEqual({ passed: true });
   });
 
   test("accepts only the exact Anthropic relative-create recovery", () => {
@@ -255,10 +256,11 @@ describe("knowledge residual evaluator calibration", () => {
     }
   });
 
-  test("keeps direct forget evidence provider-native and bumps the fixture contract", () => {
+  test("keeps direct forget evidence provider-native across supported eval providers", () => {
     expect(knowledgeForgetTask.fixtureVersion).toBe("knowledge-forget-v6");
     expect(knowledgeForgetTask.evaluate(forgetExecution("openai"))).toEqual({ passed: true });
     expect(knowledgeForgetTask.evaluate(forgetExecution("anthropic"))).toEqual({ passed: true });
+    expect(knowledgeForgetTask.evaluate(forgetExecution("gemini"))).toEqual({ passed: true });
   });
 
   test("accepts only the exact Anthropic relative-create recovery while forgetting knowledge", () => {

@@ -36,6 +36,7 @@ export interface AISDKStreamConfig<TState = undefined> extends AISDKStreamAdapte
   buildTools?: (tools: ToolDefinition[]) => ToolSet;
   buildProviderOptions?: (model: Model, options: StreamOptions) => AISDKProviderOptions | undefined;
   resolveReasoning?: (model: Model, options: StreamOptions) => AISDKReasoning | undefined;
+  resolveTemperature?: (model: Model, options: StreamOptions) => number | undefined;
 }
 
 type AISDKReasoning = "low" | "medium" | "high" | "xhigh" | "provider-default";
@@ -171,7 +172,7 @@ async function runAISDKStream<TState>(
       messages: messages.length > 0 ? messages : [{ role: "user", content: "" }],
       tools: (config.buildTools ?? convertToAISDKTools)(context.tools),
       maxOutputTokens: options.maxTokens,
-      temperature: options.temperature,
+      temperature: config.resolveTemperature ? config.resolveTemperature(model, options) : options.temperature,
       reasoning: (config.resolveReasoning ?? resolveAISDKReasoning)(model, options),
       providerOptions: config.buildProviderOptions?.(model, options),
       abortSignal: options.signal,
