@@ -51,6 +51,40 @@ describe("Gemini tools", () => {
 
     expect(Object.keys(buildGeminiTools(tools))).toEqual(["read_file", "google_search", "url_context"]);
   });
+
+  test("normalizes an oversized function schema when native web tools are present", () => {
+    const oversizedSchema = {
+      type: "object",
+      description: "x".repeat(40_000),
+      properties: {
+        value: {
+          anyOf: [
+            { type: "object", properties: { text: { type: "string" } } },
+            { type: "object", properties: { count: { type: "number" } } },
+          ],
+        },
+      },
+    };
+    const result = buildGeminiTools([
+      { kind: "function", name: "complex_tool", description: "Complex tool", inputSchema: oversizedSchema },
+      { kind: "provider_builtin", capability: "web" },
+    ]);
+    const advertisedSchema = (result.complex_tool as { inputSchema: { jsonSchema: Record<string, unknown> } })
+      .inputSchema.jsonSchema;
+
+    expect(advertisedSchema).not.toBe(oversizedSchema);
+    expect(advertisedSchema).toMatchObject({
+      properties: {
+        value: {
+          type: "object",
+          properties: {
+            text: { type: "string" },
+            count: { type: "number" },
+          },
+        },
+      },
+    });
+  });
 });
 
 describe("Gemini web metadata normalization", () => {
