@@ -7,6 +7,9 @@ import { classifyProviderHttpError } from "../../provider-errors";
 import type { Model, StreamFunction, StreamOptions, ThinkingEffort, ToolDefinition } from "../../types";
 import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError, ProviderErrorReason, ProviderErrorType } from "../../types";
 import { convertToAISDKTools, createAISDKStream } from "../ai-sdk";
+import { normalizeGeminiToolSchema } from "./tool-schema";
+
+export { normalizeGeminiToolSchema } from "./tool-schema";
 
 type ProviderToolUseBlock = Extract<ContentBlock, { type: "provider_tool_use" }>;
 type WebSearchResultBlock = Extract<ContentBlock, { type: "web_search_result" }>;
@@ -41,8 +44,17 @@ export function buildGeminiProviderOptions(model: Model, options: StreamOptions)
 }
 
 export function buildGeminiTools(tools: ToolDefinition[]): ToolSet {
-  const result = convertToAISDKTools(tools);
-  if (tools.some((definition) => definition.kind === "provider_builtin" && definition.capability === "web")) {
+  const hasNativeWeb = tools.some(
+    (definition) => definition.kind === "provider_builtin" && definition.capability === "web",
+  );
+  const compatibleTools = hasNativeWeb
+    ? tools.map((definition): ToolDefinition => {
+        if (definition.kind !== "function") return definition;
+        return { ...definition, inputSchema: normalizeGeminiToolSchema(definition.inputSchema) };
+      })
+    : tools;
+  const result = convertToAISDKTools(compatibleTools);
+  if (hasNativeWeb) {
     result.google_search = google.tools.googleSearch({});
     result.url_context = google.tools.urlContext({});
   }
