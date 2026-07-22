@@ -26,8 +26,8 @@ export function parseCliOptions(args: string[]): EvalCliOptions {
     switch (arg) {
       case "--provider": {
         const value = requireValue(args, ++index, arg);
-        if (value !== "openai" && value !== "anthropic" && value !== "gemini") {
-          throw new Error(`Invalid provider "${value}". Expected openai, anthropic, or gemini.`);
+        if (value !== "openai" && value !== "anthropic" && value !== "gemini" && value !== "chatgpt") {
+          throw new Error(`Invalid provider "${value}". Expected openai, anthropic, gemini, or chatgpt.`);
         }
         options.provider = value;
         break;

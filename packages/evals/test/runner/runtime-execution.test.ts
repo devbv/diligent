@@ -170,6 +170,7 @@ describe("runRuntimeEvalExecution", () => {
     const seed = "shared-seed-123";
     const alpha = seededToken(seed, "ALPHA");
     const beta = seededToken(seed, "BETA");
+    const configuredManagers: unknown[] = [];
     const result = await runRuntimeEvalExecution({
       task: manualCompactionResumeTask,
       seed,
@@ -192,6 +193,9 @@ describe("runRuntimeEvalExecution", () => {
         ),
         assistantMessage([{ type: "text", text: "Done." }]),
       ]),
+      configureProviderManager: (_profile, manager) => {
+        configuredManagers.push(manager);
+      },
     });
 
     expect(result.failures).toEqual([]);
@@ -204,6 +208,8 @@ describe("runRuntimeEvalExecution", () => {
     ]);
     expect(result.execution.threadReads.every((snapshot) => snapshot.response.isRunning === false)).toBe(true);
     expect(result.execution.session.lines.some((line) => (line as { type?: string }).type === "compaction")).toBe(true);
+    expect(configuredManagers).toHaveLength(2);
+    expect(configuredManagers[0]).not.toBe(configuredManagers[1]);
   });
 
   test("uses a scripted user-input answer in a later execute-mode write", async () => {

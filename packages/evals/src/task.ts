@@ -6,7 +6,7 @@ import type { SystemSection } from "@diligent/core/provider-contract";
 import type { Tool } from "@diligent/core/tool-contract";
 import type { LogRecord } from "@diligent/logging";
 
-export type EvalProvider = "openai" | "anthropic" | "gemini";
+export type EvalProvider = "openai" | "anthropic" | "gemini" | "chatgpt";
 
 export interface EvalProfile {
   provider: EvalProvider;

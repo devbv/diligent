@@ -3,7 +3,14 @@
 import { appendFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parseCliOptions } from "./cli-options";
-import { createProfileStream, resolveProfileModel, resolveSelectedProfiles, validateCredentials } from "./profiles";
+import {
+  configureProfileProviderManager,
+  createProfileStream,
+  resolveProfileModel,
+  resolveSelectedProfiles,
+  validateCredentials,
+} from "./profiles";
+import { createLocalChatGPTEvalAuth, getChatGPTRedactionSecrets } from "./providers/chatgpt-oauth";
 import { redactEvalText, writeEvalReport } from "./reporters/json";
 import { runRuntimeEvalSuite } from "./runner/runtime-suite";
 import { createGithubRootSeed, createRandomRootSeed } from "./runner/seed";
@@ -31,6 +38,14 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
     const profiles = resolveSelectedProfiles(options);
     const tasks = options.suite === "core" ? selectCoreTasks(options.task) : selectRuntimeTasks(options.task);
     validateCredentials(profiles);
+    const chatgptAuth = profiles.some((profile) => profile.provider === "chatgpt")
+      ? await createLocalChatGPTEvalAuth(process.cwd(), {
+          onStatus: (status) => console.log(`[eval] chatgpt oauth ${status}`),
+          onCredentials: (tokens) => {
+            secrets.push(...getChatGPTRedactionSecrets(tokens));
+          },
+        })
+      : undefined;
     const metadata = resolveRunMetadata();
     const rootSeed =
       options.seed ??
@@ -43,7 +58,7 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
       profiles,
       rootSeed,
       metadata,
-      createStream: createProfileStream,
+      createStream: (profile: EvalProfile) => createProfileStream(profile, process.env, chatgptAuth),
       onExecutionStart: (task: { id: string }, profile: EvalProfile) => {
         console.log(`[eval] start ${task.id} / ${profile.provider} / ${profile.model}`);
       },
@@ -59,6 +74,8 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
         : await runRuntimeEvalSuite({
             ...shared,
             tasks: tasks as typeof RUNTIME_EVAL_TASKS,
+            configureProviderManager: (profile, manager) =>
+              configureProfileProviderManager(profile, manager, chatgptAuth),
             onExecutionEnd: (result) => printRuntimeExecutionResult(result, secrets),
           });
 
@@ -157,11 +174,11 @@ async function writeGithubSummary(
 
 function printHelp(): void {
   console.log(`Usage:
-  bun run eval core [--provider openai|anthropic|gemini] [--task <id>]
+  bun run eval core [--provider openai|anthropic|gemini|chatgpt] [--task <id>]
                       [--model <model-id>]
                       [--seed <seed>] [--report <path>]
 
-  bun run eval runtime [--provider openai|anthropic|gemini] [--task <id>]
+  bun run eval runtime [--provider openai|anthropic|gemini|chatgpt] [--task <id>]
                          [--model <model-id>] [--seed <seed>] [--report <path>]
 
 Omitting --task runs every task in the selected suite. Omitting --provider runs the OpenAI and Anthropic defaults.`);
