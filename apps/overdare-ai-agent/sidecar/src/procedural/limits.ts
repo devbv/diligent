@@ -52,7 +52,7 @@ async function captureCapped(
   let text = "";
   let total = 0;
   try {
-    for await (const chunk of stream as AsyncIterable<Uint8Array>) {
+    for await (const chunk of stream as unknown as AsyncIterable<Uint8Array>) {
       total += chunk.byteLength;
       text += decoder.decode(chunk, { stream: true });
       if (total > cap) {

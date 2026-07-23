@@ -7,8 +7,8 @@ import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 
 const ROOT = resolve(import.meta.dir, "..");
-const WEB = resolve(ROOT, "packages/web");
 const OVERDARE_CLI = resolve(ROOT, "apps/overdare-ai-agent");
+const SIDECAR = resolve(OVERDARE_CLI, "sidecar");
 const DIST = resolve(ROOT, "dist");
 const DIAGNOSTICS_DIR = resolve(OVERDARE_CLI, ".diligent/diagnostics");
 const BOOTSTRAP_DIR = resolve(OVERDARE_CLI, "bootstrap");
@@ -86,9 +86,18 @@ function parseCliOptions(argv: string[]): {
 }
 
 function ensureWebClientBuilt(): void {
-  const clientDist = resolve(WEB, "dist/client");
+  const clientDist = resolve(SIDECAR, "dist/client");
   if (existsSync(clientDist)) return;
-  run(["bun", "run", "build"], WEB);
+  run(["bun", "run", "web:build"], SIDECAR);
+}
+
+/** Stages the Vite client at the installed runtime's stable dist/client path. */
+export function stageWebClient(clientDist: string, stageDir: string): void {
+  const indexHtml = join(clientDist, "index.html");
+  if (!existsSync(indexHtml)) {
+    throw new Error(`Web client build is missing ${indexHtml}`);
+  }
+  cpSync(clientDist, join(stageDir, "dist", "client"), { recursive: true });
 }
 
 function buildSidecar(platform: PlatformConfig): string {
@@ -156,7 +165,7 @@ async function main(): Promise<void> {
   mkdirSync(stageDir, { recursive: true });
 
   cpSync(sidecarPath, join(stageDir, `diligent-web-server${platform.ext}`));
-  cpSync(resolve(WEB, "dist/client"), join(stageDir, "dist/client"), { recursive: true });
+  stageWebClient(resolve(SIDECAR, "dist/client"), stageDir);
   stageSidecarAssets(platform, stageDir);
   stageBootstrap(stageDir);
   maybeStageRg(platform, stageDir);

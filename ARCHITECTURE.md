@@ -30,12 +30,11 @@ The architecture is organized around four product goals:
 | `packages/protocol` | Shared JSON-RPC method constants and schema-only frontend/backend contract |
 | `packages/plugin-sdk` | Public SDK types and contracts for external JavaScript tool plugins |
 | `packages/cli` | Bun CLI entrypoint, stdio app-server transport, TUI client |
-| `packages/web` | Bun web server + React web client over WebSocket JSON-RPC |
 | `packages/debug-viewer` | Viewer for inspecting `.diligent/` data |
 | `packages/e2e` | End-to-end suites organized by product boundary; `app-server/` covers `DiligentAppServer` through JSON-RPC |
 | `packages/evals` | Live-model behavioral evaluations for core and assembled runtime capabilities; separate from deterministic end-to-end tests |
 | `apps/overdare-ai-agent` | Rust CLI launcher for the Overdare product: bootstraps the TypeScript runtime, manages self-update, and launches the Bun web server as a child process. Owns compile-time storage namespace defaults, migration from legacy `.diligent/` directories, and launcher-managed bootstrap assets. |
-| `apps/overdare-ai-agent/sidecar` | OVERDARE-owned TypeScript sidecar assembly. Imports the generic `@diligent/web/server`, injects product bundled tool providers, and is compiled as the packaged `diligent-web-server` sidecar. |
+| `apps/overdare-ai-agent/sidecar` | OVERDARE-owned TypeScript deployment unit: Bun Web host, React client, product tools, and the packaged `diligent-web-server` sidecar. |
 | `apps/vscode-extension` | VS Code extension host: provides an activity bar entry, thread tree view, and conversation panel backed by a stdio JSON-RPC transport to the Diligent runtime. Shares the same protocol contract as the CLI and Web clients. |
 
 ## Architecture Overview
@@ -84,7 +83,7 @@ The Rust launcher owns **migration** and **process lifecycle**. The TypeScript r
 
 The launcher also accepts a global `--agent-env=<prod|dev>[@<version>]` flag that selects the release channel and (optionally) pins a specific version. The env value determines the storage namespace forwarded to the runtime (`overdare` for prod, `overdare-dev` for dev) so dev and prod installs are fully isolated on disk. The launcher additionally forwards `DILIGENT_ENV` to the runtime child for downstream env-conditional behavior. Manifest URLs are derived from env + pin: prod-latest uses GitHub's `/releases/latest/download/...` redirect (which skips pre-releases), dev-latest uses a workflow-maintained rolling `dev-latest` tag, and pinned versions resolve to immutable `{env}-v<version>` tags.
 
-`apps/overdare-ai-agent/sidecar` owns OVERDARE TypeScript runtime composition. It depends on the product-neutral web server entrypoint (`@diligent/web/server`) and supplies bundled product tool providers from `apps/overdare-ai-agent/sidecar/src/tools`. Product tools must stay here rather than in `packages/runtime` or `packages/web`; those packages only expose generic bundled-provider plumbing. Migrated bundled providers may declare `supersedesPluginPackages` so stale first-party plugin copies are suppressed by the runtime catalog while external plugins remain supported.
+`apps/overdare-ai-agent/sidecar` owns OVERDARE TypeScript runtime composition and its browser host. Its `src/web` subtree contains the Bun WebSocket/static server and React client; `src/server.ts` supplies product consent, bundled tools, experiments, and process lifecycle. Product tools must stay here rather than in `packages/runtime`. Migrated bundled providers may declare `supersedesPluginPackages` so stale first-party plugin copies are suppressed by the runtime catalog while external plugins remain supported.
 
 ### Dual-language storage namespace
 
@@ -125,7 +124,7 @@ Diligent uses **one backend protocol with multiple transports**.
 
 The same rule applies to any additional generic clients such as a VS Code extension/plugin: they may add a client-local transport bridge or UI reducer, but they must still consume the existing shared protocol rather than inventing a client-specific Diligent protocol surface.
 
-Product hosts may expose product-owned RPC methods at their transport boundary when the behavior is intentionally outside Diligent. The Web host intercepts these explicitly registered methods before forwarding unmatched traffic to `DiligentAppServer`; product methods must not shadow shared protocol names. OVERDARE consent is the current explicit exception: its Web-local contract and request handling live in `packages/web`, while gateway state and transmission policy live in the OVERDARE sidecar. Runtime and the shared protocol remain consent-unaware, and the TUI does not expose this product UI.
+Product hosts may expose product-owned RPC methods at their transport boundary when the behavior is intentionally outside Diligent. The Web host intercepts these explicitly registered methods before forwarding unmatched traffic to `DiligentAppServer`; product methods must not shadow shared protocol names. OVERDARE consent is the current explicit exception: its Web-local contract and request handling live in `apps/overdare-ai-agent/sidecar/src/web`, while gateway state and transmission policy live in the rest of the OVERDARE sidecar. Runtime and the shared protocol remain consent-unaware, and the TUI does not expose this product UI.
 
 Practical consequences:
 
@@ -236,14 +235,14 @@ Runtime consumes this package when loading plugins, but plugin authoring concern
 
 The CLI is both a client and a launcher, but not a separate source of agent truth.
 
-### `@diligent/web`
+### OVERDARE browser host
 
-`packages/web` contains two pieces:
+`apps/overdare-ai-agent/sidecar/src/web` contains two pieces:
 
 - a Bun server that creates `DiligentAppServer`, exposes `/rpc`, serves static assets, and hosts persisted images
 - a React client that renders thread state and communicates over JSON-RPC
 
-The web server should stay thin: runtime behavior belongs in `@diligent/runtime`.
+The Web server should stay thin: runtime behavior belongs in `@diligent/runtime`. The sidecar process entrypoint owns product assembly and is the only browser-host executable entrypoint. A generic Web package should be extracted only after a concrete non-OVERDARE consumer exists.
 
 ## Current Runtime Flow
 
@@ -555,13 +554,13 @@ The pattern for extending the protocol with a new request/response pair has four
 
 4. **Register the handler** — add a `case` branch in `packages/runtime/src/app-server/request-dispatcher.ts` that calls the handler and returns its result.
 
-5. **Add client-side calls** — if the method is user-facing, implement the client call in `packages/web` (React) and `packages/cli` (TUI). Frontends should call the method through the shared protocol; they must not implement the behavior locally.
+5. **Add client-side calls** — if the method is a shared Diligent user-facing capability, implement the client call in `apps/overdare-ai-agent/sidecar/src/web/client` (React) and `packages/cli` (TUI). Frontends should call the method through the shared protocol; they must not implement the behavior locally.
 
 Product-host methods are not added through this flow. They are intercepted by the owning host before core dispatch and use contracts owned by that product surface.
 
 ## OVERDARE consent and gateway transmission
 
-OVERDARE consent is a product concern rather than a Diligent runtime capability. `packages/web` owns the browser/server consent schema, initial opaque metadata, and the `consent/set` request interception. The OVERDARE sidecar owns the cached gateway `ConsentService`, privacy-policy resolution, and grant/withdraw mapping.
+OVERDARE consent is a product concern rather than a Diligent runtime capability. `apps/overdare-ai-agent/sidecar/src/web` owns the browser/server consent schema, initial opaque metadata, and the `consent/set` request interception. The rest of the OVERDARE sidecar owns the cached gateway `ConsentService`, privacy-policy resolution, and grant/withdraw mapping.
 
 Runtime emits every registered generic `EntryAppended` lifecycle hook without applying an OVERDARE policy. The OVERDARE gateway provider checks the shared sidecar service before token resolution and again afterward, then transmits `/v1/records` only while consent is granted. Other current and future `EntryAppended` providers are unaffected by OVERDARE consent.
 

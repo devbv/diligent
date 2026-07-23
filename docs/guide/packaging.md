@@ -126,7 +126,7 @@ First-party executable TypeScript tools should move to bundled providers in `app
 
 ## Sidecar build
 
-The OVERDARE sidecar is compiled from `apps/overdare-ai-agent/sidecar/src/server.ts` using `bun build --compile`. That product entrypoint imports the generic `@diligent/web/server` and injects OVERDARE bundled tool providers without placing product code in `packages/web` or `packages/runtime`.
+The OVERDARE sidecar is compiled from `apps/overdare-ai-agent/sidecar/src/server.ts` using `bun build --compile`. Its product entrypoint composes the local Web host from `src/web/server` and injects OVERDARE bundled tool providers without placing product code in `packages/runtime`.
 
 The sidecar helper script can build a fresh current-platform runtime binary for OVERDARE CLI diagnostics and launcher flows.
 

@@ -167,6 +167,25 @@ Additional OVERDARE-owned assets now live here as well:
 - `apps/overdare-ai-agent/scripts/deploy.ts`
 - `apps/overdare-ai-agent/scripts/tool-cli.ts`
 
+## Sidecar browser host
+
+`sidecar/` is the product-owned TypeScript workspace for the bundled
+`diligent-web-server` executable and its React client. It creates the generic
+`DiligentAppServer`, serves the browser host over WebSocket JSON-RPC, and
+injects OVERDARE consent, Studio, and bundled-tool behavior at the product
+entrypoint. The release bundle always stages the sidecar client at
+`dist/client/` next to the executable.
+
+For UI-only development, start the real sidecar with Studio disabled and run
+Vite from the same workspace:
+
+```sh
+STUDIO_DISABLED=1 bun run apps/overdare-ai-agent/sidecar/src/server.ts --dev --port=7433 --cwd="$(pwd)"
+bun run --cwd apps/overdare-ai-agent/sidecar web:dev
+```
+
+This UI-only mode also disables gateway-backed consent and record transmission.
+
 ## MCP server (re-expose OVERDARE systems)
 
 The MCP server is a **subcommand of the same `diligent-web-server` binary** (no separate
