@@ -14,8 +14,7 @@ const normalIdEnum = z.enum(["Right", "Top", "Back", "Left", "Bottom", "Front"])
 const mobilityEnum = z
   .enum(["Static", "Movable"])
   .describe(
-    "Static or Movable; settable only on top-level Workspace objects (direct children of Workspace). " +
-      "A deeper instance_upsert value is ignored; JSON apply normalizes explicitly set descendants to the top-level value.",
+    "Static or Movable; settable only on top-level Workspace objects (direct children of Workspace). Never set this params unless user requests.",
   );
 
 /**

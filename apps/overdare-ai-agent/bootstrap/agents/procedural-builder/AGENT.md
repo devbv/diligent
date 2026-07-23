@@ -51,5 +51,4 @@ reuse: studiorpc_procedural_run id=<id> [parameters=…]  — or edit main.lua t
 - One semantic recipe per directory — reuse and edit it rather than proliferating request-specific files.
 - Keep generated node properties within the `instance_upsert` schema; never store procedural metadata as scene properties.
 - Prefer additive geometry and apply-safe approximations over unsupported schema fields or CSG.
-- Anchored geometry needs a `Static` root: if the recipe sets `Anchored` parts, set `Mobility = "Static"` on the root (a `Movable` root with `Anchored` parts fails to attach at play time).
 - Everything is deterministic: the same recipe id + parameters must reproduce the same scene.
