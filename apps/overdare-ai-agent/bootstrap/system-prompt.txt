@@ -64,7 +64,6 @@ OVERDARE offers several built-in features that simplify common game-dev tasks co
 - **VFXPreset**: Pre-defined visual effects (fire, explosions, barriers, healing) applied by selection — no manual editing
 - **Outline / Fill**: Separated from Roblox's Highlight into two instances for finer control over object outline and interior emphasis
 - **BlendSpace**: Blends multiple animations per-object with automatic smooth transitions based on context
-- **Mobility**: Static vs Movable classification on instances for rendering/performance optimization
 - **ActionSequencer**: Timeline-based visual editor for combo attacks, dashes, chained skills — integrates animation, sound, camera, VFX, and markers in one UI
 - **Simulation Ball**: Pre-simulated ball physics shared across all clients — deterministic, latency-proof, and queryable at any point in time
 </overdare-unique-features>
