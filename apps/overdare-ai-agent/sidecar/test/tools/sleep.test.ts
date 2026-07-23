@@ -1,7 +1,7 @@
 // @summary Tests for sleep tool — duration, default, clamping, abort, and progress updates (virtual timer)
 import { describe, expect, it } from "bun:test";
 import type { ToolContext } from "@diligent/core/tool-contract";
-import { createSleepTool, type SleepScheduler } from "@diligent/runtime/tools";
+import { createSleepTool, createSleepToolProvider, type SleepScheduler } from "../../src/tools/sleep";
 
 /** Yield to the microtask/macrotask queue so the tool loop can register its next sleep. */
 function flush(): Promise<void> {
@@ -77,6 +77,16 @@ function makeCtx(controller = new AbortController()): ToolContext & { updates: s
     controller,
   };
 }
+
+describe("sleep bundled tool provider", () => {
+  it("exposes the sleep tool", async () => {
+    const provider = createSleepToolProvider();
+    expect(provider.id).toBe("@overdare/sleep-tools");
+
+    const tools = await provider.createTools({ cwd: "/tmp/project" });
+    expect(tools.map((tool) => tool.name)).toEqual(["sleep"]);
+  });
+});
 
 describe("sleep tool", () => {
   it("is named sleep", () => {

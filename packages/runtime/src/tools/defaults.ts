@@ -28,7 +28,6 @@ import { createReadImageTool } from "./read-image";
 import { createRequestUserInputTool } from "./request-user-input";
 import { createSearchKnowledgeTool } from "./search-knowledge";
 import { createSkillTool } from "./skill";
-import { createSleepTool } from "./sleep";
 import { createUpdateKnowledgeTool } from "./update-knowledge";
 import { createWebTool } from "./web";
 
@@ -159,7 +158,6 @@ export async function buildDefaultTools(options: BuildDefaultToolsOptions): Prom
           createGrepTool(cwd),
           createPlanTool(),
           createRequestUserInputTool(host),
-          createSleepTool(),
         ];
 
         if (webEnabled) {

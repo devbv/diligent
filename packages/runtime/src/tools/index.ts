@@ -66,8 +66,6 @@ export {
 export { createRequestUserInputTool } from "./request-user-input";
 export { createSearchKnowledgeTool } from "./search-knowledge";
 export { createSkillTool, registerSkillTool } from "./skill";
-export type { SleepScheduler } from "./sleep";
-export { createSleepTool, realSleepScheduler } from "./sleep";
 export { createUpdateKnowledgeTool } from "./update-knowledge";
 export type { UserInputQuestion, UserInputRequest, UserInputResponse, UserInputSource } from "./user-input-types";
 export { createWebTool } from "./web";

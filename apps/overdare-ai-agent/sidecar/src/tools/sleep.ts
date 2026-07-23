@@ -1,6 +1,7 @@
-// @summary sleep tool — pause the agent for a fixed duration so time-delayed results can appear
+// @summary OVERDARE sleep bundled tool provider — pauses the agent so time-delayed results can appear
 
 import type { Tool, ToolContext, ToolResult } from "@diligent/core/tool-contract";
+import type { BundledToolProvider } from "@diligent/runtime";
 import { z } from "zod";
 
 const DEFAULT_SECONDS = 5;
@@ -73,6 +74,14 @@ export const realSleepScheduler: SleepScheduler = {
 function formatSeconds(ms: number): string {
   const seconds = ms / 1000;
   return `${Number.isInteger(seconds) ? seconds : seconds.toFixed(1)}s`;
+}
+
+export function createSleepToolProvider(): BundledToolProvider {
+  return {
+    id: "@overdare/sleep-tools",
+    displayName: "OVERDARE Sleep Tool",
+    createTools: () => [createSleepTool()],
+  };
 }
 
 export function createSleepTool(scheduler: SleepScheduler = realSleepScheduler): Tool<typeof SleepParams> {
