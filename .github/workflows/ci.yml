@@ -97,7 +97,7 @@ jobs:
                 $health = Invoke-RestMethod "http://127.0.0.1:7434/health" -TimeoutSec 1
                 if ($health.ok -eq $true) {
                   $client = Invoke-WebRequest "http://127.0.0.1:7434/" -TimeoutSec 1
-                  if ($client.Content -notmatch "<div id=\"root\">") {
+                  if ($client.Content -notmatch '<div id="root">') {
                     throw "Packaged sidecar did not serve the Vite client"
                   }
                   $healthy = $true
