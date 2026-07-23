@@ -31,6 +31,10 @@ function optionValue(option: { label: string; value?: string }): string {
   return option.value ?? option.label;
 }
 
+export function isImeCompositionEvent(event: { isComposing: boolean; keyCode: number }): boolean {
+  return event.isComposing || event.keyCode === 229;
+}
+
 const choiceFocusRing =
   "peer-focus-visible:ring-choice peer-focus-visible:ring-control-choice/30 peer-focus-visible:ring-offset-1 peer-focus-visible:ring-offset-surface-dark";
 const choiceMarkerBase =
@@ -87,20 +91,22 @@ export const QuestionCard = memo(function QuestionCard({
     if (!canSubmit) return;
     onSubmit();
   };
-  const stopInputEnter = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+  const handleInputEnter = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     if (e.key !== "Enter") return;
-    const shouldPrevent =
+    const shouldHandle =
       typeof HTMLInputElement !== "undefined" &&
       e.target instanceof HTMLInputElement &&
       (e.target.type === "text" || e.target.type === "password");
-    if (!shouldPrevent) return;
+    if (!shouldHandle) return;
+    if (isImeCompositionEvent(e.nativeEvent)) return;
     e.preventDefault();
     e.stopPropagation();
+    submitIfComplete();
   };
 
   return (
     <SystemCard>
-      <div onKeyDownCapture={stopInputEnter}>
+      <div onKeyDownCapture={handleInputEnter}>
         <SectionLabel>Input required</SectionLabel>
         <div className={formStackClasses}>
           {request.questions.map((question) => {
