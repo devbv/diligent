@@ -177,7 +177,12 @@ export const mcpPromptGroundingTask: RuntimeEvalTask<McpPromptGroundingWorld> = 
     const failure = validateTraceAndApproval(input) ?? validateIsolationAndFinal(input);
     if (failure) return failure;
     const extraDiscovery = input.toolCalls.filter((call) => call.name === "mcp_list_prompts").length - 1;
-    const recoveries = input.toolCalls.filter((call) => call.outcome === "runtime_error").length;
+    const lookupRecoveries = input.toolCalls.filter(
+      (call) => call.name === "mcp_get_prompt" && call.outcome === "runtime_error",
+    ).length;
+    const writeRecoveries = input.toolCalls.filter(
+      (call) => (call.name === "edit" || call.name === "apply_patch") && call.outcome === "runtime_error",
+    ).length;
     const diagnostics = [
       ...(extraDiscovery > 0
         ? [
@@ -188,12 +193,24 @@ export const mcpPromptGroundingTask: RuntimeEvalTask<McpPromptGroundingWorld> = 
             },
           ]
         : []),
-      ...(recoveries > 0
+      ...(lookupRecoveries > 0
+        ? [
+            {
+              dimension: "efficiency" as const,
+              impact: "degraded" as const,
+              code: "mcp_prompt.bounded_lookup_recovery",
+              message: "One unknown prompt lookup failed safely before list-based discovery and exact completion.",
+            },
+          ]
+        : []),
+      ...(writeRecoveries > 0
         ? [
             {
               dimension: "efficiency" as const,
               code: "mcp_prompt.bounded_write_recovery",
-              message: `${recoveries} bounded artifact-write recovery attempt${recoveries === 1 ? "" : "s"} preceded success.`,
+              message:
+                `${writeRecoveries} bounded artifact-write recovery attempt` +
+                `${writeRecoveries === 1 ? "" : "s"} preceded success.`,
             },
           ]
         : []),
@@ -327,12 +344,21 @@ await server.connect(new StdioServerTransport());
 function validateTraceAndApproval(input: RuntimeEvalExecution<McpPromptGroundingWorld>) {
   const lists = input.toolCalls.filter((call) => call.name === "mcp_list_prompts");
   const gets = input.toolCalls.filter((call) => call.name === "mcp_get_prompt");
-  const get = gets.find((call) => call.outcome === "success");
+  const successfulGets = gets.filter((call) => call.outcome === "success");
+  const failedGets = gets.filter((call) => call.outcome === "runtime_error");
+  const get = successfulGets[0];
   const writeAttempts = input.toolCalls.filter((call) => call.name === "edit" || call.name === "apply_patch");
   const write = writeAttempts.findLast((call) => call.outcome === "success");
   const exactArgs = Object.fromEntries(
     input.world.argumentNames.map((name, index) => [name, input.world.argumentValues[index]]),
   );
+  if (successfulGets.length !== 1) return fail("prompt_selection", "Expected exactly one successful MCP prompt fetch.");
+  const lookupRecovery = failedGets[0];
+  if (
+    failedGets.length > 1 ||
+    (lookupRecovery !== undefined && !isSafePromptLookupRecovery(lookupRecovery, lists, exactArgs, input))
+  )
+    return fail("lookup_recovery", "Prompt lookup recovery was repeated, unsafe, or not followed by exact discovery.");
   const callIds = input.toolCalls.map((call) => call.toolCallId);
   const traceChecks: Array<[string, boolean]> = [
     [
@@ -340,7 +366,6 @@ function validateTraceAndApproval(input: RuntimeEvalExecution<McpPromptGrounding
       input.toolCalls.length < 3 ||
         input.toolCalls.length > 6 ||
         lists.length < 1 ||
-        gets.length !== 1 ||
         writeAttempts.length < 1 ||
         writeAttempts.length > 2 ||
         !get ||
@@ -360,7 +385,7 @@ function validateTraceAndApproval(input: RuntimeEvalExecution<McpPromptGrounding
           call.threadId !== input.session.threadId ||
           call.childThreadId !== undefined ||
           call.outcome === "policy_rejection" ||
-          (call.outcome === "runtime_error" && !writeAttempts.includes(call)),
+          (call.outcome === "runtime_error" && call !== lookupRecovery && !writeAttempts.includes(call)),
       ),
     ],
     [
@@ -388,6 +413,7 @@ function validateTraceAndApproval(input: RuntimeEvalExecution<McpPromptGrounding
       "capabilities",
       lists.some((list) => list.capability !== "execute") ||
         get?.capability !== "execute" ||
+        (lookupRecovery !== undefined && lookupRecovery.capability !== "execute") ||
         writeAttempts.some((attempt) => attempt.capability !== "write" || !targetsArtifact(attempt.input)),
     ],
   ];
@@ -397,6 +423,41 @@ function validateTraceAndApproval(input: RuntimeEvalExecution<McpPromptGrounding
       "trace",
       `List/get/write order, actors, capabilities, or exact target inputs diverged: ${failedTraceCheck}`,
     );
+}
+
+function isSafePromptLookupRecovery(
+  recovery: RuntimeEvalExecution<McpPromptGroundingWorld>["toolCalls"][number],
+  lists: RuntimeEvalExecution<McpPromptGroundingWorld>["toolCalls"],
+  exactArgs: Record<string, string>,
+  input: RuntimeEvalExecution<McpPromptGroundingWorld>,
+): boolean {
+  const firstList = lists.toSorted((left, right) => left.sequence - right.sequence)[0];
+  if (
+    !firstList ||
+    recovery.sequence + 1 !== firstList.sequence ||
+    recovery.threadId !== input.session.threadId ||
+    recovery.childThreadId !== undefined ||
+    recovery.capability !== "execute" ||
+    !isRecord(recovery.input) ||
+    typeof recovery.input.name !== "string" ||
+    recovery.input.name.length === 0 ||
+    input.world.promptNames.includes(recovery.input.name) ||
+    canonicalJson(recovery.input) !==
+      canonicalJson({
+        server: SERVER,
+        name: recovery.input.name,
+        args: exactArgs,
+      }) ||
+    !hasExactArgumentOrder(recovery.input, input.world) ||
+    typeof recovery.error !== "string" ||
+    !recovery.error.includes(`Prompt ${recovery.input.name} not found`) ||
+    !isRecord(recovery.output) ||
+    recovery.output.output !== `Error: ${recovery.error}` ||
+    !isRecord(recovery.output.metadata) ||
+    recovery.output.metadata.error !== true
+  )
+    return false;
+  return true;
 }
 
 function hasExactArgumentOrder(value: unknown, world: McpPromptGroundingWorld): boolean {
@@ -481,6 +542,8 @@ const MCP_PROMPT_FAILURE_DIMENSIONS = {
   verifier_timeout: "harness_terminal",
   isolation: "runtime_policy",
   trace: "runtime_policy",
+  lookup_recovery: "behavior",
+  prompt_selection: "behavior",
   artifact: "format_contract",
 } as const satisfies Record<string, EvalDimension>;
 

@@ -47,6 +47,7 @@ describe("runEvalExecution", () => {
     });
 
     expect(result.passed).toBe(true);
+    expect(result.status).toBe("degraded");
     expect(result.execution).toMatchObject({ termination: "completed", turnCount: 2, toolCallCount: 1 });
     expect(result.worldSnapshot).toEqual({ executions: 1 });
     expect(result.diagnostics?.map((diagnostic) => diagnostic.code)).toEqual([
@@ -69,6 +70,7 @@ describe("runEvalExecution", () => {
     });
 
     expect(result.passed).toBe(false);
+    expect(result.status).toBe("invalid");
     expect(result.execution.termination).toBe("turn_limit");
     expect(result.execution.turnCount).toBe(4);
     expect(result.failure?.category).toBe("budget_exceeded");
@@ -152,6 +154,7 @@ describe("runEvalExecution", () => {
       });
 
       expect(result.failure?.dimension).toBe(dimension);
+      expect(result.status).toBe("fail");
     }
   });
 
@@ -173,6 +176,7 @@ describe("runEvalExecution", () => {
     });
 
     expect(result.passed).toBe(false);
+    expect(result.status).toBe("fail");
     expect(result.failure?.dimension).toBe("behavior");
     expect(result.diagnostics).toEqual([
       { dimension: "efficiency", code: "extra_search", message: "One extra safe search." },

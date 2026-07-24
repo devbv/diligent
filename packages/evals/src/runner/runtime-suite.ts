@@ -8,7 +8,7 @@ import type {
   RuntimeEvalExecutionResult,
   RuntimeEvalSuiteReport,
 } from "../runtime-task";
-import type { EvalProfile } from "../task";
+import { aggregateEvalStatuses, type EvalProfile } from "../task";
 import { runRuntimeEvalExecution } from "./runtime-execution";
 import { deriveTaskSeed } from "./seed";
 import type { EvalRunMetadata } from "./suite";
@@ -44,6 +44,7 @@ export async function runRuntimeEvalSuite(input: {
         fixtureVersion: task.fixtureVersion,
         limits: task.limits,
         passed: result.passed,
+        status: result.status,
         ...(result.failure && { failure: result.failure }),
         failures: result.failures,
         ...(result.diagnostics?.length && { diagnostics: result.diagnostics }),
@@ -72,6 +73,7 @@ export async function runRuntimeEvalSuite(input: {
     profiles: input.profiles.map((profile) => ({ ...profile })),
     taskIds: input.tasks.map((task) => task.id),
     passed: executions.every((execution) => execution.passed),
+    status: aggregateEvalStatuses(executions.map((execution) => execution.status)),
     executions,
   };
 }

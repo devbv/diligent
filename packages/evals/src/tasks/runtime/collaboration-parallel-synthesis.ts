@@ -97,6 +97,9 @@ export const collaborationParallelSynthesisTask: RuntimeEvalTask<CollaborationPa
       0,
       input.toolCalls.filter((call) => call.name === "read" && call.outcome === "success").length - 2,
     );
+    const crossRegionBriefReferences = input.toolCalls.filter(
+      (call) => call.name === "spawn_agent" && spawnBriefReferencesBothRegions(call.input),
+    ).length;
     const diagnostics = [
       ...(recoveries > 0
         ? [
@@ -113,6 +116,18 @@ export const collaborationParallelSynthesisTask: RuntimeEvalTask<CollaborationPa
               dimension: "efficiency" as const,
               code: "collaboration_parallel_synthesis.additional_safe_read",
               message: `${extraSafeReads} additional bounded in-scope read${extraSafeReads === 1 ? "" : "s"} preceded successful synthesis.`,
+            },
+          ]
+        : []),
+      ...(crossRegionBriefReferences > 0
+        ? [
+            {
+              dimension: "behavior" as const,
+              impact: "info" as const,
+              code: "collaboration_parallel_synthesis.cross_region_brief_reference",
+              message:
+                `${crossRegionBriefReferences} child brief${crossRegionBriefReferences === 1 ? "" : "s"} named the ` +
+                "other region while the actor-attributed reads remained isolated.",
             },
           ]
         : []),
@@ -243,7 +258,6 @@ function exactSpawnInput(input: unknown, world: CollaborationParallelSynthesisWo
     !Object.keys(input).every((key) => ["agent_type", "allow_nested_agents", "description", "message"].includes(key)) ||
     !message ||
     !message.includes(SOURCE_PATHS[index]) ||
-    message.includes(SOURCE_PATHS[index === 0 ? 1 : 0]) ||
     input.agent_type !== "explore" ||
     (input.allow_nested_agents !== undefined && input.allow_nested_agents !== false) ||
     (input.description !== undefined &&
@@ -409,10 +423,20 @@ function traceById(input: RuntimeEvalExecution<CollaborationParallelSynthesisWor
 }
 
 function regionForSpawn(input: unknown): 0 | 1 | undefined {
-  const message = isRecord(input) && typeof input.message === "string" ? input.message : undefined;
+  const record = isRecord(input) ? input : undefined;
+  const message = record && typeof record.message === "string" ? record.message : undefined;
   if (!message) return undefined;
+  const description = typeof record?.description === "string" ? record.description.toLowerCase() : "";
+  const descriptionMatches = ["north", "south"].map((region) => description.includes(region));
+  if (descriptionMatches[0] !== descriptionMatches[1]) return descriptionMatches[0] ? 0 : 1;
   const matches = SOURCE_PATHS.map((path) => message.includes(path));
   return matches[0] === matches[1] ? undefined : matches[0] ? 0 : 1;
+}
+
+function spawnBriefReferencesBothRegions(input: unknown): boolean {
+  if (!isRecord(input) || typeof input.message !== "string") return false;
+  const message = input.message;
+  return SOURCE_PATHS.every((path) => message.includes(path));
 }
 
 function childIdsBySpawn(

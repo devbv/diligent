@@ -664,6 +664,7 @@ describe("runRuntimeEvalExecution", () => {
     });
 
     expect(result.execution.termination).toBe("completed");
+    expect(result.status).toBe("fail");
     expect(result.failures.map((failure) => failure.code)).toContain("runtime_contract.protected_file_changed");
     expect(result.failures.map((failure) => failure.code)).toContain("task_semantic.wrong_result");
   });
@@ -1101,6 +1102,7 @@ describe("runRuntimeEvalExecution", () => {
     });
 
     expect(result.passed).toBe(true);
+    expect(result.status).toBe("degraded");
     expect(result.execution.providerCalls).toHaveLength(2);
     expect(result.execution.toolCalls).toHaveLength(1);
     expect(result.diagnostics?.map((diagnostic) => diagnostic.code)).toEqual([

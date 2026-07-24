@@ -7,6 +7,7 @@ import { ProviderError, ProviderErrorType } from "@diligent/core/provider-contra
 import type { Tool } from "@diligent/core/tool-contract";
 import { createLogger } from "@diligent/logging";
 import {
+  deriveEvalStatus,
   type EvalDiagnostic,
   type EvalExecution,
   type EvalExecutionError,
@@ -212,8 +213,10 @@ export async function runEvalExecution<TWorld>(
     });
   }
 
+  const status = deriveEvalStatus(failures, diagnostics);
   return {
-    passed: failures.length === 0,
+    passed: status === "pass" || status === "degraded",
+    status,
     failure: failures[0],
     failures,
     ...(diagnostics.length > 0 && { diagnostics }),
