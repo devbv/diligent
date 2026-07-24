@@ -18,6 +18,19 @@ fn should_copy_entry(dest_exists: bool, mode: DeployMode) -> bool {
     }
 }
 
+/// Deploy mode for a single bootstrap file. `config.jsonc` holds user settings
+/// (model, permissions/commit delegation, tool toggles, MCP servers) that only
+/// ever live in the global config; an applied update must never clobber it, so
+/// force MissingOnly regardless of the run's mode. Every other bootstrap file
+/// (e.g. system-prompt.txt) keeps the run's mode and still FullSyncs on update.
+fn deploy_mode_for_file(name: &str, mode: DeployMode) -> DeployMode {
+    if name == "config.jsonc" {
+        DeployMode::MissingOnly
+    } else {
+        mode
+    }
+}
+
 fn resolve_updated_bootstrap_dir(env: Env, log: &mut String) -> Option<PathBuf> {
     // Resolve bootstrap/defaults from the active runtime directory (versioned
     // pointer first, legacy flat dir as fallback) so init deploys assets from
@@ -139,7 +152,8 @@ pub fn run(env: Env, update_applied: bool) -> Result<(), String> {
         let dest = global.join(&name);
         if src.is_file() {
             let existed_before = dest.exists();
-            if should_copy_entry(existed_before, mode) {
+            let file_mode = deploy_mode_for_file(&name.to_string_lossy(), mode);
+            if should_copy_entry(existed_before, file_mode) {
                 let _ = fs::copy(&src, &dest);
             }
         } else if src.is_dir() {
@@ -158,4 +172,37 @@ pub fn run(env: Env, update_applied: bool) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn config_jsonc_is_never_overwritten_on_full_sync() {
+        // The whole point of the fix: an applied update (FullSync) must not
+        // clobber the user's existing global config.jsonc.
+        let mode = deploy_mode_for_file("config.jsonc", DeployMode::FullSync);
+        assert_eq!(mode, DeployMode::MissingOnly);
+        assert!(!should_copy_entry(true, mode)); // exists -> keep user's file
+        assert!(should_copy_entry(false, mode)); // missing -> seed from bootstrap
+    }
+
+    #[test]
+    fn other_files_still_full_sync() {
+        // system-prompt.txt and friends are stock assets: keep overwriting them.
+        let mode = deploy_mode_for_file("system-prompt.txt", DeployMode::FullSync);
+        assert_eq!(mode, DeployMode::FullSync);
+        assert!(should_copy_entry(true, mode));
+    }
+
+    #[test]
+    fn missing_only_run_is_unchanged_for_config() {
+        // On a non-update run the whole deploy is MissingOnly already; the
+        // config.jsonc special case must not change that.
+        assert_eq!(
+            deploy_mode_for_file("config.jsonc", DeployMode::MissingOnly),
+            DeployMode::MissingOnly
+        );
+    }
 }
