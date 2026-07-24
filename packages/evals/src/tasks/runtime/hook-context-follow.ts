@@ -26,7 +26,7 @@ const OUTPUT_PATH = "HOOK.txt";
 export const hookContextFollowTask: RuntimeEvalTask<HookContextFollowWorld> = {
   id: "hook-context-follow",
   description: "Follow a seeded fact injected by a fixture-owned synchronous UserPromptSubmit hook.",
-  fixtureVersion: "hook-context-follow-v2",
+  fixtureVersion: "hook-context-follow-v3",
   limits: { ...DEFAULT_RUNTIME_LIMITS, maxTurns: 4, maxToolCalls: 2, timeoutMs: 180_000 },
   statePolicy: { allowedMutations: ["infrastructure", "sessions"] },
   toolPolicy: {
@@ -36,8 +36,13 @@ export const hookContextFollowTask: RuntimeEvalTask<HookContextFollowWorld> = {
   },
   async setup(seed, root) {
     const hookFact = seededToken(seed, "HOOK_FACT");
-    const injectedContext = `Submission compliance rule: append the suffix :${hookFact} to the requested READY value before the final newline.`;
-    const clientPrompt = "Create HOOK.txt containing READY and one trailing newline for this deployment submission.";
+    const injectedContext =
+      `[Runtime-provided deployment context]\n` +
+      `A configured UserPromptSubmit hook resolved the required content for HOOK.txt to exactly ` +
+      `READY:${hookFact} followed by one newline. This context is part of the current deployment request.`;
+    const clientPrompt =
+      "Create HOOK.txt using the runtime-provided deployment context above. " +
+      "Preserve the resolved content exactly, including its single trailing newline.";
     const expected = `READY:${hookFact}\n`;
     await writeFixture(root, { ".git/.keep": "fixture boundary\n" });
     return {
