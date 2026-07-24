@@ -15,7 +15,7 @@ Read only what your task requires.
 | Source code — shared protocol contract | `packages/protocol/` |
 | Source code — plugin SDK for external tool packages | `packages/plugin-sdk/` |
 | Source code — cli (TUI) | `packages/cli/` |
-| Source code — web (React + Tailwind web frontend) | `packages/web/` |
+| Source code — OVERDARE web host (React + Tailwind frontend, Bun server) | `apps/overdare-ai-agent/sidecar/src/web/` |
 | Source code — debug-viewer (React web viewer) | `packages/debug-viewer/` |
 | Source code — end-to-end suites | `packages/e2e/` |
 | Product and usage guides | `docs/guide/` |

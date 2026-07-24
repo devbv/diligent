@@ -25,6 +25,8 @@ That flow owns:
 Current operator-facing entry points are:
 
 - repo root: `bun run overdare-ai-agent:build-sidecar`
+- repo root: `bun run overdare-ai-agent:build-runtime-bundle -- --version <version> --platform windows-x64 --agent-env <prod|dev>`
+- local runtime install: `bun run overdare-ai-agent:install-local-runtime -- --agent-env=<prod|dev> --bundle <path-to-runtime.zip>`
 - sidecar-only helper: `scripts/build-overdare-sidecar.ts`
 
 `scripts/build-overdare-sidecar.ts` is the current operator-facing build helper in this repo.
@@ -33,10 +35,9 @@ Current operator-facing entry points are:
 
 At a high level, packaging does the following:
 
-1. build the web frontend used by the runtime
-2. compile the sidecar server for the current native-build platform
-3. assemble runtime defaults content from the OVERDARE CLI-owned asset roots
-4. publish runtime bundles via the OVERDARE CLI release flow as needed
+1. `scripts/build-overdare-runtime-bundle.ts` rebuilds the web frontend, compiles the sidecar, stages runtime assets, and writes the canonical ZIP under `dist/`.
+2. Local builds and the `Release` GitHub workflow both invoke that exact root script with the same `--version`, `--platform`, and `--agent-env` inputs. Do not reimplement staging or ZIP creation in a workflow step.
+3. The Rust launcher can install the ZIP directly with `install --bundle`, using the same validation and atomic promotion path as a downloaded update.
 
 ## Runtime packaging relationship
 
@@ -76,6 +77,22 @@ The runtime bundle release flow is parameterized by a `prod` / `dev` env that is
   - `{env}@<version>` pin → `releases/download/{env}-v<version>/update-manifest-{env}.json`
 
 Dev publishes also re-create a rolling `dev-latest` release pointing at the same artifacts as the most recent `dev-v<version>` release, so the agent's dev-latest URL is always live. The release workflow verifies after creation that both releases are marked `prerelease=true` and aborts if not, to prevent dev artifacts from polluting the prod "latest" redirect.
+
+### Local Windows build and install
+
+Use the same command as the Windows release job to create a local dev bundle:
+
+```powershell
+bun run overdare-ai-agent:build-runtime-bundle -- --version 1.2.3-local --platform windows-x64 --agent-env dev
+```
+
+This creates `dist/overdare-ai-agent-runtime-dev-1.2.3-local-windows-x64.zip`. Install that exact file with the locally built launcher (or a release launcher):
+
+```powershell
+bun run overdare-ai-agent:install-local-runtime -- --agent-env=dev --bundle .\dist\overdare-ai-agent-runtime-dev-1.2.3-local-windows-x64.zip
+```
+
+`install` is offline: it does not fetch a manifest or download an artifact. It validates the canonical filename's environment, version, and current platform; validates the extracted sidecar and `dist/client` layout; then atomically activates `runtime-v<version>`. A mismatched `--agent-env` or a ZIP built for another platform is rejected before extraction.
 
 For one to two prod release cycles after this contract lands, prod releases additionally upload legacy alias files (`update-manifest.json`, `release-meta.json`, `checksums.sha256`) so agents built before the env split keep updating cleanly. After the migration window those aliases are removed.
 
@@ -126,7 +143,7 @@ First-party executable TypeScript tools should move to bundled providers in `app
 
 ## Sidecar build
 
-The OVERDARE sidecar is compiled from `apps/overdare-ai-agent/sidecar/src/server.ts` using `bun build --compile`. That product entrypoint imports the generic `@diligent/web/server` and injects OVERDARE bundled tool providers without placing product code in `packages/web` or `packages/runtime`.
+The OVERDARE sidecar is compiled from `apps/overdare-ai-agent/sidecar/src/server.ts` using `bun build --compile`. Its product entrypoint composes the local Web host from `src/web/server` and injects OVERDARE bundled tool providers without placing product code in `packages/runtime`.
 
 The sidecar helper script can build a fresh current-platform runtime binary for OVERDARE CLI diagnostics and launcher flows.
 

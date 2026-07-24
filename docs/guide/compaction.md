@@ -208,7 +208,7 @@ Compaction runs under its own abort signal and timeout budget.
 - `packages/runtime/src/session/context-builder.ts`
 - `packages/runtime/src/app-server/thread-handlers.ts`
 - `packages/cli/src/tui/commands/builtin/compact.ts`
-- `packages/web/src/client/lib/use-app-actions.ts`
+- `apps/overdare-ai-agent/sidecar/src/web/client/lib/use-app-actions.ts`
 - `packages/core/test/agent/compaction.test.ts`
 - `packages/core/test/llm/compaction.test.ts`
 - `packages/core/test/llm/provider/native-compaction.test.ts`

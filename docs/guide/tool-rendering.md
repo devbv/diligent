@@ -55,8 +55,8 @@ That means shared meaning should normally be introduced through runtime and prot
 - `packages/protocol/src/data-model.ts`
 - `packages/runtime/src/tools/render-strategies.ts`
 - `packages/runtime/src/tools/plugin-loader.ts`
-- `packages/web/src/client/lib/tool-reducer.ts`
-- `packages/web/src/client/components/ToolRenderBlocks.tsx`
+- `apps/overdare-ai-agent/sidecar/src/web/client/lib/tool-reducer.ts`
+- `apps/overdare-ai-agent/sidecar/src/web/client/components/ToolRenderBlocks.tsx`
 - `packages/cli/src/tui/components/thread-store-utils.ts`
 - `packages/cli/src/tui/render-blocks.ts`
 

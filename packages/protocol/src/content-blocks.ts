@@ -79,7 +79,7 @@ export type ToolCallBlock = z.infer<typeof ToolCallBlockSchema>;
  *   1. Add the new `name` literal to the `name` enum union below (e.g. "code_execution").
  *   2. Add the `provider` literal if a new provider is being introduced.
  *   3. Update consumer switch statements in:
- *      - packages/web/src/client/components/AssistantContentBlocks.tsx
+ *      - apps/overdare-ai-agent/sidecar/src/web/client/components/AssistantContentBlocks.tsx
  *      - packages/cli/src/tui/components/thread-store-utils.ts
  *   4. Add an e2e scenario to packages/e2e/app-server/provider-native-blocks.test.ts.
  *

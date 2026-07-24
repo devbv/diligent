@@ -100,7 +100,7 @@ impl EnvSelection {
 /// must start with an ASCII alphanumeric, followed by alphanumerics,
 /// '.', '-', or '+'. This blocks path-traversal characters ('/', '..')
 /// and stray whitespace from sliding into the manifest URL.
-fn is_valid_pinned_version(v: &str) -> bool {
+pub(crate) fn is_valid_pinned_version(v: &str) -> bool {
     let mut chars = v.chars();
     let Some(first) = chars.next() else {
         return false;
