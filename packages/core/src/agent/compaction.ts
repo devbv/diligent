@@ -146,10 +146,19 @@ function estimateEffectiveContextTokens(messages: Message[], compactionSummary?:
 export async function runCompaction(input: RunCompactionInput): Promise<RunCompactionResult> {
   const messagesToSummarize = stripOutputImagesForSummarization(input.messages);
   const preservedMessages = input.preservedMessages ?? [];
-  const candidateTokens =
+  const originalMessages = [...input.messages, ...preservedMessages];
+  const candidateEstimate =
     estimateTokens(messagesToSummarize) +
     (input.llmCompactionFn ? estimateCompactionSummaryTokens(input.compactionSummary) : 0);
-  const originalMessages = [...input.messages, ...preservedMessages];
+  // Mirror the compaction trigger (getCompactionDecision): prefer the provider-reported context
+  // usage over the chars/4 estimate. estimateTokens() counts message content only — it excludes the
+  // system prompt, tool schemas, and cached tokens that dominate real context for providers like
+  // ChatGPT. Gating solely on the estimate lets a context-full session fall below
+  // COMPACTION_MIN_INPUT_TOKENS and silently no-op even though the usage-based trigger already fired
+  // (QA-10459: a 115%-full ChatGPT session never compacted).
+  const assistantUsageTokens = getLastAssistantContextWindowUsage(originalMessages);
+  const candidateTokens =
+    assistantUsageTokens !== undefined ? Math.max(assistantUsageTokens, candidateEstimate) : candidateEstimate;
   const tokensBefore = estimateEffectiveContextTokens(originalMessages, input.compactionSummary);
   if (!input.bypassMinimum && candidateTokens < COMPACTION_MIN_INPUT_TOKENS) {
     return {

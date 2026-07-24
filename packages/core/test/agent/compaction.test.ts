@@ -210,6 +210,37 @@ describe("runCompaction", () => {
     expect(events).toEqual([]);
   });
 
+  it("uses provider usage, not just the chars/4 estimate, for candidate eligibility (QA-10459)", async () => {
+    // Message content estimates below the minimum, but the latest assistant message reports a
+    // context-full provider usage — the shape of a ChatGPT session whose real context is dominated
+    // by the system prompt and tool schemas (which estimateTokens does not see). The usage-based
+    // trigger fires, so runCompaction must proceed instead of silently no-opping on the weaker
+    // estimate. Before this fix the adapter was never called and the session never compacted.
+    const contextFull = assistantMsg("x".repeat((NATIVE_COMPACTION_MIN_INPUT_TOKENS - 10_000) * 4)) as Extract<
+      Message,
+      { role: "assistant" }
+    >;
+    contextFull.usage = { inputTokens: 300_000, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
+    const messages: Message[] = [userMsg("follow-up"), contextFull];
+    let nativeCalls = 0;
+
+    const result = await runCompaction({
+      messages,
+      model: { ...TEST_MODEL, provider: "openai" },
+      systemPrompt: [],
+      compactionConfig: { reservePercent: 16 },
+      llmMsgStreamFn: makeStreamFn("unused summary"),
+      llmCompactionFn: async () => {
+        nativeCalls += 1;
+        return { status: "ok", compactionSummary: { type: "compaction", encrypted_content: "short" } };
+      },
+      stream: new AgentStream(),
+    });
+
+    expect(nativeCalls).toBe(1);
+    expect(result.compacted).toBe(true);
+  });
+
   it("rejects a standard native candidate below the minimum without calling the adapter", async () => {
     const messages: Message[] = [userMsg("small")];
     const priorCompactionSummary = { type: "compaction", encrypted_content: "prior" };
