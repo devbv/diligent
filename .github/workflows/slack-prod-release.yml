@@ -16,6 +16,7 @@ jobs:
       - name: Post release to Slack
         env:
           WEBHOOK_URL: ${{ secrets.SLACK_PROD_RELEASE_WEBHOOK }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           REL_NAME: ${{ github.event.release.name }}
           REL_TAG: ${{ github.event.release.tag_name }}
           REL_URL: ${{ github.event.release.html_url }}
@@ -23,9 +24,27 @@ jobs:
           # release notes can't inject shell commands.
           REL_BODY: ${{ github.event.release.body }}
         run: |
-          # ponytail: GitHub-flavored markdown isn't perfectly Slack mrkdwn,
-          # but it reads fine. Upgrade to a proper renderer only if asked.
           NOTES=$(printf '%s' "$REL_BODY" | head -c 2500)
+
+          # Digest the raw changelog into a plain-Korean summary. bash can't do
+          # this, so it's a one-shot Claude call. Any failure falls back to the
+          # raw notes so a release ping is never blocked.
+          SUMMARY="$NOTES"
+          if [ -n "$ANTHROPIC_API_KEY" ]; then
+            SYS='You digest GitHub release notes into a plain-Korean summary for a Slack message — explain what changed in easy-to-understand terms, do not translate literally. Group related changes and, where useful, note why it matters in one short clause. Output Slack mrkdwn ONLY: *bold*, bullet lines starting with "• ", no markdown headings. Drop entirely: conventional-commit prefixes like "fix(init):", author names / @mentions, PR and compare links, and any "Full Changelog" line. No preamble or closing remarks — output only the summary body.'
+            REQ=$(jq -n --arg sys "$SYS" --arg notes "$NOTES" \
+              '{model:"claude-haiku-4-5", max_tokens:2000, system:$sys,
+                messages:[{role:"user", content:$notes}]}')
+            RESP=$(curl -sS https://api.anthropic.com/v1/messages \
+              -H "x-api-key: $ANTHROPIC_API_KEY" \
+              -H "anthropic-version: 2023-06-01" \
+              -H "content-type: application/json" \
+              --data "$REQ" || true)
+            TEXT=$(printf '%s' "$RESP" | jq -r '.content[0].text // empty' 2>/dev/null)
+            [ -n "$TEXT" ] && SUMMARY="$TEXT"
+          fi
+
+          NOTES="$SUMMARY"
           PAYLOAD=$(jq -n \
             --arg name "${REL_NAME:-$REL_TAG}" \
             --arg tag "$REL_TAG" \
@@ -34,12 +53,12 @@ jobs:
             '{
               blocks: [
                 { type: "header",
-                  text: { type: "plain_text", text: ("🚀 Production release: " + ($name[0:140])) } },
+                  text: { type: "plain_text", text: ("🚀 프로덕션 릴리스: " + ($name[0:140])) } },
                 { type: "section",
                   text: { type: "mrkdwn",
-                          text: ("*Version:* `" + $tag + "`\n*Release:* <" + $url + "|View on GitHub>") } },
+                          text: ("*버전:* `" + $tag + "`\n*릴리스 노트:* <" + $url + "|GitHub에서 보기>") } },
                 { type: "section",
-                  text: { type: "mrkdwn", text: ("*What changed:*\n" + $notes) } }
+                  text: { type: "mrkdwn", text: ("*변경 사항:*\n" + $notes) } }
               ]
             }')
           curl -sSf -X POST -H 'Content-type: application/json' \
