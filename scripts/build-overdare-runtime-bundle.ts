@@ -85,9 +85,7 @@ function parseCliOptions(argv: string[]): {
   return { version, platform, env: envRaw };
 }
 
-function ensureWebClientBuilt(): void {
-  const clientDist = resolve(SIDECAR, "dist/client");
-  if (existsSync(clientDist)) return;
+function buildWebClient(): void {
   run(["bun", "run", "web:build"], SIDECAR);
 }
 
@@ -157,7 +155,9 @@ function zipRuntimeBundle(stageDir: string, outPath: string): void {
 async function main(): Promise<void> {
   const { version, platform, env } = parseCliOptions(process.argv.slice(2));
   await mkdir(DIST, { recursive: true });
-  ensureWebClientBuilt();
+  // Always rebuild so local packaging and the clean GitHub Actions runner
+  // package the same source revision rather than reusing a stale Vite output.
+  buildWebClient();
   const sidecarPath = buildSidecar(platform);
 
   const stageDir = resolve(DIST, `runtime-${env}-${platform.id}`);

@@ -2,9 +2,10 @@
 
 Rust CLI for OVERDARE runtime bootstrap, plugin/bootstrap ownership, and webserver launch.
 
-It currently provides two commands:
+It currently provides three commands:
 
 - `init` — show current/latest version and ensure the runtime is downloaded; updates unless `--skip-update` is used
+- `install --bundle <zip>` — install a locally built canonical runtime ZIP without contacting the update service
 - `start` — run the active runtime's `diligent-web-server` binary as a subprocess (see [Runtime install layout](#runtime-install-layout))
 
 ## Release env selection
@@ -107,6 +108,12 @@ cargo build --manifest-path apps/overdare-ai-agent/Cargo.toml --release
 # Or via repo root shortcut
 bun run overdare-ai-agent:build
 
+# Build the same Windows runtime ZIP that the Release workflow builds
+bun run overdare-ai-agent:build-runtime-bundle -- --version 1.2.3-local --platform windows-x64 --agent-env dev
+
+# Install that ZIP using the release Rust launcher; this is offline and activates v1.2.3-local for dev
+.\apps\overdare-ai-agent\target\release\overdare-ai-agent.exe --agent-env=dev install --bundle .\dist\overdare-ai-agent-runtime-dev-1.2.3-local-windows-x64.zip
+
 # Initialize runtime, print current/latest version, and apply update if needed
 cargo run --manifest-path apps/overdare-ai-agent/Cargo.toml -- init
 
@@ -151,13 +158,14 @@ DILIGENT_UPDATE_URL=https://example.com/update-manifest.json cargo run --manifes
 - unpinned `init`'s network work (manifest + bundle download) is capped by `DILIGENT_INIT_NETWORK_BUDGET_SECS` (default 45, kept below Studio's 60 s init timeout); bootstrap installs are never budget-limited
 - `start` retries once on timeout-class failures (port line, health check) after killing the previous child; timeouts are tunable via `DILIGENT_START_PORT_TIMEOUT_SECS` (default 15) and `DILIGENT_START_HEALTH_TIMEOUT_SECS` (default 30)
 - `start --init-if-missing` runs a full init first when no runtime is installed (self-heal for wiped/corrupt installs), then proceeds to start
-- machine-readable result lines for consumers that capture the pipes (Studio): `init` ends stdout with `INIT_RESULT=updated|up-to-date|fallback|skipped` (+ `FALLBACK_REASON=<code>` on fallback); any failure ends stderr with `ERROR_CODE=<code>` and exits with that code — `10` network, `20` install/disk, `21` bundle verification, `30` config/args, `40` start boot failure
+- machine-readable result lines for consumers that capture the pipes (Studio): `init` ends stdout with `INIT_RESULT=updated|up-to-date|fallback|skipped` (+ `FALLBACK_REASON=<code>` on fallback); local `install` ends with `INSTALL_RESULT=installed`; any failure ends stderr with `ERROR_CODE=<code>` and exits with that code — `10` network, `20` install/disk, `21` bundle verification, `30` config/args, `40` start boot failure
 - if `~/.overdare/config.jsonc` (or `~/.overdare-dev/config.jsonc` for dev) sets `"updateMode": "disabled"`, runtime update behavior follows that config
 - `init --skip-update` intentionally exits with code `1` when no runtime has been downloaded yet
 - repo root shortcuts:
   - `bun run overdare-ai-agent:build`
   - `bun run overdare-ai-agent:test`
   - `bun run overdare-ai-agent:init`
+  - `bun run overdare-ai-agent:install-local-runtime -- --agent-env=dev --bundle <path-to-runtime.zip>`
   - `bun run overdare-ai-agent:webserver -- --cwd=/path/to/project`
 
 Additional OVERDARE-owned assets now live here as well:
