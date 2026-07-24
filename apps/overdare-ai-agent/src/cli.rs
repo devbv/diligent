@@ -3,6 +3,7 @@ use crate::init;
 use crate::storage::migrate_global_namespace_if_needed;
 use crate::update::{self, FailureKind, UpdateError, UpdateProgress};
 use crate::webserver;
+use std::path::PathBuf;
 
 /// CLI failure carrying the exit-code contract from P077 P4:
 /// 0 success (fallback included) / 10 network / 20 install·disk /
@@ -68,9 +69,29 @@ pub fn run() -> Result<(), CliError> {
 
     match command.as_str() {
         "init" => run_init(&selection, args.collect()),
+        "install" => run_install(&selection, args.collect()),
         "start" => run_webserver(&selection, args.collect()),
         other => Err(CliError::config(format!("Unknown command: {other}"))),
     }
+}
+
+fn parse_bundle_arg(args: Vec<String>) -> Result<PathBuf, CliError> {
+    let mut bundle: Option<PathBuf> = None;
+    let mut iter = args.into_iter();
+    while let Some(arg) = iter.next() {
+        let value = if let Some(value) = arg.strip_prefix("--bundle=") {
+            value.to_string()
+        } else if arg == "--bundle" {
+            iter.next()
+                .ok_or_else(|| CliError::config("install requires --bundle <path-to-runtime.zip>"))?
+        } else {
+            return Err(CliError::config(format!("Unknown install argument: {arg}")));
+        };
+        if bundle.replace(PathBuf::from(value)).is_some() {
+            return Err(CliError::config("install accepts exactly one --bundle path"));
+        }
+    }
+    bundle.ok_or_else(|| CliError::config("install requires --bundle <path-to-runtime.zip>"))
 }
 
 /// Extracts the `--agent-env=<value>` / `--agent-env <value>` flag from `args`, returning
@@ -249,6 +270,19 @@ fn run_init(selection: &EnvSelection, args: Vec<String>) -> Result<(), CliError>
     Ok(())
 }
 
+fn run_install(selection: &EnvSelection, args: Vec<String>) -> Result<(), CliError> {
+    migrate_global_namespace_if_needed(selection.env)
+        .map(|_| ())
+        .map_err(CliError::install)?;
+    let bundle = parse_bundle_arg(args)?;
+    println!("Installing local runtime bundle: {}", bundle.display());
+    let version = update::install_local_bundle(selection, &bundle)?;
+    init::run(selection.env, true).map_err(CliError::install)?;
+    println!("Installed local runtime v{version}");
+    println!("INSTALL_RESULT=installed");
+    Ok(())
+}
+
 fn run_webserver(selection: &EnvSelection, args: Vec<String>) -> Result<(), CliError> {
     // Opt-in self-heal (P077 P7): a wiped or corrupt install turns start into
     // init-then-start instead of the "run init first" error. Uses the same
@@ -272,7 +306,7 @@ fn run_webserver(selection: &EnvSelection, args: Vec<String>) -> Result<(), CliE
 
 fn print_help() {
     println!(
-        "overdare-ai-agent\n\nGlobal flags:\n  --agent-env=<env>[@<version>]   Select release env (prod|dev). Optionally pin a version, e.g. prod@1.2.3 or dev@1.4.0-beta.2. Defaults to prod.\n\nCommands:\n  init [--skip-update]   Ensure runtime exists, print current/latest, and update unless skipped\n  start [options]        Run updated runtime diligent-web-server as a subprocess\n                         (--init-if-missing runs init first when no runtime is installed)"
+        "overdare-ai-agent\n\nGlobal flags:\n  --agent-env=<env>[@<version>]   Select release env (prod|dev). Optionally pin a version, e.g. prod@1.2.3 or dev@1.4.0-beta.2. Defaults to prod.\n\nCommands:\n  init [--skip-update]   Ensure runtime exists, print current/latest, and update unless skipped\n  install --bundle <zip> Install a locally built canonical runtime ZIP without network access\n  start [options]        Run updated runtime diligent-web-server as a subprocess\n                         (--init-if-missing runs init first when no runtime is installed)"
     );
 }
 

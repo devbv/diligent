@@ -52,7 +52,7 @@ local GP = require(script.Dependencies.GeometryPrimitives)
 local ScriptModule = {}
 
 ScriptModule.OnGenerate = function(parameters, targetContainer)
-	-- Root groups all visible geometry so apply can create a single movable model.
+	-- Root groups all visible geometry so apply can create a single model.
 	local root = GP.model("ModelName", nil)
 
 	-- Body group owns the primary readable silhouette pieces.
@@ -277,24 +277,6 @@ schema's `Material` enum — common ones include `Plastic`, `Wood`, `Rock`, `Met
 `Marble`, `Grass`, `Sand`, `Snow`, `Neon`, and `Unlit`. Invalid values fail during apply; the runtime never aliases
 or silently falls back to another material, so pick a known enum value rather than an arbitrary name.
 
-### Mobility (Static vs Movable)
-
-Mobility is inherited from the top-level Workspace object, so set it once on the
-recipe root — never per part (see the Mobility building rule for the inheritance
-model). For a fixed map/terrain that never moves, set `Mobility = "Static"` on
-the root and every generated part inherits it. Keep anything that must move,
-animate, or be physics-/script-driven on a `"Movable"` root (the default).
-
-> **`Anchored` parts are static.** If the recipe anchors its geometry (walls, floors, terrain), set `Mobility = "Static"` on the root — a `Movable` root with `Anchored` parts fails to attach at play time (`LogMobilityWarningByAttach`).
-
-```lua
--- Fixed map/terrain: mark the root Static; every generated part inherits it.
-local root = GP.model("Terrain", nil)
-root.Mobility = "Static" -- whole map never moves; descendants inherit Static
--- Build the static level geometry under `root` here.
-root.Parent = targetContainer
-```
-
 ## Workflow
 
 ### 1. Understand the script target
@@ -343,7 +325,6 @@ Guidelines:
 - Parent every fresh instance into the final tree. Unparented fresh instances are not serialized or applied.
 - Use `parameters.Size.X/Y/Z` and `parameters.Attributes` for user-tunable generation.
 - Use exact materials accepted by the apply schema. Invalid materials are rejected rather than rewritten.
-- For fixed maps, terrain, and structures that never move, set `Mobility = "Static"` on the top-level root (see [Mobility](#mobility-static-vs-movable)); keep objects that must move `"Movable"`.
 - Avoid unintended overlap: unless the user explicitly wants parts to intersect (e.g. deliberately fused or embedded geometry), lay pieces out so they do not overlap or clip into each other. Account for each part's full size — not just its center — when spacing, tiling, or stacking, and leave clearances between distinct objects.
 - Keep shape generation deterministic.
 - Comment every major generated group and every transform that is visually important or easy to break during edits.

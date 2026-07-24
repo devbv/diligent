@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::env::{manifest_url_for, Env, EnvSelection};
+use crate::env::{is_valid_pinned_version, manifest_url_for, Env, EnvSelection};
 use crate::storage::{global_legacy_storage_dir, global_storage_dir};
 
 const BUNDLED_RUNTIME_VERSION: &str = match option_env!("DILIGENT_RUNTIME_VERSION") {
@@ -131,6 +131,11 @@ struct FetchedUpdate {
     version: String,
     sha256: String,
     bytes: Vec<u8>,
+}
+
+struct LocalBundle {
+    env: Env,
+    version: String,
 }
 
 /// What an update check resolved to, before any destructive filesystem work.
@@ -418,6 +423,26 @@ fn validate_runtime_layout(dir: &Path) -> Result<(), String> {
             dir.display()
         ))
     }
+}
+
+/// Records a validated staging directory as an installed runtime and makes it
+/// active. Both downloaded and locally supplied bundles use this exact
+/// promotion path so their on-disk contract cannot diverge.
+fn install_staged_runtime(env: Env, version: &str, sha256: &str, staging: &Path) -> Result<(), String> {
+    validate_runtime_layout(staging)?;
+    let version_info = InstalledVersion {
+        version: version.to_string(),
+        applied_at: chrono::Local::now().to_rfc3339(),
+        sha256: sha256.to_string(),
+    };
+    fs::write(
+        staging.join("version.json"),
+        serde_json::to_string_pretty(&version_info)
+            .map(|json| format!("{json}\n"))
+            .map_err(|e| format!("serialize version info: {e}"))?,
+    )
+    .map_err(|e| format!("write staging version.json: {e}"))?;
+    finalize_runtime_install(env, version, sha256, staging)
 }
 
 /// Promote a validated staging directory to `runtime-v<version>` beside the
@@ -1199,9 +1224,9 @@ fn extract_zip(zip_path: &Path, out_dir: &Path) -> Result<(), String> {
                 "-NoProfile",
                 "-Command",
                 &format!(
-                    "Expand-Archive -Path '{}' -DestinationPath '{}' -Force",
-                    zip_path.display(),
-                    out_dir.display()
+                    "Expand-Archive -LiteralPath '{}' -DestinationPath '{}' -Force",
+                    zip_path.display().to_string().replace('\'', "''"),
+                    out_dir.display().to_string().replace('\'', "''")
                 ),
             ])
             .status()
@@ -1226,6 +1251,94 @@ fn extract_zip(zip_path: &Path, out_dir: &Path) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// Parses the ZIP name emitted by `build-overdare-runtime-bundle.ts`.
+///
+/// The name carries the release environment and version, preventing a dev
+/// bundle from being accidentally installed into prod (or vice versa) and
+/// ensuring the launcher writes the same versioned layout as a remote update.
+fn parse_local_bundle_path(path: &Path) -> Result<LocalBundle, String> {
+    let name = path
+        .file_name()
+        .and_then(|item| item.to_str())
+        .ok_or("Local runtime bundle path must end in a UTF-8 file name")?;
+    let prefix = "overdare-ai-agent-runtime-";
+    let platform_suffix = format!("-{}.zip", current_platform());
+    let rest = name
+        .strip_prefix(prefix)
+        .and_then(|item| item.strip_suffix(&platform_suffix))
+        .ok_or_else(|| {
+            format!(
+                "Local runtime bundle must be named {prefix}<prod|dev>-<version>-{}.zip (got {name})",
+                current_platform()
+            )
+        })?;
+    for env in [Env::Prod, Env::Dev] {
+        let marker = format!("{}-", env.as_str());
+        if let Some(version) = rest.strip_prefix(&marker) {
+            if is_valid_pinned_version(version) {
+                return Ok(LocalBundle {
+                    env,
+                    version: version.to_string(),
+                });
+            }
+            return Err(format!("Local runtime bundle has an invalid version: {version}"));
+        }
+    }
+    Err(format!("Local runtime bundle has an invalid release env: {name}"))
+}
+
+/// Installs a locally built runtime ZIP without contacting the update manifest
+/// or network. The archive must come from the canonical runtime-bundle build
+/// script; its env, version, and platform are validated from the filename.
+pub fn install_local_bundle(selection: &EnvSelection, bundle_path: &Path) -> Result<String, UpdateError> {
+    let bundle = parse_local_bundle_path(bundle_path).map_err(UpdateError::manifest)?;
+    if bundle.env != selection.env {
+        return Err(UpdateError::manifest(format!(
+            "Local bundle env '{}' does not match --agent-env='{}'",
+            bundle.env.as_str(),
+            selection.env.as_str()
+        )));
+    }
+    if let Some(pinned_version) = selection.pinned_version.as_deref() {
+        if pinned_version != bundle.version {
+            return Err(UpdateError::manifest(format!(
+                "Local bundle version '{}' does not match pinned version '{pinned_version}'",
+                bundle.version
+            )));
+        }
+    }
+    if !bundle_path.is_file() {
+        return Err(UpdateError::from(format!(
+            "Local runtime bundle does not exist or is not a file: {}",
+            bundle_path.display()
+        )));
+    }
+
+    let updates = updates_dir(selection.env).ok_or("cannot resolve updates dir")?;
+    fs::create_dir_all(&updates).map_err(|e| format!("create updates dir: {e}"))?;
+    let token = std::process::id();
+    let staging = staging_dir(&updates, &bundle.version, token);
+    let sha256 = fs::read(bundle_path)
+        .map(|bytes| format!("{:x}", Sha256::digest(&bytes)))
+        .map_err(|e| format!("read local runtime bundle: {e}"))?;
+
+    let install = (|| -> Result<(), String> {
+        extract_zip(bundle_path, &staging)?;
+        install_staged_runtime(selection.env, &bundle.version, &sha256, &staging)
+    })();
+    if let Err(error) = install {
+        let _ = fs::remove_dir_all(&staging);
+        return Err(UpdateError::from(error));
+    }
+
+    let mut log = String::new();
+    cleanup_old_runtimes(selection.env, &mut log);
+    if !log.is_empty() {
+        eprint!("{log}");
+    }
+    Ok(bundle.version)
 }
 
 
@@ -1374,31 +1487,16 @@ pub fn run_with_progress(
             }
         }
 
-        validate_runtime_layout(&staging)?;
-
         report_progress(
             &mut progress,
             UpdateProgress::Applying {
                 target_version: fetched.version.clone(),
             },
         );
-        let version_info = InstalledVersion {
-            version: fetched.version.clone(),
-            applied_at: chrono::Local::now().to_rfc3339(),
-            sha256: fetched.sha256.clone(),
-        };
-        fs::write(
-            staging.join("version.json"),
-            serde_json::to_string_pretty(&version_info)
-                .map(|json| format!("{json}\n"))
-                .map_err(|e| format!("serialize version info: {e}"))?,
-        )
-        .map_err(|e| format!("write staging version.json: {e}"))?;
-
         // Install beside the active runtime and atomically switch the pointer.
         // The previously active runtime directory is intentionally left in place
         // so a running sidecar is never deleted mid-update.
-        finalize_runtime_install(selection.env, &fetched.version, &fetched.sha256, &staging)
+        install_staged_runtime(selection.env, &fetched.version, &fetched.sha256, &staging)
     })();
     if install.is_err() {
         discard_transient_install(&staging, &zip_path, log);
@@ -2380,6 +2478,41 @@ mod tests {
             // Layout valid but version.json disagrees -> not a complete install
             // of the requested version (mislabeled dir).
             assert!(!super::is_complete_install(&dir, "9.9.9"));
+        });
+    }
+
+    #[test]
+    fn parses_canonical_local_bundle_name() {
+        let path = format!(
+            "C:/releases/overdare-ai-agent-runtime-dev-1.2.3-{}.zip",
+            super::current_platform()
+        );
+        let bundle = super::parse_local_bundle_path(std::path::Path::new(&path))
+            .expect("parse bundle name");
+
+        assert_eq!(bundle.env, Env::Dev);
+        assert_eq!(bundle.version, "1.2.3");
+    }
+
+    #[test]
+    fn install_staged_runtime_writes_version_and_activates_it() {
+        with_temp_home("local-runtime-install", |home| {
+            let staging = home.join(".overdare-dev/updates/runtime_staging_1.2.3_test");
+            fs::create_dir_all(staging.join("dist/client")).expect("create client");
+            fs::write(staging.join(super::sidecar_bin_name()), b"sidecar").expect("write sidecar");
+
+            super::install_staged_runtime(Env::Dev, "1.2.3", "local-sha", &staging)
+                .expect("install staged runtime");
+
+            let installed = home.join(".overdare-dev/updates/runtime-v1.2.3");
+            assert!(super::runtime_layout_exists(&installed));
+            assert_eq!(
+                super::installed_version_at(&installed)
+                    .expect("installed version")
+                    .sha256,
+                "local-sha"
+            );
+            assert_eq!(super::current_runtime_dir(Env::Dev), Some(installed));
         });
     }
 }

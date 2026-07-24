@@ -760,3 +760,11 @@ Decisions made during synthesis reviews, with rationale.
 - **Alternatives considered**: Change only the catalog container (rejected — leaves protocol/session/runtime/UI paths ambiguous); pass provider and modelId as unrelated optional args (rejected — invites hybrid/partial references); keep a bare-string `resolveModel` overload (rejected — reintroduces prefix inference); add a `protocolVersion: 2` or `z.union([z.string(), ModelRef])` wire adapter (rejected per D096 — all in-repo clients ship together).
 - **References**: `packages/protocol/src/data-model.ts` (`ModelRefSchema`, `ProviderNameSchema`), `packages/core/src/llm/models.ts` (`resolveModel`, provider-scoped catalog), `packages/core/src/model-registry.ts`, `packages/runtime/src/model/legacy-model-ref.ts`, D096, P066
 - **Date**: 2026-07-18
+
+### D106: The OVERDARE browser host is owned by the sidecar deployment unit
+
+- **Decision**: The Bun WebSocket/static host, React client, Web-local contracts, and product sidecar are one TypeScript workspace at `apps/overdare-ai-agent/sidecar`. The standalone `@diligent/web` package is removed.
+- **Rationale**: The sidecar executable is the only production host for the browser client, and the runtime bundle always ships that executable with `dist/client`. Its consent, Studio bridge, bundled tools, and first-run experience are OVERDARE-owned. A generic package boundary implied reuse that has no in-repository consumer and obscured the actual product deployment boundary.
+- **Consequence**: `src/server.ts` is the sole browser-host process entrypoint and composes the factory-style host in `src/web/server`. UI-only development runs the same sidecar with `STUDIO_DISABLED=1`; it no longer starts an independent `.diligent` Web backend. Shared Diligent behavior remains in runtime and protocol, while a future generic Web extraction requires a demonstrated non-OVERDARE consumer.
+- **References**: `apps/overdare-ai-agent/sidecar/src/server.ts`, `apps/overdare-ai-agent/sidecar/src/web/server/index.ts`, `scripts/build-overdare-runtime-bundle.ts`
+- **Date**: 2026-07-23

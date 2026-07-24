@@ -10,7 +10,7 @@
 // from the bearer token.
 
 import { createLogger } from "@diligent/logging";
-import type { ConsentSetParams, ConsentState, WebConsentBackend } from "@diligent/web/consent-protocol";
+import type { ConsentSetParams, ConsentState, WebConsentBackend } from "../../web/shared/consent-protocol";
 import { DEBUG, resolveEndpoint, resolveToken } from "./shared";
 
 const GATEWAY_CONSENT_TIMEOUT_MS = 5_000;

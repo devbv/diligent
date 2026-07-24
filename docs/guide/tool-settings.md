@@ -50,7 +50,7 @@ These appear as locked in the UI and stay enabled even if config tries to disabl
 
 ## Bundled product tools
 
-Product variants can register first-party bundled tool providers in-process. For example, the OVERDARE packaged sidecar is assembled by `apps/overdare-ai-agent/sidecar`, imports `@diligent/web/server`, and injects OVERDARE-owned providers from `apps/overdare-ai-agent/sidecar/src/tools`.
+Product variants can register first-party bundled tool providers in-process. For example, the OVERDARE packaged sidecar assembles its local Web host and injects OVERDARE-owned providers from `apps/overdare-ai-agent/sidecar/src/tools`.
 
 Bundled product tools are different from external plugins:
 

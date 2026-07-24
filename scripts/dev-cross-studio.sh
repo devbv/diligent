@@ -190,7 +190,7 @@ fi
 BACKEND_PID=$!
 
 echo "> Starting Vite frontend (:${FRONTEND_PORT})"
-bun run --cwd packages/web dev &
+bun run --cwd apps/overdare-ai-agent/sidecar web:dev &
 FRONTEND_PID=$!
 
 echo ""

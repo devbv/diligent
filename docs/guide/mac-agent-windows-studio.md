@@ -67,12 +67,12 @@ STUDIO_PORT=13377 \
 bun run apps/overdare-ai-agent/sidecar/src/server.ts --dev --port=7433 --cwd="$PWD"
 
 # Terminal 2 — Mac: frontend (Vite, 5174)
-bun run --cwd packages/web dev
+bun run --cwd apps/overdare-ai-agent/sidecar web:dev
 ```
 
 Browser: **http://localhost:5174**
 
-> WARNING: you must use the **sidecar entrypoint** (`apps/overdare-ai-agent/sidecar/src/server.ts`) for `studiorpc_*` tools to load. `bun run web:dev` (web-only, no Studio tools) does not attach the Studio tools.
+> WARNING: start the sidecar **without** `STUDIO_DISABLED=1` for `studiorpc_*` tools to load. UI-only mode deliberately omits the Studio provider.
 
 Host/port resolution order (`rpc.ts:22-40`):
 
@@ -120,7 +120,7 @@ STUDIO_PORT=13377 \
 bun run apps/overdare-ai-agent/sidecar/src/server.ts --dev --port=7433 --cwd="$PWD"
 
 # Terminal 2 — Mac: frontend (Vite, 5174)
-bun run --cwd packages/web dev
+bun run --cwd apps/overdare-ai-agent/sidecar web:dev
 ```
 
 Browser: **http://localhost:5174**
@@ -222,7 +222,7 @@ The script itself is `scripts/dev-cross-studio.sh`. To understand how it works, 
 ## No build needed
 
 - **Runtime**: `bun run` executes the TypeScript natively. No exe compile, no release download.
-- **Frontend**: in dev Vite serves from source (`bun run --cwd packages/web dev`), so no dist build.
+- **Frontend**: in dev Vite serves from source (`bun run --cwd apps/overdare-ai-agent/sidecar web:dev`), so no dist build.
 - **Bundle skills**: not a build — just "put them on the discovery path" (the Option 2 symlink).
 
 In dev, **`bun run` (runtime) + a one-time symlink (bootstrap)** replaces what the exe did.
@@ -255,7 +255,7 @@ RPC endpoint: ws://localhost:7433/rpc
 | Symptom | Cause / fix |
 | --- | --- |
 | UI loads but RPC won't connect | Backend (7433) is not up. The Vite proxy target is fixed at 7433 — set the backend port to 7433 |
-| `studiorpc_*` tools not visible | Started with the web-only backend (`web:dev`). Restart with the **sidecar entrypoint** |
+| `studiorpc_*` tools not visible | Started the sidecar with `STUDIO_DISABLED=1`. Restart without it to enable Studio tools |
 | Bundle skills (actionsequence, etc.) not visible | Option 2 symlink not done. Check the symlinks under `~/.overdare/skills` |
 | Studio connection timeout | `STUDIO_HOST`/`STUDIO_PORT` wrong, or Windows Studio not listening on that port / firewall blocked |
 | `nc -vz` works but only RPC fails | Studio isn't speaking the RPC protocol (another process holds the port). Restart Studio |
@@ -293,7 +293,7 @@ bun install
 STUDIO_PORT=13377 bun run apps/overdare-ai-agent/sidecar/src/server.ts \
   --dev --port=7433 --cwd="C:/path/to/StudioProject"   # the folder that has the actual .umap (local path)
 
-bun run --cwd packages/web dev
+bun run --cwd apps/overdare-ai-agent/sidecar web:dev
 ```
 
 - `--cwd` is now a **Windows local path** (`C:/...`). Being local, both read and write work.
@@ -326,6 +326,6 @@ lsof -ti:5174 | xargs kill   # frontend
 - exe arg -> env conversion (`--studio-rpc-port` -> `STUDIO_PORT`): `apps/overdare-ai-agent/src/webserver.rs`
 - exe bootstrap copy (bundle -> global): `apps/overdare-ai-agent/src/init.rs`
 - runtime bundle download: `apps/overdare-ai-agent/src/update.rs`
-- Vite proxy config: `packages/web/vite.config.ts`
+- Vite proxy config: `apps/overdare-ai-agent/sidecar/vite.config.ts`
 
 > For general local development with Studio on the same machine (Mac), see [`local-development.md`](./local-development.md).

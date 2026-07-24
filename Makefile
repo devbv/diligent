@@ -20,8 +20,8 @@ help:
 	@echo "                  STUDIO_HOST=<ip> [STUDIO_PORT=13377] [STUDIO_PROJECT_DIR=/Volumes/...]"
 	@echo "  dev-agent-nostudio  Run the OVERDARE agent in dev WITHOUT Studio (no 13377 connect;"
 	@echo "                  UI/chat only, edit & rollback tools unavailable)"
-	@echo "  web-dev         Run the Web CLI locally: backend (:7433) + Vite (:5174), no Studio"
-	@echo "  web-start       Run web backend server"
+	@echo "  web-dev         Run the OVERDARE sidecar (:7433) + Vite (:5174), no Studio"
+	@echo "  web-start       Run the OVERDARE sidecar backend"
 	@echo "  debug-dev       Run debug-viewer dev server"
 	@echo ""
 	@echo "Test / Lint:"
@@ -84,19 +84,18 @@ dev: node_modules
 
 # --- Web ---
 
-# Run the Web CLI locally: web-only backend (:7433) + Vite frontend (:5174).
+# Run the product sidecar locally with Studio disabled (:7433) + Vite frontend (:5174).
 # Browser: http://localhost:5174 (Vite proxies /rpc to the backend). Ctrl+C stops both.
-# No Studio tools (bundledToolProviders: []). For the OVERDARE agent use dev-agent*.
 web-dev: node_modules
-	@bun run packages/web/src/server/index.ts --dev & backend=$$!; \
+	@STUDIO_DISABLED=1 bun run apps/overdare-ai-agent/sidecar/src/server.ts --dev --cwd=$(CURDIR) & backend=$$!; \
 	 trap "kill $$backend 2>/dev/null || true" EXIT INT TERM; \
-	 bun run --cwd packages/web dev
+	 bun run --cwd apps/overdare-ai-agent/sidecar web:dev
 
 web-build: node_modules
-	bun run --cwd packages/web build
+	bun run --cwd apps/overdare-ai-agent/sidecar web:build
 
 web-start: node_modules
-	bun run --cwd packages/web start -- --cwd=$(CURDIR)
+	bun run --cwd apps/overdare-ai-agent/sidecar start -- --cwd=$(CURDIR)
 
 # Run the OVERDARE agent (the product) in dev — connect to a local Studio, use .overdare.
 # (make dev is the diligent CLI dev assistant; this is the OVERDARE agent itself.)

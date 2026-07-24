@@ -252,5 +252,5 @@ Failure/edge cases to expect:
 - `packages/core/src/llm/provider-manager.ts`
 - `packages/core/src/auth/types.ts`
 - `packages/core/src/auth/chatgpt-oauth/chatgpt-oauth.ts`
-- `packages/web/src/client/lib/auth-api.ts`
-- `packages/web/src/client/lib/use-provider-manager.ts`
+- `apps/overdare-ai-agent/sidecar/src/web/client/lib/auth-api.ts`
+- `apps/overdare-ai-agent/sidecar/src/web/client/lib/use-provider-manager.ts`

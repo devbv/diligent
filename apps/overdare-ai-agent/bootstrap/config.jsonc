@@ -1,4 +1,6 @@
 {
+  // Bumped only on breaking config schema changes to gate a future migration.
+  "configSchemaVersion": 1,
   "model": { "provider": "openai", "modelId": "gpt-5.5" },
   "effort": "high",
   "systemPromptFile": "system-prompt.txt",
