@@ -75,9 +75,44 @@ fn copy_dir_recursive(src: &Path, dest: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
+/// Per-init staging directory under the global storage root. Kept OUT of the
+/// scanned skills/agents dirs so a crash mid-swap can't leave a partial copy
+/// that discovery would mistake for a real skill/agent.
+fn staging_dir(global: &Path) -> PathBuf {
+    global.join(".init-staging")
+}
+
+/// Deploy one entry atomically: fully copy it into `staging` first, then swap it
+/// into place (drop the old entry, rename the staged copy in). Rename is atomic
+/// on the same filesystem, so the destructive window shrinks from a whole
+/// recursive copy to a single rename — if staging the copy fails, `dest` is left
+/// intact instead of half-deleted, and the error propagates to the caller.
+fn stage_and_swap(src: &Path, dest: &Path, staging: &Path) -> std::io::Result<()> {
+    fs::create_dir_all(staging)?;
+    let staged = staging.join(dest.file_name().unwrap_or_default());
+    let _ = fs::remove_dir_all(&staged);
+    let _ = fs::remove_file(&staged);
+
+    // 1. Stage the new content. A failure here leaves dest untouched.
+    if src.is_dir() {
+        copy_dir_recursive(src, &staged)?;
+    } else {
+        fs::copy(src, &staged)?;
+    }
+
+    // 2. Swap it in: remove the old entry, then move the staged copy into place.
+    if dest.is_dir() {
+        fs::remove_dir_all(dest)?;
+    } else if dest.exists() {
+        fs::remove_file(dest)?;
+    }
+    fs::rename(&staged, dest)
+}
+
 fn deploy_plugins(
     src: &Path,
     dest: &Path,
+    staging: &Path,
     log: &mut String,
     mode: DeployMode,
 ) -> std::io::Result<()> {
@@ -111,20 +146,24 @@ fn deploy_plugins(
                     );
                     continue;
                 }
-                if exists {
-                    fs::remove_dir_all(&dest_plugin)?;
+                if let Err(e) = stage_and_swap(&src_plugin, &dest_plugin, staging) {
+                    // Log and keep going: one bad entry must not abort the whole
+                    // deploy or block agent start (P077 keeps a bootable install).
+                    eprintln!(
+                        "[init] Failed to deploy plugins/{}/{}: {e}",
+                        name_str,
+                        plugin_name.to_string_lossy()
+                    );
                 }
-                copy_dir_recursive(&src_plugin, &dest_plugin)?;
             }
         } else {
             let exists = dest_child.exists();
             if !should_copy_entry(exists, mode) {
                 continue;
             }
-            if exists {
-                fs::remove_dir_all(&dest_child)?;
+            if let Err(e) = stage_and_swap(&src_child, &dest_child, staging) {
+                eprintln!("[init] Failed to deploy plugins/{name_str}: {e}");
             }
-            copy_dir_recursive(&src_child, &dest_child)?;
         }
     }
     Ok(())
@@ -144,6 +183,7 @@ fn deploy_plugins(
 fn deploy_managed_dir(
     src: &Path,
     dest: &Path,
+    staging: &Path,
     log: &mut String,
     mode: DeployMode,
 ) -> std::io::Result<()> {
@@ -164,17 +204,15 @@ fn deploy_managed_dir(
             );
             continue;
         }
-        if exists {
-            if dest_child.is_dir() {
-                fs::remove_dir_all(&dest_child)?;
-            } else {
-                fs::remove_file(&dest_child)?;
-            }
-        }
-        if src_child.is_dir() {
-            copy_dir_recursive(&src_child, &dest_child)?;
-        } else {
-            fs::copy(&src_child, &dest_child)?;
+        if let Err(e) = stage_and_swap(&src_child, &dest_child, staging) {
+            // Log and keep going: a failed entry leaves its old copy intact
+            // (stage_and_swap swaps only after a full copy) and must not abort
+            // the deploy or block agent start (P077).
+            eprintln!(
+                "[init] Failed to deploy {}/{}: {e}",
+                dir_label,
+                name.to_string_lossy()
+            );
         }
     }
     Ok(())
@@ -194,6 +232,9 @@ pub fn run(env: Env, update_applied: bool) -> Result<(), String> {
     let Some(bootstrap) = resolve_updated_bootstrap_dir(env, &mut log) else {
         return Ok(());
     };
+    // Fresh staging dir for atomic swaps; clear any leftovers from a prior crash.
+    let staging = staging_dir(&global);
+    let _ = fs::remove_dir_all(&staging);
     let entries =
         fs::read_dir(&bootstrap).map_err(|e| format!("Cannot read bootstrap dir: {e}"))?;
     for entry in entries.flatten() {
@@ -204,19 +245,22 @@ pub fn run(env: Env, update_applied: bool) -> Result<(), String> {
             let existed_before = dest.exists();
             let file_mode = deploy_mode_for_file(&name.to_string_lossy(), mode);
             if should_copy_entry(existed_before, file_mode) {
-                let _ = fs::copy(&src, &dest);
+                if let Err(e) = stage_and_swap(&src, &dest, &staging) {
+                    eprintln!("[init] Failed to deploy {}: {e}", name.to_string_lossy());
+                }
             }
         } else if src.is_dir() {
             if name.to_string_lossy() == "plugins" {
-                let _ = deploy_plugins(&src, &dest, &mut log, mode);
+                let _ = deploy_plugins(&src, &dest, &staging, &mut log, mode);
             } else {
                 // skills/agents (and any bootstrap dir) mix bundled product
                 // entries with user-created ones; sync per-entry so an applied
                 // update overwrites bundled names but preserves user additions.
-                let _ = deploy_managed_dir(&src, &dest, &mut log, mode);
+                let _ = deploy_managed_dir(&src, &dest, &staging, &mut log, mode);
             }
         }
     }
+    let _ = fs::remove_dir_all(&staging);
     Ok(())
 }
 
@@ -246,7 +290,8 @@ mod tests {
         write(&dest.join("my-skill/SKILL.md"), "user content");
 
         let mut log = String::new();
-        deploy_managed_dir(&src, &dest, &mut log, DeployMode::FullSync).unwrap();
+        deploy_managed_dir(&src, &dest, &base.join(".staging"), &mut log, DeployMode::FullSync)
+            .unwrap();
 
         // Product skill overwritten; user skill untouched.
         assert_eq!(
@@ -277,7 +322,8 @@ mod tests {
         write(&dest.join("agent-guide/SKILL.md"), "v1 product");
 
         let mut log = String::new();
-        deploy_managed_dir(&src, &dest, &mut log, DeployMode::MissingOnly).unwrap();
+        deploy_managed_dir(&src, &dest, &base.join(".staging"), &mut log, DeployMode::MissingOnly)
+            .unwrap();
 
         assert_eq!(
             fs::read_to_string(dest.join("agent-guide/SKILL.md")).unwrap(),
@@ -314,5 +360,28 @@ mod tests {
             deploy_mode_for_file("config.jsonc", DeployMode::MissingOnly),
             DeployMode::MissingOnly
         );
+    }
+
+    #[test]
+    fn failed_stage_keeps_existing_dest_intact() {
+        // The anti-data-loss guarantee: if staging the new copy fails, the old
+        // dest must survive (no remove-then-failed-copy destruction).
+        let base = std::env::temp_dir()
+            .join(format!("overdare-init-staging-fail-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        let missing_src = base.join("does-not-exist");
+        let dest = base.join("skill");
+        write(&dest.join("SKILL.md"), "old content");
+
+        let result = stage_and_swap(&missing_src, &dest, &base.join(".staging"));
+
+        assert!(result.is_err(), "copying a missing source must fail");
+        assert_eq!(
+            fs::read_to_string(dest.join("SKILL.md")).unwrap(),
+            "old content",
+            "dest must be untouched when staging fails"
+        );
+
+        let _ = fs::remove_dir_all(&base);
     }
 }
