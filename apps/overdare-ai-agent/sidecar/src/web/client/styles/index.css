@@ -36,6 +36,7 @@
 .prose-content p + h2,
 .prose-content p + h3,
 .prose-content p + pre,
+.prose-content p + .code-block,
 .prose-content p + blockquote,
 .prose-content p + ul,
 .prose-content p + ol,
@@ -95,6 +96,103 @@
 }
 .prose-content pre::-webkit-scrollbar-thumb:hover {
   background: color-mix(in srgb, var(--color-text) 36%, transparent);
+}
+.prose-content .code-block {
+  width: 100%;
+  max-width: 100%;
+  max-height: 200px;
+  margin: 0.875rem 0;
+  overflow: hidden;
+  background: var(--color-fill-dark);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+}
+.prose-content p + .code-block {
+  margin-top: 0.45rem;
+}
+.prose-content .code-block__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 32px;
+  padding: 0 8px 0 12px;
+  background: var(--color-bg-elevated);
+  border-bottom: 1px solid var(--color-border-default);
+}
+.prose-content .code-block__language {
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
+}
+.prose-content .code-block__copy-button {
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  background: var(--color-fill-tertiary);
+  border: 0;
+  border-radius: 5px;
+  transition:
+    color 120ms ease,
+    background-color 120ms ease;
+}
+.prose-content .code-block__copy-button:hover {
+  color: var(--color-text-default);
+  background: var(--color-fill-tertiary-hover);
+}
+.prose-content .code-block__copy-button:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 1px;
+}
+.prose-content .code-block__copy-icon,
+.prose-content .code-block__check-icon {
+  width: 16px;
+  height: 16px;
+}
+.prose-content .code-block__check-icon {
+  display: none;
+}
+.prose-content .code-block__copy-button[data-copied="true"] {
+  color: var(--color-text-success);
+}
+.prose-content .code-block__copy-button[data-copied="true"] .code-block__copy-icon {
+  display: none;
+}
+.prose-content .code-block__copy-button[data-copied="true"] .code-block__check-icon {
+  display: block;
+}
+.prose-content .code-block pre {
+  max-height: 166px;
+  margin: 0;
+  overflow: auto;
+  background: var(--color-fill-dark);
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.prose-content .code-block pre::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.prose-content .code-block pre::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 0;
+}
+.prose-content .code-block pre::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--color-text) 22%, transparent);
+  border: 2px solid var(--color-fill-dark);
+  border-radius: 6px;
+}
+.prose-content .code-block pre::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--color-text) 34%, transparent);
+}
+.prose-content .code-block pre::-webkit-scrollbar-corner {
+  background: var(--color-fill-dark);
 }
 /* Same rationale as above, as an opt-in class for horizontal thumbnail
    strips (e.g. asset gallery): without it the overflow is unreachable
