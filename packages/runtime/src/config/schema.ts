@@ -82,6 +82,11 @@ export const DiligentConfigSchema = z
   .object({
     $schema: z.string().optional(),
 
+    // Config schema version — anchor for future breaking-change migrations.
+    // Absent means "pre-versioning" (treat as 0). No migration runner exists yet;
+    // when a breaking schema change lands, gate its migration on this value.
+    configSchemaVersion: z.number().int().nonnegative().optional(),
+
     // Core settings
     model: ModelRefSchema.optional(),
     provider: z
