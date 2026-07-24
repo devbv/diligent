@@ -87,6 +87,12 @@ export const DiligentConfigSchema = z
     // when a breaking schema change lands, gate its migration on this value.
     configSchemaVersion: z.number().int().nonnegative().optional(),
 
+    // Runtime auto-update policy, consumed by the Rust launcher (update.rs), not
+    // the TS runtime. Declared here because it lives in the same global config.jsonc
+    // and the schema is `.strict()` — without it, setting `updateMode` would fail
+    // validation and drop the entire config layer (permissions, tools, model, …).
+    updateMode: z.enum(["enabled", "disabled"]).optional(),
+
     // Core settings
     model: ModelRefSchema.optional(),
     provider: z
