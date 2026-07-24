@@ -1,6 +1,6 @@
 // @summary Markdown renderer using dangerouslySetInnerHTML with prose styles
 
-import { type MouseEvent, useEffect, useRef } from "react";
+import { type MouseEvent, memo, useEffect, useMemo, useRef } from "react";
 import { copyTextToClipboard } from "../lib/clipboard";
 import { cn } from "../lib/cn";
 import { renderMarkdown } from "../lib/markdown";
@@ -10,8 +10,9 @@ interface MarkdownContentProps {
   className?: string;
 }
 
-export function MarkdownContent({ text, className }: MarkdownContentProps) {
+export const MarkdownContent = memo(function MarkdownContent({ text, className }: MarkdownContentProps) {
   const resetTimers = useRef(new Map<HTMLButtonElement, number>());
+  const html = useMemo(() => renderMarkdown(text), [text]);
 
   useEffect(
     () => () => {
@@ -57,7 +58,7 @@ export function MarkdownContent({ text, className }: MarkdownContentProps) {
       className={cn("prose-content", className)}
       onClick={handleClick}
       // biome-ignore lint/security/noDangerouslySetInnerHtml: agent output only — external input echoing requires DOMPurify
-      dangerouslySetInnerHTML={{ __html: renderMarkdown(text) }}
+      dangerouslySetInnerHTML={{ __html: html }}
     />
   );
-}
+});

@@ -1,11 +1,12 @@
 // @summary DOM interaction tests for Markdown code-block copy feedback
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import hljs from "highlight.js/lib/core";
 
 GlobalRegistrator.register();
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 import { afterAll, expect, test } from "bun:test";
-import { act, createElement } from "react";
+import { act, createElement, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { MarkdownContent } from "../../../../src/web/client/components/MarkdownContent";
 
@@ -58,4 +59,53 @@ test("code-block copy button copies raw code and shows a check state for one sec
     root.unmount();
   });
   rootElement.remove();
+});
+
+test("does not re-highlight unchanged markdown when a parent re-renders", async () => {
+  const originalHighlight = hljs.highlight;
+  let highlightCalls = 0;
+  let rerenderParent: (() => void) | undefined;
+
+  Object.defineProperty(hljs, "highlight", {
+    configurable: true,
+    value: (...args: unknown[]) => {
+      highlightCalls += 1;
+      return Reflect.apply(originalHighlight, hljs, args);
+    },
+  });
+
+  function Parent() {
+    const [, setVersion] = useState(0);
+    rerenderParent = () => setVersion((version) => version + 1);
+
+    return createElement(MarkdownContent, {
+      text: "```ts\nconst stable = true;\n```",
+    });
+  }
+
+  const rootElement = document.createElement("div");
+  document.body.appendChild(rootElement);
+  const root = createRoot(rootElement);
+
+  try {
+    await act(async () => {
+      root.render(createElement(Parent));
+    });
+    expect(highlightCalls).toBe(1);
+
+    await act(async () => {
+      rerenderParent?.();
+    });
+    expect(highlightCalls).toBe(1);
+  } finally {
+    Object.defineProperty(hljs, "highlight", {
+      configurable: true,
+      value: originalHighlight,
+    });
+
+    await act(async () => {
+      root.unmount();
+    });
+    rootElement.remove();
+  }
 });
