@@ -1,8 +1,9 @@
-// @summary Tests Web-owned consent request interception before DiligentAppServer dispatch
+// @summary Tests Web-owned product request interception before DiligentAppServer dispatch
 
 import { describe, expect, test } from "bun:test";
-import { routeWebRpcRequest } from "../../../src/web/server/consent-rpc";
+import { routeWebRpcRequest } from "../../../src/web/server/product-rpc";
 import type { WebConsentBackend } from "../../../src/web/shared/consent-protocol";
+import type { FeedbackReportInput, WebFeedbackBackend } from "../../../src/web/shared/feedback-protocol";
 
 const STATE = {
   noticeAcknowledged: true,
@@ -16,6 +17,10 @@ function backend(overrides: Partial<WebConsentBackend> = {}): WebConsentBackend 
     set: () => STATE,
     ...overrides,
   };
+}
+
+function feedbackBackend(submit: (input: FeedbackReportInput) => Promise<void>): WebFeedbackBackend {
+  return { submit };
 }
 
 describe("routeWebRpcRequest", () => {
@@ -41,6 +46,61 @@ describe("routeWebRpcRequest", () => {
       forward: (value) => forwarded.push(value),
     });
     expect(forwarded).toEqual([raw]);
+  });
+
+  test("intercepts feedback/report and adds the server-attested account id", async () => {
+    const sent: unknown[] = [];
+    const forwarded: unknown[] = [];
+    const submitted: FeedbackReportInput[] = [];
+    await routeWebRpcRequest(
+      JSON.stringify({
+        id: 12,
+        method: "feedback/report",
+        params: { sessionId: "session-123", feedback: "The assistant stopped unexpectedly." },
+      }),
+      {
+        accountId: "account-from-server",
+        feedbackBackend: feedbackBackend(async (input) => {
+          submitted.push(input);
+        }),
+        send: (message) => sent.push(message),
+        forward: (raw) => forwarded.push(raw),
+      },
+    );
+
+    expect(submitted).toEqual([
+      {
+        accountId: "account-from-server",
+        sessionId: "session-123",
+        feedback: "The assistant stopped unexpectedly.",
+      },
+    ]);
+    expect(sent).toEqual([{ id: 12, result: { submitted: true } }]);
+    expect(forwarded).toHaveLength(0);
+  });
+
+  test("rejects feedback/report when the product backend or account id is unavailable", async () => {
+    const withoutBackend: unknown[] = [];
+    await routeWebRpcRequest(
+      JSON.stringify({ id: 13, method: "feedback/report", params: { sessionId: "s1", feedback: "Please help" } }),
+      {
+        accountId: "account-1",
+        send: (message) => withoutBackend.push(message),
+        forward: () => {},
+      },
+    );
+    expect(withoutBackend).toEqual([{ id: 13, error: { code: -32601, message: "Feedback backend not available" } }]);
+
+    const withoutAccount: unknown[] = [];
+    await routeWebRpcRequest(
+      JSON.stringify({ id: 14, method: "feedback/report", params: { sessionId: "s1", feedback: "Please help" } }),
+      {
+        feedbackBackend: feedbackBackend(async () => {}),
+        send: (message) => withoutAccount.push(message),
+        forward: () => {},
+      },
+    );
+    expect(withoutAccount).toEqual([{ id: 14, error: { code: -32000, message: "Account ID not available" } }]);
   });
 
   test("returns -32602 for invalid params", async () => {

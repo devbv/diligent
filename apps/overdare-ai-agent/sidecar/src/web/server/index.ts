@@ -18,10 +18,11 @@ import {
   type RuntimeAgent,
 } from "@diligent/runtime";
 import type { WebConsentBackend } from "../shared/consent-protocol";
+import type { WebFeedbackBackend } from "../shared/feedback-protocol";
 import { decodeWebImageRelativePath, toWebImageUrl, WEB_IMAGE_ROUTE_PREFIX } from "../shared/image-routes";
 import { injectSentryConfig } from "../shared/sentry-config";
-import { routeWebRpcRequest } from "./consent-rpc";
 import { migrateLegacyConsentConfig } from "./legacy-consent-config";
+import { routeWebRpcRequest } from "./product-rpc";
 
 function createStreamLogger(
   scope: string,
@@ -51,6 +52,8 @@ interface CreateServerOptions {
   experimentDefinitions?: ExperimentDefinition[];
   /** Web-owned consent backend injected by a product host such as the OVERDARE sidecar. */
   consentBackend?: WebConsentBackend;
+  /** Web-owned explicit feedback backend injected by the OVERDARE product host. */
+  feedbackBackend?: WebFeedbackBackend;
   /**
    * Extra route group consulted before this server's own routes, for product-owned endpoints such
    * as the OVERDARE MCP router proxy (P071). `matches` is synchronous so `fetch` stays synchronous
@@ -136,6 +139,7 @@ export async function createWebServer(options: CreateServerOptions = {}): Promis
             name: s.name,
             description: s.description,
           })),
+          accountId: runtimeConfig.diligent.userId,
           ...(options.consentBackend ? { consent: options.consentBackend.get() } : {}),
         };
       },
@@ -249,6 +253,8 @@ export async function createWebServer(options: CreateServerOptions = {}): Promis
         if (!forward) return;
         void routeWebRpcRequest(raw, {
           consentBackend: options.consentBackend,
+          feedbackBackend: options.feedbackBackend,
+          accountId: runtimeConfig.diligent.userId,
           send: (message) => ws.send(JSON.stringify(message)),
           forward,
         });

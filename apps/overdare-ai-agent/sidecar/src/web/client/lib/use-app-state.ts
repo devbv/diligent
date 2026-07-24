@@ -12,6 +12,7 @@ import { initialThreadState } from "./thread-store";
 import { useAppActions } from "./use-app-actions";
 import { useAppBootstrap, useAppRpcBindings } from "./use-app-lifecycle";
 import { useConsentState } from "./use-consent-state";
+import { useFeedbackState } from "./use-feedback-state";
 import { useModalState } from "./use-modal-state";
 import { useNotificationState } from "./use-notification-state";
 import type { useProviderManager } from "./use-provider-manager";
@@ -63,6 +64,7 @@ export function useAppState({
   const threadData = useThreadData({ rpcRef, state, childThreadCacheRef });
 
   const consentState = useConsentState({ rpcRef });
+  const feedbackState = useFeedbackState({ rpcRef });
   const modalState = useModalState({ providerMgr });
   const notificationState = useNotificationState();
 
@@ -231,6 +233,7 @@ export function useAppState({
     setSkills,
     setRuntimeVersion,
     setConsent: consentState.setConsent,
+    setAccountId: feedbackState.setAccountId,
     setInitialModel: providerMgr.setInitialModel,
     applySessionModel: providerMgr.applySessionModel,
     refreshThreadList: threadMgr.refreshThreadList,
@@ -321,6 +324,7 @@ export function useAppState({
     runtimeVersion,
     setRuntimeVersion,
     ...consentState,
+    ...feedbackState,
     desktopNotificationsEnabled: notificationState.desktopNotificationsEnabled,
     setDesktopNotificationsEnabled: notificationState.setDesktopNotificationsEnabled,
     desktopNotificationsRef: notificationState.desktopNotificationsRef,

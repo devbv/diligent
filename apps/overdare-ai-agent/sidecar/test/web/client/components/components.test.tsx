@@ -19,6 +19,7 @@ import { CollabGroup } from "../../../../src/web/client/components/CollabGroup";
 import { ContextMessage } from "../../../../src/web/client/components/ContextMessage";
 import { EmptyState } from "../../../../src/web/client/components/EmptyState";
 import { ErrorBanner } from "../../../../src/web/client/components/ErrorBanner";
+import { FeedbackReportModal } from "../../../../src/web/client/components/FeedbackReportModal";
 import { HumanEditsNotice } from "../../../../src/web/client/components/HumanEditsNotice";
 import { Input } from "../../../../src/web/client/components/Input";
 import {
@@ -124,6 +125,38 @@ test("tool settings modal renders vertex provider badge label", () => {
 
   expect(html).toContain("Vertex AI");
   expect(html).toContain("Open AI connection settings");
+});
+
+test("tool settings modal exposes copyable diagnostic identifiers", () => {
+  const html = renderToStaticMarkup(
+    <ToolSettingsModal
+      threadId="session-123"
+      accountId="account-456"
+      initialState={{
+        configPath: "/repo/.diligent/config.jsonc",
+        appliesOnNextTurn: true,
+        trustMode: "full_trust",
+        conflictPolicy: "error",
+        tools: [],
+        plugins: [],
+      }}
+      onList={async () => {
+        throw new Error("unused");
+      }}
+      onSave={async () => {
+        throw new Error("unused");
+      }}
+      onClose={() => {}}
+    />,
+  );
+
+  expect(html).toContain("Diagnostics");
+  expect(html).toContain("Session ID");
+  expect(html).toContain("session-123");
+  expect(html).toContain("Account ID");
+  expect(html).toContain("account-456");
+  expect(html).toContain('aria-label="Copy Session ID"');
+  expect(html).toContain('aria-label="Copy Account ID"');
 });
 
 test("tool settings modal renders required, optional, and project-controlled subagents", () => {
@@ -1420,6 +1453,51 @@ test("sidebar includes a mobile close action", () => {
   expect(html).toContain('aria-label="Close sidebar"');
   expect(html).toContain("data-sidebar-initial-focus");
   expect(html).toContain("sm:hidden");
+});
+
+test("sidebar renders a report action for each conversation", () => {
+  const html = renderToStaticMarkup(
+    <Sidebar
+      cwd="/repo/project"
+      threadList={[
+        {
+          id: "session-123",
+          path: "/repo/.overdare/sessions/session-123.jsonl",
+          cwd: "/repo/project",
+          created: "2026-07-24T00:00:00.000Z",
+          modified: "2026-07-24T00:00:00.000Z",
+          messageCount: 4,
+          firstUserMessage: "Fix the selected object",
+        },
+      ]}
+      activeThreadId="session-123"
+      onNewThread={() => {}}
+      onOpenThread={() => {}}
+      onReportThread={() => {}}
+    />,
+  );
+
+  expect(html).toContain('aria-label="Report conversation"');
+  expect(html).toContain('title="Report conversation"');
+  expect(html).toContain('data-icon="clipboard-list"');
+});
+
+test("feedback report modal includes diagnostic identifiers and a bounded feedback field", () => {
+  const html = renderToStaticMarkup(
+    <FeedbackReportModal
+      sessionId="session-123"
+      accountId="account-456"
+      onSubmit={async () => {}}
+      onCancel={() => {}}
+    />,
+  );
+
+  expect(html).toContain("Report conversation");
+  expect(html).toContain("session-123");
+  expect(html).toContain("account-456");
+  expect(html).toContain('aria-label="Feedback"');
+  expect(html).toContain('maxLength="4000"');
+  expect(html).toContain('disabled=""');
 });
 
 test("assistant message can suppress thinking block during compaction", () => {

@@ -3,7 +3,7 @@
 import type { SessionSummary } from "@diligent/protocol";
 import { memo } from "react";
 import { formatRelativeTime } from "../lib/format-time";
-import { SquarePen, Trash2, X } from "./icons";
+import { ClipboardList, SquarePen, Trash2, X } from "./icons";
 import { Panel } from "./Panel";
 import { iconButtonClasses, sidebarItemClasses, sidebarListClasses } from "./ui-styles";
 
@@ -14,6 +14,7 @@ interface SidebarProps {
   attentionThreadIds?: Set<string>;
   onNewThread: () => void;
   onOpenThread: (threadId: string) => void;
+  onReportThread?: (threadId: string) => void;
   onDeleteThread?: (threadId: string) => void;
   onClose?: () => void;
 }
@@ -24,6 +25,7 @@ function SidebarImpl({
   attentionThreadIds,
   onNewThread,
   onOpenThread,
+  onReportThread,
   onDeleteThread,
   onClose,
 }: SidebarProps) {
@@ -73,7 +75,7 @@ function SidebarImpl({
                       : "bg-bg-sunken hover:bg-surface-light"
                 }`}
               >
-                <div className="flex items-center gap-2 pr-5">
+                <div className={`flex items-center gap-2 ${onReportThread || onDeleteThread ? "pr-12" : ""}`}>
                   {needsAttention ? (
                     <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-attention" title="Needs attention" />
                   ) : null}
@@ -85,18 +87,37 @@ function SidebarImpl({
                   <span>{thread.messageCount} msg</span>
                 </div>
               </button>
-              {onDeleteThread ? (
-                <button
-                  type="button"
-                  aria-label="Delete conversation"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDeleteThread(thread.id);
-                  }}
-                  className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-0.5 text-muted opacity-0 transition hover:text-danger focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent group-hover:opacity-100"
-                >
-                  <Trash2 className="h-3.5 w-3.5" strokeWidth={1.8} aria-hidden="true" />
-                </button>
+              {onReportThread || onDeleteThread ? (
+                <div className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-0.5 opacity-100 transition sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
+                  {onReportThread ? (
+                    <button
+                      type="button"
+                      aria-label="Report conversation"
+                      title="Report conversation"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onReportThread(thread.id);
+                      }}
+                      className="rounded-md p-1 text-muted transition hover:bg-surface-light hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                    >
+                      <ClipboardList className="h-3.5 w-3.5" strokeWidth={1.8} aria-hidden="true" />
+                    </button>
+                  ) : null}
+                  {onDeleteThread ? (
+                    <button
+                      type="button"
+                      aria-label="Delete conversation"
+                      title="Delete conversation"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onDeleteThread(thread.id);
+                      }}
+                      className="rounded-md p-1 text-muted transition hover:bg-surface-light hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" strokeWidth={1.8} aria-hidden="true" />
+                    </button>
+                  ) : null}
+                </div>
               ) : null}
             </div>
           );

@@ -5,6 +5,7 @@ import { AppHeader } from "./components/AppHeader";
 import { ConnectionModal } from "./components/ConnectionModal";
 import { DeleteThreadModal } from "./components/DeleteThreadModal";
 import { ErrorBanner } from "./components/ErrorBanner";
+import { FeedbackReportModal } from "./components/FeedbackReportModal";
 import { FirstRunNoticeModal } from "./components/FirstRunNoticeModal";
 import { InputDock } from "./components/InputDock";
 import { KnowledgeManagerModal } from "./components/KnowledgeManagerModal";
@@ -71,6 +72,8 @@ export function App() {
     runtimeVersion,
     consent,
     updateConsent,
+    accountId,
+    submitFeedback,
     desktopNotificationsEnabled,
     setDesktopNotificationsEnabled,
     slashCommands,
@@ -136,6 +139,7 @@ export function App() {
   const sidebarIsOverlay = useMediaQuery(MOBILE_SIDEBAR_QUERY);
   const mainContentIsInert = sidebarOpen && sidebarIsOverlay;
   const sidebarTriggerRef = useRef<HTMLElement | null>(null);
+  const [reportThreadId, setReportThreadId] = useState<string | null>(null);
   const closeSidebar = useCallback(() => setSidebarOpen(false), [setSidebarOpen]);
   const handleSidebarNewThread = useCallback(() => {
     void startNewThread();
@@ -151,6 +155,15 @@ export function App() {
       }
     },
     [closeSidebar, openThread, sidebarIsOverlay],
+  );
+  const handleSidebarReportThread = useCallback(
+    (id: string) => {
+      setReportThreadId(id);
+      if (sidebarIsOverlay) {
+        closeSidebar();
+      }
+    },
+    [closeSidebar, sidebarIsOverlay],
   );
 
   useEffect(() => {
@@ -194,6 +207,7 @@ export function App() {
             attentionThreadIds={attentionThreadIds}
             onNewThread={handleSidebarNewThread}
             onOpenThread={handleSidebarOpenThread}
+            onReportThread={handleSidebarReportThread}
             onDeleteThread={(id) => threadMgr.setPendingDeleteThreadId(id)}
             onClose={closeSidebar}
           />
@@ -305,6 +319,7 @@ export function App() {
           {showToolModal ? (
             <ToolSettingsModal
               threadId={state.activeThreadId}
+              accountId={accountId}
               runtimeVersion={runtimeVersion}
               providers={providerMgr.providers}
               desktopNotificationsEnabled={desktopNotificationsEnabled}
@@ -375,6 +390,19 @@ export function App() {
         <DeleteThreadModal
           onCancel={() => threadMgr.setPendingDeleteThreadId(null)}
           onConfirm={() => void confirmDeleteThread()}
+        />
+      ) : null}
+
+      {reportThreadId ? (
+        <FeedbackReportModal
+          sessionId={reportThreadId}
+          accountId={accountId}
+          onSubmit={async (feedback) => {
+            await submitFeedback({ sessionId: reportThreadId, feedback });
+            setReportThreadId(null);
+            dispatch({ type: "show_info_toast", payload: "Report submitted. Thank you for the feedback." });
+          }}
+          onCancel={() => setReportThreadId(null)}
         />
       ) : null}
 

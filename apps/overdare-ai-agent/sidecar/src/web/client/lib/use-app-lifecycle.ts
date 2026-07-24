@@ -34,7 +34,7 @@ import type { ThreadState } from "./thread-store";
 
 const logger = createLogger({ scope: "web.client.lifecycle" });
 
-type WebInitializeResponse = InitializeResponse & { consent?: ConsentState };
+type WebInitializeResponse = InitializeResponse & { consent?: ConsentState; accountId?: string };
 
 function hasNotificationThreadId(params: unknown): params is { threadId: string } {
   return typeof (params as { threadId?: unknown } | null)?.threadId === "string";
@@ -225,6 +225,7 @@ export function useAppBootstrap({
   setSkills,
   setRuntimeVersion,
   setConsent,
+  setAccountId,
   setInitialModel,
   applySessionModel,
   refreshThreadList,
@@ -239,6 +240,7 @@ export function useAppBootstrap({
   setSkills: Dispatch<SetStateAction<SkillInfo[]>>;
   setRuntimeVersion: Dispatch<SetStateAction<string>>;
   setConsent: (consent: ConsentState | null) => void;
+  setAccountId: Dispatch<SetStateAction<string>>;
   setInitialModel: (model: ModelRef | undefined, models?: InitializeResponse["availableModels"]) => void;
   applySessionModel: (sessionModel?: ModelRef) => Promise<void>;
   refreshThreadList: (rpc?: WebRpcClient | null) => Promise<void>;
@@ -283,6 +285,7 @@ export function useAppBootstrap({
         setSkills(meta.skills ?? []);
         setRuntimeVersion(meta.serverVersion ?? "");
         setConsent(meta.consent ?? null);
+        setAccountId(meta.accountId ?? "");
         setInitialModel(meta.currentModel, meta.availableModels ?? []);
         rpc.notify(DILIGENT_CLIENT_NOTIFICATION_METHODS.INITIALIZED, { ready: true });
 
@@ -335,6 +338,7 @@ export function useAppBootstrap({
     setSkills,
     setRuntimeVersion,
     setConsent,
+    setAccountId,
     setInitialModel,
     applySessionModel,
     refreshThreadList,
