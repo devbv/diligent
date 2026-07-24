@@ -160,7 +160,7 @@ DILIGENT_UPDATE_URL=https://example.com/update-manifest.json cargo run --manifes
 - `start --init-if-missing` runs a full init first when no runtime is installed (self-heal for wiped/corrupt installs), then proceeds to start
 - machine-readable result lines for consumers that capture the pipes (Studio): `init` ends stdout with `INIT_RESULT=updated|up-to-date|fallback|skipped` (+ `FALLBACK_REASON=<code>` on fallback); local `install` ends with `INSTALL_RESULT=installed`; any failure ends stderr with `ERROR_CODE=<code>` and exits with that code — `10` network, `20` install/disk, `21` bundle verification, `30` config/args, `40` start boot failure
 - if `~/.overdare/config.jsonc` (or `~/.overdare-dev/config.jsonc` for dev) sets `"updateMode": "disabled"`, runtime update behavior follows that config
-- `init --skip-update` intentionally exits with code `1` when no runtime has been downloaded yet
+- `init --skip-update` intentionally fails with config error code `30` (`ERROR_CODE=30`) when no runtime has been downloaded yet
 - repo root shortcuts:
   - `bun run overdare-ai-agent:build`
   - `bun run overdare-ai-agent:test`
