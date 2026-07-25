@@ -1,5 +1,6 @@
 // @summary Tests provider-scoped model catalog identity and strict resolution
 import { describe, expect, it } from "bun:test";
+import { getModelClass, MODEL_CLASSES } from "../../src/llm/model-class-policy";
 import {
   findModel,
   getModelInfoList,
@@ -12,6 +13,32 @@ import {
 import { getDefaultModelRef } from "../../src/llm/provider-model-policy";
 
 describe("provider-scoped model catalog", () => {
+  it("registers Claude Opus 5 without assigning it a model class", () => {
+    const model = resolveModel({ provider: "anthropic", modelId: "claude-opus-5" });
+
+    expect(model).toMatchObject({
+      display: "Claude Opus 5",
+      contextWindow: 1_000_000,
+      maxOutputTokens: 128_000,
+      inputCostPer1M: 5,
+      outputCostPer1M: 25,
+      cacheReadCostPer1M: 0.5,
+      cacheWriteCostPer1M: 6.25,
+      supportsThinking: true,
+      supportsVision: true,
+      supportsAdaptiveThinking: true,
+      supportsXhighEffort: true,
+      aliases: ["opus-5"],
+    });
+
+    const explicitlyClassifiedModelIds = MODEL_CLASSES.flatMap(({ defaultModelIds, additionalModelIds }) => [
+      ...Object.values(defaultModelIds),
+      ...Object.values(additionalModelIds ?? {}).flat(),
+    ]);
+    expect(explicitlyClassifiedModelIds).not.toContain(model.modelId);
+    expect(getModelClass(model)).toBe("general");
+  });
+
   it("exposes only the two latest Gemini models and defaults to Gemini 3.6 Flash", () => {
     expect(listModels("gemini").map((model) => model.modelId)).toEqual(["gemini-3.6-flash", "gemini-3.5-flash-lite"]);
     expect(getDefaultModelRef("gemini")).toEqual({ provider: "gemini", modelId: "gemini-3.6-flash" });
