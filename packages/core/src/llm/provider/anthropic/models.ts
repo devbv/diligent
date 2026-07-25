@@ -10,6 +10,21 @@ export const ANTHROPIC_MODEL_CLASSES = defineProviderModelClasses({
 
 export const ANTHROPIC_MODELS = defineProviderModels("anthropic", [
   {
+    modelId: "claude-opus-5",
+    display: "Claude Opus 5",
+    contextWindow: 1_000_000,
+    maxOutputTokens: 128_000,
+    inputCostPer1M: 5,
+    outputCostPer1M: 25,
+    cacheReadCostPer1M: 0.5,
+    cacheWriteCostPer1M: 6.25,
+    supportsThinking: true,
+    supportsVision: true,
+    supportsAdaptiveThinking: true,
+    supportsXhighEffort: true,
+    aliases: ["opus-5"],
+  },
+  {
     modelId: "claude-opus-4-8",
     display: "Claude Opus 4.8",
     contextWindow: 1_000_000,
