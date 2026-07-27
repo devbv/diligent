@@ -38,6 +38,39 @@ describe("mcp-prompt-grounding", () => {
     });
   });
 
+  test("reports one unknown prompt lookup followed by list and exact recovery as diagnostic", async () => {
+    const execution = await assembledExecution(DEFAULT_PROFILES[1]!, { promptLookupRecovery: true });
+    expect(execution.toolCalls.map((call) => [call.name, call.outcome])).toEqual([
+      ["mcp_get_prompt", "runtime_error"],
+      ["mcp_list_prompts", "success"],
+      ["mcp_get_prompt", "success"],
+      ["edit", "success"],
+    ]);
+    expect(mcpPromptGroundingTask.evaluate(execution)).toMatchObject({
+      passed: true,
+      diagnostics: [{ impact: "degraded", code: "mcp_prompt.bounded_lookup_recovery" }],
+    });
+
+    const repeated = structuredClone(execution);
+    const extraRecovery = structuredClone(repeated.toolCalls[0]!);
+    extraRecovery.toolCallId = "second-unknown-prompt";
+    repeated.toolCalls.splice(1, 0, extraRecovery);
+    repeated.toolCalls.forEach((call, index) => (call.sequence = index + 1));
+    expect(mcpPromptGroundingTask.evaluate(repeated)).toMatchObject({
+      passed: false,
+      dimension: "behavior",
+    });
+
+    const decoy = structuredClone(execution);
+    const failedLookup = decoy.toolCalls[0]!;
+    failedLookup.outcome = "success";
+    (failedLookup.input as Record<string, unknown>).name = decoy.world.promptNames[1];
+    expect(mcpPromptGroundingTask.evaluate(decoy)).toMatchObject({
+      passed: false,
+      dimension: "behavior",
+    });
+  });
+
   test("defines a fixture-local stdio MCP prompt grounding contract", async () => {
     const root = await mkdtemp(join(tmpdir(), "diligent-runtime-mcp-prompt-"));
     try {
@@ -425,6 +458,7 @@ describe("mcp-prompt-grounding", () => {
 
 interface AssembledExecutionOptions {
   includeProgressText?: boolean;
+  promptLookupRecovery?: boolean;
   recoveryKind?: "relative-path" | "missing-file";
   scopePromptList?: boolean;
   trailingPatchNewline?: boolean;
@@ -450,69 +484,103 @@ async function assembledExecution(
       };
       const response =
         call === 1
-          ? assistantMessage(
-              [
-                ...(assembledOptions.includeProgressText
-                  ? [{ type: "text" as const, text: "I will inspect prompts." }]
-                  : []),
-                {
-                  type: "tool_call",
-                  id: "prompt-list-call-1",
-                  name: "mcp_list_prompts",
-                  input: assembledOptions.scopePromptList ? { server: "fixture-workflows" } : {},
-                },
-              ],
-              "tool_use",
-            )
-          : call === 2
+          ? assembledOptions.promptLookupRecovery
             ? assistantMessage(
                 [
                   {
                     type: "tool_call",
-                    id: "prompt-get-call-2",
+                    id: "prompt-unknown-call-1",
                     name: "mcp_get_prompt",
-                    input: { server: "fixture-workflows", name: intendedName, args },
+                    input: { server: "fixture-workflows", name: "orbital_relay_handoff", args },
                   },
                 ],
                 "tool_use",
               )
-            : call === 3 || (assembledOptions.recoveryKind !== undefined && call === 4)
+            : assistantMessage(
+                [
+                  ...(assembledOptions.includeProgressText
+                    ? [{ type: "text" as const, text: "I will inspect prompts." }]
+                    : []),
+                  {
+                    type: "tool_call",
+                    id: "prompt-list-call-1",
+                    name: "mcp_list_prompts",
+                    input: assembledOptions.scopePromptList ? { server: "fixture-workflows" } : {},
+                  },
+                ],
+                "tool_use",
+              )
+          : call === (assembledOptions.promptLookupRecovery ? 2 : -1)
+            ? assistantMessage(
+                [
+                  ...(assembledOptions.includeProgressText
+                    ? [{ type: "text" as const, text: "I will inspect prompts." }]
+                    : []),
+                  {
+                    type: "tool_call",
+                    id: "prompt-list-call-2",
+                    name: "mcp_list_prompts",
+                    input: assembledOptions.scopePromptList ? { server: "fixture-workflows" } : {},
+                  },
+                ],
+                "tool_use",
+              )
+            : call === (assembledOptions.promptLookupRecovery ? 3 : 2)
               ? assistantMessage(
                   [
-                    ...(assembledOptions.includeProgressText
-                      ? [{ type: "text" as const, text: "I will write the rendered workflow." }]
-                      : []),
                     {
                       type: "tool_call",
-                      id: call === 3 ? "prompt-write-call-3" : "prompt-write-recovery-call-4",
-                      name: profile.provider === "anthropic" ? "edit" : "apply_patch",
-                      input:
-                        profile.provider === "anthropic"
-                          ? {
-                              file_path:
-                                assembledOptions.recoveryKind === "relative-path" && call === 3
-                                  ? "orbital-workflow.txt"
-                                  : join(cwdFromContext(context), "orbital-workflow.txt"),
-                              old_string:
-                                assembledOptions.recoveryKind === "missing-file" && call === 3
-                                  ? "REPLACE_ME_FILE_DOES_NOT_EXIST"
-                                  : "",
-                              new_string: `${fact}\n`,
-                              replace_all: false,
-                            }
-                          : {
-                              patch: `*** Begin Patch\n*** Add File: orbital-workflow.txt\n+${fact}\n*** End Patch${assembledOptions.trailingPatchNewline ? "\n" : ""}`,
-                            },
+                      id: assembledOptions.promptLookupRecovery ? "prompt-get-call-3" : "prompt-get-call-2",
+                      name: "mcp_get_prompt",
+                      input: { server: "fixture-workflows", name: intendedName, args },
                     },
                   ],
                   "tool_use",
                 )
-              : assistantMessage([{ type: "text", text: "ORBITAL_WORKFLOW_COMPLETE" }]);
+              : call === (assembledOptions.promptLookupRecovery ? 4 : 3) ||
+                  (assembledOptions.recoveryKind !== undefined && call === 4)
+                ? assistantMessage(
+                    [
+                      ...(assembledOptions.includeProgressText
+                        ? [{ type: "text" as const, text: "I will write the rendered workflow." }]
+                        : []),
+                      {
+                        type: "tool_call",
+                        id:
+                          call === (assembledOptions.promptLookupRecovery ? 4 : 3)
+                            ? assembledOptions.promptLookupRecovery
+                              ? "prompt-write-call-4"
+                              : "prompt-write-call-3"
+                            : "prompt-write-recovery-call-4",
+                        name: profile.provider === "anthropic" ? "edit" : "apply_patch",
+                        input:
+                          profile.provider === "anthropic"
+                            ? {
+                                file_path:
+                                  assembledOptions.recoveryKind === "relative-path" && call === 3
+                                    ? "orbital-workflow.txt"
+                                    : join(cwdFromContext(context), "orbital-workflow.txt"),
+                                old_string:
+                                  assembledOptions.recoveryKind === "missing-file" && call === 3
+                                    ? "REPLACE_ME_FILE_DOES_NOT_EXIST"
+                                    : "",
+                                new_string: `${fact}\n`,
+                                replace_all: false,
+                              }
+                            : {
+                                patch: `*** Begin Patch\n*** Add File: orbital-workflow.txt\n+${fact}\n*** End Patch${assembledOptions.trailingPatchNewline ? "\n" : ""}`,
+                              },
+                      },
+                    ],
+                    "tool_use",
+                  )
+                : assistantMessage([{ type: "text", text: "ORBITAL_WORKFLOW_COMPLETE" }]);
       return sequenceStream([response])(model, context, options);
     },
   });
   if (
     !assembledOptions.includeProgressText &&
+    !assembledOptions.promptLookupRecovery &&
     assembledOptions.recoveryKind === undefined &&
     !assembledOptions.scopePromptList &&
     !assembledOptions.trailingPatchNewline

@@ -89,6 +89,35 @@ describe("collaboration-parallel-synthesis", () => {
     expect(collaborationParallelSynthesisTask.evaluate(execution)).toMatchObject({ passed: true });
   });
 
+  test("reports cross-region names in negative child instructions without confusing them with cross-region access", async () => {
+    const execution = await assembledExecution(DEFAULT_PROFILES[0]!);
+    const spawns = execution.toolCalls.filter((call) => call.name === "spawn_agent");
+    for (const [index, spawn] of spawns.entries()) {
+      const otherPath = execution.world.sourcePaths[index === 0 ? 1 : 0];
+      (spawn.input as { message: string }).message += ` Do not inspect, read, mention, or infer ${otherPath}.`;
+    }
+
+    expect(collaborationParallelSynthesisTask.evaluate(execution)).toMatchObject({
+      passed: true,
+      diagnostics: [
+        {
+          impact: "info",
+          code: "collaboration_parallel_synthesis.cross_region_brief_reference",
+        },
+      ],
+    });
+
+    const crossed = structuredClone(execution);
+    const northRead = crossed.toolCalls.find(
+      (call) => call.name === "read" && call.threadId === spawnedIds(crossed)[0],
+    )!;
+    (northRead.input as { file_path: string }).file_path = `$WORKSPACE/${crossed.world.sourcePaths[1]}`;
+    expect(collaborationParallelSynthesisTask.evaluate(crossed)).toMatchObject({
+      passed: false,
+      dimension: "runtime_policy",
+    });
+  });
+
   test("does not gate live behavior on persistence mirrors or verifier wording", async () => {
     const execution = await assembledExecution(DEFAULT_PROFILES[0]!);
     execution.session.lines = [];

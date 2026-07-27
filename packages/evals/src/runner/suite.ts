@@ -1,7 +1,14 @@
 // @summary Runs selected eval task/profile combinations sequentially into one report
 
 import type { Model, StreamFunction } from "@diligent/core/provider-contract";
-import type { AnyEvalTask, EvalExecutionReport, EvalExecutionResult, EvalProfile, EvalSuiteReport } from "../task";
+import {
+  type AnyEvalTask,
+  aggregateEvalStatuses,
+  type EvalExecutionReport,
+  type EvalExecutionResult,
+  type EvalProfile,
+  type EvalSuiteReport,
+} from "../task";
 import { runEvalExecution } from "./execution";
 import { deriveTaskSeed } from "./seed";
 
@@ -64,6 +71,7 @@ export async function runEvalSuite(input: RunEvalSuiteInput): Promise<EvalSuiteR
     profiles: input.profiles.map((profile) => ({ ...profile })),
     taskIds: input.tasks.map((task) => task.id),
     passed: executions.every((execution) => execution.passed),
+    status: aggregateEvalStatuses(executions.map((execution) => execution.status)),
     executions,
   };
 }
@@ -75,6 +83,7 @@ function toExecutionReport(result: EvalExecutionResult<unknown>, maxOutputTokens
     profile: { ...result.execution.profile },
     maxOutputTokens,
     passed: result.passed,
+    status: result.status,
     termination: result.execution.termination,
     ...(result.failure && { failure: { ...result.failure } }),
     failures: result.failures.map((failure) => ({ ...failure })),

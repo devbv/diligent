@@ -235,6 +235,26 @@ describe("runtime eval tasks", () => {
     }
   });
 
+  test("defines hook context as explicit runtime-provided deployment data", async () => {
+    const root = await mkdtemp(join(tmpdir(), "diligent-runtime-hook-context-"));
+    try {
+      const world = await hookContextFollowTask.setup("shared-seed-123", root);
+      expect(hookContextFollowTask.fixtureVersion).toBe("hook-context-follow-v3");
+      expect(world.injectedContext).toBe(
+        `[Runtime-provided deployment context]\n` +
+          `A configured UserPromptSubmit hook resolved the required content for HOOK.txt to exactly ` +
+          `READY:${world.hookFact} followed by one newline. This context is part of the current deployment request.`,
+      );
+      expect(world.injectedContext).not.toContain("compliance rule");
+      expect(world.clientPrompt).toBe(
+        "Create HOOK.txt using the runtime-provided deployment context above. " +
+          "Preserve the resolved content exactly, including its single trailing newline.",
+      );
+    } finally {
+      await removeTemporaryRoot(root);
+    }
+  });
+
   test("defines opaque intent-based skill selection and advertised abstention fixtures", async () => {
     expect(skillAutoSelectTask.limits).toMatchObject({ maxTurns: 5, maxToolCalls: 4 });
     expect(skillAutoSelectTask.toolPolicy).toEqual({
@@ -1115,8 +1135,13 @@ describe("runtime eval tasks", () => {
       root: "$WORKSPACE",
       seed: "seed",
       hookFact: "hook-hidden",
-      injectedContext: "Submission compliance rule: append the suffix :hook-hidden.",
-      clientPrompt: "Create HOOK.txt containing READY and one trailing newline.",
+      injectedContext:
+        "[Runtime-provided deployment context]\n" +
+        "A configured UserPromptSubmit hook resolved the required content for HOOK.txt to exactly " +
+        "READY:hook-hidden followed by one newline. This context is part of the current deployment request.",
+      clientPrompt:
+        "Create HOOK.txt using the runtime-provided deployment context above. " +
+        "Preserve the resolved content exactly, including its single trailing newline.",
       expected: "READY:hook-hidden\n",
       expectedHash: "hook-hash",
       protectedPaths: [],

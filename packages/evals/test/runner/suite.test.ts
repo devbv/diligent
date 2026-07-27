@@ -40,6 +40,7 @@ describe("runEvalSuite", () => {
       calls += 1;
       return {
         passed: true,
+        status: "pass",
         failures: [],
         worldSnapshot: { adapter: true },
         execution: {
@@ -82,7 +83,9 @@ describe("runEvalSuite", () => {
     });
 
     expect(report.passed).toBe(false);
+    expect(report.status).toBe("fail");
     expect(report.executions.map((execution) => execution.taskId)).toEqual(["failing", "passing"]);
+    expect(report.executions.map((execution) => execution.status)).toEqual(["fail", "pass"]);
     expect(report.executions[1]?.passed).toBe(true);
   });
 
@@ -122,13 +125,47 @@ describe("runEvalSuite", () => {
 
     expect(report.schemaVersion).toBe(1);
     expect(report.passed).toBe(true);
+    expect(report.status).toBe("degraded");
     expect(report.executions[0]).toMatchObject({
       passed: true,
+      status: "degraded",
       failures: [],
       diagnostics: [{ dimension: "efficiency", code: "extra_safe_read", message: "One bounded read recovered." }],
     });
     expect(report.executions[0]).not.toHaveProperty("failure");
     expect(report.executions[0]).toHaveProperty("failures");
+  });
+
+  test("keeps informational diagnostics visible without degrading an accepted execution", async () => {
+    const task = textTask("informational-diagnostic-pass", true);
+    task.evaluate = () =>
+      ({
+        passed: true,
+        diagnostics: [
+          {
+            dimension: "behavior",
+            impact: "info",
+            code: "observed_safe_variation",
+            message: "A safe variation was observed.",
+          },
+        ],
+      }) as never;
+    const report = await runEvalSuite({
+      tasks: [task],
+      profiles: [{ provider: "anthropic", model: TEST_MODEL.modelId, effort: "medium" }],
+      rootSeed: "root",
+      metadata: METADATA,
+      resolveModel: () => TEST_MODEL,
+      createStream: () => sequenceStream([assistantMessage([{ type: "text", text: "done" }])]),
+    });
+
+    expect(report.passed).toBe(true);
+    expect(report.status).toBe("pass");
+    expect(report.executions[0]).toMatchObject({
+      passed: true,
+      status: "pass",
+      diagnostics: [{ impact: "info", code: "observed_safe_variation" }],
+    });
   });
 
   test("rejects duplicate task IDs", async () => {

@@ -132,8 +132,9 @@ export function defaultReportPath(suite: "core" | "runtime", now = new Date()): 
 function printExecutionResult(result: EvalExecutionResult<unknown>, secrets: readonly string[]): void {
   const identity = `${result.execution.taskId} / ${result.execution.profile.provider}`;
   if (result.passed) {
+    const label = result.status === "degraded" ? "degraded" : "pass";
     console.log(
-      `[eval] pass ${identity} (${result.execution.elapsedMs}ms, turns=${result.execution.turnCount}, tools=${result.execution.toolCallCount})`,
+      `[eval] ${label} ${identity} (${result.execution.elapsedMs}ms, turns=${result.execution.turnCount}, tools=${result.execution.toolCallCount})`,
     );
     return;
   }
@@ -145,8 +146,9 @@ function printExecutionResult(result: EvalExecutionResult<unknown>, secrets: rea
 function printRuntimeExecutionResult(result: RuntimeEvalExecutionResult, secrets: readonly string[]): void {
   const identity = `${result.execution.taskId} / ${result.execution.profile.provider}`;
   if (result.passed) {
+    const label = result.status === "degraded" ? "degraded" : "pass";
     console.log(
-      `[eval] pass ${identity} (${result.execution.elapsedMs}ms, turns=${result.execution.turns.length}, tools=${result.execution.toolCalls.length})`,
+      `[eval] ${label} ${identity} (${result.execution.elapsedMs}ms, turns=${result.execution.turns.length}, tools=${result.execution.toolCalls.length})`,
     );
     return;
   }
@@ -163,9 +165,10 @@ async function writeGithubSummary(
   const lines = [
     `## ${"suite" in report && report.suite === "runtime" ? "Runtime" : "Core"} eval suite`,
     "",
-    `- Status: ${report.passed ? "PASS" : "FAIL"}`,
+    `- Status: ${report.status.toUpperCase()}`,
     `- Commit: \`${report.commitSha}\``,
-    `- Results: ${report.executions.filter((execution) => execution.passed).length}/${report.executions.length}`,
+    `- Accepted: ${report.executions.filter((execution) => execution.passed).length}/${report.executions.length}`,
+    `- Degraded: ${report.executions.filter((execution) => execution.status === "degraded").length}`,
     `- Report: \`${reportPath}\``,
     "",
   ];

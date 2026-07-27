@@ -26,6 +26,7 @@ import type {
   EvalLogSnapshot,
   EvalProfile,
   EvalSemanticResult,
+  EvalStatus,
 } from "./task";
 
 export interface RuntimeEvalLimits extends EvalLimits {
@@ -299,6 +300,7 @@ export type AnyRuntimeEvalTask = RuntimeEvalTask<any>;
 
 export interface RuntimeEvalExecutionResult {
   passed: boolean;
+  status: EvalStatus;
   failure?: EvalFailure;
   failures: EvalFailure[];
   diagnostics?: EvalDiagnostic[];
@@ -312,6 +314,7 @@ export interface RuntimeEvalExecutionReport
   fixtureVersion: string;
   limits: RuntimeEvalLimits;
   passed: boolean;
+  status: EvalStatus;
   failure?: EvalFailure;
   failures: EvalFailure[];
   diagnostics?: EvalDiagnostic[];
@@ -338,6 +341,7 @@ export interface RuntimeEvalSuiteReport {
   profiles: EvalProfile[];
   taskIds: string[];
   passed: boolean;
+  status: EvalStatus;
   executions: RuntimeEvalExecutionReport[];
 }
 

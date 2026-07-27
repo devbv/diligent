@@ -50,17 +50,38 @@ export type EvalDimension =
   | "efficiency"
   | "harness_terminal";
 
+export type EvalDiagnosticImpact = "info" | "degraded";
+
 export interface EvalDiagnostic {
   dimension: EvalDimension;
+  impact?: EvalDiagnosticImpact;
   code: string;
   message: string;
 }
+
+export type EvalStatus = "pass" | "degraded" | "fail" | "invalid";
 
 export interface EvalFailure {
   dimension: EvalDimension;
   category: EvalFailureCategory;
   code: string;
   message: string;
+}
+
+export function deriveEvalStatus(
+  failures: readonly EvalFailure[],
+  diagnostics: readonly EvalDiagnostic[] = [],
+): EvalStatus {
+  if (failures.some((failure) => failure.dimension === "harness_terminal")) return "invalid";
+  if (failures.length > 0) return "fail";
+  return diagnostics.some((diagnostic) => diagnostic.impact !== "info") ? "degraded" : "pass";
+}
+
+export function aggregateEvalStatuses(statuses: readonly EvalStatus[]): EvalStatus {
+  if (statuses.some((status) => status === "invalid")) return "invalid";
+  if (statuses.some((status) => status === "fail")) return "fail";
+  if (statuses.some((status) => status === "degraded")) return "degraded";
+  return "pass";
 }
 
 export interface EvalEventSnapshot {
@@ -125,6 +146,7 @@ export type AnyEvalTask = EvalTask<any>;
 
 export interface EvalExecutionResult<TWorld> {
   passed: boolean;
+  status: EvalStatus;
   failure?: EvalFailure;
   failures: EvalFailure[];
   diagnostics?: EvalDiagnostic[];
@@ -138,6 +160,7 @@ export interface EvalExecutionReport {
   profile: EvalProfile;
   maxOutputTokens: number;
   passed: boolean;
+  status: EvalStatus;
   termination: EvalTerminationReason;
   failure?: EvalFailure;
   failures: EvalFailure[];
@@ -168,6 +191,7 @@ export interface EvalSuiteReport {
   profiles: EvalProfile[];
   taskIds: string[];
   passed: boolean;
+  status: EvalStatus;
   executions: EvalExecutionReport[];
 }
 

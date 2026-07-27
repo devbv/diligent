@@ -22,6 +22,7 @@ describe("serializeEvalReport", () => {
       profiles: [{ provider: "anthropic", model: "test-model", effort: "medium" }],
       taskIds: ["task"],
       passed: false,
+      status: "invalid",
       executions: [
         {
           taskId: "task",
@@ -29,6 +30,7 @@ describe("serializeEvalReport", () => {
           profile: { provider: "anthropic", model: "test-model", effort: "medium" },
           maxOutputTokens: 512,
           passed: false,
+          status: "invalid",
           termination: "provider_error",
           failure: {
             dimension: "harness_terminal",
@@ -82,5 +84,6 @@ describe("serializeEvalReport", () => {
     expect(json).not.toContain("iVBORw0KGgoAAAANSUhEUg");
     expect(json).toContain("[REDACTED]");
     expect(json).toContain("[base64 omitted]");
+    expect(json).toContain('"status": "invalid"');
   });
 });

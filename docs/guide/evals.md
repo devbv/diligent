@@ -111,9 +111,36 @@ dimension; there is no `semantic_goal` default. A missing dimension is an evalua
 `harness_terminal`. Configuration, provider rejection, timeout, budget, eval-policy, evaluator, and runner terminal
 failures also use `harness_terminal`.
 
-An evaluator may attach `diagnostics` containing a dimension, stable code, and message to either a passing or failing
-semantic result. Diagnostics preserve non-gating evidence such as one accepted bounded recovery or an additional safe
-read-only search. They never change `passed`, are propagated to execution reports, and are omitted when empty.
+An evaluator may attach `diagnostics` containing a dimension, stable code, message, and optional impact to either a
+passing or failing semantic result. Diagnostics preserve non-gating evidence such as one accepted bounded recovery or
+an additional safe read-only search. They never change `passed`, are propagated to execution reports, and are omitted
+when empty. `impact: "info"` records an observation without changing status; `impact: "degraded"` records an accepted
+but materially worse execution. An omitted impact remains `degraded` for compatibility with existing evaluators.
+
+Execution and suite reports also expose an additive `status`:
+
+- `pass` means every required contract passed without degraded-impact diagnostics. Informational diagnostics may still
+  be present.
+- `degraded` means every required contract passed with one or more degraded-impact diagnostics. It remains
+  `passed: true`, so bounded safe recovery does not fail CI.
+- `fail` means a completed model execution violated a required semantic, behavior, format, or runtime-policy contract.
+- `invalid` means a `harness_terminal` failure prevented a valid model-quality sample, such as provider rejection,
+  timeout, budget termination, evaluator failure, or runner failure.
+
+Suite status is the strongest observed execution status in the order `invalid`, `fail`, `degraded`, `pass`; the
+per-execution results retain every mixed outcome. The legacy suite `passed` field remains true only when every
+execution is `pass` or `degraded`. CLI output and GitHub summaries distinguish degraded accepted executions from clean
+passes.
+
+Task evaluators must score observed product behavior rather than one provider-specific choreography. In particular,
+the collaboration parallel-synthesis task keeps actor-attributed cross-region reads as hard isolation failures but
+treats naming the other region in a negative child instruction as an informational behavior diagnostic when reads
+remain isolated.
+The MCP prompt-grounding task permits one exact unknown-name lookup failure immediately followed by list-based
+discovery, the intended prompt fetch, and exact completion; that bounded recovery is a degraded-impact efficiency
+diagnostic.
+Successful decoy fetches, repeated guesses, wrong arguments, unrelated recovery, and unsafe or unbounded behavior
+remain hard failures.
 
 ## Runtime evidence and isolation
 

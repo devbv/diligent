@@ -20,8 +20,7 @@ import type {
   RuntimeVerifierResult,
   RuntimeWorldSnapshot,
 } from "../runtime-task";
-import type { EvalDiagnostic, EvalFailure, EvalProfile } from "../task";
-import { ZERO_USAGE } from "../task";
+import { deriveEvalStatus, type EvalDiagnostic, type EvalFailure, type EvalProfile, ZERO_USAGE } from "../task";
 import { createBudgetGraceDiagnostics, EVAL_BUDGET_GRACE, resolveEvalHardLimits } from "./budget-policy";
 import { RuntimeDeadline, RuntimeDeadlineError, raceBounded } from "./runtime-deadline";
 import { checkRuntimeInvariants } from "./runtime-invariants";
@@ -509,8 +508,10 @@ export async function runRuntimeEvalExecution(input: {
       }
     }
     const worldSnapshot = await deadline.run("world snapshot", () => task.snapshotWorld(world));
+    const status = deriveEvalStatus(failures, diagnostics);
     resultForCleanup = {
-      passed: failures.length === 0,
+      passed: status === "pass" || status === "degraded",
+      status,
       failure: failures[0],
       failures,
       ...(diagnostics.length > 0 && { diagnostics }),
@@ -672,6 +673,7 @@ export async function runRuntimeEvalExecution(input: {
     }
     resultForCleanup = {
       passed: false,
+      status: deriveEvalStatus(failureList, diagnostics),
       failure,
       failures: failureList,
       ...(diagnostics.length > 0 && { diagnostics }),
@@ -777,6 +779,7 @@ function recordCleanupFailure(
   result.failures.push(failure);
   result.failure ??= failure;
   result.passed = false;
+  result.status = deriveEvalStatus(result.failures, result.diagnostics);
 }
 
 function classifyRuntimeTerminalFailure(execution: RuntimeEvalExecution<unknown>): EvalFailure {
