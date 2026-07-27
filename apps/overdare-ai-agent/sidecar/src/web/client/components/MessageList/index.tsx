@@ -31,6 +31,7 @@ function MessageListImpl({
   approvalPrompt,
   questionPrompt,
   onLoadChildThread,
+  onReportAssistant,
 }: MessageListProps) {
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const pendingAutoscrollFrameRef = useRef<number | null>(null);
@@ -133,9 +134,14 @@ function MessageListImpl({
 
   const renderRow = useCallback(
     (_index: number, row: VirtualMessageRow) => (
-      <MessageListRowContent row={row} threadCwd={threadCwd} onLoadChildThread={onLoadChildThread} />
+      <MessageListRowContent
+        row={row}
+        threadCwd={threadCwd}
+        onLoadChildThread={onLoadChildThread}
+        onReportAssistant={onReportAssistant}
+      />
     ),
-    [onLoadChildThread, threadCwd],
+    [onLoadChildThread, onReportAssistant, threadCwd],
   );
 
   const measureItemSize = useCallback<SizeFunction>((element, field) => {

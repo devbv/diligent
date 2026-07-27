@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HookInput } from "@diligent/runtime";
 import { createStudioBundledToolProviders } from "../../src/tools";
-import { onStop } from "../../src/tools/analytics";
+import { collectFeedbackEnvironment, onStop, trackAgentBugReport } from "../../src/tools/analytics";
 
 interface RpcRequest {
   jsonrpc: string;
@@ -111,6 +111,7 @@ describe("analytics onStop", () => {
     process.env.DILIGENT_ANALYTICS_ALLOW_IN_TEST = "true";
     process.env.DILIGENT_STORAGE_NAMESPACE = "overdare";
     process.env.OVERDARE_PROJECT_ID = "project-123";
+    process.env.DILIGENT_SERVER_VERSION = "0.8.0";
 
     homeDir = join(tmpdir(), `sidecar-analytics-${process.pid}-${Date.now()}`);
     const configDir = join(homeDir, ".overdare");
@@ -179,5 +180,40 @@ describe("analytics onStop", () => {
         project_id: "project-123",
       },
     });
+  });
+
+  test("collects authoritative sidecar environment without inventing Studio or world values", () => {
+    expect(collectFeedbackEnvironment()).toMatchObject({
+      os: expect.any(String),
+      osVersion: expect.any(String),
+      agentVersion: "0.8.0",
+      cpu: expect.any(String),
+      ram: expect.any(String),
+      projectId: "project-123",
+      locale: expect.any(String),
+    });
+    expect(collectFeedbackEnvironment()).not.toHaveProperty("studioVersion");
+    expect(collectFeedbackEnvironment()).not.toHaveProperty("worldId");
+    expect(collectFeedbackEnvironment()).not.toHaveProperty("gpu");
+  });
+
+  test("sends one agent_bug_report event with category and session raw values", async () => {
+    await trackAgentBugReport({
+      accountId: "account-1",
+      category: "wrong_result",
+      sessionId: "session-1",
+    });
+
+    expect(fetchCalls).toHaveLength(1);
+    const payload = JSON.parse(String(fetchCalls[0]?.init.body));
+    expect(payload.events).toEqual([
+      expect.objectContaining({
+        event_name: "agent_bug_report",
+        raw_values: {
+          category: "wrong_result",
+          session_id: "session-1",
+        },
+      }),
+    ]);
   });
 });

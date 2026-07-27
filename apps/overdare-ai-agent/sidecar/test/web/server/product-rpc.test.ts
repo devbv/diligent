@@ -3,7 +3,12 @@
 import { describe, expect, test } from "bun:test";
 import { routeWebRpcRequest } from "../../../src/web/server/product-rpc";
 import type { WebConsentBackend } from "../../../src/web/shared/consent-protocol";
-import type { FeedbackReportInput, WebFeedbackBackend } from "../../../src/web/shared/feedback-protocol";
+import type {
+  FeedbackEnvironment,
+  FeedbackReportInput,
+  FeedbackReportResponse,
+  WebFeedbackBackend,
+} from "../../../src/web/shared/feedback-protocol";
 
 const STATE = {
   noticeAcknowledged: true,
@@ -19,9 +24,19 @@ function backend(overrides: Partial<WebConsentBackend> = {}): WebConsentBackend 
   };
 }
 
-function feedbackBackend(submit: (input: FeedbackReportInput) => Promise<void>): WebFeedbackBackend {
+function feedbackBackend(submit: (input: FeedbackReportInput) => Promise<FeedbackReportResponse>): WebFeedbackBackend {
   return { submit };
 }
+
+const FEEDBACK_ENVIRONMENT: FeedbackEnvironment = {
+  os: "Darwin",
+  osVersion: "25.5.0",
+  agentVersion: "0.8.0",
+  cpu: "Apple M4",
+  ram: "34359738368",
+  projectId: "project-123",
+  locale: "ko-KR",
+};
 
 describe("routeWebRpcRequest", () => {
   test("intercepts consent/set and returns the backend result without forwarding", async () => {
@@ -56,12 +71,21 @@ describe("routeWebRpcRequest", () => {
       JSON.stringify({
         id: 12,
         method: "feedback/report",
-        params: { sessionId: "session-123", feedback: "The assistant stopped unexpectedly." },
+        params: {
+          sessionId: "session-123",
+          messageId: "item:assistant-1:7",
+          category: "interrupted",
+          description: "The assistant stopped unexpectedly.",
+          occurredAt: "2026-07-24T08:00:00.000Z",
+          agentModel: "openai/gpt-5",
+        },
       }),
       {
         accountId: "account-from-server",
+        feedbackEnvironment: FEEDBACK_ENVIRONMENT,
         feedbackBackend: feedbackBackend(async (input) => {
           submitted.push(input);
+          return { reportId: "report-789", reportedAt: "2026-07-24T08:00:01.000Z" };
         }),
         send: (message) => sent.push(message),
         forward: (raw) => forwarded.push(raw),
@@ -72,17 +96,35 @@ describe("routeWebRpcRequest", () => {
       {
         accountId: "account-from-server",
         sessionId: "session-123",
-        feedback: "The assistant stopped unexpectedly.",
+        messageId: "item:assistant-1:7",
+        category: "interrupted",
+        description: "The assistant stopped unexpectedly.",
+        occurredAt: "2026-07-24T08:00:00.000Z",
+        agentModel: "openai/gpt-5",
+        ...FEEDBACK_ENVIRONMENT,
       },
     ]);
-    expect(sent).toEqual([{ id: 12, result: { submitted: true } }]);
+    expect(sent).toEqual([
+      {
+        id: 12,
+        result: { reportId: "report-789", reportedAt: "2026-07-24T08:00:01.000Z" },
+      },
+    ]);
     expect(forwarded).toHaveLength(0);
   });
 
   test("rejects feedback/report when the product backend or account id is unavailable", async () => {
     const withoutBackend: unknown[] = [];
     await routeWebRpcRequest(
-      JSON.stringify({ id: 13, method: "feedback/report", params: { sessionId: "s1", feedback: "Please help" } }),
+      JSON.stringify({
+        id: 13,
+        method: "feedback/report",
+        params: {
+          sessionId: "s1",
+          category: "etc",
+          occurredAt: "2026-07-24T08:00:00.000Z",
+        },
+      }),
       {
         accountId: "account-1",
         send: (message) => withoutBackend.push(message),
@@ -93,9 +135,21 @@ describe("routeWebRpcRequest", () => {
 
     const withoutAccount: unknown[] = [];
     await routeWebRpcRequest(
-      JSON.stringify({ id: 14, method: "feedback/report", params: { sessionId: "s1", feedback: "Please help" } }),
+      JSON.stringify({
+        id: 14,
+        method: "feedback/report",
+        params: {
+          sessionId: "s1",
+          category: "etc",
+          occurredAt: "2026-07-24T08:00:00.000Z",
+        },
+      }),
       {
-        feedbackBackend: feedbackBackend(async () => {}),
+        feedbackEnvironment: FEEDBACK_ENVIRONMENT,
+        feedbackBackend: feedbackBackend(async () => ({
+          reportId: "report-1",
+          reportedAt: "2026-07-24T08:00:01.000Z",
+        })),
         send: (message) => withoutAccount.push(message),
         forward: () => {},
       },

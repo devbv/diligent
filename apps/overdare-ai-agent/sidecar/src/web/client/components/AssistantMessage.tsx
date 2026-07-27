@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { RenderItem } from "../lib/thread-store";
 import { formatDurationLabel } from "../lib/time-format";
 import { AssistantContentBlocks, isRenderableAssistantContentBlock } from "./AssistantContentBlocks";
+import { Flag } from "./icons";
 import { MarkdownContent } from "./MarkdownContent";
 import { ThinkingBlock } from "./ThinkingBlock";
 import { ToolActivityRow } from "./ToolActivityRow";
@@ -11,6 +12,7 @@ import { ToolActivityRow } from "./ToolActivityRow";
 interface AssistantMessageProps {
   item: Extract<RenderItem, { kind: "assistant" }>;
   suppressThinking?: boolean;
+  onReport?: (item: Extract<RenderItem, { kind: "assistant" }>) => void;
 }
 
 interface SkillUsageNotice {
@@ -142,7 +144,7 @@ function SkillUsageRow({ notice, hasFollowingContent }: { notice: SkillUsageNoti
   );
 }
 
-export function AssistantMessage({ item, suppressThinking = false }: AssistantMessageProps) {
+export function AssistantMessage({ item, suppressThinking = false, onReport }: AssistantMessageProps) {
   const hasThinking = item.thinking.length > 0;
   const hasText = item.text.length > 0;
   const skillNotice =
@@ -170,6 +172,19 @@ export function AssistantMessage({ item, suppressThinking = false }: AssistantMe
         <AssistantContentBlocks blocks={contentBlocks} />
       ) : hasVisibleText ? (
         <MarkdownContent text={visibleText} />
+      ) : null}
+      {onReport ? (
+        <div className="mt-1 flex justify-end">
+          <button
+            type="button"
+            title="응답 신고하기"
+            onClick={() => onReport(item)}
+            className="rounded-md p-1.5 text-muted transition hover:bg-surface-light hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          >
+            <Flag className="h-3.5 w-3.5" strokeWidth={1.8} aria-hidden="true" />
+            <span className="sr-only">응답 신고하기</span>
+          </button>
+        </div>
       ) : null}
     </div>
   );

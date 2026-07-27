@@ -1455,7 +1455,7 @@ test("sidebar includes a mobile close action", () => {
   expect(html).toContain("sm:hidden");
 });
 
-test("sidebar renders a report action for each conversation", () => {
+test("sidebar does not expose the removed conversation-level report action", () => {
   const html = renderToStaticMarkup(
     <Sidebar
       cwd="/repo/project"
@@ -1473,32 +1473,67 @@ test("sidebar renders a report action for each conversation", () => {
       activeThreadId="session-123"
       onNewThread={() => {}}
       onOpenThread={() => {}}
-      onReportThread={() => {}}
     />,
   );
 
-  expect(html).toContain('aria-label="Report conversation"');
-  expect(html).toContain('title="Report conversation"');
-  expect(html).toContain('data-icon="clipboard-list"');
+  expect(html).not.toContain('aria-label="Report conversation"');
+  expect(html).not.toContain('data-icon="clipboard-list"');
 });
 
-test("feedback report modal includes diagnostic identifiers and a bounded feedback field", () => {
+test("feedback report modal shows response context, required categories, and collapsed diagnostics", () => {
   const html = renderToStaticMarkup(
     <FeedbackReportModal
       sessionId="session-123"
       accountId="account-456"
+      target={{
+        messageId: "item:assistant-1:7",
+        preview: "First response line\nSecond response line",
+        occurredAt: "2026-07-24T08:00:00.000Z",
+        agentModel: "openai/gpt-5",
+      }}
       onSubmit={async () => {}}
       onCancel={() => {}}
     />,
   );
 
-  expect(html).toContain("Report conversation");
+  expect(html).toContain("응답 신고하기");
+  expect(html).toContain("First response line");
+  expect(html).toContain("실행이 안 돼요");
+  expect(html).toContain("작업 중 멈췄어요");
+  expect(html).toContain("반응이 없어요");
+  expect(html).toContain("결과가 이상해요");
+  expect(html).toContain("기타");
+  expect(html).toContain("문제 해결을 위해 세션 ID, 앱 버전 등 진단 정보가 함께 전송됩니다");
+  expect(html).toContain("<details");
+  expect(html).not.toContain("<details open");
+  expect(html).toContain("자세히 보기");
   expect(html).toContain("session-123");
   expect(html).toContain("account-456");
-  expect(html).toContain('for="feedback-report-text"');
-  expect(html).toContain('id="feedback-report-text"');
-  expect(html).toContain('maxLength="4000"');
+  expect(html).toContain('id="feedback-report-description"');
+  expect(html).toContain('maxLength="1000"');
+  expect(html).toContain("어떤 상황에서 발생했는지 알려주세요");
   expect(html).toContain('disabled=""');
+});
+
+test("assistant message exposes a response-level report icon", () => {
+  const html = renderToStaticMarkup(
+    <AssistantMessage
+      item={{
+        id: "item:assistant-1:7",
+        kind: "assistant",
+        text: "Completed the requested change.",
+        thinking: "",
+        contentBlocks: [],
+        thinkingDone: true,
+        timestamp: 1,
+      }}
+      onReport={() => {}}
+    />,
+  );
+
+  expect(html).toContain('title="응답 신고하기"');
+  expect(html).toContain('<span class="sr-only">응답 신고하기</span>');
+  expect(html).toContain('data-icon="flag"');
 });
 
 test("assistant message can suppress thinking block during compaction", () => {

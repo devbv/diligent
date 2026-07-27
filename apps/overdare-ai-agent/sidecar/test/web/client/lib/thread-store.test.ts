@@ -70,7 +70,7 @@ test("merges item started/delta/completed into single assistant item", () => {
         message: {
           role: "assistant",
           content: [],
-          model: "x",
+          model: { provider: "openai", modelId: "gpt-5" },
           usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
           stopReason: "end_turn",
           timestamp: 1,
@@ -104,7 +104,7 @@ test("merges item started/delta/completed into single assistant item", () => {
         message: {
           role: "assistant",
           content: [],
-          model: "x",
+          model: { provider: "openai", modelId: "gpt-5" },
           usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
           stopReason: "end_turn",
           timestamp: 2,
@@ -119,6 +119,10 @@ test("merges item started/delta/completed into single assistant item", () => {
 
   const assistant = c.items.find((item) => item.kind === "assistant");
   expect(assistant).toBeDefined();
+  expect(assistant?.kind === "assistant" ? assistant.model : undefined).toEqual({
+    provider: "openai",
+    modelId: "gpt-5",
+  });
   expect(assistant && assistant.kind === "assistant" ? assistant.text : "").toBe("hello");
 });
 

@@ -1,6 +1,7 @@
 // @summary Renders colocated MessageList virtual row descriptors into concrete row UI
 
 import type { ThreadReadResponse } from "@diligent/protocol";
+import type { RenderItem } from "../../lib/thread-store";
 import { ApprovalCard } from "../ApprovalCard";
 import { AssistantMessage } from "../AssistantMessage";
 import { CollabGroup } from "../CollabGroup";
@@ -19,10 +20,12 @@ export function MessageListRowContent({
   row,
   threadCwd,
   onLoadChildThread,
+  onReportAssistant,
 }: {
   row: VirtualMessageRow;
   threadCwd?: string;
   onLoadChildThread?: (childThreadId: string) => Promise<ThreadReadResponse>;
+  onReportAssistant?: (item: Extract<RenderItem, { kind: "assistant" }>) => void;
 }) {
   switch (row.kind) {
     case "collab":
@@ -42,7 +45,13 @@ export function MessageListRowContent({
         case "user":
           return <UserMessage text={row.item.text} images={row.item.images} contextItems={row.item.contextItems} />;
         case "assistant":
-          return <AssistantMessage item={row.item} suppressThinking={row.suppressThinking ?? false} />;
+          return (
+            <AssistantMessage
+              item={row.item}
+              suppressThinking={row.suppressThinking ?? false}
+              onReport={onReportAssistant}
+            />
+          );
       }
       break;
     case "streaming":

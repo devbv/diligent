@@ -6,6 +6,7 @@ import { cpus, homedir, release, totalmem, type } from "node:os";
 import { basename, join } from "node:path";
 import readline from "node:readline";
 import type { BundledToolProvider, HookInput, PluginHookFn } from "@diligent/runtime";
+import type { FeedbackCategory, FeedbackEnvironment } from "../../web/shared/feedback-protocol";
 
 const DEFAULT_BUBO_HOST = "https://bubo.overdare.com";
 const DEV_BUBO_HOST = "https://bubo-dev.ovdr.io";
@@ -43,7 +44,8 @@ interface StudioLogPayload {
   events: Array<{
     event_name: string;
     ts: number;
-    values: Record<string, unknown>;
+    values?: Record<string, unknown>;
+    raw_values?: Record<string, unknown>;
   }>;
   studio_info: {
     group_id: string;
@@ -280,20 +282,31 @@ function normalizeHubDomain(value: string | undefined): string {
   return (value ?? "").trim().replace(/\/+$/, "").toLowerCase();
 }
 
-function buildDeviceInfo(): StudioLogPayload["device"] {
+export function collectFeedbackEnvironment(env: NodeJS.ProcessEnv = process.env): FeedbackEnvironment {
   const [cpu] = cpus();
+  const projectId = env.OVERDARE_PROJECT_ID?.trim();
+  const agentVersion = env.DILIGENT_SERVER_VERSION?.trim();
+  const locale = Intl.DateTimeFormat().resolvedOptions().locale.trim();
   return {
     os: type(),
-    os_version: release(),
-    platform: process.platform,
-    cpu: cpu?.model ?? "",
-    gpu: "",
+    osVersion: release(),
+    ...(agentVersion ? { agentVersion } : {}),
+    ...(cpu?.model.trim() ? { cpu: cpu.model.trim() } : {}),
     ram: String(totalmem()),
+    ...(projectId ? { projectId } : {}),
+    ...(locale ? { locale } : {}),
   };
 }
 
-function resolveProjectId(): string {
-  return process.env.OVERDARE_PROJECT_ID?.trim() ?? "";
+function buildDeviceInfo(environment = collectFeedbackEnvironment()): StudioLogPayload["device"] {
+  return {
+    os: environment.os,
+    os_version: environment.osVersion,
+    platform: process.platform,
+    cpu: environment.cpu ?? "",
+    gpu: environment.gpu ?? "",
+    ram: environment.ram ?? "",
+  };
 }
 
 function readTokenUsage(input: HookInput): TokenUsage | undefined {
@@ -314,10 +327,11 @@ function readTokenUsage(input: HookInput): TokenUsage | undefined {
 function buildStudioLogPayload(input: HookInput): StudioLogPayload | undefined {
   const usage = readTokenUsage(input);
   if (!usage) return undefined;
+  const environment = collectFeedbackEnvironment();
 
   return {
     account_id: typeof input.user_id === "string" ? input.user_id : "unknown",
-    device: buildDeviceInfo(),
+    device: buildDeviceInfo(environment),
     events: [
       {
         event_name: "agent_token_usage",
@@ -339,9 +353,9 @@ function buildStudioLogPayload(input: HookInput): StudioLogPayload | undefined {
     ],
     studio_info: {
       group_id: "",
-      project_id: resolveProjectId(),
-      studio_version: "",
-      world_id: "",
+      project_id: environment.projectId ?? "",
+      studio_version: environment.studioVersion ?? "",
+      world_id: environment.worldId ?? "",
     },
     tags: {},
   };
@@ -363,6 +377,37 @@ async function sendStudioLog(config: OverdareConfig, payload: StudioLogPayload):
   if (!response.ok) {
     throw new Error(`Bubo studio log failed with HTTP ${response.status}`);
   }
+}
+
+export async function trackAgentBugReport(event: {
+  accountId: string;
+  category: FeedbackCategory;
+  sessionId: string;
+}): Promise<void> {
+  if (shouldSkipAnalyticsSend()) return;
+
+  const environment = collectFeedbackEnvironment();
+  await sendStudioLog(loadOverdareConfig(), {
+    account_id: event.accountId,
+    device: buildDeviceInfo(environment),
+    events: [
+      {
+        event_name: "agent_bug_report",
+        ts: Date.now(),
+        raw_values: {
+          category: event.category,
+          session_id: event.sessionId,
+        },
+      },
+    ],
+    studio_info: {
+      group_id: "",
+      project_id: environment.projectId ?? "",
+      studio_version: environment.studioVersion ?? "",
+      world_id: environment.worldId ?? "",
+    },
+    tags: {},
+  });
 }
 
 // ── Bundled provider ─────────────────────────────────────────────────────────

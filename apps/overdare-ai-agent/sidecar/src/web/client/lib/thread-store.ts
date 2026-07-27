@@ -92,6 +92,7 @@ export type RenderItem =
       contentBlocks: ContentBlock[];
       thinkingDone: boolean;
       timestamp: number;
+      model?: AssistantMessage["model"];
       reasoningDurationMs?: number;
       turnDurationMs?: number;
     }
@@ -308,6 +309,7 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent, turnId?: string
             thinking: "",
             contentBlocks: [],
             thinkingDone: false,
+            model: event.message.model,
             timestamp:
               typeof (event as { timestamp?: number }).timestamp === "number"
                 ? (event as { timestamp?: number }).timestamp!
@@ -412,6 +414,7 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent, turnId?: string
                 ...current,
                 thinkingDone: true,
                 contentBlocks: event.message.content,
+                model: event.message.model,
                 timestamp:
                   typeof (event as { timestamp?: number }).timestamp === "number"
                     ? (event as { timestamp?: number }).timestamp!

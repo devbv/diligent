@@ -18,7 +18,7 @@ import {
   type RuntimeAgent,
 } from "@diligent/runtime";
 import type { WebConsentBackend } from "../shared/consent-protocol";
-import type { WebFeedbackBackend } from "../shared/feedback-protocol";
+import type { FeedbackEnvironment, WebFeedbackBackend } from "../shared/feedback-protocol";
 import { decodeWebImageRelativePath, toWebImageUrl, WEB_IMAGE_ROUTE_PREFIX } from "../shared/image-routes";
 import { injectSentryConfig } from "../shared/sentry-config";
 import { migrateLegacyConsentConfig } from "./legacy-consent-config";
@@ -54,6 +54,8 @@ interface CreateServerOptions {
   consentBackend?: WebConsentBackend;
   /** Web-owned explicit feedback backend injected by the OVERDARE product host. */
   feedbackBackend?: WebFeedbackBackend;
+  /** Server-collected report diagnostics that Web clients cannot override. */
+  feedbackEnvironment?: FeedbackEnvironment;
   /**
    * Extra route group consulted before this server's own routes, for product-owned endpoints such
    * as the OVERDARE MCP router proxy (P071). `matches` is synchronous so `fetch` stays synchronous
@@ -254,6 +256,7 @@ export async function createWebServer(options: CreateServerOptions = {}): Promis
         void routeWebRpcRequest(raw, {
           consentBackend: options.consentBackend,
           feedbackBackend: options.feedbackBackend,
+          feedbackEnvironment: options.feedbackEnvironment,
           accountId: runtimeConfig.diligent.userId,
           send: (message) => ws.send(JSON.stringify(message)),
           forward,

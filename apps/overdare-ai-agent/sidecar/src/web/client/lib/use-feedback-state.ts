@@ -14,10 +14,10 @@ export function useFeedbackState({ rpcRef }: { rpcRef: RpcClientResult["rpcRef"]
   const [accountId, setAccountId] = useState("");
 
   const submitFeedback = useCallback(
-    async (params: FeedbackReportParams): Promise<void> => {
+    async (params: FeedbackReportParams) => {
       const rpc = rpcRef.current;
       if (!rpc) throw new Error("Not connected");
-      FeedbackReportResponseSchema.parse(await rpc.requestRaw(WEB_FEEDBACK_REPORT_METHOD, params));
+      return FeedbackReportResponseSchema.parse(await rpc.requestRaw(WEB_FEEDBACK_REPORT_METHOD, params));
     },
     [rpcRef],
   );
