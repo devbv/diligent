@@ -1495,7 +1495,8 @@ test("feedback report modal includes diagnostic identifiers and a bounded feedba
   expect(html).toContain("Report conversation");
   expect(html).toContain("session-123");
   expect(html).toContain("account-456");
-  expect(html).toContain('aria-label="Feedback"');
+  expect(html).toContain('for="feedback-report-text"');
+  expect(html).toContain('id="feedback-report-text"');
   expect(html).toContain('maxLength="4000"');
   expect(html).toContain('disabled=""');
 });

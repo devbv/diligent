@@ -49,7 +49,6 @@ export function FeedbackReportModal({ sessionId, accountId, onSubmit, onCancel }
           </label>
           <TextArea
             id="feedback-report-text"
-            aria-label="Feedback"
             autoFocus
             maxRows={8}
             maxLength={4000}

@@ -107,7 +107,6 @@ function SidebarImpl({
                     <button
                       type="button"
                       aria-label="Delete conversation"
-                      title="Delete conversation"
                       onClick={(event) => {
                         event.stopPropagation();
                         onDeleteThread(thread.id);

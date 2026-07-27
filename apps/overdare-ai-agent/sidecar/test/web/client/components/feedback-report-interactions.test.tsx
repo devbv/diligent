@@ -44,7 +44,7 @@ test("submits trimmed feedback for the selected conversation", async () => {
   const submit = Array.from(document.querySelectorAll("button")).find(
     (button) => button.textContent === "Submit report",
   );
-  const textarea = document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Feedback"]');
+  const textarea = document.querySelector<HTMLTextAreaElement>("#feedback-report-text");
   expect(submit).toBeDefined();
   expect(submit?.disabled).toBe(true);
   expect(textarea).not.toBeNull();
@@ -82,7 +82,7 @@ test("keeps the report open and shows a retryable error when submission fails", 
     );
   });
 
-  const textarea = document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Feedback"]');
+  const textarea = document.querySelector<HTMLTextAreaElement>("#feedback-report-text");
   await act(async () => {
     setTextareaValue(textarea!, "Please investigate this conversation.");
   });
