@@ -1496,22 +1496,22 @@ test("feedback report modal shows response context, required categories, and col
     />,
   );
 
-  expect(html).toContain("응답 신고하기");
+  expect(html).toContain("Report response");
   expect(html).toContain("First response line");
-  expect(html).toContain("실행이 안 돼요");
-  expect(html).toContain("작업 중 멈췄어요");
-  expect(html).toContain("반응이 없어요");
-  expect(html).toContain("결과가 이상해요");
-  expect(html).toContain("기타");
-  expect(html).toContain("문제 해결을 위해 세션 ID, 앱 버전 등 진단 정보가 함께 전송됩니다");
+  expect(html).toContain("Agent won&#x27;t start");
+  expect(html).toContain("Stopped during a task");
+  expect(html).toContain("No response");
+  expect(html).toContain("Incorrect result");
+  expect(html).toContain("Other");
+  expect(html).toContain("Session ID, app version, and other diagnostic information will be sent with your report.");
   expect(html).toContain("<details");
   expect(html).not.toContain("<details open");
-  expect(html).toContain("자세히 보기");
+  expect(html).toContain("View details");
   expect(html).toContain("session-123");
   expect(html).toContain("account-456");
   expect(html).toContain('id="feedback-report-description"');
   expect(html).toContain('maxLength="1000"');
-  expect(html).toContain("어떤 상황에서 발생했는지 알려주세요");
+  expect(html).toContain("Tell us what happened");
   expect(html).toContain('disabled=""');
 });
 
@@ -1531,8 +1531,8 @@ test("assistant message exposes a response-level report icon", () => {
     />,
   );
 
-  expect(html).toContain('title="응답 신고하기"');
-  expect(html).toContain('<span class="sr-only">응답 신고하기</span>');
+  expect(html).toContain('title="Report response"');
+  expect(html).toContain('<span class="sr-only">Report response</span>');
   expect(html).toContain('data-icon="flag"');
 });
 

@@ -177,12 +177,12 @@ export function AssistantMessage({ item, suppressThinking = false, onReport }: A
         <div className="mt-1 flex justify-end">
           <button
             type="button"
-            title="응답 신고하기"
+            title="Report response"
             onClick={() => onReport(item)}
             className="rounded-md p-1.5 text-muted transition hover:bg-surface-light hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
             <Flag className="h-3.5 w-3.5" strokeWidth={1.8} aria-hidden="true" />
-            <span className="sr-only">응답 신고하기</span>
+            <span className="sr-only">Report response</span>
           </button>
         </div>
       ) : null}

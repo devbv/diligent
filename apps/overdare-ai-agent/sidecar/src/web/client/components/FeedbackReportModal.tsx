@@ -23,11 +23,11 @@ export interface FeedbackReportSubmission {
 }
 
 const CATEGORY_OPTIONS: Array<{ value: FeedbackCategory; label: string }> = [
-  { value: "launch_fail", label: "실행이 안 돼요" },
-  { value: "interrupted", label: "작업 중 멈췄어요" },
-  { value: "no_response", label: "반응이 없어요" },
-  { value: "wrong_result", label: "결과가 이상해요" },
-  { value: "etc", label: "기타" },
+  { value: "launch_fail", label: "Agent won't start" },
+  { value: "interrupted", label: "Stopped during a task" },
+  { value: "no_response", label: "No response" },
+  { value: "wrong_result", label: "Incorrect result" },
+  { value: "etc", label: "Other" },
 ];
 
 export function FeedbackReportModal({ sessionId, accountId, target, onSubmit, onCancel }: FeedbackReportModalProps) {
@@ -50,7 +50,7 @@ export function FeedbackReportModal({ sessionId, accountId, target, onSubmit, on
         ...(normalizedDescription ? { description: normalizedDescription } : {}),
       });
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "신고를 전송하지 못했습니다. 다시 시도해 주세요.");
+      setError(cause instanceof Error ? cause.message : "Couldn't submit the report. Please try again.");
       submittingRef.current = false;
       setSubmitting(false);
     }
@@ -58,21 +58,21 @@ export function FeedbackReportModal({ sessionId, accountId, target, onSubmit, on
 
   return (
     <Modal
-      title="응답 신고하기"
-      description="이 응답에서 발생한 문제를 알려주세요."
+      title="Report response"
+      description="Tell us what went wrong with this response."
       onCancel={submitting ? undefined : onCancel}
       onConfirm={canSubmit ? handleSubmit : undefined}
     >
       <div className="space-y-4">
         <div className="rounded-md border border-border/60 bg-surface-light px-3 py-2">
-          <div className="mb-1 text-xs font-medium text-muted">신고할 응답</div>
+          <div className="mb-1 text-xs font-medium text-muted">Reported response</div>
           <div className="max-h-10 overflow-hidden whitespace-pre-line text-sm leading-5 text-text-secondary">
             {target.preview}
           </div>
         </div>
 
         <fieldset className="space-y-2">
-          <legend className="text-sm font-medium text-text">문제 유형</legend>
+          <legend className="text-sm font-medium text-text">Issue type</legend>
           <div className="grid gap-2 sm:grid-cols-2">
             {CATEGORY_OPTIONS.map((option) => (
               <label
@@ -95,14 +95,14 @@ export function FeedbackReportModal({ sessionId, accountId, target, onSubmit, on
 
         <div className="space-y-1.5">
           <label htmlFor="feedback-report-description" className="block text-sm font-medium text-text">
-            설명 <span className="font-normal text-muted">(선택)</span>
+            Description <span className="font-normal text-muted">(optional)</span>
           </label>
           <TextArea
             id="feedback-report-description"
             maxRows={8}
             maxLength={1000}
             disabled={submitting}
-            placeholder="어떤 상황에서 발생했는지 알려주세요"
+            placeholder="Tell us what happened"
             value={description}
             onInput={(event) => setDescription(event.currentTarget.value)}
           />
@@ -110,9 +110,9 @@ export function FeedbackReportModal({ sessionId, accountId, target, onSubmit, on
         </div>
 
         <div className="space-y-2 text-xs text-muted">
-          <p>문제 해결을 위해 세션 ID, 앱 버전 등 진단 정보가 함께 전송됩니다</p>
+          <p>Session ID, app version, and other diagnostic information will be sent with your report.</p>
           <details>
-            <summary className="cursor-pointer select-none font-medium text-text-secondary">자세히 보기</summary>
+            <summary className="cursor-pointer select-none font-medium text-text-secondary">View details</summary>
             <div className="mt-2 space-y-2">
               <DiagnosticIdentifiers sessionId={sessionId} accountId={accountId} />
               <div className="rounded-md border border-border/60 bg-surface-light px-3 py-2">
@@ -132,16 +132,16 @@ export function FeedbackReportModal({ sessionId, accountId, target, onSubmit, on
 
         {!accountId?.trim() ? (
           <output className="block text-sm text-warning">
-            계정 정보를 확인할 수 없습니다. 앱을 다시 연결한 뒤 시도해 주세요.
+            Account information is unavailable. Reconnect the app and try again.
           </output>
         ) : null}
 
         <div className={actionRowClasses}>
           <Button intent="ghost" size="sm" disabled={submitting} onClick={onCancel}>
-            취소
+            Cancel
           </Button>
           <Button size="sm" disabled={!canSubmit} onClick={() => void handleSubmit()}>
-            {submitting ? "전송 중…" : "신고하기"}
+            {submitting ? "Submitting…" : "Report"}
           </Button>
         </div>
       </div>

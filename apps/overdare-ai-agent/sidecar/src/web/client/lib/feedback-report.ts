@@ -36,5 +36,5 @@ export function createFeedbackReportTarget(item: AssistantRenderItem): FeedbackR
 }
 
 export function formatFeedbackReceiptToast(reportId: string): string {
-  return `신고가 접수되었습니다 (#${reportId})`;
+  return `Report submitted (#${reportId})`;
 }

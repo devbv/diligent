@@ -49,7 +49,7 @@ test("requires a category and submits the trimmed optional description", async (
     );
   });
 
-  const submit = Array.from(document.querySelectorAll("button")).find((button) => button.textContent === "신고하기");
+  const submit = Array.from(document.querySelectorAll("button")).find((button) => button.textContent === "Report");
   const textarea = document.querySelector<HTMLTextAreaElement>("#feedback-report-description");
   const category = document.querySelector<HTMLInputElement>('input[name="feedback-category"][value="wrong_result"]');
   expect(submit).toBeDefined();
@@ -103,7 +103,7 @@ test("keeps category and description for retry when submission fails", async () 
     category!.click();
     setTextareaValue(textarea!, "Please investigate this conversation.");
   });
-  const submit = Array.from(document.querySelectorAll("button")).find((button) => button.textContent === "신고하기");
+  const submit = Array.from(document.querySelectorAll("button")).find((button) => button.textContent === "Report");
   await act(async () => {
     submit?.click();
   });
@@ -148,8 +148,8 @@ test("blocks duplicate submission and closing while the report is in flight", as
   await act(async () => {
     category!.click();
   });
-  const submit = Array.from(document.querySelectorAll("button")).find((button) => button.textContent === "신고하기");
-  const cancel = Array.from(document.querySelectorAll("button")).find((button) => button.textContent === "취소");
+  const submit = Array.from(document.querySelectorAll("button")).find((button) => button.textContent === "Report");
+  const cancel = Array.from(document.querySelectorAll("button")).find((button) => button.textContent === "Cancel");
 
   await act(async () => {
     submit?.click();

@@ -38,5 +38,5 @@ test("does not invent a model when the response has no authoritative model", () 
 });
 
 test("formats the server receipt id in the success toast", () => {
-  expect(formatFeedbackReceiptToast("report-789")).toBe("신고가 접수되었습니다 (#report-789)");
+  expect(formatFeedbackReceiptToast("report-789")).toBe("Report submitted (#report-789)");
 });
