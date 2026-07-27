@@ -241,6 +241,35 @@ describe("runCompaction", () => {
     expect(result.compacted).toBe(true);
   });
 
+  it("adopts a native blob larger than the message estimate but smaller than provider usage (QA-10459)", async () => {
+    // The shrink-gate half of QA-10459: a native compactionSummary blob duplicates conversation
+    // content, so its JSON/4 estimate lands above the messages' own chars/4 estimate — while the
+    // real context (provider usage, which includes system prompt and tool schemas) is far larger.
+    // Comparing blob-estimate against estimate-only tokensBefore rejected every attempt, so a
+    // context-full session re-triggered and re-rejected compaction on every turn, forever.
+    const contextFull = assistantMsg("x".repeat(60_000 * 4)) as Extract<Message, { role: "assistant" }>;
+    contextFull.usage = { inputTokens: 300_000, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
+    const messages: Message[] = [userMsg("follow-up"), contextFull];
+
+    const result = await runCompaction({
+      messages,
+      model: { ...TEST_MODEL, provider: "openai" },
+      systemPrompt: [],
+      compactionConfig: { reservePercent: 16 },
+      llmMsgStreamFn: makeStreamFn("unused summary"),
+      llmCompactionFn: async () => ({
+        status: "ok",
+        // ~100k estimated tokens: above the 60k message estimate, below the 300k provider usage.
+        compactionSummary: { type: "compaction", encrypted_content: "p".repeat(100_000 * 4) },
+      }),
+      stream: new AgentStream(),
+    });
+
+    expect(result.compacted).toBe(true);
+    expect(result.tokensBefore).toBeGreaterThanOrEqual(300_000);
+    expect(result.tokensAfter).toBeLessThan(result.tokensBefore);
+  });
+
   it("rejects a standard native candidate below the minimum without calling the adapter", async () => {
     const messages: Message[] = [userMsg("small")];
     const priorCompactionSummary = { type: "compaction", encrypted_content: "prior" };

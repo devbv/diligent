@@ -64,6 +64,11 @@ When assistant usage exists, Diligent uses the larger of the two values. When as
 
 This is intentionally conservative: if the estimate is larger than the provider usage snapshot, Diligent still trusts the larger number for compaction decisions.
 
+The same usage-aware measure applies inside `runCompaction`: both the minimum-candidate check and the
+`tokensBefore` side of the shrink check prefer provider usage over the chars/4 estimate. The estimate
+only counts message content — not the system prompt, tool schemas, or cached tokens — so gating on it
+alone can silently reject a compaction that the usage-based trigger already deemed necessary.
+
 ## What gets retained
 
 When a new user message makes automatic compaction necessary, Diligent compacts the existing history first and then

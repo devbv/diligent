@@ -327,7 +327,21 @@ async function applyCompaction(
     signal: request.signal,
     bypassMinimum: options?.bypassMinimum,
   });
-  if (!result.compacted) return false;
+  if (!result.compacted) {
+    // A triggered-but-rejected compaction is invisible in the session file (no entry, no event) —
+    // log it so a context stuck above the threshold is diagnosable from runtime logs (QA-10459).
+    request.logger.info("compaction_rejected", {
+      message: `[agent:compaction] rejected reason=${result.rejectionReason} tokensBefore=${result.tokensBefore}`,
+      sessionId: request.sessionId,
+      fields: {
+        reason: result.rejectionReason,
+        tokensBefore: result.tokensBefore,
+        provider: request.config.model.provider,
+        model: request.config.model.modelId,
+      },
+    });
+    return false;
+  }
   messages.splice(0, messages.length, ...result.messages);
   request.compactionSummary = result.compactionSummary;
   return true;
