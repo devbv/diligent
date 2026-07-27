@@ -264,6 +264,47 @@ describe("native compaction adapters", () => {
     });
   });
 
+  test("prunes echoed instruction, reasoning, and tool items from the replacement history", () => {
+    // The compact endpoint returns a full replacement transcript; its bulk is items whose content
+    // is already distilled into the compaction item (tool calls/outputs, reasoning) or re-sent
+    // fresh on every request (instruction content). Persisting them made the compacted state
+    // nearly as large as the original history (QA-10459).
+    const userMessage = { type: "message", role: "user", content: [{ type: "input_text", text: "real ask" }] };
+    const assistantMessage = {
+      type: "message",
+      role: "assistant",
+      content: [{ type: "output_text", text: "real answer" }],
+    };
+    const compactionItem = { type: "compaction", encrypted_content: "ENCRYPTED_COMPACTION_SUMMARY" };
+    const payload = {
+      output: [
+        { type: "message", role: "developer", content: [{ type: "input_text", text: "echoed instructions" }] },
+        userMessage,
+        { type: "reasoning", id: "rs_1", encrypted_content: "REASONING_BLOB" },
+        { type: "function_call", call_id: "fc_1", name: "bash", arguments: "{}" },
+        { type: "function_call_output", call_id: "fc_1", output: "x".repeat(10_000) },
+        assistantMessage,
+        compactionItem,
+      ],
+    };
+
+    expect(extractOpenAICompactionState(payload)).toEqual({
+      type: "diligent_openai_compaction_state",
+      items: [userMessage, assistantMessage, compactionItem],
+    });
+  });
+
+  test("returns undefined when pruning leaves no usable items", () => {
+    const payload = {
+      output: [
+        { type: "reasoning", id: "rs_1", encrypted_content: "REASONING_BLOB" },
+        { type: "function_call", call_id: "fc_1", name: "bash", arguments: "{}" },
+      ],
+    };
+
+    expect(extractOpenAICompactionState(payload)).toBeUndefined();
+  });
+
   test("rejects unobserved plaintext aliases with concise shape diagnostics", async () => {
     globalThis.fetch = mock(
       async () => new Response(JSON.stringify({ summary: "unproven plaintext alias" }), { status: 200 }),
