@@ -126,19 +126,23 @@ describe("compact", () => {
     expect(result).toEqual({ mode: "native", displaySummary: "native summary", compactionSummary: undefined });
   });
 
-  it("throws when native compaction is configured but reports unsupported", async () => {
-    await expect(
-      compact({
-        model: { ...TEST_MODEL, provider: "openai" },
-        messages: [userMsg("x".repeat(NATIVE_COMPACTION_MIN_INPUT_TOKENS * 4))],
-        systemPrompt: [{ label: "test", content: "test" }],
-        config: {
-          reservePercent: 16,
-        },
-        llmCompactionFn: async () => ({ status: "unsupported", reason: "not_available" }),
-        streamFn: makeStreamFn("local summary"),
-      }),
-    ).rejects.toThrow("Native compaction is configured");
+  it("falls back to local summarization when native compaction reports unsupported", async () => {
+    // "unsupported" means the provider endpoint is unavailable (404/405) or returned no usable
+    // summary — a capability signal, not a conversation failure. Throwing here turned a missing
+    // endpoint into a fatal turn error with no recovery path.
+    const result = await compact({
+      model: { ...TEST_MODEL, provider: "openai" },
+      messages: [userMsg("x".repeat(NATIVE_COMPACTION_MIN_INPUT_TOKENS * 4))],
+      systemPrompt: [{ label: "test", content: "test" }],
+      config: {
+        reservePercent: 16,
+      },
+      llmCompactionFn: async () => ({ status: "unsupported", reason: "not_available" }),
+      streamFn: makeStreamFn("local summary"),
+    });
+
+    expect(result.mode).toBe("local");
+    expect(result.displaySummary).toBe("local summary");
   });
 
   it("skips native when lookup returns undefined for provider", async () => {

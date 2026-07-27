@@ -251,7 +251,7 @@ async function compactIfNeeded(
   preservedMessages: Message[] = [],
 ): Promise<boolean> {
   const config = request.config.compaction;
-  if (!config) {
+  if (!config || config.enabled === false) {
     return false;
   }
 
@@ -280,7 +280,7 @@ async function compactAfterContextOverflow(
   stream: AgentStream,
   preserveTailCount: number,
 ): Promise<boolean> {
-  if (!request.config.compaction) return false;
+  if (!request.config.compaction || request.config.compaction.enabled === false) return false;
   request.logger.warn("compaction_forced", {
     message: "[agent:compaction] forced after context_overflow",
     sessionId: request.sessionId,

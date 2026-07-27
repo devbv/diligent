@@ -580,6 +580,44 @@ describe("Agent compactionSummary persistence", () => {
 
     expect(summaryAfterSecond).toEqual(compactionSummary);
   });
+
+  test("enabled:false disables automatic compaction even over the threshold", async () => {
+    let nativeCalls = 0;
+    const nativeCompactFn: NativeCompactFn = async (_input: NativeCompactionInput) => {
+      nativeCalls += 1;
+      return { status: "ok", summary: "compacted", compactionSummary: { type: "compaction" } };
+    };
+
+    const assistantMsg = makeAssistant([{ type: "text", text: "ok" }]);
+    const streamFn = createMockStreamFunction([assistantMsg, assistantMsg]);
+
+    // Same over-threshold setup as the persistence test above, but with compaction disabled.
+    const agent = new Agent(
+      {
+        modelId: "test-model",
+        provider: "anthropic",
+        contextWindow: 200_000,
+        maxOutputTokens: 4096,
+        supportsThinking: false,
+      },
+      [{ label: "sys", content: "sys" }],
+      [],
+      {
+        effort: "medium",
+        llmMsgStreamFn: streamFn,
+        llmCompactionFn: nativeCompactFn,
+        compaction: { enabled: false, reservePercent: 70 },
+      },
+    );
+
+    const bigContent = "x".repeat(200_001);
+    await agent.prompt({ role: "user", content: `first${bigContent}`, timestamp: Date.now() });
+    await agent.prompt({ role: "user", content: `second${bigContent}`, timestamp: Date.now() });
+
+    expect(nativeCalls).toBe(0);
+    const summary = (agent as unknown as { compactionSummary?: Record<string, unknown> }).compactionSummary;
+    expect(summary).toBeUndefined();
+  });
 });
 
 describe("Agent automatic compaction eligibility", () => {

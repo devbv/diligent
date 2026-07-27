@@ -36,6 +36,9 @@ If runtime config does not override compaction, the current defaults are:
 
 These values are applied by `SessionManager` when preparing or manually compacting a thread.
 
+`enabled: false` disables automatic compaction in the agent loop, including context-overflow recovery
+compaction. Manual compaction (`thread/compact/start`) is an explicit request and stays available.
+
 ## When automatic compaction triggers
 
 The current trigger uses both a reserve-threshold decision and a minimum eligible candidate size.
@@ -92,6 +95,8 @@ Current behavior:
 - native compaction is used only when a native compaction function is available
 - all compaction modes use `COMPACTION_MIN_INPUT_TOKENS` (`50000`) as the standard candidate minimum
 - when native compaction succeeds, Diligent can persist provider compaction state as `compactionSummary`
+- when the native adapter reports `unsupported` (endpoint unavailable or no usable summary item), Diligent falls
+  back to local summarization instead of failing the turn; genuine call failures still propagate as errors
 - OpenAI-family compact endpoints return a replacement `output` history; Diligent preserves every response item in
   that history, including retained messages and opaque `compaction` items
 - ChatGPT Responses Lite replacement histories containing the provider's `compaction_summary` item are valid native

@@ -235,6 +235,7 @@ async function createRuntimeAgent(args: {
       localImageLoader: createLocalImageLoader(cwd),
       toolOutputStore: selectedOutputStore ?? toolOutputStore,
       compaction: {
+        enabled: runtimeConfig.compaction.enabled,
         reservePercent: runtimeConfig.compaction.reservePercent,
         timeoutMs: runtimeConfig.compaction.timeoutMs,
       },

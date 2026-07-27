@@ -1,10 +1,13 @@
 // @summary LLM-layer compaction execution — generateSummary, compactMessages, compact (native-first)
 
+import { createLogger } from "@diligent/logging";
 import type { Message, TextBlock } from "../types";
 import type { NativeCompactFn } from "./provider/native-compaction";
 import { resolveStream } from "./stream-resolver";
 import type { Model, ProviderName, StreamContext, StreamFunction, SystemSection } from "./types";
 import { resolveMaxTokens } from "./types";
+
+const compactionLogger = createLogger({ scope: "llm:compaction" });
 
 // --- Types ---
 
@@ -184,9 +187,15 @@ export async function compact(input: LLMCompactInput): Promise<LLMCompactResult>
         compactionSummary: nativeResult.compactionSummary,
       };
     }
-    throw new Error(
-      `Native compaction is configured for provider=${input.model.provider} model=${input.model.modelId} but returned unsupported${nativeResult.reason ? `: ${nativeResult.reason}` : ""}`,
-    );
+    // "unsupported" is a capability signal (endpoint 404/405, no usable summary item), not a
+    // failure of this particular conversation — fall back to local summarization instead of
+    // failing the whole turn. Genuine call failures (network, 4xx/5xx) still throw from the
+    // adapter itself and propagate.
+    compactionLogger.warn("native_compaction_unsupported", {
+      message: `[llm:compaction] native compaction unsupported for provider=${input.model.provider} model=${input.model.modelId}${nativeResult.reason ? ` reason=${nativeResult.reason}` : ""}; falling back to local summarization`,
+      sessionId: input.sessionId,
+      fields: { provider: input.model.provider, model: input.model.modelId, reason: nativeResult.reason },
+    });
   }
 
   const streamFunction = input.streamFn ?? resolveStream(input.model.provider as ProviderName);
