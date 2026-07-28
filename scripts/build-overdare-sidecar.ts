@@ -75,7 +75,9 @@ async function run(): Promise<void> {
   const serverEntry = resolve(OVERDARE_SIDECAR, "src/server.ts");
 
   const result = Bun.spawnSync(
-    ["bun", "build", "--compile", `--target=${bunTarget}`, serverEntry, "--outfile", outPath],
+    // --sourcemap embeds the map so runtime stack traces (including Sentry events)
+    // point at original TypeScript sources instead of bundled offsets.
+    ["bun", "build", "--compile", "--sourcemap", `--target=${bunTarget}`, serverEntry, "--outfile", outPath],
     {
       cwd: ROOT,
       stdio: ["inherit", "inherit", "inherit"],

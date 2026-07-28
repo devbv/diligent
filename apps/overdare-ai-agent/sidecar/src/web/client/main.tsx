@@ -1,5 +1,6 @@
 // @summary React entrypoint mounting the Web CLI app and loading Tailwind/token styles
 import "./polyfills";
+import "./sentry";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";

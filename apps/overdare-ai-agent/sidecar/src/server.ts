@@ -1,5 +1,8 @@
 // @summary OVERDARE Studio product web-server runner that injects product-owned bundled tools.
 
+// Sentry must be imported before everything else so error handlers hook first.
+import "./sentry";
+
 import { createLogger } from "@diligent/logging";
 import { OVERDARE_EXPERIMENTS } from "./experiments";
 import { configureSidecarLogging } from "./logging";
