@@ -128,6 +128,8 @@ export interface RunCompactionResult {
   compactionSummary?: Record<string, unknown>;
   tokensBefore: number;
   tokensAfter: number;
+  /** Why an uncompacted result was returned; absent when compacted. */
+  rejectionReason?: "below_minimum" | "not_shrinking";
 }
 
 function estimateCompactionSummaryTokens(compactionSummary?: Record<string, unknown>): number {
@@ -146,11 +148,28 @@ function estimateEffectiveContextTokens(messages: Message[], compactionSummary?:
 export async function runCompaction(input: RunCompactionInput): Promise<RunCompactionResult> {
   const messagesToSummarize = stripOutputImagesForSummarization(input.messages);
   const preservedMessages = input.preservedMessages ?? [];
-  const candidateTokens =
+  const originalMessages = [...input.messages, ...preservedMessages];
+  const candidateEstimate =
     estimateTokens(messagesToSummarize) +
     (input.llmCompactionFn ? estimateCompactionSummaryTokens(input.compactionSummary) : 0);
-  const originalMessages = [...input.messages, ...preservedMessages];
-  const tokensBefore = estimateEffectiveContextTokens(originalMessages, input.compactionSummary);
+  // Mirror the compaction trigger (getCompactionDecision): prefer the provider-reported context
+  // usage over the chars/4 estimate. estimateTokens() counts message content only — it excludes the
+  // system prompt, tool schemas, and cached tokens that dominate real context for providers like
+  // ChatGPT. Gating solely on the estimate lets a context-full session fall below
+  // COMPACTION_MIN_INPUT_TOKENS and silently no-op even though the usage-based trigger already fired
+  // (QA-10459: a 115%-full ChatGPT session never compacted).
+  const assistantUsageTokens = getLastAssistantContextWindowUsage(originalMessages);
+  const candidateTokens =
+    assistantUsageTokens !== undefined ? Math.max(assistantUsageTokens, candidateEstimate) : candidateEstimate;
+  // tokensBefore must be usage-aware for the same reason: the shrink gate below compares the
+  // candidate result against it, and a native compactionSummary blob can estimate (JSON/4) near the
+  // conversation's own chars/4 estimate while still being far smaller than the real context the
+  // provider reported. Comparing blob-estimate against estimate-only tokensBefore then rejects every
+  // attempt, permanently — the QA-10459 session triggered compaction for ~120 consecutive turns
+  // with zero adoptions while real usage grew to 122% of the context window.
+  const estimatedTokensBefore = estimateEffectiveContextTokens(originalMessages, input.compactionSummary);
+  const tokensBefore =
+    assistantUsageTokens !== undefined ? Math.max(assistantUsageTokens, estimatedTokensBefore) : estimatedTokensBefore;
   if (!input.bypassMinimum && candidateTokens < COMPACTION_MIN_INPUT_TOKENS) {
     return {
       compacted: false,
@@ -159,6 +178,7 @@ export async function runCompaction(input: RunCompactionInput): Promise<RunCompa
       compactionSummary: input.compactionSummary,
       tokensBefore,
       tokensAfter: tokensBefore,
+      rejectionReason: "below_minimum",
     };
   }
 
@@ -192,6 +212,7 @@ export async function runCompaction(input: RunCompactionInput): Promise<RunCompa
       compactionSummary: input.compactionSummary,
       tokensBefore,
       tokensAfter: tokensBefore,
+      rejectionReason: "not_shrinking",
     };
   }
 
