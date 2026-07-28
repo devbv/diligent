@@ -1,6 +1,6 @@
 // @summary Tests for the Sentry log-sink reporting decision.
 import { describe, expect, test } from "bun:test";
-import { shouldReportLogRecord } from "../src/sentry";
+import { shouldReportLogRecord } from "../src/web/shared/sentry-config";
 
 describe("shouldReportLogRecord", () => {
   test("reports error-level records", () => {
