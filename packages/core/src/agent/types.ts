@@ -117,6 +117,11 @@ export class AgentStream {
 }
 
 export interface CompactionConfig {
+  /**
+   * Gates automatic compaction in the agent loop (default true). Manual compaction
+   * (Agent.compact) is an explicit caller request and is not gated by this flag.
+   */
+  enabled?: boolean;
   reservePercent: number;
   timeoutMs?: number;
 }

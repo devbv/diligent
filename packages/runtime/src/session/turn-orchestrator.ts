@@ -118,7 +118,10 @@ export class TurnOrchestrator {
     const agentResult = this.resolveAgent();
     const agent = agentResult instanceof Promise ? await agentResult : agentResult;
     agent.restoreCompactionState(context.providerMessages, context.compactionSummary);
+    // Manual compaction itself is not gated by `enabled` (it is an explicit request), but the
+    // flag must survive this overwrite so automatic compaction stays disabled afterwards.
     agent.setCompactionConfig({
+      enabled: compactionConfig.enabled,
       reservePercent: compactionConfig.reservePercent,
       timeoutMs: compactionConfig.timeoutMs,
     });
@@ -241,9 +244,12 @@ export class TurnOrchestrator {
       agent.steer(message, id);
     }
 
+    // Always forward the config — an explicit enabled:false must reach the agent, otherwise its
+    // built-in default compaction config stays active and the flag silently does nothing.
     const compactionConfig = this.ctx.config.compaction;
-    if (compactionConfig?.enabled) {
+    if (compactionConfig) {
       agent.setCompactionConfig({
+        enabled: compactionConfig.enabled,
         reservePercent: compactionConfig.reservePercent,
         timeoutMs: compactionConfig.timeoutMs,
       });
