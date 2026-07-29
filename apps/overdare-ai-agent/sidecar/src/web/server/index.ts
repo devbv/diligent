@@ -1,5 +1,5 @@
 // @summary Bun server entrypoint for Web CLI with /rpc WebSocket, persisted image routes, and static file hosting
-import { createWriteStream, existsSync, mkdirSync, realpathSync, type WriteStream } from "node:fs";
+import { createWriteStream, existsSync, mkdirSync, readFileSync, realpathSync, type WriteStream } from "node:fs";
 import { appendFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 import { type ConsoleLike, createConsoleSink, createLogger, type Logger } from "@diligent/logging";
@@ -19,6 +19,7 @@ import {
 } from "@diligent/runtime";
 import type { WebConsentBackend } from "../shared/consent-protocol";
 import { decodeWebImageRelativePath, toWebImageUrl, WEB_IMAGE_ROUTE_PREFIX } from "../shared/image-routes";
+import { injectSentryConfig } from "../shared/sentry-config";
 import { routeWebRpcRequest } from "./consent-rpc";
 import { migrateLegacyConsentConfig } from "./legacy-consent-config";
 
@@ -148,6 +149,20 @@ export async function createWebServer(options: CreateServerOptions = {}): Promis
   const distDir = options.distDir ?? resolveWebClientDistDir();
   const hasDist = existsSync(distDir);
 
+  // Browser Sentry config mirrors the server SDK's env-gated setup (src/sentry.ts):
+  // injected into index.html only when SENTRY_DSN is set, never in --dev mode.
+  const indexHtmlPath = join(distDir, "index.html");
+  const sentryDsn = process.env.SENTRY_DSN?.trim();
+  const indexHtmlWithSentry =
+    !dev && sentryDsn && existsSync(indexHtmlPath)
+      ? injectSentryConfig(readFileSync(indexHtmlPath, "utf8"), {
+          dsn: sentryDsn,
+          release: process.env.DILIGENT_SERVER_VERSION,
+          environment: process.env.DILIGENT_ENV ?? "dev",
+          ...(process.env.SENTRY_TEST ? { noAlert: true } : {}),
+        })
+      : undefined;
+
   const server = Bun.serve<WsData>({
     port,
     // ponytail: bind loopback only — local browser access; avoids Windows Firewall prompt. Use 0.0.0.0 if LAN access is needed.
@@ -184,6 +199,12 @@ export async function createWebServer(options: CreateServerOptions = {}): Promis
         let filePath = join(distDir, url.pathname === "/" ? "index.html" : url.pathname);
         if (!existsSync(filePath)) {
           filePath = join(distDir, "index.html");
+        }
+
+        if (indexHtmlWithSentry !== undefined && filePath === indexHtmlPath) {
+          return new Response(indexHtmlWithSentry, {
+            headers: { "Content-Type": "text/html; charset=utf-8" },
+          });
         }
 
         if (existsSync(filePath)) {

@@ -1,6 +1,7 @@
 mod cli;
 mod env;
 mod init;
+mod monitoring;
 mod storage;
 mod update;
 mod webserver;

@@ -124,6 +124,13 @@ jobs:
 
       - name: Build runtime bundle
         shell: bash
+        env:
+          # Enables Sentry source-map upload in the Vite build (vite.config.ts skips
+          # it when the token is absent, e.g. on forks without the secret).
+          # SENTRY_RELEASE must equal the bare bundle version — the server reports
+          # the same value at runtime via DILIGENT_SERVER_VERSION.
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_RELEASE: ${{ needs.prepare.outputs.version }}
         run: |
           bun run overdare-ai-agent:build-runtime-bundle -- \
             --version "$VERSION" \
@@ -187,6 +194,12 @@ jobs:
 
       - name: Build Windows x64 OVERDARE CLI binary
         shell: bash
+        env:
+          # Baked into the binary via option_env! (src/monitoring.rs). The DSN is a
+          # public write-only identifier, not a secret. Local/dev cargo builds have
+          # neither env, so Sentry stays fully disabled there.
+          SENTRY_DSN: https://3c882faa9bcc24fd661ec9ada0da88ab@o4507586380890112.ingest.us.sentry.io/4511811624304640
+          LAUNCHER_VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           cargo build --manifest-path apps/overdare-ai-agent/Cargo.toml --release
           mkdir -p dist

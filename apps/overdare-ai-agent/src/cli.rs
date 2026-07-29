@@ -67,12 +67,20 @@ pub fn run() -> Result<(), CliError> {
 
     let selection = EnvSelection::resolve(env_flag.as_deref()).map_err(CliError::config)?;
 
-    match command.as_str() {
+    // Guard held for the whole command so its Drop flushes pending events before
+    // main's process::exit (which skips destructors) runs.
+    let _monitoring = crate::monitoring::init(selection.env.as_str());
+
+    let result = match command.as_str() {
         "init" => run_init(&selection, args.collect()),
         "install" => run_install(&selection, args.collect()),
         "start" => run_webserver(&selection, args.collect()),
         other => Err(CliError::config(format!("Unknown command: {other}"))),
+    };
+    if let Err(err) = &result {
+        crate::monitoring::capture_cli_error(err.code, &err.message);
     }
+    result
 }
 
 fn parse_bundle_arg(args: Vec<String>) -> Result<PathBuf, CliError> {
@@ -257,6 +265,13 @@ fn run_init(selection: &EnvSelection, args: Vec<String>) -> Result<(), CliError>
                 current_display(),
                 err.message
             );
+            // The fallback swallows the failure (exit 0), so this is the only
+            // signal that updates are failing in the field.
+            crate::monitoring::capture_warning(&format!(
+                "init fallback (code {}): {}",
+                err.kind.code(),
+                err.message
+            ));
             (false, "fallback", Some(err.kind.code()))
         }
     };
