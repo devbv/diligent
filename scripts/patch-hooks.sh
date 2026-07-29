@@ -8,10 +8,10 @@ PATCH_MARKER="# git-bash-compat-patch"
 
 patch_hook() {
   hook="$1"
-  [ -f "$hook" ] || return
+  [ -f "$hook" ] || return 0
 
   # Skip if already patched
-  grep -q "$PATCH_MARKER" "$hook" && return
+  grep -q "$PATCH_MARKER" "$hook" && return 0
 
   # Build the patch block to inject after the shebang line
   PATCH=$(cat <<'PATCH_BLOCK'
@@ -48,6 +48,9 @@ PATCH_BLOCK
   echo "Patched: $hook"
 }
 
-patch_hook ".git/hooks/pre-commit"
-patch_hook ".git/hooks/commit-msg"
-patch_hook ".git/hooks/pre-push"
+# Resolve hooks dir via git so worktrees (where .git is a file) work too
+HOOKS_DIR="$(git rev-parse --git-path hooks 2>/dev/null || echo .git/hooks)"
+
+patch_hook "$HOOKS_DIR/pre-commit"
+patch_hook "$HOOKS_DIR/commit-msg"
+patch_hook "$HOOKS_DIR/pre-push"
