@@ -4,7 +4,6 @@ import { describe, expect, test } from "bun:test";
 import { routeWebRpcRequest } from "../../../src/web/server/product-rpc";
 import type { WebConsentBackend } from "../../../src/web/shared/consent-protocol";
 import type {
-  FeedbackEnvironment,
   FeedbackReportInput,
   FeedbackReportResponse,
   WebFeedbackBackend,
@@ -27,16 +26,6 @@ function backend(overrides: Partial<WebConsentBackend> = {}): WebConsentBackend 
 function feedbackBackend(submit: (input: FeedbackReportInput) => Promise<FeedbackReportResponse>): WebFeedbackBackend {
   return { submit };
 }
-
-const FEEDBACK_ENVIRONMENT: FeedbackEnvironment = {
-  os: "Darwin",
-  osVersion: "25.5.0",
-  agentVersion: "0.8.0",
-  cpu: "Apple M4",
-  ram: "34359738368",
-  projectId: "project-123",
-  locale: "ko-KR",
-};
 
 describe("routeWebRpcRequest", () => {
   test("intercepts consent/set and returns the backend result without forwarding", async () => {
@@ -63,7 +52,7 @@ describe("routeWebRpcRequest", () => {
     expect(forwarded).toEqual([raw]);
   });
 
-  test("intercepts feedback/report and adds the server-attested account id", async () => {
+  test("intercepts feedback/report and forwards only the reduced report input", async () => {
     const sent: unknown[] = [];
     const forwarded: unknown[] = [];
     const submitted: FeedbackReportInput[] = [];
@@ -72,17 +61,14 @@ describe("routeWebRpcRequest", () => {
         id: 12,
         method: "feedback/report",
         params: {
+          clientReportId: "1cf50de8-8232-4bc9-8841-9f36b85ba86f",
           sessionId: "session-123",
-          messageId: "item:assistant-1:7",
-          category: "interrupted",
+          messageId: "persistent-message-id",
+          category: "stalled",
           description: "The assistant stopped unexpectedly.",
-          occurredAt: "2026-07-24T08:00:00.000Z",
-          agentModel: "openai/gpt-5",
         },
       }),
       {
-        accountId: "account-from-server",
-        feedbackEnvironment: FEEDBACK_ENVIRONMENT,
         feedbackBackend: feedbackBackend(async (input) => {
           submitted.push(input);
           return { reportId: "report-789", reportedAt: "2026-07-24T08:00:01.000Z" };
@@ -94,14 +80,11 @@ describe("routeWebRpcRequest", () => {
 
     expect(submitted).toEqual([
       {
-        accountId: "account-from-server",
+        clientReportId: "1cf50de8-8232-4bc9-8841-9f36b85ba86f",
         sessionId: "session-123",
-        messageId: "item:assistant-1:7",
-        category: "interrupted",
+        messageId: "persistent-message-id",
+        category: "stalled",
         description: "The assistant stopped unexpectedly.",
-        occurredAt: "2026-07-24T08:00:00.000Z",
-        agentModel: "openai/gpt-5",
-        ...FEEDBACK_ENVIRONMENT,
       },
     ]);
     expect(sent).toEqual([
@@ -113,48 +96,61 @@ describe("routeWebRpcRequest", () => {
     expect(forwarded).toHaveLength(0);
   });
 
-  test("rejects feedback/report when the product backend or account id is unavailable", async () => {
+  test("rejects feedback/report when the product backend is unavailable", async () => {
     const withoutBackend: unknown[] = [];
     await routeWebRpcRequest(
       JSON.stringify({
         id: 13,
         method: "feedback/report",
         params: {
+          clientReportId: "1cf50de8-8232-4bc9-8841-9f36b85ba86f",
           sessionId: "s1",
+          messageId: "m1",
           category: "etc",
-          occurredAt: "2026-07-24T08:00:00.000Z",
         },
       }),
       {
-        accountId: "account-1",
         send: (message) => withoutBackend.push(message),
         forward: () => {},
       },
     );
     expect(withoutBackend).toEqual([{ id: 13, error: { code: -32601, message: "Feedback backend not available" } }]);
+  });
 
-    const withoutAccount: unknown[] = [];
+  test("preserves structured HTTP status data from feedback backend failures", async () => {
+    const sent: unknown[] = [];
+    const error = Object.assign(new Error("Feedback report failed"), {
+      code: -32000,
+      data: { httpStatus: 429 },
+    });
     await routeWebRpcRequest(
       JSON.stringify({
         id: 14,
         method: "feedback/report",
         params: {
+          clientReportId: "1cf50de8-8232-4bc9-8841-9f36b85ba86f",
           sessionId: "s1",
+          messageId: "m1",
           category: "etc",
-          occurredAt: "2026-07-24T08:00:00.000Z",
         },
       }),
       {
-        feedbackEnvironment: FEEDBACK_ENVIRONMENT,
-        feedbackBackend: feedbackBackend(async () => ({
-          reportId: "report-1",
-          reportedAt: "2026-07-24T08:00:01.000Z",
-        })),
-        send: (message) => withoutAccount.push(message),
+        feedbackBackend: feedbackBackend(async () => Promise.reject(error)),
+        send: (message) => sent.push(message),
         forward: () => {},
       },
     );
-    expect(withoutAccount).toEqual([{ id: 14, error: { code: -32000, message: "Account ID not available" } }]);
+
+    expect(sent).toEqual([
+      {
+        id: 14,
+        error: {
+          code: -32000,
+          message: "Feedback report failed",
+          data: { httpStatus: 429 },
+        },
+      },
+    ]);
   });
 
   test("returns -32602 for invalid params", async () => {

@@ -1,23 +1,24 @@
-// @summary Derives UI-only response report context and receipt copy
+// @summary Derives UI-only message report context and user-facing status copy
 
+import { RpcRequestError } from "./rpc-client";
 import type { RenderItem } from "./thread-store";
 
-type AssistantRenderItem = Extract<RenderItem, { kind: "assistant" }>;
+type ReportableRenderItem = Extract<RenderItem, { kind: "assistant" | "user" }>;
 
 export interface FeedbackReportTarget {
+  kind: "request" | "response";
   messageId: string;
   preview: string;
-  occurredAt: string;
-  agentModel?: string;
 }
 
-function responseText(item: AssistantRenderItem): string {
+function messageText(item: ReportableRenderItem): string {
+  if (item.kind === "user") return item.text;
   if (item.text.trim()) return item.text;
   return item.contentBlocks.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("\n");
 }
 
-function responsePreview(item: AssistantRenderItem): string {
-  const lines = responseText(item)
+function messagePreview(item: ReportableRenderItem): string {
+  const lines = messageText(item)
     .split(/\r?\n/)
     .map((line) => line.replace(/\s+/g, " ").trim())
     .filter(Boolean)
@@ -26,15 +27,28 @@ function responsePreview(item: AssistantRenderItem): string {
   return lines.join("\n");
 }
 
-export function createFeedbackReportTarget(item: AssistantRenderItem): FeedbackReportTarget {
+export function createFeedbackReportTarget(item: ReportableRenderItem): FeedbackReportTarget {
+  if (!item.messageId) {
+    throw new Error("Persistent message ID is unavailable");
+  }
   return {
-    messageId: item.id,
-    preview: responsePreview(item),
-    occurredAt: new Date(item.timestamp).toISOString(),
-    ...(item.model ? { agentModel: `${item.model.provider}/${item.model.modelId}` } : {}),
+    kind: item.kind === "user" ? "request" : "response",
+    messageId: item.messageId,
+    preview: messagePreview(item),
   };
 }
 
-export function formatFeedbackReceiptToast(reportId: string): string {
-  return `Report submitted (#${reportId})`;
+export function formatFeedbackReceiptToast(): string {
+  return "Report sent. We'll take a look.";
+}
+
+export function formatFeedbackSubmitError(error: unknown): string {
+  const data =
+    error instanceof RpcRequestError && typeof error.data === "object" && error.data !== null
+      ? (error.data as { httpStatus?: unknown })
+      : null;
+  if (data?.httpStatus === 429) {
+    return "Too many reports. Please try again later.";
+  }
+  return "Couldn't send your report. Please try again in a moment.";
 }

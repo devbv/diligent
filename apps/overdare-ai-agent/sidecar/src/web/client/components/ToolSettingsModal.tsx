@@ -33,7 +33,6 @@ import {
   type SubagentSettingsDraft,
 } from "../lib/subagent-settings";
 import { Button } from "./Button";
-import { DiagnosticIdentifiers } from "./DiagnosticIdentifiers";
 import { Input } from "./Input";
 import { ExternalLink, X } from "./icons";
 import {
@@ -71,7 +70,6 @@ const PROVIDER_LABELS: Record<string, string> = {
 
 interface ToolSettingsModalProps {
   threadId?: string | null;
-  accountId?: string | null;
   runtimeVersion?: string;
   initialState?: ToolsListResponse;
   providers?: ProviderAuthStatus[];
@@ -263,7 +261,6 @@ function pluginSummary(plugin: ToolsListResponse["plugins"][number]): string {
 
 export function ToolSettingsModal({
   threadId,
-  accountId,
   runtimeVersion,
   initialState,
   providers,
@@ -626,16 +623,6 @@ export function ToolSettingsModal({
 
           {state && draft ? (
             <div className="space-y-4">
-              <section className={sectionStackClasses}>
-                <div>
-                  <h3 className="text-sm font-semibold text-text">Diagnostics</h3>
-                  <p className="text-xs text-muted">
-                    Copy these identifiers when contacting support about the current conversation.
-                  </p>
-                </div>
-                <DiagnosticIdentifiers sessionId={threadId} accountId={accountId} />
-              </section>
-
               {onOpenProviders ? (
                 <section className={sectionStackClasses}>
                   <div>

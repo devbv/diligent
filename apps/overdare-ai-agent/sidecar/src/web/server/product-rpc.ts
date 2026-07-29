@@ -3,7 +3,6 @@
 import type { JSONRPCResponse } from "@diligent/protocol";
 import { ConsentSetParamsSchema, WEB_CONSENT_SET_METHOD, type WebConsentBackend } from "../shared/consent-protocol";
 import {
-  type FeedbackEnvironment,
   FeedbackReportParamsSchema,
   FeedbackReportResponseSchema,
   WEB_FEEDBACK_REPORT_METHOD,
@@ -13,8 +12,6 @@ import {
 interface WebRequestRouterOptions {
   consentBackend?: WebConsentBackend;
   feedbackBackend?: WebFeedbackBackend;
-  feedbackEnvironment?: FeedbackEnvironment;
-  accountId?: string;
   send(message: JSONRPCResponse): void;
   forward(raw: string | Buffer): void;
 }
@@ -58,34 +55,24 @@ export async function routeWebRpcRequest(raw: string | Buffer, options: WebReque
       options.send({ id, error: { code: -32601, message: "Feedback backend not available" } });
       return;
     }
-    const accountId = options.accountId?.trim();
-    if (!accountId) {
-      options.send({ id, error: { code: -32000, message: "Account ID not available" } });
-      return;
-    }
-    if (!options.feedbackEnvironment) {
-      options.send({ id, error: { code: -32000, message: "Feedback environment not available" } });
-      return;
-    }
     const params = FeedbackReportParamsSchema.safeParse(value.params ?? {});
     if (!params.success) {
       options.send({ id, error: { code: -32602, message: "Invalid params", data: params.error.message } });
       return;
     }
-    const result = FeedbackReportResponseSchema.parse(
-      await options.feedbackBackend.submit({
-        ...params.data,
-        ...options.feedbackEnvironment,
-        accountId,
-      }),
-    );
+    const result = FeedbackReportResponseSchema.parse(await options.feedbackBackend.submit(params.data));
     options.send({ id, result });
   } catch (error) {
-    const code =
-      error instanceof Error && typeof (error as Error & { code?: unknown }).code === "number"
-        ? (error as Error & { code: number }).code
-        : -32000;
-    options.send({ id, error: { code, message: error instanceof Error ? error.message : String(error) } });
+    const structured = error as { code?: unknown; data?: unknown };
+    const code = typeof structured.code === "number" ? structured.code : -32000;
+    options.send({
+      id,
+      error: {
+        code,
+        message: error instanceof Error ? error.message : String(error),
+        ...(structured.data !== undefined ? { data: structured.data } : {}),
+      },
+    });
   }
 }
 

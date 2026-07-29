@@ -60,7 +60,7 @@ export function Modal({ title, description, children, onConfirm, onCancel }: Mod
         aria-label={title}
         tabIndex={-1}
         onKeyDown={handleKeyDown}
-        className={`w-full max-w-lg p-5 ${elevatedCardClasses}`}
+        className={`w-full max-w-lg p-5 focus:outline-none ${elevatedCardClasses}`}
       >
         <h2 className="text-lg font-semibold text-text">{title}</h2>
         {description ? <p className="mt-1 text-sm text-muted">{description}</p> : null}

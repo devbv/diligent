@@ -20,7 +20,7 @@ import { buildSessionContext } from "./context-builder";
 import type { SessionPersistence } from "./persistence";
 import type { SessionCache } from "./session-cache";
 import type { SessionStateStore } from "./state-store";
-import { TurnStager } from "./turn-stager";
+import { TurnStager, type TurnStagerEventResult } from "./turn-stager";
 import type { CompactionEntry, ErrorEntry, SessionEntry, SessionManagerConfig } from "./types";
 import { generateEntryId } from "./types";
 
@@ -64,7 +64,7 @@ export class TurnOrchestrator {
    * Run the agent loop with the current session context.
    * Persists user message and agent response to session.
    */
-  async run(userMessage: Message, opts?: { signal?: AbortSignal }): Promise<void> {
+  async run(userMessage: Message, opts?: { signal?: AbortSignal; userMessageId?: string }): Promise<void> {
     const turnScope = createStreamTurnScope();
     try {
       await this.runInternal(userMessage, { ...opts, turnScope });
@@ -75,11 +75,11 @@ export class TurnOrchestrator {
 
   private async runInternal(
     userMessage: Message,
-    opts: { signal?: AbortSignal; turnScope: StreamTurnScope },
+    opts: { signal?: AbortSignal; userMessageId?: string; turnScope: StreamTurnScope },
   ): Promise<void> {
     this.emitBusyStatus();
 
-    const prepared = await this.prepareRun(userMessage);
+    const prepared = await this.prepareRun(userMessage, opts.userMessageId);
     const { unsubscribe, getCurrentTurnId, getLastAgentError } = this.subscribeRunEvents(prepared);
 
     let normalCompletion = false;
@@ -226,11 +226,14 @@ export class TurnOrchestrator {
     this.ctx.emit({ type: "status_change", status: "busy" });
   }
 
-  private async prepareRun(userMessage: Message): Promise<{ agent: Agent; turnStager: TurnStager }> {
+  private async prepareRun(
+    userMessage: Message,
+    userMessageId?: string,
+  ): Promise<{ agent: Agent; turnStager: TurnStager }> {
     this.ctx.repairEntries();
 
     const context = buildSessionContext(this.ctx.state.getCommittedEntries(), this.ctx.state.getCommittedLeafId(), {});
-    const turnStager = new TurnStager(this.ctx.state.getCommittedLeafId(), userMessage);
+    const turnStager = new TurnStager(this.ctx.state.getCommittedLeafId(), userMessage, userMessageId);
     const snapshot = turnStager.getSnapshot();
     this.ctx.state.setPending(snapshot.entries, snapshot.leafId);
 
@@ -284,7 +287,7 @@ export class TurnOrchestrator {
         this.ctx.sessionCache.handlePromptSignature(this.ctx.persistence.sessionId, event.hashes);
       }
 
-      turnStager.handleEvent(event);
+      const staged = turnStager.handleEvent(event);
       if (event.type === "context_injected") {
         for (const injection of event.injections) {
           const presentation = readContextPresentation(injection.metadata);
@@ -293,7 +296,7 @@ export class TurnOrchestrator {
           }
         }
       } else {
-        this.ctx.emit(this.enrichEvent(event, agent));
+        this.ctx.emit(this.enrichEvent(event, agent, staged));
       }
 
       if (shouldFlushTurnProgress(event)) {
@@ -394,7 +397,7 @@ export class TurnOrchestrator {
     this.ctx.state.clearPending();
   }
 
-  private enrichEvent(event: CoreAgentEvent, agent: Agent): AgentEvent {
+  private enrichEvent(event: CoreAgentEvent, agent: Agent, staged?: TurnStagerEventResult): AgentEvent {
     if (event.type === "usage") {
       return { ...event, cost: calculateUsageCost(agent.model, event.usage) };
     }
@@ -403,6 +406,18 @@ export class TurnOrchestrator {
         ...event,
         render: createToolStartRenderPayload(event.toolName, event.input),
       };
+    }
+    if (
+      (event.type === "message_start" ||
+        event.type === "message_delta" ||
+        event.type === "message_discarded" ||
+        event.type === "message_end") &&
+      staged?.messageId
+    ) {
+      return { ...event, itemId: staged.messageId };
+    }
+    if (event.type === "steering_injected") {
+      return { ...event, messageIds: staged?.messageIds ?? [] };
     }
     return event as AgentEvent;
   }

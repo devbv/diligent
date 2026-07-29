@@ -127,38 +127,6 @@ test("tool settings modal renders vertex provider badge label", () => {
   expect(html).toContain("Open AI connection settings");
 });
 
-test("tool settings modal exposes copyable diagnostic identifiers", () => {
-  const html = renderToStaticMarkup(
-    <ToolSettingsModal
-      threadId="session-123"
-      accountId="account-456"
-      initialState={{
-        configPath: "/repo/.diligent/config.jsonc",
-        appliesOnNextTurn: true,
-        trustMode: "full_trust",
-        conflictPolicy: "error",
-        tools: [],
-        plugins: [],
-      }}
-      onList={async () => {
-        throw new Error("unused");
-      }}
-      onSave={async () => {
-        throw new Error("unused");
-      }}
-      onClose={() => {}}
-    />,
-  );
-
-  expect(html).toContain("Diagnostics");
-  expect(html).toContain("Session ID");
-  expect(html).toContain("session-123");
-  expect(html).toContain("Account ID");
-  expect(html).toContain("account-456");
-  expect(html).toContain('aria-label="Copy Session ID"');
-  expect(html).toContain('aria-label="Copy Account ID"');
-});
-
 test("tool settings modal renders required, optional, and project-controlled subagents", () => {
   const html = renderToStaticMarkup(
     <ToolSettingsModal
@@ -1480,60 +1448,142 @@ test("sidebar does not expose the removed conversation-level report action", () 
   expect(html).not.toContain('data-icon="clipboard-list"');
 });
 
-test("feedback report modal shows response context, required categories, and collapsed diagnostics", () => {
+test("feedback report modal shows target context, reduced categories, and accurate transmission copy", () => {
   const html = renderToStaticMarkup(
     <FeedbackReportModal
-      sessionId="session-123"
-      accountId="account-456"
       target={{
-        messageId: "item:assistant-1:7",
+        kind: "response",
+        messageId: "persistent-message-id",
         preview: "First response line\nSecond response line",
-        occurredAt: "2026-07-24T08:00:00.000Z",
-        agentModel: "openai/gpt-5",
       }}
       onSubmit={async () => {}}
       onCancel={() => {}}
     />,
   );
 
-  expect(html).toContain("Report response");
+  expect(html).toContain("Report an issue");
+  expect(html).toContain("Reporting this message");
+  expect(html).toContain("Response");
   expect(html).toContain("First response line");
-  expect(html).toContain("Agent won&#x27;t start");
-  expect(html).toContain("Stopped during a task");
-  expect(html).toContain("No response");
-  expect(html).toContain("Incorrect result");
-  expect(html).toContain("Other");
-  expect(html).toContain("Session ID, app version, and other diagnostic information will be sent with your report.");
-  expect(html).toContain("<details");
-  expect(html).not.toContain("<details open");
-  expect(html).toContain("View details");
-  expect(html).toContain("session-123");
-  expect(html).toContain("account-456");
+  expect(html).toContain("The response stopped");
+  expect(html).toContain("An error occurred");
+  expect(html).toContain("Something else");
+  expect(html).not.toContain("Incorrect result");
+  expect(html).toContain("Session and message identifiers are sent with this report so we can investigate.");
+  expect(html.toLowerCase()).not.toContain("account");
   expect(html).toContain('id="feedback-report-description"');
   expect(html).toContain('maxLength="1000"');
-  expect(html).toContain("Tell us what happened");
+  expect(html).toContain("What went wrong?");
   expect(html).toContain('disabled=""');
 });
 
-test("assistant message exposes a response-level report icon", () => {
+test("assistant message exposes copy and report actions for a completed response", () => {
   const html = renderToStaticMarkup(
     <AssistantMessage
       item={{
-        id: "item:assistant-1:7",
+        id: "render:assistant-1",
+        messageId: "persistent-assistant-id",
         kind: "assistant",
         text: "Completed the requested change.",
         thinking: "",
         contentBlocks: [],
         thinkingDone: true,
+        isStreaming: false,
+        timestamp: 1,
+      }}
+      alwaysShowActions={true}
+      onReport={() => {}}
+    />,
+  );
+
+  expect(html).toContain('title="Copy response"');
+  expect(html).toContain('title="Report response"');
+  expect(html).toContain('data-icon="copy"');
+  expect(html).toContain('data-icon="flag"');
+  expect(html).toContain("visible opacity-100");
+});
+
+test("request actions reserve layout space and appear on hover or keyboard focus", () => {
+  const html = renderToStaticMarkup(
+    <UserMessage
+      item={{
+        id: "render:user-1",
+        messageId: "persistent-user-id",
+        kind: "user",
+        text: "Fix the selected object.",
+        images: [],
         timestamp: 1,
       }}
       onReport={() => {}}
     />,
   );
 
-  expect(html).toContain('title="Report response"');
-  expect(html).toContain('<span class="sr-only">Report response</span>');
-  expect(html).toContain('data-icon="flag"');
+  expect(html).toContain('title="Copy request"');
+  expect(html).toContain('title="Report request"');
+  expect(html).toContain("h-7");
+  expect(html).toContain("group-hover/message:visible");
+  expect(html).toContain("group-focus-within/message:visible");
+});
+
+test("streaming assistant response hides response actions", () => {
+  const html = renderToStaticMarkup(
+    <AssistantMessage
+      item={{
+        id: "render:assistant-streaming",
+        messageId: "persistent-assistant-id",
+        kind: "assistant",
+        text: "Still working",
+        thinking: "",
+        contentBlocks: [],
+        thinkingDone: true,
+        isStreaming: true,
+        timestamp: 1,
+      }}
+      alwaysShowActions={true}
+      onReport={() => {}}
+    />,
+  );
+
+  expect(html).not.toContain('title="Copy response"');
+  expect(html).not.toContain('title="Report response"');
+});
+
+test("message list keeps only the last completed response actions visible without hover", () => {
+  const html = renderToStaticMarkup(
+    <MessageList
+      items={[
+        {
+          id: "render:assistant-1",
+          messageId: "persistent-assistant-1",
+          kind: "assistant",
+          text: "First response",
+          thinking: "",
+          contentBlocks: [],
+          thinkingDone: true,
+          isStreaming: false,
+          timestamp: 1,
+        },
+        {
+          id: "render:assistant-2",
+          messageId: "persistent-assistant-2",
+          kind: "assistant",
+          text: "Second response",
+          thinking: "",
+          contentBlocks: [],
+          thinkingDone: true,
+          isStreaming: false,
+          timestamp: 2,
+        },
+      ]}
+      threadStatus="idle"
+      hasProvider={true}
+      onOpenProviders={() => {}}
+      onReportMessage={() => {}}
+    />,
+  );
+
+  expect(html.match(/visible opacity-100/g)).toHaveLength(1);
+  expect(html.match(/invisible opacity-0/g)).toHaveLength(1);
 });
 
 test("assistant message can suppress thinking block during compaction", () => {

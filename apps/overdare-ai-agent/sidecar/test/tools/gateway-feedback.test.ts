@@ -1,7 +1,7 @@
 // @summary Tests explicit user feedback submission to the OVERDARE gateway
 
 import { afterEach, beforeEach, expect, mock, test } from "bun:test";
-import { postUserFeedback } from "../../src/tools/gateway/feedback";
+import { FeedbackGatewayError, postUserFeedback } from "../../src/tools/gateway/feedback";
 
 const realFetch = globalThis.fetch;
 const realUrl = process.env.DILIGENT_GATEWAY_URL;
@@ -20,7 +20,7 @@ afterEach(() => {
   else process.env.DILIGENT_GATEWAY_TOKEN = realToken;
 });
 
-test("posts authenticated user feedback with server-attested account and session correlation", async () => {
+test("posts the authenticated, reduced report payload and maps the receipt", async () => {
   const calls: Array<{ url: string; headers: Headers; body: Record<string, unknown> }> = [];
   globalThis.fetch = mock(async (input: string | URL | Request, init?: RequestInit) => {
     calls.push({
@@ -38,20 +38,11 @@ test("posts authenticated user feedback with server-attested account and session
   }) as unknown as typeof fetch;
 
   const receipt = await postUserFeedback({
-    accountId: "account-123",
+    clientReportId: "1cf50de8-8232-4bc9-8841-9f36b85ba86f",
     sessionId: "session-456",
-    messageId: "item:assistant-1:7",
-    category: "wrong_result",
+    messageId: "persistent-message-id",
+    category: "error",
     description: "The generated place could not be opened.",
-    occurredAt: "2026-07-24T07:59:00.000Z",
-    os: "Darwin",
-    osVersion: "25.5.0",
-    agentVersion: "0.8.0",
-    cpu: "Apple M4",
-    ram: "34359738368",
-    projectId: "project-789",
-    agentModel: "openai/gpt-5",
-    locale: "ko-KR",
   });
 
   expect(receipt).toEqual({
@@ -63,36 +54,34 @@ test("posts authenticated user feedback with server-attested account and session
   expect(calls[0]?.headers.get("Content-Type")).toBe("application/json");
   expect(calls[0]?.headers.get("Authorization")).toBe("Bearer feedback-token");
   expect(calls[0]?.body).toEqual({
-    category: "wrong_result",
+    client_report_id: "1cf50de8-8232-4bc9-8841-9f36b85ba86f",
+    category: "error",
     description: "The generated place could not be opened.",
-    account_id: "account-123",
     session_id: "session-456",
-    message_id: "item:assistant-1:7",
-    occurred_at: "2026-07-24T07:59:00.000Z",
-    os: "Darwin",
-    os_version: "25.5.0",
-    agent_version: "0.8.0",
-    cpu: "Apple M4",
-    ram: "34359738368",
-    project_id: "project-789",
-    agent_model: "openai/gpt-5",
-    locale: "ko-KR",
+    message_id: "persistent-message-id",
   });
-  expect(calls[0]?.body).not.toHaveProperty("message");
-  expect(calls[0]?.body).not.toHaveProperty("preview");
+  expect(Object.keys(calls[0]?.body ?? {}).sort()).toEqual([
+    "category",
+    "client_report_id",
+    "description",
+    "message_id",
+    "session_id",
+  ]);
 });
 
-test("rejects the report when the gateway does not accept it", async () => {
-  globalThis.fetch = mock(async () => new Response("unavailable", { status: 503 })) as unknown as typeof fetch;
+test.each([429, 503])("preserves HTTP %i as structured gateway error data", async (status) => {
+  globalThis.fetch = mock(async () => new Response("unavailable", { status })) as unknown as typeof fetch;
 
-  await expect(
-    postUserFeedback({
-      accountId: "account-123",
+  try {
+    await postUserFeedback({
+      clientReportId: "1cf50de8-8232-4bc9-8841-9f36b85ba86f",
       sessionId: "session-456",
+      messageId: "persistent-message-id",
       category: "etc",
-      occurredAt: "2026-07-24T08:00:00.000Z",
-      os: "Darwin",
-      osVersion: "25.5.0",
-    }),
-  ).rejects.toThrow("Feedback report failed with HTTP 503");
+    });
+    expect.unreachable("Expected the gateway request to fail");
+  } catch (error) {
+    expect(error).toBeInstanceOf(FeedbackGatewayError);
+    expect((error as FeedbackGatewayError).data).toEqual({ httpStatus: status });
+  }
 });

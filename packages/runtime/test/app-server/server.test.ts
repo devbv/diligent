@@ -529,7 +529,7 @@ describe("DiligentAppServer", () => {
     ]);
   });
 
-  it("keeps user-message echo suppression while routing structured context notices to the initiator", async () => {
+  it("routes persistent user-message ids and structured context notices to the initiator", async () => {
     const projectRoot = await mkdtemp(join(process.env.TMPDIR ?? "/tmp", "diligent-app-server-"));
 
     const server = new DiligentAppServer({
@@ -627,12 +627,12 @@ describe("DiligentAppServer", () => {
     const { threadId } = readResult(start) as { threadId: string };
 
     await runTurn(201, threadId, "plain message");
-    expect(initiator.notifications.some(isUserMessage)).toBe(false); // echo skipped for initiator
-    expect(observer.notifications.some(isUserMessage)).toBe(true); // other clients still receive it
+    expect(initiator.notifications.some(isUserMessage)).toBe(true);
+    expect(observer.notifications.some(isUserMessage)).toBe(true);
 
     initiator.notifications.length = 0;
     await runTurn(202, threadId, "move it up");
-    expect(initiator.notifications.some(isUserMessage)).toBe(false);
+    expect(initiator.notifications.some(isUserMessage)).toBe(true);
     expect(initiator.notifications.some(isContextNotice)).toBe(true);
     expect(observer.notifications.some(isContextNotice)).toBe(true);
   });

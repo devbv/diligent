@@ -1,42 +1,58 @@
 // @summary Tests response report target derivation and receipt copy
 
 import { expect, test } from "bun:test";
-import { createFeedbackReportTarget, formatFeedbackReceiptToast } from "../../../../src/web/client/lib/feedback-report";
+import {
+  createFeedbackReportTarget,
+  formatFeedbackReceiptToast,
+  formatFeedbackSubmitError,
+} from "../../../../src/web/client/lib/feedback-report";
+import { RpcRequestError } from "../../../../src/web/client/lib/rpc-client";
 
-test("derives the message id, response timestamp, model, and a two-line preview", () => {
+test("derives a response target from the persistent message id and a two-line preview", () => {
   expect(
     createFeedbackReportTarget({
-      id: "item:assistant-1:7",
+      id: "render:assistant-1",
+      messageId: "persistent-assistant-id",
       kind: "assistant",
       text: "  First response line  \n\n  Second response line  \nThird response line",
       thinking: "",
       contentBlocks: [],
       thinkingDone: true,
       timestamp: Date.parse("2026-07-24T08:00:00.000Z"),
-      model: { provider: "openai", modelId: "gpt-5" },
     }),
   ).toEqual({
-    messageId: "item:assistant-1:7",
+    kind: "response",
+    messageId: "persistent-assistant-id",
     preview: "First response line\nSecond response line",
-    occurredAt: "2026-07-24T08:00:00.000Z",
-    agentModel: "openai/gpt-5",
   });
 });
 
-test("does not invent a model when the response has no authoritative model", () => {
+test("derives a request target without using the render key", () => {
   expect(
     createFeedbackReportTarget({
-      id: "item:assistant-2:8",
-      kind: "assistant",
-      text: "Completed.",
-      thinking: "",
-      contentBlocks: [],
-      thinkingDone: true,
+      id: "remote-user-temporary-key",
+      messageId: "persistent-user-id",
+      kind: "user",
+      text: "  First request line  \nSecond request line\nThird request line",
+      images: [],
       timestamp: Date.parse("2026-07-24T08:00:00.000Z"),
     }),
-  ).not.toHaveProperty("agentModel");
+  ).toEqual({
+    kind: "request",
+    messageId: "persistent-user-id",
+    preview: "First request line\nSecond request line",
+  });
 });
 
-test("formats the server receipt id in the success toast", () => {
-  expect(formatFeedbackReceiptToast("report-789")).toBe("Report submitted (#report-789)");
+test("uses a general success toast without exposing the receipt id", () => {
+  expect(formatFeedbackReceiptToast()).toBe("Report sent. We'll take a look.");
+});
+
+test("formats rate-limit errors from structured RPC data without parsing strings", () => {
+  expect(formatFeedbackSubmitError(new RpcRequestError(-32000, "gateway rejected", { httpStatus: 429 }))).toBe(
+    "Too many reports. Please try again later.",
+  );
+  expect(formatFeedbackSubmitError(new Error("HTTP 429 in unrelated text"))).toBe(
+    "Couldn't send your report. Please try again in a moment.",
+  );
 });

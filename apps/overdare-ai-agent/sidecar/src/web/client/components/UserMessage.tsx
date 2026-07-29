@@ -7,7 +7,9 @@ import {
   formatAgentContextItemLabel,
   getAgentContextItemKey,
 } from "../lib/agent-native-bridge";
+import type { RenderItem } from "../lib/thread-store";
 import { ContextItemIcon } from "./ContextItemIcon";
+import { MessageActions } from "./MessageActions";
 
 interface UserMessageImage {
   url: string;
@@ -16,9 +18,11 @@ interface UserMessageImage {
 }
 
 interface UserMessageProps {
-  text: string;
+  item?: Extract<RenderItem, { kind: "user" }>;
+  text?: string;
   images?: UserMessageImage[];
   contextItems?: AgentContextItem[];
+  onReport?: (item: Extract<RenderItem, { kind: "user" }>) => void;
 }
 
 function UserImageAttachment({ image }: { image: UserMessageImage }) {
@@ -58,35 +62,51 @@ function UserImageAttachment({ image }: { image: UserMessageImage }) {
   );
 }
 
-export function UserMessage({ text, images = [], contextItems = [] }: UserMessageProps) {
+export function UserMessage({ item, text = "", images = [], contextItems = [], onReport }: UserMessageProps) {
+  const resolvedText = item?.text ?? text;
+  const resolvedImages = item?.images ?? images;
+  const resolvedContextItems = item?.contextItems ?? contextItems;
+  const showActions = Boolean(item?.messageId && onReport);
+
   return (
-    <div className="flex justify-end py-1 pb-8">
-      <div className="flex max-w-message flex-col items-end gap-2 rounded-md bg-surface-light px-3.5 py-2">
-        {images.length > 0 ? (
-          <section aria-label="Image attachments" className="flex flex-wrap justify-end gap-2">
-            {images.map((image, index) => (
-              <UserImageAttachment key={`${image.url}-${index}`} image={image} />
-            ))}
-          </section>
-        ) : null}
-        {contextItems.length > 0 ? (
-          <section aria-label="Attached context" className="flex flex-wrap justify-end gap-1">
-            {contextItems.map((item) => (
-              <span
-                key={getAgentContextItemKey(item)}
-                className="inline-flex h-5 max-w-full items-center gap-0.5 rounded-[2px] bg-[#353C44] px-1 py-0.5 font-[Arial] text-xs leading-4 text-[#DCE2E8]"
-                title={formatAgentContextItemLabel(item)}
-              >
-                <ContextItemIcon item={item} />
-                <span className="truncate">{formatAgentContextItemDisplayLabel(item)}</span>
-              </span>
-            ))}
-          </section>
-        ) : null}
-        {text ? (
-          <p className="self-stretch whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm leading-7 text-text">
-            {text}
-          </p>
+    <div className="group/message flex justify-end py-1 pb-8" tabIndex={showActions ? 0 : undefined}>
+      <div className="max-w-message">
+        <div className="flex flex-col items-end gap-2 rounded-md bg-surface-light px-3.5 py-2">
+          {resolvedImages.length > 0 ? (
+            <section aria-label="Image attachments" className="flex flex-wrap justify-end gap-2">
+              {resolvedImages.map((image, index) => (
+                <UserImageAttachment key={`${image.url}-${index}`} image={image} />
+              ))}
+            </section>
+          ) : null}
+          {resolvedContextItems.length > 0 ? (
+            <section aria-label="Attached context" className="flex flex-wrap justify-end gap-1">
+              {resolvedContextItems.map((contextItem) => (
+                <span
+                  key={getAgentContextItemKey(contextItem)}
+                  className="inline-flex h-5 max-w-full items-center gap-0.5 rounded-[2px] bg-[#353C44] px-1 py-0.5 font-[Arial] text-xs leading-4 text-[#DCE2E8]"
+                  title={formatAgentContextItemLabel(contextItem)}
+                >
+                  <ContextItemIcon item={contextItem} />
+                  <span className="truncate">{formatAgentContextItemDisplayLabel(contextItem)}</span>
+                </span>
+              ))}
+            </section>
+          ) : null}
+          {resolvedText ? (
+            <p className="self-stretch whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm leading-7 text-text">
+              {resolvedText}
+            </p>
+          ) : null}
+        </div>
+        {showActions ? (
+          <MessageActions
+            targetKind="request"
+            copyText={resolvedText}
+            onReport={() => {
+              if (item) onReport?.(item);
+            }}
+          />
         ) : null}
       </div>
     </div>

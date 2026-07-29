@@ -83,7 +83,6 @@ export function App() {
     runtimeVersion,
     consent,
     updateConsent,
-    accountId,
     submitFeedback,
     desktopNotificationsEnabled,
     setDesktopNotificationsEnabled,
@@ -167,8 +166,8 @@ export function App() {
     },
     [closeSidebar, openThread, sidebarIsOverlay],
   );
-  const handleReportAssistant = useCallback(
-    (item: Extract<RenderItem, { kind: "assistant" }>) => {
+  const handleReportMessage = useCallback(
+    (item: Extract<RenderItem, { kind: "user" | "assistant" }>) => {
       if (!state.activeThreadId) return;
       setFeedbackReport({
         sessionId: state.activeThreadId,
@@ -179,18 +178,17 @@ export function App() {
   );
   const handleCancelFeedbackReport = useCallback(() => setFeedbackReport(null), []);
   const handleSubmitFeedbackReport = useCallback(
-    async ({ category, description }: FeedbackReportSubmission) => {
+    async ({ clientReportId, category, description }: FeedbackReportSubmission) => {
       if (!feedbackReport) return;
-      const receipt = await submitFeedback({
+      await submitFeedback({
+        clientReportId,
         sessionId: feedbackReport.sessionId,
         messageId: feedbackReport.messageId,
         category,
         ...(description !== undefined ? { description } : {}),
-        occurredAt: feedbackReport.occurredAt,
-        ...(feedbackReport.agentModel ? { agentModel: feedbackReport.agentModel } : {}),
       });
       setFeedbackReport(null);
-      dispatch({ type: "show_info_toast", payload: formatFeedbackReceiptToast(receipt.reportId) });
+      dispatch({ type: "show_info_toast", payload: formatFeedbackReceiptToast() });
     },
     [dispatch, feedbackReport, submitFeedback],
   );
@@ -284,7 +282,7 @@ export function App() {
             approvalPrompt={approvalPrompt}
             questionPrompt={questionPrompt}
             onLoadChildThread={loadChildThread}
-            onReportAssistant={handleReportAssistant}
+            onReportMessage={handleReportMessage}
           />
 
           {state.planState?.steps.some((s) => s.status !== "done") && <PlanPanel planState={state.planState!} />}
@@ -348,7 +346,6 @@ export function App() {
           {showToolModal ? (
             <ToolSettingsModal
               threadId={state.activeThreadId}
-              accountId={accountId}
               runtimeVersion={runtimeVersion}
               providers={providerMgr.providers}
               desktopNotificationsEnabled={desktopNotificationsEnabled}
@@ -424,8 +421,6 @@ export function App() {
 
       {feedbackReport ? (
         <FeedbackReportModal
-          sessionId={feedbackReport.sessionId}
-          accountId={accountId}
           target={feedbackReport}
           onSubmit={handleSubmitFeedbackReport}
           onCancel={handleCancelFeedbackReport}

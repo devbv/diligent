@@ -505,21 +505,6 @@ export class DiligentAppServer {
     const targets = subscribers.length > 0 ? subscribers : [...this.connections.values()];
 
     for (const conn of targets) {
-      // Skip the turn initiator's own user-message echo. Structured context
-      // notices are separate events, so they still reach every subscriber.
-      if (notification.method === DILIGENT_SERVER_NOTIFICATION_METHODS.AGENT_EVENT) {
-        const params = notification.params as {
-          event?: { type?: string; message?: { content?: unknown } };
-          threadId?: string;
-        };
-        if (
-          params.event?.type === "user_message" &&
-          params.threadId &&
-          this.turnInitiators.get(params.threadId) === conn.id
-        ) {
-          continue;
-        }
-      }
       await conn.peer.send(notification);
     }
   }

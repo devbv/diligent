@@ -7,10 +7,9 @@ import { microLabelClasses } from "./ui-styles";
 interface CopyButtonProps {
   text: string;
   className?: string;
-  ariaLabel?: string;
 }
 
-export function CopyButton({ text, className = "", ariaLabel }: CopyButtonProps) {
+export function CopyButton({ text, className = "" }: CopyButtonProps) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -23,7 +22,6 @@ export function CopyButton({ text, className = "", ariaLabel }: CopyButtonProps)
   return (
     <button
       type="button"
-      aria-label={ariaLabel}
       onClick={handleCopy}
       className={`rounded-md px-1.5 py-0.5 transition hover:bg-fill-ghost-hover hover:text-text ${microLabelClasses} ${className}`}
     >

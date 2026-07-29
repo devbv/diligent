@@ -233,7 +233,6 @@ export function useAppState({
     setSkills,
     setRuntimeVersion,
     setConsent: consentState.setConsent,
-    setAccountId: feedbackState.setAccountId,
     setInitialModel: providerMgr.setInitialModel,
     applySessionModel: providerMgr.applySessionModel,
     refreshThreadList: threadMgr.refreshThreadList,

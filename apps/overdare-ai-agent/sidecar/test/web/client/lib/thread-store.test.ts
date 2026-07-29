@@ -119,11 +119,44 @@ test("merges item started/delta/completed into single assistant item", () => {
 
   const assistant = c.items.find((item) => item.kind === "assistant");
   expect(assistant).toBeDefined();
-  expect(assistant?.kind === "assistant" ? assistant.model : undefined).toEqual({
-    provider: "openai",
-    modelId: "gpt-5",
-  });
   expect(assistant && assistant.kind === "assistant" ? assistant.text : "").toBe("hello");
+  expect(assistant?.kind === "assistant" ? assistant.messageId : undefined).toBe("item1");
+  expect(assistant?.kind === "assistant" ? assistant.isStreaming : undefined).toBe(false);
+});
+
+test("attaches the echoed persistent id to the optimistic local request without duplicating it", () => {
+  resetAdapter();
+  const seeded = {
+    ...initialThreadState,
+    items: [
+      {
+        id: "local-user-1",
+        kind: "user" as const,
+        text: "fix the selected object",
+        images: [],
+        timestamp: 1,
+      },
+    ],
+  };
+
+  const notification: DiligentServerNotification = {
+    method: DILIGENT_SERVER_NOTIFICATION_METHODS.AGENT_EVENT,
+    params: {
+      threadId: "t1",
+      turnId: "turn1",
+      event: {
+        type: "user_message",
+        itemId: "persisted-user-1",
+        message: { role: "user", content: "fix the selected object", timestamp: 2 },
+      },
+    },
+  };
+  const next = reduceServerNotification(seeded, notification, [notification.params.event]);
+
+  const users = next.items.filter((item) => item.kind === "user");
+  expect(users).toHaveLength(1);
+  expect(users[0]?.id).toBe("local-user-1");
+  expect(users[0]?.kind === "user" ? users[0].messageId : undefined).toBe("persisted-user-1");
 });
 
 test("message_discarded removes visible assistant draft for retry", () => {
@@ -974,6 +1007,7 @@ test("steering_injected prefers event text and preserves event images", () => {
         type: "steering_injected",
         messageCount: 1,
         steerIds: ["s1"],
+        messageIds: ["persisted-steer-1"],
         messages: [
           {
             role: "user",
@@ -996,6 +1030,7 @@ test("steering_injected prefers event text and preserves event images", () => {
   const next = reduceServerNotification(startState, notification, [notification.params.event]);
   const injectedUsers = next.items.filter((item) => item.kind === "user");
   expect(injectedUsers).toHaveLength(1);
+  expect(injectedUsers[0]?.kind === "user" ? injectedUsers[0].messageId : undefined).toBe("persisted-steer-1");
   expect(injectedUsers[0] && injectedUsers[0].kind === "user" ? injectedUsers[0].text : "").toBe(
     "change approach (normalized)",
   );
@@ -1212,6 +1247,8 @@ test("hydrateFromThreadRead restores user images from local_image blocks", () =>
 
   const user = hydrated.items.find((item) => item.kind === "user");
   expect(user && user.kind === "user" ? user.text : "").toBe("What is in this screenshot?");
+  expect(user && user.kind === "user" ? user.messageId : undefined).toBe("u1");
+  expect(user?.id).not.toBe("u1");
   expect(user && user.kind === "user" ? user.images : []).toEqual([
     { url: `${WEB_IMAGE_ROUTE_PREFIX}thread-1/shot.png`, fileName: "shot.png", mediaType: "image/png" },
   ]);
@@ -1372,6 +1409,8 @@ test("hydrateFromThreadRead keeps assistant text when snapshot has message_end o
   const assistant = hydrated.items.find((item) => item.kind === "assistant");
   expect(assistant).toBeDefined();
   expect(assistant && assistant.kind === "assistant" ? assistant.text : "").toBe("assistant from snapshot");
+  expect(assistant && assistant.kind === "assistant" ? assistant.messageId : undefined).toBe("a-1");
+  expect(assistant && assistant.kind === "assistant" ? assistant.isStreaming : undefined).toBe(false);
   expect(assistant && assistant.kind === "assistant" ? assistant.thinkingDone : false).toBe(true);
   expect(assistant && assistant.kind === "assistant" ? assistant.contentBlocks : []).toEqual([
     { type: "text", text: "assistant from snapshot" },

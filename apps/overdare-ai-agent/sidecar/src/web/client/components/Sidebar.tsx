@@ -73,7 +73,7 @@ function SidebarImpl({
                       : "bg-bg-sunken hover:bg-surface-light"
                 }`}
               >
-                <div className={`flex items-center gap-2 ${onDeleteThread ? "pr-7" : ""}`}>
+                <div className="flex items-center gap-2 pr-5">
                   {needsAttention ? (
                     <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-attention" title="Needs attention" />
                   ) : null}
@@ -86,19 +86,17 @@ function SidebarImpl({
                 </div>
               </button>
               {onDeleteThread ? (
-                <div className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-0.5 opacity-100 transition sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
-                  <button
-                    type="button"
-                    aria-label="Delete conversation"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onDeleteThread(thread.id);
-                    }}
-                    className="rounded-md p-1 text-muted transition hover:bg-surface-light hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" strokeWidth={1.8} aria-hidden="true" />
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  aria-label="Delete conversation"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDeleteThread(thread.id);
+                  }}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-0.5 text-muted opacity-0 transition hover:text-danger focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent group-hover:opacity-100"
+                >
+                  <Trash2 className="h-3.5 w-3.5" strokeWidth={1.8} aria-hidden="true" />
+                </button>
               ) : null}
             </div>
           );

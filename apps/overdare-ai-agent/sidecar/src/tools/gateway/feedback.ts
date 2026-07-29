@@ -1,7 +1,19 @@
-// @summary Submits explicit user feedback to the OVERDARE gateway with account and session correlation
+// @summary Submits an authenticated message report to the OVERDARE gateway
 
 import type { FeedbackReportInput, FeedbackReportResponse } from "../../web/shared/feedback-protocol";
 import { resolveEndpoint, resolveToken } from "./shared";
+
+export class FeedbackGatewayError extends Error {
+  readonly code = -32000;
+
+  constructor(
+    message: string,
+    readonly data: { httpStatus: number },
+  ) {
+    super(message);
+    this.name = "FeedbackGatewayError";
+  }
+}
 
 export async function postUserFeedback(report: FeedbackReportInput): Promise<FeedbackReportResponse> {
   const token = await resolveToken();
@@ -16,28 +28,16 @@ export async function postUserFeedback(report: FeedbackReportInput): Promise<Fee
       Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({
+      client_report_id: report.clientReportId,
       category: report.category,
       ...(report.description !== undefined ? { description: report.description } : {}),
-      account_id: report.accountId,
       session_id: report.sessionId,
-      ...(report.messageId ? { message_id: report.messageId } : {}),
-      occurred_at: report.occurredAt,
-      os: report.os,
-      os_version: report.osVersion,
-      ...(report.studioVersion ? { studio_version: report.studioVersion } : {}),
-      ...(report.agentVersion ? { agent_version: report.agentVersion } : {}),
-      ...(report.cpu ? { cpu: report.cpu } : {}),
-      ...(report.gpu ? { gpu: report.gpu } : {}),
-      ...(report.ram ? { ram: report.ram } : {}),
-      ...(report.worldId ? { world_id: report.worldId } : {}),
-      ...(report.projectId ? { project_id: report.projectId } : {}),
-      ...(report.agentModel ? { agent_model: report.agentModel } : {}),
-      ...(report.locale ? { locale: report.locale } : {}),
+      message_id: report.messageId,
     }),
   });
 
   if (!response.ok) {
-    throw new Error(`Feedback report failed with HTTP ${response.status}`);
+    throw new FeedbackGatewayError("Feedback report failed", { httpStatus: response.status });
   }
 
   const payload = (await response.json()) as { report_id?: unknown; reported_at?: unknown };

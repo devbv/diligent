@@ -291,6 +291,7 @@ export const AgentEventSchema = z.union([
     messageCount: z.number().int().nonnegative(),
     messages: z.array(MessageSchema),
     steerIds: z.array(z.string()).optional(),
+    messageIds: z.array(z.string()).optional(),
   }),
   // Collab — sub-agent orchestration events (3 pairs of begin/end)
   z.object({

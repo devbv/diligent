@@ -18,7 +18,6 @@ import {
 import { createRouterEndpoint } from "./router-endpoint";
 import { createSidecarToken, type StudioRegistration, startStudioRegistration } from "./studio-registry";
 import { createStudioBundledToolProviders } from "./tools";
-import { collectFeedbackEnvironment } from "./tools/analytics";
 import { type ConsentService, createGatewayConsentService } from "./tools/gateway/consent";
 import { resolveStudioHost, resolveStudioPort } from "./tools/studiorpc/config";
 import { createWebServer, enableProcessLogFile, parseArgs } from "./web/server";
@@ -162,7 +161,6 @@ export async function startStudioServer(argv: string[] = process.argv.slice(2)):
       // UI-only development has no consent backend or gateway transmission.
       consentBackend: consentMode.consentBackend,
       feedbackBackend: createFeedbackBackend(),
-      feedbackEnvironment: collectFeedbackEnvironment(),
       bundledToolProviders: createStudioBundledToolProviders({
         cwd,
         studioRpcPort: parseEnvPort(process.env.STUDIO_PORT),

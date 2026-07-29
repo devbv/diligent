@@ -1,4 +1,4 @@
-// @summary DOM interaction tests for response-level feedback reporting
+// @summary DOM interaction tests for request and response feedback reporting
 
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
@@ -9,6 +9,8 @@ import { afterAll, expect, test } from "bun:test";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { FeedbackReportModal } from "../../../../src/web/client/components/FeedbackReportModal";
+import { MessageActions } from "../../../../src/web/client/components/MessageActions";
+import { RpcRequestError } from "../../../../src/web/client/lib/rpc-client";
 
 afterAll(async () => {
   await new Promise((resolve) => setTimeout(resolve, 0));
@@ -22,15 +24,18 @@ function setTextareaValue(textarea: HTMLTextAreaElement, value: string): void {
   textarea.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
+function findButton(label: string): HTMLButtonElement | undefined {
+  return Array.from(document.querySelectorAll("button")).find((button) => button.textContent === label);
+}
+
 const TARGET = {
-  messageId: "item:assistant-1:7",
+  kind: "response" as const,
+  messageId: "persistent-assistant-id",
   preview: "First response line\nSecond response line",
-  occurredAt: "2026-07-24T08:00:00.000Z",
-  agentModel: "openai/gpt-5",
 };
 
-test("requires a category and submits the trimmed optional description", async () => {
-  const submissions: Array<{ category: string; description?: string }> = [];
+test("requires one of three categories and submits a trimmed optional description", async () => {
+  const submissions: Array<{ category: string; description?: string; clientReportId: string }> = [];
   const rootElement = document.createElement("div");
   document.body.appendChild(rootElement);
   const root = createRoot(rootElement);
@@ -38,8 +43,6 @@ test("requires a category and submits the trimmed optional description", async (
   await act(async () => {
     root.render(
       createElement(FeedbackReportModal, {
-        sessionId: "session-123",
-        accountId: "account-456",
         target: TARGET,
         onSubmit: async (submission) => {
           submissions.push(submission);
@@ -49,10 +52,10 @@ test("requires a category and submits the trimmed optional description", async (
     );
   });
 
-  const submit = Array.from(document.querySelectorAll("button")).find((button) => button.textContent === "Report");
+  const submit = findButton("Submit");
   const textarea = document.querySelector<HTMLTextAreaElement>("#feedback-report-description");
-  const category = document.querySelector<HTMLInputElement>('input[name="feedback-category"][value="wrong_result"]');
-  expect(submit).toBeDefined();
+  const category = document.querySelector<HTMLInputElement>('input[name="feedback-category"][value="error"]');
+  expect(document.querySelectorAll('input[name="feedback-category"]')).toHaveLength(3);
   expect(submit?.disabled).toBe(true);
   expect(textarea).not.toBeNull();
   expect(category).not.toBeNull();
@@ -67,18 +70,65 @@ test("requires a category and submits the trimmed optional description", async (
     submit?.click();
   });
 
-  expect(submissions).toEqual([
-    {
-      category: "wrong_result",
-      description: "The response ignored my selected object.",
-    },
-  ]);
+  expect(submissions).toHaveLength(1);
+  expect(submissions[0]).toMatchObject({
+    category: "error",
+    description: "The response ignored my selected object.",
+  });
+  expect(submissions[0]?.clientReportId).toMatch(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+  );
 
   await act(async () => root.unmount());
   rootElement.remove();
 });
 
-test("keeps category and description for retry when submission fails", async () => {
+test("submits with a UUID v4 fallback when crypto.randomUUID is unavailable", async () => {
+  const originalCrypto = Object.getOwnPropertyDescriptor(globalThis, "crypto");
+  Object.defineProperty(globalThis, "crypto", {
+    configurable: true,
+    value: {
+      getRandomValues(bytes: Uint8Array) {
+        for (let index = 0; index < bytes.length; index += 1) bytes[index] = index;
+        return bytes;
+      },
+    },
+  });
+
+  const submissions: Array<{ clientReportId: string }> = [];
+  const rootElement = document.createElement("div");
+  document.body.appendChild(rootElement);
+  const root = createRoot(rootElement);
+
+  try {
+    await act(async () => {
+      root.render(
+        createElement(FeedbackReportModal, {
+          target: TARGET,
+          onSubmit: async (submission) => {
+            submissions.push(submission);
+          },
+          onCancel: () => {},
+        }),
+      );
+    });
+
+    await act(async () => {
+      document.querySelector<HTMLInputElement>('input[name="feedback-category"][value="etc"]')?.click();
+      findButton("Submit")?.click();
+    });
+
+    expect(submissions).toEqual([{ category: "etc", clientReportId: "00010203-0405-4607-8809-0a0b0c0d0e0f" }]);
+  } finally {
+    await act(async () => root.unmount());
+    rootElement.remove();
+    if (originalCrypto) Object.defineProperty(globalThis, "crypto", originalCrypto);
+    else Reflect.deleteProperty(globalThis, "crypto");
+  }
+});
+
+test("keeps input and the same client report id when retrying after failure", async () => {
+  const submissions: Array<{ clientReportId: string }> = [];
   const rootElement = document.createElement("div");
   document.body.appendChild(rootElement);
   const root = createRoot(rootElement);
@@ -86,11 +136,10 @@ test("keeps category and description for retry when submission fails", async () 
   await act(async () => {
     root.render(
       createElement(FeedbackReportModal, {
-        sessionId: "session-123",
-        accountId: "account-456",
         target: TARGET,
-        onSubmit: async () => {
-          throw new Error("Gateway unavailable");
+        onSubmit: async (submission) => {
+          submissions.push(submission);
+          if (submissions.length === 1) throw new Error("network failed");
         },
         onCancel: () => {},
       }),
@@ -98,20 +147,52 @@ test("keeps category and description for retry when submission fails", async () 
   });
 
   const textarea = document.querySelector<HTMLTextAreaElement>("#feedback-report-description");
-  const category = document.querySelector<HTMLInputElement>('input[name="feedback-category"][value="interrupted"]');
+  const category = document.querySelector<HTMLInputElement>('input[name="feedback-category"][value="stalled"]');
   await act(async () => {
     category!.click();
-    setTextareaValue(textarea!, "Please investigate this conversation.");
-  });
-  const submit = Array.from(document.querySelectorAll("button")).find((button) => button.textContent === "Report");
-  await act(async () => {
-    submit?.click();
+    setTextareaValue(textarea!, "Please investigate this response.");
   });
 
-  expect(document.body.textContent).toContain("Gateway unavailable");
-  expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+  await act(async () => {
+    findButton("Submit")?.click();
+  });
+  expect(document.body.textContent).toContain("Couldn't send your report. Please try again in a moment.");
   expect(category?.checked).toBe(true);
-  expect(textarea?.value).toBe("Please investigate this conversation.");
+  expect(textarea?.value).toBe("Please investigate this response.");
+
+  await act(async () => {
+    findButton("Submit")?.click();
+  });
+  expect(submissions).toHaveLength(2);
+  expect(submissions[1]?.clientReportId).toBe(submissions[0]?.clientReportId);
+
+  await act(async () => root.unmount());
+  rootElement.remove();
+});
+
+test("shows a dedicated rate-limit message from structured RPC error data", async () => {
+  const rootElement = document.createElement("div");
+  document.body.appendChild(rootElement);
+  const root = createRoot(rootElement);
+
+  await act(async () => {
+    root.render(
+      createElement(FeedbackReportModal, {
+        target: TARGET,
+        onSubmit: async () => {
+          throw new RpcRequestError(-32000, "gateway rejected", { httpStatus: 429 });
+        },
+        onCancel: () => {},
+      }),
+    );
+  });
+
+  await act(async () => {
+    document.querySelector<HTMLInputElement>('input[name="feedback-category"][value="etc"]')?.click();
+    findButton("Submit")?.click();
+  });
+
+  expect(document.body.textContent).toContain("Too many reports. Please try again later.");
 
   await act(async () => root.unmount());
   rootElement.remove();
@@ -128,8 +209,6 @@ test("blocks duplicate submission and closing while the report is in flight", as
   await act(async () => {
     root.render(
       createElement(FeedbackReportModal, {
-        sessionId: "session-123",
-        accountId: "account-456",
         target: TARGET,
         onSubmit: async () => {
           submissionCount += 1;
@@ -144,13 +223,12 @@ test("blocks duplicate submission and closing while the report is in flight", as
     );
   });
 
-  const category = document.querySelector<HTMLInputElement>('input[name="feedback-category"][value="etc"]');
   await act(async () => {
-    category!.click();
+    document.querySelector<HTMLInputElement>('input[name="feedback-category"][value="etc"]')?.click();
   });
-  const submit = Array.from(document.querySelectorAll("button")).find((button) => button.textContent === "Report");
-  const cancel = Array.from(document.querySelectorAll("button")).find((button) => button.textContent === "Cancel");
 
+  const submit = findButton("Submit");
+  const cancel = findButton("Cancel");
   await act(async () => {
     submit?.click();
     submit?.click();
@@ -166,6 +244,45 @@ test("blocks duplicate submission and closing while the report is in flight", as
   await act(async () => {
     resolveSubmission?.();
   });
+  await act(async () => root.unmount());
+  rootElement.remove();
+});
+
+test("copies the message text and swaps the copy icon to a check", async () => {
+  let copiedText = "";
+  Object.defineProperty(window, "isSecureContext", { value: true, configurable: true });
+  Object.defineProperty(navigator, "clipboard", {
+    value: {
+      writeText: async (value: string) => {
+        copiedText = value;
+      },
+    },
+    configurable: true,
+  });
+
+  const rootElement = document.createElement("div");
+  document.body.appendChild(rootElement);
+  const root = createRoot(rootElement);
+
+  await act(async () => {
+    root.render(
+      createElement(MessageActions, {
+        targetKind: "request",
+        copyText: "Fix the selected object.",
+        onReport: () => {},
+        alwaysVisible: true,
+      }),
+    );
+  });
+
+  const copy = rootElement.querySelector<HTMLButtonElement>('button[title="Copy request"]');
+  await act(async () => {
+    copy?.click();
+  });
+
+  expect(copiedText).toBe("Fix the selected object.");
+  expect(rootElement.querySelector('[data-icon="check"]')).not.toBeNull();
+
   await act(async () => root.unmount());
   rootElement.remove();
 });

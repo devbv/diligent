@@ -20,12 +20,14 @@ export function MessageListRowContent({
   row,
   threadCwd,
   onLoadChildThread,
-  onReportAssistant,
+  onReportMessage,
+  lastCompletedResponseId,
 }: {
   row: VirtualMessageRow;
   threadCwd?: string;
   onLoadChildThread?: (childThreadId: string) => Promise<ThreadReadResponse>;
-  onReportAssistant?: (item: Extract<RenderItem, { kind: "assistant" }>) => void;
+  onReportMessage?: (item: Extract<RenderItem, { kind: "user" | "assistant" }>) => void;
+  lastCompletedResponseId?: string;
 }) {
   switch (row.kind) {
     case "collab":
@@ -43,13 +45,14 @@ export function MessageListRowContent({
         case "tool":
           return <ToolBlock item={row.item} threadCwd={threadCwd} />;
         case "user":
-          return <UserMessage text={row.item.text} images={row.item.images} contextItems={row.item.contextItems} />;
+          return <UserMessage item={row.item} onReport={onReportMessage} />;
         case "assistant":
           return (
             <AssistantMessage
               item={row.item}
               suppressThinking={row.suppressThinking ?? false}
-              onReport={onReportAssistant}
+              onReport={onReportMessage}
+              alwaysShowActions={row.item.id === lastCompletedResponseId}
             />
           );
       }

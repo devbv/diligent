@@ -31,7 +31,7 @@ function MessageListImpl({
   approvalPrompt,
   questionPrompt,
   onLoadChildThread,
-  onReportAssistant,
+  onReportMessage,
 }: MessageListProps) {
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const pendingAutoscrollFrameRef = useRef<number | null>(null);
@@ -68,6 +68,10 @@ function MessageListImpl({
     [rows.length],
   );
   const shouldUseVirtuoso = typeof window !== "undefined";
+  const lastCompletedResponseId = useMemo(
+    () => items.findLast((item) => item.kind === "assistant" && !item.isStreaming && item.messageId)?.id,
+    [items],
+  );
 
   const setScrollButtonVisible = useCallback((visible: boolean) => {
     if (showScrollBtnRef.current === visible) return;
@@ -138,10 +142,11 @@ function MessageListImpl({
         row={row}
         threadCwd={threadCwd}
         onLoadChildThread={onLoadChildThread}
-        onReportAssistant={onReportAssistant}
+        onReportMessage={onReportMessage}
+        lastCompletedResponseId={lastCompletedResponseId}
       />
     ),
-    [onLoadChildThread, onReportAssistant, threadCwd],
+    [lastCompletedResponseId, onLoadChildThread, onReportMessage, threadCwd],
   );
 
   const measureItemSize = useCallback<SizeFunction>((element, field) => {
@@ -250,7 +255,13 @@ function MessageListImpl({
           <div className="space-y-2">
             {rows.map((row) => (
               <div key={row.key} data-message-list-row={row.key}>
-                <MessageListRowContent row={row} threadCwd={threadCwd} onLoadChildThread={onLoadChildThread} />
+                <MessageListRowContent
+                  row={row}
+                  threadCwd={threadCwd}
+                  onLoadChildThread={onLoadChildThread}
+                  onReportMessage={onReportMessage}
+                  lastCompletedResponseId={lastCompletedResponseId}
+                />
               </div>
             ))}
           </div>

@@ -79,6 +79,7 @@ export type RenderItem =
   | {
       id: string;
       kind: "user";
+      messageId?: string;
       text: string;
       contextItems?: AgentContextItem[];
       images: Array<{ url: string; fileName?: string; mediaType?: string }>;
@@ -87,12 +88,13 @@ export type RenderItem =
   | {
       id: string;
       kind: "assistant";
+      messageId?: string;
       text: string;
       thinking: string;
       contentBlocks: ContentBlock[];
       thinkingDone: boolean;
+      isStreaming?: boolean;
       timestamp: number;
-      model?: AssistantMessage["model"];
       reasoningDurationMs?: number;
       turnDurationMs?: number;
     }
@@ -305,11 +307,12 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent, turnId?: string
           {
             id: renderId,
             kind: "assistant",
+            messageId: event.itemId,
             text: "",
             thinking: "",
             contentBlocks: [],
             thinkingDone: false,
-            model: event.message.model,
+            isStreaming: true,
             timestamp:
               typeof (event as { timestamp?: number }).timestamp === "number"
                 ? (event as { timestamp?: number }).timestamp!
@@ -412,9 +415,10 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent, turnId?: string
           current.kind === "assistant"
             ? {
                 ...current,
+                messageId: event.itemId,
                 thinkingDone: true,
+                isStreaming: false,
                 contentBlocks: event.message.content,
-                model: event.message.model,
                 timestamp:
                   typeof (event as { timestamp?: number }).timestamp === "number"
                     ? (event as { timestamp?: number }).timestamp!
@@ -442,9 +446,16 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent, turnId?: string
           nextState = { ...nextState, pendingSteers: [] };
         }
       }
+      const optimistic = nextState.items.findLast((item) => item.kind === "user" && !item.messageId);
+      if (optimistic) {
+        return updateItem(nextState, optimistic.id, (item) =>
+          item.kind === "user" ? { ...item, messageId: event.itemId } : item,
+        );
+      }
       nextState = withItem(nextState, `remote-user-${event.itemId}`, {
         id: `remote-user-${event.itemId}`,
         kind: "user",
+        messageId: event.itemId,
         text: remainingText,
         contextItems,
         images,
@@ -558,9 +569,11 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent, turnId?: string
           : fallbackFromEvent.slice(0, event.messageCount);
       const newItems: RenderItem[] = drained.map(({ text, images }, i) => {
         const { contextItems, remainingText } = parseContextFromText(text);
+        const messageId = event.messageIds?.[i];
         return {
-          id: `steer-injected-${Date.now()}-${i}`,
+          id: `steer-injected-${messageId ?? `${Date.now()}-${i}`}`,
           kind: "user" as const,
+          ...(messageId ? { messageId } : {}),
           text: remainingText,
           contextItems,
           images,
