@@ -1,5 +1,5 @@
 // @summary Mock tests for OAuth token refresh
-import { afterEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, describe, expect, mock, setSystemTime, test } from "bun:test";
 import { refreshOAuthTokens, shouldRefresh } from "../../../src/auth/chatgpt-oauth/refresh";
 import type { OpenAIOAuthTokens } from "../../../src/auth/types";
 
@@ -34,9 +34,17 @@ describe("shouldRefresh", () => {
   });
 
   test("returns false when token expires exactly 5 minutes from now (boundary)", () => {
-    // expires_at - 5min = now → NOT < now → no refresh yet
-    const tokens = makeTokens(Date.now() + 5 * 60 * 1000);
-    expect(shouldRefresh(tokens)).toBe(false);
+    // expires_at - 5min = now → NOT < now → no refresh yet.
+    // Freeze the clock: the test's Date.now() and the implementation's Date.now() are separate
+    // calls, so without freezing, a millisecond tick between them flips the exact-boundary
+    // comparison and the test fails intermittently (observed on loaded CI runners).
+    const now = 1_700_000_000_000;
+    setSystemTime(new Date(now));
+    try {
+      expect(shouldRefresh(makeTokens(now + 5 * 60 * 1000))).toBe(false);
+    } finally {
+      setSystemTime();
+    }
   });
 
   test("returns true when token expires 4 minutes from now", () => {
