@@ -7,7 +7,9 @@
 // error diagnostics only, never conversation content, user paths, or tokens.
 
 import { homedir } from "node:os";
+import type { LogSink } from "@diligent/logging";
 import * as Sentry from "@sentry/bun";
+import { createSentryLogSink as createSharedSentryLogSink } from "./web/shared/sentry-config";
 
 // DSNs are public identifiers, not secrets — safe to inline (Sentry project: diligent-agent).
 const DEFAULT_DSN = "https://df4934a1d409febff5da85d23ed88b74@o4507586380890112.ingest.us.sentry.io/4511811350560768";
@@ -39,4 +41,13 @@ if (dsn) {
       return JSON.parse(JSON.stringify(event).split(home).join("~")) as typeof event;
     },
   });
+}
+
+/**
+ * Server-side Sentry log sink (turn run errors, persist failures, startup
+ * errors, ...). Implementation and filtering rules are shared with the browser
+ * client in web/shared/sentry-config.ts.
+ */
+export function createSentryLogSink(): LogSink {
+  return createSharedSentryLogSink(Sentry);
 }

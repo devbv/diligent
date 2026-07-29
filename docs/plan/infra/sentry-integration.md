@@ -100,6 +100,22 @@ Not instrumented initially (add when usage justifies):
 4. `build-agent-exe.yml` (test builds) intentionally bakes nothing — test binaries
    must not report to production Sentry.
 
+### Handled-error reporting (sidecar log sink)
+
+The agent loop catches provider/tool/turn errors before they can crash the process, so
+the SDK's global handlers never see them. Instead of sprinkling `captureException` through
+`packages/runtime` (which must stay Sentry-unaware), the sidecar registers a Sentry
+**log sink** (`createSentryLogSink` in `src/sentry.ts`, wired in `src/logging.ts`):
+every server-side `logger.error` — `run_failed` (turn errors via `handleRunError`),
+`persist_entry_failed`, `startup.failed`, `bootstrap.failed`, ... — becomes a Sentry event.
+
+- Excluded: `parent.exited` (normal Studio-close shutdown), `process.uncaught_exception` /
+  `process.unhandled_rejection` (SDK captures natively; sink would double-count).
+- Warn allowlist: `agent_loop_hook_disabled` (silent product degradation).
+- Only structured diagnostics are sent (scope, event, normalized error, session/turn IDs);
+  the free-text log message and `fields` stay local — they may carry content.
+- Issues group by fingerprint `scope + event + error.name`, not message variance.
+
 ## Constraints
 
 - **Consent / privacy — decided**: Sentry telemetry is treated as **operational diagnostics

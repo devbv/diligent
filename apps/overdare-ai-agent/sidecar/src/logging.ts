@@ -1,6 +1,7 @@
 // @summary Configures OVERDARE sidecar structured console and gateway logging destinations.
 
 import { createConsoleSink, createFanoutSink, setDefaultLogSink } from "@diligent/logging";
+import { createSentryLogSink } from "./sentry";
 import {
   type ConsoleSystemErrorForwarderOptions,
   createGatewaySystemLogSink,
@@ -12,5 +13,7 @@ export function configureSidecarLogging(options: ConsoleSystemErrorForwarderOpti
   // Install interception first so the console sink retains the existing local console behavior.
   // Its recursion marker tells the interceptor not to submit the same structured record remotely.
   installConsoleSystemErrorForwarder(options);
-  setDefaultLogSink(createFanoutSink([createConsoleSink(), createGatewaySystemLogSink(options)]));
+  setDefaultLogSink(
+    createFanoutSink([createConsoleSink(), createGatewaySystemLogSink(options), createSentryLogSink()]),
+  );
 }

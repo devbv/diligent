@@ -112,6 +112,7 @@ Current guides:
 - AgentNativeBridge: `docs/guide/agent-native-bridge.md`
 - Product experiments: `docs/guide/experiments.md`
 - Model-backed eval suites: `docs/guide/evals.md`
+- Sentry monitoring: `docs/guide/sentry-monitoring.md`
 
 ## Frontend Protocol Philosophy
 
