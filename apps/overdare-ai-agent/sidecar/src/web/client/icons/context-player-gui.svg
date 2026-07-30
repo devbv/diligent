@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" focusable="false" aria-hidden="true" data-icon="context-player-gui">
+  <rect x="1.25" y="2.25" width="13.5" height="11.5" rx="1.5" stroke="#036FFC" stroke-width="1.5"/>
+  <circle cx="8" cy="6.4" r="1.8" fill="#A3ACB5"/>
+  <path d="M4.8 11.3c.3-1.65 1.45-2.7 3.2-2.7s2.9 1.05 3.2 2.7H4.8Z" fill="#A3ACB5"/>
+</svg>

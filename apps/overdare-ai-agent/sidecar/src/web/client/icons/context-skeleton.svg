@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" focusable="false" aria-hidden="true" data-icon="context-skeleton">
+  <circle cx="8" cy="4" r="3" fill="currentColor"/>
+  <circle cx="6.9" cy="3.7" r=".55" fill="#253038"/>
+  <circle cx="9.1" cy="3.7" r=".55" fill="#253038"/>
+  <path d="M4 8.1h8v6.4H4z" stroke="currentColor" stroke-width="1.4"/>
+  <path d="M4 10.2h8M6.4 8.1v6.4M9.6 8.1v6.4" stroke="currentColor" stroke-width="1.1"/>
+</svg>

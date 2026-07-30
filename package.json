@@ -24,7 +24,7 @@
     "debug-viewer:build": "bun run --cwd packages/debug-viewer build",
     "debug-viewer:start": "bun run --cwd packages/debug-viewer start",
     "debug-viewer:windows-exe": "bun run --cwd packages/debug-viewer build:windows-exe",
-    "overdare-ai-agent:web:test": "bun test ./apps/overdare-ai-agent/sidecar/test/web",
+    "overdare-ai-agent:web:test": "bun test --preload ./apps/overdare-ai-agent/sidecar/test/helpers/svg-react-loader.ts ./apps/overdare-ai-agent/sidecar/test/web",
     "lint": "NO_COLOR=1 FORCE_COLOR=0 bunx biome check AGENTS.md ARCHITECTURE.md README.md biome.json bunfig.toml package.json tsconfig.json .diligent .github apps/overdare-ai-agent packages scripts docs/guide docs/plan docs/review thirdparty/examples thirdparty/terminal-bench",
     "lint:fix": "NO_COLOR=1 FORCE_COLOR=0 bunx biome check --write AGENTS.md ARCHITECTURE.md README.md biome.json bunfig.toml package.json tsconfig.json .diligent .github apps/overdare-ai-agent packages scripts docs/guide docs/plan docs/review thirdparty/examples thirdparty/terminal-bench",
     "build": "bun scripts/build-cli.ts --outfile dist/diligent",

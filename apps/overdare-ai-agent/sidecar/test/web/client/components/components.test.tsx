@@ -734,6 +734,17 @@ test("input dock renders attached context chips", () => {
         { kind: "instance", source: "studiorpc", GUID: "players", ClassType: "Players", Name: "Players" },
         { kind: "instance", source: "studiorpc", GUID: "gui", ClassType: "PlayerGui", Name: "PlayerGui" },
         { kind: "instance", source: "studiorpc", GUID: "script", ClassType: "ModuleScript", Name: "Script" },
+        {
+          kind: "instance",
+          source: "studiorpc",
+          GUID: "atmosphere",
+          ClassType: "Atmosphere",
+          Name: "Atmosphere",
+        },
+        { kind: "instance", source: "studiorpc", GUID: "label", ClassType: "Label", Name: "Label" },
+        { kind: "instance", source: "studiorpc", GUID: "skeleton", ClassType: "Skeleton", Name: "Skeleton" },
+        { kind: "instance", source: "studiorpc", GUID: "vfx", ClassType: "VFXPreset", Name: "VFXPreset" },
+        { kind: "instance", source: "studiorpc", GUID: "part", ClassType: "Part", Name: "Part" },
         { kind: "file", source: "vscode", uri: "file:///workspace/README.md", Name: "README.md" },
         {
           kind: "file",
@@ -762,8 +773,27 @@ test("input dock renders attached context chips", () => {
   expect(html).toContain('data-context-icon="players"');
   expect(html).toContain('data-context-icon="player-gui"');
   expect(html).toContain('data-context-icon="script"');
+  expect(html).toContain('data-context-icon="atmosphere"');
+  expect(html).toContain('data-context-icon="label"');
+  expect(html).toContain('data-context-icon="skeleton"');
+  expect(html).toContain('data-context-icon="vfx-preset"');
+  expect(html).toContain('data-context-icon="instance"');
   expect(html).toContain('data-context-icon="file"');
   expect(html).toContain('data-context-icon="file-selection"');
+  for (const iconName of [
+    "context-players",
+    "context-player-gui",
+    "context-script",
+    "context-atmosphere",
+    "context-label",
+    "context-skeleton",
+    "context-vfx-preset",
+    "context-instance",
+    "context-file",
+    "context-file-selection",
+  ]) {
+    expect(html).toContain(`data-icon="${iconName}"`);
+  }
   expect(html).toContain("mock.ts (typescript, lines 9–17)");
   expect(html).toContain("h-5");
   expect(html).toContain("gap-1");
