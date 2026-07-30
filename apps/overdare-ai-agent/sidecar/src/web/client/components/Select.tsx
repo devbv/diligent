@@ -93,7 +93,7 @@ export function Select({
   }, [isOpen]);
 
   return (
-    <div ref={rootRef} className={cn("relative", className)}>
+    <div ref={rootRef} className={cn("relative", triggerVariant === "composer" && "flex h-5", className)}>
       <button
         type="button"
         aria-label={ariaLabel}
@@ -108,8 +108,12 @@ export function Select({
           triggerClassName,
         )}
       >
-        <span className="min-w-0 truncate text-text">{selectedOption?.label ?? value}</span>
-        <span className={cn("text-2xs leading-none opacity-70 transition-transform", isOpen && "rotate-180")}>▼</span>
+        <span className={cn("min-w-0 truncate text-text", triggerVariant === "composer" && "!text-[#DCE2E8]")}>
+          {selectedOption?.label ?? value}
+        </span>
+        <span className={cn("text-[8px] leading-none text-[#88929C] transition-transform", isOpen && "rotate-180")}>
+          ▼
+        </span>
       </button>
 
       {isOpen ? (
@@ -126,7 +130,9 @@ export function Select({
             {groupedOptions.map((group) => (
               <div key={group.key}>
                 {group.label ? (
-                  <div className="px-2 pb-1 pt-1 text-2xs uppercase tracking-wide text-muted/80">{group.label}</div>
+                  <div className="whitespace-nowrap px-2 pb-1 pt-1 text-2xs uppercase tracking-wide text-muted/80">
+                    {group.label}
+                  </div>
                 ) : null}
                 {group.options.map((option) => (
                   <button
