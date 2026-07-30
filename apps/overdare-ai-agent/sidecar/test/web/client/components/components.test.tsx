@@ -45,6 +45,7 @@ import { ToolActivityGroup } from "../../../../src/web/client/components/ToolAct
 import { ToolBlock } from "../../../../src/web/client/components/ToolBlock";
 import { ToolSettingsModal } from "../../../../src/web/client/components/ToolSettingsModal";
 import { UserMessage } from "../../../../src/web/client/components/UserMessage";
+import { getAgentContextItemVisualKind } from "../../../../src/web/client/lib/agent-native-bridge";
 import { normalizeImageFileName } from "../../../../src/web/client/lib/app-utils";
 
 function createClipboardFile(name: string, type: string): File {
@@ -730,8 +731,29 @@ test("input dock renders attached context chips", () => {
       supportsThinking={false}
       pendingImages={[]}
       contextItems={[
-        { kind: "instance", source: "studiorpc", GUID: "guid-1", ClassType: "Part", Name: "Spawn_A" },
-        { kind: "file", source: "vscode", uri: "file:///workspace/mock.ts", Name: "mock.ts", languageId: "typescript" },
+        { kind: "instance", source: "studiorpc", GUID: "players", ClassType: "Players", Name: "Players" },
+        { kind: "instance", source: "studiorpc", GUID: "gui", ClassType: "PlayerGui", Name: "PlayerGui" },
+        { kind: "instance", source: "studiorpc", GUID: "script", ClassType: "ModuleScript", Name: "Script" },
+        {
+          kind: "instance",
+          source: "studiorpc",
+          GUID: "atmosphere",
+          ClassType: "Atmosphere",
+          Name: "Atmosphere",
+        },
+        { kind: "instance", source: "studiorpc", GUID: "label", ClassType: "Label", Name: "Label" },
+        { kind: "instance", source: "studiorpc", GUID: "skeleton", ClassType: "Skeleton", Name: "Skeleton" },
+        { kind: "instance", source: "studiorpc", GUID: "vfx", ClassType: "VFXPreset", Name: "VFXPreset" },
+        { kind: "instance", source: "studiorpc", GUID: "part", ClassType: "Part", Name: "Part" },
+        { kind: "file", source: "vscode", uri: "file:///workspace/README.md", Name: "README.md" },
+        {
+          kind: "file",
+          source: "vscode",
+          uri: "file:///workspace/mock.ts",
+          Name: "mock.ts",
+          languageId: "typescript",
+          selection: { startLine: 8, startCharacter: 0, endLine: 16, endCharacter: 4 },
+        },
       ]}
       isUploadingImages={false}
       onAddImages={() => {}}
@@ -742,18 +764,136 @@ test("input dock renders attached context chips", () => {
     />,
   );
 
-  expect(html).toContain("Spawn_A (Part)");
-  expect(html).toContain("mock.ts (typescript)");
-  expect(html).toContain("Clear all");
+  expect(html).toContain('<section aria-label="Attached context"');
+  expect(html).toContain('<span class="truncate">Players</span>');
+  expect(html).toContain('<span class="truncate">PlayerGui</span>');
+  expect(html).toContain('<span class="truncate">Script</span>');
+  expect(html).toContain('<span class="truncate">README.md</span>');
+  expect(html).toContain('<span class="truncate">mock.ts</span>');
+  expect(html).toContain('data-context-icon="players"');
+  expect(html).toContain('data-context-icon="player-gui"');
+  expect(html).toContain('data-context-icon="script"');
+  expect(html).toContain('data-context-icon="atmosphere"');
+  expect(html).toContain('data-context-icon="label"');
+  expect(html).toContain('data-context-icon="skeleton"');
+  expect(html).toContain('data-context-icon="vfx-preset"');
+  expect(html).toContain('data-context-icon="instance"');
+  expect(html).toContain('data-context-icon="file"');
+  expect(html).toContain('data-context-icon="file-selection"');
+  for (const iconName of [
+    "context-players",
+    "context-player-gui",
+    "context-script",
+    "context-atmosphere",
+    "context-label",
+    "context-skeleton",
+    "context-vfx-preset",
+    "context-instance",
+    "context-file",
+    "context-file-selection",
+  ]) {
+    expect(html).toContain(`data-icon="${iconName}"`);
+  }
+  expect(html).toContain("mock.ts (typescript, lines 9–17)");
+  expect(html).toContain("h-5");
+  expect(html).toContain("gap-1");
+  expect(html).toContain("rounded-[2px]");
+  expect(html).toContain("bg-[#353C44]");
+  expect(html).toContain("px-1");
+  expect(html).toContain("py-0.5");
+  expect(html).toContain("max-h-24");
+  expect(html).toContain("flex-wrap");
+  expect(html).toContain("overflow-y-auto");
+  expect(html).not.toContain("overflow-x-auto");
+  expect(html).not.toContain("rounded-full");
+  expect(html).not.toContain("Clear all");
 });
 
-test("input dock shows a compact non-default mode badge", () => {
-  expect(getModeLabel("default")).toBe("default");
+test("context chip icon kind covers known Studio classes and VS Code variants", () => {
+  expect(
+    getAgentContextItemVisualKind({
+      kind: "instance",
+      source: "studiorpc",
+      GUID: "players",
+      ClassType: "Players",
+      Name: "Players",
+    }),
+  ).toBe("players");
+  expect(
+    getAgentContextItemVisualKind({
+      kind: "instance",
+      source: "studiorpc",
+      GUID: "gui",
+      ClassType: "PlayerGui",
+      Name: "PlayerGui",
+    }),
+  ).toBe("player-gui");
+  for (const ClassType of ["Script", "LocalScript", "ModuleScript"]) {
+    expect(
+      getAgentContextItemVisualKind({
+        kind: "instance",
+        source: "studiorpc",
+        GUID: ClassType,
+        ClassType,
+        Name: ClassType,
+      }),
+    ).toBe("script");
+  }
+  for (const [ClassType, expected] of [
+    ["Atmosphere", "atmosphere"],
+    ["Label", "label"],
+    ["Skeleton", "skeleton"],
+    ["VFXPreset", "vfx-preset"],
+  ] as const) {
+    expect(
+      getAgentContextItemVisualKind({
+        kind: "instance",
+        source: "studiorpc",
+        GUID: ClassType,
+        ClassType,
+        Name: ClassType,
+      }),
+    ).toBe(expected);
+  }
+  expect(
+    getAgentContextItemVisualKind({
+      kind: "instance",
+      source: "studiorpc",
+      GUID: "part",
+      ClassType: "Part",
+      Name: "Spawn",
+    }),
+  ).toBe("instance");
+  expect(
+    getAgentContextItemVisualKind({
+      kind: "file",
+      source: "vscode",
+      uri: "file:///workspace/readme.md",
+      Name: "readme.md",
+    }),
+  ).toBe("file");
+  expect(
+    getAgentContextItemVisualKind({
+      kind: "file",
+      source: "vscode",
+      uri: "file:///workspace/app.ts",
+      Name: "app.ts",
+      selection: { startLine: 0, startCharacter: 0, endLine: 4, endCharacter: 0 },
+    }),
+  ).toBe("file-selection");
+});
+
+test("input dock shows the designed toolbar tag for each non-default mode", () => {
+  expect(getModeLabel("default")).toBe("Default");
   expect(getModeBadgeLabel("default")).toBeNull();
   expect(getModeBadgeLabel("plan")).toBe("Plan");
   expect(getModeBadgeLabel("execute")).toBe("Execute");
-  expect(getModeBadgeClasses("plan")).toContain("emerald");
-  expect(getModeBadgeClasses("execute")).toContain("accent");
+  expect(getModeBadgeClasses("plan")).toContain("w-[29px]");
+  expect(getModeBadgeClasses("plan")).toContain("bg-[#2A3038]");
+  expect(getModeBadgeClasses("plan")).toContain("text-[#88929C]");
+  expect(getModeBadgeClasses("execute")).toContain("w-[45px]");
+  expect(getModeBadgeClasses("execute")).toContain("bg-[rgba(49,145,255,0.24)]");
+  expect(getModeBadgeClasses("execute")).toContain("text-[#64AFFF]");
 
   const defaultHtml = renderToStaticMarkup(
     <InputDock
@@ -810,7 +950,16 @@ test("input dock shows a compact non-default mode badge", () => {
       effort="medium"
       onEffortChange={() => {}}
       currentModel="gpt-5"
-      availableModels={[]}
+      availableModels={[
+        {
+          id: "gpt-5",
+          provider: "openai",
+          contextWindow: 300000,
+          maxOutputTokens: 64000,
+          supportsVision: false,
+          supportsThinking: false,
+        },
+      ]}
       onModelChange={() => {}}
       usage={{ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalCost: 0 }}
       currentContextTokens={0}
@@ -830,9 +979,58 @@ test("input dock shows a compact non-default mode badge", () => {
   );
 
   expect(planHtml).toContain('title="Current mode: Plan"');
-  expect(planHtml).toContain("border-emerald-400/30");
-  expect(planHtml).toContain("text-emerald-300");
+  expect(planHtml).toContain("h-5");
+  expect(planHtml).toContain("rounded");
+  expect(planHtml).toContain("bg-[#2A3038]");
+  expect(planHtml).toContain("text-[#88929C]");
+  expect(planHtml).not.toContain("absolute right-3 top-2");
   expect(planHtml).toContain(">Plan</div>");
+  expect(planHtml.indexOf('aria-label="Open composer options"')).toBeLessThan(
+    planHtml.indexOf('title="Current mode: Plan"'),
+  );
+  expect(planHtml.indexOf('title="Current mode: Plan"')).toBeLessThan(planHtml.indexOf('aria-label="Model selector"'));
+
+  const executeHtml = renderToStaticMarkup(
+    <InputDock
+      input=""
+      onInputChange={() => {}}
+      onSend={() => {}}
+      onSteer={() => {}}
+      onInterrupt={() => {}}
+      onCompactionClick={() => {}}
+      isCompacting={false}
+      canSend={true}
+      canSteer={false}
+      threadStatus="idle"
+      mode="execute"
+      onModeChange={() => {}}
+      effort="medium"
+      onEffortChange={() => {}}
+      currentModel="gpt-5"
+      availableModels={[]}
+      onModelChange={() => {}}
+      usage={{ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalCost: 0 }}
+      currentContextTokens={0}
+      contextWindow={0}
+      hasProvider={true}
+      supportsVision={false}
+      supportsThinking={false}
+      pendingImages={[]}
+      contextItems={[]}
+      isUploadingImages={false}
+      onAddImages={() => {}}
+      onRemoveImage={() => {}}
+      onRemoveContextItem={() => {}}
+      onClearContextItems={() => {}}
+      slashCommands={[]}
+    />,
+  );
+
+  expect(executeHtml).toContain('title="Current mode: Execute"');
+  expect(executeHtml).toContain("bg-[rgba(49,145,255,0.24)]");
+  expect(executeHtml).toContain("text-[#64AFFF]");
+  expect(executeHtml).not.toContain("absolute right-3 top-2");
+  expect(executeHtml).toContain(">Execute</div>");
 });
 
 test("input dock only blocks submission while a prompt is pending", () => {
@@ -878,7 +1076,7 @@ test("input dock only blocks submission while a prompt is pending", () => {
   expect(html).toContain('<button type="button" aria-label="Queue message" disabled=""');
 });
 
-test("input dock shows the agent-logo queue placeholder while busy with empty input", () => {
+test("input dock keeps the agent logo before the placeholder while the input is empty", () => {
   const render = (input: string, threadStatus: "idle" | "busy") =>
     renderToStaticMarkup(
       <InputDock
@@ -928,6 +1126,7 @@ test("input dock shows the agent-logo queue placeholder while busy with empty in
   expect(idleHtml).not.toContain("Queue a message…");
   expect(idleHtml).toContain("Ask anything…");
   expect(idleHtml).toContain('data-icon="agent-logo"');
+  expect(idleHtml).toContain("items-center gap-0.5 text-white");
   expect(idleHtml).not.toContain("placeholder=");
 });
 
@@ -969,19 +1168,21 @@ test("input dock composer textarea does not inherit field border styles", () => 
   );
 
   const textarea = html.match(/<textarea[^>]*aria-label="Queue input"[^>]*>/)?.[0] ?? "";
-  expect(html).toContain("relative rounded-sm border bg-surface-composer px-4 py-3");
-  expect(textarea).toContain("min-h-[52px]");
-  expect(textarea).toContain("rounded-md");
-  expect(textarea).toContain("px-1");
-  expect(textarea).toContain("py-2");
+  expect(html).toContain(
+    "relative flex min-h-[100px] flex-col justify-between gap-2 rounded-sm border bg-surface-composer px-2 py-2.5",
+  );
+  expect(textarea).toContain("min-h-10");
+  expect(textarea).toContain("block");
+  expect(textarea).toContain("rounded-none");
+  expect(textarea).toContain("px-0");
+  expect(textarea).toContain("py-0");
   expect(textarea).toContain("border-0");
   expect(textarea).toContain("bg-transparent");
   expect(textarea).not.toContain("!px-1");
   expect(textarea).not.toContain("px-3");
-  expect(textarea).not.toContain("py-0");
   expect(textarea).not.toContain("border-border");
   expect(textarea).not.toContain("bg-surface-dark");
-  expect(html).toContain("border-white/10");
+  expect(html).toContain("border-white/[0.12]");
 });
 
 test("input dock composer selectors do not inherit bordered select trigger styles", () => {
@@ -1036,8 +1237,19 @@ test("input dock composer selectors do not inherit bordered select trigger style
 
   expect(modelTrigger).toContain("bg-black");
   expect(effortTrigger).toContain("bg-black");
-  expect(html).toContain("w-[180px]");
-  expect(html).toContain("w-[90px]");
+  expect(html).toContain("w-[100px]");
+  expect(html).toContain("w-[71px]");
+  expect(modelTrigger).toContain("h-5");
+  expect(effortTrigger).toContain("h-5");
+  expect(html).toContain('class="relative flex h-5 w-[100px]"');
+  expect(html).toContain('class="relative flex h-5 w-[71px]"');
+  expect(html).toContain("w-[45px]");
+  const plusTrigger = html.match(/<button[^>]*aria-label="Open composer options"[^>]*>/)?.[0] ?? "";
+  expect(plusTrigger).toContain("h-5");
+  expect(plusTrigger).toContain("w-5");
+  expect(plusTrigger).toContain("bg-[#2A3038]");
+  expect(plusTrigger).toContain("text-[#88929C]");
+  expect(plusTrigger).not.toContain("bg-[#3191FF]");
   expect(modelTrigger).not.toContain("rounded-md");
   expect(effortTrigger).not.toContain("rounded-md");
   expect(modelTrigger).not.toContain("border-border");
@@ -1046,15 +1258,33 @@ test("input dock composer selectors do not inherit bordered select trigger style
   expect(effortTrigger).not.toContain("bg-surface-dark");
 });
 
-test("user message renders context chips above text", () => {
+test("user message renders images before compact context chips and text", () => {
   const html = renderToStaticMarkup(
     <UserMessage
       text="Move these"
-      contextItems={[{ kind: "instance", source: "studiorpc", GUID: "guid-1", ClassType: "Part", Name: "Spawn_A" }]}
+      images={[{ url: "blob:reference", fileName: "reference.png", mediaType: "image/png" }]}
+      contextItems={[
+        { kind: "instance", source: "studiorpc", GUID: "players", ClassType: "Players", Name: "Players" },
+        {
+          kind: "file",
+          source: "vscode",
+          uri: "file:///workspace/app.ts",
+          Name: "app.ts",
+          languageId: "typescript",
+          selection: { startLine: 2, startCharacter: 0, endLine: 7, endCharacter: 0 },
+        },
+      ]}
     />,
   );
 
-  expect(html).toContain("Spawn_A (Part)");
+  expect(html).toContain('<span class="truncate">Players</span>');
+  expect(html).toContain('<span class="truncate">app.ts</span>');
+  expect(html).toContain('data-context-icon="players"');
+  expect(html).toContain('data-context-icon="file-selection"');
+  expect(html).toContain("h-5");
+  expect(html).toContain("rounded-[2px]");
+  expect(html.indexOf('src="blob:reference"')).toBeLessThan(html.indexOf('data-context-icon="players"'));
+  expect(html.indexOf('data-context-icon="players"')).toBeLessThan(html.indexOf("Move these"));
   expect(html).toContain("Move these");
 });
 
@@ -1554,8 +1784,9 @@ test("input dock renders pending image preview and add-images action", () => {
       supportsVision={true}
       supportsThinking={true}
       pendingImages={[{ path: "/tmp/shot.png", url: "blob:shot", fileName: "shot.png" }]}
-      contextItems={[]}
+      contextItems={[{ kind: "instance", source: "studiorpc", GUID: "players", ClassType: "Players", Name: "Players" }]}
       isUploadingImages={false}
+      showImageUploadIndicator={true}
       onAddImages={() => {}}
       onRemoveImage={() => {}}
       onRemoveContextItem={() => {}}
@@ -1564,6 +1795,30 @@ test("input dock renders pending image preview and add-images action", () => {
   );
 
   expect(html).toContain('src="blob:shot"');
+  expect(html).toContain(
+    'class="group relative h-20 w-20 shrink-0 overflow-hidden rounded border border-border/100 bg-surface-light"',
+  );
+  expect(html).toContain('src="blob:shot" alt="shot.png" class="h-full w-full object-cover"');
+  const removeImageButton = html.match(/<button[^>]*aria-label="Remove shot.png"[^>]*>/)?.[0] ?? "";
+  expect(removeImageButton).toContain("h-4");
+  expect(removeImageButton).toContain("w-4");
+  expect(removeImageButton).toContain("rounded-[2px]");
+  expect(removeImageButton).toContain("bg-transparent");
+  expect(removeImageButton).toContain("hover:bg-[#2A3038]");
+  expect(removeImageButton).toContain("border-0");
+  expect(removeImageButton).not.toContain("rounded-[2px] bg-[#2A3038]");
+  expect(removeImageButton).not.toContain("rounded-full");
+  expect(html).toContain('<section aria-label="Image attachments" class="flex flex-wrap gap-2"');
+  expect(html).toContain("Uploading…");
+  expect(html).toContain('class="flex h-20 w-20 shrink-0 items-center justify-center rounded border border-dashed');
+  expect(html).toContain('data-icon="upload-spinner"');
+  expect(html).toContain("h-6 w-6");
+  expect(html).toContain("animate-spin");
+  expect(html).toContain("motion-reduce:animate-none");
+  expect(html).not.toContain('aria-label="Image attachments" class="mb-3');
+  expect(html.indexOf('aria-label="Image attachments"')).toBeLessThan(html.indexOf('aria-label="Attached context"'));
+  expect(html.indexOf('aria-label="Attached context"')).toBeLessThan(html.indexOf('data-icon="agent-logo"'));
+  expect(html.indexOf('data-icon="agent-logo"')).toBeLessThan(html.indexOf('aria-label="Open composer options"'));
   expect(html).toContain('accept="image/png,image/jpeg,image/webp,image/gif"');
   expect(html).toContain("Ask anything or attach images…");
   expect(html).toContain('data-icon="agent-logo"');

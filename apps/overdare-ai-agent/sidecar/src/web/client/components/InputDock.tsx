@@ -10,7 +10,7 @@ import type { SlashCommand } from "../lib/slash-commands";
 import { BUILTIN_COMMANDS, filterCommands, isSlashPrefix } from "../lib/slash-commands";
 import type { UsageState } from "../lib/thread-store";
 import { ComposerContextChips } from "./ComposerContextChips";
-import { AgentLogo, ChevronRight, Plus, X } from "./icons";
+import { AgentLogo, Check, ChevronRight, Plus, X } from "./icons";
 import { Select, type SelectOption } from "./Select";
 import { SlashMenu } from "./SlashMenu";
 import { TextArea } from "./TextArea";
@@ -69,6 +69,19 @@ type ComposerMenuKey = "mode" | "compaction";
 
 const SUPPORTED_IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 
+function UploadSpinner() {
+  return (
+    <output aria-label="Uploading image" className="inline-flex h-6 w-6 items-center justify-center">
+      <span
+        data-icon="upload-spinner"
+        aria-hidden="true"
+        className="h-6 w-6 animate-spin rounded-full border-[3px] border-white/20 border-t-white motion-reduce:animate-none"
+      />
+      <span className="sr-only">Uploading…</span>
+    </output>
+  );
+}
+
 export function extractPastedImageFiles(clipboardData: DataTransfer | null): File[] {
   if (!clipboardData) return [];
 
@@ -85,9 +98,9 @@ export function extractPastedImageFiles(clipboardData: DataTransfer | null): Fil
 }
 
 const MODE_LABELS: Record<Mode, string> = {
-  default: "default",
-  plan: "plan",
-  execute: "execute",
+  default: "Default",
+  plan: "Plan",
+  execute: "Execute",
 };
 
 const MODE_BADGE_LABELS: Record<Exclude<Mode, "default">, string> = {
@@ -96,8 +109,8 @@ const MODE_BADGE_LABELS: Record<Exclude<Mode, "default">, string> = {
 };
 
 const MODE_BADGE_CLASSES: Record<Exclude<Mode, "default">, string> = {
-  plan: "border-emerald-400/30 bg-emerald-400/10 text-emerald-300",
-  execute: "border-accent/30 bg-accent/10 text-accent",
+  plan: "w-[29px] bg-[#2A3038] text-[#88929C]",
+  execute: "w-[45px] bg-[rgba(49,145,255,0.24)] text-[#64AFFF]",
 };
 
 export function getModeLabel(mode: Mode): string {
@@ -127,21 +140,21 @@ function PendingImagePreview({
   const label = image.fileName ?? "Attached image";
 
   return (
-    <div className="group relative overflow-hidden rounded-lg border border-border/100 bg-surface-light">
+    <div className="group relative h-20 w-20 shrink-0 overflow-hidden rounded border border-border/100 bg-surface-light">
       {failed ? (
-        <div className="flex h-20 w-20 flex-col items-center justify-center gap-1 px-2 text-center text-2xs text-muted">
+        <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-2 text-center text-2xs text-muted">
           <span className="font-semibold text-text">IMG</span>
           <span className="line-clamp-2 max-w-full break-all">{label}</span>
         </div>
       ) : (
-        <img src={image.url} alt={label} className="h-20 w-20 object-cover" onError={() => setFailed(true)} />
+        <img src={image.url} alt={label} className="h-full w-full object-cover" onError={() => setFailed(true)} />
       )}
       <button
         type="button"
         aria-label={`Remove ${image.fileName ?? "image"}`}
         onClick={() => onRemoveImage(image.path)}
         disabled={isUploadingImages || composerDisabled}
-        className="absolute right-1 top-1 rounded-full bg-bg/80 px-1.5 py-0.5 text-2xs text-text opacity-90 transition hover:bg-bg-elevated disabled:cursor-not-allowed disabled:opacity-50"
+        className="absolute right-1 top-1 inline-flex h-4 w-4 items-center justify-center rounded-[2px] border-0 bg-transparent p-0 text-[#DCE2E8] drop-shadow-[0_1px_1px_rgba(0,0,0,0.9)] transition hover:bg-[#2A3038] disabled:cursor-not-allowed disabled:opacity-50"
       >
         <X className="h-3 w-3" strokeWidth={2} aria-hidden="true" />
       </button>
@@ -226,7 +239,6 @@ export function InputDock({
   onAddImages,
   onRemoveImage,
   onRemoveContextItem,
-  onClearContextItems,
   onSlashCommand,
   slashCommands,
 }: InputDockProps) {
@@ -334,10 +346,8 @@ export function InputDock({
   };
 
   const topLevelMenuItemClass = (menuKey: ComposerMenuKey): string =>
-    `flex w-full items-center justify-between rounded-md px-2.5 py-2 text-left text-xs transition ${
-      activeSubmenu === menuKey
-        ? `border border-border/100 ${selectedMenuItemClasses}`
-        : "border border-transparent text-muted hover:border-border/100 hover:bg-fill-ghost-hover hover:text-text"
+    `flex h-6 w-full items-center justify-between rounded px-2 py-1 text-left font-[Arial] text-xs font-normal leading-4 text-[#DCE2E8] transition ${
+      activeSubmenu === menuKey ? selectedMenuItemClasses : "hover:bg-[rgba(120,135,156,0.16)]"
     }`;
 
   const handlePaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
@@ -410,21 +420,12 @@ export function InputDock({
   const modeBadgeClasses = getModeBadgeClasses(mode);
 
   return (
-    <div className="relative z-20 bg-surface-dark px-2 pb-4 pt-2">
+    <div className="relative z-20 bg-surface-dark px-2 pb-2">
       <div
-        className={`${composerFrameClasses} ${hasProvider ? "border-white/10" : "border-danger/30"}${isBusy ? " input-dock-glow" : ""}`}
+        className={`${composerFrameClasses} ${hasProvider ? "border-white/[0.12]" : "border-danger/30"}${isBusy ? " input-dock-glow" : ""}`}
       >
-        {modeBadgeLabel && modeBadgeClasses ? (
-          <div
-            className={`pointer-events-none absolute right-3 top-2 rounded-full border px-2 py-0.5 text-2xs font-medium uppercase tracking-wide ${modeBadgeClasses}`}
-            title={`Current mode: ${modeBadgeLabel}`}
-          >
-            {modeBadgeLabel}
-          </div>
-        ) : null}
-
         {pendingImages.length > 0 || showImageUploadIndicator ? (
-          <div className="mb-3 flex flex-wrap gap-2">
+          <section aria-label="Image attachments" className="flex flex-wrap gap-2">
             {pendingImages.map((image) => (
               <PendingImagePreview
                 key={image.path}
@@ -435,23 +436,23 @@ export function InputDock({
               />
             ))}
             {showImageUploadIndicator ? (
-              <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-lg border border-dashed border-border/100 bg-surface-dark px-2 text-center text-xs text-muted">
-                Uploading…
+              <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded border border-dashed border-border/100 bg-surface-dark px-2 text-center text-xs text-muted">
+                <UploadSpinner />
               </div>
             ) : null}
-          </div>
+          </section>
         ) : null}
 
-        <ComposerContextChips items={contextItems} onRemove={onRemoveContextItem} onClear={onClearContextItems} />
+        <ComposerContextChips items={contextItems} onRemove={onRemoveContextItem} />
 
         <div ref={slashMenuRef} className="relative flex items-start gap-2">
           <div className="relative min-w-0 flex-1">
             {input.length === 0 ? (
               <div
                 aria-hidden="true"
-                className="pointer-events-none absolute left-1 top-2 flex h-5 items-center gap-0.5 text-text-subtle"
+                className="pointer-events-none absolute left-0 top-0 flex h-5 items-center gap-0.5 text-white"
               >
-                <AgentLogo className="h-5 w-5" />
+                <AgentLogo className="h-5 w-5 shrink-0 text-[#565F69]" />
                 <span className="text-sm leading-5">
                   {isBusy ? "Queue a message…" : supportsVision ? "Ask anything or attach images…" : "Ask anything…"}
                 </span>
@@ -471,6 +472,7 @@ export function InputDock({
               onPaste={handlePaste}
               onKeyDown={handleKeyDown}
               disabled={composerDisabled}
+              className={contextItems.length > 0 ? "!min-h-5" : undefined}
             />
           </div>
         </div>
@@ -500,15 +502,20 @@ export function InputDock({
                 aria-expanded={isPlusMenuOpen}
                 onClick={togglePlusMenu}
                 disabled={composerDisabled}
-                className={`inline-flex h-7 w-7 items-center justify-center rounded border text-sm font-medium transition ${focusRingClasses} ${
-                  isPlusMenuOpen
-                    ? "border-border/100 bg-fill-secondary text-text"
-                    : "border-transparent bg-surface-light text-muted/80 hover:border-border/100 hover:bg-fill-ghost-hover hover:text-text"
-                } disabled:cursor-not-allowed disabled:opacity-40`}
+                className={`inline-flex h-5 w-5 items-center justify-center rounded bg-[#2A3038] text-[#88929C] transition hover:bg-[#353C44] hover:text-[#DCE2E8] ${focusRingClasses} disabled:cursor-not-allowed disabled:opacity-40`}
               >
-                <Plus className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />
+                <Plus className="h-3 w-3" strokeWidth={1.8} aria-hidden="true" />
               </button>
             </div>
+
+            {modeBadgeLabel && modeBadgeClasses ? (
+              <div
+                className={`pointer-events-none inline-flex h-5 shrink-0 items-center justify-center rounded px-1 text-[10px] font-normal leading-3 ${modeBadgeClasses}`}
+                title={`Current mode: ${modeBadgeLabel}`}
+              >
+                {modeBadgeLabel}
+              </div>
+            ) : null}
 
             {availableModels.length > 0 ? (
               <Select
@@ -517,7 +524,8 @@ export function InputDock({
                 options={modelOptions(availableModels)}
                 onChange={onModelChange}
                 openDirection="up"
-                className="w-[180px]"
+                className="w-[100px]"
+                menuClassName="w-[180px]"
                 triggerVariant="composer"
                 disabled={isBusy || composerDisabled}
               />
@@ -530,7 +538,7 @@ export function InputDock({
                 options={effortMenuOptions}
                 onChange={(value) => onEffortChange(value as ThinkingEffort)}
                 openDirection="up"
-                className="w-[90px]"
+                className="w-[71px]"
                 triggerVariant="composer"
                 disabled={isBusy || composerDisabled}
               />
@@ -555,7 +563,7 @@ export function InputDock({
                     if (!composingRef.current) onSteer();
                   }}
                   disabled={!canSteer || hasBlockingPrompt}
-                  className={`${composerActionButtonClasses} bg-fill-secondary text-text hover:bg-fill-ghost-hover`}
+                  className={`${composerActionButtonClasses} bg-surface-light text-[#DCE2E8] hover:bg-surface-light/90`}
                 >
                   Queue
                 </button>
@@ -563,7 +571,7 @@ export function InputDock({
                   type="button"
                   aria-label="Interrupt turn"
                   onClick={onInterrupt}
-                  className="rounded-md border border-danger/30 bg-danger/10 px-3 py-1 text-xs text-danger transition hover:bg-danger/20"
+                  className="inline-flex h-5 items-center justify-center rounded border border-danger/30 bg-danger/10 px-2 font-[Arial] text-xs leading-4 text-danger transition hover:bg-danger/20"
                 >
                   Stop
                 </button>
@@ -577,7 +585,7 @@ export function InputDock({
                   if (!composingRef.current) onSend();
                 }}
                 disabled={sendDisabled}
-                className={`${composerActionButtonClasses} bg-fill-primary text-text hover:bg-fill-primary-hover`}
+                className={`${composerActionButtonClasses} w-[45px] bg-[#3191FF] text-white hover:bg-[#3191FF]/90`}
               >
                 Send
               </button>
@@ -590,7 +598,8 @@ export function InputDock({
             <div
               ref={plusMenuPopupRef}
               role="menu"
-              className={`fixed z-composer-menu min-w-40 ${menuPanelClasses}`}
+              aria-label="Composer options"
+              className={`fixed z-composer-menu h-[80px] w-[200px] ${menuPanelClasses}`}
               style={{
                 left: plusMenuPosition.left,
                 bottom: plusMenuPosition.bottom,
@@ -626,12 +635,16 @@ export function InputDock({
                     onClick={() => setActiveSubmenu("mode")}
                     className={topLevelMenuItemClass("mode")}
                   >
-                    <span>Mode</span>
+                    <span>Mode text</span>
                     <ChevronRight className="h-3 w-3 opacity-60" strokeWidth={1.8} aria-hidden="true" />
                   </button>
 
                   {activeSubmenu === "mode" ? (
-                    <div className={`absolute left-full top-0 z-composer-submenu ml-1 min-w-32 ${menuPanelClasses}`}>
+                    <div
+                      role="menu"
+                      aria-label="Mode options"
+                      className={`absolute bottom-0 left-full z-composer-submenu ml-2 h-[80px] w-[180px] ${menuPanelClasses}`}
+                    >
                       {modeMenuOptions.map((option) => (
                         <button
                           key={option.value}
@@ -643,9 +656,12 @@ export function InputDock({
                             setIsPlusMenuOpen(false);
                             setActiveSubmenu(null);
                           }}
-                          className={`${menuItemClasses} ${option.value === mode ? selectedMenuItemClasses : ""}`}
+                          className={menuItemClasses}
                         >
-                          {option.label}
+                          <span className="flex h-3 w-3 shrink-0 items-center justify-center" aria-hidden="true">
+                            {option.value === mode ? <Check className="h-3 w-3" /> : null}
+                          </span>
+                          <span className="ml-2">{option.label}</span>
                         </button>
                       ))}
                     </div>
@@ -668,7 +684,7 @@ export function InputDock({
                   </button>
 
                   {activeSubmenu === "compaction" ? (
-                    <div className={`absolute left-full top-0 z-composer-submenu ml-1 min-w-40 ${menuPanelClasses}`}>
+                    <div className={`absolute left-full top-0 z-composer-submenu ml-2 min-w-40 ${menuPanelClasses}`}>
                       <button
                         type="button"
                         role="menuitem"

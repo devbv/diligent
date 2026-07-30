@@ -42,6 +42,34 @@ export interface VsCodeFileContextItem {
   };
 }
 
+export type AgentContextItemVisualKind =
+  | "players"
+  | "player-gui"
+  | "script"
+  | "atmosphere"
+  | "label"
+  | "skeleton"
+  | "vfx-preset"
+  | "instance"
+  | "file"
+  | "file-selection";
+
+export function getAgentContextItemVisualKind(item: AgentContextItem): AgentContextItemVisualKind {
+  if (item.kind === "file") {
+    return item.selection ? "file-selection" : "file";
+  }
+
+  const classType = item.ClassType.toLowerCase();
+  if (classType === "players") return "players";
+  if (classType === "playergui") return "player-gui";
+  if (classType.includes("script")) return "script";
+  if (classType === "atmosphere") return "atmosphere";
+  if (classType === "label") return "label";
+  if (classType === "skeleton") return "skeleton";
+  if (classType === "vfxpreset") return "vfx-preset";
+  return "instance";
+}
+
 export interface AgentNativeBridgeApi {
   updateContextItems: (items: unknown[]) => void;
 }
@@ -141,7 +169,18 @@ export function formatAgentContextItemLabel(item: AgentContextItem): string {
   if (item.kind === "instance") {
     return `${item.Name} (${item.ClassType})`;
   }
-  return item.languageId ? `${item.Name} (${item.languageId})` : item.Name;
+  const details: string[] = [];
+  if (item.languageId) {
+    details.push(item.languageId);
+  }
+  if (item.selection) {
+    details.push(`lines ${item.selection.startLine + 1}–${item.selection.endLine + 1}`);
+  }
+  return details.length > 0 ? `${item.Name} (${details.join(", ")})` : item.Name;
+}
+
+export function formatAgentContextItemDisplayLabel(item: AgentContextItem): string {
+  return item.Name;
 }
 
 export function serializeContextItemsForPrompt(items: AgentContextItem[]): string {

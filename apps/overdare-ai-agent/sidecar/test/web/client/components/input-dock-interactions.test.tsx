@@ -73,7 +73,7 @@ test("mode submenu closes when hovering Add images", async () => {
   });
 
   const menuButtons = Array.from(document.querySelectorAll("button"));
-  const modeButton = menuButtons.find((button) => button.textContent === "Mode");
+  const modeButton = menuButtons.find((button) => button.textContent === "Mode text");
   const addImagesButton = menuButtons.find((button) => button.textContent === "Add images");
   expect(modeButton).not.toBeNull();
   expect(addImagesButton).not.toBeNull();
@@ -87,6 +87,113 @@ test("mode submenu closes when hovering Add images", async () => {
     if (addImagesButton) hover(addImagesButton);
   });
   expect(document.querySelectorAll('[role="menuitemradio"]').length).toBe(0);
+
+  await act(async () => {
+    root.unmount();
+  });
+  rootElement.remove();
+});
+
+test("composer menu exposes the design-sized mode menu and selected checkmark", async () => {
+  const { rootElement, root } = renderInputDock();
+  let selectedMode = "";
+
+  await act(async () => {
+    root.render(
+      createElement(InputDock, {
+        ...dockProps,
+        onModeChange: (mode) => {
+          selectedMode = mode;
+        },
+      }),
+    );
+  });
+
+  const openButton = document.querySelector<HTMLButtonElement>('button[aria-label="Open composer options"]');
+  await act(async () => {
+    openButton?.click();
+  });
+
+  const mainMenu = document.querySelector<HTMLElement>('[role="menu"]');
+  expect(mainMenu?.className).toContain("w-[200px]");
+  expect(mainMenu?.className).toContain("h-[80px]");
+
+  const modeButton = Array.from(document.querySelectorAll("button")).find(
+    (button) => button.textContent === "Mode text",
+  );
+  await act(async () => {
+    if (modeButton) hover(modeButton);
+  });
+
+  const modeItems = Array.from(document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]'));
+  expect(modeItems.map((item) => item.textContent)).toEqual(["Default", "Plan", "Execute"]);
+  expect(modeItems[0]?.getAttribute("aria-checked")).toBe("true");
+  expect(modeItems[0]?.querySelector('[data-icon="check"]')).not.toBeNull();
+  expect(modeItems[1]?.querySelector('[data-icon="check"]')).toBeNull();
+
+  const modeMenu = modeItems[0]?.closest<HTMLElement>('[role="menu"]');
+  expect(modeMenu?.className).toContain("w-[180px]");
+  expect(modeMenu?.className).toContain("h-[80px]");
+
+  await act(async () => {
+    modeItems[1]?.click();
+  });
+  expect(selectedMode).toBe("plan");
+
+  await act(async () => {
+    root.unmount();
+  });
+  rootElement.remove();
+});
+
+test("model menu is wide enough for long labels and keeps options on one line", async () => {
+  const { rootElement, root } = renderInputDock();
+  const models = [
+    {
+      modelId: "claude-opus-4-8",
+      display: "Claude Opus 4.8",
+      provider: "anthropic" as const,
+      contextWindow: 200_000,
+      maxOutputTokens: 32_000,
+      supportsThinking: false,
+      supportsVision: true,
+    },
+    {
+      modelId: "gpt-5-6-terra",
+      display: "ChatGPT 5.6 Terra",
+      provider: "openai" as const,
+      contextWindow: 300_000,
+      maxOutputTokens: 64_000,
+      supportsThinking: true,
+      supportsVision: true,
+    },
+  ];
+
+  await act(async () => {
+    root.render(
+      createElement(InputDock, {
+        ...dockProps,
+        currentModel: "anthropic\0claude-opus-4-8",
+        availableModels: models,
+      }),
+    );
+  });
+
+  const modelTrigger = rootElement.querySelector<HTMLButtonElement>('button[aria-label="Model selector"]');
+  await act(async () => {
+    modelTrigger?.click();
+  });
+
+  const modelMenu = rootElement.querySelector<HTMLElement>('[role="listbox"]');
+  expect(modelMenu?.className).toContain("w-[180px]");
+
+  const options = Array.from(rootElement.querySelectorAll<HTMLButtonElement>('[role="option"]'));
+  expect(options.map((option) => option.textContent)).toEqual(["Claude Opus 4.8", "ChatGPT 5.6 Terra"]);
+  for (const option of options) {
+    expect(option.className).toContain("whitespace-nowrap");
+    expect(option.className).toContain("overflow-hidden");
+    expect(option.className).toContain("text-ellipsis");
+  }
 
   await act(async () => {
     root.unmount();

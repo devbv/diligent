@@ -8,8 +8,8 @@
     "web:dev": "vite",
     "web:build": "vite build",
     "web:build:dev": "vite build --mode development",
-    "web:test": "bun test ./test/web",
-    "test": "bun test"
+    "web:test": "bun test --preload ./test/helpers/svg-react-loader.ts ./test/web",
+    "test": "bun test --preload ./test/helpers/svg-react-loader.ts"
   },
   "dependencies": {
     "@diligent/core": "workspace:*",
