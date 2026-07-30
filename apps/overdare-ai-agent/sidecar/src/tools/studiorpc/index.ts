@@ -17,6 +17,7 @@ import { createInstanceDeleteTool } from "./tools/instance-delete-tool";
 import { createInstanceMoveTool } from "./tools/instance-move-tool";
 import { createInstanceReadTool } from "./tools/instance-read-tool";
 import { createInstanceUpsertTool } from "./tools/instance-upsert-tool";
+import { createPlaytestSmokeTool } from "./tools/playtest-smoke-tool";
 import { createProceduralRunTool } from "./tools/procedural-run-tool";
 import { createRollbackTool } from "./tools/rollback-tool";
 import { createScriptAddTool } from "./tools/script-add-tool";
@@ -213,6 +214,7 @@ export async function createStudioRpcTools(ctx: {
     wrapTool(withSnapshot(createInstanceMoveTool(ctx.cwd, writeLock)), ctx.host),
     wrapTool(createScriptReadTool(ctx.cwd), ctx.host),
     wrapTool(createScriptGrepTool(ctx.cwd), ctx.host),
+    wrapTool(createPlaytestSmokeTool({ cwd: ctx.cwd, writeLock, callRpc }), ctx.host),
     wrapTool(withSnapshot(createScriptAddTool(ctx.cwd, writeLock)), ctx.host),
     wrapTool(withSnapshot(createScriptDeleteTool(ctx.cwd, writeLock)), ctx.host),
     wrapTool(withSnapshot(createScriptEditTool(ctx.cwd, writeLock)), ctx.host),

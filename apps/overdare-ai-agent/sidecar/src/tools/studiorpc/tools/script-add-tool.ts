@@ -5,33 +5,10 @@ import { buildScriptAddRender } from "../render";
 import { applyLevelChanges } from "../rpc";
 import type { Tool, ToolContext, ToolResult } from "../types";
 import type { WriteLock } from "../write-lock";
-import {
-  findNodeByActorGuid,
-  isRecord,
-  normalizeLeadingSpaces,
-  normalizeLineEndings,
-  type OvdrjmNode,
-  readAndWriteOvdrjm,
-} from "./ovdrjm-utils";
+import { addScriptToDocument } from "./script-document-operations";
 
 function toToolName(method: string): string {
   return `studiorpc_${method.replace(/\./g, "_")}`;
-}
-
-function makeActorGuid(): string {
-  return Array.from({ length: 32 }, () =>
-    Math.floor(Math.random() * 16)
-      .toString(16)
-      .toUpperCase(),
-  ).join("");
-}
-
-function nextObjectKey(rootDoc: Record<string, unknown>): number {
-  const current = rootDoc.MapObjectKeyIndex;
-  const numeric = typeof current === "number" && Number.isFinite(current) ? Math.floor(current) : 0;
-  const next = numeric + 1;
-  rootDoc.MapObjectKeyIndex = next;
-  return next;
 }
 
 async function executeScriptAdd(
@@ -55,51 +32,23 @@ async function executeScriptAdd(
 
   const release = await writeLock.acquire();
   try {
-    let addedGuid = "";
-    let tabCount = 0;
-    let eolCount = 0;
-
-    readAndWriteOvdrjm(cwd, (rootDoc) => {
-      const root = rootDoc.Root;
-      if (!isRecord(root)) {
-        throw new Error("Invalid .ovdrjm format: Root object is missing.");
-      }
-
-      const parent = findNodeByActorGuid(root as OvdrjmNode, parsed.parentGuid);
-      if (!parent) {
-        throw new Error(`Parent ActorGuid not found in .ovdrjm: ${parsed.parentGuid}`);
-      }
-
-      const childList = Array.isArray(parent.LuaChildren) ? parent.LuaChildren : [];
-      parent.LuaChildren = childList;
-
-      const guid = makeActorGuid();
-      const normalized = normalizeLeadingSpaces(parsed.source);
-      const eolNormalized = normalizeLineEndings(normalized.result);
-
-      childList.push({
-        InstanceType: parsed.class,
-        ActorGuid: guid,
-        ObjectKey: nextObjectKey(rootDoc),
-        Name: parsed.name,
-        Source: eolNormalized.result,
-      });
-      addedGuid = guid;
-      tabCount = normalized.converted;
-      eolCount = eolNormalized.converted;
-    });
+    const added = addScriptToDocument(cwd, parsed);
 
     await applyLevelChanges();
 
-    let output = `Script added: ${parsed.name} (${addedGuid})`;
+    let output = `Script added: ${parsed.name} (${added.guid})`;
     const normalizations: string[] = [];
-    if (tabCount > 0) normalizations.push(`${tabCount} leading 4-space group(s) → tabs`);
-    if (eolCount > 0) normalizations.push(`${eolCount} line ending(s) normalized`);
+    if (added.normalizedLeadingSpaceGroups > 0) {
+      normalizations.push(`${added.normalizedLeadingSpaceGroups} leading 4-space group(s) → tabs`);
+    }
+    if (added.normalizedLineEndings > 0) {
+      normalizations.push(`${added.normalizedLineEndings} line ending(s) normalized`);
+    }
     if (normalizations.length > 0) output += ` (${normalizations.join(", ")})`;
     return {
       output,
-      render: buildScriptAddRender(parsed as unknown as Record<string, unknown>, output, addedGuid),
-      metadata: { method: "script.add", guid: addedGuid, name: parsed.name, class: parsed.class },
+      render: buildScriptAddRender(parsed as unknown as Record<string, unknown>, output, added.guid),
+      metadata: { method: "script.add", guid: added.guid, name: parsed.name, class: parsed.class },
     };
   } catch (err) {
     return {

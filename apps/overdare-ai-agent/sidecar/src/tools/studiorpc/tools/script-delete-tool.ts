@@ -5,15 +5,7 @@ import { buildDeleteRender } from "../render";
 import { applyLevelChanges } from "../rpc";
 import type { Tool, ToolContext, ToolResult } from "../types";
 import type { WriteLock } from "../write-lock";
-import {
-  findNodeByActorGuid,
-  isRecord,
-  type OvdrjmNode,
-  readAndWriteOvdrjm,
-  removeNodeByActorGuid,
-} from "./ovdrjm-utils";
-
-const SCRIPT_CLASSES = new Set(["Script", "LocalScript", "ModuleScript"]);
+import { deleteScriptFromDocument } from "./script-document-operations";
 
 function toToolName(method: string): string {
   return `studiorpc_${method.replace(/\./g, "_")}`;
@@ -40,30 +32,7 @@ async function executeScriptDelete(
 
   const release = await writeLock.acquire();
   try {
-    readAndWriteOvdrjm(cwd, (rootDoc) => {
-      const root = rootDoc.Root;
-      if (!isRecord(root)) {
-        throw new Error("Invalid .ovdrjm format: Root object is missing.");
-      }
-
-      const target = findNodeByActorGuid(root as OvdrjmNode, parsed.targetGuid);
-      if (!target) {
-        throw new Error(`ActorGuid not found in .ovdrjm: ${parsed.targetGuid}`);
-      }
-
-      const instanceType = typeof target.InstanceType === "string" ? target.InstanceType : undefined;
-      if (!instanceType || !SCRIPT_CLASSES.has(instanceType)) {
-        throw new Error(
-          `Instance ${parsed.targetGuid} is ${instanceType ?? "unknown"}, not a script. ` +
-            "Use studiorpc_instance_delete to delete non-script instances.",
-        );
-      }
-
-      const removed = removeNodeByActorGuid(root as OvdrjmNode, parsed.targetGuid);
-      if (!removed) {
-        throw new Error(`Failed to remove ActorGuid from .ovdrjm: ${parsed.targetGuid}`);
-      }
-    });
+    deleteScriptFromDocument(cwd, parsed.targetGuid);
 
     await applyLevelChanges();
 
