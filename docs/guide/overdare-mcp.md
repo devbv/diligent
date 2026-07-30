@@ -38,9 +38,9 @@ The router adds three tools on top of the Studio tools:
 
 | Tool | Purpose |
 |------|---------|
-| `list_overdare_studios` | Show every open Studio: id, project folder, cwd, Studio RPC address, and which is active |
+| `list_overdare_studios` | Show every open Studio: id, project folder, cwd, Studio RPC address, Hub endpoint, and which is active |
 | `set_active_overdare_studio` | Choose which Studio subsequent tool calls target (takes an `id`) |
-| `get_active_overdare_studio` | Report the current target |
+| `get_active_overdare_studio` | Report the current target, including its Hub endpoint when configured |
 
 Selection behavior:
 

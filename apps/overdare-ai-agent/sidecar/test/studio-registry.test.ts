@@ -265,6 +265,7 @@ describe("startStudioRegistration", () => {
     const registration = await startStudioRegistration({
       cwd: "/games/dungeon",
       projectId: "abc123",
+      hubEndpoint: "https://release-qa.overdare.com",
       studioHost: "localhost",
       studioPort: 13377,
       sidecarPort: 51234,
@@ -273,6 +274,7 @@ describe("startStudioRegistration", () => {
     });
 
     expect(registration.record.displayName).toBe("dungeon (abc123)");
+    expect(registration.record.hubEndpoint).toBe("https://release-qa.overdare.com");
     expect(registration.record.pid).toBe(process.pid);
     // The router reaches the sidecar over loopback only.
     expect(registration.record.sidecarUrl).toBe("http://127.0.0.1:51234");
@@ -348,6 +350,7 @@ describe("startStudioRegistration", () => {
     const registration = await startStudioRegistration({
       cwd: "/games/dungeon",
       projectId: "abc123",
+      hubEndpoint: "https://release-qa.overdare.com",
       studioHost: "localhost",
       studioPort: 13377,
       sidecarPort: 51234,
@@ -362,10 +365,11 @@ describe("startStudioRegistration", () => {
     }
     expect(raw.studioPort).toBe(13377);
     expect(raw.projectId).toBe("abc123");
+    expect(raw.hubEndpoint).toBe("https://release-qa.overdare.com");
     registration.stop();
   });
 
-  test("no project id leaves the field off rather than writing null", async () => {
+  test("missing optional session metadata leaves the fields off rather than writing null", async () => {
     const dir = await registryDir();
     const registry = createStudioRegistry(dir);
     const registration = await startStudioRegistration({
@@ -378,6 +382,7 @@ describe("startStudioRegistration", () => {
     });
     const raw = JSON.parse(await readFile(join(dir, `${registration.record.id}.json`), "utf-8"));
     expect("projectId" in raw).toBe(false);
+    expect("hubEndpoint" in raw).toBe(false);
     expect(registration.record.displayName).toBe("dungeon");
     registration.stop();
   });

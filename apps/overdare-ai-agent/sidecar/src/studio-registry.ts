@@ -49,6 +49,8 @@ export interface StudioInstanceRecord {
   displayName: string;
   cwd: string;
   projectId?: string;
+  /** Hub base URL associated with this Studio session. */
+  hubEndpoint?: string;
   studioHost: string;
   studioPort: number;
   sidecarUrl: string;
@@ -212,29 +214,40 @@ export function createStudioRegistry(dir: string = resolveRegistryDir()): Studio
   };
 
   let cached: StudioInstanceRecord | undefined;
+  // A heartbeat may already be inside an async write when shutdown begins. Remember removals so
+  // that in-flight work cannot recreate a record after unregisterSync() has deleted it.
+  const unregistered = new Set<string>();
 
   return {
     async register(record) {
+      unregistered.delete(record.id);
       cached = record;
       await writeRecord(record);
     },
 
     async heartbeat(id) {
+      if (unregistered.has(id)) return;
       // Heartbeat from the in-memory record rather than re-reading: a partially written or
       // externally deleted file must not be able to corrupt or resurrect our own registration.
       const base = cached?.id === id ? cached : parseRecord(await readFile(recordPath(id), "utf-8").catch(() => ""));
-      if (!base) return;
+      if (!base || unregistered.has(id)) return;
       const next = { ...base, heartbeatAt: new Date().toISOString() };
       cached = next;
       await writeRecord(next);
+      if (unregistered.has(id)) {
+        if (cached?.id === id) cached = undefined;
+        await rm(recordPath(id), { force: true }).catch(() => {});
+      }
     },
 
     async unregister(id) {
+      unregistered.add(id);
       if (cached?.id === id) cached = undefined;
       await rm(recordPath(id), { force: true }).catch(() => {});
     },
 
     unregisterSync(id) {
+      unregistered.add(id);
       if (cached?.id === id) cached = undefined;
       try {
         rmSync(recordPath(id), { force: true });
@@ -271,6 +284,7 @@ export function createStudioRegistry(dir: string = resolveRegistryDir()): Studio
 export interface StartRegistrationOptions {
   cwd: string;
   projectId?: string;
+  hubEndpoint?: string;
   studioHost: string;
   studioPort: number;
   /** Port the sidecar web server (and thus the router-callable endpoint) listens on. */
@@ -311,11 +325,13 @@ export async function startStudioRegistration(options: StartRegistrationOptions)
   await registry.sweepStale().catch(() => 0);
 
   const startedAt = now().toISOString();
+  const hubEndpoint = options.hubEndpoint?.trim();
   const record: StudioInstanceRecord = {
     id: createStudioInstanceId(),
     displayName: describeStudioInstance(options.cwd, options.projectId),
     cwd: options.cwd,
     ...(options.projectId ? { projectId: options.projectId } : {}),
+    ...(hubEndpoint ? { hubEndpoint } : {}),
     studioHost: options.studioHost,
     studioPort: options.studioPort,
     sidecarUrl: `http://127.0.0.1:${options.sidecarPort}`,

@@ -39,6 +39,7 @@ pub struct StudioInstanceRecord {
     pub display_name: String,
     pub cwd: String,
     pub project_id: Option<String>,
+    pub hub_endpoint: Option<String>,
     pub studio_host: String,
     pub studio_port: u16,
     pub sidecar_url: String,
@@ -75,6 +76,11 @@ fn record_from_value(value: &Value) -> Option<StudioInstanceRecord> {
         cwd: str_field("cwd"),
         project_id: value
             .get("projectId")
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string),
+        hub_endpoint: value
+            .get("hubEndpoint")
             .and_then(Value::as_str)
             .filter(|value| !value.is_empty())
             .map(str::to_string),
@@ -211,6 +217,7 @@ mod tests {
             "id": id,
             "displayName": format!("project-{id}"),
             "cwd": format!("/projects/{id}"),
+            "hubEndpoint": "https://release-qa.overdare.com",
             "studioHost": "localhost",
             "studioPort": 13377,
             "sidecarUrl": format!("http://127.0.0.1:900{}", id.len()),
@@ -244,6 +251,10 @@ mod tests {
         assert_eq!(records[0].id, "bb", "newest heartbeat sorts first");
         assert_eq!(records[1].id, "a");
         assert_eq!(records[1].display_name, "project-a");
+        assert_eq!(
+            records[1].hub_endpoint.as_deref(),
+            Some("https://release-qa.overdare.com")
+        );
         assert_eq!(records[1].studio_port, 13377);
         assert_eq!(records[1].sidecar_token, "token-a");
         let catalog = records[1].catalog.as_ref().expect("catalog");

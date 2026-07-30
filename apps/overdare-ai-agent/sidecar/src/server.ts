@@ -73,6 +73,7 @@ function startParentWatchdog(parentPid?: number): (() => void) | null {
 async function registerForMcpRouter(options: {
   cwd: string;
   projectId?: string;
+  hubEndpoint?: string;
   sidecarPort: number;
   sidecarToken: string;
   registries: () => Promise<McpRegistries>;
@@ -82,6 +83,7 @@ async function registerForMcpRouter(options: {
     registration = await startStudioRegistration({
       cwd: options.cwd,
       projectId: options.projectId,
+      hubEndpoint: options.hubEndpoint,
       // Report the same host/port the Studio RPC tools actually dial, so the router's instance list
       // describes where calls really go rather than a guess.
       studioHost: resolveStudioHost(),
@@ -199,6 +201,7 @@ export async function startStudioServer(argv: string[] = process.argv.slice(2)):
       registration = await registerForMcpRouter({
         cwd,
         projectId: process.env.OVERDARE_PROJECT_ID,
+        hubEndpoint: process.env.HUB_DOMAIN,
         sidecarPort: server.port,
         sidecarToken,
         registries,

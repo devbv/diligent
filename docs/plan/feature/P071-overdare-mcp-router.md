@@ -196,6 +196,7 @@ export interface StudioInstanceRecord {
   displayName: string;
   cwd: string;
   projectId?: string;
+  hubEndpoint?: string;
   studioHost: string;
   studioPort: number;
   sidecarUrl: string;

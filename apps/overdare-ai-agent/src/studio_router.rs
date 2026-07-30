@@ -302,14 +302,22 @@ impl StudioRouter {
         let active = self.active_id();
         let live = self.live_studios();
         match active.and_then(|id| live.into_iter().find(|record| record.id == id)) {
-            Some(record) => ToolCallResult::text(format!(
-                "Active OVERDARE Studio: \"{}\" (id {}, cwd {}, studio {}:{}).",
-                record.label(),
-                record.id,
-                record.cwd,
-                record.studio_host,
-                record.studio_port
-            )),
+            Some(record) => {
+                let hub_endpoint = record
+                    .hub_endpoint
+                    .as_deref()
+                    .map(|value| format!(", hub_endpoint {value}"))
+                    .unwrap_or_default();
+                ToolCallResult::text(format!(
+                    "Active OVERDARE Studio: \"{}\" (id {}, cwd {}, studio {}:{}{}).",
+                    record.label(),
+                    record.id,
+                    record.cwd,
+                    record.studio_host,
+                    record.studio_port,
+                    hub_endpoint
+                ))
+            }
             None => ToolCallResult::text(format!(
                 "No active OVERDARE Studio is selected. Call {LIST_OVERDARE_STUDIOS}, then \
                  {SET_ACTIVE_OVERDARE_STUDIO}."
@@ -337,8 +345,13 @@ fn describe_studios(records: &[StudioInstanceRecord], active_id: Option<&str>) -
             } else {
                 ""
             };
+            let hub_endpoint = record
+                .hub_endpoint
+                .as_deref()
+                .map(|value| format!(" | hub_endpoint: {value}"))
+                .unwrap_or_default();
             format!(
-                "- id: {} | {} | cwd: {} | studio: {}:{}{marker}",
+                "- id: {} | {} | cwd: {} | studio: {}:{}{hub_endpoint}{marker}",
                 record.id,
                 record.label(),
                 record.cwd,
@@ -404,6 +417,7 @@ mod tests {
             "id": id,
             "displayName": format!("project-{id}"),
             "cwd": format!("/projects/{id}"),
+            "hubEndpoint": "https://release-qa.overdare.com",
             "studioHost": "localhost",
             "studioPort": 13377,
             "sidecarUrl": sidecar_url,
@@ -783,8 +797,30 @@ mod tests {
         let router = router(dir.clone());
         let text = describe_studios(&router.live_studios(), Some("beta"));
         assert!(text.contains("id: beta"));
+        assert!(text.contains("hub_endpoint: https://release-qa.overdare.com"));
         assert!(text.contains("[active]"));
         assert_eq!(text.matches("[active]").count(), 1);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn get_active_studio_includes_the_hub_endpoint() {
+        let dir = temp_dir("get-active-hub-endpoint");
+        write_live_record(&dir, "alpha", "http://127.0.0.1:9");
+        let router = router(dir.clone());
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+
+        runtime.block_on(router.resolve()).expect("auto-select");
+        let result = runtime.block_on(router.tool_get_active());
+        let text = result.content[0]["text"].as_str().unwrap_or_default();
+        assert!(
+            text.contains("hub_endpoint https://release-qa.overdare.com"),
+            "got: {text}"
+        );
+
         let _ = fs::remove_dir_all(&dir);
     }
 
