@@ -299,7 +299,7 @@ mod tests {
 
     fn temp_dir(label: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
-            "overdare-mcp-router-{}-{}-{}",
+            "overdare-mcp-{}-{}-{}",
             label,
             std::process::id(),
             chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()

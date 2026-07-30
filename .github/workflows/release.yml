@@ -192,7 +192,7 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Build Windows x64 OVERDARE CLI binary
+      - name: Build Windows x64 OVERDARE launcher and MCP router binaries
         shell: bash
         env:
           # Baked into the binary via option_env! (src/monitoring.rs). The DSN is a
@@ -205,12 +205,16 @@ jobs:
           mkdir -p dist
           cp apps/overdare-ai-agent/target/release/overdare-ai-agent.exe \
              "dist/overdare-ai-agent-${RELEASE_ENV}-${VERSION}-windows-x64.exe"
+          cp apps/overdare-ai-agent/target/release/overdare-mcp.exe \
+             "dist/overdare-mcp-${RELEASE_ENV}-${VERSION}-windows-x64.exe"
 
-      - name: Upload OVERDARE CLI artifact
+      - name: Upload OVERDARE launcher and MCP router artifact
         uses: actions/upload-artifact@v4
         with:
           name: overdare-ai-agent-${{ env.RELEASE_ENV }}-windows-x64-${{ env.VERSION }}
-          path: dist/overdare-ai-agent-${{ env.RELEASE_ENV }}-${{ env.VERSION }}-windows-x64.exe
+          path: |
+            dist/overdare-ai-agent-${{ env.RELEASE_ENV }}-${{ env.VERSION }}-windows-x64.exe
+            dist/overdare-mcp-${{ env.RELEASE_ENV }}-${{ env.VERSION }}-windows-x64.exe
 
   publish-release:
     name: Publish GitHub Release
@@ -284,9 +288,10 @@ jobs:
 
           runtime_bundle_windows = dist / f"overdare-ai-agent-runtime-{release_env}-{version}-windows-x64.zip"
           overdare_cli_windows = dist / f"overdare-ai-agent-{release_env}-{version}-windows-x64.exe"
+          overdare_mcp_windows = dist / f"overdare-mcp-{release_env}-{version}-windows-x64.exe"
           linux_cli = dist / f"diligent-{version}-linux-x64"
 
-          required = [runtime_bundle_windows, overdare_cli_windows]
+          required = [runtime_bundle_windows, overdare_cli_windows, overdare_mcp_windows]
           if release_env == "prod":
               required.append(linux_cli)
           for path in required:
@@ -305,6 +310,8 @@ jobs:
               artifacts["windows-x64-runtime"] = [runtime_bundle_windows.name]
           if overdare_cli_windows.exists():
               artifacts[f"overdare-ai-agent-{release_env}-windows-x64"] = [overdare_cli_windows.name]
+          if overdare_mcp_windows.exists():
+              artifacts[f"overdare-mcp-{release_env}-windows-x64"] = [overdare_mcp_windows.name]
           if linux_cli.exists():
               artifacts["linux-x64"] = [linux_cli.name]
 
@@ -377,6 +384,7 @@ jobs:
           gh release create "$TAG" \
             dist/overdare-ai-agent-runtime-"$RELEASE_ENV"-"$VERSION"-windows-x64.zip \
             dist/overdare-ai-agent-"$RELEASE_ENV"-"$VERSION"-windows-x64.exe \
+            dist/overdare-mcp-"$RELEASE_ENV"-"$VERSION"-windows-x64.exe \
             dist/diligent-"$VERSION"-linux-x64 \
             dist/update-manifest-"$RELEASE_ENV".json \
             dist/release-meta-"$RELEASE_ENV".json \
@@ -398,6 +406,7 @@ jobs:
           gh release create "$TAG" \
             dist/overdare-ai-agent-runtime-"$RELEASE_ENV"-"$VERSION"-windows-x64.zip \
             dist/overdare-ai-agent-"$RELEASE_ENV"-"$VERSION"-windows-x64.exe \
+            dist/overdare-mcp-"$RELEASE_ENV"-"$VERSION"-windows-x64.exe \
             dist/update-manifest-"$RELEASE_ENV".json \
             dist/release-meta-"$RELEASE_ENV".json \
             dist/checksums-"$RELEASE_ENV".sha256 \
@@ -427,6 +436,7 @@ jobs:
           gh release create dev-latest \
             dist/overdare-ai-agent-runtime-"$RELEASE_ENV"-"$VERSION"-windows-x64.zip \
             dist/overdare-ai-agent-"$RELEASE_ENV"-"$VERSION"-windows-x64.exe \
+            dist/overdare-mcp-"$RELEASE_ENV"-"$VERSION"-windows-x64.exe \
             dist/update-manifest-"$RELEASE_ENV".json \
             dist/release-meta-"$RELEASE_ENV".json \
             dist/checksums-"$RELEASE_ENV".sha256 \

@@ -1,31 +1,31 @@
 # OVERDARE MCP router
 
-The OVERDARE AI agent exposes OVERDARE Studio's tools to any [MCP](https://modelcontextprotocol.io) client (Claude Code, Claude Desktop, Diligent itself) through a **router** built into the `overdare-ai-agent` launcher executable.
+The OVERDARE AI agent exposes OVERDARE Studio's tools to any [MCP](https://modelcontextprotocol.io) client (Claude Code, Claude Desktop, Diligent itself) through the dedicated `overdare-mcp` executable.
 
 Two problems the router solves:
 
-- **A stable command to configure.** The Bun sidecar's path changes with every runtime update, so pointing an MCP client at it breaks on the next update. The launcher executable's path does not move.
+- **A stable command to configure.** The Bun sidecar's path changes with every runtime update, so pointing an MCP client at it breaks on the next update. The router is installed beside the stable launcher and does not move.
+- **A distinct process identity.** Studio launchers may identify a running product by executable name. A dedicated router name prevents one stdio process per MCP client from being mistaken for an already-running Studio.
 - **Multiple Studio windows.** Studio tools used to be bound to a single `STUDIO_PORT` chosen when the server started. With two projects open, a tool call had no defined target. The router discovers every open Studio and routes each call to the one you selected.
 
 ## Setup
 
-Point your MCP client at the launcher with the `start-mcp-router` command:
+Point your MCP client directly at the dedicated router executable:
 
 ```jsonc
 {
   "mcpServers": {
     "overdare": {
-      "command": "C:\\path\\to\\overdare-ai-agent.exe",
-      "args": ["start-mcp-router"]
+      "command": "C:\\path\\to\\overdare-mcp.exe"
     }
   }
 }
 ```
 
-Add `--agent-env=dev` before the command to target the dev release channel, which uses a separate storage namespace (`~/.overdare-dev`) and therefore a separate set of Studio instances:
+Pass `--agent-env=dev` to target the dev release channel, which uses a separate storage namespace (`~/.overdare-dev`) and therefore a separate set of Studio instances:
 
 ```jsonc
-{ "command": "...", "args": ["--agent-env=dev", "start-mcp-router"] }
+{ "command": "...\\overdare-mcp.exe", "args": ["--agent-env=dev"] }
 ```
 
 To pin one Studio instance without a tool call — useful in a wrapper script — pass `--studio-id=<id>`. An id that is not running is dropped on first use rather than failing every call.
@@ -54,14 +54,16 @@ Selection behavior:
 
 Selection lives in the router process. Because stdio gives each MCP client its own router process, two clients can target two different Studios at the same time without interfering.
 
+The general `overdare-ai-agent start-mcp-router` command remains available for compatibility, but new client configuration should use `overdare-mcp` so those per-client processes cannot be confused with Studio's launcher.
+
 ## How it works
 
 ```
-MCP client ──stdio──> overdare-ai-agent start-mcp-router
-                              │  reads ~/.overdare/mcp/studios/*.json
-                              │  (one record per open Studio)
-                              └──HTTP──> the selected Studio's sidecar
-                                          /mcp-router/tools/call
+MCP client ──stdio──> overdare-mcp
+                           │  reads ~/.overdare/mcp/studios/*.json
+                           │  (one record per open Studio)
+                           └──HTTP──> the selected Studio's sidecar
+                                       /mcp-router/tools/call
 ```
 
 Each Studio's sidecar registers itself on startup, writing a record containing its id, project folder, Studio RPC address, sidecar URL, a bearer token, its pid, and a snapshot of its MCP tool/prompt catalog. It refreshes a heartbeat every 5 s and deletes the record on clean shutdown.

@@ -21,7 +21,7 @@ The router is **implemented and green on macOS** (Tasks 1–7, 52 new Rust tests
 | Rust | `src/studio_registry.rs` | Reads Studio records, heartbeat staleness, best-catalog selection |
 | Rust | `src/studio_router.rs` | Session tools, active-Studio resolver, HTTP proxy to the sidecar |
 | Rust | `src/mcp_router.rs` | stdio loop, `initialize`/`tools`/`prompts`/`ping`, `listChanged` watcher |
-| Rust | `src/cli.rs`, `src/main.rs` | `start-mcp-router` command + module registration |
+| Rust | `src/cli.rs`, `src/bin/overdare-mcp.rs`, `src/main.rs` | Dedicated router entrypoint plus compatibility `start-mcp-router` command |
 | TS | `sidecar/src/studio-registry.ts` | Writes/heartbeats/sweeps the record |
 | TS | `sidecar/src/router-endpoint.ts` | Bearer-authenticated `/mcp-router/*` endpoint |
 | TS | `sidecar/src/mcp-server.ts` | Refactored so the stdio server and the router share one execution path |
@@ -93,8 +93,7 @@ All protocol testing so far used a hand-written JSON-RPC harness (correct, but n
 {
   "mcpServers": {
     "overdare": {
-      "command": "C:\\path\\to\\overdare-ai-agent.exe",
-      "args": ["start-mcp-router"]
+      "command": "C:\\path\\to\\overdare-mcp.exe"
     }
   }
 }
@@ -110,9 +109,9 @@ Checklist:
 
 ### 3.3 Packaging stability — the original motivation
 
-The whole point of hosting the router in the launcher is that its path survives a runtime update. That has **not** been proven end to end:
+The whole point of installing the dedicated Rust router beside the launcher is that its path survives a runtime update without reusing Studio's launcher process name. That has **not** been proven end to end:
 
-1. Configure a client against the packaged `overdare-ai-agent.exe start-mcp-router`.
+1. Configure a client against the packaged `overdare-mcp.exe`.
 2. Apply a runtime update (the sidecar path changes).
 3. Confirm the client still connects and tools still work with **no config change**.
 
@@ -152,7 +151,7 @@ bun run apps/overdare-ai-agent/sidecar/src/server.ts --port=0 --cwd=C:\temp\mcp-
 
 # terminal 3 — inspect the records, then drive the router
 dir $env:USERPROFILE\.overdare\mcp\studios
-Get-Content requests.jsonl | .\apps\overdare-ai-agent\target\release\overdare-ai-agent.exe start-mcp-router
+Get-Content requests.jsonl | .\apps\overdare-ai-agent\target\release\overdare-mcp.exe
 ```
 
 `requests.jsonl`, one JSON object per line:

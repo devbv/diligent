@@ -15,9 +15,9 @@ created: 2026-07-10
 
 Provide a stable OVERDARE MCP entrypoint that survives packaged runtime path changes and correctly handles multiple concurrently-open Studio instances.
 
-Instead of making each Studio sidecar the MCP server directly, add a router mode to the stable `overdare-ai-agent` Rust launcher executable. The router exposes one MCP server to clients, discovers connected Studio sidecars, lets the model/user inspect and select the active Studio, and forwards subsequent Studio tool calls to the selected instance.
+Instead of making each Studio sidecar the MCP server directly, add a small dedicated `overdare-mcp` Rust executable beside the stable `overdare-ai-agent` launcher. The router exposes one MCP server to clients, discovers connected Studio sidecars, lets the model/user inspect and select the active Studio, and forwards subsequent Studio tool calls to the selected instance.
 
-The key packaging constraint is size: an earlier split executable was avoided because Bun-made executables were too large. Therefore the preferred router home is the existing small Rust `overdare-ai-agent.exe`, not another bundled Bun executable.
+The key packaging constraint is size: an earlier Bun split executable was too large. A second small Rust binary shares the launcher's library code while giving MCP processes a distinct executable name, preventing Epic Launcher from mistaking one router per client for running Studio instances.
 
 ## Prerequisites
 
@@ -30,14 +30,13 @@ The key packaging constraint is size: an earlier split executable was avoided be
 
 ## Artifact
 
-An MCP client is configured once against the stable Rust launcher executable:
+An MCP client is configured once against the stable dedicated Rust router executable:
 
 ```jsonc
 {
   "mcpServers": {
     "overdare": {
-      "command": "/stable/path/overdare-ai-agent.exe",
-      "args": ["start-mcp-router"]
+      "command": "/stable/path/overdare-mcp.exe"
     }
   }
 }
@@ -73,7 +72,7 @@ The agent can list available Studio instances, select one as active, then use no
 
 ### Confirmed decisions
 
-- Router command name is `overdare-ai-agent start-mcp-router`.
+- New clients use the dedicated `overdare-mcp` executable; `overdare-ai-agent start-mcp-router` remains compatible.
 - A sidecar is expected to exist per Studio instance.
 - Router-to-tool execution uses sidecar HTTP proxy so existing TypeScript Studio tools remain the source of truth.
 - If exactly one Studio is live, the router auto-selects it.
@@ -85,8 +84,8 @@ The agent can list available Studio instances, select one as active, then use no
 
 | Area | What Changes |
 |------|-------------|
-| Rust launcher CLI | Add `start-mcp-router` command to the stable `overdare-ai-agent` executable. |
-| Rust MCP router | Implement the small MCP router in Rust, avoiding a second large Bun executable. |
+| Rust launcher CLI | Keep `start-mcp-router` as a compatibility command. |
+| Rust MCP router | Implement the small MCP router in Rust and expose it through a separately named executable sharing the same library code. |
 | Sidecar registration/discovery | Each running Studio sidecar publishes metadata: instance ID, display name, cwd/project ID, sidecar URL/port, auth token, PID, heartbeat timestamp. |
 | MCP router server | Exposes session-management tools, maintains active Studio selection per MCP session/client, and proxies Studio tools to the selected sidecar. |
 | Studio tool dispatch | Router forwards Studio tool calls to the selected sidecar HTTP endpoint instead of binding all tools to one `STUDIO_PORT` at router startup. |
@@ -109,8 +108,10 @@ The agent can list available Studio instances, select one as active, then use no
 
 | File | Action | Description |
 |------|--------|------------|
-| `main.rs` | MODIFY | Register new Rust modules for MCP router support. |
-| `cli.rs` | MODIFY | Add `start-mcp-router` command and help text. |
+| `lib.rs` | CREATE | Share launcher and router modules between the two Rust binaries. |
+| `main.rs` | MODIFY | Run the general launcher through the shared library. |
+| `bin/overdare-mcp.rs` | CREATE | Start the router directly without a subcommand. |
+| `cli.rs` | MODIFY | Add the dedicated router entrypoint and retain the compatibility command. |
 | `mcp_router.rs` | CREATE | Rust MCP stdio router entrypoint and JSON-RPC loop. |
 | `mcp_protocol.rs` | CREATE | Minimal MCP request/response types if no Rust MCP crate is adopted. |
 | `studio_registry.rs` | CREATE | Rust reader for connected Studio records and stale filtering. |
@@ -172,7 +173,7 @@ Questions to answer:
 - Which Rust MCP implementation route is safest: an official/community Rust MCP crate, or a minimal hand-written stdio JSON-RPC MCP surface for tools/prompts?
 - Can the Rust router expose enough MCP server functionality without pulling in dependencies that make the launcher large or risky?
 - Confirm the sidecar HTTP proxy contract for reusing existing TypeScript tools from the Rust router.
-- Which MCP transport is safest as the default router entrypoint for target clients: stable stdio `overdare-ai-agent start-mcp-router`, optional Streamable HTTP router service, or both?
+- Which MCP transport is safest as the default router entrypoint for target clients: stable stdio `overdare-mcp`, optional Streamable HTTP router service, or both?
 - Confirm MCP session identity is sufficient for per-client/session active Studio selection in target clients.
 - For stdio clients, does one router process map to exactly one MCP client session in all target clients?
 - If a client reconnects, should active Studio be restored from a persisted preference or reset to auto/default?
@@ -278,13 +279,13 @@ The endpoint must require the sidecar auth token from the registry record. This 
 
 ### Task 5: Build the stable Rust MCP router entrypoint
 
-**Files:** `apps/overdare-ai-agent/src/cli.rs`, `apps/overdare-ai-agent/src/main.rs`, `apps/overdare-ai-agent/src/mcp_router.rs`, package/build config if needed, tests
+**Files:** `apps/overdare-ai-agent/src/lib.rs`, `apps/overdare-ai-agent/src/cli.rs`, `apps/overdare-ai-agent/src/main.rs`, `apps/overdare-ai-agent/src/bin/overdare-mcp.rs`, `apps/overdare-ai-agent/src/mcp_router.rs`, package/build config, tests
 
-The router is the one thing external MCP clients configure. It should live inside the stable Rust launcher, stay small, and be independent of per-Studio runtime paths.
+The router is the one thing external MCP clients configure. It should share the stable Rust launcher's code, use a distinct process name, stay small, and be independent of per-Studio runtime paths.
 
 Responsibilities:
 
-- Add `overdare-ai-agent start-mcp-router` CLI command.
+- Add a dedicated `overdare-mcp` binary and keep `overdare-ai-agent start-mcp-router` for compatibility.
 - Start MCP server over stdio for broad compatibility.
 - Optionally start/advertise Streamable HTTP if client support and packaging make it useful.
 - Load or proxy bootstrap tools/prompts (`ensure_system_prompt`, `load_skill`, agent prompts) through the selected sidecar unless Task 1 proves a lighter Rust-local catalog is safer.
@@ -361,9 +362,9 @@ match command.as_str() {
 }
 ```
 
-Packaging must ensure `overdare-ai-agent.exe` is the stable MCP client command. The router must not require external clients to point at the moving Bun runtime sidecar path.
+Packaging must install `overdare-mcp.exe` beside `overdare-ai-agent.exe` as the stable MCP client command. The router must not require external clients to point at the moving Bun runtime sidecar path.
 
-**Verify:** Legacy `mcp-serve` still works; new `start-mcp-router` works without a Studio-specific runtime path.
+**Verify:** Legacy `mcp-serve` and the compatibility `start-mcp-router` command still work; the dedicated router works without a Studio-specific runtime path.
 
 ### Task 8: Compatibility matrix and manual verification
 
@@ -378,13 +379,13 @@ Manually verify:
 - Reopening Studio produces a new instance record; stale records are ignored.
 - Claude Desktop / Claude Code target client can use the session-management tools correctly.
 - Diligent MCP client can connect to the router.
-- Packaged app update does not break the configured `overdare-ai-agent.exe start-mcp-router` path, or launcher updates config reliably.
+- Packaged app update does not break the configured `overdare-mcp.exe` path, or the installer updates config reliably.
 
 **Verify:** Record results in PR notes or in this plan before marking complete.
 
 ## Acceptance Criteria
 
-1. External MCP clients configure `overdare-ai-agent.exe start-mcp-router` as one stable OVERDARE MCP router entrypoint, not per-Studio sidecar/runtime paths.
+1. External MCP clients configure `overdare-mcp.exe` as one stable OVERDARE MCP router entrypoint, not per-Studio sidecar/runtime paths.
 2. The router lists all live connected Studio instances with ID, display name, cwd/project metadata, and active status.
 3. The router can set and report the active Studio.
 4. With exactly one Studio, Studio tools work without manual selection.
@@ -402,7 +403,7 @@ Manually verify:
 | Unit | Studio registry file semantics | `bun test apps/overdare-ai-agent/sidecar/test/studio-registry.test.ts` |
 | Unit | Rust active Studio resolver | Rust tests with zero/one/many fake records |
 | Unit | Sidecar proxy endpoint auth | Missing/wrong/right sidecar token against router-callable endpoint |
-| Integration | Router MCP tools | MCP client or JSON-RPC harness calling `list_overdare_studios` / `set_active_overdare_studio` against `overdare-ai-agent start-mcp-router` |
+| Integration | Router MCP tools | MCP client or JSON-RPC harness calling `list_overdare_studios` / `set_active_overdare_studio` against `overdare-mcp` |
 | Integration | Studio tool routing | Fake two Studios and assert selected target receives the call |
 | Regression | Legacy MCP server | Existing `mcp-server.test.ts` and manual stdio smoke if needed |
 | Manual | Real multi-Studio UX | Open two Studio windows, switch active target, run read and write tools |
@@ -412,7 +413,7 @@ Manually verify:
 
 | Risk | Impact | Mitigation |
 |------|--------|-----------|
-| Launcher path still moves | Original problem remains | Use the already-stable `overdare-ai-agent.exe`; launcher/installer owns MCP config if even that path changes. |
+| Router path still moves | Original problem remains | Install `overdare-mcp.exe` beside the stable launcher; the launcher/installer owns MCP config if that directory changes. |
 | Rust MCP implementation grows complex | Router becomes hard to maintain | Keep Rust MCP surface minimal; prefer sidecar HTTP proxy for existing rich TypeScript tools. |
 | Duplicating tool definitions in Rust drifts from TypeScript | Client sees stale or inconsistent tools | Prefer sidecar-provided tool catalog/proxy if feasible; otherwise generate or test parity. |
 | Active Studio state leaks between clients | One client may affect another client's target | Scope active state per MCP session when possible; spike first. |
@@ -481,6 +482,6 @@ See `P071-overdare-mcp-router-handoff.md` for the step-by-step version of the li
 the Windows commands, the record-privacy decision, and the invariants a follow-up must not break.
 
 1. Task 8 against real clients: Claude Desktop and Claude Code driving the session-management tools, and the Diligent MCP client connecting to the router.
-2. Task 8 packaging check: a packaged app update must not break a configured `overdare-ai-agent.exe start-mcp-router` path.
+2. Task 8 packaging check: a packaged app update must not break a configured `overdare-mcp.exe` path.
 3. Windows verification — all manual testing so far was on macOS. The record's `0600`/`0700` permissions are best-effort no-ops there, so the registry directory's ACL should be confirmed.
 4. Decide whether `list_overdare_studios` should surface the Studio RPC connection state (not just the sidecar's), which would let it distinguish "sidecar up, Studio detached".

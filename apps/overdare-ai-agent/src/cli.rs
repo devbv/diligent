@@ -86,6 +86,32 @@ pub fn run() -> Result<(), CliError> {
     result
 }
 
+/// Entry point for the dedicated `overdare-mcp` executable.
+///
+/// Unlike the general launcher, this binary needs no `start-mcp-router` subcommand. Keeping the
+/// router in a separately named process prevents launchers that identify Studio by executable name
+/// from treating every MCP client connection as another running Studio instance.
+pub fn run_mcp_router_binary() -> Result<(), CliError> {
+    let raw_args: Vec<String> = std::env::args().skip(1).collect();
+    let (env_flag, remaining) = extract_env_flag(&raw_args).map_err(CliError::config)?;
+
+    if remaining
+        .first()
+        .is_some_and(|arg| matches!(arg.as_str(), "help" | "--help" | "-h"))
+    {
+        print_mcp_router_help();
+        return Ok(());
+    }
+
+    let selection = EnvSelection::resolve(env_flag.as_deref()).map_err(CliError::config)?;
+    let _monitoring = crate::monitoring::init(selection.env.as_str());
+    let result = run_mcp_router(&selection, remaining);
+    if let Err(err) = &result {
+        crate::monitoring::capture_cli_error(err.code, &err.message);
+    }
+    result
+}
+
 fn parse_bundle_arg(args: Vec<String>) -> Result<PathBuf, CliError> {
     let mut bundle: Option<PathBuf> = None;
     let mut iter = args.into_iter();
@@ -368,6 +394,12 @@ fn run_mcp_router(selection: &EnvSelection, args: Vec<String>) -> Result<(), Cli
 fn print_help() {
     println!(
         "overdare-ai-agent\n\nGlobal flags:\n  --agent-env=<env>[@<version>]   Select release env (prod|dev). Optionally pin a version, e.g. prod@1.2.3 or dev@1.4.0-beta.2. Defaults to prod.\n\nCommands:\n  init [--skip-update]   Ensure runtime exists, print current/latest, and update unless skipped\n  install --bundle <zip> Install a locally built canonical runtime ZIP without network access\n  start [options]        Run updated runtime diligent-web-server as a subprocess\n                         (--init-if-missing runs init first when no runtime is installed)\n  start-mcp-router       Serve the OVERDARE MCP router on stdio. This is the stable command to\n                         configure in an MCP client; it discovers open Studio instances and routes\n                         tool calls to the selected one (--studio-id=<id> pre-selects one)"
+    );
+}
+
+fn print_mcp_router_help() {
+    println!(
+        "overdare-mcp\n\nOptions:\n  --agent-env=<env>[@<version>]   Select the prod or dev Studio registry.\n  --studio-id=<id>                Pre-select one open Studio instance.\n  -h, --help                      Show this help."
     );
 }
 

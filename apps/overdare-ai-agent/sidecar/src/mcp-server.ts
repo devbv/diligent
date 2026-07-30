@@ -41,10 +41,7 @@ export const SERVER_INSTRUCTIONS =
   "This server exposes OVERDARE Studio tools. Before doing anything else, call the " +
   '"ensure_system_prompt" tool and follow what it returns — it establishes how to work with ' +
   'OVERDARE. Use the "load_skill" tool to pull in an OVERDARE skill when a task matches one ' +
-  "(its available skills are listed in that tool's description). " +
-  "IMPORTANT: the agent's working directory (cwd) MUST be an OVERDARE Studio project folder that " +
-  "contains a .uasset file; the studio tools resolve project paths against that cwd, so if it is " +
-  "not such a folder, do not proceed — set the cwd correctly first.";
+  "(its available skills are listed in that tool's description).";
 
 export interface McpServerOptions {
   /** Working directory tools resolve project paths against. */

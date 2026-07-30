@@ -139,11 +139,12 @@ describe("OVERDARE MCP server", () => {
     await client.close();
   });
 
-  test("surfaces instructions telling the client to call ensure_system_prompt first", async () => {
+  test("surfaces bootstrap instructions without blocking Studio tools based on the client cwd", async () => {
     const client = await connectClient(await makeBootstrapDir());
     const instructions = client.getInstructions();
     expect(instructions).toContain("ensure_system_prompt");
-    expect(instructions).toContain(".uasset");
+    expect(instructions).not.toContain(".uasset");
+    expect(instructions).not.toContain("do not proceed");
     await client.close();
   });
 
