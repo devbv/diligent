@@ -299,6 +299,20 @@ bun run --cwd apps/overdare-ai-agent/sidecar web:dev
 - `--cwd` is now a **Windows local path** (`C:/...`). Being local, both read and write work.
 - To view from the Mac, open `http://<windows-ip>:5174` in a browser (the frontend is a thin WS client). The Studio 3D result is seen on the Windows screen (or via remote desktop).
 
+### Hybrid playtest topology exception
+
+`studio_playtest_smoke` must use this same-machine Windows topology. Unlike
+ordinary Studio RPC tools, it captures a local Windows window and applies
+keyboard input through Windows PowerShell/PInvoke. A sidecar running on Mac
+cannot send that input to a remote Windows Studio even when Studio RPC and an
+SMB-mounted project work normally.
+
+Run the sidecar in the same unlocked interactive Windows user session as
+Studio, with a local project `--cwd`. The model provider and browser UI may
+still be remote. See
+[`P085-shallow-hybrid-playtest-handoff.md`](../plan/feature/P085-shallow-hybrid-playtest-handoff.md)
+for the implementation contract and Windows acceptance checklist.
+
 ### Keeping HMR while coding from the Mac
 
 HMR has to run on the machine where the source lives (here, Windows). To develop from the Mac, **edit the Windows files remotely from the Mac**:
