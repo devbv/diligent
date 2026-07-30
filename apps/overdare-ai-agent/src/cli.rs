@@ -1,6 +1,8 @@
 use crate::env::EnvSelection;
 use crate::init;
+use crate::mcp_router;
 use crate::storage::migrate_global_namespace_if_needed;
+use crate::studio_registry;
 use crate::update::{self, FailureKind, UpdateError, UpdateProgress};
 use crate::webserver;
 use std::path::PathBuf;
@@ -75,6 +77,7 @@ pub fn run() -> Result<(), CliError> {
         "init" => run_init(&selection, args.collect()),
         "install" => run_install(&selection, args.collect()),
         "start" => run_webserver(&selection, args.collect()),
+        "start-mcp-router" => run_mcp_router(&selection, args.collect()),
         other => Err(CliError::config(format!("Unknown command: {other}"))),
     };
     if let Err(err) = &result {
@@ -319,9 +322,52 @@ fn run_webserver(selection: &EnvSelection, args: Vec<String>) -> Result<(), CliE
     Ok(())
 }
 
+/// Parses `start-mcp-router` arguments. `--studio-id=<id>` pre-selects a Studio so a wrapper script
+/// can pin one target without a tool call.
+fn parse_mcp_router_args(args: Vec<String>) -> Result<Option<String>, CliError> {
+    let mut studio_id: Option<String> = None;
+    for arg in args {
+        let Some(value) = arg.strip_prefix("--studio-id=") else {
+            return Err(CliError::config(format!(
+                "Unknown start-mcp-router argument: {arg}"
+            )));
+        };
+        if value.is_empty() {
+            return Err(CliError::config("--studio-id requires a value"));
+        }
+        if studio_id.replace(value.to_string()).is_some() {
+            return Err(CliError::config(
+                "start-mcp-router accepts --studio-id at most once",
+            ));
+        }
+    }
+    Ok(studio_id)
+}
+
+fn run_mcp_router(selection: &EnvSelection, args: Vec<String>) -> Result<(), CliError> {
+    let default_active_studio_id = parse_mcp_router_args(args)?;
+    // A migration failure must not take down the MCP entrypoint: the router only reads the registry,
+    // and refusing to serve an MCP client over a namespace rename would be a worse outcome than
+    // reading from the un-migrated location. init/start own the migration for real.
+    if let Err(err) = migrate_global_namespace_if_needed(selection.env) {
+        eprintln!("[mcp-router] storage migration skipped: {err}");
+    }
+    let registry_dir = studio_registry::registry_dir(selection.env)
+        .ok_or_else(|| CliError::config("Cannot determine home directory for the Studio registry"))?;
+
+    let runtime = tokio::runtime::Runtime::new()
+        .map_err(|e| CliError::start(format!("failed to create tokio runtime: {e}")))?;
+    runtime
+        .block_on(mcp_router::run_mcp_router(mcp_router::McpRouterOptions {
+            registry_dir,
+            default_active_studio_id,
+        }))
+        .map_err(CliError::start)
+}
+
 fn print_help() {
     println!(
-        "overdare-ai-agent\n\nGlobal flags:\n  --agent-env=<env>[@<version>]   Select release env (prod|dev). Optionally pin a version, e.g. prod@1.2.3 or dev@1.4.0-beta.2. Defaults to prod.\n\nCommands:\n  init [--skip-update]   Ensure runtime exists, print current/latest, and update unless skipped\n  install --bundle <zip> Install a locally built canonical runtime ZIP without network access\n  start [options]        Run updated runtime diligent-web-server as a subprocess\n                         (--init-if-missing runs init first when no runtime is installed)"
+        "overdare-ai-agent\n\nGlobal flags:\n  --agent-env=<env>[@<version>]   Select release env (prod|dev). Optionally pin a version, e.g. prod@1.2.3 or dev@1.4.0-beta.2. Defaults to prod.\n\nCommands:\n  init [--skip-update]   Ensure runtime exists, print current/latest, and update unless skipped\n  install --bundle <zip> Install a locally built canonical runtime ZIP without network access\n  start [options]        Run updated runtime diligent-web-server as a subprocess\n                         (--init-if-missing runs init first when no runtime is installed)\n  start-mcp-router       Serve the OVERDARE MCP router on stdio. This is the stable command to\n                         configure in an MCP client; it discovers open Studio instances and routes\n                         tool calls to the selected one (--studio-id=<id> pre-selects one)"
     );
 }
 

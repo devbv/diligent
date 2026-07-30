@@ -1,8 +1,13 @@
 ---
 id: P071
-status: backlog
+status: active
 created: 2026-07-10
 ---
+
+> **Implementation status (2026-07-30):** Tasks 1–7 implemented and tested; Task 8's automated half is
+> covered and its manual matrix is verified against real sidecars but not yet against Claude
+> Desktop / Claude Code / packaged updates. See "Implementation notes" at the end of this document
+> for the Task 1 spike outcomes and every deviation from the file manifest above.
 
 # OVERDARE MCP Router for Multiple Studio Instances
 
@@ -428,3 +433,54 @@ Manually verify:
 | D059 | MCP tools convert into ordinary tool registry entries. | Router exposes session-management and Studio tools as normal tools. |
 | D066 | Generic Diligent MCP server mode deferred. | Negative scope and risk mitigation. |
 | D068 | Core remains transport-agnostic; registry/tool context are integration points. | Router remains product-side transport/tool composition. |
+
+## Implementation notes (2026-07-30)
+
+### Task 1 spike outcomes
+
+| Question | Answer |
+|----------|--------|
+| Rust MCP crate or hand-written? | **Hand-written** (`src/mcp_protocol.rs`, ~200 lines). `Cargo.toml`'s release profile is explicitly size-tuned (`opt-level = "s"`, `lto`, `strip`, `panic = "abort"`) because executable size is the constraint that put the router here. An MCP crate brings schema generation and a service stack; the server half we need is newline-delimited JSON-RPC 2.0 over six methods, which `serde_json` already covers. New crates added: **none** (only two extra `tokio` features, `io-std` + `sync`). |
+| Transport | **stdio only.** Broadest client support and no port/token for the user to manage. Streamable HTTP stays deferred — nothing in the design blocks adding it later. |
+| Session boundary | One router process per stdio client, so active selection is process-local in-memory. Cross-client leakage is impossible by construction. |
+| Reconnect behavior | Selection resets to auto rather than persisting. A persisted choice would silently retarget a new session at a project the user is no longer in. |
+| `ensure_system_prompt` / `load_skill` / prompts | **Proxied, not duplicated.** `server.ts` reuses the sidecar's `buildRegistries()`, so the router advertises and executes exactly what `mcp-serve` does. No Rust-local catalog. |
+| Tool catalog source | The sidecar writes a **catalog snapshot into its registry record**. The router answers `tools/list` with no round-trip, and can advertise Studio tools from the newest record even with no Studio live — which is what lets a client that connects before Studio opens ever see them. |
+
+### Deviations from the plan above
+
+| Plan | Actual | Why |
+|------|--------|-----|
+| `packages/web/src/server/index.ts` | `apps/overdare-ai-agent/sidecar/src/web/server/index.ts` | The shared web server lives in the sidecar, not in `packages/web`. |
+| "optional extra route hook" | `extraRoutes: { matches, handle }` — a **sync** matcher plus an async handler | Bun's `fetch` must stay synchronous or the `/rpc` WebSocket upgrade breaks. The matcher decides synchronously; only the handler is async. |
+| `mcp_protocol.rs` "if no Rust MCP crate is adopted" | Written | See spike table. |
+| `studio_registry.rs` "stale filtering" by PID liveness | Heartbeat age + **HTTP reachability probe**; PID liveness only on the TypeScript side | Portable PID liveness in Rust needs `libc`/`windows-sys`, against the size budget. The probe is strictly better for the case that matters (is this sidecar answering?), and only runs when there is something to disambiguate. |
+| `StudioInstanceRecord` fields | Plus `catalog` | See spike table. |
+| `rpc.ts` MODIFY | `studiorpc/config.ts` gained exported `resolveStudioHost` / `resolveStudioPort`; `rpc.ts` now calls them | The record must report the address the tools actually dial. Moving the resolvers to the module that already owns config loading avoids duplicating precedence rules, and keeps `rpc.ts`'s test mock shape unchanged. |
+| Registration is unconditional | Skipped when `STUDIO_DISABLED=1` | UI-only development has no Studio to route to. |
+| `StudioRegistration.stop()` async | Synchronous (`unregisterSync`) | It runs from `process.on("exit")` and signal handlers, where an awaited unlink never completes. |
+
+### Correctness notes worth keeping
+
+- **Experiment gating is not optional.** The first working version of `server.ts` built registries without resolving experiments, so the router advertised `studiorpc_procedural_run` and `agent-procedural-builder` — both gated off by default — while `mcp-serve` correctly hid them. `registries()` now resolves `OVERDARE_EXPERIMENTS` exactly as `runMcpServerMain` does. Verified: both surfaces report 38 tools.
+- **Registration must not delay startup.** The launcher parses `DILIGENT_PORT` under a timeout, so registration happens as soon as the port is known and the catalog is published in the background via `updateCatalog`.
+- **Tool failures are not transport failures.** `/mcp-router/tools/call` answers HTTP 200 with `isError` for a failing tool. A 4xx would read to the router as a dead sidecar and wrongly clear the active selection.
+- **Session tools cannot be shadowed.** A Studio catalog containing a session tool name is filtered out, or selection would become unreachable.
+- **Ambiguity and "no Studio" are tool errors, not JSON-RPC errors.** The model has to read them and act; a protocol-level failure gives it nothing to do.
+
+### Verification
+
+- `cargo test`: 141 pass (52 new across `mcp_protocol`, `studio_registry`, `studio_router`, `mcp_router`). `studio_router` tests stand up real loopback HTTP sidecars and assert that only the selected one is called, that a wrong token surfaces as a tool error, and that an unreachable leftover record does not make the target ambiguous.
+- `bun test apps/overdare-ai-agent/sidecar/test/`: 745 pass, 3 pre-existing unrelated failures (procedural Luau dummy JSON ×2, `VITE_APP_PROJECT_NAME` branding). 52 new tests across `studio-registry.test.ts`, `router-endpoint.test.ts`, `web/server/extra-routes.test.ts`.
+- **Executable size, the constraint this plan turns on:** release build grew from 4,456,096 to 4,555,744 bytes on darwin-arm64 — **+97 KiB (+2.2%)**, with zero new crates. Measured by building `--release` with and without the change.
+- Manual, against two real sidecars: single Studio auto-selects and proxies `ensure_system_prompt`; two Studios refuse then route correctly after `set_active_overdare_studio`; `tools/list` returns 3 session + 38 Studio tools; SIGTERM removes the record immediately and the survivor auto-selects; SIGKILL leaves a record that is ignored after the 15 s staleness window; legacy `mcp-serve` still initializes and lists 38 tools with clean stdout.
+
+### Remaining before this can be marked complete
+
+See `P071-overdare-mcp-router-handoff.md` for the step-by-step version of the list below, including
+the Windows commands, the record-privacy decision, and the invariants a follow-up must not break.
+
+1. Task 8 against real clients: Claude Desktop and Claude Code driving the session-management tools, and the Diligent MCP client connecting to the router.
+2. Task 8 packaging check: a packaged app update must not break a configured `overdare-ai-agent.exe start-mcp-router` path.
+3. Windows verification — all manual testing so far was on macOS. The record's `0600`/`0700` permissions are best-effort no-ops there, so the registry directory's ACL should be confirmed.
+4. Decide whether `list_overdare_studios` should surface the Studio RPC connection state (not just the sidecar's), which would let it distinguish "sidecar up, Studio detached".
