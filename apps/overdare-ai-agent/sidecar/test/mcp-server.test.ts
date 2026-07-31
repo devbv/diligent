@@ -20,11 +20,17 @@ mock.module("../src/tools/studiorpc/rpc.ts", () => ({
   },
 }));
 
-const { buildRegistries, createMcpServer } = await import("../src/mcp-server");
+const { buildRegistries, createMcpServer, resolveSystemPromptPath } = await import("../src/mcp-server");
+
+function globalSystemPromptPath(bootstrapDir: string): string {
+  return join(bootstrapDir, "__global__", "system-prompt.txt");
+}
 
 async function makeBootstrapDir(): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "overdare-mcp-"));
-  await writeFile(join(dir, "system-prompt.txt"), "SYSTEM PROMPT BODY", "utf-8");
+  await writeFile(join(dir, "system-prompt.txt"), "BOOTSTRAP PROMPT MUST NOT BE RETURNED", "utf-8");
+  await mkdir(join(dir, "__global__"), { recursive: true });
+  await writeFile(globalSystemPromptPath(dir), "SYSTEM PROMPT BODY", "utf-8");
 
   const skillDir = join(dir, "skills", "test-skill");
   await mkdir(skillDir, { recursive: true });
@@ -71,7 +77,11 @@ async function makeBootstrapDir(): Promise<string> {
 }
 
 async function connectClient(bootstrapDir: string): Promise<Client> {
-  const registries = await buildRegistries({ cwd: process.cwd(), bootstrapDir });
+  const registries = await buildRegistries({
+    cwd: process.cwd(),
+    bootstrapDir,
+    systemPromptPath: globalSystemPromptPath(bootstrapDir),
+  });
   const server = createMcpServer(registries);
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: "test-client", version: "0.0.0" });
@@ -82,6 +92,21 @@ async function connectClient(bootstrapDir: string): Promise<Client> {
 describe("OVERDARE MCP server", () => {
   beforeEach(() => {
     levelBrowseMock.mockClear();
+  });
+
+  test("resolves the system prompt under the environment-specific global storage root", () => {
+    expect(
+      resolveSystemPromptPath({
+        USERPROFILE: "C:\\Users\\tester",
+        DILIGENT_STORAGE_NAMESPACE: "overdare",
+      }),
+    ).toBe(join("C:\\Users\\tester", ".overdare", "system-prompt.txt"));
+    expect(
+      resolveSystemPromptPath({
+        USERPROFILE: "C:\\Users\\tester",
+        DILIGENT_STORAGE_NAMESPACE: "overdare-dev",
+      }),
+    ).toBe(join("C:\\Users\\tester", ".overdare-dev", "system-prompt.txt"));
   });
 
   test("lists studio built-in tools with input schemas", async () => {
@@ -103,6 +128,7 @@ describe("OVERDARE MCP server", () => {
     const registries = await buildRegistries({
       cwd: process.cwd(),
       bootstrapDir,
+      systemPromptPath: globalSystemPromptPath(bootstrapDir),
       experiments: [
         {
           id: "procedural",
@@ -171,7 +197,7 @@ describe("OVERDARE MCP server", () => {
     await client.close();
   });
 
-  test("returns the base system prompt via the ensure_system_prompt tool", async () => {
+  test("returns the global system prompt instead of the runtime bootstrap copy", async () => {
     const client = await connectClient(await makeBootstrapDir());
     const result = await client.callTool({ name: "ensure_system_prompt", arguments: {} });
     const content = result.content as Array<{ type: string; text?: string }>;

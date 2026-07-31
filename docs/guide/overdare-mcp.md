@@ -70,6 +70,10 @@ Each Studio's sidecar registers itself on startup, writing a record containing i
 
 The router reads those records to list instances and to resolve a target, then forwards the call to that sidecar's authenticated loopback endpoint. **Tool behavior stays in the sidecar** — approvals, rollback snapshots, render payloads, and skills all run exactly as they do over `mcp-serve`, including experiment gating. The router adds routing and nothing else.
 
+`ensure_system_prompt` reads the prompt deployed by `init` under the selected environment's global
+storage root: `~/.overdare/system-prompt.txt` for prod and
+`~/.overdare-dev/system-prompt.txt` for dev. It does not read the runtime bundle's bootstrap copy.
+
 Because the catalog snapshot is in the record, the router can advertise the Studio tools without contacting a sidecar first, and it declares MCP's `listChanged` capability: open a Studio after connecting your client and the tool list updates without reconnecting.
 
 ### Security

@@ -6,11 +6,13 @@ import { randomUUID } from "node:crypto";
 import type { Dirent } from "node:fs";
 import { existsSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import type { Tool, ToolContext, ToolResult } from "@diligent/core/tool-contract";
 import { createLogger } from "@diligent/logging";
 import type { BundledToolProvider, ResolvedExperiment } from "@diligent/runtime";
 import { loadDiligentConfig, resolveExperimentGates, resolveExperimentStates } from "@diligent/runtime";
+import { resolveProjectDirName } from "@diligent/runtime/infrastructure";
 import { discoverSkills, extractBody, parseFrontmatter } from "@diligent/runtime/skills";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -46,8 +48,10 @@ export const SERVER_INSTRUCTIONS =
 export interface McpServerOptions {
   /** Working directory tools resolve project paths against. */
   cwd: string;
-  /** Directory containing bootstrap `skills/`, `agents/`, and `system-prompt.txt`. */
+  /** Directory containing the runtime bootstrap `skills/` and `agents/`. */
   bootstrapDir: string;
+  /** Product-managed global prompt deployed by `overdare-ai-agent init`. */
+  systemPromptPath?: string;
   experiments?: ResolvedExperiment[];
 }
 
@@ -95,7 +99,7 @@ async function buildPromptRegistry(
   const { disabledAgentNames } = resolveExperimentGates(experiments);
 
   // The base system prompt and skills are exposed as model-callable tools (ensure_system_prompt /
-  // load_skill in buildBootstrapTools), not prompts — Claude Code only surfaces prompts to the user
+  // load_skill in buildModelCallableTools), not prompts — Claude Code only surfaces prompts to the user
   // as slash commands, so a prompt could never be fetched by the model that actually needs them.
   // Only agents remain as prompts (a user picks one to seed a session).
 
@@ -138,19 +142,17 @@ async function buildPromptRegistry(
 const MCP_EXCLUDED_SKILLS = new Set(["record-project-memory"]);
 
 /**
- * Bootstrap-backed tools the *model* can call directly. Prompts (system prompt, skills) are only
- * surfaced by Claude Code to the user as slash commands — the model cannot fetch them — so the same
- * content is also exposed as tools here: `ensure_system_prompt` returns the base OVERDARE system
- * prompt, and `load_skill` returns a named skill's full instructions. `load_skill`'s description
- * carries the available skill names so the model knows what it can pull without a separate call.
- * Skills that rely on host-only features unavailable over MCP are filtered out (MCP_EXCLUDED_SKILLS).
+ * Model-callable instruction tools. `ensure_system_prompt` reads the product-managed global prompt
+ * deployed by init, while `load_skill` reads the runtime bootstrap skills. `load_skill`'s
+ * description carries the available skill names so the model knows what it can pull without a
+ * separate call. Skills that rely on host-only features unavailable over MCP are filtered out
+ * (MCP_EXCLUDED_SKILLS).
  */
-async function buildBootstrapTools(
+async function buildModelCallableTools(
   bootstrapDir: string,
+  systemPromptPath: string,
   experiments: readonly ResolvedExperiment[] = [],
 ): Promise<Tool[]> {
-  const systemPromptPath = join(bootstrapDir, "system-prompt.txt");
-
   const skillsDir = join(bootstrapDir, "skills");
   const { skills: discovered } = await discoverSkills({
     cwd: bootstrapDir,
@@ -210,12 +212,16 @@ async function buildBootstrapTools(
 }
 
 export async function buildRegistries(options: McpServerOptions): Promise<McpRegistries> {
-  const [tools, bootstrapTools, prompts] = await Promise.all([
+  const [tools, modelCallableTools, prompts] = await Promise.all([
     buildToolRegistry(options.cwd, options.experiments),
-    buildBootstrapTools(options.bootstrapDir, options.experiments),
+    buildModelCallableTools(
+      options.bootstrapDir,
+      options.systemPromptPath ?? resolveSystemPromptPath(),
+      options.experiments,
+    ),
     buildPromptRegistry(options.bootstrapDir, options.experiments),
   ]);
-  for (const tool of bootstrapTools) tools.set(tool.name, tool);
+  for (const tool of modelCallableTools) tools.set(tool.name, tool);
   return { tools, prompts };
 }
 
@@ -375,6 +381,12 @@ export function resolveBootstrapDir(): string {
     if (existsSync(candidate)) return candidate;
   }
   return resolve(import.meta.dir, "../../bootstrap");
+}
+
+/** Global prompt deployed by init, isolated by the same prod/dev storage namespace as the sidecar. */
+export function resolveSystemPromptPath(env: NodeJS.ProcessEnv = process.env): string {
+  const home = env.USERPROFILE ?? env.HOME ?? homedir();
+  return join(home, resolveProjectDirName(env), "system-prompt.txt");
 }
 
 /**
