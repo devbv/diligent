@@ -4,11 +4,21 @@
 import "./sentry";
 
 import { createLogger } from "@diligent/logging";
+import { loadDiligentConfig, resolveExperimentStates } from "@diligent/runtime";
 import { OVERDARE_EXPERIMENTS } from "./experiments";
 import { configureSidecarLogging } from "./logging";
-import { runMcpServerMain } from "./mcp-server";
+import {
+  buildRegistries,
+  type McpRegistries,
+  resolveBootstrapDir,
+  runMcpServerMain,
+  toCatalogSnapshot,
+} from "./mcp-server";
+import { createRouterEndpoint } from "./router-endpoint";
+import { createSidecarToken, type StudioRegistration, startStudioRegistration } from "./studio-registry";
 import { createStudioBundledToolProviders } from "./tools";
 import { type ConsentService, createGatewayConsentService } from "./tools/gateway/consent";
+import { resolveStudioHost, resolveStudioPort } from "./tools/studiorpc/config";
 import { createWebServer, enableProcessLogFile, parseArgs } from "./web/server";
 
 const logger = createLogger({ scope: "sidecar/server" });
@@ -51,6 +61,57 @@ function startParentWatchdog(parentPid?: number): (() => void) | null {
   return () => clearInterval(timer);
 }
 
+/**
+ * Registers this sidecar in the Studio registry so `overdare-ai-agent start-mcp-router` can
+ * discover and route to it (P071). Registration lands as soon as the port is known; the MCP catalog
+ * follows in the background so building the tool registries never delays server startup — the
+ * launcher parses `DILIGENT_PORT` under a timeout.
+ *
+ * Failures are logged and swallowed: the router is an additional surface, and a registry write that
+ * fails (read-only home, exotic permissions) must not take down the Studio web server.
+ */
+async function registerForMcpRouter(options: {
+  cwd: string;
+  projectId?: string;
+  hubEndpoint?: string;
+  sidecarPort: number;
+  sidecarToken: string;
+  registries: () => Promise<McpRegistries>;
+}): Promise<StudioRegistration | null> {
+  let registration: StudioRegistration;
+  try {
+    registration = await startStudioRegistration({
+      cwd: options.cwd,
+      projectId: options.projectId,
+      hubEndpoint: options.hubEndpoint,
+      // Report the same host/port the Studio RPC tools actually dial, so the router's instance list
+      // describes where calls really go rather than a guess.
+      studioHost: resolveStudioHost(),
+      studioPort: resolveStudioPort(),
+      sidecarPort: options.sidecarPort,
+      sidecarToken: options.sidecarToken,
+    });
+  } catch (error) {
+    logger.warn("mcp_router.register_failed", {
+      message: "[Studio Server] Could not register for the MCP router; `start-mcp-router` will not see this Studio.",
+      error,
+    });
+    return null;
+  }
+
+  void options
+    .registries()
+    .then((registries) => registration.updateCatalog(toCatalogSnapshot(registries)))
+    .catch((error) => {
+      logger.warn("mcp_router.catalog_failed", {
+        message: "[Studio Server] Could not publish the MCP tool catalog for the router.",
+        error,
+      });
+    });
+
+  return registration;
+}
+
 export async function startStudioServer(argv: string[] = process.argv.slice(2)): Promise<void> {
   // Guarantee the OVERDARE storage namespace even when launched directly (e.g. `bun run`
   // in dev) rather than via the Rust launcher, which always injects it (see
@@ -67,6 +128,26 @@ export async function startStudioServer(argv: string[] = process.argv.slice(2)):
   const cleanupParentWatchdog = startParentWatchdog(args.parentPid);
   const studioDisabled = process.env.STUDIO_DISABLED === "1" || process.env.STUDIO_DISABLED?.toLowerCase() === "true";
   const consentMode = createConsentMode(studioDisabled);
+
+  // Built once, on first router request or catalog publish — never on the startup path.
+  //
+  // Experiments must be resolved here exactly as `mcp-serve` does (see runMcpServerMain): they gate
+  // tools, skills, and agents, so skipping them would let the router advertise and execute a tool
+  // the same build hides over stdio.
+  let registriesPromise: Promise<McpRegistries> | undefined;
+  const registries = (): Promise<McpRegistries> => {
+    registriesPromise ??= (async () => {
+      const { config } = await loadDiligentConfig(cwd);
+      return buildRegistries({
+        cwd,
+        bootstrapDir: resolveBootstrapDir(),
+        experiments: resolveExperimentStates(OVERDARE_EXPERIMENTS, config.experiments?.overrides),
+      });
+    })();
+    return registriesPromise;
+  };
+  const sidecarToken = createSidecarToken();
+  let registration: StudioRegistration | null = null;
 
   try {
     const { server } = await createWebServer({
@@ -88,11 +169,17 @@ export async function startStudioServer(argv: string[] = process.argv.slice(2)):
         studioDisabled,
       }),
       experimentDefinitions: OVERDARE_EXPERIMENTS,
+      // STUDIO_DISABLED=1 is UI-only development with no Studio behind it, so there is nothing for
+      // the router to route to — skip the endpoint (and the registration below) entirely.
+      ...(studioDisabled ? {} : { extraRoutes: createRouterEndpoint({ token: sidecarToken, registries }) }),
     });
 
     const cleanup = () => {
       cleanupParentWatchdog?.();
       cleanupLogFile?.();
+      // Drop the registry record so the router stops offering a Studio that is going away. The
+      // heartbeat would expire it anyway; this makes a clean shutdown immediate.
+      registration?.stop();
     };
 
     process.once("exit", cleanup);
@@ -107,6 +194,20 @@ export async function startStudioServer(argv: string[] = process.argv.slice(2)):
 
     // Launcher contract: this exact, undecorated stdout line is machine-parsed by the Rust host.
     console.info(`DILIGENT_PORT=${server.port}`);
+
+    // Without a port there is no address for the router to call back on, so registration would
+    // publish an unroutable record.
+    if (!studioDisabled && server.port) {
+      registration = await registerForMcpRouter({
+        cwd,
+        projectId: process.env.OVERDARE_PROJECT_ID,
+        hubEndpoint: process.env.HUB_DOMAIN,
+        sidecarPort: server.port,
+        sidecarToken,
+        registries,
+      });
+    }
+
     logger.info("server.ready", {
       message: `Diligent Web CLI server running at http://localhost:${server.port}`,
       fields: { port: server.port },

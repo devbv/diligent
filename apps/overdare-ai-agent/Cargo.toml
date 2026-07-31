@@ -7,14 +7,30 @@ edition = "2021"
 name = "overdare-ai-agent"
 path = "src/main.rs"
 
+[[bin]]
+name = "overdare-mcp"
+path = "src/bin/overdare-mcp.rs"
+
+[[test]]
+name = "mcp-router-binary"
+path = "test/mcp_router_binary.rs"
+
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "process", "io-util"] }
+# io-std + sync are for the MCP router (src/mcp_router.rs): stdio transport and the single-writer
+# stdout channel that keeps notifications from interleaving with responses.
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "process", "io-util", "io-std", "sync"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "blocking"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 sha2 = { version = "0.10", default-features = false }
 sentry = { version = "0.48.5", default-features = false, features = ["backtrace", "contexts", "panic", "reqwest", "rustls"] }
+
+[dev-dependencies]
+# The MCP router tests stand up loopback HTTP sidecars to exercise real routing (studio_router.rs).
+# reqwest already pulls tokio's net/sync internally; naming them here makes the test-only
+# requirement explicit rather than relying on feature unification.
+tokio = { version = "1", features = ["net", "sync"] }
 
 [profile.release]
 panic = "abort"

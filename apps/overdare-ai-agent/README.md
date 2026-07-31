@@ -102,11 +102,15 @@ Both prod (`~/.overdare/`) and dev (`~/.overdare-dev/`) roots follow this layout
 ## Commands
 
 ```bash
-# Build the Rust CLI
+# Build the Rust launcher and dedicated MCP router
 cargo build --manifest-path apps/overdare-ai-agent/Cargo.toml --release
 
 # Or via repo root shortcut
 bun run overdare-ai-agent:build
+
+# Outputs:
+# apps/overdare-ai-agent/target/release/overdare-ai-agent.exe
+# apps/overdare-ai-agent/target/release/overdare-mcp.exe
 
 # Build the same Windows runtime ZIP that the Release workflow builds
 bun run overdare-ai-agent:build-runtime-bundle -- --version 1.2.3-local --platform windows-x64 --agent-env dev

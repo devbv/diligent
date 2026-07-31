@@ -5,6 +5,9 @@ import { join } from "node:path";
 const DEFAULT_STORAGE_NAMESPACE = "diligent";
 const PACKAGED_STORAGE_NAMESPACE = "overdare";
 
+const DEFAULT_STUDIO_HOST = "localhost";
+const DEFAULT_STUDIO_PORT = 13377;
+
 export interface OverdareConfig {
   host?: string;
   port?: number;
@@ -47,4 +50,26 @@ export function loadOverdareConfig(): OverdareConfig {
   }
   cached = {};
   return cached;
+}
+
+/**
+ * Resolve the Studio RPC host.
+ * Priority: STUDIO_HOST env var > config file > DEFAULT_STUDIO_HOST.
+ */
+export function resolveStudioHost(): string {
+  if (process.env.STUDIO_HOST) return process.env.STUDIO_HOST;
+  return loadOverdareConfig().host ?? DEFAULT_STUDIO_HOST;
+}
+
+/**
+ * Resolve the Studio RPC port.
+ * Priority: STUDIO_PORT env var > config file > DEFAULT_STUDIO_PORT.
+ */
+export function resolveStudioPort(): number {
+  const envPort = process.env.STUDIO_PORT;
+  if (envPort) {
+    const parsed = Number(envPort);
+    if (!Number.isNaN(parsed) && parsed > 0) return parsed;
+  }
+  return loadOverdareConfig().port ?? DEFAULT_STUDIO_PORT;
 }

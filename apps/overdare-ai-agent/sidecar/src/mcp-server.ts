@@ -24,6 +24,7 @@ import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { OVERDARE_EXPERIMENTS } from "./experiments";
 import { configureSidecarLogging } from "./logging";
+import type { StudioCatalogSnapshot, StudioPromptDescriptor, StudioToolDescriptor } from "./studio-registry";
 import { createRagToolProvider } from "./tools/rag";
 import { createStudioRpcToolProvider } from "./tools/studiorpc";
 import { createValidatorToolProvider } from "./tools/validator";
@@ -31,15 +32,16 @@ import { createValidatorToolProvider } from "./tools/validator";
 const SERVER_INFO = { name: "overdare-ai-agent", version: "0.0.1" } as const;
 const logger = createLogger({ scope: "sidecar/mcp" });
 
-/** Server-level guidance surfaced to the client on `initialize`. */
-const SERVER_INSTRUCTIONS =
+/**
+ * Server-level guidance surfaced to the client on `initialize`.
+ * Also snapshotted into the Studio registry record so the Rust MCP router (P071) forwards the same
+ * text without duplicating it.
+ */
+export const SERVER_INSTRUCTIONS =
   "This server exposes OVERDARE Studio tools. Before doing anything else, call the " +
   '"ensure_system_prompt" tool and follow what it returns — it establishes how to work with ' +
   'OVERDARE. Use the "load_skill" tool to pull in an OVERDARE skill when a task matches one ' +
-  "(its available skills are listed in that tool's description). " +
-  "IMPORTANT: the agent's working directory (cwd) MUST be an OVERDARE Studio project folder that " +
-  "contains a .uasset file; the studio tools resolve project paths against that cwd, so if it is " +
-  "not such a folder, do not proceed — set the cwd correctly first.";
+  "(its available skills are listed in that tool's description).";
 
 export interface McpServerOptions {
   /** Working directory tools resolve project paths against. */
@@ -56,7 +58,7 @@ interface PromptEntry {
   load: () => Promise<string>;
 }
 
-interface McpRegistries {
+export interface McpRegistries {
   tools: Map<string, Tool>;
   prompts: Map<string, PromptEntry>;
 }
@@ -217,7 +219,7 @@ export async function buildRegistries(options: McpServerOptions): Promise<McpReg
   return { tools, prompts };
 }
 
-function toInputSchema(tool: Tool): Record<string, unknown> {
+export function toInputSchema(tool: Tool): Record<string, unknown> {
   if (tool.inputSchema) return tool.inputSchema;
   const { $schema, ...rest } = zodToJsonSchema(tool.parameters) as Record<string, unknown>;
   // MCP requires every tool inputSchema to be an object schema. Some tools use a top-level
@@ -235,6 +237,92 @@ function createToolContext(): ToolContext {
   };
 }
 
+/**
+ * MCP `CallToolResult`, narrowed to the content types this server produces. The index signature
+ * keeps it assignable to the SDK's open-ended `ServerResult`.
+ */
+export interface McpToolCallResult {
+  [key: string]: unknown;
+  content: Array<Record<string, unknown>>;
+  isError?: boolean;
+}
+
+/**
+ * Execute one registry tool and map its result onto MCP `CallToolResult`.
+ *
+ * Shared by the stdio MCP server and the router-callable HTTP endpoint (P071) so a proxied call
+ * goes through exactly the same argument parsing, execution, and error mapping — the router adds
+ * routing, never tool semantics.
+ */
+export async function callRegistryTool(
+  registries: McpRegistries,
+  name: string,
+  rawArgs: unknown,
+): Promise<McpToolCallResult> {
+  const tool = registries.tools.get(name);
+  if (!tool) {
+    return { content: [{ type: "text", text: `Unknown tool: ${name}` }], isError: true };
+  }
+  try {
+    const args = tool.parseArgs ? tool.parseArgs(rawArgs ?? {}) : tool.parameters.parse(rawArgs ?? {});
+    const result = await tool.execute(args, createToolContext());
+    const content: Array<Record<string, unknown>> = [{ type: "text", text: result.output ?? "" }];
+    for (const image of result.outputImages ?? []) {
+      content.push({ type: "image", data: image.source.data, mimeType: image.source.media_type });
+    }
+    return { content, isError: result.metadata?.error === true ? true : undefined };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { content: [{ type: "text", text: message }], isError: true };
+  }
+}
+
+/** MCP `GetPromptResult`, narrowed to the single-text-message shape this server produces. */
+export interface McpPromptResult {
+  [key: string]: unknown;
+  description: string;
+  messages: Array<{ role: "user"; content: { type: "text"; text: string } }>;
+}
+
+/** Load one registry prompt as an MCP `GetPromptResult`. Throws when the prompt is unknown. */
+export async function getRegistryPrompt(registries: McpRegistries, name: string): Promise<McpPromptResult> {
+  const prompt = registries.prompts.get(name);
+  if (!prompt) {
+    throw new Error(`Unknown prompt: ${name}`);
+  }
+  const text = await prompt.load();
+  return {
+    description: prompt.description,
+    messages: [{ role: "user", content: { type: "text", text } }],
+  };
+}
+
+/** The advertised tool list, in the exact shape MCP `tools/list` returns. */
+export function listRegistryTools(registries: McpRegistries): StudioToolDescriptor[] {
+  return Array.from(registries.tools.values()).map((tool) => ({
+    name: tool.name,
+    description: tool.description,
+    inputSchema: toInputSchema(tool),
+  }));
+}
+
+/** The advertised prompt list, in the exact shape MCP `prompts/list` returns. */
+export function listRegistryPrompts(registries: McpRegistries): StudioPromptDescriptor[] {
+  return Array.from(registries.prompts.values()).map((prompt) => ({
+    name: prompt.name,
+    description: prompt.description,
+  }));
+}
+
+/** Catalog snapshot the sidecar publishes into its Studio registry record for the router (P071). */
+export function toCatalogSnapshot(registries: McpRegistries): StudioCatalogSnapshot {
+  return {
+    tools: listRegistryTools(registries),
+    prompts: listRegistryPrompts(registries),
+    instructions: SERVER_INSTRUCTIONS,
+  };
+}
+
 /** Build a configured (but not yet connected) MCP Server backed by the given registries. */
 export function createMcpServer(registries: McpRegistries): Server {
   const server = new Server(SERVER_INFO, {
@@ -243,51 +331,20 @@ export function createMcpServer(registries: McpRegistries): Server {
   });
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: Array.from(registries.tools.values()).map((tool) => ({
-      name: tool.name,
-      description: tool.description,
-      inputSchema: toInputSchema(tool),
-    })),
+    tools: listRegistryTools(registries),
   }));
 
-  server.setRequestHandler(CallToolRequestSchema, async (request) => {
-    const { name, arguments: rawArgs } = request.params;
-    const tool = registries.tools.get(name);
-    if (!tool) {
-      return { content: [{ type: "text", text: `Unknown tool: ${name}` }], isError: true };
-    }
-    try {
-      const args = tool.parseArgs ? tool.parseArgs(rawArgs ?? {}) : tool.parameters.parse(rawArgs ?? {});
-      const result = await tool.execute(args, createToolContext());
-      const content: Array<Record<string, unknown>> = [{ type: "text", text: result.output ?? "" }];
-      for (const image of result.outputImages ?? []) {
-        content.push({ type: "image", data: image.source.data, mimeType: image.source.media_type });
-      }
-      return { content, isError: result.metadata?.error === true ? true : undefined };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      return { content: [{ type: "text", text: message }], isError: true };
-    }
-  });
+  server.setRequestHandler(CallToolRequestSchema, async (request) =>
+    callRegistryTool(registries, request.params.name, request.params.arguments),
+  );
 
   server.setRequestHandler(ListPromptsRequestSchema, async () => ({
-    prompts: Array.from(registries.prompts.values()).map((prompt) => ({
-      name: prompt.name,
-      description: prompt.description,
-    })),
+    prompts: listRegistryPrompts(registries),
   }));
 
-  server.setRequestHandler(GetPromptRequestSchema, async (request) => {
-    const prompt = registries.prompts.get(request.params.name);
-    if (!prompt) {
-      throw new Error(`Unknown prompt: ${request.params.name}`);
-    }
-    const text = await prompt.load();
-    return {
-      description: prompt.description,
-      messages: [{ role: "user", content: { type: "text", text } }],
-    };
-  });
+  server.setRequestHandler(GetPromptRequestSchema, async (request) =>
+    getRegistryPrompt(registries, request.params.name),
+  );
 
   return server;
 }
@@ -311,7 +368,7 @@ export async function startMcpServer(options: McpServerOptions): Promise<{ close
  * `defaults/` folder shipped next to the executable (the runtime bundle stages it as
  * `defaults/`), then the repo-relative source location for `bun run` dev usage.
  */
-function resolveBootstrapDir(): string {
+export function resolveBootstrapDir(): string {
   if (process.env.OVERDARE_BOOTSTRAP_DIR) return process.env.OVERDARE_BOOTSTRAP_DIR;
   const execDir = dirname(process.execPath);
   for (const candidate of [join(execDir, "bootstrap"), join(execDir, "defaults")]) {

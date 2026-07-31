@@ -1,10 +1,8 @@
 import net from "node:net";
 import readline from "node:readline";
 import { createLogger } from "@diligent/logging";
-import { loadOverdareConfig } from "./config";
+import { resolveStudioHost, resolveStudioPort } from "./config";
 
-const DEFAULT_HOST = "localhost";
-const DEFAULT_PORT = 13377;
 const DEFAULT_TIMEOUT_MS = 10_000;
 const logger = createLogger({ scope: "sidecar/studiorpc", context: { component: "rpc" } });
 
@@ -20,30 +18,6 @@ interface JsonRpcResponse {
 }
 
 let nextId = 1;
-
-/**
- * Resolve Studio RPC host.
- * Priority: STUDIO_HOST env var > config file > DEFAULT_HOST.
- */
-function resolveHost(): string {
-  if (process.env.STUDIO_HOST) return process.env.STUDIO_HOST;
-  const cfg = loadOverdareConfig();
-  return cfg.host ?? DEFAULT_HOST;
-}
-
-/**
- * Resolve Studio RPC port.
- * Priority: STUDIO_PORT env var > config file > DEFAULT_PORT.
- */
-function resolvePort(): number {
-  const envPort = process.env.STUDIO_PORT;
-  if (envPort) {
-    const parsed = Number(envPort);
-    if (!Number.isNaN(parsed) && parsed > 0) return parsed;
-  }
-  const cfg = loadOverdareConfig();
-  return cfg.port ?? DEFAULT_PORT;
-}
 
 /**
  * Send a JSON-RPC 2.0 request over a TCP socket to OVERDARE Studio.
@@ -66,8 +40,8 @@ export async function call(
   params?: Record<string, unknown>,
   options: StudioRpcCallOptions = {},
 ): Promise<unknown> {
-  const host = resolveHost();
-  const port = resolvePort();
+  const host = resolveStudioHost();
+  const port = resolveStudioPort();
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
   return new Promise((resolve, reject) => {

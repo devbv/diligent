@@ -51,6 +51,15 @@ interface CreateServerOptions {
   experimentDefinitions?: ExperimentDefinition[];
   /** Web-owned consent backend injected by a product host such as the OVERDARE sidecar. */
   consentBackend?: WebConsentBackend;
+  /**
+   * Extra route group consulted before this server's own routes, for product-owned endpoints such
+   * as the OVERDARE MCP router proxy (P071). `matches` is synchronous so `fetch` stays synchronous
+   * and the `/rpc` WebSocket upgrade path is unaffected.
+   */
+  extraRoutes?: {
+    matches: (url: URL) => boolean;
+    handle: (req: Request, url: URL) => Response | Promise<Response>;
+  };
 }
 
 interface ParsedArgs {
@@ -179,6 +188,12 @@ export async function createWebServer(options: CreateServerOptions = {}): Promis
 
       if (url.pathname === "/health") {
         return Response.json({ ok: true });
+      }
+
+      // Product routes come after /rpc and /health (which they must never shadow) but before the
+      // static handler, whose index.html fallback would otherwise swallow every unknown path.
+      if (options.extraRoutes?.matches(url)) {
+        return options.extraRoutes.handle(req, url);
       }
 
       if (url.pathname.startsWith(WEB_IMAGE_ROUTE_PREFIX)) {
