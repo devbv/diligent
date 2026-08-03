@@ -71,6 +71,8 @@ export function App() {
     runtimeVersion,
     consent,
     updateConsent,
+    noticeAcknowledgedLocally,
+    acknowledgeNotice,
     desktopNotificationsEnabled,
     setDesktopNotificationsEnabled,
     slashCommands,
@@ -387,11 +389,8 @@ export function App() {
         />
       ) : null}
 
-      {consent && !consent.noticeAcknowledged ? (
-        <FirstRunNoticeModal
-          privacyPolicyUrl={consent.privacyPolicyUrl}
-          onGetStarted={() => void updateConsent({ noticeAcknowledged: true })}
-        />
+      {consent && !consent.noticeAcknowledged && !noticeAcknowledgedLocally ? (
+        <FirstRunNoticeModal privacyPolicyUrl={consent.privacyPolicyUrl} onGetStarted={acknowledgeNotice} />
       ) : null}
     </div>
   );

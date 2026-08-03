@@ -70,6 +70,10 @@ export function addScriptToDocument(
       ActorGuid: guid,
       ObjectKey: nextObjectKey(rootDoc),
       Name: input.name,
+      Archivable: true,
+      bDisableAdaptiveNetUpdateFrequency: false,
+      Mobility: "Movable",
+      ...(input.class === "ModuleScript" ? {} : { Enabled: true }),
       Source: eolNormalized.result,
     });
     result = {

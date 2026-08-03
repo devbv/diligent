@@ -115,6 +115,8 @@ describe("createStudioRpcToolProvider", () => {
     expect(toolNames).toContain("studiorpc_level_save_file");
     expect(toolNames).toContain("studiorpc_game_play");
     expect(toolNames).toContain("studio_playtest_smoke");
+    expect(toolNames).toContain("studio_playtest_goal");
+    expect(toolNames).toContain("studio_playtest_scripted");
 
     const saveTool = tools.find((tool) => tool.name === "studiorpc_level_save_file")!;
     const hubLookupTool = tools.find((tool) => tool.name === "hub_world_lookup")!;

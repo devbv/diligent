@@ -82,6 +82,10 @@ export const DiligentConfigSchema = z
   .object({
     $schema: z.string().optional(),
 
+    // Migration anchor written by newer OVERDARE launchers. Older runtimes must
+    // accept it so one metadata field cannot invalidate the user's full config.
+    configSchemaVersion: z.number().int().nonnegative().optional(),
+
     // Core settings
     model: ModelRefSchema.optional(),
     provider: z

@@ -50,7 +50,10 @@ describe("PowerShell playtest runner", () => {
     expect(command.join(" ")).not.toContain(payload.match);
     expect(JSON.parse(Buffer.from(environment.OVERDARE_PLAYTEST_PAYLOAD!, "base64").toString("utf8"))).toEqual(payload);
     const encodedScript = command.at(-1)!;
-    expect(Buffer.from(encodedScript, "base64").toString("utf16le")).toContain("SendInput");
+    const decodedScript = Buffer.from(encodedScript, "base64").toString("utf16le");
+    expect(decodedScript).toContain("SendInput");
+    expect(decodedScript).toContain('"W" { return [System.UInt16]0x57 }');
+    expect(decodedScript).not.toContain("return [ushort]");
   });
 
   test("surfaces non-zero exit, timeout, and pre-aborted execution", async () => {
@@ -121,9 +124,10 @@ describe("Windows playtest desktop adapter", () => {
       match: "overdare",
       actions: [
         { type: "click_center" },
-        { type: "key_hold", key: "W", durationMs: 500 },
-        { type: "key_press", key: "SPACE" },
-        { type: "wait", durationMs: 500 },
+        { type: "set_keys", keys: ["W"], durationMs: 400 },
+        { type: "set_keys", keys: ["W", "SPACE"], durationMs: 100 },
+        { type: "set_keys", keys: ["D"], durationMs: 300 },
+        { type: "set_keys", keys: [], durationMs: 200 },
       ],
       signal,
     });
@@ -142,11 +146,50 @@ describe("Windows playtest desktop adapter", () => {
         windowId: "20",
         actions: [
           { type: "click_center" },
-          { type: "key_hold", key: "W", durationMs: 500 },
-          { type: "key_press", key: "SPACE" },
-          { type: "wait", durationMs: 500 },
+          { type: "set_keys", keys: ["W"], durationMs: 400 },
+          { type: "set_keys", keys: ["W", "SPACE"], durationMs: 100 },
+          { type: "set_keys", keys: ["D"], durationMs: 300 },
+          { type: "set_keys", keys: [], durationMs: 200 },
         ],
       },
     ]);
+  });
+
+  test("rejects unsafe or overlong action timelines before invoking PowerShell", async () => {
+    let calls = 0;
+    const adapter = createWindowsDesktopAdapter({
+      runner: async () => {
+        calls++;
+        return { ok: true };
+      },
+    });
+    const signal = new AbortController().signal;
+    const base = { windowId: "20", match: "overdare", signal };
+
+    await expect(
+      adapter.applyActions({
+        ...base,
+        actions: [{ type: "set_keys", keys: ["W"], durationMs: 100 }],
+      }),
+    ).rejects.toThrow("click_center");
+    await expect(
+      adapter.applyActions({
+        ...base,
+        actions: [{ type: "click_center" }, { type: "set_keys", keys: ["W", "W"], durationMs: 100 }],
+      }),
+    ).rejects.toThrow("unique");
+    await expect(
+      adapter.applyActions({
+        ...base,
+        actions: [
+          { type: "click_center" },
+          { type: "set_keys", keys: ["W"], durationMs: 1_500 },
+          { type: "set_keys", keys: ["D"], durationMs: 1_500 },
+          { type: "set_keys", keys: ["A"], durationMs: 1_500 },
+          { type: "set_keys", keys: ["S"], durationMs: 1_500 },
+        ],
+      }),
+    ).rejects.toThrow("5,000");
+    expect(calls).toBe(0);
   });
 });

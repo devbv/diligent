@@ -70,7 +70,11 @@ describe("script document operations", () => {
     );
 
     expect(added).toMatchObject({ guid: "observer-guid", normalizedLeadingSpaceGroups: 1 });
-    expect(JSON.stringify(readDocument(cwd))).toContain('"ActorGuid":"observer-guid"');
+    expect(JSON.stringify(readDocument(cwd))).toContain(
+      '"InstanceType":"LocalScript","ActorGuid":"observer-guid","ObjectKey":8,"Name":"Observer",' +
+        '"Archivable":true,"bDisableAdaptiveNetUpdateFrequency":false,"Mobility":"Movable","Enabled":true,' +
+        `"Source":"\\tprint('ready')\\r\\n"`,
+    );
     expect(readDocument(cwd).MapObjectKeyIndex).toBe(8);
 
     deleteScriptFromDocument(cwd, "observer-guid");

@@ -10,8 +10,13 @@ import type { Tool, ToolContext, ToolResult } from "../types";
 import type { WriteLock } from "../write-lock";
 import {
   createWindowsDesktopAdapter,
+  DEFAULT_PLAYTEST_ACTIONS,
   type DesktopWindow,
-  SMOKE_ACTIONS,
+  MAX_PLAYTEST_ACTION_DURATION_MS,
+  MAX_PLAYTEST_TIMELINE_STEPS,
+  MAX_PLAYTEST_TOTAL_DURATION_MS,
+  PLAYTEST_KEYS,
+  type PlaytestKey,
   type StudioDesktopAdapter,
 } from "./playtest-desktop";
 import { addScriptToDocument, deleteScriptFromDocument } from "./script-document-operations";
@@ -21,15 +26,70 @@ const READY_TIMEOUT_MS = 10_000;
 const INPUT_TIMEOUT_MS = 2_000;
 const POLL_INTERVAL_MS = 100;
 const DEFAULT_WINDOW_MATCH = "overdare";
-const REQUIRED_INPUTS = ["W:begin", "W:end", "SPACE:begin", "SPACE:end"] as const;
 
-const PlaytestSmokeParams = z.object({
-  windowId: z
-    .string()
-    .regex(/^\d+$/)
-    .optional()
-    .describe("Optional native window id from a previous ambiguous-window failure."),
-});
+const PlaytestKeyParam = z.enum(PLAYTEST_KEYS);
+const PlaytestActionParam = z
+  .object({
+    keys: z
+      .array(PlaytestKeyParam)
+      .max(3)
+      .refine((keys) => new Set(keys).size === keys.length, "Keys in one action must be unique.")
+      .describe("Keys held together for this timeline step. Use an empty array to wait."),
+    durationMs: z
+      .number()
+      .int()
+      .min(50)
+      .max(MAX_PLAYTEST_ACTION_DURATION_MS)
+      .describe(`Step duration in milliseconds, from 50 to ${MAX_PLAYTEST_ACTION_DURATION_MS}.`),
+  })
+  .strict();
+
+const PlaytestActionListParam = z.array(PlaytestActionParam).min(1).max(MAX_PLAYTEST_TIMELINE_STEPS);
+const SuccessMarkerParam = z
+  .string()
+  .min(1)
+  .max(80)
+  .regex(/^[A-Za-z0-9_.:-]+$/)
+  .describe("Exact Play.log marker that the game must emit to pass.");
+
+type PlaytestAction = z.infer<typeof PlaytestActionParam>;
+type PlaytestArgs = { actions?: PlaytestAction[]; successMarker?: string };
+
+function validateTimeline(value: PlaytestArgs, ctx: z.RefinementCtx): void {
+  if (!value.actions) return;
+  const totalDurationMs = value.actions.reduce((total, action) => total + action.durationMs, 0);
+  if (totalDurationMs > MAX_PLAYTEST_TOTAL_DURATION_MS) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["actions"],
+      message: `The action timeline may not exceed ${MAX_PLAYTEST_TOTAL_DURATION_MS} ms.`,
+    });
+  }
+  if (!value.actions.some((action) => action.keys.length > 0)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["actions"],
+      message: "The action timeline must include at least one key.",
+    });
+  }
+}
+
+const PlaytestSmokeParams = z
+  .object({
+    actions: PlaytestActionListParam.optional().describe(
+      "Optional bounded input timeline. Omit for the default W 500 ms, SPACE press, and 500 ms wait smoke sequence.",
+    ),
+  })
+  .strict()
+  .superRefine(validateTimeline);
+
+const PlaytestGoalParams = z
+  .object({
+    actions: PlaytestActionListParam.describe("Bounded input timeline for one representative game-completion path."),
+    successMarker: SuccessMarkerParam,
+  })
+  .strict()
+  .superRefine(validateTimeline);
 
 export type PlaytestFailureCode =
   | "UNSUPPORTED_PLATFORM"
@@ -39,6 +99,7 @@ export type PlaytestFailureCode =
   | "OBSERVER_NOT_READY"
   | "CAPTURE_FAILED"
   | "INPUT_NOT_OBSERVED"
+  | "GOAL_NOT_OBSERVED"
   | "CLEANUP_FAILED"
   | "INTERRUPTED";
 
@@ -88,15 +149,19 @@ interface PlaytestTraceEvent {
 }
 
 interface PlaytestReport {
-  version: 1;
+  version: 2;
   runId: string;
   status: "PASS" | "FAIL";
   failureCode?: PlaytestFailureCode;
   message: string;
   window?: DesktopWindow;
   windowCandidates?: DesktopWindow[];
+  actions: PlaytestAction[];
+  requiredInputs: string[];
   observedInputs: string[];
   positions: PositionObservation[];
+  successMarker?: string;
+  successMarkerObserved?: boolean;
   cleanupSucceeded: boolean;
   cleanupErrors: string[];
   primaryFailure?: { code: PlaytestFailureCode; message: string };
@@ -160,6 +225,55 @@ function collectStarterPlayerScripts(result: unknown): Array<{ guid: string; nam
   return matches;
 }
 
+function defaultPublicActions(): PlaytestAction[] {
+  return DEFAULT_PLAYTEST_ACTIONS.flatMap((action) =>
+    action.type === "set_keys" ? [{ keys: [...action.keys], durationMs: action.durationMs }] : [],
+  );
+}
+
+function normalizeActions(actions: PlaytestAction[] | undefined): PlaytestAction[] {
+  return (actions ?? defaultPublicActions()).map((action) => ({
+    keys: PLAYTEST_KEYS.filter((key) => action.keys.includes(key)),
+    durationMs: action.durationMs,
+  }));
+}
+
+function toDesktopActions(actions: PlaytestAction[]) {
+  return [
+    { type: "click_center" as const },
+    ...actions.map((action) => ({
+      type: "set_keys" as const,
+      keys: [...action.keys],
+      durationMs: action.durationMs,
+    })),
+  ];
+}
+
+function requiredInputsFor(actions: PlaytestAction[]): string[] {
+  const result: string[] = [];
+  let held = new Set<PlaytestKey>();
+  for (const action of [...actions, { keys: [], durationMs: 0 }]) {
+    const target = new Set<PlaytestKey>(action.keys);
+    for (const key of PLAYTEST_KEYS) {
+      if (held.has(key) && !target.has(key)) result.push(`${key}:end`);
+    }
+    for (const key of PLAYTEST_KEYS) {
+      if (!held.has(key) && target.has(key)) result.push(`${key}:begin`);
+    }
+    held = target;
+  }
+  return result;
+}
+
+function countOrderedMatches(observed: string[], required: string[]): number {
+  let matched = 0;
+  for (const marker of observed) {
+    if (marker === required[matched]) matched++;
+    if (matched === required.length) break;
+  }
+  return matched;
+}
+
 function buildObserverSource(runId: string): string {
   const prefix = `${MARKER_PREFIX}|${runId}|`;
   return [
@@ -185,6 +299,9 @@ function buildObserverSource(runId: string): string {
     'local inputService = game:GetService("UserInputService")',
     "local function observedKey(input)",
     '\tif input.KeyCode == Enum.KeyCode.W then return "W" end',
+    '\tif input.KeyCode == Enum.KeyCode.A then return "A" end',
+    '\tif input.KeyCode == Enum.KeyCode.S then return "S" end',
+    '\tif input.KeyCode == Enum.KeyCode.D then return "D" end',
     '\tif input.KeyCode == Enum.KeyCode.Space then return "SPACE" end',
     "\treturn nil",
     "end",
@@ -249,7 +366,7 @@ function parseObservations(
   positions: PositionObservation[];
 } {
   const marker = `${MARKER_PREFIX}|${runId}|`;
-  const inputSet = new Set<string>();
+  const observedInputs: string[] = [];
   const positions: PositionObservation[] = [];
   for (const line of log.split(/\r?\n/)) {
     const index = line.indexOf(marker);
@@ -258,9 +375,9 @@ function parseObservations(
       .slice(index + marker.length)
       .trim()
       .split("|");
-    if (parts[0] === "input" && (parts[1] === "W" || parts[1] === "SPACE")) {
+    if (parts[0] === "input" && (PLAYTEST_KEYS as readonly string[]).includes(parts[1])) {
       if (parts[2] === "begin" || parts[2] === "end") {
-        inputSet.add(`${parts[1]}:${parts[2]}`);
+        observedInputs.push(`${parts[1]}:${parts[2]}`);
       }
     } else if (parts[0] === "position" && parts.length >= 5) {
       const [x, y, z] = parts.slice(2, 5).map(Number);
@@ -270,7 +387,7 @@ function parseObservations(
     }
   }
   return {
-    observedInputs: REQUIRED_INPUTS.filter((value) => inputSet.has(value)),
+    observedInputs,
     positions,
   };
 }
@@ -288,8 +405,8 @@ function toFailure(error: unknown): PlaytestFailure {
   return new PlaytestFailure("OBSERVER_NOT_READY", error instanceof Error ? error.message : String(error));
 }
 
-function unsupportedResult(): ToolResult {
-  const message = "studio_playtest_smoke is supported only on Windows 10/11.";
+function unsupportedResult(toolName: string): ToolResult {
+  const message = `${toolName} is supported only on Windows 10/11.`;
   return {
     output: JSON.stringify({ status: "FAIL", failureCode: "UNSUPPORTED_PLATFORM", message }, null, 2),
     metadata: {
@@ -312,7 +429,13 @@ function createOutputImages(paths: string[]): NonNullable<ToolResult["outputImag
   }));
 }
 
-export function createPlaytestSmokeTool(options: PlaytestSmokeToolOptions): Tool {
+interface PlaytestToolSpec {
+  name: "studio_playtest_smoke" | "studio_playtest_goal";
+  description: string;
+  parameters: z.ZodTypeAny;
+}
+
+function createPlaytestTool(options: PlaytestSmokeToolOptions, spec: PlaytestToolSpec): Tool {
   const platform = options.platform ?? process.platform;
   const desktop = options.desktop ?? createWindowsDesktopAdapter();
   const clock = options.clock ?? realClock;
@@ -320,24 +443,24 @@ export function createPlaytestSmokeTool(options: PlaytestSmokeToolOptions): Tool
   const nextRunId = options.createRunId ?? createRunId;
 
   return {
-    name: "studio_playtest_smoke",
-    description:
-      "Run one shallow hybrid playtest in OVERDARE Studio. This temporarily injects a LocalScript observer, " +
-      "starts play, focuses and captures a matching OVERDARE window, sends the fixed W/Space smoke input, " +
-      "verifies Play.log markers, stops play, removes the observer, and returns evidence. Windows only.",
-    parameters: PlaytestSmokeParams,
+    name: spec.name,
+    description: spec.description,
+    parameters: spec.parameters,
     supportParallel: false,
     async execute(rawArgs, ctx: ToolContext): Promise<ToolResult> {
-      if (platform !== "win32") return unsupportedResult();
+      if (platform !== "win32") return unsupportedResult(spec.name);
 
-      const args = PlaytestSmokeParams.parse(rawArgs);
+      const args = spec.parameters.parse(rawArgs) as PlaytestArgs;
+      const actions = normalizeActions(args.actions);
+      const desktopActions = toDesktopActions(actions);
+      const requiredInputs = requiredInputsFor(actions);
       const approval = await ctx.approve({
         permission: "execute",
-        toolName: "studio_playtest_smoke",
+        toolName: spec.name,
         description: "Run a Windows OVERDARE smoke playtest with temporary script injection and real input",
         details: {
-          windowId: args.windowId,
-          actions: SMOKE_ACTIONS,
+          actions,
+          ...(args.successMarker ? { successMarker: args.successMarker } : {}),
           artifacts: "Writes before/after screenshots and a local playtest report.",
         },
       });
@@ -378,6 +501,7 @@ export function createPlaytestSmokeTool(options: PlaytestSmokeToolOptions): Tool
       let primaryFailure: PlaytestFailure | undefined;
       let observedInputs: string[] = [];
       let positions: PositionObservation[] = [];
+      let successMarkerObserved: boolean | undefined = args.successMarker ? false : undefined;
       const cleanupErrors: string[] = [];
       const release = await options.writeLock.acquire();
 
@@ -455,21 +579,12 @@ export function createPlaytestSmokeTool(options: PlaytestSmokeToolOptions): Tool
             `Could not enumerate OVERDARE windows: ${error instanceof Error ? error.message : String(error)}`,
           );
         }
-        if (args.windowId) {
-          selectedWindow = windowCandidates.find((window) => window.id === args.windowId);
-          if (!selectedWindow) {
-            throw new PlaytestFailure(
-              "STUDIO_WINDOW_NOT_FOUND",
-              `Window ${args.windowId} was not found among matching OVERDARE windows.`,
-              { candidates: windowCandidates },
-            );
-          }
-        } else if (windowCandidates.length === 0) {
+        if (windowCandidates.length === 0) {
           throw new PlaytestFailure("STUDIO_WINDOW_NOT_FOUND", "No matching visible OVERDARE window was found.");
         } else if (windowCandidates.length > 1) {
           throw new PlaytestFailure(
             "AMBIGUOUS_STUDIO_WINDOWS",
-            `Found ${windowCandidates.length} matching OVERDARE windows; retry with windowId.`,
+            `Found ${windowCandidates.length} matching OVERDARE windows. Close or hide extra matching windows before a new run.`,
             { candidates: windowCandidates },
           );
         } else {
@@ -494,15 +609,15 @@ export function createPlaytestSmokeTool(options: PlaytestSmokeToolOptions): Tool
           );
         }
 
-        ctx.onUpdate?.("Sending W/Space smoke input…");
+        ctx.onUpdate?.("Sending the bounded playtest input timeline…");
         try {
           await desktop.applyActions({
             windowId: selectedWindow.id,
             match: windowMatch,
-            actions: SMOKE_ACTIONS,
+            actions: desktopActions,
             signal: ctx.signal,
           });
-          addTrace("input.applied", { actions: SMOKE_ACTIONS });
+          addTrace("input.applied", { actions });
         } catch (error) {
           if (ctx.signal.aborted) throw new PlaytestFailure("INTERRUPTED", "The playtest was interrupted.");
           throw new PlaytestFailure(
@@ -532,7 +647,10 @@ export function createPlaytestSmokeTool(options: PlaytestSmokeToolOptions): Tool
           options.cwd,
           (log) => {
             const observations = parseObservations(log, runId);
-            return observations.observedInputs.length === REQUIRED_INPUTS.length;
+            const inputsComplete =
+              countOrderedMatches(observations.observedInputs, requiredInputs) === requiredInputs.length;
+            const goalComplete = !args.successMarker || log.includes(args.successMarker);
+            return inputsComplete && goalComplete;
           },
           INPUT_TIMEOUT_MS,
           clock,
@@ -541,14 +659,28 @@ export function createPlaytestSmokeTool(options: PlaytestSmokeToolOptions): Tool
         const observations = parseObservations(inputLog ?? readPlayLog(options.cwd), runId);
         observedInputs = observations.observedInputs;
         positions = observations.positions;
-        if (observedInputs.length !== REQUIRED_INPUTS.length) {
+        const matchedInputCount = countOrderedMatches(observedInputs, requiredInputs);
+        if (matchedInputCount !== requiredInputs.length) {
           throw new PlaytestFailure(
             "INPUT_NOT_OBSERVED",
-            `Observed ${observedInputs.length} of ${REQUIRED_INPUTS.length} required input markers.`,
-            { observedInputs, requiredInputs: REQUIRED_INPUTS },
+            `Observed ${matchedInputCount} of ${requiredInputs.length} required ordered input markers.`,
+            { observedInputs, requiredInputs },
           );
         }
-        addTrace("input.observed", { observedInputs, positions });
+        addTrace("input.observed", { requiredInputs, observedInputs, positions });
+
+        if (args.successMarker) {
+          const finalLog = inputLog ?? readPlayLog(options.cwd);
+          successMarkerObserved = finalLog.includes(args.successMarker);
+          if (!successMarkerObserved) {
+            throw new PlaytestFailure(
+              "GOAL_NOT_OBSERVED",
+              `Input delivery succeeded, but Play.log did not contain the required game marker ${args.successMarker}.`,
+              { successMarker: args.successMarker },
+            );
+          }
+          addTrace("goal.observed", { successMarker: args.successMarker });
+        }
       } catch (error) {
         primaryFailure = toFailure(error);
         if (primaryFailure.details?.candidates && Array.isArray(primaryFailure.details.candidates)) {
@@ -588,15 +720,24 @@ export function createPlaytestSmokeTool(options: PlaytestSmokeToolOptions): Tool
       });
 
       const report: PlaytestReport = {
-        version: 1,
+        version: 2,
         runId,
         status,
         ...(finalFailure ? { failureCode: finalFailure.code } : {}),
-        message: finalFailure?.message ?? "Observer, W/Space input, screenshots, and cleanup all succeeded.",
+        message:
+          finalFailure?.message ??
+          `Observer, ${requiredInputs.length} ordered input markers${
+            args.successMarker ? `, game marker ${args.successMarker}` : ""
+          }, screenshots, and cleanup all succeeded.`,
         ...(selectedWindow ? { window: selectedWindow } : {}),
         ...(windowCandidates && windowCandidates.length > 0 ? { windowCandidates } : {}),
+        actions,
+        requiredInputs,
         observedInputs,
         positions,
+        ...(args.successMarker
+          ? { successMarker: args.successMarker, successMarkerObserved: successMarkerObserved ?? false }
+          : {}),
         cleanupSucceeded,
         cleanupErrors,
         ...(primaryFailure && finalFailure?.code === "CLEANUP_FAILED"
@@ -620,8 +761,13 @@ export function createPlaytestSmokeTool(options: PlaytestSmokeToolOptions): Tool
         ...(report.failureCode ? { failureCode: report.failureCode } : {}),
         message: report.message,
         runId,
+        actions,
+        requiredInputs,
         observedInputs,
         positions,
+        ...(args.successMarker
+          ? { successMarker: args.successMarker, successMarkerObserved: successMarkerObserved ?? false }
+          : {}),
         cleanupSucceeded,
         artifacts: report.artifacts,
         ...(report.windowCandidates && !selectedWindow ? { windowCandidates: report.windowCandidates } : {}),
@@ -634,8 +780,13 @@ export function createPlaytestSmokeTool(options: PlaytestSmokeToolOptions): Tool
           status,
           ...(report.failureCode ? { failureCode: report.failureCode } : {}),
           runId,
+          actions,
+          requiredInputs,
           observedInputs,
           positions,
+          ...(args.successMarker
+            ? { successMarker: args.successMarker, successMarkerObserved: successMarkerObserved ?? false }
+            : {}),
           cleanupSucceeded,
           reportPath,
           tracePath,
@@ -643,4 +794,33 @@ export function createPlaytestSmokeTool(options: PlaytestSmokeToolOptions): Tool
       };
     },
   };
+}
+
+export function createPlaytestSmokeTool(options: PlaytestSmokeToolOptions): Tool {
+  return createPlaytestTool(options, {
+    name: "studio_playtest_smoke",
+    description:
+      "Run one bounded input-delivery playtest in OVERDARE Studio. It accepts a short timeline whose steps hold " +
+      "any combination of W, A, S, D, and SPACE. Omit `actions` to use the legacy W 500 ms then SPACE smoke " +
+      "sequence. The tool captures before/after images, verifies ordered input markers, stops play, removes its " +
+      "temporary observer, and returns evidence. It does not evaluate a game win condition; use " +
+      "`studio_playtest_goal` when a real gameplay success marker is required. Windows only. Never provide " +
+      "`windowId`; the schema intentionally does not expose it. Call once per requested run, and if it fails " +
+      "report the evidence without automatically retrying.",
+    parameters: PlaytestSmokeParams,
+  });
+}
+
+export function createPlaytestGoalTool(options: PlaytestSmokeToolOptions): Tool {
+  return createPlaytestTool(options, {
+    name: "studio_playtest_goal",
+    description:
+      "Run one bounded gameplay-goal playtest in OVERDARE Studio. Provide a short action timeline using W, A, S, " +
+      "D, and SPACE plus the exact `successMarker` already emitted by the game's real win path. The tool captures " +
+      "before/after images, verifies ordered input markers and the success marker, stops play, removes its " +
+      "temporary observer, and returns evidence. Never invent a placeholder marker. Windows only. Never provide " +
+      "`windowId`; the schema intentionally does not expose it. Call once per requested run, and if it fails " +
+      "report the evidence without automatically retrying.",
+    parameters: PlaytestGoalParams,
+  });
 }

@@ -301,17 +301,47 @@ bun run --cwd apps/overdare-ai-agent/sidecar web:dev
 
 ### Hybrid playtest topology exception
 
-`studio_playtest_smoke` must use this same-machine Windows topology. Unlike
-ordinary Studio RPC tools, it captures a local Windows window and applies
-keyboard input through Windows PowerShell/PInvoke. A sidecar running on Mac
-cannot send that input to a remote Windows Studio even when Studio RPC and an
-SMB-mounted project work normally.
+`studio_playtest_smoke` and `studio_playtest_goal` must use this same-machine
+Windows topology. Unlike ordinary Studio RPC tools, they capture a local
+Windows window and apply keyboard input through Windows PowerShell/PInvoke. A
+sidecar running on Mac cannot send that input to a remote Windows Studio even
+when Studio RPC and an SMB-mounted project work normally.
 
 Run the sidecar in the same unlocked interactive Windows user session as
 Studio, with a local project `--cwd`. The model provider and browser UI may
 still be remote. See
 [`P085-shallow-hybrid-playtest-handoff.md`](../plan/feature/P085-shallow-hybrid-playtest-handoff.md)
 for the implementation contract and Windows acceptance checklist.
+
+`studio_playtest_scripted` is different: it injects a temporary client Luau
+driver, starts and stops play through existing Studio RPC, verifies ordered
+checkpoints plus a real game success marker in `Play.log`, and removes the
+driver. It verifies that the injected driver is visible before starting play
+and evaluates only log output produced after the current run begins, so stale
+markers from an earlier `Play.log` cannot satisfy the goal. It does not capture
+a native window or send OS input, so it can use the ordinary
+Mac-agent/Windows-Studio topology as long as `--cwd` has writable access to the
+live `.ovdrjm` file. This gray-box mode can exercise longer, stateful scenarios
+but does not prove that real player controls work.
+
+For scenarios that automate character movement, use the injected
+`awaitPlayableCharacter(...)` and `moveCharacterTo(...)` helpers. They prevent a
+spawning or falling character from being mistaken for a successful walk by
+waiting through the pre-physics spawn window and checking sustained vertical
+position stability, humanoid state, vertical velocity, and actual horizontal
+and vertical position error. `MoveToFinished` is treated as advisory because
+OVERDARE may omit the signal even after the character enters the requested
+tolerance. The level must still provide a collision-safe `SpawnLocation` and a
+walkable route.
+
+For `moveCharacterTo(...)`, a `BasePart` destination is interpreted as a floor
+marker: its X/Z is combined with the current character-root Y before calling
+`Humanoid:MoveTo()`. Pass a `Vector3` to request an intentional vertical move.
+
+`awaitCharacter(...)` uses the same stable-playable-state wait by default so
+older drivers cannot start moving during spawn freefall.
+`awaitSpawnedCharacter(...)` is the explicit escape hatch for scenarios that
+intentionally need the raw character before it settles.
 
 ### Keeping HMR while coding from the Mac
 

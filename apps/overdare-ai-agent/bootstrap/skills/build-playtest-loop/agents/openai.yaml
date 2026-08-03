@@ -1,0 +1,4 @@
+interface:
+  display_name: "Build and Playtest"
+  short_description: "Build a small game and verify one playable loop"
+  default_prompt: "Use $build-playtest-loop to build a small playable game and verify it with one bounded playtest."

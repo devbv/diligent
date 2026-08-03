@@ -15,6 +15,23 @@ describe("DiligentConfigSchema", () => {
     expect(result.success).toBe(true);
   });
 
+  it("accepts a versioned config without dropping runtime settings", () => {
+    const result = DiligentConfigSchema.safeParse({
+      configSchemaVersion: 1,
+      yolo: true,
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).toMatchObject({
+        configSchemaVersion: 1,
+        yolo: true,
+      });
+    }
+    expect(DiligentConfigSchema.safeParse({ configSchemaVersion: -1 }).success).toBe(false);
+    expect(DiligentConfigSchema.safeParse({ configSchemaVersion: 1.5 }).success).toBe(false);
+  });
+
   it("accepts full config with all fields", () => {
     const full: DiligentConfig = {
       $schema: "https://example.com/schema.json",

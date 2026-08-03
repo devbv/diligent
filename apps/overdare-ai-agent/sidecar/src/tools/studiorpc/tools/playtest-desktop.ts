@@ -6,17 +6,20 @@ export interface DesktopWindow {
   processName: string;
 }
 
-export type DesktopAction =
-  | { type: "click_center" }
-  | { type: "key_hold"; key: "W"; durationMs: 500 }
-  | { type: "key_press"; key: "SPACE" }
-  | { type: "wait"; durationMs: 500 };
+export const PLAYTEST_KEYS = ["W", "A", "S", "D", "SPACE"] as const;
+export type PlaytestKey = (typeof PLAYTEST_KEYS)[number];
 
-export const SMOKE_ACTIONS: DesktopAction[] = [
+export type DesktopAction = { type: "click_center" } | { type: "set_keys"; keys: PlaytestKey[]; durationMs: number };
+
+export const MAX_PLAYTEST_ACTION_DURATION_MS = 1_500;
+export const MAX_PLAYTEST_TOTAL_DURATION_MS = 5_000;
+export const MAX_PLAYTEST_TIMELINE_STEPS = 12;
+
+export const DEFAULT_PLAYTEST_ACTIONS: DesktopAction[] = [
   { type: "click_center" },
-  { type: "key_hold", key: "W", durationMs: 500 },
-  { type: "key_press", key: "SPACE" },
-  { type: "wait", durationMs: 500 },
+  { type: "set_keys", keys: ["W"], durationMs: 500 },
+  { type: "set_keys", keys: ["SPACE"], durationMs: 50 },
+  { type: "set_keys", keys: [], durationMs: 500 },
 ];
 
 export interface StudioDesktopAdapter {
@@ -290,6 +293,17 @@ function Assert-TargetWindow([string] $windowId, [string] $match) {
     }
 }
 
+function Get-PlaytestVirtualKey([string] $key) {
+    switch ($key) {
+        "W" { return [System.UInt16]0x57 }
+        "A" { return [System.UInt16]0x41 }
+        "S" { return [System.UInt16]0x53 }
+        "D" { return [System.UInt16]0x44 }
+        "SPACE" { return [System.UInt16]0x20 }
+        default { throw "Unsupported playtest key." }
+    }
+}
+
 switch ($payload.operation) {
     "list" {
         $windows = @(Get-MatchingWindows ([string] $payload.match))
@@ -306,36 +320,58 @@ switch ($payload.operation) {
     "input" {
         Assert-TargetWindow ([string] $payload.windowId) ([string] $payload.match)
         [DiligentPlaytestNative]::Focus([string] $payload.windowId)
-        foreach ($action in $payload.actions) {
-            switch ($action.type) {
-                "click_center" {
-                    [DiligentPlaytestNative]::ClickCenter([string] $payload.windowId)
-                }
-                "key_hold" {
-                    if ($action.key -ne "W" -or [int] $action.durationMs -ne 500) {
-                        throw "Unsupported key_hold action."
-                    }
-                    [DiligentPlaytestNative]::KeyDown(0x57)
-                    Start-Sleep -Milliseconds 500
-                    [DiligentPlaytestNative]::KeyUp(0x57)
-                }
-                "key_press" {
-                    if ($action.key -ne "SPACE") {
-                        throw "Unsupported key_press action."
-                    }
-                    [DiligentPlaytestNative]::KeyDown(0x20)
-                    Start-Sleep -Milliseconds 50
-                    [DiligentPlaytestNative]::KeyUp(0x20)
-                }
-                "wait" {
-                    if ([int] $action.durationMs -ne 500) {
-                        throw "Unsupported wait action."
-                    }
-                    Start-Sleep -Milliseconds 500
-                }
-                default {
+        $actions = @($payload.actions)
+        if ($actions.Count -lt 2 -or $actions.Count -gt 13 -or $actions[0].type -ne "click_center") {
+            throw "Invalid playtest action timeline."
+        }
+        [DiligentPlaytestNative]::ClickCenter([string] $payload.windowId)
+
+        $heldKeys = @()
+        $totalDurationMs = 0
+        $sawKey = $false
+        try {
+            foreach ($action in @($actions | Select-Object -Skip 1)) {
+                if ($action.type -ne "set_keys") {
                     throw "Unsupported desktop action."
                 }
+                $durationMs = [int] $action.durationMs
+                if ($durationMs -lt 50 -or $durationMs -gt 1500) {
+                    throw "Playtest action duration must be between 50 and 1,500 ms."
+                }
+                $totalDurationMs += $durationMs
+                if ($totalDurationMs -gt 5000) {
+                    throw "Playtest action timeline exceeds 5,000 ms."
+                }
+
+                $targetKeys = @($action.keys | ForEach-Object { [string] $_ })
+                if ($targetKeys.Count -gt 3 -or @($targetKeys | Select-Object -Unique).Count -ne $targetKeys.Count) {
+                    throw "Playtest step keys must be unique and contain at most three keys."
+                }
+                foreach ($key in $targetKeys) {
+                    [void](Get-PlaytestVirtualKey $key)
+                    $sawKey = $true
+                }
+
+                foreach ($key in @($heldKeys)) {
+                    if ($targetKeys -notcontains $key) {
+                        [DiligentPlaytestNative]::KeyUp((Get-PlaytestVirtualKey $key))
+                        $heldKeys = @($heldKeys | Where-Object { $_ -ne $key })
+                    }
+                }
+                foreach ($key in $targetKeys) {
+                    if ($heldKeys -notcontains $key) {
+                        [DiligentPlaytestNative]::KeyDown((Get-PlaytestVirtualKey $key))
+                        $heldKeys += $key
+                    }
+                }
+                Start-Sleep -Milliseconds $durationMs
+            }
+            if (-not $sawKey) {
+                throw "Playtest action timeline must include at least one key."
+            }
+        } finally {
+            foreach ($key in @($heldKeys)) {
+                [DiligentPlaytestNative]::KeyUp((Get-PlaytestVirtualKey $key))
             }
         }
         ConvertTo-Json -InputObject @{ ok = $true } -Compress
@@ -444,9 +480,46 @@ function isDesktopWindow(value: unknown): value is DesktopWindow {
   );
 }
 
-function assertSmokeActions(actions: DesktopAction[]): void {
-  if (JSON.stringify(actions) !== JSON.stringify(SMOKE_ACTIONS)) {
-    throw new Error("Only the fixed shallow playtest input sequence is allowed.");
+function isPlaytestKey(value: unknown): value is PlaytestKey {
+  return typeof value === "string" && (PLAYTEST_KEYS as readonly string[]).includes(value);
+}
+
+function assertPlaytestActions(actions: DesktopAction[]): void {
+  if (actions.length < 2 || actions.length > MAX_PLAYTEST_TIMELINE_STEPS + 1) {
+    throw new Error(`Playtest actions must contain click_center plus 1-${MAX_PLAYTEST_TIMELINE_STEPS} steps.`);
+  }
+  if (actions[0]?.type !== "click_center") {
+    throw new Error("Playtest actions must start with exactly one click_center action.");
+  }
+
+  let totalDurationMs = 0;
+  let sawKey = false;
+  for (const [index, action] of actions.entries()) {
+    if (index === 0) continue;
+    if (action.type !== "set_keys") {
+      throw new Error("Only set_keys actions may follow click_center.");
+    }
+    if (
+      !Number.isInteger(action.durationMs) ||
+      action.durationMs < 50 ||
+      action.durationMs > MAX_PLAYTEST_ACTION_DURATION_MS
+    ) {
+      throw new Error(`Each playtest step must last 50-${MAX_PLAYTEST_ACTION_DURATION_MS.toLocaleString()} ms.`);
+    }
+    totalDurationMs += action.durationMs;
+    if (totalDurationMs > MAX_PLAYTEST_TOTAL_DURATION_MS) {
+      throw new Error(`The playtest action timeline may not exceed 5,000 ms.`);
+    }
+    if (action.keys.length > 3 || new Set(action.keys).size !== action.keys.length) {
+      throw new Error("Playtest step keys must be unique and contain at most three keys.");
+    }
+    if (!action.keys.every(isPlaytestKey)) {
+      throw new Error("Playtest steps support only W, A, S, D, and SPACE.");
+    }
+    if (action.keys.length > 0) sawKey = true;
+  }
+  if (!sawKey) {
+    throw new Error("The playtest action timeline must include at least one key.");
   }
 }
 
@@ -467,7 +540,7 @@ export function createWindowsDesktopAdapter(options: { runner?: PowerShellRunner
       await runner({ operation: "capture", match, windowId, outputPath }, signal);
     },
     async applyActions({ windowId, match, actions, signal }) {
-      assertSmokeActions(actions);
+      assertPlaytestActions(actions);
       await runner({ operation: "input", match, windowId, actions }, signal);
     },
   };
