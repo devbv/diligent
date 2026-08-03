@@ -28,6 +28,17 @@ function findButton(label: string): HTMLButtonElement | undefined {
   return Array.from(document.querySelectorAll("button")).find((button) => button.textContent === label);
 }
 
+async function chooseCategory(label: string): Promise<void> {
+  await act(async () => {
+    Array.from(document.querySelectorAll("button"))
+      .find((button) => button.textContent?.includes("Select a type"))
+      ?.click();
+  });
+  await act(async () => {
+    findButton(label)?.click();
+  });
+}
+
 const TARGET = {
   kind: "response" as const,
   messageId: "persistent-assistant-id",
@@ -54,14 +65,15 @@ test("requires one of three categories and submits a trimmed optional descriptio
 
   const submit = findButton("Submit");
   const textarea = document.querySelector<HTMLTextAreaElement>("#feedback-report-description");
-  const category = document.querySelector<HTMLInputElement>('input[name="feedback-category"][value="error"]');
-  expect(document.querySelectorAll('input[name="feedback-category"]')).toHaveLength(3);
+  const categoryTrigger = document.querySelector<HTMLButtonElement>(
+    '[aria-labelledby="feedback-report-category-label"]',
+  );
   expect(submit?.disabled).toBe(true);
   expect(textarea).not.toBeNull();
-  expect(category).not.toBeNull();
+  expect(categoryTrigger).not.toBeNull();
 
+  await chooseCategory("An error occurred");
   await act(async () => {
-    category!.click();
     setTextareaValue(textarea!, "  The response ignored my selected object.  ");
   });
   expect(submit?.disabled).toBe(false);
@@ -113,10 +125,8 @@ test("submits with a UUID v4 fallback when crypto.randomUUID is unavailable", as
       );
     });
 
-    await act(async () => {
-      document.querySelector<HTMLInputElement>('input[name="feedback-category"][value="etc"]')?.click();
-      findButton("Submit")?.click();
-    });
+    await chooseCategory("Something else");
+    await act(async () => findButton("Submit")?.click());
 
     expect(submissions).toEqual([{ category: "etc", clientReportId: "00010203-0405-4607-8809-0a0b0c0d0e0f" }]);
   } finally {
@@ -147,9 +157,8 @@ test("keeps input and the same client report id when retrying after failure", as
   });
 
   const textarea = document.querySelector<HTMLTextAreaElement>("#feedback-report-description");
-  const category = document.querySelector<HTMLInputElement>('input[name="feedback-category"][value="stalled"]');
+  await chooseCategory("The response stopped");
   await act(async () => {
-    category!.click();
     setTextareaValue(textarea!, "Please investigate this response.");
   });
 
@@ -157,7 +166,7 @@ test("keeps input and the same client report id when retrying after failure", as
     findButton("Submit")?.click();
   });
   expect(document.body.textContent).toContain("Couldn't send your report. Please try again in a moment.");
-  expect(category?.checked).toBe(true);
+  expect(document.body.textContent).toContain("The response stopped");
   expect(textarea?.value).toBe("Please investigate this response.");
 
   await act(async () => {
@@ -187,10 +196,8 @@ test("shows a dedicated rate-limit message from structured RPC error data", asyn
     );
   });
 
-  await act(async () => {
-    document.querySelector<HTMLInputElement>('input[name="feedback-category"][value="etc"]')?.click();
-    findButton("Submit")?.click();
-  });
+  await chooseCategory("Something else");
+  await act(async () => findButton("Submit")?.click());
 
   expect(document.body.textContent).toContain("Too many reports. Please try again later.");
 
@@ -223,12 +230,10 @@ test("blocks duplicate submission and closing while the report is in flight", as
     );
   });
 
-  await act(async () => {
-    document.querySelector<HTMLInputElement>('input[name="feedback-category"][value="etc"]')?.click();
-  });
+  await chooseCategory("Something else");
 
   const submit = findButton("Submit");
-  const cancel = findButton("Cancel");
+  const close = rootElement.querySelector<HTMLButtonElement>('button[title="Close report"]');
   await act(async () => {
     submit?.click();
     submit?.click();
@@ -237,8 +242,8 @@ test("blocks duplicate submission and closing while the report is in flight", as
 
   expect(submissionCount).toBe(1);
   expect(submit?.disabled).toBe(true);
-  expect(cancel?.disabled).toBe(true);
-  cancel?.click();
+  expect(close?.disabled).toBe(true);
+  close?.click();
   expect(cancelCount).toBe(0);
 
   await act(async () => {
@@ -269,6 +274,7 @@ test("copies the message text and swaps the copy icon to a check", async () => {
       createElement(MessageActions, {
         targetKind: "request",
         copyText: "Fix the selected object.",
+        timestamp: Date.now() - 65_000,
         onReport: () => {},
         alwaysVisible: true,
       }),
@@ -282,6 +288,41 @@ test("copies the message text and swaps the copy icon to a check", async () => {
 
   expect(copiedText).toBe("Fix the selected object.");
   expect(rootElement.querySelector('[data-icon="check"]')).not.toBeNull();
+
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 1_050));
+  });
+  expect(rootElement.querySelector('[data-icon="copy"]')).not.toBeNull();
+
+  await act(async () => root.unmount());
+  rootElement.remove();
+});
+
+test("opens exactly three issue types and renders an empty response preview", async () => {
+  const rootElement = document.createElement("div");
+  document.body.appendChild(rootElement);
+  const root = createRoot(rootElement);
+
+  await act(async () => {
+    root.render(
+      createElement(FeedbackReportModal, {
+        target: { ...TARGET, preview: "" },
+        onSubmit: async () => {},
+        onCancel: () => {},
+      }),
+    );
+  });
+
+  expect(rootElement.textContent).toContain("No response yet");
+  await act(async () => {
+    Array.from(rootElement.querySelectorAll("button"))
+      .find((button) => button.textContent?.includes("Select a type"))
+      ?.click();
+  });
+  expect(rootElement.querySelectorAll('[role="option"]')).toHaveLength(3);
+  expect(rootElement.textContent).toContain("The response stopped");
+  expect(rootElement.textContent).toContain("An error occurred");
+  expect(rootElement.textContent).toContain("Something else");
 
   await act(async () => root.unmount());
   rootElement.remove();

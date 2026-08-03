@@ -69,7 +69,7 @@ export function UserMessage({ item, text = "", images = [], contextItems = [], o
   const showActions = Boolean(item?.messageId && onReport);
 
   return (
-    <div className="group/message flex justify-end py-1 pb-8" tabIndex={showActions ? 0 : undefined}>
+    <div className="group/message flex justify-end py-1" tabIndex={showActions ? 0 : undefined}>
       <div className="max-w-message">
         <div className="flex flex-col items-end gap-2 rounded-md bg-surface-light px-3.5 py-2">
           {resolvedImages.length > 0 ? (
@@ -99,13 +99,12 @@ export function UserMessage({ item, text = "", images = [], contextItems = [], o
             </p>
           ) : null}
         </div>
-        {showActions ? (
+        {showActions && item ? (
           <MessageActions
             targetKind="request"
             copyText={resolvedText}
-            onReport={() => {
-              if (item) onReport?.(item);
-            }}
+            timestamp={item.timestamp}
+            onReport={() => onReport?.(item)}
           />
         ) : null}
       </div>

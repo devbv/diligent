@@ -187,6 +187,7 @@ export function AssistantMessage({
         <MessageActions
           targetKind="response"
           copyText={copyText}
+          timestamp={item.timestamp}
           onReport={() => onReport?.(item)}
           alwaysVisible={alwaysShowActions}
         />

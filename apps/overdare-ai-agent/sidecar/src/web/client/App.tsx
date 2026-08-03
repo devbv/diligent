@@ -343,6 +343,14 @@ export function App() {
             slashCommands={slashCommands}
           />
 
+          {feedbackReport ? (
+            <FeedbackReportModal
+              target={feedbackReport}
+              onSubmit={handleSubmitFeedbackReport}
+              onCancel={handleCancelFeedbackReport}
+            />
+          ) : null}
+
           {showToolModal ? (
             <ToolSettingsModal
               threadId={state.activeThreadId}
@@ -416,14 +424,6 @@ export function App() {
         <DeleteThreadModal
           onCancel={() => threadMgr.setPendingDeleteThreadId(null)}
           onConfirm={() => void confirmDeleteThread()}
-        />
-      ) : null}
-
-      {feedbackReport ? (
-        <FeedbackReportModal
-          target={feedbackReport}
-          onSubmit={handleSubmitFeedbackReport}
-          onCancel={handleCancelFeedbackReport}
         />
       ) : null}
 

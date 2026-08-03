@@ -25,6 +25,7 @@ test("MessageList renders every row during static rendering", () => {
 
   expect(html).toContain("static row 0");
   expect(html).toContain("static row 17");
+  expect(html).toContain("space-y-5");
   expect((html.match(/data-message-list-row="user-/g) ?? []).length).toBe(18);
 });
 

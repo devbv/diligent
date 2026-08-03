@@ -1465,15 +1465,17 @@ test("feedback report modal shows target context, reduced categories, and accura
   expect(html).toContain("Reporting this message");
   expect(html).toContain("Response");
   expect(html).toContain("First response line");
-  expect(html).toContain("The response stopped");
-  expect(html).toContain("An error occurred");
-  expect(html).toContain("Something else");
+  expect(html).toContain("Select a type");
   expect(html).not.toContain("Incorrect result");
   expect(html).toContain("Session and message identifiers are sent with this report so we can investigate.");
   expect(html.toLowerCase()).not.toContain("account");
   expect(html).toContain('id="feedback-report-description"');
   expect(html).toContain('maxLength="1000"');
   expect(html).toContain("What went wrong?");
+  expect(html).toContain("max-w-[390px]");
+  expect(html).toContain("absolute inset-0");
+  expect(html).toContain('title="Close report"');
+  expect(html).not.toContain(">Cancel<");
   expect(html).toContain('disabled=""');
 });
 
@@ -1489,7 +1491,7 @@ test("assistant message exposes copy and report actions for a completed response
         contentBlocks: [],
         thinkingDone: true,
         isStreaming: false,
-        timestamp: 1,
+        timestamp: Date.now() - 65_000,
       }}
       alwaysShowActions={true}
       onReport={() => {}}
@@ -1500,6 +1502,9 @@ test("assistant message exposes copy and report actions for a completed response
   expect(html).toContain('title="Report response"');
   expect(html).toContain('data-icon="copy"');
   expect(html).toContain('data-icon="flag"');
+  expect(html).toContain("justify-start");
+  expect(html).toContain("1m ago");
+  expect(html).toContain('role="tooltip"');
   expect(html).toContain("visible opacity-100");
 });
 
@@ -1520,7 +1525,8 @@ test("request actions reserve layout space and appear on hover or keyboard focus
 
   expect(html).toContain('title="Copy request"');
   expect(html).toContain('title="Report request"');
-  expect(html).toContain("h-7");
+  expect(html).toContain("h-4");
+  expect(html).toContain("justify-end");
   expect(html).toContain("group-hover/message:visible");
   expect(html).toContain("group-focus-within/message:visible");
 });

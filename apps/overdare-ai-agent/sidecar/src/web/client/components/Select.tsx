@@ -19,14 +19,19 @@ export interface SelectOption {
 }
 
 interface SelectProps {
-  ariaLabel: string;
+  ariaLabel?: string;
+  ariaLabelledBy?: string;
+  triggerId?: string;
   value: string;
+  placeholder?: string;
   options: SelectOption[];
   onChange: (value: string) => void;
   className?: string;
   triggerClassName?: string;
   triggerVariant?: "default" | "composer";
   menuClassName?: string;
+  menuListClassName?: string;
+  optionClassName?: string;
   openDirection?: "up" | "down";
   disabled?: boolean;
 }
@@ -39,13 +44,18 @@ interface OptionGroup {
 
 export function Select({
   ariaLabel,
+  ariaLabelledBy,
+  triggerId,
   value,
+  placeholder,
   options,
   onChange,
   className,
   triggerClassName,
   triggerVariant = "default",
   menuClassName,
+  menuListClassName,
+  optionClassName,
   openDirection = "down",
   disabled = false,
 }: SelectProps) {
@@ -95,8 +105,10 @@ export function Select({
   return (
     <div ref={rootRef} className={cn("relative", triggerVariant === "composer" && "flex h-5", className)}>
       <button
+        id={triggerId}
         type="button"
         aria-label={ariaLabel}
+        aria-labelledby={ariaLabelledBy}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
         disabled={disabled}
@@ -109,7 +121,7 @@ export function Select({
         )}
       >
         <span className={cn("min-w-0 truncate text-text", triggerVariant === "composer" && "!text-[#DCE2E8]")}>
-          {selectedOption?.label ?? value}
+          {selectedOption?.label ?? placeholder ?? value}
         </span>
         <span className={cn("text-[8px] leading-none text-[#88929C] transition-transform", isOpen && "rotate-180")}>
           ▼
@@ -126,7 +138,7 @@ export function Select({
             menuClassName,
           )}
         >
-          <div className="max-h-56 overflow-y-auto py-1">
+          <div className={cn("max-h-56 overflow-y-auto py-1", menuListClassName)}>
             {groupedOptions.map((group) => (
               <div key={group.key}>
                 {group.label ? (
@@ -148,6 +160,7 @@ export function Select({
                     }}
                     className={cn(
                       menuItemClasses,
+                      optionClassName,
                       option.value === value && selectedMenuItemClasses,
                       option.disabled && "cursor-not-allowed opacity-40",
                     )}
