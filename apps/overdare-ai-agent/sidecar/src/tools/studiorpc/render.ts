@@ -520,6 +520,9 @@ export function buildGameScreenshotRender(
   const path = isRecord(result) ? readString(result.path) : undefined;
 
   const items: { key: string; value: string }[] = [{ key: "captureType", value: captureType }];
+  if (typeof args.includeGui === "boolean") {
+    items.push({ key: "includeGui", value: String(args.includeGui) });
+  }
   if (width !== undefined && height !== undefined) {
     items.push({ key: "size", value: `${width}×${height}` });
   }
