@@ -99,6 +99,13 @@ DILIGENT_UPDATE_URL=https://example.com/update-manifest.json cargo run --manifes
   - `bun run overdare-ai-agent:init`
   - `bun run overdare-ai-agent:webserver -- --cwd=/path/to/project`
 
+## Real Studio Windows smoke test
+
+The Windows-only integration harness downloads a checksum-pinned Studio build, launches it with an isolated user
+profile and fresh project, waits for `level.browse` readiness, and verifies the packaged agent sidecar and bundled
+Studio RPC tool flow. See [`../../docs/guide/overdare-studio-smoke.md`](../../docs/guide/overdare-studio-smoke.md) for
+local Windows Sandbox usage, required S3/OIDC configuration, CI constraints, and diagnostics.
+
 Additional OVERDARE-owned assets now live here as well:
 
 - `apps/overdare-ai-agent/bootstrap/`

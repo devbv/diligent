@@ -17,6 +17,8 @@ dist/
 
 # Secrets
 .env
+**/.env.local
+**/.credential.local
 
 # Terminal Bench job outputs
 jobs/
@@ -27,3 +29,5 @@ jobs/
 # Runtime logs
 **/.diligent/logs/
 
+# Local integration-test diagnostics
+/artifacts/studio-smoke/
