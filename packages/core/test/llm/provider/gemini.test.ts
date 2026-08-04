@@ -54,7 +54,7 @@ describe("Gemini tools", () => {
 
   test("normalizes an oversized function schema when native web tools are present", () => {
     const oversizedSchema = {
-      type: "object",
+      type: "object" as const,
       description: "x".repeat(40_000),
       properties: {
         value: {

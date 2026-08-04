@@ -1,6 +1,7 @@
 // @summary Gemini provider adapter built on the Vercel AI SDK Google provider
 import { createGoogleGenerativeAI, google } from "@ai-sdk/google";
 import type { TextStreamPart, ToolSet } from "ai";
+import { asObjectJsonSchema } from "../../../tool/input-schema";
 import type { ContentBlock } from "../../../types";
 import { isNetworkError } from "../../errors";
 import { classifyProviderHttpError } from "../../provider-errors";
@@ -50,7 +51,7 @@ export function buildGeminiTools(tools: ToolDefinition[]): ToolSet {
   const compatibleTools = hasNativeWeb
     ? tools.map((definition): ToolDefinition => {
         if (definition.kind !== "function") return definition;
-        return { ...definition, inputSchema: normalizeGeminiToolSchema(definition.inputSchema) };
+        return { ...definition, inputSchema: asObjectJsonSchema(normalizeGeminiToolSchema(definition.inputSchema)) };
       })
     : tools;
   const result = convertToAISDKTools(compatibleTools);

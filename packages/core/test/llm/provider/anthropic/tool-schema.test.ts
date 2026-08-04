@@ -32,6 +32,7 @@ describe("convertTools function schemas", () => {
 
   test("preserves a top-level anyOf without changing its semantics", () => {
     const schema = schemaOf({
+      type: "object",
       anyOf: [
         {
           type: "object",
@@ -46,6 +47,7 @@ describe("convertTools function schemas", () => {
       ],
     });
     expect(schema).toEqual({
+      type: "object",
       anyOf: [
         { type: "object", properties: { a: { type: "string" } }, required: ["a"] },
         { type: "object", properties: { b: { type: "number" } }, required: ["b"] },

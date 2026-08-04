@@ -385,6 +385,7 @@ describe("ChatGPT WebSocket session", () => {
           name: "read",
           description: "Read a file",
           inputSchema: {
+            type: "object",
             properties: { path: { type: "string" } },
             required: ["path"],
           },

@@ -239,7 +239,7 @@ export function buildTools(tools: ToolDefinition[], strict?: boolean): OpenAIRes
         type: "function" as const,
         name: t.name,
         description: t.description,
-        parameters: { type: "object", ...t.inputSchema },
+        parameters: t.inputSchema,
         ...(strict !== undefined && { strict }),
       },
     ];

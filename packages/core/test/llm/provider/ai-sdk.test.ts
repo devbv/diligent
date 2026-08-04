@@ -108,7 +108,7 @@ describe("AI SDK message conversion", () => {
         kind: "function",
         name: "read_file",
         description: "Read a file",
-        inputSchema: { properties: { path: { type: "string" } }, required: ["path"] },
+        inputSchema: { type: "object", properties: { path: { type: "string" } }, required: ["path"] },
       },
       { kind: "provider_builtin", capability: "web" },
     ]);

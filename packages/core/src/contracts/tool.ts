@@ -2,6 +2,8 @@
 
 export type { ExecuteToolOptions, ToolOutputFileStore } from "../tool/executor";
 export { executeTool } from "../tool/executor";
+export type { ObjectJsonSchema } from "../tool/input-schema";
+export { toToolInputSchema } from "../tool/input-schema";
 export { ToolRegistryBuilder } from "../tool/registry";
 export type { TruncationResult } from "../tool/truncation";
 export {

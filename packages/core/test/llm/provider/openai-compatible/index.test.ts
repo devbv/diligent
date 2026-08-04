@@ -270,6 +270,7 @@ describe("buildOpenAICompatibleTools", () => {
         name: "bash",
         description: "Run a shell command",
         inputSchema: {
+          type: "object",
           properties: { command: { type: "string" } },
           required: ["command"],
         },
@@ -298,6 +299,7 @@ describe("buildOpenAICompatibleTools", () => {
         name: "read",
         description: "Read a file",
         inputSchema: {
+          type: "object",
           properties: { path: { type: "string" } },
           required: ["path"],
         },

@@ -11,6 +11,7 @@ describe("ToolDefinition", () => {
         name: "read",
         description: "Read a file",
         inputSchema: {
+          type: "object",
           properties: {
             filePath: { type: "string" },
           },
