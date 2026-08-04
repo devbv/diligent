@@ -8,7 +8,7 @@ import { existsSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import type { Tool, ToolContext, ToolResult } from "@diligent/core/tool-contract";
+import { type Tool, type ToolContext, type ToolResult, toToolInputSchema } from "@diligent/core/tool-contract";
 import { createLogger } from "@diligent/logging";
 import type { BundledToolProvider, ResolvedExperiment } from "@diligent/runtime";
 import { loadDiligentConfig, resolveExperimentGates, resolveExperimentStates } from "@diligent/runtime";
@@ -23,7 +23,6 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import { zodToJsonSchema } from "zod-to-json-schema";
 import { OVERDARE_EXPERIMENTS } from "./experiments";
 import { configureSidecarLogging } from "./logging";
 import type { StudioCatalogSnapshot, StudioPromptDescriptor, StudioToolDescriptor } from "./studio-registry";
@@ -225,15 +224,6 @@ export async function buildRegistries(options: McpServerOptions): Promise<McpReg
   return { tools, prompts };
 }
 
-export function toInputSchema(tool: Tool): Record<string, unknown> {
-  if (tool.inputSchema) return tool.inputSchema;
-  const { $schema, ...rest } = zodToJsonSchema(tool.parameters) as Record<string, unknown>;
-  // MCP requires every tool inputSchema to be an object schema. Some tools use a top-level
-  // union (`anyOf` of object variants), which lacks `type`; force it so clients accept it
-  // while the union branches still describe the accepted shapes.
-  return rest.type === "object" ? rest : { ...rest, type: "object" };
-}
-
 function createToolContext(): ToolContext {
   const controller = new AbortController();
   return {
@@ -308,7 +298,7 @@ export function listRegistryTools(registries: McpRegistries): StudioToolDescript
   return Array.from(registries.tools.values()).map((tool) => ({
     name: tool.name,
     description: tool.description,
-    inputSchema: toInputSchema(tool),
+    inputSchema: toToolInputSchema(tool),
   }));
 }
 

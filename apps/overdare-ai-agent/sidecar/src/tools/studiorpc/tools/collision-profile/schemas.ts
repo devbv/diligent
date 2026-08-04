@@ -61,34 +61,53 @@ export const createProfileParams = z
   })
   .strict();
 
-const editDefaultProfileParams = z
+/** Fields a default engine profile cannot carry — only its customResponses may be overridden. */
+const CUSTOM_ONLY_PROFILE_FIELDS = ["collisionEnabled", "objectTypeName", "helpMessage"] as const;
+
+// Kept as a single object schema rather than a discriminated union: a top-level union converts to
+// `{ anyOf: [...] }`, which is not an object schema and is not uniformly supported across model
+// providers. The profileType branches are enforced in `superRefine` instead.
+export const editProfileParams = z
   .object({
     profileType: z
-      .literal("default")
-      .describe("Use for default engine profiles. Only customResponses can be overridden."),
-    name: nameSchema.describe("Default collision profile name to override through EditProfiles."),
+      .enum(["default", "custom"])
+      .describe(
+        "Use default for built-in engine profiles, where only customResponses can be overridden through EditProfiles. Use custom for creator-defined profiles stored in WorldProfileData.Profiles.",
+      ),
+    name: nameSchema.describe("Collision profile name to update."),
     customResponses: z
       .array(customResponseSchema)
-      .describe("Complete customResponses override for the default profile. Stored in EditProfiles."),
+      .optional()
+      .describe("Complete customResponses override. Required when profileType=default."),
+    collisionEnabled: collisionEnabledSchema.optional().describe("profileType=custom only."),
+    objectTypeName: z
+      .string()
+      .min(1)
+      .optional()
+      .describe("Object type channel name for this custom profile. profileType=custom only."),
+    helpMessage: z.string().nullable().optional().describe("profileType=custom only. Pass null to clear it."),
   })
-  .strict();
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.profileType !== "default") return;
 
-const editCustomProfileParams = z
-  .object({
-    profileType: z.literal("custom").describe("Use for creator-defined profiles stored in WorldProfileData.Profiles."),
-    name: nameSchema.describe("Collision profile name to update."),
-    collisionEnabled: collisionEnabledSchema.optional(),
-    objectTypeName: z.string().min(1).optional().describe("Object type channel name for this custom profile."),
-    customResponses: z.array(customResponseSchema).optional(),
-    helpMessage: z.string().nullable().optional(),
-  })
-  .strict();
-
-export const editProfileParams = z
-  .discriminatedUnion("profileType", [editDefaultProfileParams, editCustomProfileParams])
-  .describe(
-    "Use profileType=default to override only customResponses in EditProfiles. Use profileType=custom to edit creator-defined profiles.",
-  );
+    if (value.customResponses === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["customResponses"],
+        message: "customResponses is required when profileType=default.",
+      });
+    }
+    for (const field of CUSTOM_ONLY_PROFILE_FIELDS) {
+      if (value[field] !== undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [field],
+          message: `${field} cannot be set when profileType=default; only customResponses can be overridden.`,
+        });
+      }
+    }
+  });
 
 export const deleteProfileParams = z
   .object({
