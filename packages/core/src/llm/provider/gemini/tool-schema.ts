@@ -1,4 +1,4 @@
-// @summary Normalizes oversized function schemas for Gemini native-tool compatibility.
+// @summary Normalizes union and oversized function schemas for Gemini tool compatibility.
 
 const DEFAULT_MAX_SCHEMA_BYTES = 32_000;
 
@@ -13,6 +13,22 @@ export function normalizeGeminiToolSchema(schema: JsonSchema, maxSchemaBytes = D
   if (JSON.stringify(schema).length <= maxSchemaBytes) return schema;
   const normalized = simplifySchema(dereferenceSchema(schema, schema, new Set()));
   return isRecord(normalized) ? normalized : schema;
+}
+
+/**
+ * Merges a union at the root of a tool schema into a single object schema.
+ *
+ * Gemini's schema dialect is an OpenAPI subset that reads a tool schema as an object and does not
+ * reliably accept `anyOf` in that position, so the branches are folded into one property set.
+ * Unions nested inside `properties` are left alone — Gemini accepts those, and merging them would
+ * lose the per-branch shapes. Unlike size-driven simplification this runs for every schema,
+ * because an external MCP server can advertise a root union no matter how our own tools are
+ * written.
+ */
+export function flattenGeminiUnionSchema(schema: JsonSchema): JsonSchema {
+  if (!Array.isArray(schema.anyOf)) return schema;
+  const collapsed = collapseUnion(schema);
+  return isRecord(collapsed) ? collapsed : schema;
 }
 
 function dereferenceSchema(value: unknown, root: JsonSchema, resolvingRefs: Set<string>): unknown {
@@ -58,21 +74,25 @@ function simplifySchema(value: unknown): unknown {
   if (!isRecord(value)) return value;
 
   const simplified = Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, simplifySchema(entry)]));
-  const anyOf = Array.isArray(simplified.anyOf)
-    ? simplified.anyOf.filter((variant) => !isImpossibleSchema(variant))
+  return collapseUnion(simplified);
+}
+
+function collapseUnion(schema: JsonSchema): unknown {
+  const anyOf = Array.isArray(schema.anyOf)
+    ? schema.anyOf.filter((variant) => !isImpossibleSchema(variant))
     : undefined;
-  if (!anyOf || anyOf.length === 0) return simplified;
+  if (!anyOf || anyOf.length === 0) return schema;
 
   const variants = deduplicateSchemas(anyOf);
   if (variants.length === 1) {
-    const { anyOf: _anyOf, ...siblings } = simplified;
+    const { anyOf: _anyOf, ...siblings } = schema;
     return isRecord(variants[0]) ? { ...variants[0], ...siblings } : variants[0];
   }
   if (variants.every(isObjectSchema)) {
-    const { anyOf: _anyOf, ...siblings } = simplified;
+    const { anyOf: _anyOf, ...siblings } = schema;
     return { ...mergeObjectSchemas(variants as JsonSchema[]), ...siblings };
   }
-  return { ...simplified, anyOf: variants };
+  return { ...schema, anyOf: variants };
 }
 
 function mergeObjectSchemas(schemas: JsonSchema[]): JsonSchema {
