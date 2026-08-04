@@ -98,7 +98,10 @@ The launcher has no log pipeline, so `monitoring.rs` captures explicitly:
 |---|---|---|
 | `tags.log_scope`, `tags.log_event` | sink | `session.turn-orchestrator`, `run_failed` |
 | `tags.session_id`, `tags.turn_id` | sink (when present) | opaque IDs, cross-reference with `.{ns}/sessions/` |
-| `fingerprint` | sink | `[scope, event, error.name]` — groups issues by log site, not message variance |
+| `tags.provider_error_type`, `tags.provider_error_reason`, `tags.status_code`, `tags.retryable`, `tags.error_code`, `tags.provider_request_id` | sink (from `fields.serializedError`) | `invalid_request`, `400`, `req_011...` — provider failure triage without reading messages |
+| `tags.provider`, `tags.model_id`, `tags.tool_count`, `tags.entry_count` | sink (from `fields.runContext`) | `anthropic`, `claude-...`, turn size at failure |
+| `tags.overdare_project_id`, `tags.hub_domain` | init (launcher-injected env) | opaque project ID / hub domain for slicing issues per project |
+| `fingerprint` | sink | `[scope, event, error.name]` (+ `providerErrorType`, `statusCode` when `fields.serializedError` carries them) — groups issues by log site and failure kind, not message variance |
 | exception (name, message, stack) | sink / SDK | reconstructed from the normalized error |
 | `release` | init | bare bundle version (`DILIGENT_SERVER_VERSION`); launcher: `overdare-ai-agent@<ci-version>` |
 | `environment` | init | `prod` / `dev` — the runtime release channel (`--agent-env` → `DILIGENT_ENV`) |

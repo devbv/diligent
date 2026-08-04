@@ -31,7 +31,15 @@ if (dsn) {
     sendDefaultPii: false,
     // SENTRY_TEST=1 marks the whole run as a manual test: events still record,
     // but alert rules filter on no_alert != true so the Slack channel stays quiet.
-    initialScope: process.env.SENTRY_TEST ? { tags: { no_alert: "true" } } : undefined,
+    // Launcher-injected deployment context (opaque IDs, no content) rides on every
+    // event so issues can be sliced by project / hub without extra plumbing.
+    initialScope: {
+      tags: {
+        ...(process.env.SENTRY_TEST ? { no_alert: "true" } : {}),
+        ...(process.env.OVERDARE_PROJECT_ID ? { overdare_project_id: process.env.OVERDARE_PROJECT_ID } : {}),
+        ...(process.env.HUB_DOMAIN ? { hub_domain: process.env.HUB_DOMAIN } : {}),
+      },
+    },
     // ponytail: drop all breadcrumbs — console output may echo prompt/message
     // content. Re-enable selectively (category allowlist) if triage needs them.
     beforeBreadcrumb: () => null,

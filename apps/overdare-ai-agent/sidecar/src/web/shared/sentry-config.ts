@@ -75,8 +75,45 @@ export function createSentryLogSink(sentry: SentryLogClient): LogSink {
         scope.setTag("log_event", record.event);
         if (record.sessionId) scope.setTag("session_id", record.sessionId);
         if (record.turnId) scope.setTag("turn_id", record.turnId);
-        // Group by log site + error type, not by message variance.
-        scope.setFingerprint([record.scope, record.event, record.error?.name ?? "no-error"]);
+        // Structured, content-free diagnostics carried in well-known fields. Free-text
+        // fields still never leave the machine; only these enumerated keys become tags.
+        const serializedError = record.fields?.serializedError as
+          | {
+              providerErrorType?: string;
+              providerErrorReason?: string;
+              statusCode?: number;
+              isRetryable?: boolean;
+              retryAfterMs?: number;
+              code?: string;
+              requestId?: string;
+            }
+          | undefined;
+        if (serializedError?.providerErrorType) scope.setTag("provider_error_type", serializedError.providerErrorType);
+        if (serializedError?.providerErrorReason) {
+          scope.setTag("provider_error_reason", serializedError.providerErrorReason);
+        }
+        if (serializedError?.statusCode !== undefined) scope.setTag("status_code", String(serializedError.statusCode));
+        if (serializedError?.isRetryable !== undefined) scope.setTag("retryable", String(serializedError.isRetryable));
+        if (serializedError?.code) scope.setTag("error_code", serializedError.code);
+        if (serializedError?.requestId) scope.setTag("provider_request_id", serializedError.requestId);
+        const runContext = record.fields?.runContext as
+          | { provider?: string; modelId?: string; toolCount?: number; entryCount?: number }
+          | undefined;
+        if (runContext?.provider) scope.setTag("provider", runContext.provider);
+        if (runContext?.modelId) scope.setTag("model_id", runContext.modelId);
+        if (runContext?.toolCount !== undefined) scope.setTag("tool_count", String(runContext.toolCount));
+        if (runContext?.entryCount !== undefined) scope.setTag("entry_count", String(runContext.entryCount));
+        // Group by log site + error type, not by message variance. Provider failures add
+        // errorType/status so a 400 schema rejection and a 429 rate limit become separate
+        // issues — otherwise the first provider error ever absorbs all later ones and new
+        // failure kinds never re-alert (seen live: tools.35 400s merged into a 429 issue).
+        scope.setFingerprint([
+          record.scope,
+          record.event,
+          record.error?.name ?? "no-error",
+          ...(serializedError?.providerErrorType ? [serializedError.providerErrorType] : []),
+          ...(serializedError?.statusCode !== undefined ? [String(serializedError.statusCode)] : []),
+        ]);
         scope.setLevel(record.level === "warn" ? "warning" : "error");
         if (record.error) {
           const error = new Error(record.error.message);

@@ -26,7 +26,10 @@ function toFunctionToolDefinition(
     ? tool.inputSchema
     : (() => {
         const { $schema, ...rest } = zodToJsonSchema(tool.parameters) as Record<string, unknown>;
-        return rest;
+        // Providers (Anthropic at least) require a top-level `type: "object"`. A top-level
+        // union (`anyOf` of object variants) omits it and the whole request 400s, so force
+        // it while the union branches still describe the accepted shapes.
+        return rest.type === "object" ? rest : { ...rest, type: "object" };
       })();
   return {
     kind: "function",
