@@ -992,6 +992,21 @@ fn is_retryable_manifest_status(status: reqwest::StatusCode) -> bool {
 
 const BASE_BACKOFF_MS: u64 = 500;
 
+/// Render an error with its full `source()` chain. reqwest's `Display` stops
+/// at "error sending request for url (...)" — the actual cause (dns error,
+/// connection refused, TLS) lives in the chain, and Sentry only receives the
+/// formatted string, so flatten it here.
+fn error_chain(err: &dyn std::error::Error) -> String {
+    let mut message = err.to_string();
+    let mut source = err.source();
+    while let Some(cause) = source {
+        message.push_str(": ");
+        message.push_str(&cause.to_string());
+        source = cause.source();
+    }
+    message
+}
+
 fn http_client(total_timeout: Option<Duration>) -> Result<reqwest::blocking::Client, String> {
     let mut builder = reqwest::blocking::Client::builder()
         .connect_timeout(Duration::from_secs(10))
@@ -1034,7 +1049,7 @@ fn fetch_manifest(
                 .get(manifest_url)
                 .timeout(timeout)
                 .send()
-                .map_err(|e| (UpdateError::network(format!("fetch manifest: {e}")), true))?;
+                .map_err(|e| (UpdateError::network(format!("fetch manifest: {}", error_chain(&e))), true))?;
             let status = response.status();
             if !status.is_success() {
                 let retryable = is_retryable_manifest_status(status);
@@ -1047,7 +1062,7 @@ fn fetch_manifest(
             }
             let body = response
                 .text()
-                .map_err(|e| (UpdateError::network(format!("read manifest body: {e}")), true))?;
+                .map_err(|e| (UpdateError::network(format!("read manifest body: {}", error_chain(&e))), true))?;
             serde_json::from_str::<UpdateManifest>(&body)
                 .map_err(|e| (UpdateError::manifest(format!("parse manifest: {e}")), false))
         })();
@@ -1171,7 +1186,7 @@ fn download_bundle(
                 .get(&bundle.url)
                 .timeout(timeout)
                 .send()
-                .map_err(|e| (UpdateError::network(format!("download bundle: {e}")), true))?;
+                .map_err(|e| (UpdateError::network(format!("download bundle: {}", error_chain(&e))), true))?;
             let status = response.status();
             if !status.is_success() {
                 return Err((
@@ -1181,7 +1196,7 @@ fn download_bundle(
             }
             let bytes = response
                 .bytes()
-                .map_err(|e| (UpdateError::network(format!("read bundle bytes: {e}")), true))?;
+                .map_err(|e| (UpdateError::network(format!("read bundle bytes: {}", error_chain(&e))), true))?;
             let actual = format!("{:x}", Sha256::digest(&bytes));
             if actual != bundle.sha256 {
                 return Err((
@@ -1642,6 +1657,24 @@ mod tests {
         assert!(!is_retryable_manifest_status(StatusCode::BAD_REQUEST));
         assert!(!is_retryable_manifest_status(StatusCode::UNAUTHORIZED));
         assert!(!is_retryable_manifest_status(StatusCode::FORBIDDEN));
+    }
+
+    #[test]
+    fn error_chain_flattens_nested_sources() {
+        #[derive(Debug)]
+        struct Wrapper(std::io::Error);
+        impl std::fmt::Display for Wrapper {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "error sending request")
+            }
+        }
+        impl std::error::Error for Wrapper {
+            fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+                Some(&self.0)
+            }
+        }
+        let err = Wrapper(std::io::Error::new(std::io::ErrorKind::Other, "dns error"));
+        assert_eq!(super::error_chain(&err), "error sending request: dns error");
     }
 
     #[test]
