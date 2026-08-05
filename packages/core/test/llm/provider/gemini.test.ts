@@ -52,9 +52,58 @@ describe("Gemini tools", () => {
     expect(Object.keys(buildGeminiTools(tools))).toEqual(["read_file", "google_search", "url_context"]);
   });
 
+  test("folds a root union into one object schema even without native web tools", () => {
+    const unionSchema = {
+      type: "object" as const,
+      description: "Pick a branch",
+      anyOf: [
+        {
+          type: "object",
+          properties: { kind: { type: "string", const: "a" }, a: { type: "string" } },
+          required: ["kind", "a"],
+        },
+        {
+          type: "object",
+          properties: { kind: { type: "string", const: "b" }, b: { type: "number" } },
+          required: ["kind", "b"],
+        },
+      ],
+    };
+    const result = buildGeminiTools([
+      { kind: "function", name: "branchy", description: "Branchy tool", inputSchema: unionSchema },
+    ]);
+    const advertised = (result.branchy as { inputSchema: { jsonSchema: Record<string, unknown> } }).inputSchema
+      .jsonSchema;
+
+    expect(advertised.anyOf).toBeUndefined();
+    expect(advertised.type).toBe("object");
+    expect(advertised.description).toBe("Pick a branch");
+    // Both branches stay visible as properties; only `kind` is required by every branch.
+    expect(Object.keys(advertised.properties as Record<string, unknown>).sort()).toEqual(["a", "b", "kind"]);
+    expect(advertised.required).toEqual(["kind"]);
+  });
+
+  test("leaves a union nested under properties alone", () => {
+    const nestedUnionSchema = {
+      type: "object" as const,
+      properties: {
+        value: {
+          anyOf: [{ type: "string" }, { type: "number" }],
+        },
+      },
+    };
+    const result = buildGeminiTools([
+      { kind: "function", name: "nested", description: "Nested union", inputSchema: nestedUnionSchema },
+    ]);
+    const advertised = (result.nested as { inputSchema: { jsonSchema: Record<string, unknown> } }).inputSchema
+      .jsonSchema;
+
+    expect(advertised).toEqual(nestedUnionSchema);
+  });
+
   test("normalizes an oversized function schema when native web tools are present", () => {
     const oversizedSchema = {
-      type: "object",
+      type: "object" as const,
       description: "x".repeat(40_000),
       properties: {
         value: {

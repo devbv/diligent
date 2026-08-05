@@ -1,15 +1,16 @@
 // @summary Gemini provider adapter built on the Vercel AI SDK Google provider
 import { createGoogleGenerativeAI, google } from "@ai-sdk/google";
 import type { TextStreamPart, ToolSet } from "ai";
+import { asObjectJsonSchema } from "../../../tool/input-schema";
 import type { ContentBlock } from "../../../types";
 import { isNetworkError } from "../../errors";
 import { classifyProviderHttpError } from "../../provider-errors";
 import type { Model, StreamFunction, StreamOptions, ThinkingEffort, ToolDefinition } from "../../types";
 import { CONTEXT_OVERFLOW_ERROR_MESSAGE, ProviderError, ProviderErrorReason, ProviderErrorType } from "../../types";
 import { convertToAISDKTools, createAISDKStream } from "../ai-sdk";
-import { normalizeGeminiToolSchema } from "./tool-schema";
+import { flattenGeminiUnionSchema, normalizeGeminiToolSchema } from "./tool-schema";
 
-export { normalizeGeminiToolSchema } from "./tool-schema";
+export { flattenGeminiUnionSchema, normalizeGeminiToolSchema } from "./tool-schema";
 
 type ProviderToolUseBlock = Extract<ContentBlock, { type: "provider_tool_use" }>;
 type WebSearchResultBlock = Extract<ContentBlock, { type: "web_search_result" }>;
@@ -47,12 +48,15 @@ export function buildGeminiTools(tools: ToolDefinition[]): ToolSet {
   const hasNativeWeb = tools.some(
     (definition) => definition.kind === "provider_builtin" && definition.capability === "web",
   );
-  const compatibleTools = hasNativeWeb
-    ? tools.map((definition): ToolDefinition => {
-        if (definition.kind !== "function") return definition;
-        return { ...definition, inputSchema: normalizeGeminiToolSchema(definition.inputSchema) };
-      })
-    : tools;
+  const compatibleTools = tools.map((definition): ToolDefinition => {
+    if (definition.kind !== "function") return definition;
+    // A root union is rejected whatever else the request carries, so it is folded away for every
+    // schema. Size-driven simplification stays tied to native web tools, which are what push a
+    // request over the schema budget.
+    const flattened = flattenGeminiUnionSchema(definition.inputSchema);
+    const compatible = hasNativeWeb ? normalizeGeminiToolSchema(flattened) : flattened;
+    return { ...definition, inputSchema: asObjectJsonSchema(compatible) };
+  });
   const result = convertToAISDKTools(compatibleTools);
   if (hasNativeWeb) {
     result.google_search = google.tools.googleSearch({});

@@ -10,6 +10,7 @@ import {
   ProviderErrorType as ProtocolProviderErrorTypeValues,
 } from "@diligent/protocol";
 import type { EventStream } from "../event-stream";
+import type { ObjectJsonSchema } from "../tool/input-schema";
 import type { AssistantMessage, ContentBlock, Message, StopReason, Usage } from "../types";
 import type { StreamTurnScope } from "./turn-scope";
 
@@ -106,7 +107,11 @@ export interface FunctionToolDefinition {
   kind: "function";
   name: string;
   description: string;
-  inputSchema: Record<string, unknown>;
+  /**
+   * Always an object schema. Build it with `toToolInputSchema` so provider adapters can forward
+   * it as-is instead of each re-deriving the `type: "object"` tag.
+   */
+  inputSchema: ObjectJsonSchema;
 }
 
 export interface ProviderBuiltinToolDefinition {

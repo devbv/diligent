@@ -1,7 +1,6 @@
 // @summary Assistant-response streaming helpers and provider debug logging
 
 import { createHash } from "node:crypto";
-import { zodToJsonSchema } from "zod-to-json-schema";
 import type { StreamTurnScope } from "../llm/turn-scope";
 import type {
   FunctionToolDefinition,
@@ -14,6 +13,7 @@ import type {
   ToolDefinition,
 } from "../llm/types";
 import { resolveMaxTokens } from "../llm/types";
+import { toToolInputSchema } from "../tool/input-schema";
 import type { Tool } from "../tool/types";
 import type { AssistantMessage, Message } from "../types";
 import type { AgentStream } from "./types";
@@ -22,20 +22,11 @@ import { toSerializableError } from "./util/errors";
 function toFunctionToolDefinition(
   tool: Pick<Tool, "name" | "description" | "parameters" | "inputSchema">,
 ): FunctionToolDefinition {
-  const schema = tool.inputSchema
-    ? tool.inputSchema
-    : (() => {
-        const { $schema, ...rest } = zodToJsonSchema(tool.parameters) as Record<string, unknown>;
-        // Providers (Anthropic at least) require a top-level `type: "object"`. A top-level
-        // union (`anyOf` of object variants) omits it and the whole request 400s, so force
-        // it while the union branches still describe the accepted shapes.
-        return rest.type === "object" ? rest : { ...rest, type: "object" };
-      })();
   return {
     kind: "function",
     name: tool.name,
     description: tool.description,
-    inputSchema: schema,
+    inputSchema: toToolInputSchema(tool),
   };
 }
 

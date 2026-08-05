@@ -29,6 +29,7 @@ describe("OpenAI native web tools", () => {
         name: "read",
         description: "Read a file",
         inputSchema: {
+          type: "object",
           properties: { filePath: { type: "string" } },
           required: ["filePath"],
           additionalProperties: false,
@@ -86,6 +87,7 @@ describe("OpenAI native web tools", () => {
         name: "read",
         description: "Read a file",
         inputSchema: {
+          type: "object",
           properties: { filePath: { type: "string" } },
           required: ["filePath"],
           additionalProperties: false,

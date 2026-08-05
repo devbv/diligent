@@ -132,7 +132,7 @@ export function convertToAISDKTools(tools: ToolDefinition[]): ToolSet {
     if (definition.kind !== "function") continue;
     result[definition.name] = tool({
       description: definition.description,
-      inputSchema: jsonSchema({ type: "object", ...definition.inputSchema }),
+      inputSchema: jsonSchema(definition.inputSchema),
     });
   }
   return result;

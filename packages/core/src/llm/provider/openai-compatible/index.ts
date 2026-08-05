@@ -116,7 +116,7 @@ export function buildOpenAICompatibleTools(tools: ToolDefinition[]): OpenAICompa
         function: {
           name: functionTool.name,
           description: functionTool.description,
-          parameters: { type: "object", ...functionTool.inputSchema },
+          parameters: functionTool.inputSchema,
         },
       },
     ];

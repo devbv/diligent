@@ -175,6 +175,11 @@ function updateDefaultProfile(
   if (!isDefaultProfileName(parsed.name)) {
     throw new CollisionToolError("PROFILE_NOT_FOUND", `Default collision profile not found: ${parsed.name}`);
   }
+  // `editProfileParams` already requires this for profileType=default; re-check to narrow the
+  // optional field, since the schema is one object rather than a per-branch union.
+  if (parsed.customResponses === undefined) {
+    throw new CollisionToolError("NO_UPDATES", "customResponses is required when profileType=default.");
+  }
 
   const editProfile = ensureEditProfile(data, parsed.name);
   editProfile.customResponses = parsed.customResponses;
