@@ -81,6 +81,50 @@ describe("client sink pipeline (default sink → fanout → Sentry)", () => {
     expect((event.exception as Error).message).toBe("resume rejected");
   });
 
+  test("provider failures fingerprint by errorType/status so distinct kinds become distinct issues", () => {
+    const captured: Captured[] = [];
+    setDefaultLogSink(createSentryLogSink(fakeSentry(captured)));
+
+    // Same shape as turn-orchestrator's run_failed: serializedError rides in fields.
+    const logger = createLogger({ scope: "session.turn-orchestrator" });
+    logger.error("run_failed", {
+      message: "run error",
+      error: Object.assign(new Error("400 invalid_request"), { name: "ProviderError" }),
+      fields: {
+        serializedError: { providerErrorType: "invalid_request", statusCode: 400, requestId: "req_123" },
+        runContext: { provider: "anthropic", modelId: "claude-x", toolCount: 52, entryCount: 7 },
+      },
+    });
+    logger.error("run_failed", {
+      message: "run error",
+      error: Object.assign(new Error("429 rate limit"), { name: "ProviderError" }),
+      fields: { serializedError: { providerErrorType: "rate_limit", statusCode: 429 } },
+    });
+
+    expect(captured).toHaveLength(2);
+    expect(captured[0]!.fingerprint).toEqual([
+      "session.turn-orchestrator",
+      "run_failed",
+      "ProviderError",
+      "invalid_request",
+      "400",
+    ]);
+    expect(captured[0]!.tags.provider_error_type).toBe("invalid_request");
+    expect(captured[0]!.tags.status_code).toBe("400");
+    expect(captured[0]!.tags.provider_request_id).toBe("req_123");
+    expect(captured[0]!.tags.provider).toBe("anthropic");
+    expect(captured[0]!.tags.model_id).toBe("claude-x");
+    expect(captured[0]!.tags.tool_count).toBe("52");
+    expect(captured[0]!.tags.entry_count).toBe("7");
+    expect(captured[1]!.fingerprint).toEqual([
+      "session.turn-orchestrator",
+      "run_failed",
+      "ProviderError",
+      "rate_limit",
+      "429",
+    ]);
+  });
+
   test("info logs and excluded events do not reach Sentry", () => {
     const captured: Captured[] = [];
     setDefaultLogSink(createSentryLogSink(fakeSentry(captured)));

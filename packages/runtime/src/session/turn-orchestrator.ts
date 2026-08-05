@@ -335,12 +335,22 @@ export class TurnOrchestrator {
     this._initializedAgent = null;
     const serializable = agentError?.error ?? toSerializableError(err);
     const lastPersisted = summarizeLastPersistedMessage(this.ctx.state.getCommittedEntries());
+    // Structured, content-free run context for diagnostics sinks (Sentry tags): which
+    // provider/model failed and how big the turn was. Never put conversation content here.
+    const runContext = this._agent
+      ? {
+          provider: this._agent.model.provider,
+          modelId: this._agent.model.modelId,
+          toolCount: this._agent.tools.length,
+          entryCount: this.ctx.state.entryCount,
+        }
+      : undefined;
     logger.error("run_failed", {
       sessionId: this.ctx.persistence.sessionId,
       turnId,
       message: `[SessionManager] Run error session=${this.ctx.persistence.sessionId} ${formatSerializableErrorForLog(serializable)} lastPersisted=${lastPersisted}`,
       error: err,
-      fields: { lastPersisted, serializedError: serializable },
+      fields: { lastPersisted, serializedError: serializable, runContext },
     });
     this.ctx.appendError(serializable, { fatal: false, turnId, persist: true });
   }

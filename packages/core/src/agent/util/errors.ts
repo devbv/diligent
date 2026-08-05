@@ -20,6 +20,14 @@ function extractErrorCode(err: unknown): string | undefined {
   return undefined;
 }
 
+function extractRequestId(err: unknown): string | undefined {
+  if (!err || typeof err !== "object") return undefined;
+  // Anthropic SDK APIError exposes `requestID`; other SDKs may use `request_id`.
+  const candidate = err as Record<string, unknown>;
+  const id = candidate.requestID ?? candidate.request_id;
+  return typeof id === "string" && id.length > 0 ? id : undefined;
+}
+
 // D086: Convert Error to serializable representation for event consumers.
 export function toSerializableError(err: unknown): SerializableError {
   if (err instanceof ProviderError) {
@@ -33,6 +41,7 @@ export function toSerializableError(err: unknown): SerializableError {
       isRetryable: err.isRetryable,
       retryAfterMs: err.retryAfterMs,
       statusCode: err.statusCode,
+      requestId: extractRequestId(err.cause),
     };
   }
 

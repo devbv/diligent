@@ -126,6 +126,8 @@ export const SerializableErrorSchema = z.object({
   isRetryable: z.boolean().optional(),
   retryAfterMs: z.number().int().nonnegative().optional(),
   statusCode: z.number().int().optional(),
+  /** Provider-assigned request ID (e.g. Anthropic `req_...`) for support escalation. */
+  requestId: z.string().optional(),
 });
 export type SerializableError = z.infer<typeof SerializableErrorSchema>;
 

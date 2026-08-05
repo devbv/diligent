@@ -496,4 +496,41 @@ describe("Agent", () => {
       },
     ]);
   });
+
+  test("top-level union parameters still produce an object input schema", async () => {
+    // Anthropic rejects any tool whose input_schema lacks a top-level `type: "object"`
+    // (a discriminated union serializes to bare `anyOf`), failing the whole request.
+    let capturedTools: ToolDefinition[] = [];
+    const agent = new Agent(
+      TEST_MODEL,
+      BASE_CONFIG.systemPrompt,
+      [
+        {
+          name: "union_tool",
+          description: "Union input",
+          parameters: z.discriminatedUnion("mode", [
+            z.object({ mode: z.literal("a"), value: z.string() }),
+            z.object({ mode: z.literal("b") }),
+          ]),
+          async execute() {
+            return { output: "unused" };
+          },
+        },
+      ],
+      {
+        effort: BASE_CONFIG.effort,
+        compaction: BASE_CONFIG.compaction,
+        llmMsgStreamFn: (_model: Model, ctx: { tools: ToolDefinition[] }) => {
+          capturedTools = ctx.tools;
+          return makeStreamFn(makeAssistant("ok"))();
+        },
+      },
+    );
+
+    await agent.prompt({ role: "user", content: "hi", timestamp: Date.now() });
+
+    const schema = (capturedTools[0] as { inputSchema: Record<string, unknown> }).inputSchema;
+    expect(schema.type).toBe("object");
+    expect(Array.isArray(schema.anyOf)).toBe(true);
+  });
 });
