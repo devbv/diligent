@@ -6,7 +6,11 @@ import { cn } from "../lib/cn";
 import { usageTooltipClasses } from "./ui-styles";
 
 const GAUGE_TRACK_COLOR = "#565F69";
-const GAUGE_FILL_COLOR = "#40BF80";
+/**
+ * The design export paints the progress arc by masking a white rect; the `#40BF80` in the file sits
+ * on the mask's own path, which `mask-type: alpha` discards. So the swept arc is white, not green.
+ */
+const GAUGE_FILL_COLOR = "#FFFFFF";
 /**
  * Design `progressbar`: a 12px ring whose outer edge is r6 and inner edge r4.2, so the stroke is
  * 1.8px wide centred on r5.1. The fill sweeps clockwise from 12 o'clock.

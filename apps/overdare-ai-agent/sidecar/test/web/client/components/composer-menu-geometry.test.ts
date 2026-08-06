@@ -42,7 +42,9 @@ test("usage gauge is a 1.8px ring, not a filled pie", () => {
   expect(html).toContain('stroke-width="1.8"');
   expect(html).toContain('fill="none"');
   expect(html).toContain('stroke="#565F69"');
-  expect(html).toContain('stroke="#40BF80"');
+  // The export masks a white rect for the swept arc — the file's #40BF80 lives on the discarded mask path.
+  expect(html).toContain('stroke="#FFFFFF"');
+  expect(html).not.toContain("#40BF80");
   // Sweeps clockwise from 12 o'clock.
   expect(html).toContain('transform="rotate(-90 6 6)"');
   expect(html).not.toContain("conic-gradient");
@@ -52,7 +54,7 @@ test("usage gauge is a 1.8px ring, not a filled pie", () => {
 
   // An unused context window draws the track only.
   const empty = renderToStaticMarkup(UsageGauge({ ratio: 0 }));
-  expect(empty).not.toContain("#40BF80");
+  expect(empty).not.toContain("#FFFFFF");
   expect(empty).toContain('data-usage-percent="0"');
 });
 
