@@ -1,0 +1,93 @@
+name: OVERDARE Studio Windows smoke
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 18 * * *"
+  push:
+    branches: [main]
+    paths:
+      - "apps/overdare-ai-agent/**"
+      - "packages/core/**"
+      - "packages/runtime/**"
+      - "packages/protocol/**"
+      - "packages/web/**"
+      - "scripts/build-overdare-**"
+      - ".github/workflows/overdare-studio-smoke.yml"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  studio-smoke:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      OVERDARE_STUDIO_S3_BUCKET: ovdr-build-binary
+      OVERDARE_STUDIO_S3_REGION: ap-northeast-2
+      OVERDARE_STUDIO_S3_PREFIX: Sandbox/Windows/
+      OVERDARE_STUDIO_SHA256: ${{ vars.OVERDARE_STUDIO_SHA256 }}
+      OVERDARE_STUDIO_EXE_RELATIVE_PATH: ${{ vars.OVERDARE_STUDIO_EXE_RELATIVE_PATH }}
+      OVERDARE_STUDIO_ARGS_JSON: ${{ vars.OVERDARE_STUDIO_ARGS_JSON }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Configure short-lived AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.OVERDARE_STUDIO_AWS_ROLE_ARN }}
+          aws-region: ${{ env.OVERDARE_STUDIO_S3_REGION }}
+
+      - name: Install repository dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build web client
+        run: bun run --cwd packages/web build
+
+      - name: Build OVERDARE sidecar
+        run: bun run overdare-ai-agent:build-sidecar
+
+      - name: Build OVERDARE agent launcher
+        run: cargo build --manifest-path apps/overdare-ai-agent/Cargo.toml --release
+
+      - name: Stage Studio automation credential
+        shell: powershell
+        env:
+          OVERDARE_STUDIO_CREDENTIAL_B64: ${{ secrets.OVERDARE_STUDIO_CREDENTIAL_B64 }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:OVERDARE_STUDIO_CREDENTIAL_B64)) {
+            throw "Missing OVERDARE_STUDIO_CREDENTIAL_B64 repository or environment secret"
+          }
+          $credentialPath = Join-Path $env:RUNNER_TEMP "overdare-studio.credential.local"
+          $content = "OVERDARE_STUDIO_CREDENTIAL_V1`r`n$($env:OVERDARE_STUDIO_CREDENTIAL_B64.Trim())`r`n"
+          [System.IO.File]::WriteAllText($credentialPath, $content, [System.Text.UTF8Encoding]::new($false))
+          "OVERDARE_STUDIO_CREDENTIAL_FILE=$credentialPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "OVERDARE_STUDIO_CREDENTIAL_EPHEMERAL=1" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Run Studio integration smoke
+        run: bun run test:studio-smoke:direct
+
+      - name: Remove staged Studio credential file
+        if: always()
+        shell: powershell
+        run: |
+          if ($env:OVERDARE_STUDIO_CREDENTIAL_FILE) {
+            Remove-Item -LiteralPath $env:OVERDARE_STUDIO_CREDENTIAL_FILE -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Upload Studio and agent diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: overdare-studio-smoke-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/studio-smoke/**
+          if-no-files-found: warn
+          retention-days: 14
