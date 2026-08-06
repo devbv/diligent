@@ -226,21 +226,23 @@ test("model pill shows the effort suffix and opens a design-sized Models menu", 
   rootElement.remove();
 });
 
-test("hovering a thinking model opens the Effort submenu and picking one sets model plus effort", async () => {
+function findEffortRow(): HTMLButtonElement | undefined {
+  return Array.from(document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')).find(
+    (button) => button.textContent?.trim() === "Effort",
+  );
+}
+
+test("the Effort row under the model list opens the headerless effort submenu", async () => {
   const { rootElement, root } = renderInputDock();
-  let selectedModel = "";
   let selectedEffort = "";
 
   await act(async () => {
     root.render(
       createElement(InputDock, {
         ...dockProps,
-        currentModel: "anthropic\0claude-opus-4-8",
+        currentModel: "openai\0gpt-5-6-terra",
         availableModels: MODELS,
         supportsThinking: true,
-        onModelChange: (modelId: string) => {
-          selectedModel = modelId;
-        },
         onEffortChange: (effort: string) => {
           selectedEffort = effort;
         },
@@ -252,31 +254,64 @@ test("hovering a thinking model opens the Effort submenu and picking one sets mo
     rootElement.querySelector<HTMLButtonElement>('button[aria-label="Model selector"]')?.click();
   });
 
-  const options = Array.from(document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]'));
-  // Non-thinking models expose no submenu affordance.
-  expect(options[0]?.getAttribute("aria-haspopup")).toBeNull();
-  expect(options[1]?.getAttribute("aria-haspopup")).toBe("menu");
-
-  await act(async () => {
-    if (options[0]) hover(options[0]);
-  });
+  // Model rows no longer carry a submenu affordance — Effort is a single row beneath them.
+  for (const option of document.querySelectorAll('[role="menuitemradio"]')) {
+    expect(option.getAttribute("aria-haspopup")).toBeNull();
+  }
+  const effortRow = findEffortRow();
+  expect(effortRow).toBeDefined();
+  expect(effortRow?.getAttribute("aria-haspopup")).toBe("menu");
   expect(findEffortMenu()).toBeNull();
 
   await act(async () => {
-    if (options[1]) hover(options[1]);
+    if (effortRow) hover(effortRow);
   });
 
   const effortMenu = findEffortMenu();
   expect(effortMenu?.className).toContain("w-[180px]");
+  // The submenu carries no header of its own; the rows start immediately.
+  expect(effortMenu?.textContent?.trim().startsWith("Low")).toBe(true);
+
   const effortItems = Array.from(effortMenu?.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]') ?? []);
   expect(effortItems.map((item) => item.textContent?.trim())).toEqual(["Low", "Medium", "High", "Extra High", "Max"]);
 
   await act(async () => {
     effortItems[3]?.click();
   });
-  expect(selectedModel).toBe("openai\0gpt-5-6-terra");
   expect(selectedEffort).toBe("xhigh");
   expect(findModelMenu()).toBeNull();
+
+  await act(async () => {
+    root.unmount();
+  });
+  rootElement.remove();
+});
+
+test("the Effort row is disabled for a model without thinking efforts", async () => {
+  const { rootElement, root } = renderInputDock();
+
+  await act(async () => {
+    root.render(
+      createElement(InputDock, {
+        ...dockProps,
+        currentModel: "anthropic\0claude-opus-4-8",
+        availableModels: MODELS,
+        supportsThinking: true,
+      }),
+    );
+  });
+
+  await act(async () => {
+    rootElement.querySelector<HTMLButtonElement>('button[aria-label="Model selector"]')?.click();
+  });
+
+  const effortRow = findEffortRow();
+  expect(effortRow?.disabled).toBe(true);
+
+  await act(async () => {
+    if (effortRow) hover(effortRow);
+  });
+  expect(findEffortMenu()).toBeNull();
 
   await act(async () => {
     root.unmount();

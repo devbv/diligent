@@ -2,7 +2,11 @@
 
 import { expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { getComposerMenuHeight, getSubmenuPosition } from "../../../../src/web/client/components/ModelEffortSelect";
+import {
+  getEffortMenuHeight,
+  getEffortMenuPosition,
+  getModelsMenuHeight,
+} from "../../../../src/web/client/components/ModelEffortSelect";
 import {
   formatUsageTooltipLabel,
   getCursorTooltipPosition,
@@ -10,29 +14,28 @@ import {
   UsageGauge,
 } from "../../../../src/web/client/components/UsageGauge";
 
-test("menu height matches the design panels", () => {
-  // Models: 200x228 with 8 rows. Effort: 180x156 with 5 rows.
-  expect(getComposerMenuHeight(8)).toBe(228);
-  expect(getComposerMenuHeight(5)).toBe(156);
+test("menu heights match the design panels", () => {
+  // Design Frame is 200x274 for eight models; we land within a pixel of that.
+  expect(getModelsMenuHeight(8)).toBe(275);
+  // Effort panel carries no header of its own: 180x130 for five rows.
+  expect(getEffortMenuHeight(5)).toBe(130);
 });
 
-test("effort submenu sits 2px right of the models panel and stays inside the viewport", () => {
-  expect(getSubmenuPosition({ panelRect: { top: 288, right: 896 }, submenuHeight: 156, viewportHeight: 768 })).toEqual({
-    left: 898,
-    top: 288,
-  });
+test("effort submenu sits 2px right of the models panel and bottom-aligns with it", () => {
+  // Design: both panels end on the same baseline, so the submenu is placed from the panel's bottom.
+  expect(
+    getEffortMenuPosition({ panelRect: { bottom: 565, right: 896 }, submenuHeight: 130, viewportHeight: 900 }),
+  ).toEqual({ left: 898, top: 435 });
 
-  // A panel anchored near the bottom pulls the submenu up rather than letting it overflow.
-  expect(getSubmenuPosition({ panelRect: { top: 700, right: 400 }, submenuHeight: 156, viewportHeight: 768 })).toEqual({
-    left: 402,
-    top: 604,
-  });
+  // A panel bottomed past the viewport pulls the submenu up rather than letting it overflow.
+  expect(
+    getEffortMenuPosition({ panelRect: { bottom: 890, right: 400 }, submenuHeight: 130, viewportHeight: 768 }),
+  ).toEqual({ left: 402, top: 630 });
 
   // A submenu taller than the viewport clamps to the top margin instead of going negative.
-  expect(getSubmenuPosition({ panelRect: { top: 40, right: 100 }, submenuHeight: 900, viewportHeight: 768 })).toEqual({
-    left: 102,
-    top: 8,
-  });
+  expect(
+    getEffortMenuPosition({ panelRect: { bottom: 400, right: 100 }, submenuHeight: 900, viewportHeight: 768 }),
+  ).toEqual({ left: 102, top: 8 });
 });
 
 test("usage gauge is a 1.8px ring, not a filled pie", () => {
