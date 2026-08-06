@@ -1,6 +1,5 @@
 // @summary 12px context-usage ring with a hover tooltip that replaces the composer's inline token counter
 
-import { type RefObject, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "../lib/cn";
 import { usageTooltipClasses } from "./ui-styles";
@@ -18,10 +17,13 @@ const GAUGE_FILL_COLOR = "#FFFFFF";
 const GAUGE_RADIUS = 5.1;
 const GAUGE_STROKE = 1.8;
 const GAUGE_CIRCUMFERENCE = 2 * Math.PI * GAUGE_RADIUS;
-/** Gap between the anchor and the tooltip, per the design's 4px offset. */
-const TOOLTIP_OFFSET = 4;
-/** Below-placement is preferred; flip above when the viewport cannot fit the 32px tooltip. */
+/** The tooltip trails the cursor; below-right is preferred, flipping above when the viewport is tight. */
+const TOOLTIP_CURSOR_OFFSET_X = 12;
+const TOOLTIP_CURSOR_OFFSET_Y = 16;
+/** Design `tooltip` height, used to decide the flip and to keep the box on screen. */
 const TOOLTIP_HEIGHT = 32;
+const TOOLTIP_MAX_WIDTH = 320;
+const VIEWPORT_MARGIN = 8;
 
 function formatTokenCount(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -40,40 +42,27 @@ export function formatUsageTooltipLabel(currentContextTokens: number, contextWin
   return `${formatTokenCount(currentContextTokens)} / ${formatTokenCount(contextWindow)} tokens used (${pct}% Full)`;
 }
 
-interface TooltipPosition {
+export interface TooltipPosition {
   left: number;
   top: number;
 }
 
-function useTooltipPosition(anchorRef: RefObject<HTMLElement | null>, open: boolean): TooltipPosition | null {
-  const [position, setPosition] = useState<TooltipPosition | null>(null);
-
-  useEffect(() => {
-    if (!open) {
-      setPosition(null);
-      return;
-    }
-
-    const updatePosition = () => {
-      const rect = anchorRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const fitsBelow = window.innerHeight - rect.bottom >= TOOLTIP_HEIGHT + TOOLTIP_OFFSET;
-      setPosition({
-        left: rect.left,
-        top: fitsBelow ? rect.bottom + TOOLTIP_OFFSET : rect.top - TOOLTIP_HEIGHT - TOOLTIP_OFFSET,
-      });
-    };
-
-    updatePosition();
-    window.addEventListener("resize", updatePosition);
-    window.addEventListener("scroll", updatePosition, true);
-    return () => {
-      window.removeEventListener("resize", updatePosition);
-      window.removeEventListener("scroll", updatePosition, true);
-    };
-  }, [anchorRef, open]);
-
-  return position;
+/**
+ * Places the tooltip relative to the cursor rather than the trigger, flipping above the pointer and
+ * clamping horizontally so it never leaves the viewport.
+ */
+export function getCursorTooltipPosition(args: {
+  cursor: { x: number; y: number };
+  tooltipWidth: number;
+  viewportWidth: number;
+  viewportHeight: number;
+}): TooltipPosition {
+  const fitsBelow = args.viewportHeight - args.cursor.y >= TOOLTIP_HEIGHT + TOOLTIP_CURSOR_OFFSET_Y;
+  const maxLeft = Math.max(VIEWPORT_MARGIN, args.viewportWidth - args.tooltipWidth - VIEWPORT_MARGIN);
+  return {
+    left: Math.min(Math.max(args.cursor.x + TOOLTIP_CURSOR_OFFSET_X, VIEWPORT_MARGIN), maxLeft),
+    top: fitsBelow ? args.cursor.y + TOOLTIP_CURSOR_OFFSET_Y : args.cursor.y - TOOLTIP_HEIGHT - TOOLTIP_CURSOR_OFFSET_Y,
+  };
 }
 
 export function UsageGauge({ ratio, className }: { ratio: number; className?: string }) {
@@ -106,19 +95,17 @@ export function UsageGauge({ ratio, className }: { ratio: number; className?: st
 
 /**
  * Renders the tooltip body in a fixed portal so the composer frame cannot clip it.
- * Callers own the hover state because the gauge sits inside the model trigger button.
+ * Callers own the cursor state because the gauge sits inside the model trigger button.
  */
-export function UsageTooltip({
-  anchorRef,
-  open,
-  label,
-}: {
-  anchorRef: RefObject<HTMLElement | null>;
-  open: boolean;
-  label: string | null;
-}) {
-  const position = useTooltipPosition(anchorRef, open);
-  if (!open || !label || !position || typeof document === "undefined") return null;
+export function UsageTooltip({ cursor, label }: { cursor: { x: number; y: number } | null; label: string | null }) {
+  if (!cursor || !label || typeof document === "undefined") return null;
+
+  const position = getCursorTooltipPosition({
+    cursor,
+    tooltipWidth: TOOLTIP_MAX_WIDTH,
+    viewportWidth: window.innerWidth,
+    viewportHeight: window.innerHeight,
+  });
 
   return createPortal(
     <div role="tooltip" className={usageTooltipClasses} style={{ left: position.left, top: position.top }}>

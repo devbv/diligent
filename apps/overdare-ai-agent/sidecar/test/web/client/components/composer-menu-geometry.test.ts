@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { getComposerMenuHeight, getSubmenuPosition } from "../../../../src/web/client/components/ModelEffortSelect";
 import {
   formatUsageTooltipLabel,
+  getCursorTooltipPosition,
   getUsageGaugeRatio,
   UsageGauge,
 } from "../../../../src/web/client/components/UsageGauge";
@@ -56,6 +57,19 @@ test("usage gauge is a 1.8px ring, not a filled pie", () => {
   const empty = renderToStaticMarkup(UsageGauge({ ratio: 0 }));
   expect(empty).not.toContain("#FFFFFF");
   expect(empty).toContain('data-usage-percent="0"');
+});
+
+test("usage tooltip trails the cursor and stays inside the viewport", () => {
+  const viewport = { viewportWidth: 1200, viewportHeight: 800, tooltipWidth: 320 };
+
+  // Room below: 12px right / 16px down from the pointer.
+  expect(getCursorTooltipPosition({ cursor: { x: 400, y: 300 }, ...viewport })).toEqual({ left: 412, top: 316 });
+
+  // No room below: flip above the pointer.
+  expect(getCursorTooltipPosition({ cursor: { x: 400, y: 790 }, ...viewport })).toEqual({ left: 412, top: 742 });
+
+  // Near the right edge: clamp so the 320px box stays on screen.
+  expect(getCursorTooltipPosition({ cursor: { x: 1180, y: 300 }, ...viewport })).toEqual({ left: 872, top: 316 });
 });
 
 test("usage ratio clamps and the tooltip reads as designed", () => {

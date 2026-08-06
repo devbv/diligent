@@ -79,7 +79,7 @@ export function ModelEffortSelect({
   const [isOpen, setIsOpen] = useState(false);
   const [submenuModel, setSubmenuModel] = useState<string | null>(null);
   const [submenuPosition, setSubmenuPosition] = useState<SubmenuPosition | null>(null);
-  const [isTooltipOpen, setIsTooltipOpen] = useState(false);
+  const [tooltipCursor, setTooltipCursor] = useState<{ x: number; y: number } | null>(null);
 
   const close = useCallback(() => {
     setIsOpen(false);
@@ -95,7 +95,7 @@ export function ModelEffortSelect({
   });
 
   useEffect(() => {
-    if (!isOpen) setIsTooltipOpen(false);
+    if (isOpen) setTooltipCursor(null);
   }, [isOpen]);
 
   const currentModelInfo = availableModels.find((model) => modelOptionKey(model) === currentModel);
@@ -169,8 +169,8 @@ export function ModelEffortSelect({
         {contextWindow > 0 ? (
           <span
             className="flex shrink-0 items-center"
-            onMouseEnter={() => setIsTooltipOpen(true)}
-            onMouseLeave={() => setIsTooltipOpen(false)}
+            onMouseMove={(event) => setTooltipCursor({ x: event.clientX, y: event.clientY })}
+            onMouseLeave={() => setTooltipCursor(null)}
           >
             <UsageGauge ratio={usageRatio} />
           </span>
@@ -183,7 +183,7 @@ export function ModelEffortSelect({
         />
       </button>
 
-      <UsageTooltip anchorRef={triggerRef} open={isTooltipOpen && !isOpen} label={usageLabel} />
+      <UsageTooltip cursor={isOpen ? null : tooltipCursor} label={usageLabel} />
 
       {canRenderPortal
         ? createPortal(
