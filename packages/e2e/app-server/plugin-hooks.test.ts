@@ -64,7 +64,17 @@ describe("plugin-hooks", () => {
     const threadId = await client.initAndStartThread(tmpDir);
 
     // Send a prompt that triggers the blocking hook
-    const turnNotifs = await client.sendTurnAndWait(threadId, "BLOCK this prompt please");
+    await client.request("thread/subscribe", { threadId });
+    const startIndex = client.notifications.length;
+    const turnStart = (await client.request("turn/start", {
+      threadId,
+      message: "BLOCK this prompt please",
+    })) as { accepted: true; userMessageId?: string };
+    const turnNotifs = client.notifications.slice(startIndex);
+
+    expect(turnStart.userMessageId).toBeUndefined();
+    const history = (await client.request("thread/read", { threadId })) as { items: Array<{ type: string }> };
+    expect(history.items.some((item) => item.type === "userMessage")).toBe(false);
 
     // The hook should have blocked the prompt: expect an error notification with HookBlocked
     const errorNotif = turnNotifs.find((n) => n.method === DILIGENT_SERVER_NOTIFICATION_METHODS.ERROR);

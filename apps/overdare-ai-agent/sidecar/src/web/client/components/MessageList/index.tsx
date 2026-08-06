@@ -68,10 +68,13 @@ function MessageListImpl({
     [rows.length],
   );
   const shouldUseVirtuoso = typeof window !== "undefined";
-  const lastCompletedResponseId = useMemo(
-    () => items.findLast((item) => item.kind === "assistant" && !item.isStreaming && item.messageId)?.id,
-    [items],
-  );
+  const lastCompletedResponseId = useMemo(() => {
+    for (let index = items.length - 1; index >= 0; index -= 1) {
+      const item = items[index];
+      if (item?.kind === "assistant" && !item.isStreaming && item.messageId) return item.id;
+    }
+    return undefined;
+  }, [items]);
 
   const setScrollButtonVisible = useCallback((visible: boolean) => {
     if (showScrollBtnRef.current === visible) return;

@@ -150,7 +150,7 @@ describe("SessionManager.steer() — unified queue", () => {
     const persistedSteering = userEntries.find(
       (e) => e.type === "message" && ((e.message as UserMessage).content as string) === "change approach",
     );
-    expect(steeringEvent?.messageIds).toEqual([persistedSteering?.id]);
+    expect(steeringEvent?.steerIds).toEqual([persistedSteering?.id]);
 
     // No steering-type entries should exist
     const steeringEntries = entries.filter((e) => (e as { type: string }).type === "steering");

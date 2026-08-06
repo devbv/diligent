@@ -6,7 +6,6 @@ import "./sentry";
 import { createLogger } from "@diligent/logging";
 import { loadDiligentConfig, resolveExperimentStates } from "@diligent/runtime";
 import { OVERDARE_EXPERIMENTS } from "./experiments";
-import { createFeedbackBackend } from "./feedback-backend";
 import { configureSidecarLogging } from "./logging";
 import {
   buildRegistries,
@@ -19,6 +18,7 @@ import { createRouterEndpoint } from "./router-endpoint";
 import { createSidecarToken, type StudioRegistration, startStudioRegistration } from "./studio-registry";
 import { createStudioBundledToolProviders } from "./tools";
 import { type ConsentService, createGatewayConsentService } from "./tools/gateway/consent";
+import { postUserFeedback } from "./tools/gateway/feedback";
 import { resolveStudioHost, resolveStudioPort } from "./tools/studiorpc/config";
 import { createWebServer, enableProcessLogFile, parseArgs } from "./web/server";
 
@@ -160,7 +160,7 @@ export async function startStudioServer(argv: string[] = process.argv.slice(2)):
       // AI-data consent is owned by the gateway (`/v1/consent`), not local config.jsonc.
       // UI-only development has no consent backend or gateway transmission.
       consentBackend: consentMode.consentBackend,
-      feedbackBackend: createFeedbackBackend(),
+      feedbackBackend: { submit: postUserFeedback },
       bundledToolProviders: createStudioBundledToolProviders({
         cwd,
         studioRpcPort: parseEnvPort(process.env.STUDIO_PORT),

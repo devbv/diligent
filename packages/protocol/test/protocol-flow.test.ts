@@ -89,6 +89,12 @@ describe("protocol/flow", () => {
       }).success,
     ).toBe(true);
 
+    const turnStartResponse = DiligentClientResponseSchema.parse({
+      method: DILIGENT_CLIENT_REQUEST_METHODS.TURN_START,
+      result: { accepted: true, userMessageId: "persistent-user-id" },
+    });
+    expect(turnStartResponse.result).toEqual({ accepted: true, userMessageId: "persistent-user-id" });
+
     expect(
       DiligentClientRequestSchema.safeParse({
         method: DILIGENT_CLIENT_REQUEST_METHODS.TURN_START,

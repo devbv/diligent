@@ -529,7 +529,7 @@ describe("DiligentAppServer", () => {
     ]);
   });
 
-  it("routes persistent user-message ids and structured context notices to the initiator", async () => {
+  it("returns the persistent user id while suppressing only the initiator echo", async () => {
     const projectRoot = await mkdtemp(join(process.env.TMPDIR ?? "/tmp", "diligent-app-server-"));
 
     const server = new DiligentAppServer({
@@ -590,7 +590,7 @@ describe("DiligentAppServer", () => {
     const initiator = connectTestPeer(server, "initiator");
     const observer = connectTestPeer(server, "observer");
 
-    const runTurn = async (id: number, threadId: string, message: string): Promise<void> => {
+    const runTurn = async (id: number, threadId: string, message: string): Promise<string | undefined> => {
       // Wait for idle (emitted after turn-state cleanup) so a follow-up
       // turn/start on the same thread is not rejected as already running.
       const turnCompleted = new Promise<void>((resolve) => {
@@ -608,8 +608,10 @@ describe("DiligentAppServer", () => {
         method: "turn/start",
         params: { threadId, message },
       });
-      expect((readResult(turnStart) as { accepted: boolean }).accepted).toBe(true);
+      const result = readResult(turnStart) as { accepted: boolean; userMessageId?: string };
+      expect(result.accepted).toBe(true);
       await turnCompleted;
+      return result.userMessageId;
     };
 
     const isUserMessage = (n: DiligentServerNotification) =>
@@ -626,13 +628,19 @@ describe("DiligentAppServer", () => {
     });
     const { threadId } = readResult(start) as { threadId: string };
 
-    await runTurn(201, threadId, "plain message");
-    expect(initiator.notifications.some(isUserMessage)).toBe(true);
+    const userMessageId = await runTurn(201, threadId, "plain message");
+    expect(userMessageId).toBeDefined();
+    expect(initiator.notifications.some(isUserMessage)).toBe(false);
     expect(observer.notifications.some(isUserMessage)).toBe(true);
+    const observerUserMessage = observer.notifications.find(isUserMessage) as
+      | { params: { event: { itemId?: string } } }
+      | undefined;
+    expect(observerUserMessage?.params.event.itemId).toBe(userMessageId);
 
     initiator.notifications.length = 0;
+    observer.notifications.length = 0;
     await runTurn(202, threadId, "move it up");
-    expect(initiator.notifications.some(isUserMessage)).toBe(true);
+    expect(initiator.notifications.some(isUserMessage)).toBe(false);
     expect(initiator.notifications.some(isContextNotice)).toBe(true);
     expect(observer.notifications.some(isContextNotice)).toBe(true);
   });

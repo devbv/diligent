@@ -255,7 +255,7 @@ describe("executeUpdateSteer", () => {
 describe("executeRestartFromAbort", () => {
   test("dispatches consume_first_pending_steer and local_user then sends turn/start", async () => {
     const dispatched: unknown[] = [];
-    const rpc = makeRpc(async () => ({}));
+    const rpc = makeRpc(async () => ({ userMessageId: "persistent-restart" }));
 
     await executeRestartFromAbort({
       rpc,
@@ -266,10 +266,17 @@ describe("executeRestartFromAbort", () => {
       dispatch: (action) => dispatched.push(action),
     });
 
-    expect(dispatched).toEqual([
-      { type: "consume_first_pending_steer" },
-      { type: "local_user", payload: { text: "retry this", images: [] } },
-    ]);
+    expect(dispatched).toHaveLength(3);
+    expect(dispatched[0]).toEqual({ type: "consume_first_pending_steer" });
+    expect(dispatched[1]).toMatchObject({
+      type: "local_user",
+      payload: { text: "retry this", images: [] },
+    });
+    const localItemId = (dispatched[1] as { payload: { id: string } }).payload.id;
+    expect(dispatched[2]).toEqual({
+      type: "bind_user_message_id",
+      payload: { renderItemId: localItemId, messageId: "persistent-restart" },
+    });
     expect(rpc.request).toHaveBeenCalledTimes(1);
     const [method, params] = (rpc.request as ReturnType<typeof mock>).mock.calls[0] as [
       string,

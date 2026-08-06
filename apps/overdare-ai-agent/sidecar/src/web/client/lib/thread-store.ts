@@ -446,12 +446,6 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent, turnId?: string
           nextState = { ...nextState, pendingSteers: [] };
         }
       }
-      const optimistic = nextState.items.findLast((item) => item.kind === "user" && !item.messageId);
-      if (optimistic) {
-        return updateItem(nextState, optimistic.id, (item) =>
-          item.kind === "user" ? { ...item, messageId: event.itemId } : item,
-        );
-      }
       nextState = withItem(nextState, `remote-user-${event.itemId}`, {
         id: `remote-user-${event.itemId}`,
         kind: "user",
@@ -569,7 +563,7 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent, turnId?: string
           : fallbackFromEvent.slice(0, event.messageCount);
       const newItems: RenderItem[] = drained.map(({ text, images }, i) => {
         const { contextItems, remainingText } = parseContextFromText(text);
-        const messageId = event.messageIds?.[i];
+        const messageId = event.steerIds?.[i];
         return {
           id: `steer-injected-${messageId ?? `${Date.now()}-${i}`}`,
           kind: "user" as const,

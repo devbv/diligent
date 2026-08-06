@@ -323,7 +323,7 @@ test("steering injected", () => {
     params: {
       threadId: "t1",
       messageCount: 2,
-      messageIds: ["persisted-steer-1", "persisted-steer-2"],
+      steerIds: ["steer-1", "steer-2"],
       messages: [
         { role: "user", content: "change approach", timestamp: 1 },
         { role: "user", content: "use simpler plan", timestamp: 2 },
@@ -337,7 +337,7 @@ test("steering injected", () => {
   if (events[0].type === "steering_injected") {
     expect(events[0].messageCount).toBe(2);
     expect(events[0].messages).toEqual(notification.params.messages);
-    expect(events[0].messageIds).toEqual(notification.params.messageIds);
+    expect(events[0].steerIds).toEqual(notification.params.steerIds);
   }
 });
 

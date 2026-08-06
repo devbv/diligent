@@ -13,7 +13,6 @@ export interface TurnStagerSnapshot {
 
 export interface TurnStagerEventResult {
   messageId?: string;
-  messageIds?: string[];
 }
 
 export class TurnStager {
@@ -53,11 +52,10 @@ export class TurnStager {
     }
 
     if (event.type === "steering_injected") {
-      const messageIds = event.messages.map(() => generateEntryId());
       for (const [index, msg] of event.messages.entries()) {
-        this.stageMessage(msg, undefined, messageIds[index]);
+        this.stageMessage(msg, undefined, event.steerIds[index] ?? generateEntryId());
       }
-      return { messageIds };
+      return {};
     }
 
     if (event.type === "context_injected") {

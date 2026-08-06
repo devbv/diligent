@@ -72,11 +72,22 @@ describe("TurnStager", () => {
     };
 
     const started = stager.handleEvent(messageStart);
+    const discarded = stager.handleEvent({
+      type: "message_discarded",
+      itemId: "render-only-assistant-id",
+      error: { name: "ProviderError", message: "retry" },
+      nextAttempt: 2,
+      maxAttempts: 3,
+      delayMs: 1,
+    });
+    const restarted = stager.handleEvent(messageStart);
     const completed = stager.handleEvent(messageEnd);
     stager.handleEvent(toolEnd);
     const snapshot = stager.getSnapshot();
 
     expect(started.messageId).toBeDefined();
+    expect(discarded.messageId).toBe(started.messageId);
+    expect(restarted.messageId).toBe(started.messageId);
     expect(completed.messageId).toBe(started.messageId);
     expect(snapshot.entries).toHaveLength(3);
     expect(snapshot.entries.map((entry) => entry.type)).toEqual(["message", "message", "message"]);
@@ -90,35 +101,37 @@ describe("TurnStager", () => {
     }
   });
 
-  test("returns persistent entry ids for injected steering messages", () => {
+  test("persists injected steering messages under their existing steer ids", () => {
     const stager = new TurnStager(null, makeUser("hello"));
 
-    const result = stager.handleEvent({
+    stager.handleEvent({
       type: "steering_injected",
       messageCount: 2,
       steerIds: ["steer-1", "steer-2"],
       messages: [makeUser("first"), makeUser("second")],
     });
 
-    expect(result.messageIds).toHaveLength(2);
     expect(
       stager
         .getSnapshot()
         .entries.slice(1)
         .map((entry) => entry.id),
-    ).toEqual(result.messageIds);
+    ).toEqual(["steer-1", "steer-2"]);
   });
 
   test("stages compaction before the fresh user message", () => {
     const stager = new TurnStager(null, makeUser("hello"));
-    stager.handleEvent({
-      type: "compaction_end",
-      turnId: "t1",
-      summary: "summary",
-      tokensBefore: 100,
-      tokensAfter: 20,
-    });
-    stager.handleEvent({ type: "turn_start", turnId: "t1" });
+    stager.handleEvent(
+      {
+        type: "compaction_end",
+        turnId: "t1",
+        summary: "summary",
+        tokensBefore: 100,
+        tokensAfter: 20,
+      },
+      20_000,
+    );
+    stager.handleEvent({ type: "turn_start", turnId: "t1" }, 20_000);
 
     const snapshot = stager.getSnapshot();
     expect(snapshot.entries).toHaveLength(2);
@@ -133,14 +146,17 @@ describe("TurnStager", () => {
       type: "diligent_openai_compaction_state",
       items: [{ type: "message", role: "user", content: [] }],
     };
-    stager.handleEvent({
-      type: "compaction_end",
-      turnId: "t1",
-      summary: "Compacted",
-      compactionSummary,
-      tokensBefore: 100,
-      tokensAfter: 20,
-    });
+    stager.handleEvent(
+      {
+        type: "compaction_end",
+        turnId: "t1",
+        summary: "Compacted",
+        compactionSummary,
+        tokensBefore: 100,
+        tokensAfter: 20,
+      },
+      20_000,
+    );
 
     const snapshot = stager.getSnapshot();
     expect(snapshot.entries[0]?.type).toBe("compaction");
@@ -151,18 +167,21 @@ describe("TurnStager", () => {
 
   test("stages context injections as internal entries with source and runtime metadata", () => {
     const stager = new TurnStager(null, makeUser("hello"));
-    stager.handleEvent({
-      type: "context_injected",
-      injections: [
-        {
-          source: "test-hook",
-          message: makeUser("internal"),
-          metadata: {
-            presentation: { kind: "human-edits", title: "Human edits detected", content: "Added: Ramp" },
+    stager.handleEvent(
+      {
+        type: "context_injected",
+        injections: [
+          {
+            source: "test-hook",
+            message: makeUser("internal"),
+            metadata: {
+              presentation: { kind: "human-edits", title: "Human edits detected", content: "Added: Ramp" },
+            },
           },
-        },
-      ],
-    });
+        ],
+      },
+      20_000,
+    );
 
     const entry = stager.getSnapshot().entries[1];
     expect(entry).toMatchObject({

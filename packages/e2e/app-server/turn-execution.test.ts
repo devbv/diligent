@@ -187,11 +187,17 @@ describe("turn-execution", () => {
     await setup({ streamFunction: createSimpleStream("persisted response") });
     const threadId = await client.initAndStartThread(tmpDir);
 
-    const notifications = await client.sendTurnAndWait(threadId, "hello");
+    await client.request("thread/subscribe", { threadId });
+    const startIndex = client.notifications.length;
+    const turnStart = (await client.request("turn/start", { threadId, message: "hello" })) as {
+      accepted: true;
+      userMessageId?: string;
+    };
+    await client.waitForNotification(DILIGENT_SERVER_NOTIFICATION_METHODS.TURN_COMPLETED);
+    const notifications = client.notifications.slice(startIndex);
     const liveEvents = notifications
       .filter((notification) => notification.method === DILIGENT_SERVER_NOTIFICATION_METHODS.AGENT_EVENT)
       .map((notification) => (notification.params as { event?: { type?: string; itemId?: string } }).event);
-    const liveUserId = liveEvents.find((event) => event?.type === "user_message")?.itemId;
     const liveAssistantId = liveEvents.find((event) => event?.type === "message_end")?.itemId;
 
     const result = (await client.request("thread/read", { threadId })) as {
@@ -200,9 +206,9 @@ describe("turn-execution", () => {
     const persistedUserId = result.items.find((item) => item.type === "userMessage")?.itemId;
     const persistedAssistantId = result.items.find((item) => item.type === "agentMessage")?.itemId;
 
-    expect(liveUserId).toBeDefined();
+    expect(turnStart.userMessageId).toBeDefined();
     expect(liveAssistantId).toBeDefined();
-    expect(liveUserId).toBe(persistedUserId);
+    expect(turnStart.userMessageId).toBe(persistedUserId);
     expect(liveAssistantId).toBe(persistedAssistantId);
   });
 

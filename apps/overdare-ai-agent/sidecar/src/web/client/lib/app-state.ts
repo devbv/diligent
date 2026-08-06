@@ -26,7 +26,11 @@ export type AppAction =
   | { type: "reset_draft"; payload: { mode: Mode } }
   | { type: "set_threads"; payload: SessionSummary[] }
   | { type: "set_mode"; payload: Mode }
-  | { type: "local_user"; payload: { text: string; images: PendingImage[]; contextItems?: AgentContextItem[] } }
+  | {
+      type: "local_user";
+      payload: { id: string; text: string; images: PendingImage[]; contextItems?: AgentContextItem[] };
+    }
+  | { type: "bind_user_message_id"; payload: { renderItemId: string; messageId: string } }
   | { type: "local_steer"; payload: PendingSteer }
   | { type: "cancel_pending_steer"; payload: { steerId: string } }
   | { type: "update_pending_steer"; payload: { steerId: string; content: string } }
@@ -86,7 +90,7 @@ export function appReducer(state: ThreadState, action: AppAction): ThreadState {
   if (action.type === "local_user") {
     const text = action.payload.text;
     const userItem: RenderItem = {
-      id: `local-user-${Date.now()}`,
+      id: action.payload.id,
       kind: "user",
       text,
       contextItems: action.payload.contextItems ?? [],
@@ -98,6 +102,16 @@ export function appReducer(state: ThreadState, action: AppAction): ThreadState {
       timestamp: Date.now(),
     };
     return { ...state, items: [...state.items, userItem] };
+  }
+  if (action.type === "bind_user_message_id") {
+    return {
+      ...state,
+      items: state.items.map((item) =>
+        item.kind === "user" && item.id === action.payload.renderItemId
+          ? { ...item, messageId: action.payload.messageId }
+          : item,
+      ),
+    };
   }
   if (action.type === "local_steer") {
     return { ...state, pendingSteers: [...state.pendingSteers, action.payload] };

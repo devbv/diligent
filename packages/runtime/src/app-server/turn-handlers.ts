@@ -209,7 +209,7 @@ export async function handleTurnStart(
   params: TurnStartParams,
   connectionId: string | undefined,
   turnInitiators: Map<string, string>,
-): Promise<{ accepted: true }> {
+): Promise<{ accepted: true; userMessageId?: string }> {
   const { runtime, turnId } = await initializeTurnRuntime(ctx, params, connectionId, turnInitiators);
 
   await ctx.emit({
@@ -247,7 +247,7 @@ export async function handleTurnStart(
     userMessageId: userItemId,
   });
   void ctx.consumeTurn(runtime, runPromise, turnId);
-  return { accepted: true };
+  return { accepted: true, userMessageId: userItemId };
 }
 
 export async function handleTurnInterrupt(

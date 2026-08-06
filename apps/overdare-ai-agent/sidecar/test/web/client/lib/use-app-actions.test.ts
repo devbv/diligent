@@ -271,6 +271,7 @@ test("prepareNewThreadForFirstMessage subscribes and hydrates before starting op
       activateServerThread,
       applySessionModel,
       dispatch,
+      localItemId: "local-user-first",
       localText: "hello",
       contextItems: [],
       message: "hello",
@@ -282,7 +283,7 @@ test("prepareNewThreadForFirstMessage subscribes and hydrates before starting op
     expect(activateServerThread).toHaveBeenCalledWith("thread-1");
     expect(dispatch.mock.calls).toEqual([
       [{ type: "hydrate", payload: { threadId: "thread-1", mode: "default", history } }],
-      [{ type: "local_user", payload: { text: "hello", images, contextItems: [] } }],
+      [{ type: "local_user", payload: { id: "local-user-first", text: "hello", images, contextItems: [] } }],
     ]);
     expect(applySessionModel).toHaveBeenCalledWith("gpt-5");
   } finally {
@@ -324,6 +325,7 @@ test("prepareNewThreadForFirstMessage passes medium effort through thread start 
     activateServerThread,
     applySessionModel,
     dispatch,
+    localItemId: "local-user-second",
     message: "hello",
     localText: "hello",
     contextItems: [],

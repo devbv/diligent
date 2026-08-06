@@ -18,7 +18,8 @@ type SteeringAction =
   | { type: "cancel_pending_steer"; payload: { steerId: string } }
   | { type: "update_pending_steer"; payload: { steerId: string; content: string } }
   | { type: "consume_first_pending_steer" }
-  | { type: "local_user"; payload: { text: string; images: PendingImage[] } }
+  | { type: "local_user"; payload: { id: string; text: string; images: PendingImage[] } }
+  | { type: "bind_user_message_id"; payload: { renderItemId: string; messageId: string } }
   | { type: "optimistic_thread"; payload: { threadId: string; message: string } };
 
 export async function executeSteer({
@@ -126,17 +127,24 @@ export async function executeRestartFromAbort({
   model: ModelRef | undefined;
   dispatch: (action: SteeringAction) => void;
 }): Promise<void> {
+  const localItemId = `local-user-${createUuidV4()}`;
   dispatch({ type: "consume_first_pending_steer" });
-  dispatch({ type: "local_user", payload: { text: restartMessage, images: [] } });
+  dispatch({ type: "local_user", payload: { id: localItemId, text: restartMessage, images: [] } });
   if (!hadItemsBeforeRestart) {
     dispatch({ type: "optimistic_thread", payload: { threadId, message: restartMessage } });
   }
-  await rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.TURN_START, {
+  const started = await rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.TURN_START, {
     threadId,
     message: restartMessage,
     content: [{ type: "text" as const, text: restartMessage }],
     model,
   });
+  if (started.userMessageId) {
+    dispatch({
+      type: "bind_user_message_id",
+      payload: { renderItemId: localItemId, messageId: started.userMessageId },
+    });
+  }
 }
 
 export function useSteeringQueue({

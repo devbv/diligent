@@ -76,7 +76,6 @@ export class ProtocolNotificationAdapter {
             messageCount: notification.params.messageCount,
             messages: notification.params.messages,
             steerIds: notification.params.steerIds,
-            messageIds: notification.params.messageIds,
           },
         ];
       case DILIGENT_SERVER_NOTIFICATION_METHODS.THREAD_COMPACTION_STARTED:
