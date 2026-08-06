@@ -124,6 +124,39 @@ test("merges item started/delta/completed into single assistant item", () => {
   expect(assistant?.kind === "assistant" ? assistant.isStreaming : undefined).toBe(false);
 });
 
+test("renders a completed assistant message even when no start or delta arrived", () => {
+  resetAdapter();
+  const completed: DiligentServerNotification = {
+    method: "item/completed",
+    params: {
+      threadId: "t1",
+      turnId: "turn1",
+      item: {
+        type: "agentMessage",
+        itemId: "persisted-complete-only",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "complete without deltas" }],
+          model: { provider: "openai", modelId: "gpt-5" },
+          usage: { inputTokens: 1, outputTokens: 2, cacheReadTokens: 0, cacheWriteTokens: 0 },
+          stopReason: "end_turn",
+          timestamp: 42,
+        },
+      },
+    },
+  };
+
+  const next = reduce(initialThreadState, completed);
+  const assistant = next.items.find((item) => item.kind === "assistant");
+  expect(assistant).toMatchObject({
+    kind: "assistant",
+    messageId: "persisted-complete-only",
+    text: "complete without deltas",
+    isStreaming: false,
+    timestamp: 42,
+  });
+});
+
 test("renders a remote user message with its persistent id", () => {
   resetAdapter();
   const notification: DiligentServerNotification = {
@@ -994,6 +1027,7 @@ test("steering_injected prefers event text and preserves event images", () => {
         type: "steering_injected",
         messageCount: 1,
         steerIds: ["s1"],
+        messageIds: ["persisted-steer-1"],
         messages: [
           {
             role: "user",
@@ -1016,7 +1050,7 @@ test("steering_injected prefers event text and preserves event images", () => {
   const next = reduceServerNotification(startState, notification, [notification.params.event]);
   const injectedUsers = next.items.filter((item) => item.kind === "user");
   expect(injectedUsers).toHaveLength(1);
-  expect(injectedUsers[0]?.kind === "user" ? injectedUsers[0].messageId : undefined).toBe("s1");
+  expect(injectedUsers[0]?.kind === "user" ? injectedUsers[0].messageId : undefined).toBe("persisted-steer-1");
   expect(injectedUsers[0] && injectedUsers[0].kind === "user" ? injectedUsers[0].text : "").toBe(
     "change approach (normalized)",
   );

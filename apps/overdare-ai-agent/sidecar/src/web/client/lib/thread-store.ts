@@ -391,7 +391,30 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent, turnId?: string
         return finalizeChildAssistantTimeline(merged, event.childThreadId, event.message);
       }
       const renderId = merged.itemSlots[event.itemId];
-      if (!renderId) return merged;
+      if (!renderId) {
+        const completedRenderId = `item:${turnId ?? "unknown"}:${event.itemId}:completed`;
+        const { text, thinking } = extractAssistantTextFromMessage(event.message);
+        return withItem(merged, completedRenderId, {
+          id: completedRenderId,
+          kind: "assistant",
+          messageId: event.itemId,
+          text,
+          thinking,
+          contentBlocks: event.message.content,
+          thinkingDone: true,
+          isStreaming: false,
+          timestamp:
+            typeof (event as { timestamp?: number }).timestamp === "number"
+              ? (event as { timestamp?: number }).timestamp!
+              : event.message.timestamp,
+          ...(typeof (event as { reasoningDurationMs?: number }).reasoningDurationMs === "number"
+            ? { reasoningDurationMs: (event as { reasoningDurationMs: number }).reasoningDurationMs }
+            : {}),
+          ...(typeof (event as { turnDurationMs?: number }).turnDurationMs === "number"
+            ? { turnDurationMs: (event as { turnDurationMs: number }).turnDurationMs }
+            : {}),
+        });
+      }
       const { [event.itemId]: _, ...remainingSlots } = merged.itemSlots;
       const { text: finalText, thinking: finalThinking } = extractAssistantTextFromMessage(event.message);
       const nextState =
@@ -563,7 +586,7 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent, turnId?: string
           : fallbackFromEvent.slice(0, event.messageCount);
       const newItems: RenderItem[] = drained.map(({ text, images }, i) => {
         const { contextItems, remainingText } = parseContextFromText(text);
-        const messageId = event.steerIds?.[i];
+        const messageId = event.messageIds?.[i];
         return {
           id: `steer-injected-${messageId ?? `${Date.now()}-${i}`}`,
           kind: "user" as const,

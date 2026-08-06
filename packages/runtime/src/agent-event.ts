@@ -5,6 +5,9 @@ import type { CollabAgentRef, CollabAgentStatus, CollabAgentStatusEntry, ToolRen
 
 type RuntimeToolStartEvent = Extract<CoreAgentEvent, { type: "tool_start" }> & { render?: ToolRenderPayload };
 type RuntimeToolEndEvent = Extract<CoreAgentEvent, { type: "tool_end" }> & { render?: ToolRenderPayload };
+type RuntimeSteeringInjectedEvent = Extract<CoreAgentEvent, { type: "steering_injected" }> & {
+  messageIds: string[];
+};
 
 type ChildAgentCoreEvent = Extract<
   CoreAgentEvent,
@@ -35,6 +38,7 @@ export type ChildAgentEvent<T extends ChildAgentBaseEvent = ChildAgentBaseEvent>
 export type RuntimeAgentEvent =
   | RuntimeToolStartEvent
   | RuntimeToolEndEvent
+  | RuntimeSteeringInjectedEvent
   | ChildAgentEvent
   | { type: "status_change"; status: "idle" | "busy" }
   | { type: "usage"; usage: Usage; cost: number }
@@ -84,5 +88,5 @@ export type RuntimeAgentEvent =
     };
 
 export type AgentEvent =
-  | Exclude<CoreAgentEvent, { type: "usage" | "tool_start" | "tool_end" | "context_injected" }>
+  | Exclude<CoreAgentEvent, { type: "usage" | "tool_start" | "tool_end" | "context_injected" | "steering_injected" }>
   | RuntimeAgentEvent;

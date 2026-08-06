@@ -101,22 +101,25 @@ describe("TurnStager", () => {
     }
   });
 
-  test("persists injected steering messages under their existing steer ids", () => {
+  test("returns distinct persistent entry ids for injected steering messages", () => {
     const stager = new TurnStager(null, makeUser("hello"));
 
-    stager.handleEvent({
+    const result = stager.handleEvent({
       type: "steering_injected",
       messageCount: 2,
-      steerIds: ["steer-1", "steer-2"],
+      steerIds: ["duplicate-steer", "duplicate-steer"],
       messages: [makeUser("first"), makeUser("second")],
     });
 
+    expect(result.messageIds).toHaveLength(2);
+    expect(new Set(result.messageIds).size).toBe(2);
+    expect(result.messageIds).not.toContain("duplicate-steer");
     expect(
       stager
         .getSnapshot()
         .entries.slice(1)
         .map((entry) => entry.id),
-    ).toEqual(["steer-1", "steer-2"]);
+    ).toEqual(result.messageIds);
   });
 
   test("stages compaction before the fresh user message", () => {

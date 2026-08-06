@@ -44,6 +44,39 @@ test("derives a request target without using the render key", () => {
   });
 });
 
+test("uses target-specific preview fallbacks for non-text messages", () => {
+  expect(
+    createFeedbackReportTarget({
+      id: "image-request",
+      messageId: "persistent-image-request",
+      kind: "user",
+      text: "",
+      images: [{ url: "blob:image" }],
+      timestamp: 1,
+    }).preview,
+  ).toBe("Request with attachment");
+
+  expect(
+    createFeedbackReportTarget({
+      id: "structured-response",
+      messageId: "persistent-structured-response",
+      kind: "assistant",
+      text: "",
+      thinking: "",
+      contentBlocks: [
+        {
+          type: "web_search_result",
+          toolUseId: "search-1",
+          provider: "openai",
+          results: [{ url: "https://example.com", title: "Example result" }],
+        },
+      ],
+      thinkingDone: true,
+      timestamp: 2,
+    }).preview,
+  ).toBe("Structured response");
+});
+
 test("uses a general success toast without exposing the receipt id", () => {
   expect(formatFeedbackReceiptToast()).toBe("Report sent. We'll take a look.");
 });

@@ -179,6 +179,42 @@ test("keeps input and the same client report id when retrying after failure", as
   rootElement.remove();
 });
 
+test("uses a new client report id when the failed draft is edited before retry", async () => {
+  const submissions: Array<{ clientReportId: string; category: string; description?: string }> = [];
+  const rootElement = document.createElement("div");
+  document.body.appendChild(rootElement);
+  const root = createRoot(rootElement);
+
+  await act(async () => {
+    root.render(
+      createElement(FeedbackReportModal, {
+        target: TARGET,
+        onSubmit: async (submission) => {
+          submissions.push(submission);
+          if (submissions.length === 1) throw new Error("receipt timed out");
+        },
+        onCancel: () => {},
+      }),
+    );
+  });
+
+  const textarea = document.querySelector<HTMLTextAreaElement>("#feedback-report-description");
+  await chooseCategory("The response stopped");
+  await act(async () => setTextareaValue(textarea!, "Original details"));
+  await act(async () => findButton("Submit")?.click());
+
+  await act(async () => setTextareaValue(textarea!, "Corrected details"));
+  expect(document.body.textContent).not.toContain("Couldn't send your report.");
+  await act(async () => findButton("Submit")?.click());
+
+  expect(submissions).toHaveLength(2);
+  expect(submissions[1]?.clientReportId).not.toBe(submissions[0]?.clientReportId);
+  expect(submissions[1]?.description).toBe("Corrected details");
+
+  await act(async () => root.unmount());
+  rootElement.remove();
+});
+
 test("shows a dedicated rate-limit message from structured RPC error data", async () => {
   const rootElement = document.createElement("div");
   document.body.appendChild(rootElement);

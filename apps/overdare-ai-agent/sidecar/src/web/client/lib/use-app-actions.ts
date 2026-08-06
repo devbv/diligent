@@ -146,6 +146,35 @@ export async function applyModeChange({
   await rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.MODE_SET, { threadId: activeThreadId, mode });
 }
 
+export async function retryLastUserMessage({
+  rpc,
+  threadId,
+  text,
+  model,
+  dispatch,
+}: {
+  rpc: WebRpcClient;
+  threadId: string;
+  text: string;
+  model?: ModelRef;
+  dispatch: Dispatch<AppAction>;
+}): Promise<void> {
+  const localItemId = `local-user-${createUuidV4()}`;
+  dispatch({ type: "local_user", payload: { id: localItemId, text, images: [] } });
+  const started = await rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.TURN_START, {
+    threadId,
+    message: text,
+    content: [{ type: "text", text }],
+    model,
+  });
+  if (started.userMessageId) {
+    dispatch({
+      type: "bind_user_message_id",
+      payload: { renderItemId: localItemId, messageId: started.userMessageId },
+    });
+  }
+}
+
 export function normalizeUploadedImageAttachment(attachment: ImageUploadAttachment): PendingImage {
   const webUrl = attachment.webUrl ?? toWebImageUrl(attachment.path);
   if (!attachment.webUrl && webUrl === attachment.path) {
@@ -739,17 +768,18 @@ export function useAppActions({
       const lastUser = [...snapshot.items].reverse().find((item) => item.kind === "user");
       if (!lastUser || lastUser.kind !== "user" || !lastUser.text.trim()) return;
       try {
-        await rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.TURN_START, {
+        await retryLastUserMessage({
+          rpc,
           threadId,
-          message: lastUser.text,
-          content: [{ type: "text", text: lastUser.text }],
+          text: lastUser.text,
           model: currentModelRef.current,
+          dispatch,
         });
       } catch (error) {
         logger.error("turn.retry_failed", { message: "Failed to retry the last turn", error, threadId });
       }
     })();
-  }, [currentModelRef, rpcRef, stateRef]);
+  }, [currentModelRef, dispatch, rpcRef, stateRef]);
 
   const handleModeChange = useCallback(
     (mode: Mode) => {

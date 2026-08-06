@@ -95,6 +95,23 @@ export function FeedbackReportModal({ target, onSubmit, onCancel }: FeedbackRepo
     if (event.target === event.currentTarget && !submitting) onCancel();
   };
 
+  const handleCategoryChange = (value: string) => {
+    const nextCategory = value as FeedbackCategory;
+    if (nextCategory === category) return;
+    clientReportIdRef.current = null;
+    setError(null);
+    setCategory(nextCategory);
+  };
+
+  const handleDescriptionInput = (event: FormEvent<HTMLTextAreaElement>) => {
+    const nextDescription = event.currentTarget.value;
+    if (nextDescription !== description) {
+      clientReportIdRef.current = null;
+      setError(null);
+    }
+    setDescription(nextDescription);
+  };
+
   return (
     <div
       role="presentation"
@@ -156,7 +173,7 @@ export function FeedbackReportModal({ target, onSubmit, onCancel }: FeedbackRepo
                 placeholder="Select a type"
                 options={CATEGORY_OPTIONS}
                 disabled={submitting}
-                onChange={(value) => setCategory(value as FeedbackCategory)}
+                onChange={handleCategoryChange}
                 triggerClassName="h-6 rounded border-0 bg-black px-2 text-xs text-[#dce2e8] ring-offset-[#21262c]"
                 menuClassName="mt-1 rounded border-[#2a3038] bg-[#111316] shadow-none"
                 menuListClassName="py-0"
@@ -176,7 +193,7 @@ export function FeedbackReportModal({ target, onSubmit, onCancel }: FeedbackRepo
                   disabled={submitting}
                   placeholder="What went wrong?"
                   value={description}
-                  onInput={(event) => setDescription(event.currentTarget.value)}
+                  onInput={handleDescriptionInput}
                   className="h-16 resize-none overflow-y-auto rounded bg-black px-2 py-1 text-xs leading-4 text-[#dce2e8] placeholder:text-[#88929c] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-50"
                 />
                 <span className="text-right text-[10px] leading-3 text-[#88929c]">{description.length} / 1000</span>

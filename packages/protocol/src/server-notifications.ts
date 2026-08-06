@@ -215,6 +215,7 @@ export const SteeringInjectedNotificationSchema = z.object({
     messageCount: z.number().int(),
     messages: z.array(UserMessageSchema),
     steerIds: z.array(z.string()).optional(),
+    messageIds: z.array(z.string()).optional(),
     ...ThreadStatusSnapshotFields,
   }),
 });

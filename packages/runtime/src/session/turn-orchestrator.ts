@@ -416,6 +416,9 @@ export class TurnOrchestrator {
     ) {
       return { ...event, itemId: staged.messageId };
     }
+    if (event.type === "steering_injected") {
+      return { ...event, messageIds: staged?.messageIds ?? [] };
+    }
     return event as AgentEvent;
   }
 

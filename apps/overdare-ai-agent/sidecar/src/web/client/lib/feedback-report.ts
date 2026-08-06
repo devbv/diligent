@@ -24,7 +24,14 @@ function messagePreview(item: ReportableRenderItem): string {
     .filter(Boolean)
     .slice(0, 2)
     .map((line) => line.slice(0, 240));
-  return lines.join("\n");
+  if (lines.length > 0) return lines.join("\n");
+  if (item.kind === "user" && (item.images.length > 0 || (item.contextItems?.length ?? 0) > 0)) {
+    return "Request with attachment";
+  }
+  if (item.kind === "assistant" && item.contentBlocks.some((block) => block.type !== "thinking")) {
+    return "Structured response";
+  }
+  return "";
 }
 
 export function createFeedbackReportTarget(item: ReportableRenderItem): FeedbackReportTarget {
