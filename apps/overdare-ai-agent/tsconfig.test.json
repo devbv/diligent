@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "types": ["bun-types"]
+  },
+  "include": ["test/studio-smoke/**/*.ts", "test/studio-*.test.ts"]
+}

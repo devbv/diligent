@@ -21,6 +21,7 @@ dist/
 .env
 .env.*
 !.env.example
+**/.credential.local
 
 # Terminal Bench job outputs
 jobs/
