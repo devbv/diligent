@@ -1,4 +1,4 @@
-// @summary 12px context-usage pie with a hover tooltip that replaces the composer's inline token counter
+// @summary 12px context-usage ring with a hover tooltip that replaces the composer's inline token counter
 
 import { type RefObject, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
@@ -7,6 +7,13 @@ import { usageTooltipClasses } from "./ui-styles";
 
 const GAUGE_TRACK_COLOR = "#565F69";
 const GAUGE_FILL_COLOR = "#40BF80";
+/**
+ * Design `progressbar`: a 12px ring whose outer edge is r6 and inner edge r4.2, so the stroke is
+ * 1.8px wide centred on r5.1. The fill sweeps clockwise from 12 o'clock.
+ */
+const GAUGE_RADIUS = 5.1;
+const GAUGE_STROKE = 1.8;
+const GAUGE_CIRCUMFERENCE = 2 * Math.PI * GAUGE_RADIUS;
 /** Gap between the anchor and the tooltip, per the design's 4px offset. */
 const TOOLTIP_OFFSET = 4;
 /** Below-placement is preferred; flip above when the viewport cannot fit the 32px tooltip. */
@@ -65,19 +72,31 @@ function useTooltipPosition(anchorRef: RefObject<HTMLElement | null>, open: bool
   return position;
 }
 
-/** Pie-style fill matching the design's quarter-masked progress token. */
 export function UsageGauge({ ratio, className }: { ratio: number; className?: string }) {
-  const pct = Math.min(100, Math.max(0, ratio * 100));
+  const clamped = Math.min(1, Math.max(0, ratio));
   return (
-    <span
+    <svg
+      viewBox="0 0 12 12"
       data-icon="usage-gauge"
-      data-usage-percent={Math.round(pct)}
+      data-usage-percent={Math.round(clamped * 100)}
       aria-hidden="true"
-      className={cn("block h-3 w-3 shrink-0 rounded-full", className)}
-      style={{
-        background: `conic-gradient(${GAUGE_FILL_COLOR} 0 ${pct}%, ${GAUGE_TRACK_COLOR} ${pct}% 100%)`,
-      }}
-    />
+      focusable="false"
+      className={cn("block h-3 w-3 shrink-0", className)}
+    >
+      <circle cx="6" cy="6" r={GAUGE_RADIUS} fill="none" stroke={GAUGE_TRACK_COLOR} strokeWidth={GAUGE_STROKE} />
+      {clamped > 0 ? (
+        <circle
+          cx="6"
+          cy="6"
+          r={GAUGE_RADIUS}
+          fill="none"
+          stroke={GAUGE_FILL_COLOR}
+          strokeWidth={GAUGE_STROKE}
+          strokeDasharray={`${clamped * GAUGE_CIRCUMFERENCE} ${GAUGE_CIRCUMFERENCE}`}
+          transform="rotate(-90 6 6)"
+        />
+      ) : null}
+    </svg>
   );
 }
 

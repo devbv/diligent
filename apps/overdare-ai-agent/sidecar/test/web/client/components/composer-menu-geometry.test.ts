@@ -1,8 +1,13 @@
 // @summary Pins the composer menu/tooltip math against the Figma spec (28px header, 8px inset, 24px rows, 2px submenu gap)
 
 import { expect, test } from "bun:test";
+import { renderToStaticMarkup } from "react-dom/server";
 import { getComposerMenuHeight, getSubmenuPosition } from "../../../../src/web/client/components/ModelEffortSelect";
-import { formatUsageTooltipLabel, getUsageGaugeRatio } from "../../../../src/web/client/components/UsageGauge";
+import {
+  formatUsageTooltipLabel,
+  getUsageGaugeRatio,
+  UsageGauge,
+} from "../../../../src/web/client/components/UsageGauge";
 
 test("menu height matches the design panels", () => {
   // Models: 200x228 with 8 rows. Effort: 180x156 with 5 rows.
@@ -27,6 +32,28 @@ test("effort submenu sits 2px right of the models panel and stays inside the vie
     left: 102,
     top: 8,
   });
+});
+
+test("usage gauge is a 1.8px ring, not a filled pie", () => {
+  // Figma `progressbar`: outer edge r6, inner edge r4.2 — so stroke 1.8 centred on r5.1, in a 12px box.
+  const html = renderToStaticMarkup(UsageGauge({ ratio: 0.25 }));
+  expect(html).toContain('viewBox="0 0 12 12"');
+  expect(html).toContain('r="5.1"');
+  expect(html).toContain('stroke-width="1.8"');
+  expect(html).toContain('fill="none"');
+  expect(html).toContain('stroke="#565F69"');
+  expect(html).toContain('stroke="#40BF80"');
+  // Sweeps clockwise from 12 o'clock.
+  expect(html).toContain('transform="rotate(-90 6 6)"');
+  expect(html).not.toContain("conic-gradient");
+
+  const circumference = 2 * Math.PI * 5.1;
+  expect(html).toContain(`stroke-dasharray="${0.25 * circumference} ${circumference}"`);
+
+  // An unused context window draws the track only.
+  const empty = renderToStaticMarkup(UsageGauge({ ratio: 0 }));
+  expect(empty).not.toContain("#40BF80");
+  expect(empty).toContain('data-usage-percent="0"');
 });
 
 test("usage ratio clamps and the tooltip reads as designed", () => {

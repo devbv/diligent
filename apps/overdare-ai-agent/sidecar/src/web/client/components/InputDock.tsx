@@ -410,9 +410,9 @@ export function InputDock({
             {input.length === 0 ? (
               <div
                 aria-hidden="true"
-                className="pointer-events-none absolute left-0 top-0 flex h-5 items-center gap-0.5 text-white"
+                className="pointer-events-none absolute left-0 top-0 flex h-5 items-center gap-0.5 text-[#565F69]"
               >
-                <AgentLogo className="h-5 w-5 shrink-0 text-[#565F69]" />
+                <AgentLogo className="h-5 w-5 shrink-0" />
                 <span className="text-sm leading-5">
                   {isBusy ? "Queue a message…" : supportsVision ? "Ask anything or attach images…" : "Ask anything…"}
                 </span>

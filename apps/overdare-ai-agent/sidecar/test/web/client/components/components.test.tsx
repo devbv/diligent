@@ -1123,7 +1123,8 @@ test("input dock keeps the agent logo before the placeholder while the input is 
   expect(idleHtml).not.toContain("Queue a message…");
   expect(idleHtml).toContain("Ask anything…");
   expect(idleHtml).toContain('data-icon="agent-logo"');
-  expect(idleHtml).toContain("items-center gap-0.5 text-white");
+  // Design `Title`: the agent logo and the placeholder text share #565F69.
+  expect(idleHtml).toContain("items-center gap-0.5 text-[#565F69]");
   expect(idleHtml).not.toContain("placeholder=");
 });
 
@@ -1165,7 +1166,7 @@ test("input dock composer textarea does not inherit field border styles", () => 
 
   const textarea = html.match(/<textarea[^>]*aria-label="Queue input"[^>]*>/)?.[0] ?? "";
   expect(html).toContain(
-    "relative flex min-h-[100px] flex-col justify-between gap-2 rounded-sm border bg-surface-composer px-2 py-2.5",
+    "relative flex min-h-[100px] flex-col justify-between gap-3 rounded-sm border bg-surface-composer px-2 py-2.5",
   );
   expect(textarea).toContain("min-h-10");
   expect(textarea).toContain("block");

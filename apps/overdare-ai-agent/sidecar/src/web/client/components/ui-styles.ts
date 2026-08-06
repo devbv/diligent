@@ -90,8 +90,9 @@ export const pillBadgeClasses = "rounded-full border px-2 py-0.5 text-2xs upperc
 
 export const detailPanelClasses = "rounded-md border border-border/40 bg-surface-default px-4 py-3";
 
+/** Design `<inputBox>`: 10px/8px padding, 12px row gap, 6px radius (`rounded-sm` resolves to 0.375rem). */
 export const composerFrameClasses =
-  "relative flex min-h-[100px] flex-col justify-between gap-2 rounded-sm border bg-surface-composer px-2 py-2.5";
+  "relative flex min-h-[100px] flex-col justify-between gap-3 rounded-sm border bg-surface-composer px-2 py-2.5";
 
 export const composerTextAreaClasses =
   "block min-h-10 w-full rounded-none border-0 bg-transparent px-0 py-0 text-sm leading-5 text-text placeholder:text-text-subtle focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-transparent";
