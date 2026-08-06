@@ -283,7 +283,6 @@ export function App() {
             currentModel={providerMgr.currentModel ? modelOptionKey(providerMgr.currentModel) : ""}
             availableModels={providerMgr.availableModels}
             onModelChange={handleModelChange}
-            usage={state.usage}
             currentContextTokens={state.currentContextTokens}
             contextWindow={providerMgr.contextWindow}
             hasProvider={providerMgr.hasProvider}

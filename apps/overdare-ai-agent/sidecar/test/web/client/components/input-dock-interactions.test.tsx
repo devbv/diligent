@@ -39,7 +39,6 @@ const dockProps = {
   currentModel: "gpt-5",
   availableModels: [],
   onModelChange: () => {},
-  usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalCost: 0 },
   currentContextTokens: 0,
   contextWindow: 0,
   hasProvider: true,
@@ -146,54 +145,171 @@ test("composer menu exposes the design-sized mode menu and selected checkmark", 
   rootElement.remove();
 });
 
-test("model menu is wide enough for long labels and keeps options on one line", async () => {
+const MODELS = [
+  {
+    modelId: "claude-opus-4-8",
+    display: "Claude Opus 4.8",
+    provider: "anthropic" as const,
+    contextWindow: 200_000,
+    maxOutputTokens: 32_000,
+    supportsThinking: false,
+    supportsVision: true,
+  },
+  {
+    modelId: "gpt-5-6-terra",
+    display: "ChatGPT 5.6 Terra",
+    provider: "openai" as const,
+    contextWindow: 300_000,
+    maxOutputTokens: 64_000,
+    supportsThinking: true,
+    supportsVision: true,
+  },
+];
+
+function findModelMenu(): HTMLElement | null {
+  return document.querySelector<HTMLElement>('[role="menu"][aria-label="Models"]');
+}
+
+function findEffortMenu(): HTMLElement | null {
+  return document.querySelector<HTMLElement>('[role="menu"][aria-label="Effort"]');
+}
+
+test("model pill shows the effort suffix and opens a design-sized Models menu", async () => {
   const { rootElement, root } = renderInputDock();
-  const models = [
-    {
-      modelId: "claude-opus-4-8",
-      display: "Claude Opus 4.8",
-      provider: "anthropic" as const,
-      contextWindow: 200_000,
-      maxOutputTokens: 32_000,
-      supportsThinking: false,
-      supportsVision: true,
-    },
-    {
-      modelId: "gpt-5-6-terra",
-      display: "ChatGPT 5.6 Terra",
-      provider: "openai" as const,
-      contextWindow: 300_000,
-      maxOutputTokens: 64_000,
-      supportsThinking: true,
-      supportsVision: true,
-    },
-  ];
+  let selectedModel = "";
+
+  await act(async () => {
+    root.render(
+      createElement(InputDock, {
+        ...dockProps,
+        currentModel: "openai\0gpt-5-6-terra",
+        availableModels: MODELS,
+        supportsThinking: true,
+        effort: "high" as const,
+        onModelChange: (modelId: string) => {
+          selectedModel = modelId;
+        },
+      }),
+    );
+  });
+
+  const modelTrigger = rootElement.querySelector<HTMLButtonElement>('button[aria-label="Model selector"]');
+  expect(modelTrigger?.textContent).toContain("ChatGPT 5.6 Terra");
+  expect(modelTrigger?.textContent).toContain("High");
+
+  await act(async () => {
+    modelTrigger?.click();
+  });
+
+  expect(findModelMenu()?.className).toContain("w-[200px]");
+  expect(findModelMenu()?.textContent).toContain("Models");
+
+  const options = Array.from(document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]'));
+  expect(options.map((option) => option.textContent?.trim())).toEqual(["Claude Opus 4.8", "ChatGPT 5.6 Terra"]);
+  for (const option of options) {
+    expect(option.className).toContain("whitespace-nowrap");
+    expect(option.className).toContain("overflow-hidden");
+    expect(option.className).toContain("text-ellipsis");
+  }
+  expect(options[1]?.getAttribute("aria-checked")).toBe("true");
+  expect(options[1]?.querySelector('[data-icon="check"]')).not.toBeNull();
+
+  await act(async () => {
+    options[0]?.click();
+  });
+  expect(selectedModel).toBe("anthropic\0claude-opus-4-8");
+  expect(findModelMenu()).toBeNull();
+
+  await act(async () => {
+    root.unmount();
+  });
+  rootElement.remove();
+});
+
+test("hovering a thinking model opens the Effort submenu and picking one sets model plus effort", async () => {
+  const { rootElement, root } = renderInputDock();
+  let selectedModel = "";
+  let selectedEffort = "";
 
   await act(async () => {
     root.render(
       createElement(InputDock, {
         ...dockProps,
         currentModel: "anthropic\0claude-opus-4-8",
-        availableModels: models,
+        availableModels: MODELS,
+        supportsThinking: true,
+        onModelChange: (modelId: string) => {
+          selectedModel = modelId;
+        },
+        onEffortChange: (effort: string) => {
+          selectedEffort = effort;
+        },
       }),
     );
   });
 
-  const modelTrigger = rootElement.querySelector<HTMLButtonElement>('button[aria-label="Model selector"]');
   await act(async () => {
-    modelTrigger?.click();
+    rootElement.querySelector<HTMLButtonElement>('button[aria-label="Model selector"]')?.click();
   });
 
-  const modelMenu = rootElement.querySelector<HTMLElement>('[role="listbox"]');
-  expect(modelMenu?.className).toContain("w-[180px]");
+  const options = Array.from(document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]'));
+  // Non-thinking models expose no submenu affordance.
+  expect(options[0]?.getAttribute("aria-haspopup")).toBeNull();
+  expect(options[1]?.getAttribute("aria-haspopup")).toBe("menu");
 
-  const options = Array.from(rootElement.querySelectorAll<HTMLButtonElement>('[role="option"]'));
-  expect(options.map((option) => option.textContent)).toEqual(["Claude Opus 4.8", "ChatGPT 5.6 Terra"]);
-  for (const option of options) {
-    expect(option.className).toContain("whitespace-nowrap");
-    expect(option.className).toContain("overflow-hidden");
-    expect(option.className).toContain("text-ellipsis");
-  }
+  await act(async () => {
+    if (options[0]) hover(options[0]);
+  });
+  expect(findEffortMenu()).toBeNull();
+
+  await act(async () => {
+    if (options[1]) hover(options[1]);
+  });
+
+  const effortMenu = findEffortMenu();
+  expect(effortMenu?.className).toContain("w-[180px]");
+  const effortItems = Array.from(effortMenu?.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]') ?? []);
+  expect(effortItems.map((item) => item.textContent?.trim())).toEqual(["Low", "Medium", "High", "Extra High", "Max"]);
+
+  await act(async () => {
+    effortItems[3]?.click();
+  });
+  expect(selectedModel).toBe("openai\0gpt-5-6-terra");
+  expect(selectedEffort).toBe("xhigh");
+  expect(findModelMenu()).toBeNull();
+
+  await act(async () => {
+    root.unmount();
+  });
+  rootElement.remove();
+});
+
+test("busy composer swaps the send arrow for queue and stop controls", async () => {
+  const { rootElement, root } = renderInputDock();
+  let interrupted = false;
+
+  await act(async () => {
+    root.render(
+      createElement(InputDock, {
+        ...dockProps,
+        threadStatus: "busy" as const,
+        canSteer: true,
+        onInterrupt: () => {
+          interrupted = true;
+        },
+      }),
+    );
+  });
+
+  expect(rootElement.querySelector('button[aria-label="Send message"]')).toBeNull();
+  expect(rootElement.querySelector('button[aria-label="Queue message"]')).not.toBeNull();
+
+  const stopButton = rootElement.querySelector<HTMLButtonElement>('button[aria-label="Interrupt turn"]');
+  expect(stopButton?.querySelector('[data-icon="stop"]')).not.toBeNull();
+  await act(async () => {
+    stopButton?.click();
+  });
+  expect(interrupted).toBe(true);
 
   await act(async () => {
     root.unmount();
