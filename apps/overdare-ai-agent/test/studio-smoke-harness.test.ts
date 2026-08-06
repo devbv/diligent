@@ -7,13 +7,18 @@ import { join, resolve } from "node:path";
 import {
   createIsolatedEnv,
   createSmokeAgentConfig,
+  createStudioFirewallCommands,
   createStudioLaunchArgs,
   createStudioPrerequisiteCommand,
+  createStudioUrlSchemeCommands,
   isLoadedProjectTree,
   readSmokeContract,
   redactStudioDiagnostic,
+  STUDIO_DOWNLOAD_TIMEOUT_MS,
   shouldInstallStudioPrerequisites,
   stageStudioProjectFixture,
+  stageStudioRuntimeDependencies,
+  suppressInteractiveStudioPrerequisites,
   withStageTimeout,
 } from "./studio-smoke/run";
 
@@ -35,6 +40,10 @@ const VALID_S3_ENV: NodeJS.ProcessEnv = {
 };
 
 describe("Studio smoke runner", () => {
+  test("allows large Studio archives up to thirty minutes to download", () => {
+    expect(STUDIO_DOWNLOAD_TIMEOUT_MS).toBe(30 * 60_000);
+  });
+
   test("validates the explicit Studio launch contract", () => {
     const contract = readSmokeContract(VALID_ENV);
     expect(contract.source.kind).toBe("url");
@@ -189,6 +198,165 @@ describe("Studio smoke runner", () => {
     expect(shouldInstallStudioPrerequisites(1)).toBe(false);
   });
 
+  test("allows Studio through the disposable Sandbox firewall before launch", () => {
+    expect(
+      createStudioFirewallCommands(
+        String.raw`C:\Windows`,
+        String.raw`C:\run\studio`,
+        String.raw`C:\run\studio\Sandbox.exe`,
+      ),
+    ).toEqual([
+      [
+        String.raw`C:\Windows\System32\netsh.exe`,
+        "advfirewall",
+        "firewall",
+        "add",
+        "rule",
+        "name=OVERDARE Studio Smoke 1",
+        "dir=in",
+        "action=allow",
+        String.raw`program=C:\run\studio\Sandbox.exe`,
+        "enable=yes",
+        "profile=any",
+      ],
+      [
+        String.raw`C:\Windows\System32\netsh.exe`,
+        "advfirewall",
+        "firewall",
+        "add",
+        "rule",
+        "name=OVERDARE Studio Smoke 2",
+        "dir=in",
+        "action=allow",
+        String.raw`program=C:\run\studio\Sandbox\Binaries\Win64\Sandbox-Win64-Shipping.exe`,
+        "enable=yes",
+        "profile=any",
+      ],
+      [
+        String.raw`C:\Windows\System32\netsh.exe`,
+        "advfirewall",
+        "firewall",
+        "add",
+        "rule",
+        "name=OVERDARE Studio Smoke 3",
+        "dir=in",
+        "action=allow",
+        String.raw`program=C:\run\studio\Sandbox\OverdareAIAgent\overdare-ai-agent.exe`,
+        "enable=yes",
+        "profile=any",
+      ],
+    ]);
+    expect(
+      createStudioFirewallCommands(
+        String.raw`C:\Windows`,
+        String.raw`C:\run\studio`,
+        String.raw`C:\run\studio\Sandbox.exe`,
+        [String.raw`C:\run\agent.exe`, String.raw`C:\run\diligent-web-server.exe`],
+      ).map((command) => command[8]),
+    ).toEqual([
+      String.raw`program=C:\run\studio\Sandbox.exe`,
+      String.raw`program=C:\run\studio\Sandbox\Binaries\Win64\Sandbox-Win64-Shipping.exe`,
+      String.raw`program=C:\run\studio\Sandbox\OverdareAIAgent\overdare-ai-agent.exe`,
+      String.raw`program=C:\run\agent.exe`,
+      String.raw`program=C:\run\diligent-web-server.exe`,
+    ]);
+  });
+
+  test("registers the Studio login callback scheme without an interactive prompt", () => {
+    expect(
+      createStudioUrlSchemeCommands(
+        String.raw`C:\Windows`,
+        String.raw`C:\run\studio\Sandbox\Binaries\Win64\Sandbox-Win64-Shipping.exe`,
+      ),
+    ).toEqual([
+      [
+        String.raw`C:\Windows\System32\reg.exe`,
+        "add",
+        String.raw`HKCR\ovdrstudio`,
+        "/v",
+        "URL protocol",
+        "/d",
+        "",
+        "/f",
+      ],
+      [
+        String.raw`C:\Windows\System32\reg.exe`,
+        "add",
+        String.raw`HKCR\ovdrstudio\shell\open\command`,
+        "/ve",
+        "/d",
+        String.raw`"C:\run\studio\Sandbox\Binaries\Win64\Sandbox-Win64-Shipping.exe" "%1"`,
+        "/f",
+      ],
+    ]);
+  });
+
+  test("suppresses the aggregate UE prerequisite installer during normal startup", async () => {
+    const root = await mkdtemp(join(tmpdir(), "studio-smoke-prerequisite-test-"));
+    try {
+      const studioDir = join(root, "studio");
+      const redistDir = join(studioDir, "Engine", "Extras", "Redist", "en-us");
+      await mkdir(redistDir, { recursive: true });
+      const installer = join(redistDir, "UEPrereqSetup_x64.exe");
+      const stub = join(root, "prerequisite-stub.exe");
+      await writeFile(installer, "installer fixture");
+      await writeFile(stub, "stub fixture");
+
+      const suppressed = await suppressInteractiveStudioPrerequisites(studioDir, stub);
+
+      expect(suppressed).toEqual({
+        installer,
+        suppressedInstaller: `${installer}.studio-smoke-disabled`,
+      });
+      expect(await readFile(installer, "utf8")).toBe("stub fixture");
+      expect(await readFile(`${installer}.studio-smoke-disabled`, "utf8")).toBe("installer fixture");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("stages the bundled VC runtime and mapped XInput beside Studio binaries", async () => {
+    const root = await mkdtemp(join(tmpdir(), "studio-smoke-runtime-test-"));
+    try {
+      const studioDir = join(root, "studio");
+      const runtimeSource = join(
+        studioDir,
+        "Engine",
+        "Plugins",
+        "LuaMachine",
+        "Source",
+        "ThirdParty",
+        "lua-language-server",
+        "bin",
+      );
+      const shippingDir = join(studioDir, "Sandbox", "Binaries", "Win64");
+      const agentDir = join(root, "agent-runtime");
+      const xinput = join(root, "xinput1_3.dll");
+      await Promise.all([mkdir(runtimeSource, { recursive: true }), mkdir(shippingDir, { recursive: true })]);
+      for (const name of [
+        "msvcp140.dll",
+        "msvcp140_1.dll",
+        "msvcp140_2.dll",
+        "msvcp140_atomic_wait.dll",
+        "msvcp140_codecvt_ids.dll",
+        "vcruntime140.dll",
+        "vcruntime140_1.dll",
+      ]) {
+        await writeFile(join(runtimeSource, name), name);
+      }
+      await writeFile(xinput, "xinput fixture");
+
+      await stageStudioRuntimeDependencies(studioDir, xinput, [agentDir]);
+
+      expect(await readFile(join(studioDir, "xinput1_3.dll"), "utf8")).toBe("xinput fixture");
+      expect(await readFile(join(shippingDir, "xinput1_3.dll"), "utf8")).toBe("xinput fixture");
+      expect(await readFile(join(shippingDir, "vcruntime140_1.dll"), "utf8")).toBe("vcruntime140_1.dll");
+      expect(await readFile(join(agentDir, "vcruntime140.dll"), "utf8")).toBe("vcruntime140.dll");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("disables agent runtime updates inside the disposable profile", () => {
     expect(JSON.parse(createSmokeAgentConfig())).toEqual({ updateMode: "disabled" });
   });
@@ -203,6 +371,9 @@ describe("Studio smoke runner", () => {
     const sandboxBootstrap = await Bun.file(
       resolve(repoRoot, "apps/overdare-ai-agent/test/studio-smoke/sandbox-bootstrap.ps1"),
     ).text();
+    const urlSchemeDialogAcceptor = await Bun.file(
+      resolve(repoRoot, "apps/overdare-ai-agent/test/studio-smoke/accept-studio-url-scheme.ps1"),
+    ).text();
     const credentialTool = await Bun.file(
       resolve(repoRoot, "apps/overdare-ai-agent/test/studio-smoke/studio-credential.ps1"),
     ).text();
@@ -216,13 +387,34 @@ describe("Studio smoke runner", () => {
     expect(workflow).toContain("OVERDARE_STUDIO_CREDENTIAL_B64");
     expect(workflow).not.toContain("s3 presign");
     expect(sandboxWrapper).toContain("sandbox-env.json");
+    expect(sandboxWrapper).toContain("C:\\studio-smoke-bridge\\sandbox-bootstrap.ps1");
+    expect(sandboxWrapper).toContain("$bridgeUrlSchemeDialogAcceptor");
+    expect(sandboxWrapper).toContain("$bridgeCredentialTool");
+    expect(sandboxWrapper).toContain("Get-Command bun.exe -CommandType Application -All");
+    expect(sandboxWrapper).toContain("Select-Object -Last 1");
+    expect(sandboxWrapper).toContain("<VGpu>Disable</VGpu>");
+    expect(sandboxWrapper).toContain("OVERDARE_STUDIO_AUTH_BROWSER_EXE");
+    expect(sandboxWrapper).toContain("C:\\studio-smoke-browser");
     expect(sandboxWrapper).toContain('"AWS_SECRET_ACCESS_KEY"');
     expect(sandboxWrapper).toContain("C:\\studio-smoke-cache");
     expect(sandboxWrapper).toContain("OVERDARE_STUDIO_CACHE_DIR");
+    expect(sandboxWrapper).toContain("OVERDARE_STUDIO_XINPUT_DLL");
+    expect(sandboxWrapper).toContain('Start-Process -FilePath "explorer.exe"');
     expect(sandboxWrapper).toContain(".credential.local");
     expect(sandboxWrapper).toContain("auth-bootstrap");
     expect(sandboxBootstrap).toContain('"OverdareLogintoken"');
+    expect(sandboxBootstrap).toContain("Register-AuthBrowser");
+    expect(sandboxBootstrap).toContain("HKCU:\\Software\\Classes");
+    expect(sandboxBootstrap).toContain("HKLM:\\SOFTWARE\\Microsoft\\VisualStudio\\14.0\\VC\\Runtimes\\x64");
     expect(sandboxBootstrap).toContain("studio-credential.ps1");
+    expect(sandboxBootstrap).toContain("accept-studio-url-scheme.ps1");
+    expect(urlSchemeDialogAcceptor).toContain("Sandbox-Win64-Shipping");
+    expect(urlSchemeDialogAcceptor).toContain("Do you want to register custom url scheme?");
+    expect(urlSchemeDialogAcceptor).toContain("BM_CLICK");
+    expect(urlSchemeDialogAcceptor).toContain("TryActivateOwnedMessageWindow");
+    expect(urlSchemeDialogAcceptor).toContain('SendWait("{ENTER}")');
+    expect(sandboxBootstrap).toContain("C:\\studio-smoke-bridge\\studio-credential.ps1");
+    expect(sandboxBootstrap).toContain('$config.mode -ne "auth-bootstrap" -or $exitCode -eq 0');
     expect(credentialTool).toContain("CredReadW");
     expect(credentialTool).toContain("CredWriteW");
     expect(credentialTool).toContain("OVERDARE_STUDIO_CREDENTIAL_V1");

@@ -51,6 +51,11 @@ Windows Credential Manager for Studio's `OverdareLogintoken`, saves its exact cr
 `apps/overdare-ai-agent/test/studio-smoke/.credential.local` file, restricts the file ACL to the current Windows
 user, and closes the Sandbox. It never prints the account ID or refresh token.
 
+Recent Windows Sandbox images do not include a default web browser. During authentication bootstrap only, the
+launcher maps the host's Microsoft Edge (preferred) or Google Chrome application directory read-only and registers
+that executable as the disposable Sandbox user's HTTP/HTTPS handler. Browser profile data remains inside the
+Sandbox. Use `-AuthBrowserExe <absolute-path>` when neither browser is installed in its standard location.
+
 Subsequent `bun run test:studio-smoke` executions copy that file only into the per-run bridge, import it into the
 fresh Sandbox credential store, remove the bridge copy immediately, and delete the imported credential during
 cleanup. The local fixture remains outside diagnostics and is not committed because `**/.credential.local` is
@@ -108,12 +113,25 @@ the command-line map handler first; otherwise the harness fails explicitly at `p
 substitutions are `{projectDir}`, `{projectMap}`, `{rpcPort}`, `{logDir}`, and `{userDataDir}`. The runner owns the
 `-OpenMap` argument so local and CI runs use the same project fixture contract.
 
-The runner starts Studio directly on the standard Windows Sandbox and GitHub runner images. It invokes the bundled
-Unreal prerequisite installer only when Studio immediately exits with the Windows `STATUS_DLL_NOT_FOUND` loader
-code, then retries Studio once. This avoids a slow prerequisite installation and unsupported Windows-feature popup
-on every disposable run while retaining a deterministic fallback for a genuinely missing runtime.
+Before startup, the runner preserves the bundled aggregate Unreal prerequisite installer inside the extracted
+disposable Studio directory and puts an inert, successful Windows executable at its original path. This satisfies
+the launcher without opening the legacy DirectX and .NET Windows-feature flow on every fresh Sandbox. If Studio
+immediately exits with the Windows `STATUS_DLL_NOT_FOUND` loader code, the runner restores and invokes the original
+installer, then retries Studio once. The validated ZIP in the host cache is never modified.
 
-The fixed limits are 10 minutes for listing and download, 10 minutes for extraction, 30 seconds for fixture staging,
+Before launching Studio, the runner adds inbound Windows Firewall allow rules for the archive launcher, Shipping
+executable, Studio-bundled AI agent, staged Rust agent, and Bun-packaged web sidecar. This prevents interactive
+Windows Security network-access prompts from blocking local or CI automation. The rules exist only inside the
+disposable Windows Sandbox or CI runner environment.
+
+The runner also pre-registers the `ovdrstudio` login callback scheme in the disposable registry, pointing it at the
+extracted Shipping executable. Current Studio builds still display their first-run confirmation even when the
+matching registry entry already exists. A short-lived helper therefore accepts only the Studio-owned `Message`
+window's default `Yes` action during startup and exits immediately after accepting it. Its result and errors are
+preserved as `url-scheme-dialog*.log` diagnostics. This keeps browser-to-Studio login callbacks intact without
+requiring CI keyboard input.
+
+The fixed limits are 30 minutes for listing and download, 10 minutes for extraction, 30 seconds for fixture staging,
 15 minutes for a prerequisite fallback, 30 seconds for each Studio process start, 3 minutes for project and RPC
 readiness, 1 minute for agent readiness, 30 seconds for smoke calls, and 15 seconds for cleanup. The runner uses
 Studio's existing RPC default, port `13377`; set
@@ -128,7 +146,9 @@ a newly constructed environment that does not include AWS credentials.
 Studio and the agent receive a new `USERPROFILE`, `HOME`, `APPDATA`, `LOCALAPPDATA`, `TEMP`, project directory, and
 `.overdare` root on every run. Their `PATH` contains only the selected executable directory, Windows `System32`,
 and the system Windows PowerShell directory required by packaged Studio tooling. The staged local agent runtime
-uses `updateMode: disabled`, so a smoke run cannot replace it with a network-downloaded agent version.
+uses `updateMode: disabled`, so a smoke run cannot replace it with a network-downloaded agent version. The runner
+copies the archive's validated VC runtime DLLs beside Studio, the staged Rust agent, and the Bun sidecar so suppressing
+the aggregate prerequisite installer does not leave any smoke executable without its loader dependencies.
 
 When the missing-runtime fallback is needed, the archive's bundled `UEPrereqSetup_x64.exe` runs with
 `/quiet /norestart`. This installs runtime dependencies inside the disposable Sandbox; it does not install Unreal
@@ -155,6 +175,9 @@ extraction, Studio launch, and smoke checks. User data, projects, and extracted 
 Pass `-BunExe <absolute-path>` directly to `open-windows-sandbox.ps1` only when an explicit Bun binary is required.
 Use `-StudioCacheDir <absolute-path>` to override the local cache location. Removing that directory safely forces
 the next local run to download Studio again.
+
+The launcher disables Sandbox vGPU so the same WSB configuration works from local and Remote Desktop sessions.
+Studio uses Windows Advanced Rasterization Platform (WARP) inside the disposable environment.
 
 ## GitHub Actions
 

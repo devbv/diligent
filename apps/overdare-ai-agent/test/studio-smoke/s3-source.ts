@@ -1,6 +1,9 @@
 // @summary List and download Studio archives from AWS S3 with isolated SigV4 credentials.
 
 import { createHash, createHmac } from "node:crypto";
+import { createWriteStream } from "node:fs";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { type StudioReleaseObject, selectLatestWindowsStudioRelease } from "./release-selection";
 
 const EMPTY_SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
@@ -237,5 +240,6 @@ export async function downloadS3Object(
     signal,
   });
   if (!response.ok) throw await s3Error(response);
-  await Bun.write(destination, response);
+  if (!response.body) throw new Error("S3 object response did not include a body");
+  await pipeline(Readable.fromWeb(response.body as never), createWriteStream(destination), { signal });
 }

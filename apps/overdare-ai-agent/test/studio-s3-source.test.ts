@@ -1,7 +1,15 @@
 // @summary Verify AWS SigV4 requests and paginated S3 object-list parsing for the Studio smoke harness.
 
 import { describe, expect, test } from "bun:test";
-import { createS3SignedRequest, listS3Objects, parseS3ListObjectsXml } from "./studio-smoke/s3-source";
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  createS3SignedRequest,
+  downloadS3Object,
+  listS3Objects,
+  parseS3ListObjectsXml,
+} from "./studio-smoke/s3-source";
 
 const CREDENTIALS = {
   accessKeyId: "AKIDEXAMPLE",
@@ -108,5 +116,56 @@ describe("Studio S3 source", () => {
     expect(objects.map((object) => object.key)).toEqual(["Sandbox/Windows/first.zip", "Sandbox/Windows/second.zip"]);
     expect(requestedUrls).toHaveLength(2);
     expect(requestedUrls[1]).toContain("continuation-token=page-2");
+  });
+
+  test("streams an S3 object to disk before the response completes", async () => {
+    const root = await mkdtemp(join(tmpdir(), "studio-s3-stream-"));
+    const destination = join(root, "studio.zip");
+    let finishResponse = () => {};
+    let responseFinished = false;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("first"));
+        finishResponse = () => {
+          if (responseFinished) return;
+          responseFinished = true;
+          controller.enqueue(new TextEncoder().encode("-second"));
+          controller.close();
+        };
+      },
+    });
+    const fetchRequest = (async () => new Response(body, { status: 200 })) as typeof fetch;
+
+    try {
+      const download = downloadS3Object(
+        {
+          bucket: "ovdr-build-binary",
+          region: "ap-northeast-2",
+          prefix: "Sandbox/Windows/",
+          credentials: CREDENTIALS,
+        },
+        "Sandbox/Windows/studio.zip",
+        destination,
+        new AbortController().signal,
+        fetchRequest,
+      );
+
+      let streamedSize = 0;
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        streamedSize = await stat(destination)
+          .then((value) => value.size)
+          .catch(() => 0);
+        if (streamedSize > 0) break;
+        await Bun.sleep(10);
+      }
+      finishResponse();
+      await download;
+
+      expect(streamedSize).toBe(5);
+      expect(await readFile(destination, "utf8")).toBe("first-second");
+    } finally {
+      finishResponse();
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });

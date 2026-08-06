@@ -2,7 +2,19 @@
 
 import { randomUUID } from "node:crypto";
 import { closeSync, existsSync, openSync } from "node:fs";
-import { appendFile, cp, mkdir, mkdtemp, readdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
+import {
+  appendFile,
+  cp,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  realpath,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import { join, relative, resolve, win32 } from "node:path";
@@ -12,8 +24,9 @@ import { downloadS3Object, resolveLatestS3StudioRelease, type S3StudioSource } f
 
 const configuredRepoRoot = process.env.OVERDARE_SMOKE_REPO_ROOT?.trim();
 const REPO_ROOT = configuredRepoRoot ? resolve(configuredRepoRoot) : resolve(import.meta.dir, "../../../..");
+export const STUDIO_DOWNLOAD_TIMEOUT_MS = 30 * 60_000;
 const TIMEOUT = {
-  download: 10 * 60_000,
+  download: STUDIO_DOWNLOAD_TIMEOUT_MS,
   extract: 10 * 60_000,
   prerequisites: 15 * 60_000,
   studioStart: 30_000,
@@ -180,6 +193,114 @@ export function createStudioPrerequisiteCommand(studioDir: string, logDir: strin
     "/log",
     win32.join(logDir, "ue-prerequisites.log"),
   ];
+}
+
+export function createStudioFirewallCommands(
+  systemRoot: string,
+  studioDir: string,
+  studioExe: string,
+  runtimeExecutables: string[] = [],
+): string[][] {
+  const netsh = win32.join(systemRoot, "System32", "netsh.exe");
+  const executables = [
+    studioExe,
+    win32.join(studioDir, "Sandbox", "Binaries", "Win64", "Sandbox-Win64-Shipping.exe"),
+    win32.join(studioDir, "Sandbox", "OverdareAIAgent", "overdare-ai-agent.exe"),
+    ...runtimeExecutables,
+  ];
+  const seen = new Set<string>();
+  return executables
+    .filter((executable) => {
+      const normalized = executable.toLowerCase();
+      if (seen.has(normalized)) return false;
+      seen.add(normalized);
+      return true;
+    })
+    .map((executable, index) => [
+      netsh,
+      "advfirewall",
+      "firewall",
+      "add",
+      "rule",
+      `name=OVERDARE Studio Smoke ${index + 1}`,
+      "dir=in",
+      "action=allow",
+      `program=${executable}`,
+      "enable=yes",
+      "profile=any",
+    ]);
+}
+
+export function createStudioUrlSchemeCommands(systemRoot: string, studioExe: string): string[][] {
+  const reg = win32.join(systemRoot, "System32", "reg.exe");
+  return [
+    [reg, "add", String.raw`HKCR\ovdrstudio`, "/v", "URL protocol", "/d", "", "/f"],
+    [reg, "add", String.raw`HKCR\ovdrstudio\shell\open\command`, "/ve", "/d", `"${studioExe}" "%1"`, "/f"],
+  ];
+}
+
+interface SuppressedStudioPrerequisites {
+  installer: string;
+  suppressedInstaller: string;
+}
+
+export async function suppressInteractiveStudioPrerequisites(
+  studioDir: string,
+  stubExecutable = join(process.env.SystemRoot || String.raw`C:\Windows`, "System32", "whoami.exe"),
+): Promise<SuppressedStudioPrerequisites | undefined> {
+  const installer = createStudioPrerequisiteCommand(studioDir, studioDir)[0];
+  if (!existsSync(installer)) return undefined;
+  if (!existsSync(stubExecutable)) throw new Error(`Missing prerequisite suppression stub: ${stubExecutable}`);
+  const suppressedInstaller = `${installer}.studio-smoke-disabled`;
+  await rename(installer, suppressedInstaller);
+  await cp(stubExecutable, installer);
+  return { installer, suppressedInstaller };
+}
+
+const STUDIO_VC_RUNTIME_FILES = [
+  "msvcp140.dll",
+  "msvcp140_1.dll",
+  "msvcp140_2.dll",
+  "msvcp140_atomic_wait.dll",
+  "msvcp140_codecvt_ids.dll",
+  "vcruntime140.dll",
+  "vcruntime140_1.dll",
+] as const;
+
+export async function stageStudioRuntimeDependencies(
+  studioDir: string,
+  xinputSource: string,
+  additionalTargetDirs: string[] = [],
+): Promise<void> {
+  if (!existsSync(xinputSource)) throw new Error(`Missing mapped XInput runtime: ${xinputSource}`);
+  const vcSourceDir = join(
+    studioDir,
+    "Engine",
+    "Plugins",
+    "LuaMachine",
+    "Source",
+    "ThirdParty",
+    "lua-language-server",
+    "bin",
+  );
+  const targetDirs = [studioDir, join(studioDir, "Sandbox", "Binaries", "Win64"), ...additionalTargetDirs];
+  for (const targetDir of targetDirs) {
+    await mkdir(targetDir, { recursive: true });
+    await cp(xinputSource, join(targetDir, "xinput1_3.dll"));
+    for (const name of STUDIO_VC_RUNTIME_FILES) {
+      const source = join(vcSourceDir, name);
+      if (!existsSync(source)) throw new Error(`Studio archive is missing the bundled VC runtime: ${source}`);
+      await cp(source, join(targetDir, name));
+    }
+  }
+}
+
+async function restoreInteractiveStudioPrerequisites(
+  suppressed: SuppressedStudioPrerequisites | undefined,
+): Promise<void> {
+  if (!suppressed) return;
+  await rm(suppressed.installer, { force: true });
+  await rename(suppressed.suppressedInstaller, suppressed.installer);
 }
 
 export function shouldInstallStudioPrerequisites(exitCode: number | null): boolean {
@@ -440,7 +561,7 @@ function spawnLogged(command: string[], cwd: string, env: Record<string, string>
   };
 }
 
-async function stageAgentRuntime(paths: RunPaths): Promise<{ agentExe: string }> {
+async function stageAgentRuntime(paths: RunPaths): Promise<{ agentExe: string; sidecarExe: string }> {
   const runtimeInput = process.env.OVERDARE_SMOKE_RUNTIME_INPUT?.trim();
   const agentExe = runtimeInput
     ? join(runtimeInput, "overdare-ai-agent.exe")
@@ -465,7 +586,8 @@ async function stageAgentRuntime(paths: RunPaths): Promise<{ agentExe: string }>
   await mkdir(storage, { recursive: true });
   await writeFile(join(storage, "config.jsonc"), createSmokeAgentConfig());
   await mkdir(join(runtime, "dist"), { recursive: true });
-  await cp(sidecarExe, join(runtime, "diligent-web-server.exe"));
+  const stagedSidecarExe = join(runtime, "diligent-web-server.exe");
+  await cp(sidecarExe, stagedSidecarExe);
   await cp(webDist, join(runtime, "dist", "client"), { recursive: true });
   if (existsSync(join(sidecarDir, "assets"))) {
     await cp(join(sidecarDir, "assets"), join(runtime, "assets"), { recursive: true });
@@ -474,7 +596,7 @@ async function stageAgentRuntime(paths: RunPaths): Promise<{ agentExe: string }>
     join(runtime, "version.json"),
     `${JSON.stringify({ version: "0.0.0-studio-smoke", applied_at: new Date().toISOString(), sha256: "local" })}\n`,
   );
-  return { agentExe };
+  return { agentExe, sidecarExe: stagedSidecarExe };
 }
 
 async function downloadStudioArchive(contract: SmokeContract, paths: RunPaths, signal: AbortSignal): Promise<string> {
@@ -582,6 +704,37 @@ async function installStudioPrerequisites(paths: RunPaths, signal: AbortSignal):
   const result = await runCommand(command, paths.root, createIsolatedEnv(process.env, paths, installer), signal);
   if (![0, 3010].includes(result.exitCode)) {
     throw new Error(`UEPrereqSetup_x64.exe failed with exit code ${result.exitCode}: ${result.stderr.trim()}`);
+  }
+}
+
+async function configureStudioFirewall(
+  paths: RunPaths,
+  studioExe: string,
+  runtimeExecutables: string[],
+  signal: AbortSignal,
+): Promise<void> {
+  const systemRoot = process.env.SystemRoot?.trim() || process.env.WINDIR?.trim() || String.raw`C:\Windows`;
+  for (const command of createStudioFirewallCommands(systemRoot, paths.studioDir, studioExe, runtimeExecutables)) {
+    const executable = command[8].slice("program=".length);
+    if (!existsSync(executable)) continue;
+    const result = await runCommand(command, paths.root, createIsolatedEnv(process.env, paths, command[0]), signal);
+    if (result.exitCode !== 0) {
+      throw new Error(
+        `Could not allow Studio through Windows Firewall: ${result.stderr.trim() || result.stdout.trim()}`,
+      );
+    }
+  }
+}
+
+async function configureStudioUrlScheme(paths: RunPaths, studioExe: string, signal: AbortSignal): Promise<void> {
+  const systemRoot = process.env.SystemRoot?.trim() || process.env.WINDIR?.trim() || String.raw`C:\Windows`;
+  for (const command of createStudioUrlSchemeCommands(systemRoot, studioExe)) {
+    const result = await runCommand(command, paths.root, createIsolatedEnv(process.env, paths, command[0]), signal);
+    if (result.exitCode !== 0) {
+      throw new Error(
+        `Could not register the Studio login callback scheme: ${result.stderr.trim() || result.stdout.trim()}`,
+      );
+    }
   }
 }
 
@@ -777,6 +930,33 @@ async function main(): Promise<void> {
       stageStudioProjectFixture(paths.studioDir, paths.project),
     );
     await log(paths, "fixture", "Bundled Baseplate project fixture staged");
+    const runtimeDependencyTargets = agentRuntime
+      ? [win32.dirname(agentRuntime.agentExe), win32.dirname(agentRuntime.sidecarExe)]
+      : [];
+    await stageStudioRuntimeDependencies(
+      paths.studioDir,
+      required(process.env, "OVERDARE_STUDIO_XINPUT_DLL"),
+      runtimeDependencyTargets,
+    );
+    await log(paths, "prerequisites", "Staged the VC and XInput runtimes beside the disposable Studio binaries");
+    const suppressedPrerequisites = await suppressInteractiveStudioPrerequisites(paths.studioDir);
+    if (suppressedPrerequisites) {
+      await log(
+        paths,
+        "prerequisites",
+        "Suppressed the aggregate UE prerequisite installer for disposable Windows Sandbox startup",
+      );
+    }
+    const runtimeExecutables = agentRuntime ? [agentRuntime.agentExe, agentRuntime.sidecarExe] : [];
+    await withStageTimeout("firewall", 30_000, (signal) =>
+      configureStudioFirewall(paths, studioExe, runtimeExecutables, signal),
+    );
+    await log(paths, "firewall", "Allowed smoke executables through the disposable Windows Sandbox firewall");
+    const callbackExe = win32.join(paths.studioDir, "Sandbox", "Binaries", "Win64", "Sandbox-Win64-Shipping.exe");
+    await withStageTimeout("url-scheme", 30_000, (signal) =>
+      configureStudioUrlScheme(paths, existsSync(callbackExe) ? callbackExe : studioExe, signal),
+    );
+    await log(paths, "url-scheme", "Registered the Studio login callback scheme for the disposable profile");
 
     rpcPort = contract.studioRpcPort;
     process.env.STUDIO_HOST = "127.0.0.1";
@@ -802,6 +982,7 @@ async function main(): Promise<void> {
     } catch (error) {
       if (!shouldInstallStudioPrerequisites(studio.subprocess.exitCode)) throw error;
       studio.closeLogs();
+      await restoreInteractiveStudioPrerequisites(suppressedPrerequisites);
       await log(
         paths,
         "prerequisites",

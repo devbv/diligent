@@ -12,6 +12,8 @@ param(
 
     [string]$StudioCacheDir,
 
+    [string]$AuthBrowserExe,
+
     [switch]$AuthBootstrap,
 
     [ValidateRange(60, 3600)]
@@ -70,7 +72,12 @@ function Read-EnvFile {
 }
 
 if ([string]::IsNullOrWhiteSpace($BunExe)) {
-    $bunCommand = Get-Command bun.exe -CommandType Application -ErrorAction Stop
+    $bunCommand = Get-Command bun.exe -CommandType Application -All -ErrorAction Stop |
+        Where-Object { Test-Path -LiteralPath $_.Source -PathType Leaf } |
+        Select-Object -Last 1
+    if ($null -eq $bunCommand) {
+        throw "Could not resolve an existing Bun executable from PATH."
+    }
     $BunExe = $bunCommand.Source
 }
 
@@ -96,6 +103,29 @@ Restart Windows if requested, then run:
 "@
 }
 $sandboxExe = (Resolve-Path -LiteralPath $sandboxPath -ErrorAction Stop).Path
+$xinputPath = Resolve-RequiredFile `
+    -Path (Join-Path $env:SystemRoot "System32\xinput1_3.dll") `
+    -Description "Microsoft XInput 1.3 runtime"
+$xinputSignature = Get-AuthenticodeSignature -LiteralPath $xinputPath
+if ($xinputSignature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
+    throw "The host XInput 1.3 runtime does not have a valid signature: $xinputPath"
+}
+
+$authBrowserPath = $null
+if ($AuthBootstrap.IsPresent) {
+    if ([string]::IsNullOrWhiteSpace($AuthBrowserExe)) {
+        $AuthBrowserExe = @(
+            "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+            "C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+            "C:\Program Files\Google\Chrome\Application\chrome.exe",
+            "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"
+        ) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+    }
+    if ([string]::IsNullOrWhiteSpace($AuthBrowserExe)) {
+        throw "Studio authentication bootstrap requires Microsoft Edge or Google Chrome on the host."
+    }
+    $authBrowserPath = Resolve-RequiredFile -Path $AuthBrowserExe -Description "Authentication browser executable"
+}
 
 if ([string]::IsNullOrWhiteSpace($ArtifactDir)) {
     $ArtifactDir = Join-Path $repoRoot "artifacts\studio-smoke"
@@ -114,8 +144,19 @@ $bridgeRunner = Join-Path $bridgeRoot "studio-smoke-runner.exe"
 $bridgeRuntimeInput = Join-Path $bridgeRoot "runtime-input"
 $bridgeCredential = Join-Path $bridgeRoot "studio-credential.local"
 $bridgeCapturedCredential = Join-Path $bridgeRoot "captured-credential.local"
+$bridgeXInput = Join-Path $bridgeRoot "xinput1_3.dll"
+$bridgeBootstrap = Join-Path $bridgeRoot "sandbox-bootstrap.ps1"
+$bridgeUrlSchemeDialogAcceptor = Join-Path $bridgeRoot "accept-studio-url-scheme.ps1"
+$bridgeCredentialTool = Join-Path $bridgeRoot "studio-credential.ps1"
 $wsbPath = Join-Path $bridgeRoot "overdare-studio-smoke.wsb"
 New-Item -ItemType Directory -Path $bridgeRoot -Force | Out-Null
+Copy-Item -LiteralPath $xinputPath -Destination $bridgeXInput -Force
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot "sandbox-bootstrap.ps1") -Destination $bridgeBootstrap -Force
+Copy-Item `
+    -LiteralPath (Join-Path $PSScriptRoot "accept-studio-url-scheme.ps1") `
+    -Destination $bridgeUrlSchemeDialogAcceptor `
+    -Force
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot "studio-credential.ps1") -Destination $bridgeCredentialTool -Force
 
 $forwardedNames = @(
     "OVERDARE_STUDIO_URL",
@@ -184,9 +225,12 @@ if ($hasDirectUrl -and -not $forwardedEnvironment.ContainsKey("OVERDARE_STUDIO_S
 $forwardedEnvironment["OVERDARE_STUDIO_ARTIFACT_DIR"] = "C:\studio-smoke-bridge\artifacts"
 $forwardedEnvironment["OVERDARE_STUDIO_CACHE_DIR"] = "C:\studio-smoke-cache"
 $forwardedEnvironment["OVERDARE_SMOKE_REPO_ROOT"] = "C:\workspace\diligent"
+$forwardedEnvironment["OVERDARE_STUDIO_XINPUT_DLL"] = "C:\studio-smoke-bridge\xinput1_3.dll"
 $mode = if ($AuthBootstrap.IsPresent) { "auth-bootstrap" } else { "smoke" }
 if ($AuthBootstrap.IsPresent) {
     $forwardedEnvironment["OVERDARE_STUDIO_AUTH_BOOTSTRAP"] = "1"
+    $forwardedEnvironment["OVERDARE_STUDIO_AUTH_BROWSER_EXE"] =
+        "C:\studio-smoke-browser\$([System.IO.Path]::GetFileName($authBrowserPath))"
 }
 else {
     $forwardedEnvironment["OVERDARE_SMOKE_RUNTIME_INPUT"] = "C:\studio-smoke-runtime-input"
@@ -242,8 +286,20 @@ if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $bridgeRunner -PathType
 $repoXml = Escape-Xml $repoRoot
 $bridgeXml = Escape-Xml $bridgeRoot
 $studioCacheXml = Escape-Xml $studioCachePath
+$authBrowserMappingXml = ""
+if ($AuthBootstrap.IsPresent) {
+    $authBrowserRootXml = Escape-Xml (Split-Path -Parent $authBrowserPath)
+    $authBrowserMappingXml = @"
+    <MappedFolder>
+      <HostFolder>$authBrowserRootXml</HostFolder>
+      <SandboxFolder>C:\studio-smoke-browser</SandboxFolder>
+      <ReadOnly>true</ReadOnly>
+    </MappedFolder>
+"@
+}
 $wsb = @"
 <Configuration>
+  <VGpu>Disable</VGpu>
   <Networking>Enable</Networking>
   <ClipboardRedirection>Disable</ClipboardRedirection>
   <PrinterRedirection>Disable</PrinterRedirection>
@@ -263,16 +319,17 @@ $wsb = @"
       <SandboxFolder>C:\studio-smoke-cache</SandboxFolder>
       <ReadOnly>false</ReadOnly>
     </MappedFolder>
+$authBrowserMappingXml
   </MappedFolders>
   <LogonCommand>
-    <Command>C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File C:\workspace\diligent\apps\overdare-ai-agent\test\studio-smoke\sandbox-bootstrap.ps1 -ConfigPath C:\studio-smoke-bridge\sandbox-env.json</Command>
+    <Command>C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File C:\studio-smoke-bridge\sandbox-bootstrap.ps1 -ConfigPath C:\studio-smoke-bridge\sandbox-env.json</Command>
   </LogonCommand>
 </Configuration>
 "@
 $wsb | Set-Content -LiteralPath $wsbPath -Encoding UTF8
 
 try {
-    Start-Process -FilePath $sandboxExe -ArgumentList $wsbPath | Out-Null
+    Start-Process -FilePath "explorer.exe" -ArgumentList ('"' + $wsbPath + '"') | Out-Null
     if ($AuthBootstrap.IsPresent) {
         Write-Host "Windows Sandbox is open. Sign in to Studio with the dedicated automation account."
         Write-Host "The Sandbox will close automatically after the Studio credential is captured."
@@ -291,7 +348,10 @@ try {
         "sandbox-bootstrap-error.txt",
         "sandbox-runner.log",
         "sandbox-runner.stdout.log",
-        "sandbox-runner.stderr.log"
+        "sandbox-runner.stderr.log",
+        "url-scheme-dialog.log",
+        "url-scheme-dialog.stdout.log",
+        "url-scheme-dialog.stderr.log"
     )) {
         $diagnosticPath = Join-Path $bridgeRoot $diagnosticName
         if (Test-Path -LiteralPath $diagnosticPath -PathType Leaf) {
