@@ -4,26 +4,38 @@ The Windows smoke test lists Studio builds in AWS S3, resolves the newest Window
 Studio in an isolated profile, waits for a loaded project through `level.browse`, starts the packaged agent sidecar,
 checks `tools/list`, and calls `studiorpc_level_browse`.
 
-## Build and run
+## Fresh PC setup
 
-Build the fixed local artifacts:
+`bun run setup:studio-smoke` prepares a new PC. It verifies Windows Sandbox and the required toolchain, creates the
+ignored local environment file from the checked-in example, builds the artifacts mapped into the disposable guest,
+and runs the one-time Studio authentication bootstrap when no credential exists yet.
+
+Three steps still need a person: enabling Windows Sandbox from an elevated window, entering the AWS credentials, and
+signing in to Studio once with the dedicated automation account. The setup command stops with a direct instruction
+whenever it reaches one of them, so it is safe to re-run until it reports success.
+
+Install Git, Bun, and the Rust MSVC toolchain first. Microsoft Edge or Google Chrome is required only for the
+one-time authentication bootstrap. The host and Sandbox need network access to the configured S3 bucket, and the
+host may access Microsoft's download server when XInput 1.3 is not already present.
+
+### 1. Enable Windows Sandbox
+
+Skip this step when `WindowsSandbox.exe` already exists. Otherwise run it once from an elevated PowerShell window:
 
 ```powershell
-bun install
-bun run --cwd packages/web build
-bun run overdare-ai-agent:build-sidecar
-cargo build --manifest-path apps/overdare-ai-agent/Cargo.toml --release
+bun run setup:studio-smoke -- -EnableSandbox
 ```
 
-Create the ignored local environment file:
+The command exits with code `3010` when Windows must restart before the feature becomes usable.
+
+### 2. Configure the Studio source
 
 ```powershell
-$smokeDir = "apps/overdare-ai-agent/test/studio-smoke"
-Copy-Item "$smokeDir/.env.example" "$smokeDir/.env.local"
-notepad "$smokeDir/.env.local"
+bun run setup:studio-smoke
 ```
 
-Set the AWS access key, secret key, and optional STS session token in `.env.local`. The checked-in example already
+The first run copies `.env.example` to the ignored `.env.local` and exits with code `2`. Set the AWS access key and
+secret key there, plus `AWS_SESSION_TOKEN` when using temporary AWS credentials. The checked-in example already
 contains the fixed storage location:
 
 ```text
@@ -32,11 +44,40 @@ Region: ap-northeast-2
 Prefix: Sandbox/Windows/
 ```
 
-Run the public command:
+The AWS identity needs permission to list that bucket prefix and download objects below it. As an alternative for
+debugging, configure `OVERDARE_STUDIO_URL` and its required `OVERDARE_STUDIO_SHA256` instead of the S3 values.
+
+### 3. Build and authenticate
+
+```powershell
+bun run setup:studio-smoke
+```
+
+With the environment complete, the same command installs dependencies from the frozen lockfile and builds the
+outputs the smoke run requires:
+
+- `packages/web/dist/client`
+- `apps/overdare-ai-agent/target/release/overdare-ai-agent.exe`
+- `apps/overdare-ai-agent/.diligent/diagnostics/diligent-web-server.exe`
+
+It then opens Windows Sandbox for the one-time Studio login described below, unless `.credential.local` already
+exists. Pass `-SkipBuild`, `-SkipAuthBootstrap`, or `-RunSmoke` to adjust that sequence, and `-EnvFile`,
+`-CredentialFile`, or `-AuthBrowserExe` to point at non-default locations.
+
+### 4. Run
 
 ```powershell
 bun run test:studio-smoke
 ```
+
+The first smoke run downloads the selected Studio ZIP. Validated archives are cached per PC under
+`%LOCALAPPDATA%\OVERDARE\studio-smoke-cache`; later runs reuse the ZIP only while the S3 metadata and computed
+SHA-256 still match.
+
+The scripts automatically provide the signed VC and XInput runtime files app-local, configure disposable firewall
+and URL-scheme state, create isolated profiles and projects, and clean up guest credentials. A new PC does not need
+UE Prerequisites, .NET Framework 3.5, the full DirectX installer, or persistent firewall exceptions installed for
+this smoke test.
 
 ## One-time Studio authentication bootstrap
 
@@ -147,13 +188,9 @@ are redacted from the preserved Studio diagnostics.
 
 ## Windows Sandbox
 
-Enable Windows Sandbox once from an elevated PowerShell window:
-
-```powershell
-Enable-WindowsOptionalFeature -Online -FeatureName Containers-DisposableClientVM -All
-```
-
-Restart Windows if requested. The `test:studio-smoke` command compiles the harness with the explicitly selected Bun
+Windows Sandbox is enabled once per PC through `bun run setup:studio-smoke -- -EnableSandbox`, which wraps
+`Enable-WindowsOptionalFeature -Online -FeatureName Containers-DisposableClientVM -All`. The `test:studio-smoke`
+command compiles the harness with the explicitly selected Bun
 executable and maps only one writable temporary bridge plus the dedicated archive cache. Source code and ignored
 repository secrets are not mapped into the guest. The Sandbox performs the S3 list, conditional download, extraction,
 Studio launch, and smoke checks. User data, projects, and extracted binaries are never reused.

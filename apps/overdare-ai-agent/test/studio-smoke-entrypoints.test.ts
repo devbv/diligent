@@ -17,6 +17,9 @@ describe("Studio smoke entrypoints", () => {
     const runtimePreparer = await Bun.file(
       resolve(repoRoot, "apps/overdare-ai-agent/test/studio-smoke/prepare-windows-runtime.ps1"),
     ).text();
+    const freshPcSetup = await Bun.file(
+      resolve(repoRoot, "apps/overdare-ai-agent/test/studio-smoke/setup-windows-smoke.ps1"),
+    ).text();
     const credentialTool = await Bun.file(
       resolve(repoRoot, "apps/overdare-ai-agent/test/studio-smoke/studio-credential.ps1"),
     ).text();
@@ -24,6 +27,7 @@ describe("Studio smoke entrypoints", () => {
 
     expect(packageJson.scripts["test:studio-smoke"]).toContain("open-windows-sandbox.ps1");
     expect(packageJson.scripts["test:studio-auth-bootstrap"]).toContain("-AuthBootstrap");
+    expect(packageJson.scripts["setup:studio-smoke"]).toContain("setup-windows-smoke.ps1");
     expect(sandboxWrapper).toContain("sandbox-env.json");
     expect(sandboxWrapper).toContain("C:\\studio-smoke-bridge\\sandbox-bootstrap.ps1");
     expect(sandboxWrapper).toContain('"OVERDARE_STUDIO_WINDOWS_RUNTIME_DIR"');
@@ -39,6 +43,12 @@ describe("Studio smoke entrypoints", () => {
     expect(runtimePreparer).toContain("APR2007_xinput_x64.cab");
     expect(runtimePreparer).toContain("053F76DCBB28802E23341B6A787E3B0791C0FA5C8D4D011B1044172DBF89C73B");
     expect(runtimePreparer).not.toContain("DXSETUP.exe");
+    expect(freshPcSetup).toContain("Get-WindowsOptionalFeature");
+    expect(freshPcSetup).toContain("Enable-WindowsOptionalFeature");
+    expect(freshPcSetup).toContain("--frozen-lockfile");
+    expect(freshPcSetup).toContain("overdare-ai-agent:build-sidecar");
+    expect(freshPcSetup).toContain("-AuthBootstrap");
+    expect(freshPcSetup).toContain("RunSmoke");
     expect(credentialTool).toContain("CredReadW");
     expect(credentialTool).toContain("CredWriteW");
     expect(credentialTool).toContain("OVERDARE_STUDIO_CREDENTIAL_V1");
