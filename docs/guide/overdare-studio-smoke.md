@@ -56,7 +56,7 @@ bun run setup:studio-smoke
 With the environment complete, the same command installs dependencies from the frozen lockfile and builds the
 outputs the smoke run requires:
 
-- `packages/web/dist/client`
+- `apps/overdare-ai-agent/sidecar/dist/client`
 - `apps/overdare-ai-agent/target/release/overdare-ai-agent.exe`
 - `apps/overdare-ai-agent/.diligent/diagnostics/diligent-web-server.exe`
 

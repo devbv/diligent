@@ -55,4 +55,55 @@ describe("Studio smoke entrypoints", () => {
     expect(gitignore).toContain(".env.*");
     expect(gitignore).toContain("**/.credential.local");
   });
+
+  // `packages/web` was folded into the sidecar by the web consolidation refactor. Its build
+  // outputs survive locally because they are gitignored, so a stale checkout can satisfy the
+  // launcher while a fresh clone cannot. Pin both ends of the path to the sidecar instead.
+  test("stage the web client from the sidecar build output", async () => {
+    const repoRoot = resolve(import.meta.dir, "../../..");
+    const packageJson = await Bun.file(resolve(repoRoot, "package.json")).json();
+    const sandboxWrapper = await Bun.file(
+      resolve(repoRoot, "apps/overdare-ai-agent/test/studio-smoke/open-windows-sandbox.ps1"),
+    ).text();
+    const freshPcSetup = await Bun.file(
+      resolve(repoRoot, "apps/overdare-ai-agent/test/studio-smoke/setup-windows-smoke.ps1"),
+    ).text();
+    const guide = await Bun.file(resolve(repoRoot, "docs/guide/overdare-studio-smoke.md")).text();
+    const viteConfig = await Bun.file(resolve(repoRoot, "apps/overdare-ai-agent/sidecar/vite.config.ts")).text();
+
+    expect(sandboxWrapper).toContain("apps\\overdare-ai-agent\\sidecar\\dist\\client");
+    expect(guide).toContain("apps/overdare-ai-agent/sidecar/dist/client");
+    expect(viteConfig).toContain('outDir: "dist/client"');
+
+    // The setup script must invoke a package script that actually exists; `bun run --cwd`
+    // against a missing workspace silently falls back to the root script of the same name.
+    expect(freshPcSetup).toContain("overdare-ai-agent:web:build");
+    expect(packageJson.scripts["overdare-ai-agent:web:build"]).toContain("apps/overdare-ai-agent/sidecar");
+    expect(freshPcSetup).not.toContain("--cwd");
+
+    for (const source of [sandboxWrapper, freshPcSetup, guide]) {
+      expect(source).not.toContain("packages/web");
+      expect(source).not.toContain("packages\\web");
+    }
+  });
+
+  // A failed smoke run must never report success. `Start-Process -PassThru` with redirected
+  // stdio loses ExitCode unless the handle is pinned, and an empty exit-code.txt casts to 0.
+  test("propagate a failing smoke exit code back to the host", async () => {
+    const repoRoot = resolve(import.meta.dir, "../../..");
+    const sandboxWrapper = await Bun.file(
+      resolve(repoRoot, "apps/overdare-ai-agent/test/studio-smoke/open-windows-sandbox.ps1"),
+    ).text();
+    const sandboxBootstrap = await Bun.file(
+      resolve(repoRoot, "apps/overdare-ai-agent/test/studio-smoke/sandbox-bootstrap.ps1"),
+    ).text();
+    const smokeRunner = await Bun.file(resolve(repoRoot, "apps/overdare-ai-agent/test/studio-smoke/run.ts")).text();
+
+    expect(sandboxBootstrap).toContain("$null = $process.Handle");
+    expect(sandboxBootstrap).toContain("$null -eq $runnerProcess.ExitCode");
+    expect(sandboxBootstrap).not.toMatch(/\$runnerProcess = Start-Process/);
+    expect(sandboxWrapper).toContain("$rawExitCode -notmatch '^-?\\d+$'");
+    expect(sandboxWrapper).not.toContain("[int](Get-Content -LiteralPath $exitCodePath -Raw)");
+    expect(smokeRunner).toContain("if (failure) throw failure;");
+  });
 });

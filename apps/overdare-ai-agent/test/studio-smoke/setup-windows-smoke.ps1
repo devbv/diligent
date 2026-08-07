@@ -194,7 +194,7 @@ try {
             -Description "Installing repository dependencies"
         Invoke-CheckedCommand `
             -FilePath $bunPath `
-            -ArgumentList @("run", "--cwd", "packages/web", "build") `
+            -ArgumentList @("run", "overdare-ai-agent:web:build") `
             -Description "Building the web client"
         Invoke-CheckedCommand `
             -FilePath $bunPath `

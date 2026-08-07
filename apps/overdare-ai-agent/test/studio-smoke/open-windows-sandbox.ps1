@@ -264,9 +264,9 @@ if (-not $AuthBootstrap.IsPresent) {
     $sidecarExe = Resolve-RequiredFile `
         -Path (Join-Path $sidecarRoot "diligent-web-server.exe") `
         -Description "OVERDARE sidecar executable"
-    $webDist = Join-Path $repoRoot "packages\web\dist\client"
+    $webDist = Join-Path $repoRoot "apps\overdare-ai-agent\sidecar\dist\client"
     if (-not (Test-Path -LiteralPath $webDist -PathType Container)) {
-        throw "Web distribution is missing; build it before running the smoke test: $webDist"
+        throw "Web distribution is missing. Run 'bun run overdare-ai-agent:web:build' first: $webDist"
     }
     New-Item -ItemType Directory -Path (Join-Path $bridgeRuntimeInput "dist") -Force | Out-Null
     Copy-Item -LiteralPath $agentExe -Destination (Join-Path $bridgeRuntimeInput "overdare-ai-agent.exe") -Force
@@ -373,7 +373,13 @@ try {
     if ($timedOut) {
         throw "Windows Sandbox did not complete within $SandboxTimeoutSeconds seconds. Check $artifactPath for bootstrap diagnostics."
     }
-    $testExitCode = [int](Get-Content -LiteralPath $exitCodePath -Raw)
+    # An empty or malformed file must never cast to 0; that would score a failed run as a pass.
+    $rawExitCode = (Get-Content -LiteralPath $exitCodePath -Raw)
+    if ($null -ne $rawExitCode) { $rawExitCode = $rawExitCode.Trim() }
+    if ([string]::IsNullOrWhiteSpace($rawExitCode) -or $rawExitCode -notmatch '^-?\d+$') {
+        throw "Windows Sandbox reported an unreadable smoke exit code '$rawExitCode'. Check $artifactPath for diagnostics."
+    }
+    $testExitCode = [int]$rawExitCode
 
     if ($testExitCode -ne 0) {
         throw "OVERDARE Studio smoke test failed in Windows Sandbox with exit code $testExitCode."
