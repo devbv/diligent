@@ -10,6 +10,18 @@ const DEFAULT_THINKING_EFFORT_VALUES = [
   "max",
 ] as const satisfies readonly ThinkingEffort[];
 
+const THINKING_EFFORT_LABELS: Record<ThinkingEffort, string> = {
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  xhigh: "Extra High",
+  max: "Max",
+};
+
+export function formatThinkingEffortLabel(effort: ThinkingEffort): string {
+  return THINKING_EFFORT_LABELS[effort] ?? effort;
+}
+
 export function sameModelRef(a: ModelRef | undefined, b: ModelRef | undefined): boolean {
   return a === b || (a !== undefined && b !== undefined && a.provider === b.provider && a.modelId === b.modelId);
 }
@@ -54,7 +66,7 @@ export function getThinkingEffortOptions(
     model?.supportsThinking === true
       ? (model.supportedEfforts ?? DEFAULT_THINKING_EFFORT_VALUES)
       : DEFAULT_THINKING_EFFORT_VALUES;
-  return supportedEfforts.map((effort) => ({ value: effort, label: effort }));
+  return supportedEfforts.map((effort) => ({ value: effort, label: formatThinkingEffortLabel(effort) }));
 }
 
 export function normalizeThinkingEffort(
@@ -70,7 +82,8 @@ export function normalizeThinkingEffort(
 export function getThinkingEffortUsage(
   model: Pick<ModelInfo, "supportsThinking" | "supportedEfforts"> | undefined,
 ): string {
+  // Usage hints echo the literal `/effort` argument values, not the menu display labels.
   return getThinkingEffortOptions(model)
-    .map((option) => option.label)
+    .map((option) => option.value)
     .join("|");
 }

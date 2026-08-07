@@ -5,19 +5,19 @@ import type { ClipboardEvent, KeyboardEvent as ReactKeyboardEvent } from "react"
 import { useCallback, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { AgentContextItem } from "../lib/agent-native-bridge";
-import { getThinkingEffortOptions, modelOptionKey } from "../lib/model-thinking-helpers";
 import type { SlashCommand } from "../lib/slash-commands";
 import { BUILTIN_COMMANDS, filterCommands, isSlashPrefix } from "../lib/slash-commands";
-import type { UsageState } from "../lib/thread-store";
 import { ComposerContextChips } from "./ComposerContextChips";
-import { AgentLogo, Check, ChevronRight, Plus, X } from "./icons";
-import { Select, type SelectOption } from "./Select";
+import { AgentLogo, ArrowUp, Check, Plus, Stop, TriangleArrowRight, X } from "./icons";
+import { ModelEffortSelect } from "./ModelEffortSelect";
 import { SlashMenu } from "./SlashMenu";
 import { TextArea } from "./TextArea";
 import {
   composerActionButtonClasses,
   composerControlGroupClasses,
   composerFrameClasses,
+  composerSendButtonClasses,
+  composerStopButtonClasses,
   composerToolbarClasses,
   focusRingClasses,
   menuItemClasses,
@@ -44,7 +44,6 @@ interface InputDockProps {
   currentModel: string;
   availableModels: ModelInfo[];
   onModelChange: (modelId: string) => void;
-  usage: UsageState;
   currentContextTokens: number;
   contextWindow: number;
   hasProvider: boolean;
@@ -177,30 +176,7 @@ export function getComposerEnterAction(args: {
   return args.canSend && !args.isUploadingImages && args.hasProvider ? "send" : "none";
 }
 
-function formatTokenCount(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return String(n);
-}
-
-function formatUsageTooltip(usage: UsageState): string {
-  return [
-    `Input: ${usage.inputTokens.toLocaleString()}`,
-    `Output: ${usage.outputTokens.toLocaleString()}`,
-    `Cache read: ${usage.cacheReadTokens.toLocaleString()}`,
-    `Cache write: ${usage.cacheWriteTokens.toLocaleString()}`,
-  ].join("\n");
-}
-
-function modelOptions(models: ModelInfo[]): SelectOption[] {
-  return models.map((model) => ({
-    value: modelOptionKey(model),
-    label: model.display ?? model.modelId,
-    group: model.provider,
-  }));
-}
-
-function modeOptions(): SelectOption[] {
+function modeOptions(): Array<{ value: Mode; label: string }> {
   return (Object.keys(MODE_LABELS) as Mode[]).map((m) => ({
     value: m,
     label: getModeLabel(m),
@@ -225,7 +201,6 @@ export function InputDock({
   currentModel,
   availableModels,
   onModelChange,
-  usage,
   currentContextTokens,
   contextWindow,
   hasProvider,
@@ -257,15 +232,6 @@ export function InputDock({
   const [slashSelectedIndex, setSlashSelectedIndex] = useState(0);
 
   const isBusy = threadStatus === "busy";
-  const totalTokens = usage.inputTokens + usage.outputTokens;
-  const hasUsage = totalTokens > 0;
-  const hasContext = currentContextTokens > 0;
-  const contextPct = contextWindow > 0 ? Math.round((currentContextTokens / contextWindow) * 100) : 0;
-  const usageLabel = hasContext
-    ? `${formatTokenCount(currentContextTokens)} / ${formatTokenCount(contextWindow)} (${contextPct}%)`
-    : hasUsage
-      ? `${formatTokenCount(totalTokens)} tokens`
-      : null;
 
   // Update slash menu when input changes
   const updateSlashMenu = useCallback(
@@ -307,12 +273,6 @@ export function InputDock({
   );
 
   const modeMenuOptions = modeOptions();
-  const currentModelInfo = availableModels.find((model) => modelOptionKey(model) === currentModel);
-  const effortMenuOptions: SelectOption[] = getThinkingEffortOptions(currentModelInfo).map((option) => ({
-    value: option.value,
-    label: option.label,
-  }));
-  const showEffortSelector = supportsThinking && effortMenuOptions.length > 0;
 
   const plusMenuPosition = useAnchoredPortal({
     open: isPlusMenuOpen,
@@ -450,10 +410,11 @@ export function InputDock({
             {input.length === 0 ? (
               <div
                 aria-hidden="true"
-                className="pointer-events-none absolute left-0 top-0 flex h-5 items-center gap-0.5 text-white"
+                className="pointer-events-none absolute inset-x-0 top-0 flex h-5 items-center gap-0.5 overflow-hidden text-[#565F69]"
               >
-                <AgentLogo className="h-5 w-5 shrink-0 text-[#565F69]" />
-                <span className="text-sm leading-5">
+                <AgentLogo className="h-5 w-5 shrink-0" />
+                {/* Design `Ls` is a single 20px row, so the hint truncates instead of wrapping when narrow. */}
+                <span className="min-w-0 truncate text-sm leading-5">
                   {isBusy ? "Queue a message…" : supportsVision ? "Ask anything or attach images…" : "Ask anything…"}
                 </span>
               </div>
@@ -518,40 +479,21 @@ export function InputDock({
             ) : null}
 
             {availableModels.length > 0 ? (
-              <Select
-                ariaLabel="Model selector"
-                value={currentModel}
-                options={modelOptions(availableModels)}
-                onChange={onModelChange}
-                openDirection="up"
-                className="w-[100px]"
-                menuClassName="w-[180px]"
-                triggerVariant="composer"
-                disabled={isBusy || composerDisabled}
-              />
-            ) : null}
-
-            {showEffortSelector ? (
-              <Select
-                ariaLabel="Effort selector"
-                value={effort}
-                options={effortMenuOptions}
-                onChange={(value) => onEffortChange(value as ThinkingEffort)}
-                openDirection="up"
-                className="w-[71px]"
-                triggerVariant="composer"
+              <ModelEffortSelect
+                currentModel={currentModel}
+                availableModels={availableModels}
+                onModelChange={onModelChange}
+                effort={effort}
+                onEffortChange={onEffortChange}
+                supportsThinking={supportsThinking}
+                currentContextTokens={currentContextTokens}
+                contextWindow={contextWindow}
                 disabled={isBusy || composerDisabled}
               />
             ) : null}
           </div>
 
-          <div className={`${composerControlGroupClasses} justify-end`}>
-            {usageLabel ? (
-              <span className="mr-1 shrink-0 cursor-default text-xs text-muted/70" title={formatUsageTooltip(usage)}>
-                {usageLabel}
-              </span>
-            ) : null}
-
+          <div className={`${composerControlGroupClasses} ml-auto justify-end`}>
             {isBusy ? (
               <>
                 <button
@@ -563,7 +505,7 @@ export function InputDock({
                     if (!composingRef.current) onSteer();
                   }}
                   disabled={!canSteer || hasBlockingPrompt}
-                  className={`${composerActionButtonClasses} bg-surface-light text-[#DCE2E8] hover:bg-surface-light/90`}
+                  className={`${composerActionButtonClasses} bg-transparent text-[#DCE2E8] hover:bg-[rgba(120,135,156,0.16)] disabled:text-[#565F69] disabled:opacity-100 disabled:hover:bg-transparent`}
                 >
                   Queue
                 </button>
@@ -571,9 +513,9 @@ export function InputDock({
                   type="button"
                   aria-label="Interrupt turn"
                   onClick={onInterrupt}
-                  className="inline-flex h-5 items-center justify-center rounded border border-danger/30 bg-danger/10 px-2 font-[Arial] text-xs leading-4 text-danger transition hover:bg-danger/20"
+                  className={composerStopButtonClasses}
                 >
-                  Stop
+                  <Stop className="h-3 w-3" aria-hidden="true" />
                 </button>
               </>
             ) : (
@@ -585,9 +527,9 @@ export function InputDock({
                   if (!composingRef.current) onSend();
                 }}
                 disabled={sendDisabled}
-                className={`${composerActionButtonClasses} w-[45px] bg-[#3191FF] text-white hover:bg-[#3191FF]/90`}
+                className={composerSendButtonClasses}
               >
-                Send
+                <ArrowUp className="h-3 w-3" aria-hidden="true" />
               </button>
             )}
           </div>
@@ -636,7 +578,7 @@ export function InputDock({
                     className={topLevelMenuItemClass("mode")}
                   >
                     <span>Mode text</span>
-                    <ChevronRight className="h-3 w-3 opacity-60" strokeWidth={1.8} aria-hidden="true" />
+                    <TriangleArrowRight className="h-3 w-3 shrink-0 text-[#DCE2E8]" aria-hidden="true" />
                   </button>
 
                   {activeSubmenu === "mode" ? (
@@ -652,7 +594,7 @@ export function InputDock({
                           role="menuitemradio"
                           aria-checked={option.value === mode}
                           onClick={() => {
-                            onModeChange(option.value as Mode);
+                            onModeChange(option.value);
                             setIsPlusMenuOpen(false);
                             setActiveSubmenu(null);
                           }}
@@ -680,7 +622,7 @@ export function InputDock({
                     className={topLevelMenuItemClass("compaction")}
                   >
                     <span>Compaction</span>
-                    <ChevronRight className="h-3 w-3 opacity-60" strokeWidth={1.8} aria-hidden="true" />
+                    <TriangleArrowRight className="h-3 w-3 shrink-0 text-[#DCE2E8]" aria-hidden="true" />
                   </button>
 
                   {activeSubmenu === "compaction" ? (

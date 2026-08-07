@@ -71,7 +71,6 @@ test("composer image preview falls back when the image cannot load", async () =>
         currentModel: "gpt-5",
         availableModels: [],
         onModelChange: () => {},
-        usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalCost: 0 },
         currentContextTokens: 0,
         contextWindow: 0,
         hasProvider: true,
