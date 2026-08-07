@@ -27,8 +27,8 @@ const VIEWPORT_MARGIN = 8;
 
 /** The panel's 1px hairline sits outside the auto height, so it counts toward the outer box. */
 const MENU_BORDER = 2;
-/** Divider block between the model rows and the Effort row: 6px + 1px rule + 6px. */
-const MENU_DIVIDER_BLOCK = 13;
+/** The rule between the model rows and the Effort row adds no margin of its own — the 4px group insets carry the spacing. */
+const MENU_DIVIDER_BLOCK = 1;
 
 /** Full Models panel: hairline, `Models` header, model rows, divider, and the single Effort row. */
 export function getModelsMenuHeight(modelCount: number): number {
@@ -230,7 +230,7 @@ export function ModelEffortSelect({
                 </div>
 
                 {/* Effort is its own row under the model list, not a per-model submenu. */}
-                <div className="my-1.5 border-t border-[#2A3038]" />
+                <div className="border-t border-[#2A3038]" />
                 <div className={composerMenuGroupClasses}>
                   <button
                     type="button"

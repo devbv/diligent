@@ -15,8 +15,8 @@ import {
 } from "../../../../src/web/client/components/UsageGauge";
 
 test("menu heights match the design panels", () => {
-  // Design Frame is 200x274 for eight models; we land within a pixel of that.
-  expect(getModelsMenuHeight(8)).toBe(275);
+  // Hairline 2 + header 28 + eight rows 200 + rule 1 + Effort row 32.
+  expect(getModelsMenuHeight(8)).toBe(263);
   // Effort panel carries no header of its own: 180x130 for five rows.
   expect(getEffortMenuHeight(5)).toBe(130);
 });
