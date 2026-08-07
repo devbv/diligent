@@ -247,7 +247,7 @@ async function stageAgentRuntime(paths: RunPaths): Promise<{ agentExe: string; s
   const sidecarExe = join(sidecarDir, "diligent-web-server.exe");
   const webDist = runtimeInput
     ? join(runtimeInput, "dist", "client")
-    : join(REPO_ROOT, "packages", "web", "dist", "client");
+    : join(REPO_ROOT, "apps", "overdare-ai-agent", "sidecar", "dist", "client");
   for (const [path, label] of [
     [agentExe, "agent executable"],
     [sidecarExe, "sidecar executable"],

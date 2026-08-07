@@ -70,6 +70,7 @@ describe("Studio smoke entrypoints", () => {
     ).text();
     const guide = await Bun.file(resolve(repoRoot, "docs/guide/overdare-studio-smoke.md")).text();
     const viteConfig = await Bun.file(resolve(repoRoot, "apps/overdare-ai-agent/sidecar/vite.config.ts")).text();
+    const smokeRunner = await Bun.file(resolve(repoRoot, "apps/overdare-ai-agent/test/studio-smoke/run.ts")).text();
 
     expect(sandboxWrapper).toContain("apps\\overdare-ai-agent\\sidecar\\dist\\client");
     expect(guide).toContain("apps/overdare-ai-agent/sidecar/dist/client");
@@ -81,7 +82,10 @@ describe("Studio smoke entrypoints", () => {
     expect(packageJson.scripts["overdare-ai-agent:web:build"]).toContain("apps/overdare-ai-agent/sidecar");
     expect(freshPcSetup).not.toContain("--cwd");
 
-    for (const source of [sandboxWrapper, freshPcSetup, guide]) {
+    // run.ts keeps its own non-Sandbox fallback paths, which must agree with the launcher.
+    expect(smokeRunner).toContain('"sidecar", "dist", "client"');
+
+    for (const source of [sandboxWrapper, freshPcSetup, guide, smokeRunner]) {
       expect(source).not.toContain("packages/web");
       expect(source).not.toContain("packages\\web");
     }
