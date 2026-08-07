@@ -137,6 +137,16 @@ home dialog. Release 37.1 parses and preserves `-OpenMap`, but only calls that h
 reaching the handler. Studio builds used by this smoke test must route all three initial dialog entry points through
 the command-line map handler first; otherwise the harness fails explicitly at `project-ready`.
 
+That failure has also been observed intermittently on a build that otherwise passes. On release 38.0.0 the first run
+after the build was published ended with Studio issuing `QUIT_EDITOR` through `UMUnrealEdEngine::CloseEditor()`
+immediately after an 83 second engine initialization, of which 67 seconds was cold shader compilation. The world
+stayed on `Untitled`, so the RPC service never started. The preserved `studio.log` contained no login, token, or
+network error, and later runs of the same build passed both from a warm archive cache and from a full re-download.
+The trigger inside Studio is not yet identified, so treat a lone `project-ready` failure as unexplained rather than
+as proof that a build is broken: check `artifacts/studio-smoke/<run-id>/studio-logs/studio.log` for `QUIT_EDITOR` and
+compare the reported engine initialization time before drawing a conclusion. The harness deliberately does not retry
+this stage, because a silent retry would hide exactly the Studio regression the stage exists to catch.
+
 `OVERDARE_STUDIO_ARGS_JSON` contains optional extra Studio launch arguments; an empty array is valid. The available
 substitutions are `{projectDir}`, `{projectMap}`, `{rpcPort}`, `{logDir}`, and `{userDataDir}`. The runner owns the
 `-OpenMap` argument so every Sandbox run uses the same project fixture contract.
