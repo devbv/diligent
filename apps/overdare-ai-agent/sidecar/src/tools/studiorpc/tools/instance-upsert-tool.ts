@@ -1,5 +1,6 @@
 // @summary Applies batched add or update instance changes to the level file.
 
+import { resolveApiVersion } from "../config";
 import * as instanceUpsert from "../methods/instance.upsert";
 import { collectUiDiagnostics } from "../methods/instance.upsert";
 import { buildInstanceUpsertRender } from "../render";
@@ -14,6 +15,7 @@ import {
 } from "./instance-document-operations";
 import { resultFromInstanceToolStatusError } from "./instance-status";
 import { type OvdrjmNode, readAndWriteOvdrjm } from "./ovdrjm-utils";
+import { upsertInstancesViaRpc } from "./v2/instance-upsert";
 
 function toToolName(method: string): string {
   return `studiorpc_${method.replace(/\./g, "_")}`;
@@ -43,6 +45,7 @@ async function executeInstanceUpsert(
 
   const release = await writeLock.acquire();
   try {
+    if (resolveApiVersion() === "v2") return await upsertInstancesViaRpc(parsedArgs);
     return await executeInstanceUpsertInner(parsedArgs, cwd);
   } finally {
     release();

@@ -11,7 +11,10 @@ const DEFAULT_STUDIO_PORT = 13377;
 export interface OverdareConfig {
   host?: string;
   port?: number;
+  apiVersion?: string;
 }
+
+export type StudioApiVersion = "v1" | "v2";
 
 function stripJsonComments(text: string): string {
   return text.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
@@ -72,4 +75,30 @@ export function resolveStudioPort(): number {
     if (!Number.isNaN(parsed) && parsed > 0) return parsed;
   }
   return loadOverdareConfig().port ?? DEFAULT_STUDIO_PORT;
+}
+
+/**
+ * Resolve the Studio RPC API version.
+ * Priority: STUDIO_API_VERSION env var > config file > "v1".
+ *
+ * Only the exact string "v2" selects v2; anything else — including "V2" and an
+ * absent value — is v1. The config file is re-read on every call rather than
+ * going through `loadOverdareConfig`, whose process-lifetime cache would
+ * otherwise make a version change require a restart.
+ */
+export function resolveApiVersion(): StudioApiVersion {
+  const envVersion = process.env.STUDIO_API_VERSION;
+  if (envVersion) return envVersion === "v2" ? "v2" : "v1";
+
+  for (const configPath of configCandidates()) {
+    if (!existsSync(configPath)) continue;
+    try {
+      const raw = readFileSync(configPath, "utf-8");
+      const config = JSON.parse(stripJsonComments(raw)) as OverdareConfig;
+      return config.apiVersion === "v2" ? "v2" : "v1";
+    } catch {
+      return "v1";
+    }
+  }
+  return "v1";
 }
