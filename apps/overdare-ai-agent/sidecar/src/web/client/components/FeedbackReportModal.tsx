@@ -125,7 +125,7 @@ export function FeedbackReportModal({ target, onSubmit, onCancel }: FeedbackRepo
         aria-labelledby="feedback-report-title"
         tabIndex={-1}
         onKeyDown={handleKeyDown}
-        className="flex max-h-[calc(100%-40px)] w-[calc(100%-40px)] max-w-[390px] flex-col overflow-hidden rounded-xl border border-[#2a3038] bg-[#21262c] shadow-panel focus:outline-none"
+        className="flex max-h-[calc(100%-40px)] w-[calc(100%-40px)] max-w-[390px] flex-col overflow-hidden rounded-xl border border-[#2a3038] bg-[#21262c] shadow-[0px_0px_0px_1px_rgba(0,0,0,0.1)] drop-shadow-[0px_6px_26px_rgba(0,0,0,0.12),0px_10px_60px_rgba(0,0,0,0.4)] focus:outline-none"
       >
         <header className="flex h-12 shrink-0 items-center gap-4 px-4 pb-3 pt-4">
           <h2 id="feedback-report-title" className="min-w-0 flex-1 text-base font-bold leading-5 text-white">
@@ -174,7 +174,7 @@ export function FeedbackReportModal({ target, onSubmit, onCancel }: FeedbackRepo
                 options={CATEGORY_OPTIONS}
                 disabled={submitting}
                 onChange={handleCategoryChange}
-                triggerClassName="h-6 rounded border-0 bg-black px-2 text-xs text-[#dce2e8] ring-offset-[#21262c]"
+                triggerClassName="!h-6 !rounded !border-0 !bg-black px-2 text-xs text-[#dce2e8] ring-offset-[#21262c]"
                 menuClassName="mt-1 rounded border-[#2a3038] bg-[#111316] shadow-none"
                 menuListClassName="py-0"
                 optionClassName="h-6 rounded-sm px-2 py-1 text-xs leading-4 text-[#dce2e8]"
@@ -200,10 +200,11 @@ export function FeedbackReportModal({ target, onSubmit, onCancel }: FeedbackRepo
               </div>
             </section>
 
-            <div className="flex min-h-[52px] items-start gap-1 rounded-lg bg-[#181b1f] px-2.5 py-2">
+            <div className="flex min-h-[52px] items-center gap-1 rounded-lg bg-[#181b1f] px-2.5 py-2">
               <InfoIcon />
               <p className="text-[10px] leading-3 text-[#565f69]">
-                Session and message identifiers are sent with this report so we can investigate.
+                Your conversation, device, and version details are sent with this report so we can investigate. version
+                details are used to investigate this report.
               </p>
             </div>
 
