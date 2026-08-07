@@ -3,6 +3,7 @@
 import type { ComponentType, SVGProps } from "react";
 import AgentLogoIcon from "../icons/agent-logo.svg?react";
 import AlignJustifyIcon from "../icons/align-justify.svg?react";
+import ArrowUpIcon from "../icons/arrow-up.svg?react";
 import BookOpenIcon from "../icons/book-open.svg?react";
 import BotIcon from "../icons/bot.svg?react";
 import CheckIcon from "../icons/check.svg?react";
@@ -27,8 +28,11 @@ import SettingsIcon from "../icons/settings.svg?react";
 import SlidersHorizontalIcon from "../icons/sliders-horizontal.svg?react";
 import SparklesIcon from "../icons/sparkles.svg?react";
 import SquareTerminalIcon from "../icons/square-terminal.svg?react";
+import StopIcon from "../icons/stop.svg?react";
 import TextCursorInputIcon from "../icons/text-cursor-input.svg?react";
 import Trash2Icon from "../icons/trash-2.svg?react";
+import TriangleArrowDownIcon from "../icons/triangle-arrow-down.svg?react";
+import TriangleArrowRightIcon from "../icons/triangle-arrow-right.svg?react";
 import XIcon from "../icons/x.svg?react";
 
 export type IconProps = SVGProps<SVGSVGElement>;
@@ -44,6 +48,7 @@ function createIcon(component: unknown, name: string): IconComponent {
 
 export const AgentLogo = createIcon(AgentLogoIcon, "agent-logo");
 export const AlignJustify = createIcon(AlignJustifyIcon, "align-justify");
+export const ArrowUp = createIcon(ArrowUpIcon, "arrow-up");
 export const BookOpen = createIcon(BookOpenIcon, "book-open");
 export const Bot = createIcon(BotIcon, "bot");
 export const Check = createIcon(CheckIcon, "check");
@@ -69,6 +74,9 @@ export const SlidersHorizontal = createIcon(SlidersHorizontalIcon, "sliders-hori
 export const Sparkles = createIcon(SparklesIcon, "sparkles");
 export const SquarePen = createIcon(PencilIcon, "pencil");
 export const SquareTerminal = createIcon(SquareTerminalIcon, "square-terminal");
+export const Stop = createIcon(StopIcon, "stop");
 export const TextCursorInput = createIcon(TextCursorInputIcon, "text-cursor-input");
 export const Trash2 = createIcon(Trash2Icon, "trash-2");
+export const TriangleArrowDown = createIcon(TriangleArrowDownIcon, "triangle-arrow-down");
+export const TriangleArrowRight = createIcon(TriangleArrowRightIcon, "triangle-arrow-right");
 export const X = createIcon(XIcon, "x");

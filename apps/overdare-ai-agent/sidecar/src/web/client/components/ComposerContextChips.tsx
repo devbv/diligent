@@ -22,7 +22,7 @@ export function ComposerContextChips({ items, onRemove }: ComposerContextChipsPr
   return (
     <section
       aria-label="Attached context"
-      className="flex min-h-5 max-h-24 max-w-full shrink-0 flex-wrap content-start items-center gap-1 overflow-y-auto"
+      className="flex min-h-5 max-h-24 max-w-full shrink-0 flex-wrap content-start items-center gap-0.5 overflow-y-auto"
     >
       {items.map((item) => {
         const key = getAgentContextItemKey(item);

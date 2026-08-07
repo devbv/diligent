@@ -724,7 +724,6 @@ test("input dock renders attached context chips", () => {
       currentModel="gpt-5"
       availableModels={[]}
       onModelChange={() => {}}
-      usage={{ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalCost: 0 }}
       currentContextTokens={0}
       contextWindow={0}
       hasProvider={true}
@@ -806,7 +805,10 @@ test("input dock renders attached context chips", () => {
   expect(html).toContain("flex-wrap");
   expect(html).toContain("overflow-y-auto");
   expect(html).not.toContain("overflow-x-auto");
-  expect(html).not.toContain("rounded-full");
+  // Chips stay square-cornered; `rounded-full` elsewhere belongs to the send button and usage gauge.
+  const chipsSection = html.match(/<section aria-label="Attached context"[\s\S]*?<\/section>/)?.[0] ?? "";
+  expect(chipsSection).not.toBe("");
+  expect(chipsSection).not.toContain("rounded-full");
   expect(html).not.toContain("Clear all");
 });
 
@@ -915,7 +917,6 @@ test("input dock shows the designed toolbar tag for each non-default mode", () =
       currentModel="gpt-5"
       availableModels={[]}
       onModelChange={() => {}}
-      usage={{ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalCost: 0 }}
       currentContextTokens={0}
       contextWindow={0}
       hasProvider={true}
@@ -962,7 +963,6 @@ test("input dock shows the designed toolbar tag for each non-default mode", () =
         },
       ]}
       onModelChange={() => {}}
-      usage={{ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalCost: 0 }}
       currentContextTokens={0}
       contextWindow={0}
       hasProvider={true}
@@ -1010,7 +1010,6 @@ test("input dock shows the designed toolbar tag for each non-default mode", () =
       currentModel="gpt-5"
       availableModels={[]}
       onModelChange={() => {}}
-      usage={{ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalCost: 0 }}
       currentContextTokens={0}
       contextWindow={0}
       hasProvider={true}
@@ -1054,7 +1053,6 @@ test("input dock only blocks submission while a prompt is pending", () => {
       currentModel="gpt-5"
       availableModels={[]}
       onModelChange={() => {}}
-      usage={{ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalCost: 0 }}
       currentContextTokens={0}
       contextWindow={0}
       hasProvider={true}
@@ -1098,7 +1096,6 @@ test("input dock keeps the agent logo before the placeholder while the input is 
         currentModel="gpt-5"
         availableModels={[]}
         onModelChange={() => {}}
-        usage={{ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalCost: 0 }}
         currentContextTokens={0}
         contextWindow={0}
         hasProvider={true}
@@ -1127,7 +1124,10 @@ test("input dock keeps the agent logo before the placeholder while the input is 
   expect(idleHtml).not.toContain("Queue a message…");
   expect(idleHtml).toContain("Ask anything…");
   expect(idleHtml).toContain('data-icon="agent-logo"');
-  expect(idleHtml).toContain("items-center gap-0.5 text-white");
+  // Design `Title`: the agent logo and the placeholder text share #565F69.
+  expect(idleHtml).toContain("items-center gap-0.5 overflow-hidden text-[#565F69]");
+  // Design `Ls` is one 20px row — the hint truncates rather than wrapping to a second line.
+  expect(idleHtml).toContain('<span class="min-w-0 truncate text-sm leading-5">');
   expect(idleHtml).not.toContain("placeholder=");
 });
 
@@ -1151,7 +1151,6 @@ test("input dock composer textarea does not inherit field border styles", () => 
       currentModel="gpt-5"
       availableModels={[]}
       onModelChange={() => {}}
-      usage={{ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalCost: 0 }}
       currentContextTokens={0}
       contextWindow={0}
       hasProvider={true}
@@ -1170,7 +1169,7 @@ test("input dock composer textarea does not inherit field border styles", () => 
 
   const textarea = html.match(/<textarea[^>]*aria-label="Queue input"[^>]*>/)?.[0] ?? "";
   expect(html).toContain(
-    "relative flex min-h-[100px] flex-col justify-between gap-2 rounded-sm border bg-surface-composer px-2 py-2.5",
+    "relative flex min-h-[100px] flex-col justify-between gap-3 rounded-sm border bg-surface-composer px-2 py-2.5",
   );
   expect(textarea).toContain("min-h-10");
   expect(textarea).toContain("block");
@@ -1186,7 +1185,7 @@ test("input dock composer textarea does not inherit field border styles", () => 
   expect(html).toContain("border-white/[0.12]");
 });
 
-test("input dock composer selectors do not inherit bordered select trigger styles", () => {
+test("input dock model pill merges model and effort without bordered select trigger styles", () => {
   const html = renderToStaticMarkup(
     <InputDock
       input=""
@@ -1216,7 +1215,6 @@ test("input dock composer selectors do not inherit bordered select trigger style
         },
       ]}
       onModelChange={() => {}}
-      usage={{ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalCost: 0 }}
       currentContextTokens={0}
       contextWindow={0}
       hasProvider={true}
@@ -1234,17 +1232,21 @@ test("input dock composer selectors do not inherit bordered select trigger style
   );
 
   const modelTrigger = html.match(/<button[^>]*aria-label="Model selector"[^>]*>/)?.[0] ?? "";
-  const effortTrigger = html.match(/<button[^>]*aria-label="Effort selector"[^>]*>/)?.[0] ?? "";
 
+  // The effort selector is folded into the model pill, so only one trigger remains.
+  expect(html).not.toContain('aria-label="Effort selector"');
   expect(modelTrigger).toContain("bg-black");
-  expect(effortTrigger).toContain("bg-black");
-  expect(html).toContain("w-[100px]");
-  expect(html).toContain("w-[71px]");
   expect(modelTrigger).toContain("h-5");
-  expect(effortTrigger).toContain("h-5");
-  expect(html).toContain('class="relative flex h-5 w-[100px]"');
-  expect(html).toContain('class="relative flex h-5 w-[71px]"');
-  expect(html).toContain("w-[45px]");
+  expect(html).toContain('<span class="shrink-0 text-[#565F69]">Medium</span>');
+  expect(html).toContain('data-icon="triangle-arrow-down"');
+
+  const sendButton = html.match(/<button[^>]*aria-label="Send message"[^>]*>/)?.[0] ?? "";
+  expect(sendButton).toContain("h-5");
+  expect(sendButton).toContain("w-5");
+  expect(sendButton).toContain("rounded-full");
+  expect(sendButton).toContain("bg-[#3191FF]");
+  expect(html).not.toContain(">Send<");
+
   const plusTrigger = html.match(/<button[^>]*aria-label="Open composer options"[^>]*>/)?.[0] ?? "";
   expect(plusTrigger).toContain("h-5");
   expect(plusTrigger).toContain("w-5");
@@ -1252,11 +1254,8 @@ test("input dock composer selectors do not inherit bordered select trigger style
   expect(plusTrigger).toContain("text-[#88929C]");
   expect(plusTrigger).not.toContain("bg-[#3191FF]");
   expect(modelTrigger).not.toContain("rounded-md");
-  expect(effortTrigger).not.toContain("rounded-md");
   expect(modelTrigger).not.toContain("border-border");
-  expect(effortTrigger).not.toContain("border-border");
   expect(modelTrigger).not.toContain("bg-surface-dark");
-  expect(effortTrigger).not.toContain("bg-surface-dark");
 });
 
 test("user message renders images before compact context chips and text", () => {
@@ -1467,7 +1466,9 @@ test("feedback report modal shows target context, reduced categories, and accura
   expect(html).toContain("First response line");
   expect(html).toContain("Select a type");
   expect(html).not.toContain("Incorrect result");
-  expect(html).toContain("Session and message identifiers are sent with this report so we can investigate.");
+  expect(html).toContain(
+    "Your conversation, device, and version details are sent with this report so we can investigate.",
+  );
   expect(html.toLowerCase()).not.toContain("account");
   expect(html).toContain('id="feedback-report-description"');
   expect(html).toContain('maxLength="1000"');
@@ -1946,7 +1947,6 @@ test("input dock renders pending image preview and add-images action", () => {
         },
       ]}
       onModelChange={() => {}}
-      usage={{ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalCost: 0 }}
       currentContextTokens={0}
       contextWindow={1000000}
       hasProvider={true}
@@ -1993,7 +1993,7 @@ test("input dock renders pending image preview and add-images action", () => {
   expect(html).toContain("Ask anything or attach images…");
   expect(html).toContain('data-icon="agent-logo"');
   expect(html).toContain('class="relative z-20 bg-surface-dark');
-  expect(html).toContain("medium");
+  expect(html).toContain("Medium");
 });
 
 test("input dock renders GPT-5.6 xhigh as a distinct selected effort", () => {
@@ -2025,7 +2025,6 @@ test("input dock renders GPT-5.6 xhigh as a distinct selected effort", () => {
         },
       ]}
       onModelChange={() => {}}
-      usage={{ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalCost: 0 }}
       currentContextTokens={0}
       contextWindow={1050000}
       hasProvider={true}
@@ -2042,8 +2041,10 @@ test("input dock renders GPT-5.6 xhigh as a distinct selected effort", () => {
     />,
   );
 
-  expect(html).toContain('aria-label="Effort selector"');
-  expect(html).toContain("xhigh");
+  // The pill renders the display label, and the gauge reflects the context window.
+  expect(html).toContain('<span class="shrink-0 text-[#565F69]">Extra High</span>');
+  expect(html).toContain('data-icon="usage-gauge"');
+  expect(html).toContain('data-usage-percent="0"');
 });
 
 test("input dock compaction menu does not show compacting label swap", () => {
@@ -2066,7 +2067,6 @@ test("input dock compaction menu does not show compacting label swap", () => {
       currentModel="gpt-5"
       availableModels={[]}
       onModelChange={() => {}}
-      usage={{ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalCost: 0 }}
       currentContextTokens={0}
       contextWindow={0}
       hasProvider={true}
@@ -2112,7 +2112,6 @@ test("input dock shows uploading state and disables send affordance", () => {
         },
       ]}
       onModelChange={() => {}}
-      usage={{ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalCost: 0 }}
       currentContextTokens={0}
       contextWindow={1000000}
       hasProvider={true}
@@ -2161,7 +2160,6 @@ test("input dock hides effort selector when model does not support thinking", ()
         },
       ]}
       onModelChange={() => {}}
-      usage={{ inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalCost: 0 }}
       currentContextTokens={0}
       contextWindow={400000}
       hasProvider={true}
