@@ -42,7 +42,26 @@ interface DebugResult {
   keywords: string[];
 }
 
-type AnyResult = RagResult | AssetResult | DebugResult;
+interface VfxResult {
+  text: string;
+  score: number;
+  title: string;
+  docType: "recipe_combo" | "vfx_source";
+  docId: string;
+  keywords: string[];
+  // recipe_combo only
+  category?: string;
+  elements?: string[];
+  sources?: string[];
+  patterns?: string[];
+  // vfx_source only
+  layer?: string;
+  spawnType?: string;
+  element?: string;
+  resourceName?: string;
+}
+
+type AnyResult = RagResult | AssetResult | DebugResult | VfxResult;
 
 interface RagResponse {
   results: AnyResult[];
@@ -55,6 +74,29 @@ function isAssetResult(result: AnyResult): result is AssetResult {
 
 function isDebugResult(result: AnyResult): result is DebugResult {
   return "caseId" in result;
+}
+
+function isVfxResult(result: AnyResult): result is VfxResult {
+  return "docType" in result;
+}
+
+function normalizeVfxResult(result: Partial<VfxResult>): Partial<VfxResult> {
+  return {
+    text: result.text,
+    score: result.score,
+    title: result.title,
+    docType: result.docType,
+    docId: result.docId,
+    keywords: result.keywords,
+    category: result.category,
+    elements: result.elements,
+    sources: result.sources,
+    patterns: result.patterns,
+    layer: result.layer,
+    spawnType: result.spawnType,
+    element: result.element,
+    resourceName: result.resourceName,
+  };
 }
 
 function normalizeAssetResult(result: Partial<AssetResult>): Partial<AssetResult> {
@@ -97,11 +139,12 @@ export const description = `Searches OVERDARE documentation, code examples, asse
 Use this tool to find relevant OVERDARE API references, guides, code examples, Lua scripts, asset metadata, and debugging cases.
 
 When to use each source:
-  - Default topK by source: docs=4, code=4, assets=8, debug=5; only increase if results are insufficient
+  - Default topK by source: docs=4, code=4, assets=8, debug=5, vfx=3; only increase if results are insufficient
   - "docs": API references, conceptual guides, configuration details, service descriptions
   - "code": Working Lua implementation examples, proven patterns, real script snippets
   - "assets": Asset catalog search returning asset metadata such as title, keywords, assetId, assetType, categoryId, and subCategoryId
   - "debug": Debugging-case knowledge base (symptom → cause → solution). Each result includes symptom, causeClassification, solution, and caseId. Use when diagnosing a bug or unexpected behavior — describe the symptom in natural language.
+  - "vfx": VFXRecipe composition knowledge for building custom effects. Returns recipe templates (docType=recipe_combo, full doc including an Original Payload JSON to copy and adapt) and VFX source catalog entries (docType=vfx_source, with layer/spawnType/element/resourceName). Query by desired element, mood, or pattern (e.g. "fire explosion burst"). Results carry the full doc text — no second fetch needed.
   - When writing or modifying code, search BOTH docs and code in parallel (two calls: one for docs, one for code) to get API shape + implementation patterns simultaneously
 
 Query tips:
@@ -115,9 +158,9 @@ Query tips:
 export const parameters = z.object({
   query: z.string().describe("Search query for OVERDARE (English only)"),
   source: z
-    .enum(["docs", "code", "assets", "debug"])
+    .enum(["docs", "code", "assets", "debug", "vfx"])
     .describe(
-      "docs = API references and guides. code = working Lua implementation examples and patterns. assets = asset catalog search with asset metadata fields. debug = debugging cases (symptom → cause → solution).",
+      "docs = API references and guides. code = working Lua implementation examples and patterns. assets = asset catalog search with asset metadata fields. debug = debugging cases (symptom → cause → solution). vfx = VFXRecipe templates and source catalog for composing custom effects.",
     ),
   topK: z.number().int().min(1).max(10).describe("Number of results to return"),
   selectable: z
@@ -298,8 +341,20 @@ export async function execute(args: Params, _ctx: ToolContext, host?: RuntimeToo
       };
     }
 
+    if (args.source === "vfx") {
+      const rawVfx = results.filter(isVfxResult);
+      const vfxResults = rawVfx.map(normalizeVfxResult);
+      return {
+        output: vfxResults.length
+          ? JSON.stringify({ results: vfxResults, totalCount: data?.totalCount ?? vfxResults.length }, null, 2)
+          : "No results found.",
+        render: buildSearchRender({ source: args.source, query: args.query }, rawVfx),
+        metadata: { resultCount: vfxResults.length, results: vfxResults },
+      };
+    }
+
     const ragResults = results.filter(
-      (result): result is RagResult => !isAssetResult(result) && !isDebugResult(result),
+      (result): result is RagResult => !isAssetResult(result) && !isDebugResult(result) && !isVfxResult(result),
     );
 
     return {
