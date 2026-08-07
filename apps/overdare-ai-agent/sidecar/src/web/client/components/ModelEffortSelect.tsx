@@ -24,6 +24,16 @@ const MENU_ITEM_HEIGHT = 24;
 /** Design places the Effort panel 2px to the right of the Models panel. */
 const SUBMENU_GAP = 2;
 const VIEWPORT_MARGIN = 8;
+const MODELS_MENU_WIDTH = 200;
+const EFFORT_MENU_WIDTH = 180;
+
+/**
+ * Side-by-side panels need both widths plus the gap and page margins. Below that the Effort list
+ * would sit off-screen, so the narrow layout drills down inside the Models panel instead.
+ */
+export function canFitEffortBeside(viewportWidth: number): boolean {
+  return viewportWidth >= MODELS_MENU_WIDTH + SUBMENU_GAP + EFFORT_MENU_WIDTH + 2 * VIEWPORT_MARGIN;
+}
 
 /** The panel's 1px hairline sits outside the auto height, so it counts toward the outer box. */
 const MENU_BORDER = 2;
@@ -99,11 +109,14 @@ export function ModelEffortSelect({
   const panelRef = useRef<HTMLDivElement>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [submenuPosition, setSubmenuPosition] = useState<SubmenuPosition | null>(null);
+  /** Narrow viewports show the Effort list in place of the model list rather than beside it. */
+  const [isEffortView, setIsEffortView] = useState(false);
   const [tooltipCursor, setTooltipCursor] = useState<{ x: number; y: number } | null>(null);
 
   const close = useCallback(() => {
     setIsOpen(false);
     setSubmenuPosition(null);
+    setIsEffortView(false);
   }, []);
 
   const panelPosition = useAnchoredPortal({
@@ -126,8 +139,10 @@ export function ModelEffortSelect({
   const usageRatio = getUsageGaugeRatio(currentContextTokens, contextWindow);
   const usageLabel = formatUsageTooltipLabel(currentContextTokens, contextWindow);
 
-  const openEffortMenu = useCallback(() => {
+  /** Hover only ever opens the side panel — drilling down on hover would swap the list out from under the pointer. */
+  const openEffortBeside = useCallback(() => {
     if (currentEffortOptions.length === 0) return;
+    if (!canFitEffortBeside(window.innerWidth)) return;
     const panelRect = panelRef.current?.getBoundingClientRect();
     if (!panelRect) return;
     setSubmenuPosition(
@@ -138,6 +153,16 @@ export function ModelEffortSelect({
       }),
     );
   }, [currentEffortOptions.length]);
+
+  const activateEffort = useCallback(() => {
+    if (currentEffortOptions.length === 0) return;
+    if (canFitEffortBeside(window.innerWidth)) {
+      openEffortBeside();
+      return;
+    }
+    setSubmenuPosition(null);
+    setIsEffortView(true);
+  }, [currentEffortOptions.length, openEffortBeside]);
 
   const selectModel = useCallback(
     (model: ModelInfo) => {
@@ -204,54 +229,92 @@ export function ModelEffortSelect({
                 className={cn("fixed z-composer-menu w-[200px]", composerMenuPanelClasses)}
                 style={{ left: panelPosition.left, bottom: panelPosition.bottom }}
               >
-                <div className={composerMenuHeaderClasses}>Models</div>
-                <div className={cn(composerMenuGroupClasses, "max-h-[50vh] overflow-y-auto")}>
-                  {availableModels.map((model) => {
-                    const key = modelOptionKey(model);
-                    const isSelected = key === currentModel;
-                    return (
-                      <button
-                        key={key}
-                        type="button"
-                        role="menuitemradio"
-                        aria-checked={isSelected}
-                        onMouseEnter={() => setSubmenuPosition(null)}
-                        onFocus={() => setSubmenuPosition(null)}
-                        onClick={() => selectModel(model)}
-                        className={cn(menuItemClasses, "gap-2", isSelected && selectedMenuItemClasses)}
-                      >
-                        <span className="flex h-3 w-3 shrink-0 items-center justify-center" aria-hidden="true">
-                          {isSelected ? <Check className="h-3 w-3" /> : null}
-                        </span>
-                        <span className="min-w-0 flex-1 truncate text-left">{getModelDisplayLabel(model)}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Effort is its own row under the model list, not a per-model submenu. */}
-                <div className="border-t border-[#2A3038]" />
-                <div className={composerMenuGroupClasses}>
+                {isEffortView ? (
                   <button
                     type="button"
-                    role="menuitem"
-                    aria-haspopup="menu"
-                    aria-expanded={submenuPosition !== null}
-                    disabled={currentEffortOptions.length === 0}
-                    onMouseEnter={openEffortMenu}
-                    onFocus={openEffortMenu}
-                    onClick={openEffortMenu}
-                    className={cn(
-                      menuItemClasses,
-                      "gap-2",
-                      submenuPosition !== null && selectedMenuItemClasses,
-                      currentEffortOptions.length === 0 && "cursor-not-allowed text-muted/40",
-                    )}
+                    aria-label="Back to models"
+                    onClick={() => setIsEffortView(false)}
+                    className={cn(composerMenuHeaderClasses, "w-full gap-2 text-left hover:text-white")}
                   >
-                    <span className="min-w-0 flex-1 truncate text-left">Effort</span>
-                    <TriangleArrowRight className="h-3 w-3 shrink-0 text-[#DCE2E8]" aria-hidden="true" />
+                    <TriangleArrowRight className="h-3 w-3 shrink-0 rotate-180" aria-hidden="true" />
+                    <span>Effort</span>
                   </button>
-                </div>
+                ) : (
+                  <div className={composerMenuHeaderClasses}>Models</div>
+                )}
+
+                {isEffortView ? (
+                  <div className={cn(composerMenuGroupClasses, "max-h-[50vh] overflow-y-auto")}>
+                    {currentEffortOptions.map((option) => {
+                      const isSelected = option.value === effort;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          role="menuitemradio"
+                          aria-checked={isSelected}
+                          onClick={() => selectEffort(option.value)}
+                          className={cn(menuItemClasses, "gap-2", isSelected && selectedMenuItemClasses)}
+                        >
+                          <span className="flex h-3 w-3 shrink-0 items-center justify-center" aria-hidden="true">
+                            {isSelected ? <Check className="h-3 w-3" /> : null}
+                          </span>
+                          <span className="min-w-0 flex-1 truncate text-left">{option.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <>
+                    <div className={cn(composerMenuGroupClasses, "max-h-[50vh] overflow-y-auto")}>
+                      {availableModels.map((model) => {
+                        const key = modelOptionKey(model);
+                        const isSelected = key === currentModel;
+                        return (
+                          <button
+                            key={key}
+                            type="button"
+                            role="menuitemradio"
+                            aria-checked={isSelected}
+                            onMouseEnter={() => setSubmenuPosition(null)}
+                            onFocus={() => setSubmenuPosition(null)}
+                            onClick={() => selectModel(model)}
+                            className={cn(menuItemClasses, "gap-2", isSelected && selectedMenuItemClasses)}
+                          >
+                            <span className="flex h-3 w-3 shrink-0 items-center justify-center" aria-hidden="true">
+                              {isSelected ? <Check className="h-3 w-3" /> : null}
+                            </span>
+                            <span className="min-w-0 flex-1 truncate text-left">{getModelDisplayLabel(model)}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Effort is its own row under the model list, not a per-model submenu. */}
+                    <div className="border-t border-[#2A3038]" />
+                    <div className={composerMenuGroupClasses}>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        aria-haspopup="menu"
+                        aria-expanded={submenuPosition !== null}
+                        disabled={currentEffortOptions.length === 0}
+                        onMouseEnter={openEffortBeside}
+                        onFocus={openEffortBeside}
+                        onClick={activateEffort}
+                        className={cn(
+                          menuItemClasses,
+                          "gap-2",
+                          submenuPosition !== null && selectedMenuItemClasses,
+                          currentEffortOptions.length === 0 && "cursor-not-allowed text-muted/40",
+                        )}
+                      >
+                        <span className="min-w-0 flex-1 truncate text-left">Effort</span>
+                        <TriangleArrowRight className="h-3 w-3 shrink-0 text-[#DCE2E8]" aria-hidden="true" />
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
 
               {submenuPosition && currentEffortOptions.length > 0 ? (

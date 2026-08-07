@@ -3,6 +3,7 @@
 import { expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
+  canFitEffortBeside,
   getEffortMenuHeight,
   getEffortMenuPosition,
   getModelsMenuHeight,
@@ -19,6 +20,15 @@ test("menu heights match the design panels", () => {
   expect(getModelsMenuHeight(8)).toBe(263);
   // Effort panel carries no header of its own: 180x130 for five rows.
   expect(getEffortMenuHeight(5)).toBe(130);
+});
+
+test("side-by-side panels need 398px of viewport, otherwise the menu drills down", () => {
+  // 200 (Models) + 2 (gap) + 180 (Effort) + 8px margins on both sides.
+  expect(canFitEffortBeside(398)).toBe(true);
+  expect(canFitEffortBeside(397)).toBe(false);
+  // The composer's own narrow breakpoints are well under the threshold.
+  expect(canFitEffortBeside(260)).toBe(false);
+  expect(canFitEffortBeside(198)).toBe(false);
 });
 
 test("effort submenu sits 2px right of the models panel and bottom-aligns with it", () => {

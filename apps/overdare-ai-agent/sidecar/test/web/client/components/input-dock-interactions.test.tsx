@@ -287,6 +287,72 @@ test("the Effort row under the model list opens the headerless effort submenu", 
   rootElement.remove();
 });
 
+test("a narrow viewport drills into the Effort list inside the same panel", async () => {
+  const originalWidth = window.innerWidth;
+  Object.defineProperty(window, "innerWidth", { value: 260, configurable: true });
+
+  const { rootElement, root } = renderInputDock();
+  let selectedEffort = "";
+
+  await act(async () => {
+    root.render(
+      createElement(InputDock, {
+        ...dockProps,
+        currentModel: "openai\0gpt-5-6-terra",
+        availableModels: MODELS,
+        supportsThinking: true,
+        onEffortChange: (effort: string) => {
+          selectedEffort = effort;
+        },
+      }),
+    );
+  });
+
+  await act(async () => {
+    rootElement.querySelector<HTMLButtonElement>('button[aria-label="Model selector"]')?.click();
+  });
+
+  // Hovering must not swap the list out from under the pointer — only a click drills down.
+  await act(async () => {
+    const row = findEffortRow();
+    if (row) hover(row);
+  });
+  expect(findEffortRow()).toBeDefined();
+  expect(findModelMenu()?.textContent).toContain("Claude Opus 4.8");
+
+  await act(async () => {
+    findEffortRow()?.click();
+  });
+
+  // No second panel is opened — the model list is replaced in place.
+  expect(findEffortMenu()).toBeNull();
+  const panel = findModelMenu();
+  expect(panel?.querySelector('button[aria-label="Back to models"]')).not.toBeNull();
+  const rows = Array.from(panel?.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]') ?? []);
+  expect(rows.map((row) => row.textContent?.trim())).toEqual(["Low", "Medium", "High", "Extra High", "Max"]);
+
+  // Back returns to the model list.
+  await act(async () => {
+    panel?.querySelector<HTMLButtonElement>('button[aria-label="Back to models"]')?.click();
+  });
+  expect(findModelMenu()?.textContent).toContain("Claude Opus 4.8");
+
+  await act(async () => {
+    findEffortRow()?.click();
+  });
+  await act(async () => {
+    findModelMenu()?.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')[4]?.click();
+  });
+  expect(selectedEffort).toBe("max");
+  expect(findModelMenu()).toBeNull();
+
+  await act(async () => {
+    root.unmount();
+  });
+  rootElement.remove();
+  Object.defineProperty(window, "innerWidth", { value: originalWidth, configurable: true });
+});
+
 test("the Effort row is disabled for a model without thinking efforts", async () => {
   const { rootElement, root } = renderInputDock();
 
