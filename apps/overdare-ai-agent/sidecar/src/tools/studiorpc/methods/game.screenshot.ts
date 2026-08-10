@@ -4,11 +4,12 @@ import { z } from "zod";
 export const method = "game.screenshot";
 
 export const description =
-  "Capture a screenshot of the OVERDARE Studio viewport and save it to a file. " +
-  "Use this only when the user explicitly requests a screenshot; do not use it for autonomous validation. " +
+  "Capture a screenshot of the OVERDARE Studio viewport and see it directly — use this to self-check " +
+  "visual results (placement, lighting, camera framing, animation state, UI layout) before reporting a " +
+  "visual change done, instead of assuming success from RPC/save results alone. " +
+  "GUI elements are included by default; pass includeGui: false to capture the scene only. " +
   'Currently only the "Viewport" mode is supported (defaults to "Viewport" when omitted). ' +
-  "Other modes (Thumbnail / HubScreenshot / Custom with explicit size) are planned and not yet available. " +
-  "GUI elements are included by default; pass includeGui: false to capture the scene only.";
+  "Other modes (Thumbnail / HubScreenshot / Custom with explicit size) are planned and not yet available.";
 
 export const params = z
   .object({
