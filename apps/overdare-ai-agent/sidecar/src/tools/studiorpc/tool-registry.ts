@@ -5,7 +5,6 @@ import * as actionSequencerApplyJson from "./methods/action-sequencer-service.ap
 import * as assetDrawerImport from "./methods/asset-drawer.import";
 import * as assetManagerImageImport from "./methods/asset-manager.image.import";
 import * as gamePlay from "./methods/game.play";
-import * as gameScreenshot from "./methods/game.screenshot";
 import * as gameStop from "./methods/game.stop";
 import * as hubTokenRead from "./methods/hub.token.read";
 import * as levelBrowse from "./methods/level.browse";
@@ -20,7 +19,6 @@ import {
   buildAssetDrawerImportRender,
   buildAssetManagerImageImportRender,
   buildGamePlayRender,
-  buildGameScreenshotRender,
   buildGameStopRender,
   buildHubTokenReadRender,
   buildInstanceDeleteRender,
@@ -59,7 +57,6 @@ export const methodModules: MethodModule[] = [
   levelPublish,
   gamePlay,
   gameStop,
-  gameScreenshot,
   hubTokenRead,
 ];
 
@@ -91,8 +88,6 @@ export const renderBuilders: Record<string, RenderBuilder> = {
   studiorpc_instance_move: ({ normalizedArgs, output }) => buildInstanceMoveRender(normalizedArgs, output),
   studiorpc_game_play: ({ normalizedArgs, output }) => buildGamePlayRender(normalizedArgs, output),
   studiorpc_game_stop: ({ output }) => buildGameStopRender(output),
-  studiorpc_game_screenshot: ({ normalizedArgs, output, result }) =>
-    buildGameScreenshotRender(result, normalizedArgs, output),
   studiorpc_level_publish: ({ normalizedArgs, output, result }) =>
     buildLevelPublishRender(result, normalizedArgs, output),
   studiorpc_hub_token_read: ({ output, result }) => buildHubTokenReadRender(result, output),
