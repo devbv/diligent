@@ -8,7 +8,7 @@ export const description =
   "Use this only when the user explicitly requests a screenshot; do not use it for autonomous validation. " +
   'Currently only the "Viewport" mode is supported (defaults to "Viewport" when omitted). ' +
   "Other modes (Thumbnail / HubScreenshot / Custom with explicit size) are planned and not yet available. " +
-  "GUI elements are not yet captured by this method.";
+  "GUI elements are included by default; pass includeGui: false to capture the scene only.";
 
 export const params = z
   .object({
@@ -16,8 +16,18 @@ export const params = z
       .literal("Viewport")
       .optional()
       .describe('Capture mode. Currently only "Viewport" is supported. Defaults to "Viewport" when omitted.'),
+    includeGui: z
+      .boolean()
+      .optional()
+      .describe("Whether to include GUI elements in the capture. Defaults to true when omitted."),
   })
   .strict();
+
+// Default at the RPC boundary (not via zod .default) so every call path —
+// agent runtime and MCP server — sends an explicit includeGui to Studio.
+export function normalizeArgs(args: Record<string, unknown>): Record<string, unknown> {
+  return { ...args, includeGui: args.includeGui ?? true };
+}
 
 // When additional capture modes are supported, restore the discriminated-union
 // schema below. It rejects mismatched `size` usage at the schema layer (instead
