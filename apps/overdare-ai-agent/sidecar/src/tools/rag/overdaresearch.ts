@@ -51,8 +51,9 @@ interface VfxResult {
   keywords: string[];
   // vfx_preset only
   presetName?: string;
-  // recipe_template only
+  // vfx_preset (primary category) and recipe_template
   category?: string;
+  // recipe_template only
   elements?: string[];
   sources?: string[];
   patterns?: string[];
