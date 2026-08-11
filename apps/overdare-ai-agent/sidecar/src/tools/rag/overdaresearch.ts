@@ -46,9 +46,11 @@ interface VfxResult {
   text: string;
   score: number;
   title: string;
-  docType: "recipe_combo" | "vfx_source";
+  docType: "vfx_preset" | "recipe_combo" | "vfx_source";
   docId: string;
   keywords: string[];
+  // vfx_preset only
+  presetName?: string;
   // recipe_combo only
   category?: string;
   elements?: string[];
@@ -88,6 +90,7 @@ function normalizeVfxResult(result: Partial<VfxResult>): Partial<VfxResult> {
     docType: result.docType,
     docId: result.docId,
     keywords: result.keywords,
+    presetName: result.presetName,
     category: result.category,
     elements: result.elements,
     sources: result.sources,
@@ -144,7 +147,7 @@ When to use each source:
   - "code": Working Lua implementation examples, proven patterns, real script snippets
   - "assets": Asset catalog search returning asset metadata such as title, keywords, assetId, assetType, categoryId, and subCategoryId
   - "debug": Debugging-case knowledge base (symptom → cause → solution). Each result includes symptom, causeClassification, solution, and caseId. Use when diagnosing a bug or unexpected behavior — describe the symptom in natural language.
-  - "vfx": VFXRecipe composition knowledge for building custom effects. Returns recipe templates (docType=recipe_combo, full doc including an Original Payload JSON to copy and adapt) and VFX source catalog entries (docType=vfx_source, with layer/spawnType/element/resourceName). Query by desired element, mood, or pattern (e.g. "fire explosion burst"). Results carry the full doc text — no second fetch needed.
+  - "vfx": VFX knowledge base for effect requests, in three units: presets (docType=vfx_preset, ready-made named effects with presetName for VFXPreset creation), recipe templates (docType=recipe_combo, full doc including an Original Payload JSON to copy and adapt), and VFX source catalog entries (docType=vfx_source, with layer/spawnType/element/resourceName for composing or editing VFXRecipe layers). Query by desired element, mood, or pattern (e.g. "fire explosion burst"). Results carry the full doc text — no second fetch needed.
   - When writing or modifying code, search BOTH docs and code in parallel (two calls: one for docs, one for code) to get API shape + implementation patterns simultaneously
 
 Query tips:
@@ -160,7 +163,7 @@ export const parameters = z.object({
   source: z
     .enum(["docs", "code", "assets", "debug", "vfx"])
     .describe(
-      "docs = API references and guides. code = working Lua implementation examples and patterns. assets = asset catalog search with asset metadata fields. debug = debugging cases (symptom → cause → solution). vfx = VFXRecipe templates and source catalog for composing custom effects.",
+      "docs = API references and guides. code = working Lua implementation examples and patterns. assets = asset catalog search with asset metadata fields. debug = debugging cases (symptom → cause → solution). vfx = VFX presets, recipe templates, and source catalog for effect requests.",
     ),
   topK: z.number().int().min(1).max(10).describe("Number of results to return"),
   selectable: z

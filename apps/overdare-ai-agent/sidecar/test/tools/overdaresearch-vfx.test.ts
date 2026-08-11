@@ -25,6 +25,16 @@ async function searchTool(host: { approve?: () => Promise<"once">; ask?: () => P
   return tools.find((t) => t.name === "overdaresearch")!;
 }
 
+const presetResult = {
+  text: "## Fire\nA ready-made fire effect preset…",
+  score: 0.95,
+  title: "Fire (preset)",
+  docType: "vfx_preset",
+  docId: "vfxpreset_Fire",
+  keywords: ["fire", "flame"],
+  presetName: "Fire",
+};
+
 const comboResult = {
   text: "# COMBO_01 · Green Acid Liquid + Smoke Composite Burst\n…Original Payload JSON…",
   score: 0.91,
@@ -53,7 +63,7 @@ const sourceResult = {
 
 describe("overdaresearch vfx source", () => {
   test("returns docType-discriminated results as JSON without asking the user", async () => {
-    mockRagFetch([comboResult, sourceResult]);
+    mockRagFetch([presetResult, comboResult, sourceResult]);
     let asked = false;
     const tool = await searchTool({
       approve: async () => "once",
@@ -68,13 +78,15 @@ describe("overdaresearch vfx source", () => {
 
     expect(asked).toBe(false);
     const parsed = JSON.parse(result.output) as { results: Record<string, unknown>[]; totalCount: number };
-    expect(parsed.totalCount).toBe(2);
-    expect(parsed.results[0].docType).toBe("recipe_combo");
-    expect(parsed.results[0].sources).toEqual(["LiquidFlash_A", "SmokeBurst_A"]);
-    expect(parsed.results[1].docType).toBe("vfx_source");
-    expect(parsed.results[1].resourceName).toBe("FireRise_A");
+    expect(parsed.totalCount).toBe(3);
+    expect(parsed.results[0].docType).toBe("vfx_preset");
+    expect(parsed.results[0].presetName).toBe("Fire");
+    expect(parsed.results[1].docType).toBe("recipe_combo");
+    expect(parsed.results[1].sources).toEqual(["LiquidFlash_A", "SmokeBurst_A"]);
+    expect(parsed.results[2].docType).toBe("vfx_source");
+    expect(parsed.results[2].resourceName).toBe("FireRise_A");
     expect(result.render).toBeDefined();
-    expect(result.metadata?.resultCount).toBe(2);
+    expect(result.metadata?.resultCount).toBe(3);
   });
 
   test("returns not-found output when no vfx results match", async () => {
