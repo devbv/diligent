@@ -24,6 +24,7 @@ export interface MessageListProps {
     onCancel: () => void;
   } | null;
   onLoadChildThread?: (childThreadId: string) => Promise<ThreadReadResponse>;
+  onReportMessage?: (item: Extract<RenderItem, { kind: "user" | "assistant" }>) => void;
 }
 
 export type CollabItem = Extract<RenderItem, { kind: "collab" }>;

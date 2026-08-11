@@ -166,6 +166,7 @@ export type TurnStartParams = z.infer<typeof TurnStartParamsSchema>;
 
 export const TurnStartResponseSchema = z.object({
   accepted: z.literal(true),
+  userMessageId: z.string().optional(),
 });
 export type TurnStartResponse = z.infer<typeof TurnStartResponseSchema>;
 

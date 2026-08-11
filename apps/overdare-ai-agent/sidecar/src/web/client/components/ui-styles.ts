@@ -112,6 +112,14 @@ export const composerSendButtonClasses =
 export const composerStopButtonClasses =
   "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded bg-[#FE0041] p-1 text-white transition hover:bg-[#FE0041]/90";
 
+/** Kept for the shared `Select` component (still used by FeedbackReportModal's Issue-type picker). */
+export const selectTriggerBaseClasses =
+  "inline-flex w-full items-center justify-between gap-1 px-2 font-[Arial] text-xs text-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent";
+
+export const selectTriggerDefaultClasses = "h-7 rounded-md border border-border/100 bg-surface-dark";
+
+export const composerSelectTriggerClasses = "h-5 rounded bg-black";
+
 export const sidebarListClasses = "flex-1 space-y-2 overflow-y-auto bg-bg-sunken px-2 py-3";
 
 export const sidebarItemClasses =

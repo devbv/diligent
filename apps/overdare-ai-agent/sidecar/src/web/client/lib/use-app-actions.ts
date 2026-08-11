@@ -27,6 +27,7 @@ import {
 import type { WebRpcClient } from "./rpc-client";
 import { parseSlashCommand, type SlashCommand } from "./slash-commands";
 import type { ThreadState } from "./thread-store";
+import { createUuidV4 } from "./uuid";
 
 const IMAGE_UPLOAD_INDICATOR_DELAY_MS = 200;
 const logger = createLogger({ scope: "web.client.actions" });
@@ -64,6 +65,7 @@ export async function prepareNewThreadForFirstMessage({
   activateServerThread,
   applySessionModel,
   dispatch,
+  localItemId,
   localText,
   contextItems,
   images,
@@ -76,6 +78,7 @@ export async function prepareNewThreadForFirstMessage({
   activateServerThread: (threadId: string) => Promise<ThreadReadResponse>;
   applySessionModel: (sessionModel?: ModelRef) => Promise<void>;
   dispatch: Dispatch<AppAction>;
+  localItemId: string;
   localText: string;
   contextItems: AgentContextItem[];
   images: PendingImage[];
@@ -92,7 +95,7 @@ export async function prepareNewThreadForFirstMessage({
   if (typeof window !== "undefined") {
     replaceThreadUrl(threadId);
   }
-  dispatch({ type: "local_user", payload: { text: localText, images, contextItems } });
+  dispatch({ type: "local_user", payload: { id: localItemId, text: localText, images, contextItems } });
   await applySessionModel(history.currentModel);
   return { threadId, history };
 }
@@ -141,6 +144,35 @@ export async function applyModeChange({
   dispatch({ type: "set_mode", payload: mode });
   if (!rpc || !activeThreadId) return;
   await rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.MODE_SET, { threadId: activeThreadId, mode });
+}
+
+export async function retryLastUserMessage({
+  rpc,
+  threadId,
+  text,
+  model,
+  dispatch,
+}: {
+  rpc: WebRpcClient;
+  threadId: string;
+  text: string;
+  model?: ModelRef;
+  dispatch: Dispatch<AppAction>;
+}): Promise<void> {
+  const localItemId = `local-user-${createUuidV4()}`;
+  dispatch({ type: "local_user", payload: { id: localItemId, text, images: [] } });
+  const started = await rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.TURN_START, {
+    threadId,
+    message: text,
+    content: [{ type: "text", text }],
+    model,
+  });
+  if (started.userMessageId) {
+    dispatch({
+      type: "bind_user_message_id",
+      payload: { renderItemId: localItemId, messageId: started.userMessageId },
+    });
+  }
 }
 
 export function normalizeUploadedImageAttachment(attachment: ImageUploadAttachment): PendingImage {
@@ -261,6 +293,7 @@ export function useAppActions({
     const typedMessage = activeInput.trim();
     const message = prependContextToMessage(typedMessage, activeContextItems);
     const images = pendingImages;
+    const localItemId = `local-user-${createUuidV4()}`;
     const existingThreadId = state.activeThreadId;
     clearComposerInputAfterSend({
       activeThreadId: existingThreadId,
@@ -282,13 +315,17 @@ export function useAppActions({
           activateServerThread,
           applySessionModel,
           dispatch,
+          localItemId,
           localText: typedMessage,
           contextItems: activeContextItems,
           images,
         });
         threadId = prepared.threadId;
       } else {
-        dispatch({ type: "local_user", payload: { text: typedMessage, images, contextItems: activeContextItems } });
+        dispatch({
+          type: "local_user",
+          payload: { id: localItemId, text: typedMessage, images, contextItems: activeContextItems },
+        });
       }
 
       if (state.items.length === 0 && threadId) {
@@ -307,7 +344,7 @@ export function useAppActions({
           fileName: image.fileName,
         })),
       ];
-      await rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.TURN_START, {
+      const started = await rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.TURN_START, {
         threadId,
         message,
         attachments: images.map((image) => ({
@@ -319,6 +356,12 @@ export function useAppActions({
         content,
         model: currentModelRef.current,
       });
+      if (started.userMessageId) {
+        dispatch({
+          type: "bind_user_message_id",
+          payload: { renderItemId: localItemId, messageId: started.userMessageId },
+        });
+      }
       await refreshThreadList(rpc);
     } catch (error) {
       logger.error("message.send_failed", {
@@ -641,12 +684,21 @@ export function useAppActions({
           const isSkill = slashCommands.some((command) => command.name === name && command.isSkill);
           if (isSkill && rpc && activeThreadId) {
             const message = arg ? `/${name} ${arg}` : `/${name}`;
-            dispatch({ type: "local_user", payload: { text: message, images: [] } });
-            void rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.TURN_START, {
-              threadId: activeThreadId,
-              message,
-              content: [{ type: "text" as const, text: message }],
-            });
+            const localItemId = `local-user-${createUuidV4()}`;
+            dispatch({ type: "local_user", payload: { id: localItemId, text: message, images: [] } });
+            void rpc
+              .request(DILIGENT_CLIENT_REQUEST_METHODS.TURN_START, {
+                threadId: activeThreadId,
+                message,
+                content: [{ type: "text" as const, text: message }],
+              })
+              .then((started) => {
+                if (!started.userMessageId) return;
+                dispatch({
+                  type: "bind_user_message_id",
+                  payload: { renderItemId: localItemId, messageId: started.userMessageId },
+                });
+              });
             return;
           }
           dispatch({ type: "show_info_toast", payload: `Unknown command: /${name}` });
@@ -716,17 +768,18 @@ export function useAppActions({
       const lastUser = [...snapshot.items].reverse().find((item) => item.kind === "user");
       if (!lastUser || lastUser.kind !== "user" || !lastUser.text.trim()) return;
       try {
-        await rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.TURN_START, {
+        await retryLastUserMessage({
+          rpc,
           threadId,
-          message: lastUser.text,
-          content: [{ type: "text", text: lastUser.text }],
+          text: lastUser.text,
           model: currentModelRef.current,
+          dispatch,
         });
       } catch (error) {
         logger.error("turn.retry_failed", { message: "Failed to retry the last turn", error, threadId });
       }
     })();
-  }, [currentModelRef, rpcRef, stateRef]);
+  }, [currentModelRef, dispatch, rpcRef, stateRef]);
 
   const handleModeChange = useCallback(
     (mode: Mode) => {

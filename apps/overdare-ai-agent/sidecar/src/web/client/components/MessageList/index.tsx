@@ -31,6 +31,7 @@ function MessageListImpl({
   approvalPrompt,
   questionPrompt,
   onLoadChildThread,
+  onReportMessage,
 }: MessageListProps) {
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const pendingAutoscrollFrameRef = useRef<number | null>(null);
@@ -67,6 +68,13 @@ function MessageListImpl({
     [rows.length],
   );
   const shouldUseVirtuoso = typeof window !== "undefined";
+  const lastCompletedResponseId = useMemo(() => {
+    for (let index = items.length - 1; index >= 0; index -= 1) {
+      const item = items[index];
+      if (item?.kind === "assistant" && !item.isStreaming && item.messageId) return item.id;
+    }
+    return undefined;
+  }, [items]);
 
   const setScrollButtonVisible = useCallback((visible: boolean) => {
     if (showScrollBtnRef.current === visible) return;
@@ -133,9 +141,15 @@ function MessageListImpl({
 
   const renderRow = useCallback(
     (_index: number, row: VirtualMessageRow) => (
-      <MessageListRowContent row={row} threadCwd={threadCwd} onLoadChildThread={onLoadChildThread} />
+      <MessageListRowContent
+        row={row}
+        threadCwd={threadCwd}
+        onLoadChildThread={onLoadChildThread}
+        onReportMessage={onReportMessage}
+        lastCompletedResponseId={lastCompletedResponseId}
+      />
     ),
-    [onLoadChildThread, threadCwd],
+    [lastCompletedResponseId, onLoadChildThread, onReportMessage, threadCwd],
   );
 
   const measureItemSize = useCallback<SizeFunction>((element, field) => {
@@ -241,10 +255,16 @@ function MessageListImpl({
         />
       ) : (
         <div className="h-full overflow-y-auto bg-bg-sunken px-7 py-6">
-          <div className="space-y-2">
+          <div className="space-y-5">
             {rows.map((row) => (
               <div key={row.key} data-message-list-row={row.key}>
-                <MessageListRowContent row={row} threadCwd={threadCwd} onLoadChildThread={onLoadChildThread} />
+                <MessageListRowContent
+                  row={row}
+                  threadCwd={threadCwd}
+                  onLoadChildThread={onLoadChildThread}
+                  onReportMessage={onReportMessage}
+                  lastCompletedResponseId={lastCompletedResponseId}
+                />
               </div>
             ))}
           </div>

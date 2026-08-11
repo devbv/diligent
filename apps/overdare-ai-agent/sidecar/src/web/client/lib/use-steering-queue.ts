@@ -9,6 +9,7 @@ import { type AgentContextItem, prependContextToMessage } from "./agent-native-b
 import type { PendingImage } from "./app-state";
 import type { WebRpcClient } from "./rpc-client";
 import type { ThreadState } from "./thread-store";
+import { createUuidV4 } from "./uuid";
 
 const logger = createLogger({ scope: "web.client.steering" });
 
@@ -17,7 +18,8 @@ type SteeringAction =
   | { type: "cancel_pending_steer"; payload: { steerId: string } }
   | { type: "update_pending_steer"; payload: { steerId: string; content: string } }
   | { type: "consume_first_pending_steer" }
-  | { type: "local_user"; payload: { text: string; images: PendingImage[] } }
+  | { type: "local_user"; payload: { id: string; text: string; images: PendingImage[] } }
+  | { type: "bind_user_message_id"; payload: { renderItemId: string; messageId: string } }
   | { type: "optimistic_thread"; payload: { threadId: string; message: string } };
 
 export async function executeSteer({
@@ -125,17 +127,24 @@ export async function executeRestartFromAbort({
   model: ModelRef | undefined;
   dispatch: (action: SteeringAction) => void;
 }): Promise<void> {
+  const localItemId = `local-user-${createUuidV4()}`;
   dispatch({ type: "consume_first_pending_steer" });
-  dispatch({ type: "local_user", payload: { text: restartMessage, images: [] } });
+  dispatch({ type: "local_user", payload: { id: localItemId, text: restartMessage, images: [] } });
   if (!hadItemsBeforeRestart) {
     dispatch({ type: "optimistic_thread", payload: { threadId, message: restartMessage } });
   }
-  await rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.TURN_START, {
+  const started = await rpc.request(DILIGENT_CLIENT_REQUEST_METHODS.TURN_START, {
     threadId,
     message: restartMessage,
     content: [{ type: "text" as const, text: restartMessage }],
     model,
   });
+  if (started.userMessageId) {
+    dispatch({
+      type: "bind_user_message_id",
+      payload: { renderItemId: localItemId, messageId: started.userMessageId },
+    });
+  }
 }
 
 export function useSteeringQueue({
@@ -270,17 +279,5 @@ export function useSteeringQueue({
 }
 
 function createClientSteerId(): string {
-  return `steer-${globalThis.crypto?.randomUUID?.() ?? createFallbackRandomUuid()}`;
-}
-
-function createFallbackRandomUuid(): string {
-  if (globalThis.crypto?.getRandomValues) {
-    const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
-    bytes[6] = (bytes[6] & 0x0f) | 0x40;
-    bytes[8] = (bytes[8] & 0x3f) | 0x80;
-    const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0"));
-    return `${hex.slice(0, 4).join("")}-${hex.slice(4, 6).join("")}-${hex.slice(6, 8).join("")}-${hex.slice(8, 10).join("")}-${hex.slice(10, 16).join("")}`;
-  }
-
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  return `steer-${createUuidV4()}`;
 }

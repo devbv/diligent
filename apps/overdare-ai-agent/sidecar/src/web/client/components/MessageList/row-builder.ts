@@ -24,7 +24,8 @@ function shouldRenderAssistantRow(item: Extract<RenderItem, { kind: "assistant" 
   return (
     (!suppressThinking && item.thinking.length > 0) ||
     item.text.length > 0 ||
-    item.contentBlocks.some(isRenderableAssistantContentBlock)
+    item.contentBlocks.some(isRenderableAssistantContentBlock) ||
+    Boolean(item.messageId && item.isStreaming === false)
   );
 }
 

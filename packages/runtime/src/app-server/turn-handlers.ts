@@ -9,6 +9,7 @@ import {
   type TurnStartParams,
   type UserMessage,
 } from "../protocol/index";
+import { generateEntryId } from "../session/types";
 import { resetTurnRuntimeState, type ThreadHandlersContext, type ThreadRuntime } from "./thread-handlers";
 
 const BUILTIN_COMMAND_NAMES = new Set([
@@ -208,7 +209,7 @@ export async function handleTurnStart(
   params: TurnStartParams,
   connectionId: string | undefined,
   turnInitiators: Map<string, string>,
-): Promise<{ accepted: true }> {
+): Promise<{ accepted: true; userMessageId?: string }> {
   const { runtime, turnId } = await initializeTurnRuntime(ctx, params, connectionId, turnInitiators);
 
   await ctx.emit({
@@ -226,7 +227,7 @@ export async function handleTurnStart(
   if (hookOutcome.blocked) return { accepted: true };
 
   const finalUserMessage = hookOutcome.userMessage;
-  const userItemId = `msg-${crypto.randomUUID().slice(0, 8)}`;
+  const userItemId = generateEntryId();
   await ctx.emit({
     method: DILIGENT_SERVER_NOTIFICATION_METHODS.AGENT_EVENT,
     params: {
@@ -243,9 +244,10 @@ export async function handleTurnStart(
 
   const runPromise = runtime.manager.run(finalUserMessage, {
     signal: runtime.abortController!.signal,
+    userMessageId: userItemId,
   });
   void ctx.consumeTurn(runtime, runPromise, turnId);
-  return { accepted: true };
+  return { accepted: true, userMessageId: userItemId };
 }
 
 export async function handleTurnInterrupt(

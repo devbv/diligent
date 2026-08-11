@@ -10,6 +10,7 @@ import {
   getModelChangeThreadId,
   normalizeUploadedImageAttachment,
   prepareNewThreadForFirstMessage,
+  retryLastUserMessage,
   runThreadCompaction,
   waitForDelayedIndicator,
 } from "../../../../src/web/client/lib/use-app-actions";
@@ -75,6 +76,36 @@ test("prependContextToMessage serializes mixed context items before typed text",
 test("getModelChangeThreadId scopes model changes to the active thread when present", () => {
   expect(getModelChangeThreadId("thread-1")).toBe("thread-1");
   expect(getModelChangeThreadId(null)).toBeUndefined();
+});
+
+test("retryLastUserMessage renders and binds the newly persisted retry request", async () => {
+  const request = mock(async () => ({ accepted: true as const, userMessageId: "persisted-retry-user" }));
+  const dispatch = mock(() => {});
+
+  await retryLastUserMessage({
+    rpc: { request } as never,
+    threadId: "thread-1",
+    text: "try this request again",
+    model: { provider: "openai", modelId: "gpt-5" },
+    dispatch,
+  });
+
+  expect(request).toHaveBeenCalledWith("turn/start", {
+    threadId: "thread-1",
+    message: "try this request again",
+    content: [{ type: "text", text: "try this request again" }],
+    model: { provider: "openai", modelId: "gpt-5" },
+  });
+  const localAction = dispatch.mock.calls[0]?.[0];
+  expect(localAction).toMatchObject({
+    type: "local_user",
+    payload: { text: "try this request again", images: [] },
+  });
+  expect(localAction.payload.id).toMatch(/^local-user-/);
+  expect(dispatch.mock.calls[1]?.[0]).toEqual({
+    type: "bind_user_message_id",
+    payload: { renderItemId: localAction.payload.id, messageId: "persisted-retry-user" },
+  });
 });
 
 test("applyModeChange updates draft mode locally without a server thread", async () => {
@@ -271,6 +302,7 @@ test("prepareNewThreadForFirstMessage subscribes and hydrates before starting op
       activateServerThread,
       applySessionModel,
       dispatch,
+      localItemId: "local-user-first",
       localText: "hello",
       contextItems: [],
       message: "hello",
@@ -282,7 +314,7 @@ test("prepareNewThreadForFirstMessage subscribes and hydrates before starting op
     expect(activateServerThread).toHaveBeenCalledWith("thread-1");
     expect(dispatch.mock.calls).toEqual([
       [{ type: "hydrate", payload: { threadId: "thread-1", mode: "default", history } }],
-      [{ type: "local_user", payload: { text: "hello", images, contextItems: [] } }],
+      [{ type: "local_user", payload: { id: "local-user-first", text: "hello", images, contextItems: [] } }],
     ]);
     expect(applySessionModel).toHaveBeenCalledWith("gpt-5");
   } finally {
@@ -324,6 +356,7 @@ test("prepareNewThreadForFirstMessage passes medium effort through thread start 
     activateServerThread,
     applySessionModel,
     dispatch,
+    localItemId: "local-user-second",
     message: "hello",
     localText: "hello",
     contextItems: [],

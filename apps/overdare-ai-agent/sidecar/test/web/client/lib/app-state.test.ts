@@ -187,6 +187,26 @@ test("optimistic_thread updates existing thread missing first message", () => {
   expect(next.threadList[0]?.firstUserMessage).toBe("seeded now");
 });
 
+test("bind_user_message_id updates only the matching optimistic request", () => {
+  const withFailedRequest = appReducer(initialThreadState, {
+    type: "local_user",
+    payload: { id: "local-failed", text: "blocked", images: [] },
+  });
+  const withSuccessfulRequest = appReducer(withFailedRequest, {
+    type: "local_user",
+    payload: { id: "local-success", text: "accepted", images: [] },
+  });
+
+  const next = appReducer(withSuccessfulRequest, {
+    type: "bind_user_message_id",
+    payload: { renderItemId: "local-success", messageId: "persistent-success" },
+  });
+
+  const users = next.items.filter((item) => item.kind === "user");
+  expect(users[0]?.kind === "user" ? users[0].messageId : undefined).toBeUndefined();
+  expect(users[1]?.kind === "user" ? users[1].messageId : undefined).toBe("persistent-success");
+});
+
 test("reset_draft clears active thread and items but preserves thread list", () => {
   const seeded = {
     ...initialThreadState,

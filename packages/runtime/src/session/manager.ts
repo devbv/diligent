@@ -228,7 +228,7 @@ export class SessionManager {
    * Persists user message and agent response to session.
    * Compaction is handled by the Agent internally.
    */
-  async run(userMessage: Message, opts?: { signal?: AbortSignal }): Promise<void> {
+  async run(userMessage: Message, opts?: { signal?: AbortSignal; userMessageId?: string }): Promise<void> {
     await this.orchestrator.run(userMessage, opts);
   }
 

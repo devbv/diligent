@@ -11,19 +11,30 @@ export interface TurnStagerSnapshot {
   leafId: string | null;
 }
 
+export interface TurnStagerEventResult {
+  messageId?: string;
+  messageIds?: string[];
+}
+
 export class TurnStager {
   private pendingEntries: SessionEntry[] = [];
   private currentLeafId: string | null;
+  private readonly assistantEntryIds = new Map<string, string>();
 
-  constructor(baseLeafId: string | null, userMessage: Message) {
+  constructor(baseLeafId: string | null, userMessage: Message, userMessageId = generateEntryId()) {
     this.currentLeafId = baseLeafId;
-    this.stageMessage(userMessage);
+    this.stageMessage(userMessage, undefined, userMessageId);
   }
 
-  handleEvent(event: CoreAgentEvent): void {
+  handleEvent(event: CoreAgentEvent): TurnStagerEventResult {
+    if (event.type === "message_start" || event.type === "message_delta" || event.type === "message_discarded") {
+      return { messageId: this.getAssistantEntryId(event.itemId) };
+    }
+
     if (event.type === "message_end") {
-      this.stageMessage(event.message);
-      return;
+      const messageId = this.getAssistantEntryId(event.itemId);
+      this.stageMessage(event.message, undefined, messageId);
+      return { messageId };
     }
 
     if (event.type === "tool_end") {
@@ -38,14 +49,15 @@ export class TurnStager {
         render: event.render,
         metadata: event.metadata,
       });
-      return;
+      return {};
     }
 
     if (event.type === "steering_injected") {
-      for (const msg of event.messages) {
-        this.stageMessage(msg);
+      const messageIds = event.messages.map(() => generateEntryId());
+      for (const [index, msg] of event.messages.entries()) {
+        this.stageMessage(msg, undefined, messageIds[index]);
       }
-      return;
+      return { messageIds };
     }
 
     if (event.type === "context_injected") {
@@ -56,7 +68,7 @@ export class TurnStager {
           presentation: readContextPresentation(injection.metadata),
         });
       }
-      return;
+      return {};
     }
 
     if (event.type === "compaction_end") {
@@ -68,6 +80,7 @@ export class TurnStager {
         tokensAfter: event.tokensAfter,
       });
     }
+    return {};
   }
 
   getSnapshot(): TurnStagerSnapshot {
@@ -91,15 +104,24 @@ export class TurnStager {
       source: string;
       presentation?: import("@diligent/protocol").ContextPresentation;
     },
+    entryId = generateEntryId(),
   ): void {
     this.stageEntry({
       type: "message",
-      id: generateEntryId(),
+      id: entryId,
       parentId: this.currentLeafId,
       timestamp: new Date().toISOString(),
       message,
       ...metadata,
     });
+  }
+
+  private getAssistantEntryId(itemId: string): string {
+    const existing = this.assistantEntryIds.get(itemId);
+    if (existing) return existing;
+    const entryId = generateEntryId();
+    this.assistantEntryIds.set(itemId, entryId);
+    return entryId;
   }
 
   private stageCompaction(event: {
