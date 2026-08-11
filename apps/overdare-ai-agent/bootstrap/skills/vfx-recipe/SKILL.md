@@ -19,7 +19,7 @@ A **recipe** is the placed `VFXRecipe` instance itself — created and edited th
 
 For a new effect request ("make a ~ effect"), escalate through the tiers — stop at the first that fits:
 
-1. **Preset** — search `source: "vfx"` (no `vfxDocTypes` filter — presets rank naturally); a `vfx_preset` hit that matches the request as-is wins. Create `class: "VFXPreset"` with its `presetName`. If the user wants any customization a preset can't express (specific colors, composition, timing), skip this tier.
+1. **Preset** — search `source: "vfx"` (no `vfxDocTypes` filter — presets rank naturally); a `vfx_preset` hit that matches the request as-is wins. Create `class: "VFXPreset"` with its `presetName` (the preset resource name, e.g. `VFX_UGC_Muzzle_01`). If the user wants any customization a preset can't express (specific colors, composition, timing), skip this tier.
 2. **Template** — search with `vfxDocTypes: ["recipe_template"]`; a hit close to the request wins. Copy its Original Payload JSON into `class: "VFXRecipe"` properties; adapt as needed (see below).
 3. **Direct composition** — nothing fits, or the composition is genuinely novel: search with `vfxDocTypes: ["vfx_source"]` and build the recipe from the source entries.
 

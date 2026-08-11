@@ -666,7 +666,11 @@ const rawInstancePropertiesUnion = z.union([
     .describe("Use when class=Tool. An equippable item a player can pick up and activate."),
   z
     .object({
-      PresetName: z.string(),
+      PresetName: z
+        .string()
+        .describe(
+          'Preset resource name, e.g. "VFX_UGC_Muzzle_01" — discover via overdaresearch source=vfx (presetName field of vfx_preset results)',
+        ),
       Color: z.array(z.object({ Time: z.number(), R: z.number(), G: z.number(), B: z.number() })),
       Enabled: z.boolean().default(true),
       InfiniteLoop: z.boolean().default(true),

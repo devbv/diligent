@@ -49,7 +49,7 @@ interface VfxResult {
   docType: "vfx_preset" | "recipe_template" | "vfx_source";
   docId: string;
   keywords: string[];
-  // vfx_preset only
+  // vfx_preset only: preset resource name (e.g. "VFX_UGC_Muzzle_01"), feeds VFXPreset.PresetName
   presetName?: string;
   // vfx_preset (primary category) and recipe_template
   category?: string;
