@@ -19,14 +19,16 @@ A **recipe** is the placed `VFXRecipe` instance itself — created and edited th
 
 For a new effect request ("make a ~ effect"), escalate through the tiers — stop at the first that fits:
 
-1. **Preset** — search `source: "vfx"`; a `vfx_preset` hit that matches the request as-is wins. Create `class: "VFXPreset"` with its `presetName`. If the user wants any customization a preset can't express (specific colors, composition, timing), skip this tier.
-2. **Template** — a `recipe_combo` hit close to the request. Copy its Original Payload JSON into `class: "VFXRecipe"` properties; adapt as needed (see below).
-3. **Direct composition** — nothing fits, or the composition is genuinely novel: build the recipe from `vfx_source` entries.
+1. **Preset** — search `source: "vfx"` (no `vfxDocTypes` filter — presets rank naturally); a `vfx_preset` hit that matches the request as-is wins. Create `class: "VFXPreset"` with its `presetName`. If the user wants any customization a preset can't express (specific colors, composition, timing), skip this tier.
+2. **Template** — search with `vfxDocTypes: ["recipe_combo"]`; a hit close to the request wins. Copy its Original Payload JSON into `class: "VFXRecipe"` properties; adapt as needed (see below).
+3. **Direct composition** — nothing fits, or the composition is genuinely novel: search with `vfxDocTypes: ["vfx_source"]` and build the recipe from the source entries.
+
+When escalating past tier 1, always set `vfxDocTypes` — the preset corpus is much larger and dominates unfiltered results.
 
 Shortcuts that skip the escalation:
 
 - **User explicitly wants custom** ("don't use a preset/template", "compose it myself") → go straight to direct composition.
-- **A recipe or template-based VFXRecipe already exists in the level** and the request is to modify it → source-level edit flow below; search only what you need (e.g. one replacement `vfx_source`).
+- **A recipe or template-based VFXRecipe already exists in the level** and the request is to modify it → source-level edit flow below; search only what you need (e.g. one replacement source via `vfxDocTypes: ["vfx_source"]`).
 
 ## Flow: template-based recipe
 

@@ -89,6 +89,24 @@ describe("overdaresearch vfx source", () => {
     expect(result.metadata?.resultCount).toBe(3);
   });
 
+  test("passes vfxDocTypes through to the RAG request body only for source=vfx", async () => {
+    let body: Record<string, unknown> | undefined;
+    globalThis.fetch = (async (_url: string, init: { body: string }) => {
+      body = JSON.parse(init.body) as Record<string, unknown>;
+      return new Response(JSON.stringify({ results: [sourceResult], totalCount: 1 }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }) as unknown as typeof fetch;
+    const tool = await searchTool({ approve: async () => "once" });
+
+    await tool.execute({ query: "fire", source: "vfx", topK: 3, selectable: true, vfxDocTypes: ["vfx_source"] }, ctx);
+    expect(body?.vfxDocTypes).toEqual(["vfx_source"]);
+
+    await tool.execute({ query: "fire", source: "docs", topK: 4, selectable: true, vfxDocTypes: ["vfx_source"] }, ctx);
+    expect(body?.vfxDocTypes).toBeUndefined();
+  });
+
   test("returns not-found output when no vfx results match", async () => {
     mockRagFetch([]);
     const tool = await searchTool({ approve: async () => "once" });

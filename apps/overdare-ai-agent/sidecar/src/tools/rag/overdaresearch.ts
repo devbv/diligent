@@ -147,7 +147,7 @@ When to use each source:
   - "code": Working Lua implementation examples, proven patterns, real script snippets
   - "assets": Asset catalog search returning asset metadata such as title, keywords, assetId, assetType, categoryId, and subCategoryId
   - "debug": Debugging-case knowledge base (symptom → cause → solution). Each result includes symptom, causeClassification, solution, and caseId. Use when diagnosing a bug or unexpected behavior — describe the symptom in natural language.
-  - "vfx": VFX knowledge base for effect requests, in three units: presets (docType=vfx_preset, ready-made named effects with presetName for VFXPreset creation), recipe templates (docType=recipe_combo, full doc including an Original Payload JSON to copy and adapt), and VFX source catalog entries (docType=vfx_source, with layer/spawnType/element/resourceName for composing or editing VFXRecipe layers). Query by desired element, mood, or pattern (e.g. "fire explosion burst"). Results carry the full doc text — no second fetch needed.
+  - "vfx": VFX knowledge base for effect requests, in three units: presets (docType=vfx_preset, ready-made named effects with presetName for VFXPreset creation), recipe templates (docType=recipe_combo, full doc including an Original Payload JSON to copy and adapt), and VFX source catalog entries (docType=vfx_source, with layer/spawnType/element/resourceName for composing or editing VFXRecipe layers). Query by desired element, mood, or pattern (e.g. "fire explosion burst"). Narrow with vfxDocTypes when a specific unit is needed — presets dominate unfiltered results. Results carry the full doc text — no second fetch needed.
   - When writing or modifying code, search BOTH docs and code in parallel (two calls: one for docs, one for code) to get API shape + implementation patterns simultaneously
 
 Query tips:
@@ -171,6 +171,12 @@ export const parameters = z.object({
     .default(true)
     .describe(
       "Assets only (default true). When 2+ assets match, the user is asked to pick one and the chosen assetId is returned; exactly 1 match auto-selects; 0 matches returns not-found. Set false ONLY for internal/informational asset lookups where you must read the results yourself (e.g. choosing UI element assets while generating an interface); never set false to pick a placement asset on the user's behalf.",
+    ),
+  vfxDocTypes: z
+    .array(z.enum(["vfx_preset", "recipe_combo", "vfx_source"]))
+    .optional()
+    .describe(
+      'Only used when source=vfx. Restrict results to these doc types (OR); omit to search all three. Use ["recipe_combo"] or ["vfx_source"] when escalating past presets — the preset corpus is much larger and dominates unfiltered results.',
     ),
   debugCaseFilter: z
     .object({
@@ -278,6 +284,7 @@ export async function execute(args: Params, _ctx: ToolContext, host?: RuntimeToo
         topK: args.topK ?? 4,
         threshold: 0.5,
         ...(args.source === "debug" && args.debugCaseFilter ? { debugCaseFilter: args.debugCaseFilter } : {}),
+        ...(args.source === "vfx" && args.vfxDocTypes?.length ? { vfxDocTypes: args.vfxDocTypes } : {}),
       }),
       signal: controller.signal,
     });
