@@ -10,7 +10,7 @@ Owns all VFX effect work in OVERDARE Studio. VFX comes in three searchable units
 | Unit | docType | What it is | How it's used |
 |---|---|---|---|
 | **Preset** | `vfx_preset` | Ready-made named effect | Create a `VFXPreset` instance with its `presetName` — used as-is, no internal editing |
-| **Template (combo)** | `recipe_combo` | A recipe pre-composed from several sources | Copy its Original Payload JSON as a `VFXRecipe` — verbatim, or with sources swapped / structure modified |
+| **Template (combo)** | `recipe_template` | A recipe pre-composed from several sources | Copy its Original Payload JSON as a `VFXRecipe` — verbatim, or with sources swapped / structure modified |
 | **Source** | `vfx_source` | One raw ingredient asset for a recipe layer (Base/Detail/Extra) | Placed as items inside a `VFXRecipe`'s layer arrays |
 
 A **recipe** is the placed `VFXRecipe` instance itself — created and edited through `studiorpc_instance_upsert` like any other Studio instance (the sidecar writes the .ovdrjm). Runtime scripts tune a placed recipe via `SetParam` / `SetParamAt` using each source item's `Name`.
@@ -20,7 +20,7 @@ A **recipe** is the placed `VFXRecipe` instance itself — created and edited th
 For a new effect request ("make a ~ effect"), escalate through the tiers — stop at the first that fits:
 
 1. **Preset** — search `source: "vfx"` (no `vfxDocTypes` filter — presets rank naturally); a `vfx_preset` hit that matches the request as-is wins. Create `class: "VFXPreset"` with its `presetName`. If the user wants any customization a preset can't express (specific colors, composition, timing), skip this tier.
-2. **Template** — search with `vfxDocTypes: ["recipe_combo"]`; a hit close to the request wins. Copy its Original Payload JSON into `class: "VFXRecipe"` properties; adapt as needed (see below).
+2. **Template** — search with `vfxDocTypes: ["recipe_template"]`; a hit close to the request wins. Copy its Original Payload JSON into `class: "VFXRecipe"` properties; adapt as needed (see below).
 3. **Direct composition** — nothing fits, or the composition is genuinely novel: search with `vfxDocTypes: ["vfx_source"]` and build the recipe from the source entries.
 
 When escalating past tier 1, always set `vfxDocTypes` — the preset corpus is much larger and dominates unfiltered results.

@@ -39,7 +39,7 @@ const comboResult = {
   text: "# COMBO_01 · Green Acid Liquid + Smoke Composite Burst\n…Original Payload JSON…",
   score: 0.91,
   title: "Green Acid Liquid + Smoke Composite Burst (combo_01)",
-  docType: "recipe_combo",
+  docType: "recipe_template",
   docId: "combo_01_en",
   keywords: ["liquid", "smoke", "burst"],
   category: "impact_burst",
@@ -81,7 +81,7 @@ describe("overdaresearch vfx source", () => {
     expect(parsed.totalCount).toBe(3);
     expect(parsed.results[0].docType).toBe("vfx_preset");
     expect(parsed.results[0].presetName).toBe("Fire");
-    expect(parsed.results[1].docType).toBe("recipe_combo");
+    expect(parsed.results[1].docType).toBe("recipe_template");
     expect(parsed.results[1].sources).toEqual(["LiquidFlash_A", "SmokeBurst_A"]);
     expect(parsed.results[2].docType).toBe("vfx_source");
     expect(parsed.results[2].resourceName).toBe("FireRise_A");
