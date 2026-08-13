@@ -1,6 +1,5 @@
 // @summary Moves instances to a new parent in the level file.
 
-import { resolveApiVersion } from "../config";
 import * as instanceMove from "../methods/instance.move";
 import { buildInstanceMoveRender } from "../render";
 import { applyLevelChanges } from "../rpc";
@@ -10,7 +9,6 @@ import { normalizeWorkspaceMobility } from "./instance-document-operations";
 import { moveInstancesInDocument, validateInstanceMoves } from "./instance-move-operations";
 import { resultFromInstanceToolStatusError } from "./instance-status";
 import { isRecord, type OvdrjmNode, readAndWriteOvdrjm } from "./ovdrjm-utils";
-import { moveInstancesViaRpc } from "./v2/instance-move";
 
 async function executeInstanceMove(
   args: Record<string, unknown>,
@@ -36,7 +34,6 @@ async function executeInstanceMove(
 
   const release = await writeLock.acquire();
   try {
-    if (resolveApiVersion() === "v2") return await moveInstancesViaRpc(parsedArgs);
     return await executeInstanceMoveInner(parsedArgs, cwd);
   } finally {
     release();

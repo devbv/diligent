@@ -1,6 +1,6 @@
 // @summary Tests OVERDARE Studio bundled Studio RPC tool provider assembly.
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -87,18 +87,7 @@ function parseOutputStatus(output: string): Record<string, unknown> {
   return JSON.parse(statusJson!) as Record<string, unknown>;
 }
 
-// This file covers the v1 file-backend path. v2 is the default, so the version
-// has to be named here rather than left unset — an unset value now means v2.
-let previousApiVersion: string | undefined;
-
-beforeEach(() => {
-  previousApiVersion = process.env.STUDIO_API_VERSION;
-  process.env.STUDIO_API_VERSION = "v1";
-});
-
 afterEach(() => {
-  if (previousApiVersion === undefined) delete process.env.STUDIO_API_VERSION;
-  else process.env.STUDIO_API_VERSION = previousApiVersion;
   for (const dir of createdDirs.splice(0)) {
     rmSync(dir, { recursive: true, force: true });
   }

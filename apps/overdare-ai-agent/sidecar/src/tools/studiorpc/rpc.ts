@@ -17,24 +17,6 @@ interface JsonRpcResponse {
   error?: { code: number; message: string; data?: unknown };
 }
 
-/**
- * Carries the JSON-RPC error code alongside the message. Callers that need to tell
- * a domain failure from a transport one — "instance not found" is recoverable,
- * a closed socket is not — cannot get that from the message text.
- */
-export class StudioRpcError extends Error {
-  readonly code: number;
-
-  constructor(code: number, message: string) {
-    super(message);
-    this.name = "StudioRpcError";
-    this.code = code;
-  }
-}
-
-/** Studio's code for a GUID that names no instance. */
-export const RPC_INSTANCE_NOT_FOUND = -32004;
-
 let nextId = 1;
 
 /**
@@ -131,7 +113,7 @@ export async function call(
             if (response.error.message?.toLowerCase().includes("guid")) {
               errorMsg += `\n\nTip: Use studiorpc_level_browse first to get valid GUIDs.`;
             }
-            reject(new StudioRpcError(response.error.code, errorMsg));
+            reject(new Error(errorMsg));
           } else {
             resolve(response.result);
           }

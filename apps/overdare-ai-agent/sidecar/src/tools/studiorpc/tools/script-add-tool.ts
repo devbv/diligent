@@ -1,6 +1,5 @@
 // @summary Adds a script instance to the .ovdrjm level file.
 
-import { resolveApiVersion } from "../config";
 import * as scriptAdd from "../methods/script.add";
 import { buildScriptAddRender } from "../render";
 import { applyLevelChanges } from "../rpc";
@@ -14,7 +13,6 @@ import {
   type OvdrjmNode,
   readAndWriteOvdrjm,
 } from "./ovdrjm-utils";
-import { addScriptViaRpc } from "./v2/script-add";
 
 function toToolName(method: string): string {
   return `studiorpc_${method.replace(/\./g, "_")}`;
@@ -57,7 +55,6 @@ async function executeScriptAdd(
 
   const release = await writeLock.acquire();
   try {
-    if (resolveApiVersion() === "v2") return await addScriptViaRpc(parsed);
     let addedGuid = "";
     let tabCount = 0;
     let eolCount = 0;

@@ -1,11 +1,9 @@
 // @summary Reads a script's Source property from .ovdrjm with line numbers.
 
-import { resolveApiVersion } from "../config";
 import * as scriptRead from "../methods/script.read";
 import { buildScriptReadRender } from "../render";
 import type { Tool, ToolResult } from "../types";
 import { findNodeByActorGuid, readOvdrjmRoot } from "./ovdrjm-utils";
-import { readScriptViaRpc } from "./v2/script-read";
 
 const SCRIPT_CLASSES = new Set(["Script", "LocalScript", "ModuleScript"]);
 const DEFAULT_LIMIT = 2000;
@@ -21,7 +19,6 @@ function formatLineNumber(lineNum: number, maxLineNum: number): string {
 
 async function executeScriptRead(args: Record<string, unknown>, cwd: string): Promise<ToolResult> {
   const parsed = scriptRead.params.parse(args);
-  if (resolveApiVersion() === "v2") return await readScriptViaRpc(parsed);
   const { targetGuid, offset, limit } = parsed;
 
   // --- Read .ovdrjm ---
