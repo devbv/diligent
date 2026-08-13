@@ -1,5 +1,6 @@
 // @summary Applies batched instance deletions to the level file.
 
+import { resolveApiVersion } from "../config";
 import * as instanceDelete from "../methods/instance.delete";
 import { serviceClassEnum } from "../methods/instance.params";
 import { buildInstanceDeleteRender } from "../render";
@@ -14,6 +15,7 @@ import {
   readAndWriteOvdrjm,
   removeNodeByActorGuid,
 } from "./ovdrjm-utils";
+import { deleteInstancesViaRpc } from "./v2/instance-delete";
 
 const serviceClasses = new Set<string>(serviceClassEnum.options);
 
@@ -41,6 +43,7 @@ async function executeInstanceDelete(
 
   const release = await writeLock.acquire();
   try {
+    if (resolveApiVersion() === "v2") return await deleteInstancesViaRpc(parsedArgs);
     return await executeInstanceDeleteInner(parsedArgs, cwd);
   } finally {
     release();
