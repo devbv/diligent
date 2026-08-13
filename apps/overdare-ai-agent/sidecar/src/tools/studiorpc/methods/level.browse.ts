@@ -27,13 +27,35 @@ export function normalizeArgs(args: Record<string, unknown>): Record<string, unk
   return rest;
 }
 
-type BrowseNode = { guid: string; class: string; children?: BrowseNode[] };
+type BrowseNode = Record<string, unknown>;
+
+/**
+ * Studio answers with `ActorGuid`/`InstanceType`/`LuaChildren`; older builds used
+ * `guid`/`class`/`children`. Both are read, and the key a node arrived with is
+ * the key it is rebuilt with, so the shape the caller sees is never rewritten.
+ */
+function nodeGuid(node: BrowseNode): string | undefined {
+  if (typeof node.ActorGuid === "string") return node.ActorGuid;
+  return typeof node.guid === "string" ? node.guid : undefined;
+}
+
+function nodeClass(node: BrowseNode): string | undefined {
+  if (typeof node.InstanceType === "string") return node.InstanceType;
+  return typeof node.class === "string" ? node.class : undefined;
+}
+
+function nodeChildren(node: BrowseNode): { key: string; list: BrowseNode[] } | undefined {
+  if (Array.isArray(node.LuaChildren)) return { key: "LuaChildren", list: node.LuaChildren as BrowseNode[] };
+  if (Array.isArray(node.children)) return { key: "children", list: node.children as BrowseNode[] };
+  return undefined;
+}
 
 function findNode(nodes: BrowseNode[], guid: string): BrowseNode | undefined {
   for (const node of nodes) {
-    if (node.guid === guid) return node;
-    if (node.children) {
-      const found = findNode(node.children, guid);
+    if (nodeGuid(node) === guid) return node;
+    const children = nodeChildren(node);
+    if (children) {
+      const found = findNode(children.list, guid);
       if (found) return found;
     }
   }
@@ -43,9 +65,10 @@ function findNode(nodes: BrowseNode[], guid: string): BrowseNode | undefined {
 function filterByClass(nodes: BrowseNode[], classType: string): BrowseNode[] {
   const result: BrowseNode[] = [];
   for (const node of nodes) {
-    const children = node.children ? filterByClass(node.children, classType) : [];
-    if (node.class === classType || children.length > 0) {
-      result.push({ ...node, children });
+    const children = nodeChildren(node);
+    const kept = children ? filterByClass(children.list, classType) : [];
+    if (nodeClass(node) === classType || kept.length > 0) {
+      result.push({ ...node, [children?.key ?? "children"]: kept });
     }
   }
   return result;
@@ -53,11 +76,13 @@ function filterByClass(nodes: BrowseNode[], classType: string): BrowseNode[] {
 
 function truncateDepth(nodes: BrowseNode[], maxDepth: number, depth = 1): BrowseNode[] {
   return nodes.map((node) => {
-    if (depth >= maxDepth || !node.children) {
-      const { children: _, ...rest } = node as BrowseNode & { children?: unknown };
-      return rest as BrowseNode;
+    const children = nodeChildren(node);
+    if (depth >= maxDepth || !children) {
+      if (!children) return node;
+      const { [children.key]: _dropped, ...rest } = node;
+      return rest;
     }
-    return { ...node, children: truncateDepth(node.children, maxDepth, depth + 1) };
+    return { ...node, [children.key]: truncateDepth(children.list, maxDepth, depth + 1) };
   });
 }
 

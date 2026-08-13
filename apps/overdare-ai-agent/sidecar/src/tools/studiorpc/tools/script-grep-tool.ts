@@ -1,9 +1,11 @@
 // @summary Searches for a regex pattern across script Source properties in .ovdrjm.
 
+import { resolveApiVersion } from "../config";
 import * as scriptGrep from "../methods/script.grep";
 import { buildScriptGrepRender } from "../render";
 import type { Tool, ToolResult } from "../types";
 import { findNodeByActorGuid, type OvdrjmNode, readOvdrjmRoot } from "./ovdrjm-utils";
+import { grepScriptsViaRpc } from "./v2/script-grep";
 
 const SCRIPT_CLASSES = new Set(["Script", "LocalScript", "ModuleScript"]);
 const MAX_MATCHES = 100;
@@ -87,6 +89,7 @@ function countScripts(node: OvdrjmNode): number {
 
 async function executeScriptGrep(args: Record<string, unknown>, cwd: string): Promise<ToolResult> {
   const parsed = scriptGrep.params.parse(args);
+  if (resolveApiVersion() === "v2") return await grepScriptsViaRpc(parsed);
   const { pattern, parentGuid, ignore_case } = parsed;
 
   let regex: RegExp;
@@ -156,3 +159,6 @@ export function createScriptGrepTool(cwd: string): Tool {
     },
   };
 }
+
+export { countScripts, grepSubtree, MAX_MATCHES };
+export type { MatchLine };
