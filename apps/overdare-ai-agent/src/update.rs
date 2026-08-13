@@ -1230,24 +1230,56 @@ fn extract_zip(zip_path: &Path, out_dir: &Path) -> Result<(), String> {
     fs::create_dir_all(out_dir).map_err(|e| format!("create extract dir: {e}"))?;
     #[cfg(windows)]
     {
-        let mut cmd = std::process::Command::new("powershell");
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        cmd.creation_flags(CREATE_NO_WINDOW);
-        let status = cmd
-            .args([
-                "-NoProfile",
-                "-Command",
-                &format!(
-                    "Expand-Archive -LiteralPath '{}' -DestinationPath '{}' -Force",
-                    zip_path.display().to_string().replace('\'', "''"),
-                    out_dir.display().to_string().replace('\'', "''")
-                ),
-            ])
-            .status()
-            .map_err(|e| format!("launch Expand-Archive: {e}"))?;
-        if !status.success() {
-            return Err(format!("Expand-Archive failed with status: {status}"));
+
+        // Expand-Archive is a cmdlet, so the program actually being launched is
+        // PowerShell itself — and a bare "powershell" is resolved through PATH,
+        // which is not ours to depend on. The launcher inherits its environment
+        // from whatever started it, so a parent that trims PATH leaves nothing
+        // named `powershell` to find, and a machine carrying only PowerShell 7
+        // never had that name to begin with (its binary is `pwsh`). Either way
+        // the spawn failed with a bare "program not found" that read as though
+        // Expand-Archive were missing.
+        //
+        // Try the fixed Windows PowerShell location first, since it does not
+        // depend on PATH at all, then fall back to the two PATH-relative names.
+        let system_root = std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".to_string());
+        let absolute = format!("{system_root}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
+        let candidates = [absolute.as_str(), "powershell", "pwsh"];
+
+        let script = format!(
+            "Expand-Archive -LiteralPath '{}' -DestinationPath '{}' -Force",
+            zip_path.display().to_string().replace('\'', "''"),
+            out_dir.display().to_string().replace('\'', "''")
+        );
+
+        let mut launched = false;
+        for program in candidates {
+            let mut cmd = std::process::Command::new(program);
+            cmd.creation_flags(CREATE_NO_WINDOW);
+            match cmd.args(["-NoProfile", "-Command", &script]).status() {
+                Ok(status) => {
+                    if !status.success() {
+                        // PowerShell ran and the extraction itself failed; a
+                        // different host would fail the same way.
+                        return Err(format!(
+                            "Expand-Archive failed with status: {status} (via {program})"
+                        ));
+                    }
+                    launched = true;
+                    break;
+                }
+                // Only a missing binary is worth trying the next candidate for.
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(e) => return Err(format!("launch {program}: {e}")),
+            }
+        }
+        if !launched {
+            return Err(format!(
+                "no PowerShell available to extract the bundle (tried {})",
+                candidates.join(", ")
+            ));
         }
     }
     #[cfg(not(windows))]
