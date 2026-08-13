@@ -463,8 +463,8 @@ describe("v2 validation", () => {
 });
 
 describe("v1 stays on the file path", () => {
-  test("instance_delete edits the .ovdrjm and applies the level when the version is unset", async () => {
-    delete process.env.STUDIO_API_VERSION;
+  test("instance_delete edits the .ovdrjm and applies the level when the version is v1", async () => {
+    process.env.STUDIO_API_VERSION = "v1";
     const cwd = makeStudioProject();
     const tools = await loadTools(cwd);
 
@@ -484,7 +484,7 @@ describe("v1 stays on the file path", () => {
     const v2Tools = await loadTools(cwd);
     const v2 = await v2Tools.get("studiorpc_script_read")!.execute({ targetGuid: SCRIPT_GUID }, toolContext());
 
-    delete process.env.STUDIO_API_VERSION;
+    process.env.STUDIO_API_VERSION = "v1";
     const v1Tools = await loadTools(cwd);
     const v1 = await v1Tools.get("studiorpc_script_read")!.execute({ targetGuid: SCRIPT_GUID }, toolContext());
 
@@ -499,7 +499,7 @@ describe("v1 stays on the file path", () => {
     const v2Tools = await loadTools(cwd);
     const v2 = await v2Tools.get("studiorpc_script_delete")!.execute({ targetGuid: SCRIPT_GUID }, toolContext());
 
-    delete process.env.STUDIO_API_VERSION;
+    process.env.STUDIO_API_VERSION = "v1";
     const v1Tools = await loadTools(cwd);
     const v1 = await v1Tools.get("studiorpc_script_delete")!.execute({ targetGuid: SCRIPT_GUID }, toolContext());
 

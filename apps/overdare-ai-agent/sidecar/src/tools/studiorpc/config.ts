@@ -79,26 +79,34 @@ export function resolveStudioPort(): number {
 
 /**
  * Resolve the Studio RPC API version.
- * Priority: STUDIO_API_VERSION env var > config file > "v1".
+ * Priority: STUDIO_API_VERSION env var > config file `apiVersion` > "v2".
  *
- * Only the exact string "v2" selects v2; anything else — including "V2" and an
- * absent value — is v1. The config file is re-read on every call rather than
- * going through `loadOverdareConfig`, whose process-lifetime cache would
- * otherwise make a version change require a restart.
+ * v2 is the default: the RPC path is what the agent uses unless something asks
+ * for the old file backend. Only the exact string "v1" selects v1 — anything
+ * else, including "V1", a missing key, and a config file that cannot be read,
+ * is v2. A config that names no `apiVersion` therefore keeps the default, so
+ * setting host/port does not silently opt out.
+ *
+ * The config file is re-read on every call rather than going through
+ * `loadOverdareConfig`, whose process-lifetime cache would otherwise make a
+ * version change require a restart.
  */
 export function resolveApiVersion(): StudioApiVersion {
   const envVersion = process.env.STUDIO_API_VERSION;
-  if (envVersion) return envVersion === "v2" ? "v2" : "v1";
+  if (envVersion) return envVersion === "v1" ? "v1" : "v2";
 
   for (const configPath of configCandidates()) {
     if (!existsSync(configPath)) continue;
     try {
       const raw = readFileSync(configPath, "utf-8");
       const config = JSON.parse(stripJsonComments(raw)) as OverdareConfig;
-      return config.apiVersion === "v2" ? "v2" : "v1";
+      if (config.apiVersion !== undefined) return config.apiVersion === "v1" ? "v1" : "v2";
     } catch {
-      return "v1";
+      // A config that cannot be read states nothing — it is not a request for v1.
+      return "v2";
     }
+    // The first config that exists decides; a later candidate must not override it.
+    break;
   }
-  return "v1";
+  return "v2";
 }

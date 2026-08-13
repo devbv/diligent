@@ -43,43 +43,51 @@ afterEach(() => {
 });
 
 describe("resolveApiVersion", () => {
-  test("falls back to v1 when nothing is configured", () => {
+  test("defaults to v2 when nothing is configured", () => {
     makeHome();
-    expect(resolveApiVersion()).toBe("v1");
+    expect(resolveApiVersion()).toBe("v2");
   });
 
-  test("selects v2 only for the exact string v2", () => {
+  test("selects v1 only for the exact string v1", () => {
     makeHome();
-    const rejected = ["v1", "V2", "v2 ", " v2", "2", "true", "V1", "latest", ""];
 
-    process.env.STUDIO_API_VERSION = "v2";
-    expect(resolveApiVersion()).toBe("v2");
+    process.env.STUDIO_API_VERSION = "v1";
+    expect(resolveApiVersion()).toBe("v1");
 
-    for (const value of rejected) {
+    // Anything that is not exactly "v1" leaves the default in place. An empty
+    // string is not a value at all, so it falls through to the config/default.
+    for (const value of ["v2", "V1", "v1 ", " v1", "1", "false", "V2", "legacy", ""]) {
       process.env.STUDIO_API_VERSION = value;
-      expect(resolveApiVersion()).toBe("v1");
+      expect(resolveApiVersion()).toBe("v2");
     }
   });
 
   test("reads apiVersion from the config file", () => {
     const home = makeHome();
-    writeConfig(home, { host: "1.2.3.4", apiVersion: "v2" });
-    expect(resolveApiVersion()).toBe("v2");
-
-    writeConfig(home, { apiVersion: "v1" });
+    writeConfig(home, { host: "1.2.3.4", apiVersion: "v1" });
     expect(resolveApiVersion()).toBe("v1");
+
+    writeConfig(home, { apiVersion: "v2" });
+    expect(resolveApiVersion()).toBe("v2");
   });
 
-  test("treats a non-string apiVersion as v1", () => {
+  test("keeps the default when the config names no apiVersion", () => {
+    const home = makeHome();
+    // Cross-Studio users all have host/port set; that must not opt them out.
+    writeConfig(home, { host: "1.2.3.4", port: 13377 });
+    expect(resolveApiVersion()).toBe("v2");
+  });
+
+  test("treats a non-string apiVersion as v2", () => {
     const home = makeHome();
     writeConfig(home, { apiVersion: { instance: "v2", script: "v1" } });
-    expect(resolveApiVersion()).toBe("v1");
+    expect(resolveApiVersion()).toBe("v2");
   });
 
-  test("treats an unparseable config file as v1", () => {
+  test("treats an unparseable config file as v2", () => {
     const home = makeHome();
     writeConfig(home, "{ not json");
-    expect(resolveApiVersion()).toBe("v1");
+    expect(resolveApiVersion()).toBe("v2");
   });
 
   test("lets the environment variable win over the config file", () => {
@@ -95,12 +103,12 @@ describe("resolveApiVersion", () => {
 
   test("bypasses the loadOverdareConfig cache so the file can change mid-process", () => {
     const home = makeHome();
-    writeConfig(home, { apiVersion: "v1" });
+    writeConfig(home, { apiVersion: "v2" });
     // Populate the module-level cache before the version is flipped on disk.
     loadOverdareConfig();
-    expect(resolveApiVersion()).toBe("v1");
-
-    writeConfig(home, { apiVersion: "v2" });
     expect(resolveApiVersion()).toBe("v2");
+
+    writeConfig(home, { apiVersion: "v1" });
+    expect(resolveApiVersion()).toBe("v1");
   });
 });
