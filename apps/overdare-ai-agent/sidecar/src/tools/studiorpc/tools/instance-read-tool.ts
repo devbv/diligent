@@ -49,7 +49,7 @@ function toToolName(method: string): string {
 }
 
 async function executeInstanceRead(args: Record<string, unknown>, _ctx: ToolContext, cwd: string): Promise<ToolResult> {
-  const parsed = instanceRead.params.parse(args);
+  const parsed = instanceRead.params.parse(instanceRead.normalizeArgs(args));
   const { root } = readOvdrjmRoot(cwd);
 
   const target = findNodeByActorGuid(root, parsed.guid);

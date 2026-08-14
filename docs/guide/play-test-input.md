@@ -111,6 +111,31 @@ batch's own wait time. `studiorpc_game_character_move_to` polls `game.character.
 reaches a terminal status (`reached`, `interrupted`, `timedOut`, `superseded`, `cancelled`, `failed`,
 `pieEnded`) and reports how long it waited; `wait: false` returns the `requestId` immediately instead.
 
+## Arriving is not touching
+
+`move_to` reports `arrived` by measuring where the character actually stopped, because Studio returns
+`reached` whenever path following succeeds — which a level with no navigation data does without the character
+having moved at all. `arrived` is judged against `arrivalTolerance`, 150 units unless the caller says
+otherwise, and the value used is echoed in the reply.
+
+The default suits travel and is far too loose for contact. A trigger volume is often 40 units across, so a
+move can be `arrived: true` and still nowhere near enough to touch anything, and an agent testing "does
+walking into this coin collect it" gets a pass from a call that proves nothing. Pass an `arrivalTolerance`
+about the size of the target when arrival is the thing under test.
+
+Even a real overlap is not proof a trigger fired. `game.character.read`'s `standingOn` is a probe straight
+down — `distance: 0` means resting on that surface, never that its `Touched` event ran. Only the game's own
+state answers that.
+
+## One name for one thing
+
+Every tool that reports a GUID calls it `instanceGuid`; `instance.read` takes it as `guid`. An agent that
+copied one into the other used to get a bare zod `invalid_type` naming a field it had never heard of, and had
+to work out that two similarly-named tools take different identifiers. Both ends are now tolerant:
+`instance.read` accepts `instanceGuid`, and `game.instance.read` accepts either `name` or `instanceGuid`.
+Instances a script creates at run time have no GUID at all, so those are findable only by name — which is why
+the live tool takes a name in the first place.
+
 ## Taking over: what interrupts an injected batch
 
 Studio cancels a running batch when it sees the user take over, which is a **press** — a key, a mouse button,

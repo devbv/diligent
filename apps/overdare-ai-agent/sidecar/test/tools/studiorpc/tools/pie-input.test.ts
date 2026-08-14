@@ -228,6 +228,51 @@ describe("play-test input tools", () => {
     expect(result.output).toContain('"distanceToTarget": 0');
   });
 
+  test("move_to judges arrival against the tolerance the caller asked for", async () => {
+    // Stopping 80 units away is arrival when travelling and a miss when the point
+    // was to walk into something 40 units across.
+    const stoppedShort = (call: { method: string }) => {
+      if (call.method === "game.pie.status") return runningStatus();
+      if (call.method === "game.character.moveTo") return { requestId: "req-11", status: "pendingStart" };
+      if (call.method === "game.character.read") {
+        return { character: { CFrame: { Position: { X: 920, Y: 0, Z: 5 } } } };
+      }
+      return { requestId: "req-11", status: "reached", clientId: "client-1" };
+    };
+
+    const lenient = await run(toolsFor(stoppedShort).byName.get("studiorpc_game_character_move_to"), {
+      position: { x: 1000, y: 0, z: 5 },
+    });
+    expect(lenient.output).toContain('"arrivalTolerance": 150');
+    expect(lenient.output).not.toContain("warning");
+
+    const strict = await run(toolsFor(stoppedShort).byName.get("studiorpc_game_character_move_to"), {
+      position: { x: 1000, y: 0, z: 5 },
+      arrivalTolerance: 40,
+    });
+    expect(strict.output).toContain('"arrivalTolerance": 40');
+    // Short of a tight tolerance is normal travel, not the level lacking navigation.
+    expect(strict.output).toContain("treat whatever you were testing at that spot as unproven");
+    expect(strict.output).not.toContain("no navigation data");
+  });
+
+  test("move_to still calls out a move that went nowhere", async () => {
+    const wentNowhere = (call: { method: string }) => {
+      if (call.method === "game.pie.status") return runningStatus();
+      if (call.method === "game.character.moveTo") return { requestId: "req-12", status: "pendingStart" };
+      if (call.method === "game.character.read") {
+        return { character: { CFrame: { Position: { X: 0, Y: 0, Z: 0 } } } };
+      }
+      return { requestId: "req-12", status: "reached", clientId: "client-1" };
+    };
+
+    const result = await run(toolsFor(wentNowhere).byName.get("studiorpc_game_character_move_to"), {
+      position: { x: 5000, y: 0, z: 0 },
+    });
+
+    expect(result.output).toContain("no navigation data");
+  });
+
   test("move_to returns immediately when wait is false", async () => {
     const { calls, byName } = toolsFor((call) =>
       call.method === "game.pie.status" ? runningStatus() : { requestId: "req-2", status: "pendingStart" },

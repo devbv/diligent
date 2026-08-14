@@ -48,7 +48,19 @@ const moveToParams = z.object({
     .object({ x: z.number(), y: z.number(), z: z.number() })
     .describe(
       "Destination in the same world coordinates as studiorpc_instance_read and " +
-        "studiorpc_game_character_read, so a position read from either can be passed straight in.",
+        "studiorpc_game_character_read, so a position read from either can be passed straight in. " +
+        "Aim at ground level: the character walks, so the height of an object's centre is somewhere it can " +
+        "never stand, and asking for it just times out. Take the object's x and z and the character's own " +
+        "current y.",
+    ),
+  arrivalTolerance: z
+    .number()
+    .min(1)
+    .optional()
+    .describe(
+      `How close, in world units, counts as arrived. Defaults to ${ARRIVAL_TOLERANCE}, which suits ` +
+        "travelling to a place. Set it to the size of the thing you are testing when arriving is the point " +
+        "— walking into a trigger volume 40 units across is not proven by stopping 150 units away.",
     ),
   wait: z.boolean().optional().describe("Poll game.character.moveStatus until the move ends. Defaults to true."),
   timeoutMs: z
@@ -240,9 +252,14 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
     name: "studiorpc_game_character_move_to",
     description:
       "Walk the play-test character to a world position using its own navigation, instead of steering it with " +
-      "key events. By default the tool polls until the move ends and reports the outcome — reached, " +
-      "interrupted, timedOut, superseded, cancelled, failed, or pieEnded. Pass wait: false to return the " +
-      "requestId immediately and poll with studiorpc_game_character_move_status yourself.",
+      "key events. Read `arrived`, not `status`: Studio reports `reached` whenever its path following " +
+      "returns success, which it does even when it could not get there, so the tool measures where the " +
+      `character actually stopped. \`arrived\` is true within \`arrivalTolerance\` units of the target, ` +
+      `${ARRIVAL_TOLERANCE} by default and echoed back in the response; pass a smaller one when you are ` +
+      "testing whether the character reached a specific small thing rather than merely got there. `blocked` " +
+      "means it did not travel at all — something is in the way, or the target is somewhere a walking " +
+      "character cannot stand. Pass wait: false to return the requestId immediately and poll with " +
+      "studiorpc_game_character_move_status yourself.",
     parameters: moveToParams,
     async execute(args: MoveToParams): Promise<ToolResult> {
       const target = await resolvePieTarget(callRpc, args);
@@ -275,7 +292,8 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
       // report `reached` with the character still standing where it started.
       const endedAt = await readCharacterPosition(callRpc);
       const distanceToTarget = endedAt ? distanceBetween(endedAt, args.position) : undefined;
-      const arrived = distanceToTarget !== undefined && distanceToTarget <= ARRIVAL_TOLERANCE;
+      const tolerance = args.arrivalTolerance ?? ARRIVAL_TOLERANCE;
+      const arrived = distanceToTarget !== undefined && distanceToTarget <= tolerance;
 
       return {
         output: jsonOutput({
@@ -283,13 +301,25 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
           status,
           clientId: target.clientId,
           waitedMs: polled.waitedMs,
-          ...(endedAt ? { endedAt, distanceToTarget: Math.round(distanceToTarget ?? 0) } : {}),
+          ...(endedAt
+            ? { endedAt, distanceToTarget: Math.round(distanceToTarget ?? 0), arrivalTolerance: tolerance }
+            : {}),
           ...(status === "reached" && distanceToTarget !== undefined && !arrived
             ? {
                 warning:
-                  `Studio reported "reached" but the character stopped ${Math.round(distanceToTarget)} units ` +
-                  `from the target. Path following returns success even when it cannot get there — usually ` +
-                  `because the level has no navigation data. Steer with key input instead, or move the target.`,
+                  // Two very different failures share this branch. Falling short of a
+                  // tight tolerance is navigation working normally; not travelling at
+                  // all is the level having nothing to navigate on.
+                  distanceToTarget <= ARRIVAL_TOLERANCE
+                    ? `The character stopped ${Math.round(distanceToTarget)} units from the target, which is ` +
+                      `outside the arrivalTolerance of ${tolerance} you asked for. Navigation stops the ` +
+                      `character a little short of any point, so this distance is normal travel rather than a ` +
+                      `failed move — but it did not get as close as you needed, so treat whatever you were ` +
+                      `testing at that spot as unproven.`
+                    : `Studio reported "reached" but the character stopped ${Math.round(distanceToTarget)} units ` +
+                      `from the target. Path following returns success even when it cannot get there — usually ` +
+                      `because the level has no navigation data there, or the target is somewhere a walking ` +
+                      `character cannot stand. Aim at ground level near the target, or pick a reachable point.`,
               }
             : {}),
           ...(polled.timedOut
