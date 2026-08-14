@@ -285,6 +285,27 @@ describe("play-test input tools", () => {
     expect(stuck.output).toContain('"blocked": true');
   });
 
+  test("move_to does not call a character blocked when navigation is simply satisfied", async () => {
+    // 30 units out with a tolerance of 10: not arrived, did not move, not blocked —
+    // navigation stops itself around here and will not re-approach from inside it.
+    const { byName } = toolsFor((call) => {
+      if (call.method === "game.pie.status") return runningStatus();
+      if (call.method === "game.character.moveTo") return { requestId: "req-14", status: "pendingStart" };
+      if (call.method === "game.character.read") {
+        return { character: { CFrame: { Position: { X: 970, Y: 0, Z: 5 } } } };
+      }
+      return { requestId: "req-14", status: "reached", clientId: "client-1" };
+    });
+
+    const result = await run(byName.get("studiorpc_game_character_move_to"), {
+      position: { x: 1000, y: 0, z: 5 },
+      arrivalTolerance: 10,
+    });
+
+    expect(result.output).toContain('"blocked": false');
+    expect(result.output).toContain("will not make it walk");
+  });
+
   test("move_to still calls out a move that went nowhere", async () => {
     const wentNowhere = (call: { method: string }) => {
       if (call.method === "game.pie.status") return runningStatus();

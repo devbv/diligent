@@ -3,7 +3,12 @@ import { z } from "zod";
 export const method = "instance.read";
 
 export const description =
-  "Read instance properties from the level file by GUID. Returns only known class properties. Use recursive to include descendants.";
+  "Read instance properties from the level file by GUID, as the level was authored. Returns only known class " +
+  "properties. Use recursive to include descendants. " +
+  "While a play test runs this is the wrong tool for anything a script can change: it reads the saved file, so " +
+  "a part a script has made transparent, passable or invisible still reads here exactly as it was saved. Use " +
+  "studiorpc_game_instance_read for what the running game currently has — the names differ by one word and " +
+  "the answers differ by everything.";
 
 export const params = z.object({
   guid: z

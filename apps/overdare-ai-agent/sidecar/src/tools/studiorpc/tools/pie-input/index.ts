@@ -31,6 +31,8 @@ const MOVE_WAIT_MAX_MS = 300_000;
 const ARRIVAL_TOLERANCE = 150;
 /** Below this the character has not travelled — it is jitter, not a move. */
 const MOVED_AT_ALL = 5;
+/** Navigation stops itself about this far out, and will not re-approach from inside it. */
+const NAV_STOP_DISTANCE = 50;
 
 const targetOverrides = {
   pieSessionId: z
@@ -303,8 +305,10 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
       const arrived = distanceToTarget !== undefined && distanceToTarget <= tolerance;
       const movedDistance = startedFrom && endedAt ? distanceBetween(startedFrom, endedAt) : undefined;
       const moved = movedDistance !== undefined && movedDistance > MOVED_AT_ALL;
-      // Asked to go somewhere, went nowhere: a wall, or a target it cannot stand on.
-      const blocked = movedDistance !== undefined && !moved && !arrived;
+      // Standing still because navigation is already satisfied is not being blocked.
+      // Only a character that was asked to travel a real distance and did not is.
+      const navSatisfied = distanceToTarget !== undefined && distanceToTarget <= NAV_STOP_DISTANCE;
+      const blocked = movedDistance !== undefined && !moved && !arrived && !navSatisfied;
 
       return {
         output: jsonOutput({
@@ -334,6 +338,15 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
                       `character cannot stand. Aim at ground level near the target, or pick a reachable point.`,
               }
             : {}),
+          ...(!moved && navSatisfied && !arrived
+            ? {
+                hint:
+                  `The character did not move: navigation already counts ${Math.round(distanceToTarget ?? 0)} ` +
+                  `units away as arrived, so asking for the same point again will not make it walk. If you ` +
+                  `need it to pass through something there, send it to a point beyond the target so the path ` +
+                  `crosses it, or step it away first and approach from further off.`,
+              }
+            : {}),
           ...(polled.timedOut
             ? { note: `Still moving after ${timeoutMs}ms; poll studiorpc_game_character_move_status for the outcome.` }
             : {}),
@@ -357,7 +370,8 @@ function createCharacterMoveStatusTool(callRpc: CallRpc): Tool {
     description:
       "Report the outcome of a studiorpc_game_character_move_to request. Statuses pendingStart and running " +
       "mean the character is still on its way; reached, interrupted, timedOut, superseded, cancelled, failed, " +
-      "and pieEnded are final.",
+      "and pieEnded are final. `at` is where the character is right now, so two polls that return running with " +
+      "the same `at` mean it is stuck rather than slow — which is the question `running` alone cannot answer.",
     parameters: moveStatusParams,
     supportParallel: true,
     async execute(args: MoveStatusParams): Promise<ToolResult> {
@@ -373,8 +387,13 @@ function createCharacterMoveStatusTool(callRpc: CallRpc): Tool {
         { timeoutMs: PIE_STATUS_TIMEOUT_MS },
       )) as MoveStatusResult;
 
+      // `running` on its own cannot tell progress from stuck. The position comes
+      // back with it so one call answers which, instead of sending the caller to
+      // game.character.read to find out.
+      const at = await readCharacterPosition(callRpc);
+
       return {
-        output: jsonOutput(result),
+        output: jsonOutput({ ...result, ...(at ? { at } : {}) }),
         render: buildMoveStatusRender(args.requestId, result?.status),
         metadata: {
           tool: "studiorpc_game_character_move_status",
