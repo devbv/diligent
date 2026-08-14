@@ -191,6 +191,43 @@ describe("play-test input tools", () => {
     expect(result.metadata).toMatchObject({ requestId: "req-1", status: "reached" });
   });
 
+  test("move_to checks Studio's reached against where the character actually stopped", async () => {
+    const { byName } = toolsFor((call) => {
+      if (call.method === "game.pie.status") return runningStatus();
+      if (call.method === "game.character.moveTo") return { requestId: "req-9", status: "pendingStart" };
+      if (call.method === "game.character.read") {
+        // Barely moved: a level with no navigation data still reports success.
+        return { character: { CFrame: { Position: { X: 10, Y: 0, Z: 5 } } } };
+      }
+      return { requestId: "req-9", status: "reached", clientId: "client-1" };
+    });
+
+    const result = await run(byName.get("studiorpc_game_character_move_to"), {
+      position: { x: 1000, y: 0, z: 5 },
+    });
+
+    expect(result.output).toContain("distanceToTarget");
+    expect(result.output).toContain("no navigation data");
+  });
+
+  test("move_to stays quiet when the character really arrived", async () => {
+    const { byName } = toolsFor((call) => {
+      if (call.method === "game.pie.status") return runningStatus();
+      if (call.method === "game.character.moveTo") return { requestId: "req-10", status: "pendingStart" };
+      if (call.method === "game.character.read") {
+        return { character: { CFrame: { Position: { X: 1000, Y: 0, Z: 5 } } } };
+      }
+      return { requestId: "req-10", status: "reached", clientId: "client-1" };
+    });
+
+    const result = await run(byName.get("studiorpc_game_character_move_to"), {
+      position: { x: 1000, y: 0, z: 5 },
+    });
+
+    expect(result.output).not.toContain("no navigation data");
+    expect(result.output).toContain('"distanceToTarget": 0');
+  });
+
   test("move_to returns immediately when wait is false", async () => {
     const { calls, byName } = toolsFor((call) =>
       call.method === "game.pie.status" ? runningStatus() : { requestId: "req-2", status: "pendingStart" },

@@ -4,6 +4,7 @@ import type { z } from "zod";
 import * as actionSequencerApplyJson from "./methods/action-sequencer-service.apply-json";
 import * as assetDrawerImport from "./methods/asset-drawer.import";
 import * as assetManagerImageImport from "./methods/asset-manager.image.import";
+import * as gameCharacterRead from "./methods/game.character.read";
 import * as gamePlay from "./methods/game.play";
 import * as gameScreenshot from "./methods/game.screenshot";
 import * as gameStop from "./methods/game.stop";
@@ -64,6 +65,7 @@ export const methodModules: MethodModule[] = [
   gamePlay,
   gameStop,
   gameScreenshot,
+  gameCharacterRead,
   gameUiBrowse,
   viewportCameraRead,
   hubTokenRead,

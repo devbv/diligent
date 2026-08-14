@@ -27,6 +27,8 @@ const MOVE_RPC_TIMEOUT_MS = 10_000;
 const MOVE_POLL_INTERVAL_MS = 300;
 const MOVE_WAIT_DEFAULT_MS = 30_000;
 const MOVE_WAIT_MAX_MS = 300_000;
+/** How close counts as arrived when checking Studio's `reached` against the real position. */
+const ARRIVAL_TOLERANCE = 150;
 
 const targetOverrides = {
   pieSessionId: z
@@ -44,7 +46,10 @@ const injectParams = z.object({
 const moveToParams = z.object({
   position: z
     .object({ x: z.number(), y: z.number(), z: z.number() })
-    .describe("World-space destination in Unreal units."),
+    .describe(
+      "Destination in the same world coordinates as studiorpc_instance_read and " +
+        "studiorpc_game_character_read, so a position read from either can be passed straight in.",
+    ),
   wait: z.boolean().optional().describe("Poll game.character.moveStatus until the move ends. Defaults to true."),
   timeoutMs: z
     .number()
@@ -81,6 +86,37 @@ interface MoveStatusResult {
   requestId?: string;
   status?: string;
   clientId?: string;
+}
+
+interface CharacterReadResult {
+  character?: { CFrame?: { Position?: { X?: number; Y?: number; Z?: number } } };
+}
+
+/**
+ * Where the character actually is, or undefined if it cannot be read. Studio
+ * reports `reached` whenever path following returns success, which a level with
+ * no navigation data can do without the character having gone anywhere — so the
+ * move tools quote the distance that is left rather than the claim alone.
+ */
+async function readCharacterPosition(callRpc: CallRpc): Promise<{ x: number; y: number; z: number } | undefined> {
+  try {
+    const result = (await callRpc(
+      "game.character.read",
+      {},
+      { timeoutMs: MOVE_RPC_TIMEOUT_MS },
+    )) as CharacterReadResult;
+    const position = result?.character?.CFrame?.Position;
+    if (typeof position?.X !== "number" || typeof position?.Y !== "number" || typeof position?.Z !== "number") {
+      return undefined;
+    }
+    return { x: position.X, y: position.Y, z: position.Z };
+  } catch {
+    return undefined;
+  }
+}
+
+function distanceBetween(a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }): number {
+  return Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
 }
 
 function sleep(ms: number): Promise<void> {
@@ -123,7 +159,13 @@ function createInputInjectTool(callRpc: CallRpc): Tool {
       '[{"type":"key","key":"W","action":"press","durationMs":500}]. ' +
       "To click a UI button, read its rect from studiorpc_game_ui_browse, pointerMove to the center of that " +
       "rect, then press the left pointerButton — that fires the button's Activated exactly as a real click " +
-      "does, so never ask the user to press a button you can reach yourself.",
+      "does, so never ask the user to press a button you can reach yourself. " +
+      "The batch is cancelled with interruptedByUser if the person at the machine takes the play test back " +
+      "— a key while it holds focus, or a click inside its viewport. Their typing in another window does " +
+      "not count. Retry the batch; the input was released. " +
+      "appliedEventCount reports the batch Studio ran, which is the expanded one: each press becomes " +
+      "down/wait/up, so it exceeds the number of events you wrote. The reply gives authoredEventCount and " +
+      "sentEventCount so the two are never confused.",
     parameters: injectParams,
     async execute(args: InjectParams): Promise<ToolResult> {
       const events = args.events as InputEvent[];
@@ -147,7 +189,15 @@ function createInputInjectTool(callRpc: CallRpc): Tool {
       )) as InjectResult;
 
       return {
-        output: jsonOutput({ ...result, clientId: target.clientId, events: describeEvents(events, events.length) }),
+        // appliedEventCount counts what Studio ran, which is the expanded batch — a press
+        // becomes down/wait/up. Reporting both stops that looking like a miscount.
+        output: jsonOutput({
+          ...result,
+          clientId: target.clientId,
+          authoredEventCount: events.length,
+          sentEventCount: sent.length,
+          events: describeEvents(events, events.length),
+        }),
         render: buildInputInjectRender(target, events, result?.appliedEventCount, sent.length),
         metadata: {
           tool: "studiorpc_game_input_inject",
@@ -221,12 +271,27 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
       const polled = await pollMoveStatus(callRpc, target.pieSessionId, requestId, timeoutMs);
       const status = polled.status ?? started?.status;
 
+      // Check the claim rather than repeat it: a level without navigation data can
+      // report `reached` with the character still standing where it started.
+      const endedAt = await readCharacterPosition(callRpc);
+      const distanceToTarget = endedAt ? distanceBetween(endedAt, args.position) : undefined;
+      const arrived = distanceToTarget !== undefined && distanceToTarget <= ARRIVAL_TOLERANCE;
+
       return {
         output: jsonOutput({
           requestId,
           status,
           clientId: target.clientId,
           waitedMs: polled.waitedMs,
+          ...(endedAt ? { endedAt, distanceToTarget: Math.round(distanceToTarget ?? 0) } : {}),
+          ...(status === "reached" && distanceToTarget !== undefined && !arrived
+            ? {
+                warning:
+                  `Studio reported "reached" but the character stopped ${Math.round(distanceToTarget)} units ` +
+                  `from the target. Path following returns success even when it cannot get there — usually ` +
+                  `because the level has no navigation data. Steer with key input instead, or move the target.`,
+              }
+            : {}),
           ...(polled.timedOut
             ? { note: `Still moving after ${timeoutMs}ms; poll studiorpc_game_character_move_status for the outcome.` }
             : {}),
