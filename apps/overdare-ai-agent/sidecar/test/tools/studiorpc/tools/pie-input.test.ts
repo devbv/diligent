@@ -430,7 +430,16 @@ describe("play-test input tools", () => {
     const tool = byName.get("studiorpc_game_character_move_to");
     const result = await run(tool, { position: { x: 1000, y: 0, z: 5 } });
 
-    for (const field of ["arrived", "blocked", "moved", "movedDistance", "distanceToTarget", "arrivalTolerance"]) {
+    expect(result.output).toContain('"outcome": "arrived"');
+    for (const field of [
+      "outcome",
+      "arrived",
+      "blocked",
+      "moved",
+      "movedDistance",
+      "distanceToTarget",
+      "arrivalTolerance",
+    ]) {
       expect(tool?.description).toContain(field);
       expect(result.output).toContain(`"${field}"`);
     }
@@ -455,6 +464,8 @@ describe("play-test input tools", () => {
     });
 
     expect(result.output).toContain('"blocked": true');
+    // `status` still says running here, which is why the verdict is its own field.
+    expect(result.output).toContain('"outcome": "blocked"');
     expect(result.output).toContain("stuck rather than slow");
     // It must not have burned the full minute to say so.
     const waited = Number(/"waitedMs": (\d+)/.exec(result.output)?.[1] ?? 0);

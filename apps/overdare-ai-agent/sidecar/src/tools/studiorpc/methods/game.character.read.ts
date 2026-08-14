@@ -11,9 +11,11 @@ export const description =
   "reads as not moving even while you hold a key down, which is exactly the signal that tells you a " +
   "collision is blocking it. standingOn names the surface under its feet, or is null when nothing is there " +
   "— that is what falling looks like. It is a probe straight down, not a touch: standingOn.distance is the " +
-  "gap to that surface, so a distance of 0 means the character is resting on the part, and never means the " +
+  "gap to that surface, so a distance of 0 means the character is level with the part, and never means the " +
   "part's Touched event fired. Whether a trigger actually went off is something only the game's own state " +
-  "can tell you. " +
+  "can tell you. The probe reports whatever is below regardless of CanCollide, so a part the character walks " +
+  "straight through still shows up here — standing on something and being held up by it are different " +
+  "questions, and this answers the first. " +
   "CFrame is in the same world coordinates as studiorpc_instance_read and studiorpc_viewport_camera_read, " +
   "so a position from any of them can be handed straight to studiorpc_game_character_move_to.";
 

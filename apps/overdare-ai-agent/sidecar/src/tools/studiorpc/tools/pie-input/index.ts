@@ -381,6 +381,9 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
       "instead of steering it with key events. Naming the target is the safer form: the tool reads where the " +
       "thing actually is and sizes the tolerance to it, where typed coordinates invite an invented height " +
       "that aims at empty air above it. " +
+      "Read `outcome`, which is the tool's own verdict on the move: arrived, blocked, stoppedShort, or " +
+      "stillMoving. `status` next to it is navigation's raw word and keeps saying `running` for a character " +
+      "that has stopped dead, so it reads as in-progress on a call that has already returned. " +
       "Read `arrived`, not `status`: Studio reports `reached` whenever its path following " +
       "returns success, which it does even when it could not get there, so the tool measures where the " +
       `character actually stopped. \`arrived\` is true within \`arrivalTolerance\` units of the target and ` +
@@ -478,6 +481,10 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
       return {
         output: jsonOutput({
           requestId,
+          // The tool's own verdict, because `status` is navigation's word and keeps
+          // saying `running` for a character that stopped dead — three testers read
+          // that as "still going" on a call that had already returned.
+          outcome: !settled ? "stillMoving" : arrived ? "arrived" : blocked ? "blocked" : "stoppedShort",
           status,
           // The field the description tells callers to read, which it did not emit for
           // a long time — leaving them to recompute it from distance and tolerance.
