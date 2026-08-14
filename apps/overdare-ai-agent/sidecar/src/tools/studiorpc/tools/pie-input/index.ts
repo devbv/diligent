@@ -383,9 +383,13 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
       "that aims at empty air above it. " +
       "Read `arrived`, not `status`: Studio reports `reached` whenever its path following " +
       "returns success, which it does even when it could not get there, so the tool measures where the " +
-      `character actually stopped. \`arrived\` is true within \`arrivalTolerance\` units of the target, ` +
-      `${ARRIVAL_TOLERANCE} by default and echoed back in the response; pass a smaller one when you are ` +
-      "testing whether the character reached a specific small thing rather than merely got there. " +
+      `character actually stopped. \`arrived\` is true within \`arrivalTolerance\` units of the target and ` +
+      `appears once the move is over, so a reply without it is one that has not finished. ` +
+      `\`arrivalTolerance\` is ${ARRIVAL_TOLERANCE} by default and echoed back in the response; pass a ` +
+      "smaller one when you are testing whether the character reached a specific small thing rather than " +
+      "merely got there. " +
+      "`distanceToTarget` is how far the character finished from the place you asked for, and `endedAt` is " +
+      "where that was; a still-running move reports `at` instead, because it has not ended anywhere yet. " +
       "`moved` and `movedDistance` say whether it travelled at all, which separates a move that was " +
       "unnecessary — already inside the tolerance — from one that went nowhere. `blocked` means the move " +
       "finished without getting there and navigation did not choose to stop: something is in the way, or the " +
@@ -475,6 +479,12 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
         output: jsonOutput({
           requestId,
           status,
+          // The field the description tells callers to read, which it did not emit for
+          // a long time — leaving them to recompute it from distance and tolerance.
+          ...(settled ? { arrived } : {}),
+          // `status` stays whatever navigation last said, which is `running` for a
+          // character that stopped moving; this says the wait was cut short on purpose.
+          ...(polled.stalled ? { stalled: true } : {}),
           clientId: target.clientId,
           waitedMs: polled.waitedMs,
           // distanceToTarget stays measured from the point you asked about, not the

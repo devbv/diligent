@@ -415,6 +415,28 @@ describe("play-test input tools", () => {
     );
   });
 
+  test("move_to emits every field its own description tells callers to read", async () => {
+    // `arrived` was documented as the field to prefer over `status` and was never
+    // emitted, so testers recomputed it from distance and tolerance by hand.
+    const { byName } = toolsFor((call) => {
+      if (call.method === "game.pie.status") return runningStatus();
+      if (call.method === "game.character.moveTo") return { requestId: "req-22", status: "pendingStart" };
+      if (call.method === "game.character.read") {
+        return { character: { CFrame: { Position: { X: 1000, Y: 0, Z: 5 } } } };
+      }
+      return { requestId: "req-22", status: "reached", clientId: "client-1" };
+    });
+
+    const tool = byName.get("studiorpc_game_character_move_to");
+    const result = await run(tool, { position: { x: 1000, y: 0, z: 5 } });
+
+    for (const field of ["arrived", "blocked", "moved", "movedDistance", "distanceToTarget", "arrivalTolerance"]) {
+      expect(tool?.description).toContain(field);
+      expect(result.output).toContain(`"${field}"`);
+    }
+    expect(result.output).toContain('"arrived": true');
+  });
+
   test("move_to gives up on a character that has stopped moving", async () => {
     // Navigation keeps saying running; the position never changes. Waiting out the
     // whole budget would only confirm what two samples already show.
