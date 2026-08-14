@@ -255,6 +255,14 @@ function getStudioRpcToolInfo(normalized: string): ToolInfo | null {
     });
   }
 
+  if (normalized.includes("viewport_camera")) {
+    return tool("Studio RPC", "search", "context", {
+      done: "Read viewport camera",
+      running: "Reading viewport camera",
+      failed: "Viewport camera read failed",
+    });
+  }
+
   if (normalized.includes("grep") || normalized.includes("browse")) {
     return tool("Studio RPC", "search", "context", {
       done: "Searched Studio",

@@ -3,7 +3,14 @@
 import { z } from "zod";
 import { call } from "../../rpc";
 import type { Tool, ToolResult } from "../../types";
-import { type InputEvent, inputEventsSchema, totalWaitMs, validateBatch } from "./events";
+import {
+  expandShorthand,
+  type InputEvent,
+  inputEventsSchema,
+  MAX_EVENT_COUNT,
+  totalWaitMs,
+  validateBatch,
+} from "./events";
 import {
   buildInputInjectRender,
   buildMoveStatusRender,
@@ -113,28 +120,39 @@ function createInputInjectTool(callRpc: CallRpc): Tool {
       "has finished moving when the result arrives. pieSessionId and clientId are resolved automatically. " +
       "Limits: at most 64 events, at most 10s of total wait, and every key or button pressed must be " +
       "released inside the same batch. Example — walk forward for half a second: " +
-      '[{"type":"key","key":"W","action":"down"},{"type":"wait","durationMs":500},' +
-      '{"type":"key","key":"W","action":"up"}].',
+      '[{"type":"key","key":"W","action":"press","durationMs":500}]. ' +
+      "To click a UI button, read its rect from studiorpc_game_ui_browse, pointerMove to the center of that " +
+      "rect, then press the left pointerButton — that fires the button's Activated exactly as a real click " +
+      "does, so never ask the user to press a button you can reach yourself.",
     parameters: injectParams,
     async execute(args: InjectParams): Promise<ToolResult> {
       const events = args.events as InputEvent[];
-      const batchError = validateBatch(events);
+      // Studio has no press action, so expand before validating — the limits it
+      // enforces apply to what actually reaches it, not to what was authored.
+      const sent = expandShorthand(events);
+      if (sent.length > MAX_EVENT_COUNT) {
+        throw new Error(
+          `The batch expands to ${sent.length} events, above Studio's ${MAX_EVENT_COUNT} limit ` +
+            `(each press with a durationMs becomes three). Split the input across several calls.`,
+        );
+      }
+      const batchError = validateBatch(sent);
       if (batchError) throw new Error(batchError);
 
       const target = await resolvePieTarget(callRpc, args);
       const result = (await callRpc(
         "game.input.inject",
-        { pieSessionId: target.pieSessionId, clientId: target.clientId, events },
-        { timeoutMs: totalWaitMs(events) + INJECT_OVERHEAD_MS },
+        { pieSessionId: target.pieSessionId, clientId: target.clientId, events: sent },
+        { timeoutMs: totalWaitMs(sent) + INJECT_OVERHEAD_MS },
       )) as InjectResult;
 
       return {
         output: jsonOutput({ ...result, clientId: target.clientId, events: describeEvents(events, events.length) }),
-        render: buildInputInjectRender(target, events, result?.appliedEventCount),
+        render: buildInputInjectRender(target, events, result?.appliedEventCount, sent.length),
         metadata: {
           tool: "studiorpc_game_input_inject",
           clientId: target.clientId,
-          eventCount: events.length,
+          eventCount: sent.length,
           status: result?.status,
         },
       };

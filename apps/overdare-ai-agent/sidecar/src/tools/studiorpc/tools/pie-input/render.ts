@@ -35,6 +35,10 @@ export function describeEvent(event: InputEvent): string {
       return `move to (${event.position.x}, ${event.position.y})`;
     case "mouseDelta":
       return `mouse Δ(${event.delta.x}, ${event.delta.y})`;
+    case "scroll":
+      return `scroll ${event.delta > 0 ? "+" : ""}${event.delta}`;
+    case "textInput":
+      return `type "${event.text}"`;
     case "wait":
       return `wait ${event.durationMs}ms`;
   }
@@ -92,18 +96,20 @@ export function buildInputInjectRender(
   target: PieTarget,
   events: InputEvent[],
   appliedEventCount: number | undefined,
+  // Studio counts the expanded batch, so a press authored as one event applies as three.
+  sentEventCount: number = events.length,
 ): ToolRenderPayload {
   const summary = describeEvents(events);
   return {
     inputSummary: summary,
-    outputSummary: `applied ${appliedEventCount ?? events.length}/${events.length} events`,
+    outputSummary: `applied ${appliedEventCount ?? sentEventCount}/${sentEventCount} events`,
     blocks: [
       {
         type: "key_value",
         title: "Play-test input",
         items: [
           { key: "clientId", value: target.clientId },
-          { key: "events", value: String(events.length) },
+          { key: "events", value: String(sentEventCount) },
         ],
       },
       { type: "summary", text: summary, tone: "success" },

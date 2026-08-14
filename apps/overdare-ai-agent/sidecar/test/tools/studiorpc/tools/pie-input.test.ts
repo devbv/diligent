@@ -258,6 +258,59 @@ describe("play-test input tools", () => {
     expect(result.metadata).toMatchObject({ status: "reached", done: true });
   });
 
+  test("inject expands a press into the down/wait/up Studio understands", async () => {
+    const { calls, byName } = toolsFor((call) => (call.method === "game.pie.status" ? runningStatus() : {}));
+
+    await run(byName.get("studiorpc_game_input_inject"), {
+      events: [{ type: "key", key: "W", action: "press", durationMs: 500 }],
+    });
+
+    expect(calls[1].params?.events).toEqual([
+      { type: "key", key: "W", action: "down" },
+      { type: "wait", durationMs: 500 },
+      { type: "key", key: "W", action: "up" },
+    ]);
+    expect(calls[1].timeoutMs).toBeGreaterThan(500);
+  });
+
+  test("inject makes a press without a duration a bare down/up tap", async () => {
+    const { calls, byName } = toolsFor((call) => (call.method === "game.pie.status" ? runningStatus() : {}));
+
+    await run(byName.get("studiorpc_game_input_inject"), {
+      events: [{ type: "pointerButton", button: "left", action: "press" }],
+    });
+
+    expect(calls[1].params?.events).toEqual([
+      { type: "pointerButton", button: "left", action: "down" },
+      { type: "pointerButton", button: "left", action: "up" },
+    ]);
+  });
+
+  test("inject counts expanded events against Studio's batch limit", async () => {
+    const { calls, byName } = toolsFor(() => runningStatus());
+    const events = Array.from({ length: 30 }, () => ({
+      type: "key",
+      key: "W",
+      action: "press",
+      durationMs: 10,
+    }));
+
+    await expect(run(byName.get("studiorpc_game_input_inject"), { events })).rejects.toThrow(/expands to 90 events/);
+    expect(calls).toHaveLength(0);
+  });
+
+  test("inject accepts scroll and textInput events", async () => {
+    const { calls, byName } = toolsFor((call) => (call.method === "game.pie.status" ? runningStatus() : {}));
+    const events = [
+      { type: "scroll", delta: -3 },
+      { type: "textInput", text: "hello" },
+    ];
+
+    await run(byName.get("studiorpc_game_input_inject"), { events });
+
+    expect(calls[1].params?.events).toEqual(events);
+  });
+
   test("pie_status reports clients without needing a running session", async () => {
     const { byName } = toolsFor(() => runningStatus({ running: false, state: "stopped" }));
 
@@ -268,21 +321,113 @@ describe("play-test input tools", () => {
   });
 });
 
+async function providerTools(result: unknown) {
+  const calls: Array<{ method: string; params?: Record<string, unknown> }> = [];
+  const provider = createStudioRpcToolProvider({
+    callRpc: async (method, params) => {
+      calls.push({ method, params });
+      return result;
+    },
+  });
+  const tools = await provider.createTools({ cwd: "/tmp/project", host: { approve: async () => "once" } });
+  return { calls, tools };
+}
+
 describe("game.screenshot", () => {
   test("forwards includeGui so the shot can show the UI that gets clicked", async () => {
-    const calls: Array<{ method: string; params?: Record<string, unknown> }> = [];
-    const provider = createStudioRpcToolProvider({
-      callRpc: async (method, params) => {
-        calls.push({ method, params });
-        return { path: "C:/shot.png" };
-      },
-    });
-    const tools = await provider.createTools({ cwd: "/tmp/project", host: { approve: async () => "once" } });
+    const { calls, tools } = await providerTools({ path: "C:/shot.png" });
     const screenshot = tools.find((tool) => tool.name === "studiorpc_game_screenshot");
 
     expect(() => screenshot?.parameters.parse({ includeGui: true })).not.toThrow();
     await screenshot?.execute({ includeGui: true } as never, ctx as never);
 
     expect(calls.find((call) => call.method === "game.screenshot")?.params).toMatchObject({ includeGui: true });
+  });
+
+  test("forwards a one-shot camera aim", async () => {
+    const { calls, tools } = await providerTools({ path: "C:/shot.png" });
+    const screenshot = tools.find((tool) => tool.name === "studiorpc_game_screenshot");
+    const aim = { cameraPosition: { x: 0, y: 0, z: 500 }, lookAt: { x: 0, y: 0, z: 0 } };
+
+    await screenshot?.execute(aim as never, ctx as never);
+
+    expect(calls.find((call) => call.method === "game.screenshot")?.params).toMatchObject(aim);
+  });
+
+  test("reports the size Studio captured rather than the size that was asked for", async () => {
+    const { tools } = await providerTools({
+      path: "C:/shot.png",
+      image: { width: 1920, height: 1080 },
+      source: "pieClient",
+    });
+    const screenshot = tools.find((tool) => tool.name === "studiorpc_game_screenshot");
+
+    const result = await screenshot?.execute({} as never, ctx as never);
+    const items = result?.render?.blocks?.flatMap((block) => ("items" in block ? block.items : []));
+
+    expect(items).toContainEqual({ key: "size", value: "1920×1080" });
+    expect(items).toContainEqual({ key: "source", value: "pieClient" });
+  });
+});
+
+describe("camera and UI reading tools", () => {
+  test("are registered on the Studio RPC provider", async () => {
+    const { tools } = await providerTools({});
+    const names = tools.map((tool) => tool.name);
+
+    expect(names).toContain("studiorpc_viewport_camera_read");
+    expect(names).toContain("studiorpc_game_ui_browse");
+  });
+
+  test("ui_browse summarizes what is on screen", async () => {
+    const { tools } = await providerTools({
+      viewport: { width: 1920, height: 1080 },
+      elements: [
+        { path: "PlayerGui.MainMenu", class: "ScreenGui", rect: { x: 0, y: 0, w: 1, h: 1 }, onScreen: true },
+        {
+          path: "PlayerGui.MainMenu.StartButton",
+          class: "TextButton",
+          text: "Start",
+          rect: { x: 0.42, y: 0.61, w: 0.16, h: 0.07 },
+          onScreen: true,
+        },
+        {
+          path: "PlayerGui.MainMenu.OffScreenButton",
+          class: "TextButton",
+          text: "Nope",
+          rect: { x: 1.2, y: 0.4, w: 0.2, h: 0.08 },
+          visible: true,
+          onScreen: false,
+        },
+      ],
+    });
+    const browse = tools.find((tool) => tool.name === "studiorpc_game_ui_browse");
+
+    const result = await browse?.execute({} as never, ctx as never);
+
+    expect(result?.render?.outputSummary).toBe("3 UI elements");
+    // A button that is off screen is not something the agent can click, so it is not offered.
+    const items = result?.render?.blocks?.flatMap((block) => ("items" in block ? block.items : []));
+    expect(items).toContainEqual({ key: "buttons", value: "Start" });
+  });
+
+  test("camera_read names what the screen center is on", async () => {
+    const { tools } = await providerTools({
+      source: "pieClient",
+      viewport: { width: 1920, height: 1080 },
+      camera: {
+        CFrame: { Position: { x: 0, y: 0, z: 100 }, Orientation: { x: 0, y: 0, z: 0 } },
+        focusDistance: 1250.4,
+        centerHit: { position: { x: 0, y: 1250, z: 100 }, instanceName: "Baseplate" },
+      },
+    });
+    const camera = tools.find((tool) => tool.name === "studiorpc_viewport_camera_read");
+
+    const result = await camera?.execute({} as never, ctx as never);
+    const items = result?.render?.blocks?.flatMap((block) => ("items" in block ? block.items : []));
+
+    expect(result?.render?.outputSummary).toBe("looking at Baseplate");
+    expect(items).toContainEqual({ key: "focusDistance", value: "1250 units" });
+    expect(items).toContainEqual({ key: "source", value: "pieClient" });
   });
 });

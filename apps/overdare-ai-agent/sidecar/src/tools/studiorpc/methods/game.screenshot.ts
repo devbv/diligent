@@ -11,7 +11,17 @@ export const description =
   "GUI elements are included by default; pass includeGui: false to capture the scene only. " +
   "The image covers the same viewport rectangle that studiorpc_game_input_inject's " +
   "normalized pointer coordinates map onto, so a point read off the image as a fraction of its width and " +
-  "height can be clicked directly.";
+  "height can be clicked directly. " +
+  "The response reports the pixel size it actually captured, the camera the shot was taken from " +
+  "(same block studiorpc_viewport_camera_read returns), and whether that camera is the editor viewport " +
+  "or the running play test — enough to turn a point on the image back into a world ray, or to compare " +
+  "the framing of a before and after shot.";
+
+const worldPoint = z.object({
+  x: z.number(),
+  y: z.number(),
+  z: z.number(),
+});
 
 export const params = z
   .object({
@@ -23,6 +33,21 @@ export const params = z
       .boolean()
       .optional()
       .describe("Whether to include GUI elements in the capture. Defaults to true when omitted."),
+    cameraPosition: worldPoint
+      .optional()
+      .describe(
+        "Where to put the camera for this one shot. Must be given together with lookAt. Same world " +
+          "coordinates as studiorpc_instance_read and studiorpc_viewport_camera_read (1 unit = 1 cm), so a " +
+          "position read from either can be passed straight in. " +
+          "The editor viewport returns to where the user left it once the capture finishes. " +
+          "Rejected while a play test is running, because then the player camera is what fills the screen.",
+      ),
+    lookAt: worldPoint
+      .optional()
+      .describe(
+        "World point the camera aims at, in the same coordinates as cameraPosition. Must be given together " +
+          "with it.",
+      ),
   })
   .strict();
 

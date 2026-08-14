@@ -7,6 +7,7 @@ import * as assetManagerImageImport from "./methods/asset-manager.image.import";
 import * as gamePlay from "./methods/game.play";
 import * as gameScreenshot from "./methods/game.screenshot";
 import * as gameStop from "./methods/game.stop";
+import * as gameUiBrowse from "./methods/game.ui.browse";
 import * as hubTokenRead from "./methods/hub.token.read";
 import * as levelBrowse from "./methods/level.browse";
 import * as levelPublish from "./methods/level.publish";
@@ -15,6 +16,7 @@ import * as levelSaveFile from "./methods/level.save.file";
 import * as _scriptAdd from "./methods/script.add";
 // biome-ignore lint/correctness/noUnusedImports: script.delete moved to tools/script-delete-tool.ts
 import * as _scriptDelete from "./methods/script.delete";
+import * as viewportCameraRead from "./methods/viewport.camera.read";
 import {
   buildActionSequencerApplyJsonRender,
   buildAssetDrawerImportRender,
@@ -22,6 +24,7 @@ import {
   buildGamePlayRender,
   buildGameScreenshotRender,
   buildGameStopRender,
+  buildGameUiBrowseRender,
   buildHubTokenReadRender,
   buildInstanceDeleteRender,
   buildInstanceMoveRender,
@@ -30,6 +33,7 @@ import {
   buildLevelBrowseRender,
   buildLevelPublishRender,
   buildLevelSaveFileRender,
+  buildViewportCameraReadRender,
 } from "./render";
 import type { ToolRenderPayload } from "./types";
 
@@ -60,6 +64,8 @@ export const methodModules: MethodModule[] = [
   gamePlay,
   gameStop,
   gameScreenshot,
+  gameUiBrowse,
+  viewportCameraRead,
   hubTokenRead,
 ];
 
@@ -95,5 +101,7 @@ export const renderBuilders: Record<string, RenderBuilder> = {
     buildGameScreenshotRender(result, normalizedArgs, output),
   studiorpc_level_publish: ({ normalizedArgs, output, result }) =>
     buildLevelPublishRender(result, normalizedArgs, output),
+  studiorpc_game_ui_browse: ({ output, result }) => buildGameUiBrowseRender(result, output),
+  studiorpc_viewport_camera_read: ({ output, result }) => buildViewportCameraReadRender(result, output),
   studiorpc_hub_token_read: ({ output, result }) => buildHubTokenReadRender(result, output),
 };
