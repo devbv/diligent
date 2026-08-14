@@ -8,7 +8,10 @@ export const description =
   "Use this only when the user explicitly requests a screenshot; do not use it for autonomous validation. " +
   'Currently only the "Viewport" mode is supported (defaults to "Viewport" when omitted). ' +
   "Other modes (Thumbnail / HubScreenshot / Custom with explicit size) are planned and not yet available. " +
-  "GUI elements are included by default; pass includeGui: false to capture the scene only.";
+  "GUI elements are included by default; pass includeGui: false to capture the scene only. " +
+  "The image covers the same viewport rectangle that studiorpc_game_input_inject's " +
+  "normalized pointer coordinates map onto, so a point read off the image as a fraction of its width and " +
+  "height can be clicked directly.";
 
 export const params = z
   .object({

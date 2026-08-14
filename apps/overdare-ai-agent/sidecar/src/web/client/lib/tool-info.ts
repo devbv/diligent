@@ -239,6 +239,22 @@ function getStudioRpcToolInfo(normalized: string): ToolInfo | null {
     });
   }
 
+  if (normalized.includes("game_input_") || normalized.includes("character_move")) {
+    return tool("Studio RPC", "input", "action", {
+      done: "Played test input",
+      running: "Playing test input",
+      failed: "Play-test input failed",
+    });
+  }
+
+  if (normalized.includes("pie_status")) {
+    return tool("Studio RPC", "input", "context", {
+      done: "Read play-test status",
+      running: "Reading play-test status",
+      failed: "Play-test status failed",
+    });
+  }
+
   if (normalized.includes("grep") || normalized.includes("browse")) {
     return tool("Studio RPC", "search", "context", {
       done: "Searched Studio",
