@@ -25,6 +25,7 @@ import {
 import { z } from "zod";
 import { OVERDARE_EXPERIMENTS } from "./experiments";
 import { configureSidecarLogging } from "./logging";
+import { flushSentry } from "./sentry";
 import type { StudioCatalogSnapshot, StudioPromptDescriptor, StudioToolDescriptor } from "./studio-registry";
 import { createRagToolProvider } from "./tools/rag";
 import { createStudioRpcToolProvider } from "./tools/studiorpc";
@@ -434,6 +435,7 @@ export async function runMcpServerMain(): Promise<void> {
       message: `Failed to start OVERDARE MCP server: ${message}`,
       error,
     });
+    await flushSentry();
     process.exit(1);
   }
 }
