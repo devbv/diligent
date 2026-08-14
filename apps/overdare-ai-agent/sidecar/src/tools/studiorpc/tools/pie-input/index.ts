@@ -78,9 +78,11 @@ const moveToParams = z.object({
         "move aimed at a trigger volume stops beside it without setting it off; this aims far enough past the " +
         "point, along the line the character is already approaching on, that the path crosses it. Use it " +
         "whenever the point of the move is to touch something rather than to arrive somewhere. " +
-        "The reply then reports `passedWithin` — how near the walk came to the target at its closest, which " +
-        "is the number that matters here — and `crossed`, which is that measured against arrivalTolerance. " +
-        "distanceToTarget will be large and that is the intent: it ends past the thing, not on it.",
+        "The reply then reports `passedWithin` — how near the walk came, at its closest, to the position you " +
+        "asked for rather than to the point it was aimed at — and `crossed`, which is that measured against " +
+        "arrivalTolerance. Read those two, not distanceToTarget: distanceToTarget says where the character " +
+        "came to rest, which for a pass-through is deliberately past the target and so is large even when the " +
+        "crossing worked.",
     ),
   wait: z.boolean().optional().describe("Poll game.character.moveStatus until the move ends. Defaults to true."),
   timeoutMs: z
@@ -419,7 +421,15 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
           // distanceToTarget stays measured from the point you asked about, not the
           // one it was aimed at, so passThrough does not quietly move the goalposts.
           ...(destination !== args.position ? { aimedAt: destination } : {}),
-          ...(passedWithin !== undefined ? { passedWithin: Math.round(passedWithin), crossed: arrived } : {}),
+          ...(passedWithin !== undefined
+            ? {
+                passedWithin: Math.round(passedWithin),
+                crossed: arrived,
+                passThroughNote:
+                  `passedWithin is the closest the walk came to the position you asked for; ` +
+                  `distanceToTarget below is where the character came to rest, which is past it on purpose.`,
+              }
+            : {}),
           ...(endedAt
             ? {
                 [settled ? "endedAt" : "at"]: endedAt,
