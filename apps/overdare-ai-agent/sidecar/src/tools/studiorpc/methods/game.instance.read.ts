@@ -13,9 +13,11 @@ export const description =
   "studiorpc_game_character_move_to's arrivalTolerance instead of guessing a number. " +
   "Reach for it the moment the game's own log and what you can see disagree: a part can be made " +
   "see-through without being made passable, and only this shows the difference. " +
-  "Call it with no arguments to list everything in the running Workspace with its name, class and position — " +
-  "that is the live counterpart to studiorpc_level_browse, and the way to find out what a name is before " +
-  "asking about it.";
+  "Call it with no arguments to list what sits directly in the running Workspace with its name, class, " +
+  "position and size — that is the live counterpart to studiorpc_level_browse, and the way to find out what " +
+  "a name is before asking about it. It stops at the top level on purpose, because a character's rig is " +
+  "dozens of instances and would bury the handful you came for; raise maxDepth when you need inside " +
+  "something, and the reply says how much was left out.";
 
 export const params = z
   .object({
@@ -31,6 +33,16 @@ export const params = z
       .describe(
         "GUID of the instance, as any tool that reports one gives it. Instances a script created at run time " +
           "have no GUID, so look those up by name.",
+      ),
+    maxDepth: z
+      .number()
+      .int()
+      .min(1)
+      .max(32)
+      .optional()
+      .describe(
+        "How many levels below Workspace to list when no name or GUID is given. Defaults to 1, the things " +
+          "sitting in the world rather than the parts they are made of.",
       ),
   })
   .strict();
