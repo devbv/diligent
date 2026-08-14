@@ -306,6 +306,29 @@ describe("play-test input tools", () => {
     expect(result.output).toContain("will not make it walk");
   });
 
+  test("move_to withholds a verdict while the move is still running", async () => {
+    // A character partway through a journey has not moved much and is not near the
+    // target; saying `blocked` there states an outcome the move has not reached.
+    const { byName } = toolsFor((call) => {
+      if (call.method === "game.pie.status") return runningStatus();
+      if (call.method === "game.character.moveTo") return { requestId: "req-15", status: "pendingStart" };
+      if (call.method === "game.character.read") {
+        return { character: { CFrame: { Position: { X: 1, Y: 0, Z: 0 } } } };
+      }
+      return { requestId: "req-15", status: "running", clientId: "client-1" };
+    });
+
+    const result = await run(byName.get("studiorpc_game_character_move_to"), {
+      position: { x: 5000, y: 0, z: 0 },
+      timeoutMs: 1_000,
+    });
+
+    expect(result.output).not.toContain('"blocked"');
+    expect(result.output).not.toContain('"endedAt"');
+    expect(result.output).toContain('"at"');
+    expect(result.output).toContain("no blocked verdict yet");
+  });
+
   test("move_to still calls out a move that went nowhere", async () => {
     const wentNowhere = (call: { method: string }) => {
       if (call.method === "game.pie.status") return runningStatus();

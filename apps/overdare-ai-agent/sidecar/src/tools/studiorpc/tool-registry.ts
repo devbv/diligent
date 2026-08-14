@@ -9,6 +9,7 @@ import * as gameInstanceRead from "./methods/game.instance.read";
 import * as gamePlay from "./methods/game.play";
 import * as gameScreenshot from "./methods/game.screenshot";
 import * as gameStop from "./methods/game.stop";
+import * as gameTimeScale from "./methods/game.time.scale";
 import * as gameUiBrowse from "./methods/game.ui.browse";
 import * as hubTokenRead from "./methods/hub.token.read";
 import * as levelBrowse from "./methods/level.browse";
@@ -68,6 +69,7 @@ export const methodModules: MethodModule[] = [
   gameScreenshot,
   gameCharacterRead,
   gameInstanceRead,
+  gameTimeScale,
   gameUiBrowse,
   viewportCameraRead,
   hubTokenRead,

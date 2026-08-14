@@ -308,7 +308,10 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
       // Standing still because navigation is already satisfied is not being blocked.
       // Only a character that was asked to travel a real distance and did not is.
       const navSatisfied = distanceToTarget !== undefined && distanceToTarget <= NAV_STOP_DISTANCE;
-      const blocked = movedDistance !== undefined && !moved && !arrived && !navSatisfied;
+      // Only a finished move can be judged. While one is still running these are a
+      // snapshot of a character mid-journey, and reporting them reads as a verdict.
+      const settled = isTerminalMoveStatus(status);
+      const blocked = settled && movedDistance !== undefined && !moved && !arrived && !navSatisfied;
 
       return {
         output: jsonOutput({
@@ -317,9 +320,15 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
           clientId: target.clientId,
           waitedMs: polled.waitedMs,
           ...(endedAt
-            ? { endedAt, distanceToTarget: Math.round(distanceToTarget ?? 0), arrivalTolerance: tolerance }
+            ? {
+                [settled ? "endedAt" : "at"]: endedAt,
+                distanceToTarget: Math.round(distanceToTarget ?? 0),
+                arrivalTolerance: tolerance,
+              }
             : {}),
-          ...(movedDistance !== undefined ? { moved, movedDistance: Math.round(movedDistance), blocked } : {}),
+          ...(movedDistance !== undefined
+            ? { moved, movedDistance: Math.round(movedDistance), ...(settled ? { blocked } : {}) }
+            : {}),
           ...(status === "reached" && distanceToTarget !== undefined && !arrived
             ? {
                 warning:
@@ -338,7 +347,7 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
                       `character cannot stand. Aim at ground level near the target, or pick a reachable point.`,
               }
             : {}),
-          ...(!moved && navSatisfied && !arrived
+          ...(settled && !moved && navSatisfied && !arrived
             ? {
                 hint:
                   `The character did not move: navigation already counts ${Math.round(distanceToTarget ?? 0)} ` +
@@ -348,7 +357,13 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
               }
             : {}),
           ...(polled.timedOut
-            ? { note: `Still moving after ${timeoutMs}ms; poll studiorpc_game_character_move_status for the outcome.` }
+            ? {
+                note:
+                  `Still moving after ${timeoutMs}ms, so this is where the character is partway through rather ` +
+                  `than where it ended up — there is no blocked verdict yet. Poll ` +
+                  `studiorpc_game_character_move_status for the outcome; two polls reporting the same \`at\` ` +
+                  `mean it is stuck rather than slow.`,
+              }
             : {}),
         }),
         render: buildMoveToRender(target, args.position, requestId, status, polled.waitedMs),
