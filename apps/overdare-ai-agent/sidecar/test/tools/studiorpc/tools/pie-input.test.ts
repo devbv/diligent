@@ -331,6 +331,80 @@ describe("play-test input tools", () => {
     expect(result.output).toContain('"moved": true');
   });
 
+  test("passThrough aims past the point so the walk crosses it", async () => {
+    const { calls, byName } = toolsFor((call) => {
+      if (call.method === "game.pie.status") return runningStatus();
+      if (call.method === "game.character.moveTo") return { requestId: "req-17", status: "pendingStart" };
+      if (call.method === "game.character.read") {
+        return { character: { CFrame: { Position: { X: 0, Y: 0, Z: 0 } } } };
+      }
+      return { requestId: "req-17", status: "reached", clientId: "client-1" };
+    });
+
+    const result = await run(byName.get("studiorpc_game_character_move_to"), {
+      position: { x: 100, y: 60, z: 0 },
+      passThrough: true,
+    });
+
+    // Approaching along +x from the origin, so the aim point is 200 further along it.
+    const sent = calls.find((call) => call.method === "game.character.moveTo");
+    expect((sent?.params as { position: { x: number; z: number } }).position).toMatchObject({ x: 300, z: 0 });
+    expect(result.output).toContain('"aimedAt"');
+    expect(result.output).toContain('"passedWithin"');
+    // Distance is still reported against the coin, not the point past it: the
+    // character sits at the origin and the coin is 100 out and 60 up, so 117.
+    expect(result.output).toContain('"distanceToTarget": 117');
+  });
+
+  test("passThrough counts crossing the target, not stopping near it", async () => {
+    // Walks from the origin to x=520, straight over a coin at x=350. It ends 170
+    // past the coin, which is exactly the point, so it must not read as blocked.
+    let read = 0;
+    const { byName } = toolsFor((call) => {
+      if (call.method === "game.pie.status") return runningStatus();
+      if (call.method === "game.character.moveTo") return { requestId: "req-19", status: "pendingStart" };
+      if (call.method === "game.character.read") {
+        const x = read++ === 0 ? 0 : 520;
+        return { character: { CFrame: { Position: { X: x, Y: 60, Z: 250 } } } };
+      }
+      return { requestId: "req-19", status: "reached", clientId: "client-1" };
+    });
+
+    const result = await run(byName.get("studiorpc_game_character_move_to"), {
+      position: { x: 350, y: 60, z: 250 },
+      passThrough: true,
+      arrivalTolerance: 45,
+    });
+
+    expect(result.output).toContain('"passedWithin": 0');
+    expect(result.output).toContain('"crossed": true');
+    expect(result.output).toContain('"blocked": false');
+  });
+
+  test("move_to gives up on a character that has stopped moving", async () => {
+    // Navigation keeps saying running; the position never changes. Waiting out the
+    // whole budget would only confirm what two samples already show.
+    const { byName } = toolsFor((call) => {
+      if (call.method === "game.pie.status") return runningStatus();
+      if (call.method === "game.character.moveTo") return { requestId: "req-18", status: "pendingStart" };
+      if (call.method === "game.character.read") {
+        return { character: { CFrame: { Position: { X: 500, Y: 0, Z: 0 } } } };
+      }
+      return { requestId: "req-18", status: "running", clientId: "client-1" };
+    });
+
+    const result = await run(byName.get("studiorpc_game_character_move_to"), {
+      position: { x: 5000, y: 0, z: 0 },
+      timeoutMs: 60_000,
+    });
+
+    expect(result.output).toContain('"blocked": true');
+    expect(result.output).toContain("stuck rather than slow");
+    // It must not have burned the full minute to say so.
+    const waited = Number(/"waitedMs": (\d+)/.exec(result.output)?.[1] ?? 0);
+    expect(waited).toBeLessThan(30_000);
+  });
+
   test("move_to withholds a verdict while the move is still running", async () => {
     // A character partway through a journey has not moved much and is not near the
     // target; saying `blocked` there states an outcome the move has not reached.

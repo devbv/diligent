@@ -33,6 +33,10 @@ const ARRIVAL_TOLERANCE = 150;
 const MOVED_AT_ALL = 5;
 /** Navigation stops itself about this far out, and will not re-approach from inside it. */
 const NAV_STOP_DISTANCE = 50;
+/** Still for this long while navigation claims to be running means it is stuck, not slow. */
+const MOVE_STALL_MS = 3_000;
+/** How far past a point passThrough aims, so the walk crosses it rather than ending on it. */
+const PASS_THROUGH_OVERSHOOT = 200;
 
 const targetOverrides = {
   pieSessionId: z
@@ -65,6 +69,18 @@ const moveToParams = z.object({
       `How close, in world units, counts as arrived. Defaults to ${ARRIVAL_TOLERANCE}, which suits ` +
         "travelling to a place. Set it to the size of the thing you are testing when arriving is the point " +
         "— walking into a trigger volume 40 units across is not proven by stopping 150 units away.",
+    ),
+  passThrough: z
+    .boolean()
+    .optional()
+    .describe(
+      "Walk through the position rather than up to it. Navigation stops short of wherever it is sent, so a " +
+        "move aimed at a trigger volume stops beside it without setting it off; this aims far enough past the " +
+        "point, along the line the character is already approaching on, that the path crosses it. Use it " +
+        "whenever the point of the move is to touch something rather than to arrive somewhere. " +
+        "The reply then reports `passedWithin` — how near the walk came to the target at its closest, which " +
+        "is the number that matters here — and `crossed`, which is that measured against arrivalTolerance. " +
+        "distanceToTarget will be large and that is the intent: it ends past the thing, not on it.",
     ),
   wait: z.boolean().optional().describe("Poll game.character.moveStatus until the move ends. Defaults to true."),
   timeoutMs: z
@@ -133,6 +149,44 @@ async function readCharacterPosition(callRpc: CallRpc): Promise<{ x: number; y: 
 
 function distanceBetween(a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }): number {
   return Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+}
+
+/**
+ * How near the walk from `from` to `to` came to `point` at its closest, rather than
+ * how near it ended. A pass-through deliberately finishes beyond its target, so where
+ * it stopped says nothing about whether it went over the thing.
+ */
+function closestApproach(
+  from: { x: number; y: number; z: number },
+  to: { x: number; y: number; z: number },
+  point: { x: number; y: number; z: number },
+): number {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const dz = to.z - from.z;
+  const lengthSquared = dx * dx + dy * dy + dz * dz;
+  if (lengthSquared === 0) return distanceBetween(from, point);
+  const along = ((point.x - from.x) * dx + (point.y - from.y) * dy + (point.z - from.z) * dz) / lengthSquared;
+  const clamped = Math.max(0, Math.min(1, along));
+  return distanceBetween({ x: from.x + dx * clamped, y: from.y + dy * clamped, z: from.z + dz * clamped }, point);
+}
+
+/**
+ * A point the given distance beyond `target`, on the line from `from` through it,
+ * so walking there crosses the target instead of stopping at it. Keeps the target's
+ * height, since only the ground track is being extended.
+ */
+function overshootPast(
+  from: { x: number; y: number; z: number },
+  target: { x: number; y: number; z: number },
+  beyond: number,
+): { x: number; y: number; z: number } {
+  const dx = target.x - from.x;
+  const dz = target.z - from.z;
+  const flat = Math.hypot(dx, dz);
+  // Standing on the target already: there is no approach line to extend.
+  if (flat < 1) return target;
+  return { x: target.x + (dx / flat) * beyond, y: target.y, z: target.z + (dz / flat) * beyond };
 }
 
 function sleep(ms: number): Promise<void> {
@@ -226,14 +280,25 @@ function createInputInjectTool(callRpc: CallRpc): Tool {
   };
 }
 
+/**
+ * Waits for a move to finish, and gives up early on one that never will.
+ *
+ * A character walking into a wall keeps `running` until the caller's whole budget
+ * is gone, so waiting for a terminal status means the clearest case — genuinely
+ * stuck — is the one case that never gets an answer. Watching the position instead
+ * settles it in a few seconds: a character that has not moved while navigation
+ * still claims to be working is against something.
+ */
 async function pollMoveStatus(
   callRpc: CallRpc,
   pieSessionId: string,
   requestId: string,
   timeoutMs: number,
-): Promise<{ status: string | undefined; waitedMs: number; timedOut: boolean }> {
+): Promise<{ status: string | undefined; waitedMs: number; timedOut: boolean; stalled: boolean }> {
   const startedAt = Date.now();
   let status: string | undefined;
+  let stillSince: number | undefined;
+  let lastPosition: { x: number; y: number; z: number } | undefined;
 
   while (Date.now() - startedAt < timeoutMs) {
     await sleep(MOVE_POLL_INTERVAL_MS);
@@ -244,11 +309,21 @@ async function pollMoveStatus(
     )) as MoveStatusResult;
     status = result?.status;
     if (isTerminalMoveStatus(status)) {
-      return { status, waitedMs: Date.now() - startedAt, timedOut: false };
+      return { status, waitedMs: Date.now() - startedAt, timedOut: false, stalled: false };
+    }
+
+    const position = await readCharacterPosition(callRpc);
+    if (position) {
+      const still = lastPosition !== undefined && distanceBetween(position, lastPosition) <= MOVED_AT_ALL;
+      stillSince = still ? (stillSince ?? Date.now()) : undefined;
+      lastPosition = position;
+      if (stillSince !== undefined && Date.now() - stillSince >= MOVE_STALL_MS) {
+        return { status, waitedMs: Date.now() - startedAt, timedOut: false, stalled: true };
+      }
     }
   }
 
-  return { status, waitedMs: Date.now() - startedAt, timedOut: true };
+  return { status, waitedMs: Date.now() - startedAt, timedOut: true, stalled: false };
 }
 
 function createCharacterMoveToTool(callRpc: CallRpc): Tool {
@@ -275,9 +350,16 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
       // Where it began, so the reply can say whether the character travelled at all.
       // Two moves that end on the same spot look like a no-op otherwise.
       const startedFrom = await readCharacterPosition(callRpc);
+      // Aiming past the point is what makes the path cross it. Distances stay in the
+      // horizontal plane: the overshoot is about where the character walks, and
+      // borrowing the target's height would send it at the floor or the ceiling.
+      const destination =
+        args.passThrough && startedFrom
+          ? overshootPast(startedFrom, args.position, PASS_THROUGH_OVERSHOOT)
+          : args.position;
       const started = (await callRpc(
         "game.character.moveTo",
-        { pieSessionId: target.pieSessionId, clientId: target.clientId, position: args.position },
+        { pieSessionId: target.pieSessionId, clientId: target.clientId, position: destination },
         { timeoutMs: MOVE_RPC_TIMEOUT_MS },
       )) as MoveToResult;
 
@@ -305,7 +387,14 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
       const endedAt = await readCharacterPosition(callRpc);
       const distanceToTarget = endedAt ? distanceBetween(endedAt, args.position) : undefined;
       const tolerance = args.arrivalTolerance ?? ARRIVAL_TOLERANCE;
-      const arrived = distanceToTarget !== undefined && distanceToTarget <= tolerance;
+      // A pass-through succeeds by crossing the target, so judge the path, not the
+      // stopping place — it is meant to end beyond the thing it was sent over.
+      const passedWithin =
+        args.passThrough && startedFrom && endedAt ? closestApproach(startedFrom, endedAt, args.position) : undefined;
+      const arrived =
+        passedWithin !== undefined
+          ? passedWithin <= tolerance
+          : distanceToTarget !== undefined && distanceToTarget <= tolerance;
       const movedDistance = startedFrom && endedAt ? distanceBetween(startedFrom, endedAt) : undefined;
       const moved = movedDistance !== undefined && movedDistance > MOVED_AT_ALL;
       // Standing still because navigation is already satisfied is not being blocked.
@@ -316,7 +405,9 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
         status === "reached" && distanceToTarget !== undefined && distanceToTarget <= NAV_STOP_DISTANCE;
       // Only a finished move can be judged. While one is still running these are a
       // snapshot of a character mid-journey, and reporting them reads as a verdict.
-      const settled = isTerminalMoveStatus(status);
+      // A stall counts as finished: navigation has not given up, but the character
+      // has stopped, and waiting out the budget would not learn anything more.
+      const settled = isTerminalMoveStatus(status) || polled.stalled;
       const blocked = settled && distanceToTarget !== undefined && !arrived && !navSatisfied;
 
       return {
@@ -325,6 +416,10 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
           status,
           clientId: target.clientId,
           waitedMs: polled.waitedMs,
+          // distanceToTarget stays measured from the point you asked about, not the
+          // one it was aimed at, so passThrough does not quietly move the goalposts.
+          ...(destination !== args.position ? { aimedAt: destination } : {}),
+          ...(passedWithin !== undefined ? { passedWithin: Math.round(passedWithin), crossed: arrived } : {}),
           ...(endedAt
             ? {
                 [settled ? "endedAt" : "at"]: endedAt,
@@ -360,6 +455,14 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
                   `units away as arrived, so asking for the same point again will not make it walk. If you ` +
                   `need it to pass through something there, send it to a point beyond the target so the path ` +
                   `crosses it, or step it away first and approach from further off.`,
+              }
+            : {}),
+          ...(polled.stalled
+            ? {
+                note:
+                  `Navigation still reports "${status}", but the character has not moved for ` +
+                  `${MOVE_STALL_MS / 1000} seconds, so it is stuck rather than slow and the wait was cut short. ` +
+                  `Something is in the way: check what it is standing against before assuming the target is bad.`,
               }
             : {}),
           ...(polled.timedOut
