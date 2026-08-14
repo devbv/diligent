@@ -8,7 +8,9 @@ export const description =
   "This is the live counterpart to studiorpc_instance_read, which reads the level as authored and so cannot " +
   "see anything a script changed after play started. When a script claims to have opened a door, dimmed a " +
   "light, or disabled a trigger, this is what tells you whether it actually did — CanCollide, CanTouch, " +
-  "Transparency and the current CFrame come from the live instance, not the saved level. " +
+  "Transparency, Size and the current CFrame come from the live instance, not the saved level. " +
+  "Size is how big the part actually is, which is what tells you how close counts as reaching it: pass it as " +
+  "studiorpc_game_character_move_to's arrivalTolerance instead of guessing a number. " +
   "Reach for it the moment the game's own log and what you can see disagree: a part can be made " +
   "see-through without being made passable, and only this shows the difference. " +
   "Call it with no arguments to list everything in the running Workspace with its name, class and position — " +

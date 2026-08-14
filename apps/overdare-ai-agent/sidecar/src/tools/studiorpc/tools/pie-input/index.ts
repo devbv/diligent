@@ -261,9 +261,12 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
       `character actually stopped. \`arrived\` is true within \`arrivalTolerance\` units of the target, ` +
       `${ARRIVAL_TOLERANCE} by default and echoed back in the response; pass a smaller one when you are ` +
       "testing whether the character reached a specific small thing rather than merely got there. " +
-      "`moved` and `movedDistance` say whether it travelled at all, which is what separates a move that was " +
-      "unnecessary — already inside the tolerance — from one that went nowhere; `blocked` marks the second, " +
-      "where something is in the way or the target is somewhere a walking character cannot stand. " +
+      "`moved` and `movedDistance` say whether it travelled at all, which separates a move that was " +
+      "unnecessary — already inside the tolerance — from one that went nowhere. `blocked` means the move " +
+      "finished without getting there and navigation did not choose to stop: something is in the way, or the " +
+      "target is somewhere a walking character cannot stand. A character that walked most of the way and then " +
+      "hit a wall is blocked just as much as one that never set off, so read `blocked` with `movedDistance` to " +
+      "see where it got stuck. " +
       "Pass wait: false to return the requestId immediately and poll with " +
       "studiorpc_game_character_move_status yourself.",
     parameters: moveToParams,
@@ -306,12 +309,15 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
       const movedDistance = startedFrom && endedAt ? distanceBetween(startedFrom, endedAt) : undefined;
       const moved = movedDistance !== undefined && movedDistance > MOVED_AT_ALL;
       // Standing still because navigation is already satisfied is not being blocked.
-      // Only a character that was asked to travel a real distance and did not is.
-      const navSatisfied = distanceToTarget !== undefined && distanceToTarget <= NAV_STOP_DISTANCE;
+      // Distance alone cannot tell that from a wall — stopping 44 units short against
+      // a solid gate and 34 short of a point nav likes look identical. The status can:
+      // navigation says `reached` when it is satisfied and times out when it is stuck.
+      const navSatisfied =
+        status === "reached" && distanceToTarget !== undefined && distanceToTarget <= NAV_STOP_DISTANCE;
       // Only a finished move can be judged. While one is still running these are a
       // snapshot of a character mid-journey, and reporting them reads as a verdict.
       const settled = isTerminalMoveStatus(status);
-      const blocked = settled && movedDistance !== undefined && !moved && !arrived && !navSatisfied;
+      const blocked = settled && distanceToTarget !== undefined && !arrived && !navSatisfied;
 
       return {
         output: jsonOutput({

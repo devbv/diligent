@@ -306,6 +306,31 @@ describe("play-test input tools", () => {
     expect(result.output).toContain("will not make it walk");
   });
 
+  test("move_to reports a character that walked into a wall as blocked", async () => {
+    // Stopped 44 units short of a target behind a solid gate. That is inside the
+    // distance navigation normally stops at, so only the timedOut status tells the
+    // difference between a wall and navigation being content.
+    let read = 0;
+    const { byName } = toolsFor((call) => {
+      if (call.method === "game.pie.status") return runningStatus();
+      if (call.method === "game.character.moveTo") return { requestId: "req-16", status: "pendingStart" };
+      if (call.method === "game.character.read") {
+        // Started at the origin, walked most of the way, stopped at the gate.
+        const x = read++ === 0 ? 0 : 956;
+        return { character: { CFrame: { Position: { X: x, Y: 0, Z: 0 } } } };
+      }
+      return { requestId: "req-16", status: "timedOut", clientId: "client-1" };
+    });
+
+    const result = await run(byName.get("studiorpc_game_character_move_to"), {
+      position: { x: 1000, y: 0, z: 0 },
+      arrivalTolerance: 20,
+    });
+
+    expect(result.output).toContain('"blocked": true');
+    expect(result.output).toContain('"moved": true');
+  });
+
   test("move_to withholds a verdict while the move is still running", async () => {
     // A character partway through a journey has not moved much and is not near the
     // target; saying `blocked` there states an outcome the move has not reached.
