@@ -51,49 +51,64 @@ const injectParams = z.object({
   ...targetOverrides,
 });
 
-const moveToParams = z.object({
-  position: z
-    .object({ x: z.number(), y: z.number(), z: z.number() })
-    .describe(
-      "Destination in the same world coordinates as studiorpc_instance_read and " +
-        "studiorpc_game_character_read, so a position read from either can be passed straight in. " +
-        "Aim at ground level: the character walks, so the height of an object's centre is somewhere it can " +
-        "never stand, and asking for it just times out. Take the object's x and z and the character's own " +
-        "current y.",
-    ),
-  arrivalTolerance: z
-    .number()
-    .min(1)
-    .optional()
-    .describe(
-      `How close, in world units, counts as arrived. Defaults to ${ARRIVAL_TOLERANCE}, which suits ` +
-        "travelling to a place. Set it to the size of the thing you are testing when arriving is the point " +
-        "— walking into a trigger volume 40 units across is not proven by stopping 150 units away.",
-    ),
-  passThrough: z
-    .boolean()
-    .optional()
-    .describe(
-      "Walk through the position rather than up to it. Navigation stops short of wherever it is sent, so a " +
-        "move aimed at a trigger volume stops beside it without setting it off; this aims far enough past the " +
-        "point, along the line the character is already approaching on, that the path crosses it. Use it " +
-        "whenever the point of the move is to touch something rather than to arrive somewhere. " +
-        "The reply then reports `passedWithin` — how near the walk came, at its closest, to the position you " +
-        "asked for rather than to the point it was aimed at — and `crossed`, which is that measured against " +
-        "arrivalTolerance. Read those two, not distanceToTarget: distanceToTarget says where the character " +
-        "came to rest, which for a pass-through is deliberately past the target and so is large even when the " +
-        "crossing worked.",
-    ),
-  wait: z.boolean().optional().describe("Poll game.character.moveStatus until the move ends. Defaults to true."),
-  timeoutMs: z
-    .number()
-    .int()
-    .min(1_000)
-    .max(MOVE_WAIT_MAX_MS)
-    .optional()
-    .describe(`How long to poll when wait is true. Defaults to ${MOVE_WAIT_DEFAULT_MS}ms.`),
-  ...targetOverrides,
-});
+const moveToParams = z
+  .object({
+    targetName: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        "Runtime name of an instance to walk to, instead of a position — the tool reads where it actually is " +
+          "and how big it is. Prefer this over typing coordinates: a made-up height aims at a point above the " +
+          "thing, and every distance the reply gives you is then measured from a place nothing is. When the " +
+          "instance has a Size, arrivalTolerance defaults to its reach from the centre.",
+      ),
+    position: z
+      .object({ x: z.number(), y: z.number(), z: z.number() })
+      .optional()
+      .describe(
+        "Destination in the same world coordinates as studiorpc_instance_read and " +
+          "studiorpc_game_character_read, so a position read from either can be passed straight in. " +
+          "Aim at ground level: the character walks, so the height of an object's centre is somewhere it can " +
+          "never stand, and asking for it just times out. Take the object's x and z and the character's own " +
+          "current y.",
+      ),
+    arrivalTolerance: z
+      .number()
+      .min(1)
+      .optional()
+      .describe(
+        `How close, in world units, counts as arrived. Defaults to ${ARRIVAL_TOLERANCE}, which suits ` +
+          "travelling to a place. Set it to the size of the thing you are testing when arriving is the point " +
+          "— walking into a trigger volume 40 units across is not proven by stopping 150 units away.",
+      ),
+    passThrough: z
+      .boolean()
+      .optional()
+      .describe(
+        "Walk through the position rather than up to it. Navigation stops short of wherever it is sent, so a " +
+          "move aimed at a trigger volume stops beside it without setting it off; this aims far enough past the " +
+          "point, along the line the character is already approaching on, that the path crosses it. Use it " +
+          "whenever the point of the move is to touch something rather than to arrive somewhere. " +
+          "The reply then reports `passedWithin` — how near the walk came, at its closest, to the position you " +
+          "asked for rather than to the point it was aimed at — and `crossed`, which is that measured against " +
+          "arrivalTolerance. Read those two, not distanceToTarget: distanceToTarget says where the character " +
+          "came to rest, which for a pass-through is deliberately past the target and so is large even when the " +
+          "crossing worked.",
+      ),
+    wait: z.boolean().optional().describe("Poll game.character.moveStatus until the move ends. Defaults to true."),
+    timeoutMs: z
+      .number()
+      .int()
+      .min(1_000)
+      .max(MOVE_WAIT_MAX_MS)
+      .optional()
+      .describe(`How long to poll when wait is true. Defaults to ${MOVE_WAIT_DEFAULT_MS}ms.`),
+    ...targetOverrides,
+  })
+  .refine((value) => value.position !== undefined || value.targetName !== undefined, {
+    message: "Pass either position or targetName to say where to walk.",
+  });
 
 const moveStatusParams = z.object({
   requestId: z.string().describe("requestId returned by studiorpc_game_character_move_to."),
@@ -151,6 +166,36 @@ async function readCharacterPosition(callRpc: CallRpc): Promise<{ x: number; y: 
 
 function distanceBetween(a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }): number {
   return Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+}
+
+interface LiveInstance {
+  instance?: {
+    CFrame?: { Position?: { X?: number; Y?: number; Z?: number } };
+    Size?: { X?: number; Y?: number; Z?: number };
+  };
+}
+
+/**
+ * Where an instance actually is and how far it reaches, so a caller can name the
+ * thing rather than type coordinates at it. Typed coordinates are where the
+ * position errors come from: an invented height aims above the target, and every
+ * distance in the reply is then measured from a place nothing occupies.
+ */
+async function readLiveInstance(
+  callRpc: CallRpc,
+  name: string,
+): Promise<{ position: { x: number; y: number; z: number }; reach?: number } | undefined> {
+  const result = (await callRpc("game.instance.read", { name }, { timeoutMs: MOVE_RPC_TIMEOUT_MS })) as LiveInstance;
+  const position = result?.instance?.CFrame?.Position;
+  if (typeof position?.X !== "number" || typeof position?.Y !== "number" || typeof position?.Z !== "number") {
+    return undefined;
+  }
+  const size = result?.instance?.Size;
+  const largest = size ? Math.max(size.X ?? 0, size.Y ?? 0, size.Z ?? 0) : 0;
+  return {
+    position: { x: position.X, y: position.Y, z: position.Z },
+    reach: largest > 0 ? largest / 2 : undefined,
+  };
 }
 
 /**
@@ -332,8 +377,11 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
   return {
     name: "studiorpc_game_character_move_to",
     description:
-      "Walk the play-test character to a world position using its own navigation, instead of steering it with " +
-      "key events. Read `arrived`, not `status`: Studio reports `reached` whenever its path following " +
+      "Walk the play-test character to a world position, or to a named instance, using its own navigation " +
+      "instead of steering it with key events. Naming the target is the safer form: the tool reads where the " +
+      "thing actually is and sizes the tolerance to it, where typed coordinates invite an invented height " +
+      "that aims at empty air above it. " +
+      "Read `arrived`, not `status`: Studio reports `reached` whenever its path following " +
       "returns success, which it does even when it could not get there, so the tool measures where the " +
       `character actually stopped. \`arrived\` is true within \`arrivalTolerance\` units of the target, ` +
       `${ARRIVAL_TOLERANCE} by default and echoed back in the response; pass a smaller one when you are ` +
@@ -349,6 +397,15 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
     parameters: moveToParams,
     async execute(args: MoveToParams): Promise<ToolResult> {
       const target = await resolvePieTarget(callRpc, args);
+      const named = args.targetName ? await readLiveInstance(callRpc, args.targetName) : undefined;
+      if (args.targetName && !named) {
+        throw new Error(
+          `No instance named "${args.targetName}" is in the running Workspace, so there is nowhere to walk to. ` +
+            `Call studiorpc_game_instance_read with no arguments to see what is there.`,
+        );
+      }
+      const wantedPosition = named?.position ?? args.position;
+      if (!wantedPosition) throw new Error("Pass either position or targetName to say where to walk.");
       // Where it began, so the reply can say whether the character travelled at all.
       // Two moves that end on the same spot look like a no-op otherwise.
       const startedFrom = await readCharacterPosition(callRpc);
@@ -357,8 +414,8 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
       // borrowing the target's height would send it at the floor or the ceiling.
       const destination =
         args.passThrough && startedFrom
-          ? overshootPast(startedFrom, args.position, PASS_THROUGH_OVERSHOOT)
-          : args.position;
+          ? overshootPast(startedFrom, wantedPosition, PASS_THROUGH_OVERSHOOT)
+          : wantedPosition;
       const started = (await callRpc(
         "game.character.moveTo",
         { pieSessionId: target.pieSessionId, clientId: target.clientId, position: destination },
@@ -370,7 +427,7 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
       if (!shouldWait || !requestId) {
         return {
           output: jsonOutput({ ...started, clientId: target.clientId }),
-          render: buildMoveToRender(target, args.position, requestId, started?.status, undefined),
+          render: buildMoveToRender(target, wantedPosition, requestId, started?.status, undefined),
           metadata: {
             tool: "studiorpc_game_character_move_to",
             clientId: target.clientId,
@@ -387,12 +444,14 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
       // Check the claim rather than repeat it: a level without navigation data can
       // report `reached` with the character still standing where it started.
       const endedAt = await readCharacterPosition(callRpc);
-      const distanceToTarget = endedAt ? distanceBetween(endedAt, args.position) : undefined;
-      const tolerance = args.arrivalTolerance ?? ARRIVAL_TOLERANCE;
+      const distanceToTarget = endedAt ? distanceBetween(endedAt, wantedPosition) : undefined;
+      // A named target knows its own size, so "close enough to have touched it" is a
+      // measurement rather than the caller's guess.
+      const tolerance = args.arrivalTolerance ?? named?.reach ?? ARRIVAL_TOLERANCE;
       // A pass-through succeeds by crossing the target, so judge the path, not the
       // stopping place — it is meant to end beyond the thing it was sent over.
       const passedWithin =
-        args.passThrough && startedFrom && endedAt ? closestApproach(startedFrom, endedAt, args.position) : undefined;
+        args.passThrough && startedFrom && endedAt ? closestApproach(startedFrom, endedAt, wantedPosition) : undefined;
       const arrived =
         passedWithin !== undefined
           ? passedWithin <= tolerance
@@ -420,7 +479,8 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
           waitedMs: polled.waitedMs,
           // distanceToTarget stays measured from the point you asked about, not the
           // one it was aimed at, so passThrough does not quietly move the goalposts.
-          ...(destination !== args.position ? { aimedAt: destination } : {}),
+          ...(named ? { targetPosition: named.position } : {}),
+          ...(destination !== wantedPosition ? { aimedAt: destination } : {}),
           ...(passedWithin !== undefined
             ? {
                 passedWithin: Math.round(passedWithin),
@@ -485,7 +545,7 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
               }
             : {}),
         }),
-        render: buildMoveToRender(target, args.position, requestId, status, polled.waitedMs),
+        render: buildMoveToRender(target, wantedPosition, requestId, status, polled.waitedMs),
         metadata: {
           tool: "studiorpc_game_character_move_to",
           clientId: target.clientId,

@@ -381,6 +381,40 @@ describe("play-test input tools", () => {
     expect(result.output).toContain('"blocked": false');
   });
 
+  test("move_to walks to a named instance and sizes the tolerance to it", async () => {
+    const { calls, byName } = toolsFor((call) => {
+      if (call.method === "game.pie.status") return runningStatus();
+      if (call.method === "game.instance.read") {
+        return { instance: { CFrame: { Position: { X: 350, Y: 60, Z: 250 } }, Size: { X: 90, Y: 90, Z: 90 } } };
+      }
+      if (call.method === "game.character.moveTo") return { requestId: "req-20", status: "pendingStart" };
+      if (call.method === "game.character.read") {
+        return { character: { CFrame: { Position: { X: 350, Y: 60, Z: 250 } } } };
+      }
+      return { requestId: "req-20", status: "reached", clientId: "client-1" };
+    });
+
+    const result = await run(byName.get("studiorpc_game_character_move_to"), { targetName: "Coin1" });
+
+    const sent = calls.find((call) => call.method === "game.character.moveTo");
+    expect((sent?.params as { position: unknown }).position).toMatchObject({ x: 350, y: 60, z: 250 });
+    // 90 across, so 45 from the centre — not the 150 default.
+    expect(result.output).toContain('"arrivalTolerance": 45');
+    expect(result.output).toContain('"targetPosition"');
+  });
+
+  test("move_to says so when the named instance is not in the world", async () => {
+    const { byName } = toolsFor((call) => {
+      if (call.method === "game.pie.status") return runningStatus();
+      if (call.method === "game.instance.read") return {};
+      return { requestId: "req-21", status: "reached", clientId: "client-1" };
+    });
+
+    await expect(run(byName.get("studiorpc_game_character_move_to"), { targetName: "Nope" })).rejects.toThrow(
+      /No instance named "Nope"/,
+    );
+  });
+
   test("move_to gives up on a character that has stopped moving", async () => {
     // Navigation keeps saying running; the position never changes. Waiting out the
     // whole budget would only confirm what two samples already show.

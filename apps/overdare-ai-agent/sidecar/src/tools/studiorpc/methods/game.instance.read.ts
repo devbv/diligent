@@ -46,3 +46,16 @@ export const params = z
       ),
   })
   .strict();
+
+/**
+ * Accepts `guid`, which is what studiorpc_instance_read calls the same thing. The
+ * two tools differ by one word in a long list and testers copy arguments between
+ * them; one got `Unrecognized key(s): 'guid'` and had to re-fetch both schemas.
+ */
+export function normalizeArgs(args: Record<string, unknown>): Record<string, unknown> {
+  if (args.instanceGuid === undefined && typeof args.guid === "string") {
+    const { guid, ...rest } = args;
+    return { ...rest, instanceGuid: guid };
+  }
+  return args;
+}
