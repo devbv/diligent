@@ -29,6 +29,8 @@ const MOVE_WAIT_DEFAULT_MS = 30_000;
 const MOVE_WAIT_MAX_MS = 300_000;
 /** How close counts as arrived when checking Studio's `reached` against the real position. */
 const ARRIVAL_TOLERANCE = 150;
+/** Below this the character has not travelled — it is jitter, not a move. */
+const MOVED_AT_ALL = 5;
 
 const targetOverrides = {
   pieSessionId: z
@@ -256,13 +258,18 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
       "returns success, which it does even when it could not get there, so the tool measures where the " +
       `character actually stopped. \`arrived\` is true within \`arrivalTolerance\` units of the target, ` +
       `${ARRIVAL_TOLERANCE} by default and echoed back in the response; pass a smaller one when you are ` +
-      "testing whether the character reached a specific small thing rather than merely got there. `blocked` " +
-      "means it did not travel at all — something is in the way, or the target is somewhere a walking " +
-      "character cannot stand. Pass wait: false to return the requestId immediately and poll with " +
+      "testing whether the character reached a specific small thing rather than merely got there. " +
+      "`moved` and `movedDistance` say whether it travelled at all, which is what separates a move that was " +
+      "unnecessary — already inside the tolerance — from one that went nowhere; `blocked` marks the second, " +
+      "where something is in the way or the target is somewhere a walking character cannot stand. " +
+      "Pass wait: false to return the requestId immediately and poll with " +
       "studiorpc_game_character_move_status yourself.",
     parameters: moveToParams,
     async execute(args: MoveToParams): Promise<ToolResult> {
       const target = await resolvePieTarget(callRpc, args);
+      // Where it began, so the reply can say whether the character travelled at all.
+      // Two moves that end on the same spot look like a no-op otherwise.
+      const startedFrom = await readCharacterPosition(callRpc);
       const started = (await callRpc(
         "game.character.moveTo",
         { pieSessionId: target.pieSessionId, clientId: target.clientId, position: args.position },
@@ -294,6 +301,10 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
       const distanceToTarget = endedAt ? distanceBetween(endedAt, args.position) : undefined;
       const tolerance = args.arrivalTolerance ?? ARRIVAL_TOLERANCE;
       const arrived = distanceToTarget !== undefined && distanceToTarget <= tolerance;
+      const movedDistance = startedFrom && endedAt ? distanceBetween(startedFrom, endedAt) : undefined;
+      const moved = movedDistance !== undefined && movedDistance > MOVED_AT_ALL;
+      // Asked to go somewhere, went nowhere: a wall, or a target it cannot stand on.
+      const blocked = movedDistance !== undefined && !moved && !arrived;
 
       return {
         output: jsonOutput({
@@ -304,6 +315,7 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
           ...(endedAt
             ? { endedAt, distanceToTarget: Math.round(distanceToTarget ?? 0), arrivalTolerance: tolerance }
             : {}),
+          ...(movedDistance !== undefined ? { moved, movedDistance: Math.round(movedDistance), blocked } : {}),
           ...(status === "reached" && distanceToTarget !== undefined && !arrived
             ? {
                 warning:

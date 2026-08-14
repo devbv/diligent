@@ -10,7 +10,10 @@ export const description =
   "light, or disabled a trigger, this is what tells you whether it actually did — CanCollide, CanTouch, " +
   "Transparency and the current CFrame come from the live instance, not the saved level. " +
   "Reach for it the moment the game's own log and what you can see disagree: a part can be made " +
-  "see-through without being made passable, and only this shows the difference.";
+  "see-through without being made passable, and only this shows the difference. " +
+  "Call it with no arguments to list everything in the running Workspace with its name, class and position — " +
+  "that is the live counterpart to studiorpc_level_browse, and the way to find out what a name is before " +
+  "asking about it.";
 
 export const params = z
   .object({
@@ -28,7 +31,4 @@ export const params = z
           "have no GUID, so look those up by name.",
       ),
   })
-  .strict()
-  .refine((value) => value.name !== undefined || value.instanceGuid !== undefined, {
-    message: "Pass either name or instanceGuid to say which instance to read.",
-  });
+  .strict();

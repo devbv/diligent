@@ -182,6 +182,11 @@ describe("play-test input tools", () => {
     const { calls, byName } = toolsFor((call) => {
       if (call.method === "game.pie.status") return runningStatus();
       if (call.method === "game.character.moveTo") return { requestId: "req-1", status: "pendingStart" };
+      // Answered explicitly so the position reads either side of the move do not
+      // draw from the poll sequence this test is counting.
+      if (call.method === "game.character.read") {
+        return { character: { CFrame: { Position: { X: 0, Y: 0, Z: 0 } } } };
+      }
       return { requestId: "req-1", status: statuses[Math.min(polls++, statuses.length - 1)], clientId: "client-1" };
     });
 
@@ -254,6 +259,30 @@ describe("play-test input tools", () => {
     // Short of a tight tolerance is normal travel, not the level lacking navigation.
     expect(strict.output).toContain("treat whatever you were testing at that spot as unproven");
     expect(strict.output).not.toContain("no navigation data");
+  });
+
+  test("move_to separates a move that was unnecessary from one that went nowhere", async () => {
+    // Same start and end, but one is already at the target and the other is stuck.
+    const parked = (position: { X: number; Z: number }) => (call: { method: string }) => {
+      if (call.method === "game.pie.status") return runningStatus();
+      if (call.method === "game.character.moveTo") return { requestId: "req-13", status: "pendingStart" };
+      if (call.method === "game.character.read") {
+        return { character: { CFrame: { Position: { X: position.X, Y: 0, Z: position.Z } } } };
+      }
+      return { requestId: "req-13", status: "reached", clientId: "client-1" };
+    };
+
+    const alreadyThere = await run(toolsFor(parked({ X: 1000, Z: 5 })).byName.get("studiorpc_game_character_move_to"), {
+      position: { x: 1000, y: 0, z: 5 },
+    });
+    expect(alreadyThere.output).toContain('"moved": false');
+    expect(alreadyThere.output).toContain('"blocked": false');
+
+    const stuck = await run(toolsFor(parked({ X: 0, Z: 0 })).byName.get("studiorpc_game_character_move_to"), {
+      position: { x: 5000, y: 0, z: 0 },
+    });
+    expect(stuck.output).toContain('"moved": false');
+    expect(stuck.output).toContain('"blocked": true');
   });
 
   test("move_to still calls out a move that went nowhere", async () => {
