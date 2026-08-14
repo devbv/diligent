@@ -34,6 +34,13 @@ export const params = z
         "GUID of the instance, as any tool that reports one gives it. Instances a script created at run time " +
           "have no GUID, so look those up by name.",
       ),
+    // Declared rather than only normalized: params are strict, so an undeclared key
+    // is rejected by validation before normalizeArgs ever runs.
+    guid: z
+      .string()
+      .min(1)
+      .optional()
+      .describe("Same as instanceGuid, under the name studiorpc_instance_read uses for it."),
     maxDepth: z
       .number()
       .int()
