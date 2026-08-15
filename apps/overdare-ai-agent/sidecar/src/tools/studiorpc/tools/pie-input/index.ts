@@ -269,26 +269,44 @@ function travelledBeyond(
 }
 
 /**
- * How near the walk came to a box at its closest, by sampling along it. Exact
- * segment-to-box distance is fiddly and this is a proximity report, not a physics
- * query — sampling is honest about what it is and cannot be subtly wrong.
+ * How near a walk came to a box at its closest, sampling each leg of the route the
+ * character actually took. The route matters: navigation goes around obstacles, so a
+ * straight line from start to finish can pass clean through something the character
+ * gave a wide berth, and taking that line for the walk reported crossings that never
+ * happened. Exact segment-to-box distance is fiddly and this is a proximity report,
+ * not a physics query, so sampling is both honest and hard to get subtly wrong.
  */
 function closestApproachToSurface(
-  from: { x: number; y: number; z: number },
-  to: { x: number; y: number; z: number },
+  route: Array<{ x: number; y: number; z: number }>,
   centre: { x: number; y: number; z: number },
   half: { x: number; y: number; z: number },
 ): number {
-  const steps = 64;
+  const perLeg = 24;
   let nearest = Number.POSITIVE_INFINITY;
-  for (let step = 0; step <= steps; step++) {
-    const t = step / steps;
-    const point = {
-      x: from.x + (to.x - from.x) * t,
-      y: from.y + (to.y - from.y) * t,
-      z: from.z + (to.z - from.z) * t,
-    };
-    nearest = Math.min(nearest, distanceToSurface(point, centre, half));
+  for (let leg = 0; leg < route.length - 1; leg++) {
+    const from = route[leg];
+    const to = route[leg + 1];
+    for (let step = 0; step <= perLeg; step++) {
+      const t = step / perLeg;
+      const point = {
+        x: from.x + (to.x - from.x) * t,
+        y: from.y + (to.y - from.y) * t,
+        z: from.z + (to.z - from.z) * t,
+      };
+      nearest = Math.min(nearest, distanceToSurface(point, centre, half));
+    }
+  }
+  return nearest;
+}
+
+/** The same, for a bare point that has no shape to measure a surface against. */
+function closestApproachOnRoute(
+  route: Array<{ x: number; y: number; z: number }>,
+  point: { x: number; y: number; z: number },
+): number {
+  let nearest = Number.POSITIVE_INFINITY;
+  for (let leg = 0; leg < route.length - 1; leg++) {
+    nearest = Math.min(nearest, closestApproach(route[leg], route[leg + 1], point));
   }
   return nearest;
 }
@@ -416,11 +434,21 @@ async function pollMoveStatus(
   pieSessionId: string,
   requestId: string,
   timeoutMs: number,
-): Promise<{ status: string | undefined; waitedMs: number; timedOut: boolean; stalled: boolean }> {
+): Promise<{
+  status: string | undefined;
+  waitedMs: number;
+  timedOut: boolean;
+  stalled: boolean;
+  track: Array<{ x: number; y: number; z: number }>;
+}> {
   const startedAt = Date.now();
   let status: string | undefined;
   let stillSince: number | undefined;
   let lastPosition: { x: number; y: number; z: number } | undefined;
+  // Where the character actually went. Navigation routes around obstacles, so the
+  // straight line between where a move started and ended is not the walk — treating
+  // it as one reported crossings of things the character never came near.
+  const track: Array<{ x: number; y: number; z: number }> = [];
 
   while (Date.now() - startedAt < timeoutMs) {
     await sleep(MOVE_POLL_INTERVAL_MS);
@@ -431,21 +459,22 @@ async function pollMoveStatus(
     )) as MoveStatusResult;
     status = result?.status;
     if (isTerminalMoveStatus(status)) {
-      return { status, waitedMs: Date.now() - startedAt, timedOut: false, stalled: false };
+      return { status, waitedMs: Date.now() - startedAt, timedOut: false, stalled: false, track };
     }
 
     const position = await readCharacterPosition(callRpc);
     if (position) {
       const still = lastPosition !== undefined && distanceBetween(position, lastPosition) <= MOVED_AT_ALL;
+      if (!still) track.push(position);
       stillSince = still ? (stillSince ?? Date.now()) : undefined;
       lastPosition = position;
       if (stillSince !== undefined && Date.now() - stillSince >= MOVE_STALL_MS) {
-        return { status, waitedMs: Date.now() - startedAt, timedOut: false, stalled: true };
+        return { status, waitedMs: Date.now() - startedAt, timedOut: false, stalled: true, track };
       }
     }
   }
 
-  return { status, waitedMs: Date.now() - startedAt, timedOut: true, stalled: false };
+  return { status, waitedMs: Date.now() - startedAt, timedOut: true, stalled: false, track };
 }
 
 function createCharacterMoveToTool(callRpc: CallRpc): Tool {
@@ -535,11 +564,16 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
       const tolerance = args.arrivalTolerance ?? (named?.half ? TOUCH_MARGIN : ARRIVAL_TOLERANCE);
       // A pass-through succeeds by crossing the target, so judge the path, not the
       // stopping place — it is meant to end beyond the thing it was sent over.
+      // The route as walked: where it began, every distinct place the poll caught it,
+      // and where it finished. Sampled a few times a second, so a fast character can
+      // still cut a corner between samples — but it is the walk, not a line drawn
+      // between its ends, and that difference reported crossings that never happened.
+      const route = startedFrom && endedAt ? [startedFrom, ...polled.track, endedAt] : undefined;
       const passedWithin =
-        args.passThrough && startedFrom && endedAt
+        args.passThrough && route
           ? named?.half
-            ? closestApproachToSurface(startedFrom, endedAt, named.position, named.half)
-            : closestApproach(startedFrom, endedAt, wantedPosition)
+            ? closestApproachToSurface(route, named.position, named.half)
+            : closestApproachOnRoute(route, wantedPosition)
           : undefined;
       // Coming near the target is not going over it. A character stopped dead against
       // a solid gate passes within a few units of its face and gets nowhere, so a

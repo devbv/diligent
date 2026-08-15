@@ -383,6 +383,42 @@ describe("play-test input tools", () => {
     expect(result.output).toContain('"blocked": false');
   });
 
+  test("passThrough judges the route walked, not the line between its ends", async () => {
+    // Start (0,0,0), finish (400,0,0), with the coin at (200,0,0) — straight through
+    // the middle of a line drawn between the ends. The character actually detoured to
+    // z=300 to get around something, nowhere near it. Judging the line said crossed.
+    const walked = [
+      { X: 0, Z: 0 },
+      { X: 100, Z: 300 },
+      { X: 300, Z: 300 },
+      { X: 400, Z: 0 },
+    ];
+    let read = 0;
+    const { byName } = toolsFor((call) => {
+      if (call.method === "game.pie.status") return runningStatus();
+      if (call.method === "game.instance.read") {
+        return { instance: { CFrame: { Position: { X: 200, Y: 0, Z: 0 } }, Size: { X: 90, Y: 90, Z: 90 } } };
+      }
+      if (call.method === "game.character.moveTo") return { requestId: "req-25", status: "pendingStart" };
+      if (call.method === "game.character.read") {
+        const at = walked[Math.min(read++, walked.length - 1)];
+        return { character: { CFrame: { Position: { X: at.X, Y: 0, Z: at.Z } } } };
+      }
+      // Stays running for two polls so the detour gets sampled, then finishes.
+      return { requestId: "req-25", status: read >= walked.length ? "reached" : "running", clientId: "client-1" };
+    });
+
+    const result = await run(byName.get("studiorpc_game_character_move_to"), {
+      targetName: "Coin1",
+      passThrough: true,
+      timeoutMs: 5_000,
+    });
+
+    expect(result.output).toContain('"crossed": false');
+    // 300 out and 45 of half-size accounted for: the detour never came near it.
+    expect(result.output).not.toContain('"passedWithin": 0');
+  });
+
   test("passThrough does not call pressing against a solid thing a crossing", async () => {
     // Walks at a gate and stops dead against its near face. The path comes within a
     // few units of it, which used to be enough to report crossed.
