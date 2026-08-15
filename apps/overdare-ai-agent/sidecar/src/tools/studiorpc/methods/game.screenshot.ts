@@ -5,7 +5,9 @@ export const method = "game.screenshot";
 
 export const description =
   "Capture a screenshot of the OVERDARE Studio viewport and save it to a file. " +
-  "Use this only when the user explicitly requests a screenshot; do not use it for autonomous validation. " +
+  "Take one whenever the question is what the screen looks like rather than what a value says — whether " +
+  "text can be read, whether two things overlap, whether art is missing. Those have no property to query, " +
+  "and every structured signal reads correct while the player sees a broken screen. " +
   'Currently only the "Viewport" mode is supported (defaults to "Viewport" when omitted). ' +
   "Other modes (Thumbnail / HubScreenshot / Custom with explicit size) are planned and not yet available. " +
   "GUI elements are included by default; pass includeGui: false to capture the scene only. " +

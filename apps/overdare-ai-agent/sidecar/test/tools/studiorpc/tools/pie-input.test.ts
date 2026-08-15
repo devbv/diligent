@@ -169,6 +169,63 @@ describe("play-test input tools", () => {
     ).rejects.toThrow(/totalDurationExceeded/);
   });
 
+  test("inject sends a look through and reports how far the view turned", async () => {
+    const { calls, byName } = toolsFor((call) =>
+      call.method === "game.pie.status"
+        ? runningStatus()
+        : {
+            sequenceId: "seq-3",
+            status: "completed",
+            appliedEventCount: 1,
+            looks: [
+              {
+                status: "reached",
+                requested: { yawDegrees: 90, pitchDegrees: 0 },
+                turned: { yawDegrees: 89.6, pitchDegrees: 0.1 },
+                facing: { yaw: 89.6, pitch: 0.1 },
+              },
+            ],
+          },
+    );
+
+    const result = await run(byName.get("studiorpc_game_input_inject"), {
+      events: [{ type: "look", yawDegrees: 90 }],
+    });
+
+    const sent = calls.find((call) => call.method === "game.input.inject");
+    expect((sent?.params as { events: Array<Record<string, unknown>> }).events[0]).toMatchObject({
+      type: "look",
+      yawDegrees: 90,
+    });
+    // Converging spends real time, so the RPC waits out the look budget like a wait.
+    expect(sent?.timeoutMs).toBeGreaterThan(2000);
+    expect(result.output).toContain('"reached"');
+    expect(result.output).toContain("89.6");
+  });
+
+  test("inject rejects a look that asks for no rotation", async () => {
+    const { calls, byName } = toolsFor(() => runningStatus());
+
+    await expect(run(byName.get("studiorpc_game_input_inject"), { events: [{ type: "look" }] })).rejects.toThrow(
+      /lookOutOfRange/,
+    );
+    expect(calls).toHaveLength(0);
+  });
+
+  test("inject counts look budgets toward the 10s batch limit", async () => {
+    const { byName } = toolsFor(() => runningStatus());
+
+    await expect(
+      run(byName.get("studiorpc_game_input_inject"), {
+        events: [
+          { type: "look", yawDegrees: 90, timeoutMs: 5000 },
+          { type: "look", yawDegrees: 90, timeoutMs: 5000 },
+          { type: "wait", durationMs: 1000 },
+        ],
+      }),
+    ).rejects.toThrow(/totalDurationExceeded/);
+  });
+
   test("inject points at game.play when no play test is running", async () => {
     const { calls, byName } = toolsFor(() =>
       runningStatus({ running: false, state: "stopped", pieSessionId: undefined }),

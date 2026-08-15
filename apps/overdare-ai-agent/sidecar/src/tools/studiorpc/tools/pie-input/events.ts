@@ -16,6 +16,9 @@ export const MAX_SCROLL_DELTA = 10;
 /** Characters Studio accepts in one `textInput` event. */
 export const MAX_TEXT_INPUT_LENGTH = 256;
 
+/** How long Studio converges a `look` before reporting what it got, unless told otherwise. */
+export const DEFAULT_LOOK_TIMEOUT_MS = 2_000;
+
 /** How long a `press` holds when the caller does not say. 0 makes it a tap. */
 const DEFAULT_PRESS_DURATION_MS = 0;
 
@@ -40,6 +43,33 @@ const pointerMoveEventSchema = z.object({
     x: z.number().min(0).max(1),
     y: z.number().min(0).max(1),
   }),
+});
+
+/**
+ * Turn the view by an angle, through the game's own look input. Angles rather than
+ * mouse deltas because the delta→degrees curve is the game's sensitivity setting,
+ * unknowable from outside; Studio feeds the look axes a frame at a time until the
+ * camera reports the requested rotation, and returns how far it actually turned.
+ * A game whose camera the player cannot turn (isometric, scripted, cutscene)
+ * answers `blocked` — that is the game's answer, worth reporting as play-test
+ * evidence, not a tool failure.
+ */
+const lookEventSchema = z.object({
+  type: z.literal("look"),
+  yawDegrees: z
+    .number()
+    .min(-180)
+    .max(180)
+    .optional()
+    .describe("How far to turn from where the view faces now. Right is positive."),
+  pitchDegrees: z.number().min(-89).max(89).optional().describe("Up is positive."),
+  timeoutMs: z
+    .number()
+    .int()
+    .min(100)
+    .max(5_000)
+    .optional()
+    .describe("Budget for converging before Studio reports what it got. Defaults to 2000."),
 });
 
 const pointerButtonEventSchema = z.object({
@@ -84,6 +114,7 @@ export const inputEventSchema = z.discriminatedUnion("type", [
   keyEventSchema,
   pointerMoveEventSchema,
   pointerButtonEventSchema,
+  lookEventSchema,
   mouseDeltaEventSchema,
   scrollEventSchema,
   textInputEventSchema,
@@ -101,6 +132,11 @@ export const inputEventsSchema = z
       `key: ${ALLOWED_KEYS.join("/")} with action down|up|press. ` +
       "pointerMove: position.x/y are viewport-normalized 0..1. " +
       "pointerButton: left|right with action down|up|press. " +
+      "look: turn the view by yawDegrees (right is positive) and pitchDegrees (up is positive), the way the " +
+      "player's own camera input would — use it to see what is beside or behind the character before taking " +
+      "a screenshot. The result's looks[] reports how far the view actually turned; blocked means this game " +
+      "does not let the player turn the view (fixed or scripted camera), which is an answer about the game, " +
+      "not a tool failure. " +
       "mouseDelta: relative motion, requires a captured mouse. " +
       "scroll: wheel notches at the pointer. " +
       "textInput: printable text typed into whatever has focus, so the play test must be the focused window. " +
@@ -166,6 +202,21 @@ export function validateBatch(events: InputEvent[]): string | undefined {
   let totalDurationMs = 0;
 
   for (const [index, event] of events.entries()) {
+    if (event.type === "look") {
+      if (!event.yawDegrees && !event.pitchDegrees) {
+        return `events[${index}]: look with no rotation — give yawDegrees or pitchDegrees (lookOutOfRange).`;
+      }
+      // Converging may take this much real time, so it spends the same budget waits do.
+      totalDurationMs += event.timeoutMs ?? DEFAULT_LOOK_TIMEOUT_MS;
+      if (totalDurationMs > MAX_TOTAL_DURATION_MS) {
+        return (
+          `events[${index}]: waits and look timeouts total ${totalDurationMs}ms, above the ` +
+          `${MAX_TOTAL_DURATION_MS}ms batch limit (totalDurationExceeded). Split the input across several calls.`
+        );
+      }
+      continue;
+    }
+
     if (event.type === "key" || event.type === "pointerButton") {
       const held = event.type === "key" ? heldKeys : heldButtons;
       const name = event.type === "key" ? event.key : event.button;
@@ -206,7 +257,11 @@ export function validateBatch(events: InputEvent[]): string | undefined {
   return undefined;
 }
 
-/** Sum of the batch's `wait` durations; the caller's RPC timeout budget. */
+/** Sum of the batch's `wait` durations and `look` budgets; the caller's RPC timeout budget. */
 export function totalWaitMs(events: InputEvent[]): number {
-  return events.reduce((sum, event) => (event.type === "wait" ? sum + event.durationMs : sum), 0);
+  return events.reduce((sum, event) => {
+    if (event.type === "wait") return sum + event.durationMs;
+    if (event.type === "look") return sum + (event.timeoutMs ?? DEFAULT_LOOK_TIMEOUT_MS);
+    return sum;
+  }, 0);
 }

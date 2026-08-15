@@ -141,6 +141,13 @@ interface InjectResult {
   status?: string;
   appliedEventCount?: number;
   released?: boolean;
+  /** One entry per look event: how far the view actually turned, and why it stopped. */
+  looks?: Array<{
+    status?: string;
+    requested?: { yawDegrees?: number; pitchDegrees?: number };
+    turned?: { yawDegrees?: number; pitchDegrees?: number };
+    facing?: { yaw?: number; pitch?: number };
+  }>;
 }
 
 interface MoveToResult {

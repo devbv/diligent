@@ -33,6 +33,8 @@ export function describeEvent(event: InputEvent): string {
       return `${event.button} button ${event.action}`;
     case "pointerMove":
       return `move to (${event.position.x}, ${event.position.y})`;
+    case "look":
+      return `look yaw ${event.yawDegrees ?? 0}° pitch ${event.pitchDegrees ?? 0}°`;
     case "mouseDelta":
       return `mouse Δ(${event.delta.x}, ${event.delta.y})`;
     case "scroll":
