@@ -610,7 +610,9 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
                 passThroughNote: named?.half
                   ? `crossed means the walk went inside ${args.targetName}, which is passedWithin 0. ` +
                     `Stopping against its face reads as a small passedWithin and not a crossing, which is ` +
-                    `what walking into something solid looks like.`
+                    `what walking into something solid looks like. This is geometry, not consequence: it ` +
+                    `says the character went through the space the thing occupies, never that anything ` +
+                    `fired. Only the game's own state changing shows that.`
                   : `Without a known shape a crossing is judged as near-and-beyond: passedWithin within ` +
                     `arrivalTolerance, plus wentPast. Name the target instead and it is judged on whether ` +
                     `the walk actually entered it.`,
