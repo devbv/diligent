@@ -456,9 +456,9 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
       "thing actually is and sizes the tolerance to it, where typed coordinates invite an invented height " +
       "that aims at empty air above it. " +
       "Read `outcome`, which is the tool's own verdict on the move: arrived, blocked, stoppedShort, or " +
-      "stillMoving. `status` next to it is navigation's raw word and keeps saying `running` for a character " +
-      "that has stopped dead, so it reads as in-progress on a call that has already returned. " +
-      "Read `arrived`, not `status`: Studio reports `reached` whenever its path following " +
+      "stillMoving. `navStatus` beside it is navigation's raw word, which keeps saying `running` for a " +
+      "character that has stopped dead — it describes what path following thinks, not what happened. " +
+      "Do not read it as the outcome: Studio reports `reached` whenever its path following " +
       "returns success, which it does even when it could not get there, so the tool measures where the " +
       `character actually stopped. \`arrived\` is true within \`arrivalTolerance\` units of the target and ` +
       `appears once the move is over, so a reply without it is one that has not finished. ` +
@@ -570,7 +570,10 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
           // saying `running` for a character that stopped dead — three testers read
           // that as "still going" on a call that had already returned.
           outcome: !settled ? "stillMoving" : arrived ? "arrived" : blocked ? "blocked" : "stoppedShort",
-          status,
+          // Named `navStatus`, not `status`: four testers read a bare `status` of
+          // "running" as the call still being in flight, on a reply that had already
+          // returned a verdict. It is navigation's opinion, and the name now says so.
+          navStatus: status,
           // The field the description tells callers to read, which it did not emit for
           // a long time — leaving them to recompute it from distance and tolerance.
           ...(settled ? { arrived } : {}),
@@ -638,7 +641,7 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
           ...(polled.stalled && !arrived
             ? {
                 note:
-                  `Navigation still reports "${status}", but the character has not moved for ` +
+                  `Navigation still reports "${status}" in navStatus, but the character has not moved for ` +
                   `${MOVE_STALL_MS / 1000} seconds, so it is stuck rather than slow and the wait was cut short. ` +
                   `Something is in the way: check what it is standing against before assuming the target is bad.`,
               }
