@@ -405,7 +405,9 @@ describe("play-test input tools", () => {
       passThrough: true,
     });
 
-    expect(result.output).toContain('"wentPast": false');
+    // A named target is judged on whether the walk entered it, so wentPast is not
+    // reported at all — it was true for characters that merely walked around a wall.
+    expect(result.output).not.toContain('"wentPast"');
     expect(result.output).toContain('"crossed": false');
     // And the misleading distance is not in a pass-through reply at all.
     expect(result.output).not.toContain('"distanceToTarget"');

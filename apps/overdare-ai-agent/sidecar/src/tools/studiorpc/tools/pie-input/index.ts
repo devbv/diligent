@@ -103,10 +103,11 @@ const moveToParams = z
           "asked for rather than to the point it was aimed at. For a named target that is the distance to its " +
           "surface, so a path straight over a coin reads near zero; for a bare position it is the distance to " +
           "the point in three dimensions, which a target at a different height can never drive to zero. " +
-          "`crossed` is the answer to what you asked, and needs two things to be true: the walk came within " +
-          "arrivalTolerance, and `wentPast` — it finished on the far side. Near but not past is exactly what " +
-          "walking into something solid looks like, so a gate that never opens reports crossed false however " +
-          "closely the character pressed against it. distanceToTarget is left out of a pass-through reply, " +
+          "`crossed` is the answer to what you asked. For a named target it means the walk went inside the " +
+          "thing — passedWithin 0 — so a gate that never opens reports false however closely the character " +
+          "pressed against its face, and walking around the side of one does not count either. For a bare " +
+          "position, which has no shape to enter, it falls back to near-and-beyond and reports `wentPast` " +
+          "alongside; prefer naming the target. distanceToTarget is left out of a pass-through reply, " +
           "since it would measure back to a target the move was meant to overshoot.",
       ),
     wait: z.boolean().optional().describe("Poll game.character.moveStatus until the move ends. Defaults to true."),
@@ -543,10 +544,23 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
       // Coming near the target is not going over it. A character stopped dead against
       // a solid gate passes within a few units of its face and gets nowhere, so a
       // crossing has to have come out the far side to count as one.
-      const wentPast = startedFrom && endedAt ? travelledBeyond(startedFrom, endedAt, wantedPosition) : undefined;
+      // Progress along the approach line is not a crossing. A character walking
+      // sideways past a wall gets further along that line than the wall is without
+      // ever going through it, and reported a crossing for doing so. Only meaningful
+      // where the target has no known shape; where it has one, entering it is the test.
+      const wentPast =
+        startedFrom && endedAt && !named?.half ? travelledBeyond(startedFrom, endedAt, wantedPosition) : undefined;
       // A pass-through is asking "did it go over the thing", which needs both: near
       // enough to have touched it, and out the other side.
-      const crossed = passedWithin !== undefined ? passedWithin <= tolerance && wentPast === true : undefined;
+      // With a shape, a crossing means the walk went inside it — nothing else counts,
+      // and a character stopped against a gate's face never does. Without one, fall
+      // back to near-and-beyond, which is the best a bare point allows.
+      const crossed =
+        passedWithin === undefined
+          ? undefined
+          : named?.half
+            ? passedWithin <= 0
+            : passedWithin <= tolerance && wentPast === true;
       const arrived = crossed !== undefined ? crossed : distanceToTarget !== undefined && distanceToTarget <= tolerance;
       const movedDistance = startedFrom && endedAt ? distanceBetween(startedFrom, endedAt) : undefined;
       const moved = movedDistance !== undefined && movedDistance > MOVED_AT_ALL;
@@ -592,10 +606,14 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
             ? {
                 passedWithin: Math.round(passedWithin),
                 crossed,
-                wentPast,
-                passThroughNote:
-                  `A crossing needs both: passedWithin within arrivalTolerance, and wentPast — out the far ` +
-                  `side. Near and stopped is what walking into something solid looks like.`,
+                ...(wentPast !== undefined ? { wentPast } : {}),
+                passThroughNote: named?.half
+                  ? `crossed means the walk went inside ${args.targetName}, which is passedWithin 0. ` +
+                    `Stopping against its face reads as a small passedWithin and not a crossing, which is ` +
+                    `what walking into something solid looks like.`
+                  : `Without a known shape a crossing is judged as near-and-beyond: passedWithin within ` +
+                    `arrivalTolerance, plus wentPast. Name the target instead and it is judged on whether ` +
+                    `the walk actually entered it.`,
               }
             : {}),
           ...(endedAt
