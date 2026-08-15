@@ -102,11 +102,12 @@ const moveToParams = z
           "The reply then reports `passedWithin` — how near the walk came, at its closest, to the position you " +
           "asked for rather than to the point it was aimed at. For a named target that is the distance to its " +
           "surface, so a path straight over a coin reads near zero; for a bare position it is the distance to " +
-          "the point in three dimensions, which a target at a different height can never drive to zero. It " +
-          "also reports `crossed`, which is that measured against " +
-          "arrivalTolerance. Read those two, not distanceToTarget: distanceToTarget says where the character " +
-          "came to rest, which for a pass-through is deliberately past the target and so is large even when the " +
-          "crossing worked.",
+          "the point in three dimensions, which a target at a different height can never drive to zero. " +
+          "`crossed` is the answer to what you asked, and needs two things to be true: the walk came within " +
+          "arrivalTolerance, and `wentPast` — it finished on the far side. Near but not past is exactly what " +
+          "walking into something solid looks like, so a gate that never opens reports crossed false however " +
+          "closely the character pressed against it. distanceToTarget is left out of a pass-through reply, " +
+          "since it would measure back to a target the move was meant to overshoot.",
       ),
     wait: z.boolean().optional().describe("Poll game.character.moveStatus until the move ends. Defaults to true."),
     timeoutMs: z
@@ -245,6 +246,25 @@ function closestApproach(
   const along = ((point.x - from.x) * dx + (point.y - from.y) * dy + (point.z - from.z) * dz) / lengthSquared;
   const clamped = Math.max(0, Math.min(1, along));
   return distanceBetween({ x: from.x + dx * clamped, y: from.y + dy * clamped, z: from.z + dz * clamped }, point);
+}
+
+/**
+ * Whether the walk finished on the far side of `target` from where it started,
+ * measured along the approach line. Being near something and having got past it are
+ * different claims, and only the second one means a solid thing let you through.
+ */
+function travelledBeyond(
+  from: { x: number; y: number; z: number },
+  to: { x: number; y: number; z: number },
+  target: { x: number; y: number; z: number },
+): boolean {
+  const ax = target.x - from.x;
+  const az = target.z - from.z;
+  const length = Math.hypot(ax, az);
+  if (length < 1) return false;
+  // How far along the approach direction each point sits, with the target at zero.
+  const along = ((to.x - from.x) * ax + (to.z - from.z) * az) / length;
+  return along > length;
 }
 
 /**
@@ -520,10 +540,14 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
             ? closestApproachToSurface(startedFrom, endedAt, named.position, named.half)
             : closestApproach(startedFrom, endedAt, wantedPosition)
           : undefined;
-      const arrived =
-        passedWithin !== undefined
-          ? passedWithin <= tolerance
-          : distanceToTarget !== undefined && distanceToTarget <= tolerance;
+      // Coming near the target is not going over it. A character stopped dead against
+      // a solid gate passes within a few units of its face and gets nowhere, so a
+      // crossing has to have come out the far side to count as one.
+      const wentPast = startedFrom && endedAt ? travelledBeyond(startedFrom, endedAt, wantedPosition) : undefined;
+      // A pass-through is asking "did it go over the thing", which needs both: near
+      // enough to have touched it, and out the other side.
+      const crossed = passedWithin !== undefined ? passedWithin <= tolerance && wentPast === true : undefined;
+      const arrived = crossed !== undefined ? crossed : distanceToTarget !== undefined && distanceToTarget <= tolerance;
       const movedDistance = startedFrom && endedAt ? distanceBetween(startedFrom, endedAt) : undefined;
       const moved = movedDistance !== undefined && movedDistance > MOVED_AT_ALL;
       // Standing still because navigation is already satisfied is not being blocked.
@@ -564,16 +588,20 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
           ...(passedWithin !== undefined
             ? {
                 passedWithin: Math.round(passedWithin),
-                crossed: arrived,
+                crossed,
+                wentPast,
                 passThroughNote:
-                  `passedWithin is the closest the walk came to the position you asked for; ` +
-                  `distanceToTarget below is where the character came to rest, which is past it on purpose.`,
+                  `A crossing needs both: passedWithin within arrivalTolerance, and wentPast — out the far ` +
+                  `side. Near and stopped is what walking into something solid looks like.`,
               }
             : {}),
           ...(endedAt
             ? {
                 [settled ? "endedAt" : "at"]: endedAt,
-                distanceToTarget: Math.round(distanceToTarget ?? 0),
+                // Left out of a pass-through, where it is the distance back to a target
+                // the character was meant to overshoot. Two testers read that large
+                // number as a miss on every pickup and had to talk themselves out of it.
+                ...(passedWithin === undefined ? { distanceToTarget: Math.round(distanceToTarget ?? 0) } : {}),
                 arrivalTolerance: tolerance,
               }
             : {}),

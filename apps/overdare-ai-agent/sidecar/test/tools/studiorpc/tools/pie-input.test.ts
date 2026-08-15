@@ -351,9 +351,11 @@ describe("play-test input tools", () => {
     expect((sent?.params as { position: { x: number; z: number } }).position).toMatchObject({ x: 300, z: 0 });
     expect(result.output).toContain('"aimedAt"');
     expect(result.output).toContain('"passedWithin"');
-    // Distance is still reported against the coin, not the point past it: the
-    // character sits at the origin and the coin is 100 out and 60 up, so 117.
-    expect(result.output).toContain('"distanceToTarget": 117');
+    // Proximity is reported against the coin, not the point past it: the character
+    // sits at the origin and the coin is 100 out and 60 up, so 117.
+    expect(result.output).toContain('"passedWithin": 117');
+    // distanceToTarget would measure back to a target this move meant to overshoot.
+    expect(result.output).not.toContain('"distanceToTarget"');
   });
 
   test("passThrough counts crossing the target, not stopping near it", async () => {
@@ -379,6 +381,34 @@ describe("play-test input tools", () => {
     expect(result.output).toContain('"passedWithin": 0');
     expect(result.output).toContain('"crossed": true');
     expect(result.output).toContain('"blocked": false');
+  });
+
+  test("passThrough does not call pressing against a solid thing a crossing", async () => {
+    // Walks at a gate and stops dead against its near face. The path comes within a
+    // few units of it, which used to be enough to report crossed.
+    let read = 0;
+    const { byName } = toolsFor((call) => {
+      if (call.method === "game.pie.status") return runningStatus();
+      if (call.method === "game.instance.read") {
+        return { instance: { CFrame: { Position: { X: 0, Y: 200, Z: -600 } }, Size: { X: 400, Y: 400, Z: 40 } } };
+      }
+      if (call.method === "game.character.moveTo") return { requestId: "req-24", status: "pendingStart" };
+      if (call.method === "game.character.read") {
+        const z = read++ === 0 ? 0 : -556;
+        return { character: { CFrame: { Position: { X: 0, Y: 200, Z: z } } } };
+      }
+      return { requestId: "req-24", status: "timedOut", clientId: "client-1" };
+    });
+
+    const result = await run(byName.get("studiorpc_game_character_move_to"), {
+      targetName: "Gate",
+      passThrough: true,
+    });
+
+    expect(result.output).toContain('"wentPast": false');
+    expect(result.output).toContain('"crossed": false');
+    // And the misleading distance is not in a pass-through reply at all.
+    expect(result.output).not.toContain('"distanceToTarget"');
   });
 
   test("move_to walks to a named instance and sizes the tolerance to it", async () => {
