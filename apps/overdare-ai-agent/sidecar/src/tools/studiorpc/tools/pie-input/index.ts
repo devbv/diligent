@@ -37,6 +37,8 @@ const NAV_STOP_DISTANCE = 50;
 const MOVE_STALL_MS = 3_000;
 /** How far past a point passThrough aims, so the walk crosses it rather than ending on it. */
 const PASS_THROUGH_OVERSHOOT = 200;
+/** Close enough to a named target's surface to count as having reached it. */
+const TOUCH_MARGIN = 60;
 
 const targetOverrides = {
   pieSessionId: z
@@ -60,8 +62,11 @@ const moveToParams = z
       .describe(
         "Runtime name of an instance to walk to, instead of a position — the tool reads where it actually is " +
           "and how big it is. Prefer this over typing coordinates: a made-up height aims at a point above the " +
-          "thing, and every distance the reply gives you is then measured from a place nothing is. When the " +
-          "instance has a Size, arrivalTolerance defaults to its reach from the centre.",
+          "thing, and every distance the reply gives you is then measured from a place nothing is. Naming it " +
+          "also changes what the distances mean: they are measured to the instance's surface rather than its " +
+          `centre, so they say how far the character is from touching it, and arrivalTolerance defaults to ` +
+          `${TOUCH_MARGIN}. Centre distances are useless for anything large — half of a wide gate is a long ` +
+          "way, and measuring to it calls a character arrived while it stands well clear of the thing.",
       ),
     position: z
       .object({ x: z.number(), y: z.number(), z: z.number() })
@@ -78,9 +83,10 @@ const moveToParams = z
       .min(1)
       .optional()
       .describe(
-        `How close, in world units, counts as arrived. Defaults to ${ARRIVAL_TOLERANCE}, which suits ` +
-          "travelling to a place. Set it to the size of the thing you are testing when arriving is the point " +
-          "— walking into a trigger volume 40 units across is not proven by stopping 150 units away.",
+        `How close, in world units, counts as arrived. With a named target this is a distance to its ` +
+          `surface and defaults to ${TOUCH_MARGIN}; with a bare position it is a distance to the point and ` +
+          `defaults to ${ARRIVAL_TOLERANCE}, which suits travelling somewhere rather than reaching something. ` +
+          "Rarely worth setting by hand now that a named target measures from the thing itself.",
       ),
     passThrough: z
       .boolean()
@@ -94,10 +100,10 @@ const moveToParams = z
           "result can be something in the way of that further point rather than of the thing you cared " +
           "about; `aimedAt` says where it was actually sent. " +
           "The reply then reports `passedWithin` — how near the walk came, at its closest, to the position you " +
-          "asked for rather than to the point it was aimed at. That distance is measured in three dimensions " +
-          "from the character's centre, so a target at a different height never reads zero however exactly " +
-          "the path crossed over it — walking straight through a coin's x and z still leaves the gap between " +
-          "its centre and yours. It also reports `crossed`, which is that measured against " +
+          "asked for rather than to the point it was aimed at. For a named target that is the distance to its " +
+          "surface, so a path straight over a coin reads near zero; for a bare position it is the distance to " +
+          "the point in three dimensions, which a target at a different height can never drive to zero. It " +
+          "also reports `crossed`, which is that measured against " +
           "arrivalTolerance. Read those two, not distanceToTarget: distanceToTarget says where the character " +
           "came to rest, which for a pass-through is deliberately past the target and so is large even when the " +
           "crossing worked.",
@@ -190,18 +196,35 @@ interface LiveInstance {
 async function readLiveInstance(
   callRpc: CallRpc,
   name: string,
-): Promise<{ position: { x: number; y: number; z: number }; reach?: number } | undefined> {
+): Promise<{ position: { x: number; y: number; z: number }; half?: { x: number; y: number; z: number } } | undefined> {
   const result = (await callRpc("game.instance.read", { name }, { timeoutMs: MOVE_RPC_TIMEOUT_MS })) as LiveInstance;
   const position = result?.instance?.CFrame?.Position;
   if (typeof position?.X !== "number" || typeof position?.Y !== "number" || typeof position?.Z !== "number") {
     return undefined;
   }
   const size = result?.instance?.Size;
-  const largest = size ? Math.max(size.X ?? 0, size.Y ?? 0, size.Z ?? 0) : 0;
   return {
     position: { x: position.X, y: position.Y, z: position.Z },
-    reach: largest > 0 ? largest / 2 : undefined,
+    half: size ? { x: (size.X ?? 0) / 2, y: (size.Y ?? 0) / 2, z: (size.Z ?? 0) / 2 } : undefined,
   };
+}
+
+/**
+ * Distance to the nearest point on a box, rather than to its middle. Measuring to
+ * the centre makes every distance about the target's size: a wide gate reads as
+ * reached from two hundred units away because half its width is two hundred, and a
+ * coin floating overhead never reads zero however exactly you walk under it. The
+ * surface is the thing a character can touch, so it is the thing worth measuring.
+ */
+function distanceToSurface(
+  point: { x: number; y: number; z: number },
+  centre: { x: number; y: number; z: number },
+  half: { x: number; y: number; z: number },
+): number {
+  const dx = Math.max(0, Math.abs(point.x - centre.x) - half.x);
+  const dy = Math.max(0, Math.abs(point.y - centre.y) - half.y);
+  const dz = Math.max(0, Math.abs(point.z - centre.z) - half.z);
+  return Math.hypot(dx, dy, dz);
 }
 
 /**
@@ -222,6 +245,31 @@ function closestApproach(
   const along = ((point.x - from.x) * dx + (point.y - from.y) * dy + (point.z - from.z) * dz) / lengthSquared;
   const clamped = Math.max(0, Math.min(1, along));
   return distanceBetween({ x: from.x + dx * clamped, y: from.y + dy * clamped, z: from.z + dz * clamped }, point);
+}
+
+/**
+ * How near the walk came to a box at its closest, by sampling along it. Exact
+ * segment-to-box distance is fiddly and this is a proximity report, not a physics
+ * query — sampling is honest about what it is and cannot be subtly wrong.
+ */
+function closestApproachToSurface(
+  from: { x: number; y: number; z: number },
+  to: { x: number; y: number; z: number },
+  centre: { x: number; y: number; z: number },
+  half: { x: number; y: number; z: number },
+): number {
+  const steps = 64;
+  let nearest = Number.POSITIVE_INFINITY;
+  for (let step = 0; step <= steps; step++) {
+    const t = step / steps;
+    const point = {
+      x: from.x + (to.x - from.x) * t,
+      y: from.y + (to.y - from.y) * t,
+      z: from.z + (to.z - from.z) * t,
+    };
+    nearest = Math.min(nearest, distanceToSurface(point, centre, half));
+  }
+  return nearest;
 }
 
 /**
@@ -457,14 +505,21 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
       // Check the claim rather than repeat it: a level without navigation data can
       // report `reached` with the character still standing where it started.
       const endedAt = await readCharacterPosition(callRpc);
-      const distanceToTarget = endedAt ? distanceBetween(endedAt, wantedPosition) : undefined;
-      // A named target knows its own size, so "close enough to have touched it" is a
-      // measurement rather than the caller's guess.
-      const tolerance = args.arrivalTolerance ?? named?.reach ?? ARRIVAL_TOLERANCE;
+      // For a named target these are distances to its surface, which is what a
+      // character can actually touch; for a bare position there is no surface to
+      // speak of, so it stays the distance to the point itself.
+      const measureTo = (from: { x: number; y: number; z: number }) =>
+        named?.half ? distanceToSurface(from, named.position, named.half) : distanceBetween(from, wantedPosition);
+      const distanceToTarget = endedAt ? measureTo(endedAt) : undefined;
+      const tolerance = args.arrivalTolerance ?? (named?.half ? TOUCH_MARGIN : ARRIVAL_TOLERANCE);
       // A pass-through succeeds by crossing the target, so judge the path, not the
       // stopping place — it is meant to end beyond the thing it was sent over.
       const passedWithin =
-        args.passThrough && startedFrom && endedAt ? closestApproach(startedFrom, endedAt, wantedPosition) : undefined;
+        args.passThrough && startedFrom && endedAt
+          ? named?.half
+            ? closestApproachToSurface(startedFrom, endedAt, named.position, named.half)
+            : closestApproach(startedFrom, endedAt, wantedPosition)
+          : undefined;
       const arrived =
         passedWithin !== undefined
           ? passedWithin <= tolerance

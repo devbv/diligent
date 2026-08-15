@@ -398,9 +398,35 @@ describe("play-test input tools", () => {
 
     const sent = calls.find((call) => call.method === "game.character.moveTo");
     expect((sent?.params as { position: unknown }).position).toMatchObject({ x: 350, y: 60, z: 250 });
-    // 90 across, so 45 from the centre — not the 150 default.
-    expect(result.output).toContain('"arrivalTolerance": 45');
+    // Distances are to the surface, so standing at the centre reads 0, and the
+    // tolerance is the touch margin rather than anything derived from the size.
+    expect(result.output).toContain('"distanceToTarget": 0');
+    expect(result.output).toContain('"arrivalTolerance": 60');
     expect(result.output).toContain('"targetPosition"');
+  });
+
+  test("move_to measures a big target from its surface, not its middle", async () => {
+    // A gate 400 wide: half of it is 200, so measuring to the centre called a
+    // character arrived while it stood well clear of the thing it was sent to.
+    const { byName } = toolsFor((call) => {
+      if (call.method === "game.pie.status") return runningStatus();
+      if (call.method === "game.instance.read") {
+        return { instance: { CFrame: { Position: { X: 0, Y: 200, Z: -600 } }, Size: { X: 400, Y: 400, Z: 40 } } };
+      }
+      if (call.method === "game.character.moveTo") return { requestId: "req-23", status: "pendingStart" };
+      if (call.method === "game.character.read") {
+        // Stopped 130 short of the near face: 150 from the centre plane, less the
+        // 20 half-depth. Under the old centre measure this was "arrived".
+        return { character: { CFrame: { Position: { X: 0, Y: 200, Z: -450 } } } };
+      }
+      return { requestId: "req-23", status: "reached", clientId: "client-1" };
+    });
+
+    const result = await run(byName.get("studiorpc_game_character_move_to"), { targetName: "Gate" });
+
+    expect(result.output).toContain('"distanceToTarget": 130');
+    expect(result.output).toContain('"arrived": false');
+    expect(result.output).toContain('"outcome": "blocked"');
   });
 
   test("move_to says so when the named instance is not in the world", async () => {
