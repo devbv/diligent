@@ -11,7 +11,8 @@ export const description =
   "reads as not moving even while you hold a key down, which is exactly the signal that tells you a " +
   "collision is blocking it. standingOn names the surface under its feet, or is null when nothing is there " +
   "— that is what falling looks like. It is a probe straight down, not a touch: standingOn.distance is the " +
-  "gap to that surface, so a distance of 0 means the character is level with the part, and never means the " +
+  "gap from the character's feet to that surface, so standing on something reads 0 and anything above 0 is " +
+  "the height it is hovering or falling through. A distance of 0 never means the " +
   "part's Touched event fired. Whether a trigger actually went off is something only the game's own state " +
   "can tell you. The probe reports whatever is below regardless of CanCollide, so a part the character walks " +
   "straight through still shows up here — standing on something and being held up by it are different " +
