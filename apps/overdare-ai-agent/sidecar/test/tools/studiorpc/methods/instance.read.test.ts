@@ -15,7 +15,12 @@ describe("instance.read arguments", () => {
     expect(parsed.guid).toBe("AAA");
   });
 
-  test("still rejects a call that names no instance at all", () => {
-    expect(() => params.parse(normalizeArgs({ recursive: true }))).toThrow();
+  test("lets a call with no instance through the schema, to be refused in words", () => {
+    // Three testers called this with no arguments expecting the live tool's listing.
+    // The validator's "guid: Required" named a field they thought they had left out on
+    // purpose; the tool itself now answers with which tool they actually wanted, so the
+    // schema deliberately stops rejecting it first.
+    expect(() => params.parse(normalizeArgs({ recursive: true }))).not.toThrow();
+    expect(params.parse(normalizeArgs({ recursive: true })).guid).toBeUndefined();
   });
 });

@@ -103,6 +103,26 @@ describe("play-test input tools", () => {
     expect(result.metadata).toMatchObject({ clientId: "client-1", eventCount: 3, status: "completed" });
   });
 
+  test("inject accepts a pointer event written with flat x and y", async () => {
+    // `position` is nested and writing it flat is the natural mistake; the validator
+    // answered it by naming a field the caller believed they had supplied.
+    const { calls, byName } = toolsFor((call) =>
+      call.method === "game.pie.status" ? runningStatus() : { sequenceId: "seq-2", status: "completed" },
+    );
+
+    await run(byName.get("studiorpc_game_input_inject"), {
+      events: [
+        { type: "pointerMove", x: 0.4, y: 0.9 },
+        { type: "pointerButton", button: "left", action: "press", durationMs: 100 },
+      ],
+    });
+
+    const sent = calls.find((call) => call.method === "game.input.inject");
+    const events = (sent?.params as { events: Array<Record<string, unknown>> }).events;
+    expect(events[0]).toMatchObject({ type: "pointerMove", position: { x: 0.4, y: 0.9 } });
+    expect(events[0].x).toBeUndefined();
+  });
+
   test("inject waits out the batch instead of using the default RPC timeout", async () => {
     const { calls, byName } = toolsFor((call) => (call.method === "game.pie.status" ? runningStatus() : {}));
 

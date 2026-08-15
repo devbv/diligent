@@ -116,6 +116,25 @@ export const inputEventsSchema = z
  * caller should reach for: one authored event instead of three, and no way to
  * leave a key held past the end of the batch.
  */
+/**
+ * Accepts a pointer event written with x and y at the top level. `position` is a
+ * nested object and writing it flat is the natural mistake — the validator answers
+ * that with "events.0.position: Required", which names a field the caller thought
+ * they had supplied. Folding it costs nothing and the batch reads the same either way.
+ */
+export function normalizeEventShapes(events: unknown): unknown {
+  if (!Array.isArray(events)) return events;
+  return events.map((event) => {
+    if (!event || typeof event !== "object") return event;
+    const shape = event as Record<string, unknown>;
+    if (shape.position === undefined && typeof shape.x === "number" && typeof shape.y === "number") {
+      const { x, y, ...rest } = shape;
+      return { ...rest, position: { x, y } };
+    }
+    return event;
+  });
+}
+
 export function expandShorthand(events: InputEvent[]): InputEvent[] {
   const expanded: InputEvent[] = [];
 

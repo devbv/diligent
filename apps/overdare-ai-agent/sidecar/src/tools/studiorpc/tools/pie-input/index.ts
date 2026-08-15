@@ -8,6 +8,7 @@ import {
   type InputEvent,
   inputEventsSchema,
   MAX_EVENT_COUNT,
+  normalizeEventShapes,
   totalWaitMs,
   validateBatch,
 } from "./events";
@@ -49,7 +50,9 @@ const targetOverrides = {
 };
 
 const injectParams = z.object({
-  events: inputEventsSchema,
+  // Preprocessed so a pointer event written with flat x/y still validates; see
+  // normalizeEventShapes for why that spelling keeps being tried.
+  events: z.preprocess(normalizeEventShapes, inputEventsSchema),
   ...targetOverrides,
 });
 
@@ -378,7 +381,9 @@ function createInputInjectTool(callRpc: CallRpc): Tool {
       "sentEventCount so the two are never confused.",
     parameters: injectParams,
     async execute(args: InjectParams): Promise<ToolResult> {
-      const events = args.events as InputEvent[];
+      // Normalized here as well as in the schema: execute receives the arguments as
+      // written, so a preprocess that only runs during validation never reaches this.
+      const events = normalizeEventShapes(args.events) as InputEvent[];
       // Studio has no press action, so expand before validating — the limits it
       // enforces apply to what actually reaches it, not to what was authored.
       const sent = expandShorthand(events);

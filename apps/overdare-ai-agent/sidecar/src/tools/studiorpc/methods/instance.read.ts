@@ -11,10 +11,16 @@ export const description =
   "the answers differ by everything.";
 
 export const params = z.object({
+  // Optional in the schema so that calling with no arguments — which three testers did,
+  // expecting the live tool's listing — is answered with a sentence naming the tool they
+  // wanted, instead of a bare "guid: Required" from the validator.
   guid: z
     .string()
+    .optional()
     .describe(
-      "GUID of the instance to read. Tools that report a GUID name it instanceGuid; pass that same value here.",
+      "GUID of the instance to read. Tools that report a GUID name it instanceGuid; pass that same value here. " +
+        "This tool has no listing mode: for everything in the running game, call " +
+        "studiorpc_game_instance_read with no arguments.",
     ),
   recursive: z.boolean().describe("If true, include all descendants recursively").default(false),
 });

@@ -50,6 +50,13 @@ function toToolName(method: string): string {
 
 async function executeInstanceRead(args: Record<string, unknown>, _ctx: ToolContext, cwd: string): Promise<ToolResult> {
   const parsed = instanceRead.params.parse(instanceRead.normalizeArgs(args));
+  if (!parsed.guid) {
+    throw new Error(
+      "studiorpc_instance_read needs a guid — it reads one instance out of the saved level and has no " +
+        "listing mode. To see everything in the running game, call studiorpc_game_instance_read with no " +
+        "arguments; that is the live counterpart and the one with the listing.",
+    );
+  }
   const { root } = readOvdrjmRoot(cwd);
 
   const target = findNodeByActorGuid(root, parsed.guid);
