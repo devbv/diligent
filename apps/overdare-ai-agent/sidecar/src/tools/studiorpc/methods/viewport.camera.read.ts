@@ -12,7 +12,11 @@ export const description =
   'camera (source "editorViewport") — the same camera studiorpc_game_screenshot captures. ' +
   "CFrame matches studiorpc_instance_read and studiorpc_instance_upsert: Position in world units (1 unit = " +
   "1 cm) and Orientation as XYZ Euler angles in degrees — degrees, not radians — so a value read here can be " +
-  "written straight back into a placement. centerHit.position uses those same coordinates, so it can be " +
+  "written straight back into a placement. Orientation.Y is the heading and Orientation.X the pitch: a yaw " +
+  "of 0 looks down -Z, +90 looks down -X, and a positive pitch looks up. That is the convention " +
+  "studiorpc_game_screenshot's locate is measured against, and the frame studiorpc_game_input_inject's " +
+  "relative look turns within. " +
+  "centerHit.position uses those same coordinates, so it can be " +
   "handed to studiorpc_instance_upsert or to studiorpc_game_screenshot's lookAt as-is. " +
   'Note that fieldOfView alone does not answer "how zoomed in are we": a perspective viewport keeps its ' +
   "field of view fixed and zooms by moving the camera, so focusDistance (the distance to whatever is under " +

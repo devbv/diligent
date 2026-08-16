@@ -18,6 +18,11 @@ export const description =
   "straight through still shows up here — standing on something and being held up by it are different " +
   "questions, and this answers the first. " +
   "CFrame is in the same world coordinates as studiorpc_instance_read and studiorpc_viewport_camera_read, " +
-  "so a position from any of them can be handed straight to studiorpc_game_character_move_to.";
+  "so a position from any of them can be handed straight to studiorpc_game_character_move_to. " +
+  "gameTimeSeconds is the world's own clock, which is the clock a timed round runs on. Its value on its " +
+  "own means nothing; the difference between two reads is how much game time your calls and your reasoning " +
+  "just cost, which is the only way to tell a round that expired from one that was never started. It is " +
+  "already scaled, so at timeScale 0.25 it advances a second for every four real ones. This is the cheap " +
+  "way to ask: reading it off a countdown on screen costs a whole studiorpc_game_ui_browse payload.";
 
 export const params = z.object({}).strict();

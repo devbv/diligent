@@ -1,10 +1,11 @@
 // @summary Agent-facing play-test tools: PIE status, input injection, and character moveTo.
 
 import { z } from "zod";
+import { rankNames } from "../../methods/game.instance.read";
 import { call } from "../../rpc";
 import type { Tool, ToolResult } from "../../types";
 import {
-  expandShorthand,
+  expandWithOrigin,
   type InputEvent,
   inputEventsSchema,
   MAX_EVENT_COUNT,
@@ -32,14 +33,26 @@ const MOVE_WAIT_MAX_MS = 300_000;
 const ARRIVAL_TOLERANCE = 150;
 /** Below this the character has not travelled — it is jitter, not a move. */
 const MOVED_AT_ALL = 5;
+/** Enough near-miss names to recognise the one that was meant, short of quoting the listing. */
+const MOVE_NAME_SUGGESTIONS = 8;
 /** Navigation stops itself about this far out, and will not re-approach from inside it. */
 const NAV_STOP_DISTANCE = 50;
 /** Still for this long while navigation claims to be running means it is stuck, not slow. */
 const MOVE_STALL_MS = 3_000;
+/** The Studio time-scale endpoint clamps values to this minimum. */
+const MIN_GAME_TIME_SCALE = 0.05;
 /** How far past a point passThrough aims, so the walk crosses it rather than ending on it. */
 const PASS_THROUGH_OVERSHOOT = 200;
+/** The furthest a caller may aim past a target, well beyond any sensible crossing. */
+const PASS_THROUGH_OVERSHOOT_MAX = 1_000;
 /** Close enough to a named target's surface to count as having reached it. */
 const TOUCH_MARGIN = 60;
+/** A named target whose surface is this close to the character's origin is inside it. */
+const ALREADY_AT_RADIUS = 30;
+/** Below this a gap between samples is ordinary movement, however fast it looked. */
+const TELEPORT_JUMP = 300;
+/** Units per real second no walking character reaches, so beyond it something moved it. */
+const TELEPORT_SPEED = 2_000;
 
 const targetOverrides = {
   pieSessionId: z
@@ -111,7 +124,21 @@ const moveToParams = z
           "pressed against its face, and walking around the side of one does not count either. For a bare " +
           "position, which has no shape to enter, it falls back to near-and-beyond and reports `wentPast` " +
           "alongside; prefer naming the target. distanceToTarget is left out of a pass-through reply, " +
-          "since it would measure back to a target the move was meant to overshoot.",
+          "since it would measure back to a target the move was meant to overshoot. " +
+          "The aim point is past the target, so a target near a ledge aims the character off it: five " +
+          "consecutive pickups beside a roof edge ended in the character walking over the side. Approach " +
+          "from the outside in, or shorten the overshoot with passThroughBeyond.",
+      ),
+    passThroughBeyond: z
+      .number()
+      .min(1)
+      .max(PASS_THROUGH_OVERSHOOT_MAX)
+      .optional()
+      .describe(
+        `How far past the target passThrough aims, in world units. Defaults to ${PASS_THROUGH_OVERSHOOT}. ` +
+          "Shorten it when the ground runs out just beyond the target — a ledge, a gap, a pit — since the " +
+          "character is being sent to that further point and will walk off. It still has to clear the " +
+          "target's own far face to count as a crossing, so a few tens of units is the useful floor.",
       ),
     wait: z.boolean().optional().describe("Poll game.character.moveStatus until the move ends. Defaults to true."),
     timeoutMs: z
@@ -141,6 +168,12 @@ interface InjectResult {
   status?: string;
   appliedEventCount?: number;
   released?: boolean;
+  /** Pointer route diagnostics emitted by Studio; handled is Slate routing, not proof of game activation. */
+  pointerRouteCount?: number;
+  pointerHandledCount?: number;
+  pointerRouteRepaired?: boolean;
+  pointerCaptureRepaired?: boolean;
+  pointerLeafType?: string;
   /** One entry per look event: how far the view actually turned, and why it stopped. */
   looks?: Array<{
     status?: string;
@@ -162,7 +195,50 @@ interface MoveStatusResult {
 }
 
 interface CharacterReadResult {
-  character?: { CFrame?: { Position?: { X?: number; Y?: number; Z?: number } } };
+  character?: {
+    CFrame?: { Position?: { X?: number; Y?: number; Z?: number } };
+    standingOn?: { instanceName?: string; instanceGuid?: string; distance?: number } | null;
+  };
+}
+
+interface CharacterState {
+  position: { x: number; y: number; z: number };
+  standingOnName?: string;
+}
+
+interface GameTimeScaleReadResult {
+  timeScale?: number;
+}
+
+type MoveOutcome = "arrived" | "blocked" | "stoppedShort" | "stillMoving";
+
+/**
+ * A waited move combines terminal polling, stall detection, and the measured
+ * end position. Its public status should follow that stronger verdict; the
+ * last raw path-following word is retained separately when they differ.
+ */
+export function normalizeWaitedMoveStatus(outcome: MoveOutcome, rawStatus: string | undefined): string | undefined {
+  switch (outcome) {
+    case "arrived":
+      return "reached";
+    case "blocked":
+      return "blocked";
+    case "stoppedShort":
+      return "stoppedShort";
+    case "stillMoving":
+      return rawStatus ?? "running";
+  }
+}
+
+/**
+ * MOVE_STALL_MS is a game-time observation window. A slowed world needs more
+ * wall-clock time to receive the same amount of movement simulation. Speeding
+ * the world up does not shorten the existing safety window.
+ */
+export function moveStallWindowMs(timeScale: number | undefined): number {
+  if (timeScale === undefined || !Number.isFinite(timeScale) || timeScale <= 0) return MOVE_STALL_MS;
+  const boundedScale = Math.max(timeScale, MIN_GAME_TIME_SCALE);
+  return Math.round(MOVE_STALL_MS / Math.min(boundedScale, 1));
 }
 
 /**
@@ -171,7 +247,7 @@ interface CharacterReadResult {
  * no navigation data can do without the character having gone anywhere — so the
  * move tools quote the distance that is left rather than the claim alone.
  */
-async function readCharacterPosition(callRpc: CallRpc): Promise<{ x: number; y: number; z: number } | undefined> {
+async function readCharacterState(callRpc: CallRpc): Promise<CharacterState | undefined> {
   try {
     const result = (await callRpc(
       "game.character.read",
@@ -182,10 +258,17 @@ async function readCharacterPosition(callRpc: CallRpc): Promise<{ x: number; y: 
     if (typeof position?.X !== "number" || typeof position?.Y !== "number" || typeof position?.Z !== "number") {
       return undefined;
     }
-    return { x: position.X, y: position.Y, z: position.Z };
+    return {
+      position: { x: position.X, y: position.Y, z: position.Z },
+      standingOnName: result?.character?.standingOn?.instanceName,
+    };
   } catch {
     return undefined;
   }
+}
+
+async function readCharacterPosition(callRpc: CallRpc): Promise<{ x: number; y: number; z: number } | undefined> {
+  return (await readCharacterState(callRpc))?.position;
 }
 
 function distanceBetween(a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }): number {
@@ -209,7 +292,19 @@ async function readLiveInstance(
   callRpc: CallRpc,
   name: string,
 ): Promise<{ position: { x: number; y: number; z: number }; half?: { x: number; y: number; z: number } } | undefined> {
-  const result = (await callRpc("game.instance.read", { name }, { timeoutMs: MOVE_RPC_TIMEOUT_MS })) as LiveInstance;
+  // A name that is not there is this tool's own answer to give, not the transport's.
+  // Studio raises `instanceNotFound` and the raw error surfaced straight through, so
+  // the caller was told the name is absent and nothing about what to walk to instead
+  // — while asking studiorpc_game_instance_read the same question answered with a
+  // ranked list. Swallow it here so the throw below can say the useful thing.
+  let result: LiveInstance;
+  try {
+    result = (await callRpc("game.instance.read", { name }, { timeoutMs: MOVE_RPC_TIMEOUT_MS })) as LiveInstance;
+  } catch (error) {
+    const text = error instanceof Error ? error.message : String(error);
+    if (text.includes("is in the running Workspace")) return undefined;
+    throw error;
+  }
   const position = result?.instance?.CFrame?.Position;
   if (typeof position?.X !== "number" || typeof position?.Y !== "number" || typeof position?.Z !== "number") {
     return undefined;
@@ -219,6 +314,34 @@ async function readLiveInstance(
     position: { x: position.X, y: position.Y, z: position.Z },
     half: size ? { x: (size.X ?? 0) / 2, y: (size.Y ?? 0) / 2, z: (size.Z ?? 0) / 2 } : undefined,
   };
+}
+
+/**
+ * What to say after "that name is not there". A bare instruction to go list the
+ * world costs the caller another round trip to learn something this call already
+ * had to look at, and the name it wanted is usually a near miss — the running
+ * game's names come from whatever script made the instance, so they need not match
+ * the level's spelling. Ranked nearest first, and silent rather than wrong if the
+ * listing itself fails: the absence is still the answer without it.
+ */
+async function nearbyNamesSentence(callRpc: CallRpc, wanted: string): Promise<string> {
+  let names: string[] = [];
+  try {
+    const listing = (await callRpc("game.instance.read", {}, { timeoutMs: MOVE_RPC_TIMEOUT_MS })) as {
+      instances?: { name?: string }[];
+    };
+    names = (listing?.instances ?? [])
+      .map((entry) => entry.name)
+      .filter((name): name is string => typeof name === "string");
+  } catch {
+    return "Call studiorpc_game_instance_read with no arguments to see what is there.";
+  }
+  if (names.length === 0) return "Call studiorpc_game_instance_read with no arguments to see what is there.";
+  const nearest = rankNames(names, wanted).slice(0, MOVE_NAME_SUGGESTIONS);
+  if (nearest.length > 0) {
+    return `Nearest names in the running world: ${nearest.join(", ")}.`;
+  }
+  return `The running world has ${names.length} named instances, none resembling that one: ${names.slice(0, MOVE_NAME_SUGGESTIONS).join(", ")}.`;
 }
 
 /**
@@ -232,9 +355,10 @@ function distanceToSurface(
   point: { x: number; y: number; z: number },
   centre: { x: number; y: number; z: number },
   half: { x: number; y: number; z: number },
+  ignoreVertical = false,
 ): number {
   const dx = Math.max(0, Math.abs(point.x - centre.x) - half.x);
-  const dy = Math.max(0, Math.abs(point.y - centre.y) - half.y);
+  const dy = ignoreVertical ? 0 : Math.max(0, Math.abs(point.y - centre.y) - half.y);
   const dz = Math.max(0, Math.abs(point.z - centre.z) - half.z);
   return Math.hypot(dx, dy, dz);
 }
@@ -290,8 +414,13 @@ function closestApproachToSurface(
   route: Array<{ x: number; y: number; z: number }>,
   centre: { x: number; y: number; z: number },
   half: { x: number; y: number; z: number },
+  ignoreVertical = false,
 ): number {
   const perLeg = 24;
+  // A single point is a leg with nothing to walk along, which the loop below skips
+  // entirely and reports as infinitely far. Splitting a route at a teleport can leave
+  // one, so measure the point itself rather than answering with a number that is not one.
+  if (route.length === 1) return distanceToSurface(route[0], centre, half, ignoreVertical);
   let nearest = Number.POSITIVE_INFINITY;
   for (let leg = 0; leg < route.length - 1; leg++) {
     const from = route[leg];
@@ -303,7 +432,7 @@ function closestApproachToSurface(
         y: from.y + (to.y - from.y) * t,
         z: from.z + (to.z - from.z) * t,
       };
-      nearest = Math.min(nearest, distanceToSurface(point, centre, half));
+      nearest = Math.min(nearest, distanceToSurface(point, centre, half, ignoreVertical));
     }
   }
   return nearest;
@@ -314,11 +443,58 @@ function closestApproachOnRoute(
   route: Array<{ x: number; y: number; z: number }>,
   point: { x: number; y: number; z: number },
 ): number {
+  if (route.length === 1) return distanceBetween(route[0], point);
   let nearest = Number.POSITIVE_INFINITY;
   for (let leg = 0; leg < route.length - 1; leg++) {
     nearest = Math.min(nearest, closestApproach(route[leg], route[leg + 1], point));
   }
   return nearest;
+}
+
+/** A place the character was seen and when, so a jump can be told apart from a walk. */
+type TrackSample = { x: number; y: number; z: number; atMs: number };
+
+/**
+ * The stretches the character actually walked, split wherever it was moved instead.
+ * Falling into a gap ends with the game putting the character back at its spawn and
+ * navigation re-walking the whole route without saying so: run 47 read `arrived` for
+ * a crossing that had failed, fallen, respawned and been retried, and spent several
+ * calls deciding the chute was broken. Two samples are a teleport only when the gap
+ * between them is both large and faster than anything on foot, so ordinary running —
+ * or a slow poll that missed a few hundred units of it — stays one leg.
+ *
+ * The split is not only for the report. Joining the two sides draws a straight line
+ * across the level that nobody walked, and closest-approach reads it as a crossing of
+ * whatever happens to lie under it.
+ */
+function splitWalkedLegs(route: TrackSample[]): { legs: TrackSample[][]; teleports: number } {
+  const legs: TrackSample[][] = [];
+  let current: TrackSample[] = [];
+  let teleports = 0;
+  for (const [index, sample] of route.entries()) {
+    const previous = index > 0 ? route[index - 1] : undefined;
+    if (previous) {
+      const distance = distanceBetween(previous, sample);
+      const seconds = Math.max(sample.atMs - previous.atMs, 1) / 1_000;
+      if (distance >= TELEPORT_JUMP && distance / seconds >= TELEPORT_SPEED) {
+        teleports += 1;
+        legs.push(current);
+        current = [];
+      }
+    }
+    current.push(sample);
+  }
+  legs.push(current);
+  return { legs, teleports };
+}
+
+/** How far the character covered on foot, which a straight start-to-end line understates. */
+function walkedLength(legs: TrackSample[][]): number {
+  let total = 0;
+  for (const leg of legs) {
+    for (let step = 0; step < leg.length - 1; step++) total += distanceBetween(leg[step], leg[step + 1]);
+  }
+  return total;
 }
 
 /**
@@ -353,7 +529,12 @@ function createPieStatusTool(callRpc: CallRpc): Tool {
     description:
       "Report the OVERDARE Studio play-in-editor (PIE) session: whether play mode runs, its pieSessionId, and " +
       "each client with its netMode and whether input can be injected into it. Call this to check that a " +
-      "play test is live; the other play-test tools resolve their target on their own.",
+      "play test is live; the other play-test tools resolve their target on their own. " +
+      "`worlds` reports the server and client separately, which is what catches the two running at different " +
+      "speeds: `timeDilation` is the scale that was applied and `measuredScale` is the scale the world was " +
+      "observed to actually tick at. `gameTimeSeconds` is each world's own clock — already scaled, so the " +
+      "difference between two reads is how much game time passed, whatever the wall clock did. " +
+      "studiorpc_game_character_read carries the same clock and is cheaper to ask.",
     parameters: z.object({}),
     supportParallel: true,
     async execute(): Promise<ToolResult> {
@@ -374,8 +555,12 @@ function createInputInjectTool(callRpc: CallRpc): Tool {
       "Play a batch of keyboard and mouse events into the running play test, as if a human were at the " +
       "keyboard. The batch is applied in order and the call returns once it has played out, so the character " +
       "has finished moving when the result arrives. pieSessionId and clientId are resolved automatically. " +
-      "Limits: at most 64 events, at most 10s of total wait, and every key or button pressed must be " +
-      "released inside the same batch. Example — walk forward for half a second: " +
+      "Limits: at most 64 events, at most 10s of time the batch could spend, and every key or button pressed " +
+      "must be released inside the same batch. Everything that can take time counts towards the same 10s: " +
+      "wait durations, every press durationMs, and each look's timeoutMs — which is 2000 by default even " +
+      "when the turn finishes in milliseconds, so two looks and an 8s wait is over the limit. Two 3s presses " +
+      "and a 5s wait is over it too. " +
+      "Example — walk forward for half a second: " +
       '[{"type":"key","key":"W","action":"press","durationMs":500}]. ' +
       "To click a UI button, read its rect from studiorpc_game_ui_browse, pointerMove to the center of that " +
       "rect, then press the left pointerButton — that fires the button's Activated exactly as a real click " +
@@ -385,7 +570,11 @@ function createInputInjectTool(callRpc: CallRpc): Tool {
       "not count. Retry the batch; the input was released. " +
       "appliedEventCount reports the batch Studio ran, which is the expanded one: each press becomes " +
       "down/wait/up, so it exceeds the number of events you wrote. The reply gives authoredEventCount and " +
-      "sentEventCount so the two are never confused.",
+      "sentEventCount so the two are never confused. Pointer replies also include pointerRouteCount, " +
+      "pointerHandledCount, pointerLeafType, pointerRouteRepaired, and pointerCaptureRepaired for routing " +
+      "diagnosis. pointerCaptureRepaired means Studio honored the target widget's own mouse-capture request " +
+      "while its native window was inactive; handled means Slate accepted the route, not that game code " +
+      "necessarily changed state.",
     parameters: injectParams,
     async execute(args: InjectParams): Promise<ToolResult> {
       // Normalized here as well as in the schema: execute receives the arguments as
@@ -393,14 +582,14 @@ function createInputInjectTool(callRpc: CallRpc): Tool {
       const events = normalizeEventShapes(args.events) as InputEvent[];
       // Studio has no press action, so expand before validating — the limits it
       // enforces apply to what actually reaches it, not to what was authored.
-      const sent = expandShorthand(events);
+      const { sent, origin } = expandWithOrigin(events);
       if (sent.length > MAX_EVENT_COUNT) {
         throw new Error(
           `The batch expands to ${sent.length} events, above Studio's ${MAX_EVENT_COUNT} limit ` +
             `(each press with a durationMs becomes three). Split the input across several calls.`,
         );
       }
-      const batchError = validateBatch(sent);
+      const batchError = validateBatch(sent, origin);
       if (batchError) throw new Error(batchError);
 
       const target = await resolvePieTarget(callRpc, args);
@@ -441,26 +630,56 @@ function createInputInjectTool(callRpc: CallRpc): Tool {
  * settles it in a few seconds: a character that has not moved while navigation
  * still claims to be working is against something.
  */
+/**
+ * The clock speed the session is running at, so a stall window measured in real
+ * seconds still covers the same amount of game time.
+ *
+ * This used to come from a dedicated game.time.scale read. That call is gone —
+ * the scale is now fixed for a session by game.play and reset by game.stop — so
+ * the status call, which already reports what each world ended up running at, is
+ * the one place left that knows.
+ */
+async function readGameTimeScale(callRpc: CallRpc): Promise<number | undefined> {
+  try {
+    const result = (await callRpc(
+      "game.pie.status",
+      {},
+      { timeoutMs: MOVE_RPC_TIMEOUT_MS },
+    )) as GameTimeScaleReadResult;
+    const scale = result?.timeScale;
+    return typeof scale === "number" && Number.isFinite(scale) && scale > 0 ? scale : undefined;
+  } catch {
+    // Movement remains usable against an older Studio or a transient clock-read
+    // failure; the conservative pre-time-scale behavior is the fallback.
+    return undefined;
+  }
+}
+
 async function pollMoveStatus(
   callRpc: CallRpc,
   pieSessionId: string,
   requestId: string,
   timeoutMs: number,
+  gameTimeScale: number | undefined,
 ): Promise<{
   status: string | undefined;
   waitedMs: number;
   timedOut: boolean;
   stalled: boolean;
-  track: Array<{ x: number; y: number; z: number }>;
+  gameTimeScale: number | undefined;
+  stallWindowMs: number;
+  track: TrackSample[];
 }> {
   const startedAt = Date.now();
+  const stallWindowMs = moveStallWindowMs(gameTimeScale);
   let status: string | undefined;
   let stillSince: number | undefined;
-  let lastPosition: { x: number; y: number; z: number } | undefined;
+  let stillAnchor: { x: number; y: number; z: number } | undefined;
+  let lastTrackedPosition: { x: number; y: number; z: number } | undefined;
   // Where the character actually went. Navigation routes around obstacles, so the
   // straight line between where a move started and ended is not the walk — treating
   // it as one reported crossings of things the character never came near.
-  const track: Array<{ x: number; y: number; z: number }> = [];
+  const track: TrackSample[] = [];
 
   while (Date.now() - startedAt < timeoutMs) {
     await sleep(MOVE_POLL_INTERVAL_MS);
@@ -471,22 +690,58 @@ async function pollMoveStatus(
     )) as MoveStatusResult;
     status = result?.status;
     if (isTerminalMoveStatus(status)) {
-      return { status, waitedMs: Date.now() - startedAt, timedOut: false, stalled: false, track };
+      return {
+        status,
+        waitedMs: Date.now() - startedAt,
+        timedOut: false,
+        stalled: false,
+        gameTimeScale,
+        stallWindowMs,
+        track,
+      };
     }
 
     const position = await readCharacterPosition(callRpc);
     if (position) {
-      const still = lastPosition !== undefined && distanceBetween(position, lastPosition) <= MOVED_AT_ALL;
-      if (!still) track.push(position);
-      stillSince = still ? (stillSince ?? Date.now()) : undefined;
-      lastPosition = position;
-      if (stillSince !== undefined && Date.now() - stillSince >= MOVE_STALL_MS) {
-        return { status, waitedMs: Date.now() - startedAt, timedOut: false, stalled: true, track };
+      // Compare against the point where the still period began, not only the
+      // immediately previous sample. At a low game-time scale every individual
+      // 300ms step can be under the jitter threshold even though those steps add
+      // up to real travel.
+      const madeProgress = stillAnchor !== undefined && distanceBetween(position, stillAnchor) > MOVED_AT_ALL;
+      if (stillAnchor === undefined || madeProgress) {
+        stillAnchor = position;
+        stillSince = Date.now();
+      }
+      if (lastTrackedPosition === undefined || distanceBetween(position, lastTrackedPosition) > MOVED_AT_ALL) {
+        // Stamped, because how fast the character covered the gap is what separates a
+        // run from a respawn — the distance alone cannot, since a slow poll and a
+        // teleport leave the same hole in the track.
+        track.push({ ...position, atMs: Date.now() });
+        lastTrackedPosition = position;
+      }
+      if (stillSince !== undefined && Date.now() - stillSince >= stallWindowMs) {
+        return {
+          status,
+          waitedMs: Date.now() - startedAt,
+          timedOut: false,
+          stalled: true,
+          gameTimeScale,
+          stallWindowMs,
+          track,
+        };
       }
     }
   }
 
-  return { status, waitedMs: Date.now() - startedAt, timedOut: true, stalled: false, track };
+  return {
+    status,
+    waitedMs: Date.now() - startedAt,
+    timedOut: true,
+    stalled: false,
+    gameTimeScale,
+    stallWindowMs,
+    track,
+  };
 }
 
 function createCharacterMoveToTool(callRpc: CallRpc): Tool {
@@ -498,23 +753,37 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
       "thing actually is and sizes the tolerance to it, where typed coordinates invite an invented height " +
       "that aims at empty air above it. " +
       "Read `outcome`, which is the tool's own verdict on the move: arrived, blocked, stoppedShort, or " +
-      "stillMoving. `navStatus` beside it is navigation's raw word, which keeps saying `running` for a " +
-      "character that has stopped dead — it describes what path following thinks, not what happened. " +
-      "Do not read it as the outcome: Studio reports `reached` whenever its path following " +
+      "stillMoving. `navStatus` is the matching stable status: reached, blocked, stoppedShort, or the " +
+      "still-active navigation status. When Studio's last path-following word differs, the reply preserves " +
+      "it as `rawNavStatus` for diagnosis rather than placing a contradictory raw `running` beside an " +
+      "arrived result. Studio reports raw `reached` whenever its path following " +
       "returns success, which it does even when it could not get there, so the tool measures where the " +
       `character actually stopped. \`arrived\` is true within \`arrivalTolerance\` units of the target and ` +
       `appears once the move is over, so a reply without it is one that has not finished. ` +
       `\`arrivalTolerance\` is ${ARRIVAL_TOLERANCE} by default and echoed back in the response; pass a ` +
       "smaller one when you are testing whether the character reached a specific small thing rather than " +
-      "merely got there. " +
+      "merely got there. Finishing on top of the named target counts as arrived whatever the tolerance says, " +
+      "reported as `standingOnTarget`: every distance here is measured from the character's origin, which " +
+      "rides a capsule half-height above its feet, so anything you stand on is about 84 units away by " +
+      "construction and could never satisfy a tolerance. A named target that was already where the character " +
+      "stood — one it is carrying, or standing on — reports `alreadyAtTarget` and skips the pass-through " +
+      "figures, since there was no approach to measure. " +
       "`distanceToTarget` is how far the character finished from the place you asked for, and `endedAt` is " +
       "where that was; a still-running move reports `at` instead, because it has not ended anywhere yet. " +
       "`moved` and `movedDistance` say whether it travelled at all, which separates a move that was " +
-      "unnecessary — already inside the tolerance — from one that went nowhere. `blocked` means the move " +
+      "unnecessary — already inside the tolerance — from one that went nowhere. `movedDistance` is the " +
+      "straight line between the ends, so `walkedDistance` appears alongside it when the route taken was " +
+      "meaningfully longer. `endedInAir` says there was nothing under the character's feet when the move " +
+      "finished, which is a fall in progress and not an arrival wherever the reply says it stopped. " +
+      "`respawnedMidMove` says the character was moved rather than walked partway " +
+      "through — it fell or died, the game put it back, and navigation set off again — which endpoints alone " +
+      "hide completely; treat anything you were testing along that walk as unproven. `blocked` means the move " +
       "finished without getting there and navigation did not choose to stop: something is in the way, or the " +
       "target is somewhere a walking character cannot stand. A character that walked most of the way and then " +
       "hit a wall is blocked just as much as one that never set off, so read `blocked` with `movedDistance` to " +
-      "see where it got stuck. " +
+      "see where it got stuck. The stall check is three seconds of game time, not blindly three seconds of " +
+      "wall time: when the game clock is slowed, `stallWindowMs` expands so normal slow movement is not called " +
+      "blocked. `gameTimeScale` reports the scale used when Studio provided it. " +
       "Pass wait: false to return the requestId immediately and poll with " +
       "studiorpc_game_character_move_status yourself.",
     parameters: moveToParams,
@@ -524,7 +793,7 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
       if (args.targetName && !named) {
         throw new Error(
           `No instance named "${args.targetName}" is in the running Workspace, so there is nowhere to walk to. ` +
-            `Call studiorpc_game_instance_read with no arguments to see what is there.`,
+            (await nearbyNamesSentence(callRpc, args.targetName)),
         );
       }
       const wantedPosition = named?.position ?? args.position;
@@ -532,12 +801,27 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
       // Where it began, so the reply can say whether the character travelled at all.
       // Two moves that end on the same spot look like a no-op otherwise.
       const startedFrom = await readCharacterPosition(callRpc);
+      const startedAtMs = Date.now();
+      // For a named target these are distances to its surface, which is what a
+      // character can actually touch; for a bare position there is no surface to
+      // speak of, so it stays the distance to the point itself.
+      const measureTo = (from: { x: number; y: number; z: number }) =>
+        named?.half ? distanceToSurface(from, named.position, named.half) : distanceBetween(from, wantedPosition);
+      // A named target the character is holding rides along with it, so its position
+      // reads back as the character's own and there is nowhere to walk. Run 47 asked
+      // for the parcel in its hands and got targetPosition equal to its own position,
+      // movedDistance 0, and a note claiming the walk had gone directly over it. The
+      // test is the target's surface enclosing the character's origin, not mere
+      // nearness: a pickup lying at its feet is 84 units below that origin and is
+      // something the character genuinely has to walk over.
+      const startedNearTarget =
+        args.targetName !== undefined && startedFrom !== undefined && measureTo(startedFrom) <= ALREADY_AT_RADIUS;
       // Aiming past the point is what makes the path cross it. Distances stay in the
       // horizontal plane: the overshoot is about where the character walks, and
       // borrowing the target's height would send it at the floor or the ceiling.
       const destination =
         args.passThrough && startedFrom
-          ? overshootPast(startedFrom, wantedPosition, PASS_THROUGH_OVERSHOOT)
+          ? overshootPast(startedFrom, wantedPosition, args.passThroughBeyond ?? PASS_THROUGH_OVERSHOOT)
           : wantedPosition;
       const started = (await callRpc(
         "game.character.moveTo",
@@ -561,17 +845,22 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
       }
 
       const timeoutMs = args.timeoutMs ?? MOVE_WAIT_DEFAULT_MS;
-      const polled = await pollMoveStatus(callRpc, target.pieSessionId, requestId, timeoutMs);
+      const gameTimeScale = await readGameTimeScale(callRpc);
+      const polled = await pollMoveStatus(callRpc, target.pieSessionId, requestId, timeoutMs, gameTimeScale);
       const status = polled.status ?? started?.status;
 
       // Check the claim rather than repeat it: a level without navigation data can
       // report `reached` with the character still standing where it started.
-      const endedAt = await readCharacterPosition(callRpc);
-      // For a named target these are distances to its surface, which is what a
-      // character can actually touch; for a bare position there is no surface to
-      // speak of, so it stays the distance to the point itself.
-      const measureTo = (from: { x: number; y: number; z: number }) =>
-        named?.half ? distanceToSurface(from, named.position, named.half) : distanceBetween(from, wantedPosition);
+      const endedState = await readCharacterState(callRpc);
+      const endedAt = endedState?.position;
+      const endedAtMs = Date.now();
+      // Standing on the target is the closest a character can get to it, but the
+      // measurement says otherwise: distances are taken from the character's origin,
+      // a capsule half-height above its feet, so landing on a plinth reads about 84
+      // units of surface distance and `arrived` is unreachable by construction. Run 44
+      // was told `blocked` for a plinth it was standing on top of, and went back to
+      // re-verify a move that had worked.
+      const standingOnTarget = args.targetName !== undefined && endedState?.standingOnName === args.targetName;
       const distanceToTarget = endedAt ? measureTo(endedAt) : undefined;
       const tolerance = args.arrivalTolerance ?? (named?.half ? TOUCH_MARGIN : ARRIVAL_TOLERANCE);
       // A pass-through succeeds by crossing the target, so judge the path, not the
@@ -580,13 +869,40 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
       // and where it finished. Sampled a few times a second, so a fast character can
       // still cut a corner between samples — but it is the walk, not a line drawn
       // between its ends, and that difference reported crossings that never happened.
-      const route = startedFrom && endedAt ? [startedFrom, ...polled.track, endedAt] : undefined;
-      const passedWithin =
-        args.passThrough && route
-          ? named?.half
-            ? closestApproachToSurface(route, named.position, named.half)
-            : closestApproachOnRoute(route, wantedPosition)
+      const route: TrackSample[] | undefined =
+        startedFrom && endedAt
+          ? [{ ...startedFrom, atMs: startedAtMs }, ...polled.track, { ...endedAt, atMs: endedAtMs }]
           : undefined;
+      // Only the stretches walked on foot. A fall and respawn mid-move otherwise joins
+      // two ends of the level with a line the character never travelled, and the
+      // crossing test happily reports whatever sits under it.
+      const walked = route ? splitWalkedLegs(route) : undefined;
+      const nearestOnWalk = (measure: (leg: TrackSample[]) => number): number =>
+        Math.min(...(walked?.legs ?? []).map(measure));
+      const shape = named?.half ? { centre: named.position, half: named.half } : undefined;
+      // A target the character is already on or holding has no approach to judge:
+      // every leg starts inside it, so a crossing would be reported for standing still.
+      const passedWithin =
+        args.passThrough && walked && !startedNearTarget
+          ? shape
+            ? nearestOnWalk((leg) => closestApproachToSurface(leg, shape.centre, shape.half))
+            : nearestOnWalk((leg) => closestApproachOnRoute(leg, wantedPosition))
+          : undefined;
+      // The route is the character's origin, a point, while the character is a capsule
+      // most of two metres tall. Walking straight over a pickup lying on the floor puts
+      // that origin above it, so the surface distance is pure vertical clearance and the
+      // walk reads as a miss — one tester reported `passedWithin: 14, crossed: false`
+      // for a pickup that had just fired, and only the game log contradicted it. The
+      // horizontal figure separates "went past to one side" from "went over the top".
+      const passedWithinHorizontal =
+        args.passThrough && walked && !startedNearTarget && shape
+          ? nearestOnWalk((leg) => closestApproachToSurface(leg, shape.centre, shape.half, true))
+          : undefined;
+      const passedOverIt =
+        passedWithin !== undefined &&
+        passedWithinHorizontal !== undefined &&
+        passedWithinHorizontal < 1 &&
+        passedWithin >= 1;
       // Coming near the target is not going over it. A character stopped dead against
       // a solid gate passes within a few units of its face and gets nowhere, so a
       // crossing has to have come out the far side to count as one.
@@ -607,9 +923,16 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
           : named?.half
             ? passedWithin <= 0
             : passedWithin <= tolerance && wentPast === true;
-      const arrived = crossed !== undefined ? crossed : distanceToTarget !== undefined && distanceToTarget <= tolerance;
+      // A pass-through keeps its own test — it is asking about the walk, not the
+      // stopping place, and its note already carries the "went over the top" case.
+      const arrived =
+        crossed !== undefined
+          ? crossed
+          : standingOnTarget || (distanceToTarget !== undefined && distanceToTarget <= tolerance);
       const movedDistance = startedFrom && endedAt ? distanceBetween(startedFrom, endedAt) : undefined;
       const moved = movedDistance !== undefined && movedDistance > MOVED_AT_ALL;
+      const walkedDistance = walked ? walkedLength(walked.legs) : undefined;
+      const respawns = walked?.teleports ?? 0;
       // Standing still because navigation is already satisfied is not being blocked.
       // Distance alone cannot tell that from a wall — stopping 44 units short against
       // a solid gate and 34 short of a point nav likes look identical. The status can:
@@ -622,6 +945,19 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
       // has stopped, and waiting out the budget would not learn anything more.
       const settled = isTerminalMoveStatus(status) || polled.stalled;
       const blocked = settled && distanceToTarget !== undefined && !arrived && !navSatisfied;
+      // Nothing under the character's feet when the move ended. `arrived: true` beside
+      // an endedAt with a negative y read as success to run 49, which had in fact been
+      // walked off the map by the pass-through overshoot and was in free fall.
+      const endedInAir = settled && endedState !== undefined && endedState.standingOnName === undefined;
+
+      const outcome: MoveOutcome = !settled
+        ? "stillMoving"
+        : arrived
+          ? "arrived"
+          : blocked
+            ? "blocked"
+            : "stoppedShort";
+      const navStatus = normalizeWaitedMoveStatus(outcome, status);
 
       return {
         output: jsonOutput({
@@ -629,21 +965,37 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
           // The tool's own verdict, because `status` is navigation's word and keeps
           // saying `running` for a character that stopped dead — three testers read
           // that as "still going" on a call that had already returned.
-          outcome: !settled ? "stillMoving" : arrived ? "arrived" : blocked ? "blocked" : "stoppedShort",
-          // Named `navStatus`, not `status`: four testers read a bare `status` of
-          // "running" as the call still being in flight, on a reply that had already
-          // returned a verdict. It is navigation's opinion, and the name now says so.
-          navStatus: status,
+          outcome,
+          // A waited call has already combined navigation, stall detection, and the
+          // measured end position. Keep its public status consistent with that verdict.
+          navStatus,
+          // Studio's last path-following word remains useful when diagnosing why the
+          // wrapper overruled it, but it must not masquerade as the final result.
+          ...(status !== undefined && status !== navStatus ? { rawNavStatus: status } : {}),
           // The field the description tells callers to read, which it did not emit for
           // a long time — leaving them to recompute it from distance and tolerance.
           ...(settled ? { arrived } : {}),
-          // `status` stays whatever navigation last said, which is `running` for a
-          // character that stopped moving; this says the wait was cut short on purpose.
+          // Without this, `arrived: true` sits beside a distanceToTarget of 84 and an
+          // arrivalTolerance of 60 and reads as the tool contradicting itself.
+          ...(standingOnTarget
+            ? {
+                standingOnTarget: args.targetName,
+                arrivalNote:
+                  `The character finished standing on ${args.targetName}, which is why this counts as arrived ` +
+                  `even though distanceToTarget is larger than arrivalTolerance. Distances are measured from ` +
+                  `the character's origin, which sits a capsule half-height (about 84 units) above its feet, ` +
+                  `so anything you stand on top of can never measure as close as the tolerance asks.`,
+              }
+            : {}),
+          // A raw running status can remain after the measured move has settled; this
+          // says the wait was cut short on purpose.
           // Not worth saying when it got there: "arrived and stalled" reads as a
           // contradiction, and a character that stopped where it was going is just done.
           ...(polled.stalled && !arrived ? { stalled: true } : {}),
           clientId: target.clientId,
           waitedMs: polled.waitedMs,
+          stallWindowMs: polled.stallWindowMs,
+          ...(polled.gameTimeScale !== undefined ? { gameTimeScale: polled.gameTimeScale } : {}),
           // distanceToTarget stays measured from the point you asked about, not the
           // one it was aimed at, so passThrough does not quietly move the goalposts.
           ...(named ? { targetPosition: named.position } : {}),
@@ -651,14 +1003,24 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
           ...(passedWithin !== undefined
             ? {
                 passedWithin: Math.round(passedWithin),
+                ...(passedWithinHorizontal !== undefined
+                  ? { passedWithinHorizontal: Math.round(passedWithinHorizontal) }
+                  : {}),
                 crossed,
                 ...(wentPast !== undefined ? { wentPast } : {}),
                 passThroughNote: named?.half
-                  ? `crossed means the walk went inside ${args.targetName}, which is passedWithin 0. ` +
-                    `Stopping against its face reads as a small passedWithin and not a crossing, which is ` +
-                    `what walking into something solid looks like. This is geometry, not consequence: it ` +
-                    `says the character went through the space the thing occupies, never that anything ` +
-                    `fired. Only the game's own state changing shows that.`
+                  ? passedOverIt
+                    ? `The walk went directly over ${args.targetName}: passedWithinHorizontal is 0 and the ` +
+                      `passedWithin of ${Math.round(passedWithin)} is vertical clearance between the ` +
+                      `character's origin and the part. The origin is a point but the character is a ` +
+                      `body, so it can overlap something its origin passes above — crossed is false here ` +
+                      `because the origin stayed outside the box, and that is not evidence a pickup did ` +
+                      `not fire. Only the game's own state shows that.`
+                    : `crossed means the walk went inside ${args.targetName}, which is passedWithin 0. ` +
+                      `Stopping against its face reads as a small passedWithin and not a crossing, which is ` +
+                      `what walking into something solid looks like. This is geometry, not consequence: it ` +
+                      `says the character went through the space the thing occupies, never that anything ` +
+                      `fired. Only the game's own state changing shows that.`
                   : `Without a known shape a crossing is judged as near-and-beyond: passedWithin within ` +
                     `arrivalTolerance, plus wentPast. Name the target instead and it is judged on whether ` +
                     `the walk actually entered it.`,
@@ -677,7 +1039,56 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
           ...(movedDistance !== undefined
             ? { moved, movedDistance: Math.round(movedDistance), ...(settled ? { blocked } : {}) }
             : {}),
-          ...(status === "reached" && distanceToTarget !== undefined && !arrived
+          // movedDistance is the straight line between the ends, which understates any
+          // route that went around something and says nothing at all about one that was
+          // walked twice. Only worth printing when the two genuinely disagree.
+          ...(walkedDistance !== undefined && movedDistance !== undefined && walkedDistance > movedDistance * 1.2
+            ? { walkedDistance: Math.round(walkedDistance) }
+            : {}),
+          // A move that ends in mid-air has not really ended: the character is still
+          // going, downwards, and wherever it lands is not where this reply says it is.
+          ...(endedInAir
+            ? {
+                endedInAir: true,
+                endedInAirNote:
+                  `Nothing is under the character's feet where this move finished, so it is falling rather ` +
+                  `than standing anywhere. Whatever the outcome says, it did not end here — read ` +
+                  `studiorpc_game_character_read again once it has landed. A pass-through aimed past a ` +
+                  `target near a ledge is the usual way to get here; passThroughBeyond shortens the aim.`,
+              }
+            : {}),
+          // The move looks clean from its endpoints even when the character fell in,
+          // was put back at the spawn, and navigation quietly re-walked the lot.
+          ...(respawns > 0
+            ? {
+                respawnedMidMove: respawns,
+                respawnNote:
+                  `The character jumped position ${respawns === 1 ? "once" : `${respawns} times`} mid-move, ` +
+                  `faster than anything can walk — it fell or died and the game put it back, and navigation ` +
+                  `then set off again on its own. Whatever the outcome says, this move is not one clean walk: ` +
+                  `anything you were testing along the way happened to a character that was somewhere else in ` +
+                  `between. Crossing figures ignore the jump itself and cover only the stretches actually ` +
+                  `walked. Re-run the move from a known position before trusting what it says.`,
+              }
+            : {}),
+          // Being handed the character's own position as the target reads as a broken
+          // reply otherwise: a zero-length move onto a thing that is somehow already here.
+          ...(startedNearTarget && args.targetName
+            ? {
+                alreadyAtTarget: args.targetName,
+                alreadyAtNote:
+                  `${args.targetName} was already where the character was when the move started, so there was ` +
+                  `nowhere to walk and no approach to judge — pass-through figures are left out rather than ` +
+                  `reported against a target the character never approached. A part the character is carrying ` +
+                  `moves with it and always reads like this, as does one it is standing on. Whether it is held ` +
+                  `is a question for the game's own state, not for a move.`,
+              }
+            : {}),
+          // A walk that went straight over the target is not an unproven test, and saying
+          // so next to a note explaining the opposite is worse than saying nothing: run 42
+          // reported the top-level verdict contradicting its own passThroughNote while the
+          // pickup had in fact fired. The note carries this case on its own.
+          ...(status === "reached" && distanceToTarget !== undefined && !arrived && !passedOverIt
             ? {
                 warning:
                   // Two very different failures share this branch. Falling short of a
@@ -707,8 +1118,9 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
           ...(polled.stalled && !arrived
             ? {
                 note:
-                  `Navigation still reports "${status}" in navStatus, but the character has not moved for ` +
-                  `${MOVE_STALL_MS / 1000} seconds, so it is stuck rather than slow and the wait was cut short. ` +
+                  `Studio navigation still reports "${status}" in rawNavStatus, but the character has not moved for ` +
+                  `${polled.stallWindowMs / 1000} real seconds (${MOVE_STALL_MS / 1000} seconds of game time ` +
+                  `at scale ${polled.gameTimeScale ?? 1}), so it is stuck rather than slow and the wait was cut short. ` +
                   `Something is in the way: check what it is standing against before assuming the target is bad.`,
               }
             : {}),
@@ -722,12 +1134,13 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
               }
             : {}),
         }),
-        render: buildMoveToRender(target, wantedPosition, requestId, status, polled.waitedMs),
+        render: buildMoveToRender(target, wantedPosition, requestId, navStatus, polled.waitedMs),
         metadata: {
           tool: "studiorpc_game_character_move_to",
           clientId: target.clientId,
           requestId,
-          status,
+          status: navStatus,
+          ...(status !== undefined && status !== navStatus ? { rawNavStatus: status } : {}),
           waitedMs: polled.waitedMs,
         },
       };

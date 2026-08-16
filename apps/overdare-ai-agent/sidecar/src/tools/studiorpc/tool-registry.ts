@@ -9,7 +9,6 @@ import * as gameInstanceRead from "./methods/game.instance.read";
 import * as gamePlay from "./methods/game.play";
 import * as gameScreenshot from "./methods/game.screenshot";
 import * as gameStop from "./methods/game.stop";
-import * as gameTimeScale from "./methods/game.time.scale";
 import * as gameUiBrowse from "./methods/game.ui.browse";
 import * as hubTokenRead from "./methods/hub.token.read";
 import * as levelBrowse from "./methods/level.browse";
@@ -38,6 +37,7 @@ import {
   buildLevelSaveFileRender,
   buildViewportCameraReadRender,
 } from "./render";
+import type { CallRpc } from "./tools/pie-input/target";
 import type { ToolRenderPayload } from "./types";
 
 type MethodModule = {
@@ -48,6 +48,13 @@ type MethodModule = {
   resolveMethod?: (args: Record<string, unknown>) => string;
   normalizeArgs?: (args: Record<string, unknown>) => Record<string, unknown>;
   postProcess?: (result: unknown, args: Record<string, unknown>) => unknown;
+  /**
+   * Turn a Studio error into an answer, where the failure is itself information the
+   * caller asked for. Looking up a name that is not there is the case: absence is
+   * the result of the question, and raising it makes every existence check an error
+   * path. Return a replacement result, or rethrow to keep the error.
+   */
+  recover?: (error: unknown, args: Record<string, unknown>, callRpc: CallRpc) => Promise<unknown>;
 };
 
 type RenderBuilder = (ctx: {
@@ -69,7 +76,6 @@ export const methodModules: MethodModule[] = [
   gameScreenshot,
   gameCharacterRead,
   gameInstanceRead,
-  gameTimeScale,
   gameUiBrowse,
   viewportCameraRead,
   hubTokenRead,

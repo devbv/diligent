@@ -1,7 +1,7 @@
-// @summary Verifies OVERDARE bootstrap config enables advertised product experiments by default.
+// @summary Verifies OVERDARE bootstrap config defaults and play-test prompt contracts.
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { cp, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadDiligentConfig } from "@diligent/runtime/config";
@@ -20,6 +20,18 @@ afterEach(async () => {
 });
 
 describe("OVERDARE bootstrap config", () => {
+  test("describes working key movement and the short input/read feedback loop", async () => {
+    const prompt = await readFile(join(import.meta.dir, "../../bootstrap/system-prompt.txt"), "utf-8");
+
+    expect(prompt).toContain("W A S D do drive the built-in walk axes in this Studio build");
+    expect(prompt).toContain("affected by acceleration, collisions, and camera facing");
+    expect(prompt).toContain("For walls, jumps, corners");
+    expect(prompt).toContain("send a short key batch");
+    expect(prompt).toContain("then call `studiorpc_game_character_read`");
+    expect(prompt).toContain("For a distant destination, prefer `move_to`");
+    expect(prompt).not.toContain("Treat W A S D as no-ops for movement");
+  });
+
   test("enables the procedural experiment by default", async () => {
     testRoot = await mkdtemp(join(tmpdir(), "overdare-bootstrap-config-"));
     const globalConfigDir = join(testRoot, ".overdare");

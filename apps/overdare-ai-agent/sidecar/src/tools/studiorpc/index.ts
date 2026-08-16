@@ -271,7 +271,13 @@ export async function createStudioRpcTools(ctx: {
             const normalizedArgs = mod.normalizeArgs
               ? mod.normalizeArgs(args as Record<string, unknown>)
               : (args as Record<string, unknown>);
-            let result: unknown = await callRpc(rpcMethod, normalizedArgs, { timeoutMs: mod.timeoutMs });
+            let result: unknown;
+            try {
+              result = await callRpc(rpcMethod, normalizedArgs, { timeoutMs: mod.timeoutMs });
+            } catch (rpcError) {
+              if (!mod.recover) throw rpcError;
+              result = await mod.recover(rpcError, args as Record<string, unknown>, callRpc);
+            }
             if (mod.postProcess) {
               result = mod.postProcess(result, args as Record<string, unknown>);
             }
