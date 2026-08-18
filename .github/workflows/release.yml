@@ -27,8 +27,32 @@ jobs:
       env: ${{ steps.resolve.outputs.env }}
       tag: ${{ steps.resolve.outputs.tag }}
       release_exists: ${{ steps.check_release.outputs.release_exists }}
+      on_main: ${{ steps.on_main.outputs.on_main }}
 
     steps:
+      # Full history so the on_main ancestry check below can walk the graph.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check whether the release commit is on main
+        id: on_main
+        shell: bash
+        run: |
+          # latest / dev-latest may only move for commits that are on main.
+          # Feature-branch releases still publish their immutable <env>-v<version>
+          # release, but never steer what agents in the field auto-update to.
+          # Tag-mode redeploys of old versions pass this check (their commits are
+          # on main), so rollback re-serves keep working.
+          git fetch origin main --quiet
+          if git merge-base --is-ancestor HEAD origin/main; then
+            echo "on_main=true" >> "$GITHUB_OUTPUT"
+            echo "Release commit is on main: latest/dev-latest pointers may move."
+          else
+            echo "on_main=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Pointer-safe release::Release commit is NOT on main. The versioned release will be created, but latest/dev-latest will not move."
+          fi
+
       - name: Resolve version and env
         id: resolve
         shell: bash
@@ -379,9 +403,18 @@ jobs:
         if: ${{ env.RELEASE_ENV == 'prod' }}
         env:
           GH_TOKEN: ${{ github.token }}
+          ON_MAIN: ${{ needs.prepare.outputs.on_main }}
         shell: bash
         run: |
+          # Off-main prod releases are created with make_latest=false so that
+          # publishing the draft later does NOT move the /releases/latest
+          # redirect that prod agents auto-update from.
+          extra_flags=()
+          if [ "$ON_MAIN" != "true" ]; then
+            extra_flags+=(--latest=false)
+          fi
           gh release create "$TAG" \
+            "${extra_flags[@]}" \
             dist/overdare-ai-agent-runtime-"$RELEASE_ENV"-"$VERSION"-windows-x64.zip \
             dist/overdare-ai-agent-"$RELEASE_ENV"-"$VERSION"-windows-x64.exe \
             dist/overdare-mcp-"$RELEASE_ENV"-"$VERSION"-windows-x64.exe \
@@ -416,7 +449,9 @@ jobs:
             --prerelease
 
       - name: Refresh dev-latest rolling release
-        if: ${{ env.RELEASE_ENV == 'dev' }}
+        # Only main commits may steer what dev agents auto-update to; a
+        # feature-branch dev release stays reachable via its dev-v<version> tag.
+        if: ${{ env.RELEASE_ENV == 'dev' && needs.prepare.outputs.on_main == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -449,9 +484,16 @@ jobs:
         if: ${{ env.RELEASE_ENV == 'dev' }}
         env:
           GH_TOKEN: ${{ github.token }}
+          ON_MAIN: ${{ needs.prepare.outputs.on_main }}
         shell: bash
         run: |
-          for r in "$TAG" dev-latest; do
+          releases=("$TAG")
+          # dev-latest was only refreshed for main commits; off-main runs must
+          # not fail on (or even inspect) a pointer they intentionally left alone.
+          if [ "$ON_MAIN" = "true" ]; then
+            releases+=(dev-latest)
+          fi
+          for r in "${releases[@]}"; do
             is_pre=$(gh release view "$r" --json isPrerelease --jq '.isPrerelease')
             if [ "$is_pre" != "true" ]; then
               echo "Release '$r' is not marked as prerelease (got '$is_pre'). Aborting to avoid polluting prod 'latest'." >&2
@@ -463,6 +505,7 @@ jobs:
         if: ${{ env.RELEASE_ENV == 'prod' }}
         env:
           GH_TOKEN: ${{ github.token }}
+          ON_MAIN: ${{ needs.prepare.outputs.on_main }}
         shell: bash
         run: |
           state=$(gh release view "$TAG" --json isPrerelease,isDraft --jq '{p: .isPrerelease, d: .isDraft}')
@@ -476,7 +519,11 @@ jobs:
             echo "Release '$TAG' is no longer in draft state (got isDraft='$is_draft'). prod releases must stay in draft until a human reviews and publishes — otherwise the change ships without manual approval." >&2
             exit 1
           fi
-          echo "::warning title=Manual publish required::Prod release '$TAG' is published as a DRAFT. Manually publish it via the GitHub Releases UI to make it available at /releases/latest/. Until then, prod-latest agents continue to fetch the previously published release."
+          if [ "$ON_MAIN" = "true" ]; then
+            echo "::warning title=Manual publish required::Prod release '$TAG' is published as a DRAFT. Manually publish it via the GitHub Releases UI to make it available at /releases/latest/. Until then, prod-latest agents continue to fetch the previously published release."
+          else
+            echo "::warning title=Pointer-safe draft::Prod release '$TAG' was built from a commit NOT on main and is created with make_latest=false. Publishing the draft makes it downloadable at its own tag, but /releases/latest/ will NOT move to it. When publishing via the UI, leave 'Set as the latest release' unchecked."
+          fi
 
       - name: Upload merged release metadata artifact
         uses: actions/upload-artifact@v4
