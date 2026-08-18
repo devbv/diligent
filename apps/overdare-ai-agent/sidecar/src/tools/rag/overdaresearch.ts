@@ -3,7 +3,9 @@ import { type RuntimeToolHost, requestToolApproval, requestToolUserInput } from 
 import { z } from "zod";
 import { buildSearchRender, normalizeAssetForRender } from "./render";
 
-const BASE_URL = "https://aiguide.overdare.com";
+// Env override lets dev sessions target a local chatbot-api before features
+// (e.g. assetFilter) reach production.
+const BASE_URL = process.env.DILIGENT_RAG_BASE_URL?.trim() || "https://aiguide.overdare.com";
 const TIMEOUT_MS = 10_000;
 
 interface RagResult {
@@ -328,7 +330,10 @@ export async function execute(args: Params, _ctx: ToolContext, host?: RuntimeToo
         if (rawAssets.length === 0) {
           return { output: "No results found.", metadata: { resultCount: 0 } };
         }
-        if (rawAssets.length === 1) {
+        // A detected pack must reach the picker even with a single asset match —
+        // the pack option may be the better answer (e.g. "subway" matches one old
+        // prop while the metro pack holds the real content).
+        if (rawAssets.length === 1 && packs.length === 0) {
           return autoSelectResult(rawAssets[0], 1);
         }
         // Audio/Animation/Effects/UI and Action-Sequence assets skip the picker

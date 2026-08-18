@@ -144,7 +144,7 @@ describe("overdaresearch pack detection", () => {
     expect(result.metadata?.packKeyword).toBe("pack_metro");
   });
 
-  test("packs are ignored when only one asset matches (auto-select still wins)", async () => {
+  test("a single asset match still shows the picker when a pack was detected", async () => {
     mockRagFetchSequence([
       {
         results: [asset("2", "Car 01", ["pack_metro", "car"])],
@@ -152,6 +152,24 @@ describe("overdaresearch pack detection", () => {
         packs: [{ keyword: "pack_metro", memberCount: 145 }],
       },
     ]);
+    let seen: UserInputRequest | undefined;
+    const tool = await searchTool({
+      approve: async () => "once",
+      ask: async (r) => {
+        seen = r;
+        return { answers: { [r.questions[0].id]: "2" } };
+      },
+    });
+
+    const result = await tool.execute({ query: "metro car", source: "assets", topK: 8, selectable: true }, ctx);
+
+    const values = seen?.questions[0].options.map((o) => o.value) ?? [];
+    expect(values).toEqual(["2", "pack:pack_metro"]);
+    expect(result.output).toContain("2");
+  });
+
+  test("a single asset match with no pack still auto-selects", async () => {
+    mockRagFetchSequence([{ results: [asset("2", "Car 01")], totalCount: 1, packs: [] }]);
     let asked = false;
     const tool = await searchTool({
       approve: async () => "once",
