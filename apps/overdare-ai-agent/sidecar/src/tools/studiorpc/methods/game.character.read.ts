@@ -19,10 +19,36 @@ export const description =
   "questions, and this answers the first. " +
   "CFrame is in the same world coordinates as studiorpc_instance_read and studiorpc_viewport_camera_read, " +
   "so a position from any of them can be handed straight to studiorpc_game_character_move_to. " +
+  "facing is where the view is pointing, in the same degrees studiorpc_game_input_inject's look event " +
+  "reports and moves. Read it before sending W: key movement is camera-relative, so after any look the " +
+  "same key walks a different direction in the world, and one run walked its character back down the route " +
+  "it had just climbed. It is not studiorpc_viewport_camera_read's Orientation.Y — that is this value " +
+  "negated, and the sign is a trap this loop has already paid for once. " +
   "gameTimeSeconds is the world's own clock, which is the clock a timed round runs on. Its value on its " +
   "own means nothing; the difference between two reads is how much game time your calls and your reasoning " +
   "just cost, which is the only way to tell a round that expired from one that was never started. It is " +
   "already scaled, so at timeScale 0.25 it advances a second for every four real ones. This is the cheap " +
-  "way to ask: reading it off a countdown on screen costs a whole studiorpc_game_ui_browse payload.";
+  "way to ask: reading it off a countdown on screen costs a whole studiorpc_game_ui_browse payload. " +
+  "When the next thing you want after this is the UI or some instances, ask studiorpc_game_observe for all " +
+  "of it instead: separate calls are seconds of game time apart and describe different moments, and one " +
+  "observe stamps the moment they all share.";
 
-export const params = z.object({}).strict();
+export const params = z
+  .object({
+    pieSessionId: z
+      .string()
+      .optional()
+      .describe("Session to read from. Omit for the live session, and omit it whenever clientId is omitted."),
+    clientId: z
+      .string()
+      .optional()
+      .describe(
+        "Which play-test client's character to read. Omit — as almost every call should — and it reads the " +
+          "main play test, the one studiorpc_game_pie_status marks targeted: true. Pass one only in a session " +
+          "started with more than one player, where input and move_to can drive the others by id and this is " +
+          "the only read that can follow them there. Needs pieSessionId alongside it; without both, the main " +
+          "client is read. A client that is not injectable is refused rather than silently answered about " +
+          "somebody else.",
+      ),
+  })
+  .strict();

@@ -25,24 +25,39 @@ function moveTone(status: string | undefined): "success" | "warning" | "info" {
   return "info";
 }
 
+function describeUntil(until: NonNullable<Extract<InputEvent, { type: "wait" }>["until"]>): string {
+  if ("log" in until) return `log "${until.log}"`;
+  if ("ui" in until) {
+    if (until.textEquals !== undefined) return `${until.ui} = "${until.textEquals}"`;
+    return `${until.ui} ~ "${until.textContains}"`;
+  }
+  const value = until.equals ?? until.atLeast ?? until.atMost;
+  const operator = until.equals !== undefined ? "=" : until.atLeast !== undefined ? "≥" : "≤";
+  return `${until.instance}.${until.property} ${operator} ${value}`;
+}
+
 export function describeEvent(event: InputEvent): string {
   switch (event.type) {
     case "key":
       return `${event.key} ${event.action}`;
     case "pointerButton":
-      return `${event.button} button ${event.action}`;
+      return event.target === undefined
+        ? `${event.button} button ${event.action}`
+        : `${event.button} button ${event.action} on ${event.target}`;
     case "pointerMove":
-      return `move to (${event.position.x}, ${event.position.y})`;
+      return event.position === undefined
+        ? `move to ${event.target}`
+        : `move to (${event.position.x}, ${event.position.y})`;
     case "look":
       return `look yaw ${event.yawDegrees ?? 0}° pitch ${event.pitchDegrees ?? 0}°`;
     case "mouseDelta":
       return `mouse Δ(${event.delta.x}, ${event.delta.y})`;
     case "scroll":
       return `scroll ${event.delta > 0 ? "+" : ""}${event.delta}`;
-    case "textInput":
-      return `type "${event.text}"`;
     case "wait":
-      return `wait ${event.durationMs}ms`;
+      // A conditional wait usually ends long before its timeout, so printing the timeout as
+      // a duration would read as time the batch actually spent.
+      return event.until === undefined ? `wait ${event.durationMs}ms` : `wait for ${describeUntil(event.until)}`;
   }
 }
 
@@ -143,13 +158,5 @@ export function buildMoveToRender(
       },
       { type: "summary", text: `moveTo ${where}: ${status ?? "pendingStart"}`, tone: moveTone(status) },
     ],
-  };
-}
-
-export function buildMoveStatusRender(requestId: string, status: string | undefined): ToolRenderPayload {
-  return {
-    inputSummary: `moveStatus ${requestId}`,
-    outputSummary: status ?? "unknown",
-    blocks: [{ type: "summary", text: `moveTo ${requestId}: ${status ?? "unknown"}`, tone: moveTone(status) }],
   };
 }

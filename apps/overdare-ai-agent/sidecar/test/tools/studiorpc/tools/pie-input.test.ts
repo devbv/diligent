@@ -3,6 +3,7 @@
 import { describe, expect, test } from "bun:test";
 import type { Tool } from "@diligent/core/tool-contract";
 import { createStudioRpcToolProvider } from "../../../../src/tools/studiorpc";
+import { StudioRpcError } from "../../../../src/tools/studiorpc/rpc";
 import {
   createPieInputTools,
   moveStallWindowMs,
@@ -102,7 +103,9 @@ describe("play-test input tools", () => {
     expect(names).toContain("studiorpc_game_pie_status");
     expect(names).toContain("studiorpc_game_input_inject");
     expect(names).toContain("studiorpc_game_character_move_to");
-    expect(names).toContain("studiorpc_game_character_move_status");
+    // Cut: 7 calls in 60 runs, the newest 35 runs ago, and since `wait` left move_to there is
+    // no unfinished move to poll that a larger timeoutMs would not have waited out.
+    expect(names).not.toContain("studiorpc_game_character_move_status");
     // No release tool: Studio releases on sequence end, connection close, PIE end, and
     // physical input, and releaseAll only reaches the calling connection's own sequence.
     expect(names).not.toContain("studiorpc_game_input_release_all");
@@ -285,7 +288,7 @@ describe("play-test input tools", () => {
           { type: "wait", durationMs: 10000 },
         ],
       }),
-    ).rejects.toThrow(/events\[1\]: total wait 10060ms/);
+    ).rejects.toThrow(/events\[1\]: the batch spends 10060ms/);
   });
 
   test("inject says press holds count toward the batch limit", async () => {
@@ -298,7 +301,7 @@ describe("play-test input tools", () => {
           { type: "wait", durationMs: 10000 },
         ],
       }),
-    ).rejects.toThrow(/press durationMs is a hold and counts too/);
+    ).rejects.toThrow(/a press is a hold and spends its time the same way/);
   });
 
   test("inject sends a look through and reports how far the view turned", async () => {
@@ -399,12 +402,66 @@ describe("play-test input tools", () => {
       return { requestId: "req-1", status: statuses[Math.min(polls++, statuses.length - 1)], clientId: "client-1" };
     });
 
-    const result = await run(byName.get("studiorpc_game_character_move_to"), { position: { x: 100, y: 200, z: 300 } });
+    const result = await run(byName.get("studiorpc_game_character_move_to"), { target: { x: 100, y: 200, z: 300 } });
 
     expect(calls.filter((call) => call.method === "game.character.moveStatus")).toHaveLength(3);
     // Polling reached a terminal raw status, but the measured position is still far
     // away, so the wrapper's stable status is blocked and preserves Studio's claim.
     expect(result.metadata).toMatchObject({ requestId: "req-1", status: "blocked", rawNavStatus: "reached" });
+  });
+
+  // A move can be aimed at any injectable client, and the reading that checks it used to be
+  // pinned to the main one. Measured in a real two-player session: the move walked the second
+  // player to within 20 units of the target and the reply, describing the first, said
+  // arrived: false, distanceToTarget: 1603, and blamed missing navigation data. Worse than
+  // being unable to look — a confident wrong answer.
+  test("a move that names a client measures that client, not the main one", async () => {
+    const twoPlayers = runningStatus({
+      clients: [
+        {
+          clientId: "client-1",
+          clientIndex: 0,
+          pieInstance: 1,
+          processId: 1,
+          netMode: "Client",
+          ready: true,
+          injectable: true,
+        },
+        {
+          clientId: "client-2",
+          clientIndex: 1,
+          pieInstance: 2,
+          processId: 1,
+          netMode: "Client",
+          ready: true,
+          injectable: true,
+        },
+      ],
+    });
+    const { calls, byName } = toolsFor((call) => {
+      if (call.method === "game.pie.status") return twoPlayers;
+      if (call.method === "game.character.moveTo") return { requestId: "req-2p", status: "pendingStart" };
+      if (call.method === "game.character.read") {
+        // The main client never left the spawn; the one being driven walked to the target.
+        const position = call.params?.clientId === "client-2" ? { X: 1000, Y: 0, Z: 0 } : { X: 0, Y: 0, Z: 0 };
+        return { character: { CFrame: { Position: position } } };
+      }
+      return { requestId: "req-2p", status: "reached", clientId: "client-2" };
+    });
+
+    const result = await run(byName.get("studiorpc_game_character_move_to"), {
+      target: { x: 1000, y: 0, z: 0 },
+      clientId: "client-2",
+    });
+
+    const reads = calls.filter((call) => call.method === "game.character.read");
+    expect(reads.length).toBeGreaterThan(0);
+    for (const read of reads) {
+      expect(read.params).toMatchObject({ clientId: "client-2", pieSessionId: "pie-1" });
+    }
+    // Reading the main client instead would have called this a blocked move that went nowhere.
+    expect(result.metadata).toMatchObject({ status: "reached", clientId: "client-2" });
+    expect(JSON.parse(result.output)).toMatchObject({ arrived: true, outcome: "arrived" });
   });
 
   test("move_to checks Studio's reached against where the character actually stopped", async () => {
@@ -419,7 +476,7 @@ describe("play-test input tools", () => {
     });
 
     const result = await run(byName.get("studiorpc_game_character_move_to"), {
-      position: { x: 1000, y: 0, z: 5 },
+      target: { x: 1000, y: 0, z: 5 },
     });
 
     expect(result.output).toContain("distanceToTarget");
@@ -437,7 +494,7 @@ describe("play-test input tools", () => {
     });
 
     const result = await run(byName.get("studiorpc_game_character_move_to"), {
-      position: { x: 1000, y: 0, z: 5 },
+      target: { x: 1000, y: 0, z: 5 },
     });
 
     expect(result.output).not.toContain("no navigation data");
@@ -446,32 +503,61 @@ describe("play-test input tools", () => {
     expect(result.output).not.toContain('"rawNavStatus"');
   });
 
-  test("move_to judges arrival against the tolerance the caller asked for", async () => {
-    // Stopping 80 units away is arrival when travelling and a miss when the point
-    // was to walk into something 40 units across.
-    const stoppedShort = (call: { method: string }) => {
+  // Glasshouse, measured 2026-08-17: asking twice for a 560-wide bed answered
+  // `outcome: blocked`, `rawNavStatus: reached`, `movedDistance: 0`, `waitedMs: 339`, and a
+  // warning reading "stopped 150 units from the target, which is outside the 150 units that
+  // count as arrival" — a sentence that refutes itself, because the real distance was 150.1 and
+  // both numbers rounded to 150. Run 76 read the reply and concluded `waitedMs` was unusable, which
+  // is the wrong lesson: 339 ms is honestly how long a move that never started takes. Nothing
+  // in the reply said it never started.
+  test("move_to says when a move never set off, and does not round its numbers into a contradiction", async () => {
+    const parked = (call: { method: string }) => {
       if (call.method === "game.pie.status") return runningStatus();
-      if (call.method === "game.character.moveTo") return { requestId: "req-11", status: "pendingStart" };
-      if (call.method === "game.character.read") {
-        return { character: { CFrame: { Position: { X: 920, Y: 0, Z: 5 } } } };
+      if (call.method === "game.instance.read") {
+        return { instance: { CFrame: { Position: { X: 1000, Y: 0, Z: 5 } }, Size: { X: 10, Y: 10, Z: 10 } } };
       }
-      return { requestId: "req-11", status: "reached", clientId: "client-1" };
+      if (call.method === "game.character.moveTo") return { requestId: "req-80", status: "pendingStart" };
+      if (call.method === "game.character.read") {
+        // 65.1 from the centre of a 10-wide part is 60.1 to its surface: just outside the
+        // 60-unit touch margin, which is the only place the two numbers still round together.
+        return { character: { CFrame: { Position: { X: 934.9, Y: 0, Z: 5 } } } };
+      }
+      return { requestId: "req-80", status: "reached", clientId: "client-1" };
     };
 
-    const lenient = await run(toolsFor(stoppedShort).byName.get("studiorpc_game_character_move_to"), {
-      position: { x: 1000, y: 0, z: 5 },
-    });
-    expect(lenient.output).toContain('"arrivalTolerance": 150');
-    expect(lenient.output).not.toContain("warning");
+    const result = await run(toolsFor(parked).byName.get("studiorpc_game_character_move_to"), { target: "Bed" });
 
-    const strict = await run(toolsFor(stoppedShort).byName.get("studiorpc_game_character_move_to"), {
-      position: { x: 1000, y: 0, z: 5 },
-      arrivalTolerance: 40,
+    // 60.1 against a radius of 60 is a miss, and the sentence has to be able to say so.
+    expect(result.output).not.toContain("stopped 60 units from the target, which is outside the 60 units");
+    expect(result.output).toContain("60.1 units from the target");
+    // The fact that was missing, and the misreading it caused.
+    expect(result.output).toContain('"didNotSetOff": true');
+    expect(result.output).toContain("never set off");
+    expect(result.output).toContain("not a fast walk");
+  });
+
+  // The other way to not set off, found by the gate on playtest2 an hour after the first:
+  // navigation still `running` while the character stands against a door. `movedDistance: 0`
+  // is identical in both, and the advice is opposite — one is futile to retry, the other has
+  // something in the way — so the fact is reported either way and the sentence is not.
+  test("move_to distinguishes navigation declining to walk from something holding the character", async () => {
+    const held = (call: { method: string }) => {
+      if (call.method === "game.pie.status") return runningStatus();
+      if (call.method === "game.character.moveTo") return { requestId: "req-81", status: "pendingStart" };
+      if (call.method === "game.character.read") {
+        return { character: { CFrame: { Position: { X: 800, Y: 0, Z: 5 } } } };
+      }
+      return { requestId: "req-81", status: "running", clientId: "client-1" };
+    };
+
+    const result = await run(toolsFor(held).byName.get("studiorpc_game_character_move_to"), {
+      target: { x: 1000, y: 0, z: 5 },
     });
-    expect(strict.output).toContain('"arrivalTolerance": 40');
-    // Short of a tight tolerance is normal travel, not the level lacking navigation.
-    expect(strict.output).toContain("treat whatever you were testing at that spot as unproven");
-    expect(strict.output).not.toContain("no navigation data");
+
+    expect(result.output).toContain('"didNotSetOff": true');
+    expect(result.output).toContain("navigation never reported reaching anything either");
+    // The advice for the other case would be actively wrong here.
+    expect(result.output).not.toContain("asking for the same point again will not make it walk");
   });
 
   test("move_to separates a move that was unnecessary from one that went nowhere", async () => {
@@ -486,58 +572,59 @@ describe("play-test input tools", () => {
     };
 
     const alreadyThere = await run(toolsFor(parked({ X: 1000, Z: 5 })).byName.get("studiorpc_game_character_move_to"), {
-      position: { x: 1000, y: 0, z: 5 },
+      target: { x: 1000, y: 0, z: 5 },
     });
     expect(alreadyThere.output).toContain('"moved": false');
     expect(alreadyThere.output).toContain('"blocked": false');
 
     const stuck = await run(toolsFor(parked({ X: 0, Z: 0 })).byName.get("studiorpc_game_character_move_to"), {
-      position: { x: 5000, y: 0, z: 0 },
+      target: { x: 5000, y: 0, z: 0 },
     });
     expect(stuck.output).toContain('"moved": false');
     expect(stuck.output).toContain('"blocked": true');
   });
-
-  test("move_to does not call a character blocked when navigation is simply satisfied", async () => {
-    // 30 units out with a tolerance of 10: not arrived, did not move, not blocked —
-    // navigation stops itself around here and will not re-approach from inside it.
+  // `navSatisfied` used to excuse a stop inside the distance navigation settles at. Removing
+  // the caller-set tolerance made it unreachable — 50 units is inside every radius that now
+  // counts as arrival — so the branch went. This holds the floor: if a smaller radius is ever
+  // introduced, the excuse has to come back with it rather than be rediscovered as a bug.
+  test("every distance navigation settles at is already an arrival", async () => {
     const { byName } = toolsFor((call) => {
       if (call.method === "game.pie.status") return runningStatus();
+      if (call.method === "game.instance.read") {
+        return { instance: { CFrame: { Position: { X: 1000, Y: 0, Z: 5 } }, Size: { X: 10, Y: 10, Z: 10 } } };
+      }
       if (call.method === "game.character.moveTo") return { requestId: "req-14", status: "pendingStart" };
       if (call.method === "game.character.read") {
-        return { character: { CFrame: { Position: { X: 970, Y: 0, Z: 5 } } } };
+        // 50 units from the centre of a 10-wide part: 45 to its surface, the furthest
+        // navigation settles at, and inside the 60-unit touch margin.
+        return { character: { CFrame: { Position: { X: 950, Y: 0, Z: 5 } } } };
       }
       return { requestId: "req-14", status: "reached", clientId: "client-1" };
     });
 
-    const result = await run(byName.get("studiorpc_game_character_move_to"), {
-      position: { x: 1000, y: 0, z: 5 },
-      arrivalTolerance: 10,
-    });
+    const result = await run(byName.get("studiorpc_game_character_move_to"), { target: "Terminal" });
 
+    expect(result.output).toContain('"arrived": true');
     expect(result.output).toContain('"blocked": false');
-    expect(result.output).toContain("will not make it walk");
   });
 
   test("move_to reports a character that walked into a wall as blocked", async () => {
-    // Stopped 44 units short of a target behind a solid gate. That is inside the
-    // distance navigation normally stops at, so only the timedOut status tells the
-    // difference between a wall and navigation being content.
+    // Stopped 200 units short of a target behind a solid gate, having walked most of the
+    // way. Only the timedOut status tells a wall from navigation being content.
     let read = 0;
     const { byName } = toolsFor((call) => {
       if (call.method === "game.pie.status") return runningStatus();
       if (call.method === "game.character.moveTo") return { requestId: "req-16", status: "pendingStart" };
       if (call.method === "game.character.read") {
         // Started at the origin, walked most of the way, stopped at the gate.
-        const x = read++ === 0 ? 0 : 956;
+        const x = read++ === 0 ? 0 : 800;
         return { character: { CFrame: { Position: { X: x, Y: 0, Z: 0 } } } };
       }
       return { requestId: "req-16", status: "timedOut", clientId: "client-1" };
     });
 
     const result = await run(byName.get("studiorpc_game_character_move_to"), {
-      position: { x: 1000, y: 0, z: 0 },
-      arrivalTolerance: 20,
+      target: { x: 1000, y: 0, z: 0 },
     });
 
     expect(result.output).toContain('"blocked": true');
@@ -568,7 +655,7 @@ describe("play-test input tools", () => {
       return { requestId: "req-30", status: "reached", clientId: "client-1" };
     });
 
-    const result = await run(byName.get("studiorpc_game_character_move_to"), { targetName: "PlinthMid" });
+    const result = await run(byName.get("studiorpc_game_character_move_to"), { target: "PlinthMid" });
 
     expect(result.output).toContain('"outcome": "arrived"');
     expect(result.output).toContain('"standingOnTarget": "PlinthMid"');
@@ -576,6 +663,10 @@ describe("play-test input tools", () => {
     // The distance is still reported honestly; the note is what reconciles the two.
     expect(result.output).toContain('"distanceToTarget": 84');
     expect(result.output).toContain("capsule half-height");
+    // Standing on its top face: 84 units away in three dimensions, 0 away in the flat measure a
+    // game's own reach rule is written in. Both are true and only the second answers the rule —
+    // which is why two runs were computing this one by hand from endedAt and the target's centre.
+    expect(result.output).toContain('"horizontalDistanceToCentre": 0');
   });
 
   test("move_to still says blocked when standing on something that is not the target", async () => {
@@ -598,7 +689,7 @@ describe("play-test input tools", () => {
       return { requestId: "req-31", status: "timedOut", clientId: "client-1" };
     });
 
-    const result = await run(byName.get("studiorpc_game_character_move_to"), { targetName: "PlinthMid" });
+    const result = await run(byName.get("studiorpc_game_character_move_to"), { target: "PlinthMid" });
 
     expect(result.output).toContain('"outcome": "blocked"');
     expect(result.output).not.toContain('"standingOnTarget"');
@@ -628,7 +719,7 @@ describe("play-test input tools", () => {
     });
 
     const result = await run(byName.get("studiorpc_game_character_move_to"), {
-      position: { x: 600, y: 84, z: 0 },
+      target: { x: 600, y: 84, z: 0 },
       passThrough: true,
     });
 
@@ -661,7 +752,7 @@ describe("play-test input tools", () => {
     });
 
     const result = await run(byName.get("studiorpc_game_character_move_to"), {
-      position: { x: 300, y: 84, z: 300 },
+      target: { x: 300, y: 84, z: 300 },
     });
 
     expect(result.output).toContain('"movedDistance": 424');
@@ -686,7 +777,7 @@ describe("play-test input tools", () => {
     });
 
     const result = await run(byName.get("studiorpc_game_character_move_to"), {
-      targetName: "ParcelRed",
+      target: "ParcelRed",
       passThrough: true,
     });
 
@@ -717,7 +808,7 @@ describe("play-test input tools", () => {
     });
 
     const result = await run(byName.get("studiorpc_game_character_move_to"), {
-      position: { x: 300, y: 84, z: 0 },
+      target: { x: 300, y: 84, z: 0 },
     });
 
     expect(result.output).toContain('"endedInAir": true');
@@ -740,178 +831,10 @@ describe("play-test input tools", () => {
     });
 
     const result = await run(byName.get("studiorpc_game_character_move_to"), {
-      position: { x: 0, y: 84, z: 0 },
+      target: { x: 0, y: 84, z: 0 },
     });
 
     expect(result.output).not.toContain('"endedInAir"');
-  });
-
-  test("passThroughBeyond shortens the aim for a target near a drop", async () => {
-    const { calls, byName } = toolsFor((call) => {
-      if (call.method === "game.pie.status") return runningStatus();
-      if (call.method === "game.character.moveTo") return { requestId: "req-43", status: "pendingStart" };
-      if (call.method === "game.character.read") {
-        return { character: { CFrame: { Position: { X: 0, Y: 0, Z: 0 } } } };
-      }
-      return { requestId: "req-43", status: "reached", clientId: "client-1" };
-    });
-
-    await run(byName.get("studiorpc_game_character_move_to"), {
-      position: { x: 100, y: 60, z: 0 },
-      passThrough: true,
-      passThroughBeyond: 40,
-    });
-
-    const sent = calls.find((call) => call.method === "game.character.moveTo");
-    expect((sent?.params as { position: { x: number; z: number } }).position).toMatchObject({ x: 140, z: 0 });
-  });
-
-  test("passThrough aims past the point so the walk crosses it", async () => {
-    const { calls, byName } = toolsFor((call) => {
-      if (call.method === "game.pie.status") return runningStatus();
-      if (call.method === "game.character.moveTo") return { requestId: "req-17", status: "pendingStart" };
-      if (call.method === "game.character.read") {
-        return { character: { CFrame: { Position: { X: 0, Y: 0, Z: 0 } } } };
-      }
-      return { requestId: "req-17", status: "reached", clientId: "client-1" };
-    });
-
-    const result = await run(byName.get("studiorpc_game_character_move_to"), {
-      position: { x: 100, y: 60, z: 0 },
-      passThrough: true,
-    });
-
-    // Approaching along +x from the origin, so the aim point is 200 further along it.
-    const sent = calls.find((call) => call.method === "game.character.moveTo");
-    expect((sent?.params as { position: { x: number; z: number } }).position).toMatchObject({ x: 300, z: 0 });
-    expect(result.output).toContain('"aimedAt"');
-    expect(result.output).toContain('"passedWithin"');
-    // Proximity is reported against the coin, not the point past it: the character
-    // sits at the origin and the coin is 100 out and 60 up, so 117.
-    expect(result.output).toContain('"passedWithin": 117');
-    // distanceToTarget would measure back to a target this move meant to overshoot.
-    expect(result.output).not.toContain('"distanceToTarget"');
-  });
-
-  test("passThrough counts crossing the target, not stopping near it", async () => {
-    // Walks from the origin to x=520, straight over a coin at x=350. It ends 170
-    // past the coin, which is exactly the point, so it must not read as blocked.
-    let read = 0;
-    const { byName } = toolsFor((call) => {
-      if (call.method === "game.pie.status") return runningStatus();
-      if (call.method === "game.character.moveTo") return { requestId: "req-19", status: "pendingStart" };
-      if (call.method === "game.character.read") {
-        const x = read++ === 0 ? 0 : 520;
-        return { character: { CFrame: { Position: { X: x, Y: 60, Z: 250 } } } };
-      }
-      return { requestId: "req-19", status: "reached", clientId: "client-1" };
-    });
-
-    const result = await run(byName.get("studiorpc_game_character_move_to"), {
-      position: { x: 350, y: 60, z: 250 },
-      passThrough: true,
-      arrivalTolerance: 45,
-    });
-
-    expect(result.output).toContain('"passedWithin": 0');
-    expect(result.output).toContain('"crossed": true');
-    expect(result.output).toContain('"blocked": false');
-  });
-
-  test("passThrough separates walking over a low pickup from missing it", async () => {
-    // The character origin rides at y=84 while a card lying on the floor spans y 50..70,
-    // so a walk straight over it is 14 units clear vertically and reads as a miss. One
-    // play test reported exactly that — passedWithin 14, crossed false — for a pickup
-    // that had already fired, and only the game log contradicted the tool.
-    let read = 0;
-    const { byName } = toolsFor((call) => {
-      if (call.method === "game.pie.status") return runningStatus();
-      if (call.method === "game.instance.read") {
-        return { instance: { CFrame: { Position: { X: 300, Y: 60, Z: 180 } }, Size: { X: 70, Y: 20, Z: 45 } } };
-      }
-      if (call.method === "game.character.moveTo") return { requestId: "req-31", status: "pendingStart" };
-      if (call.method === "game.character.read") {
-        const z = read++ === 0 ? 420 : 40;
-        return { character: { CFrame: { Position: { X: 300, Y: 84, Z: z } } } };
-      }
-      return { requestId: "req-31", status: "reached", clientId: "client-1" };
-    });
-
-    const result = await run(byName.get("studiorpc_game_character_move_to"), {
-      targetName: "Keycard",
-      passThrough: true,
-    });
-
-    // Vertical clearance only: dead on in x and z, 14 above the card's top face.
-    expect(result.output).toContain('"passedWithin": 14');
-    expect(result.output).toContain('"passedWithinHorizontal": 0');
-    expect(result.output).toContain("vertical clearance");
-  });
-
-  test("passThrough judges the route walked, not the line between its ends", async () => {
-    // Start (0,0,0), finish (400,0,0), with the coin at (200,0,0) — straight through
-    // the middle of a line drawn between the ends. The character actually detoured to
-    // z=300 to get around something, nowhere near it. Judging the line said crossed.
-    const walked = [
-      { X: 0, Z: 0 },
-      { X: 100, Z: 300 },
-      { X: 300, Z: 300 },
-      { X: 400, Z: 0 },
-    ];
-    let read = 0;
-    const { byName } = toolsFor((call) => {
-      if (call.method === "game.pie.status") return runningStatus();
-      if (call.method === "game.instance.read") {
-        return { instance: { CFrame: { Position: { X: 200, Y: 0, Z: 0 } }, Size: { X: 90, Y: 90, Z: 90 } } };
-      }
-      if (call.method === "game.character.moveTo") return { requestId: "req-25", status: "pendingStart" };
-      if (call.method === "game.character.read") {
-        const at = walked[Math.min(read++, walked.length - 1)];
-        return { character: { CFrame: { Position: { X: at.X, Y: 0, Z: at.Z } } } };
-      }
-      // Stays running for two polls so the detour gets sampled, then finishes.
-      return { requestId: "req-25", status: read >= walked.length ? "reached" : "running", clientId: "client-1" };
-    });
-
-    const result = await run(byName.get("studiorpc_game_character_move_to"), {
-      targetName: "Coin1",
-      passThrough: true,
-      timeoutMs: 5_000,
-    });
-
-    expect(result.output).toContain('"crossed": false');
-    // 300 out and 45 of half-size accounted for: the detour never came near it.
-    expect(result.output).not.toContain('"passedWithin": 0');
-  });
-
-  test("passThrough does not call pressing against a solid thing a crossing", async () => {
-    // Walks at a gate and stops dead against its near face. The path comes within a
-    // few units of it, which used to be enough to report crossed.
-    let read = 0;
-    const { byName } = toolsFor((call) => {
-      if (call.method === "game.pie.status") return runningStatus();
-      if (call.method === "game.instance.read") {
-        return { instance: { CFrame: { Position: { X: 0, Y: 200, Z: -600 } }, Size: { X: 400, Y: 400, Z: 40 } } };
-      }
-      if (call.method === "game.character.moveTo") return { requestId: "req-24", status: "pendingStart" };
-      if (call.method === "game.character.read") {
-        const z = read++ === 0 ? 0 : -556;
-        return { character: { CFrame: { Position: { X: 0, Y: 200, Z: z } } } };
-      }
-      return { requestId: "req-24", status: "timedOut", clientId: "client-1" };
-    });
-
-    const result = await run(byName.get("studiorpc_game_character_move_to"), {
-      targetName: "Gate",
-      passThrough: true,
-    });
-
-    // A named target is judged on whether the walk entered it, so wentPast is not
-    // reported at all — it was true for characters that merely walked around a wall.
-    expect(result.output).not.toContain('"wentPast"');
-    expect(result.output).toContain('"crossed": false');
-    // And the misleading distance is not in a pass-through reply at all.
-    expect(result.output).not.toContain('"distanceToTarget"');
   });
 
   test("move_to walks to a named instance and sizes the tolerance to it", async () => {
@@ -927,14 +850,14 @@ describe("play-test input tools", () => {
       return { requestId: "req-20", status: "reached", clientId: "client-1" };
     });
 
-    const result = await run(byName.get("studiorpc_game_character_move_to"), { targetName: "Coin1" });
+    const result = await run(byName.get("studiorpc_game_character_move_to"), { target: "Coin1" });
 
     const sent = calls.find((call) => call.method === "game.character.moveTo");
     expect((sent?.params as { position: unknown }).position).toMatchObject({ x: 350, y: 60, z: 250 });
     // Distances are to the surface, so standing at the centre reads 0, and the
     // tolerance is the touch margin rather than anything derived from the size.
     expect(result.output).toContain('"distanceToTarget": 0');
-    expect(result.output).toContain('"arrivalTolerance": 60');
+    expect(result.output).toContain('"arrivedWithin": 60');
     expect(result.output).toContain('"targetPosition"');
   });
 
@@ -955,7 +878,7 @@ describe("play-test input tools", () => {
       return { requestId: "req-23", status: "reached", clientId: "client-1" };
     });
 
-    const result = await run(byName.get("studiorpc_game_character_move_to"), { targetName: "Gate" });
+    const result = await run(byName.get("studiorpc_game_character_move_to"), { target: "Gate" });
 
     expect(result.output).toContain('"distanceToTarget": 130');
     expect(result.output).toContain('"arrived": false');
@@ -969,8 +892,8 @@ describe("play-test input tools", () => {
       return { requestId: "req-21", status: "reached", clientId: "client-1" };
     });
 
-    await expect(run(byName.get("studiorpc_game_character_move_to"), { targetName: "Nope" })).rejects.toThrow(
-      /No instance named "Nope"/,
+    await expect(run(byName.get("studiorpc_game_character_move_to"), { target: "Nope" })).rejects.toThrow(
+      /[Nn]othing in the running Workspace is called "Nope"/,
     );
   });
 
@@ -987,7 +910,7 @@ describe("play-test input tools", () => {
     });
 
     const tool = byName.get("studiorpc_game_character_move_to");
-    const result = await run(tool, { position: { x: 1000, y: 0, z: 5 } });
+    const result = await run(tool, { target: { x: 1000, y: 0, z: 5 } });
 
     expect(result.output).toContain('"outcome": "arrived"');
     for (const field of [
@@ -997,7 +920,7 @@ describe("play-test input tools", () => {
       "moved",
       "movedDistance",
       "distanceToTarget",
-      "arrivalTolerance",
+      "arrivedWithin",
     ]) {
       expect(tool?.description).toContain(field);
       expect(result.output).toContain(`"${field}"`);
@@ -1018,7 +941,7 @@ describe("play-test input tools", () => {
     });
 
     const result = await run(byName.get("studiorpc_game_character_move_to"), {
-      position: { x: 5000, y: 0, z: 0 },
+      target: { x: 5000, y: 0, z: 0 },
       timeoutMs: 60_000,
     });
 
@@ -1031,6 +954,36 @@ describe("play-test input tools", () => {
     const waited = Number(/"waitedMs": (\d+)/.exec(result.output)?.[1] ?? 0);
     expect(waited).toBeLessThan(30_000);
   });
+
+  // An arrived move still says "arrived", not "stalled" — but the wait it reports is two numbers
+  // added together whenever Studio never returns a terminal status, and only one of them is travel.
+  // A run once reported waitedMs as "not proportional to distance" off exactly this: measured on
+  // playtest2, the same 1201 units took 2595ms one way and 5868ms the other, twice each, and the
+  // whole difference was the stall window sitting inside the second number.
+  test("an arrived move that had to wait out the stall window separates travel from waiting", async () => {
+    const { byName } = toolsFor((call) => {
+      if (call.method === "game.pie.status") return runningStatus();
+      if (call.method === "game.character.moveTo") return { requestId: "req-stall", status: "pendingStart" };
+      // Parked inside the tolerance and not moving, while navigation keeps saying running.
+      if (call.method === "game.character.read") {
+        return { character: { CFrame: { Position: { X: 0, Y: 0, Z: 0 } } } };
+      }
+      return { requestId: "req-stall", status: "running", clientId: "client-1" };
+    });
+
+    const result = await run(byName.get("studiorpc_game_character_move_to"), {
+      target: { x: 100, y: 0, z: 0 },
+      timeoutMs: 30_000,
+    });
+
+    const parsed = JSON.parse(result.output);
+    expect(parsed.arrived).toBe(true);
+    expect(parsed.stallWindowMs).toBe(3_000);
+    // waitedMs = travelMs + stallWindowMs, so the reader can budget travel from the first.
+    expect(parsed.travelMs).toBe(parsed.waitedMs - parsed.stallWindowMs);
+    // The word still stays away from an arrived move; only the time is published.
+    expect(result.output).not.toContain('"stalled"');
+  }, 20_000);
 
   test("move_to does not call normal low-time-scale movement stalled", async () => {
     let x = 0;
@@ -1048,7 +1001,7 @@ describe("play-test input tools", () => {
     });
 
     const result = await run(byName.get("studiorpc_game_character_move_to"), {
-      position: { x: 5000, y: 0, z: 0 },
+      target: { x: 5000, y: 0, z: 0 },
       timeoutMs: 1_000,
     });
 
@@ -1073,7 +1026,7 @@ describe("play-test input tools", () => {
     });
 
     const result = await run(byName.get("studiorpc_game_character_move_to"), {
-      position: { x: 5000, y: 0, z: 0 },
+      target: { x: 5000, y: 0, z: 0 },
       timeoutMs: 1_000,
     });
 
@@ -1094,24 +1047,49 @@ describe("play-test input tools", () => {
     };
 
     const result = await run(toolsFor(wentNowhere).byName.get("studiorpc_game_character_move_to"), {
-      position: { x: 5000, y: 0, z: 0 },
+      target: { x: 5000, y: 0, z: 0 },
     });
 
     expect(result.output).toContain("no navigation data");
   });
 
-  test("move_to returns immediately when wait is false", async () => {
-    const { calls, byName } = toolsFor((call) =>
+  // `wait` and `passThroughBeyond` were removed. Without a strict schema they would be dropped
+  // in silence: a caller asking not to wait would be waited on anyway, and one shortening the
+  // overshoot would get the default. A removed parameter has to refuse, not shrug.
+  test("parameters that were removed are refused rather than ignored", async () => {
+    const { byName } = toolsFor((call) =>
       call.method === "game.pie.status" ? runningStatus() : { requestId: "req-2", status: "pendingStart" },
     );
 
-    const result = await run(byName.get("studiorpc_game_character_move_to"), {
-      position: { x: 0, y: 0, z: 0 },
-      wait: false,
-    });
+    // Checked against the schema rather than through run(), which calls execute() directly and
+    // never validates — a test that went through run() would have passed whatever the schema said.
+    const schema = byName.get("studiorpc_game_character_move_to")?.parameters as {
+      parse: (value: unknown) => unknown;
+    };
+    for (const gone of [
+      { wait: false },
+      { passThroughBeyond: 40 },
+      { targetName: "Gate" },
+      { position: { x: 0, y: 0, z: 0 } },
+    ]) {
+      expect(() => schema.parse({ target: "Gate", ...gone })).toThrow(/[Uu]nrecognized/);
+    }
+  });
 
-    expect(calls.some((call) => call.method === "game.character.moveStatus")).toBe(false);
-    expect(result.metadata).toMatchObject({ requestId: "req-2", status: "pendingStart" });
+  test("where to walk is one parameter, so it cannot be answered twice", async () => {
+    const { byName } = toolsFor((call) => (call.method === "game.pie.status" ? runningStatus() : {}));
+    const schema = byName.get("studiorpc_game_character_move_to")?.parameters as {
+      parse: (value: unknown) => unknown;
+    };
+
+    // Both forms still reach the tool; they are just the same parameter now.
+    expect(() => schema.parse({ target: "PressurePump" })).not.toThrow();
+    expect(() => schema.parse({ target: { x: 100, y: 84, z: 300 } })).not.toThrow();
+    // The shape that made the merge necessary: gpt-5.6-terra walked to PressurePump and to the
+    // origin in one call, and the origin was silently ignored.
+    expect(() => schema.parse({ target: "PressurePump", position: { x: 0, y: 0, z: 0 } })).toThrow();
+    // And it has to be answered once — this is the only way to say where.
+    expect(() => schema.parse({ timeoutMs: 5000 })).toThrow();
   });
 
   test("move_to reports the still-running move when its wait budget runs out", async () => {
@@ -1122,49 +1100,13 @@ describe("play-test input tools", () => {
     });
 
     const result = await run(byName.get("studiorpc_game_character_move_to"), {
-      position: { x: 1, y: 2, z: 3 },
+      target: { x: 1, y: 2, z: 3 },
       timeoutMs: 1000,
     });
 
     expect(result.metadata).toMatchObject({ status: "running" });
-    expect(result.output).toContain("studiorpc_game_character_move_status");
-  });
-
-  test("move_status marks non-terminal statuses as not done", async () => {
-    const { byName } = toolsFor((call) =>
-      call.method === "game.pie.status"
-        ? runningStatus()
-        : { requestId: "req-4", status: "running", clientId: "client-1" },
-    );
-
-    const running = await run(byName.get("studiorpc_game_character_move_status"), { requestId: "req-4" });
-    expect(running.metadata).toMatchObject({ status: "running", done: false });
-  });
-
-  test("move_status reads the outcome even when no client accepts input any more", async () => {
-    const noInjectable = runningStatus({
-      clients: [
-        {
-          clientId: "client-1",
-          clientIndex: 1,
-          pieInstance: 1,
-          processId: 1,
-          netMode: "Client",
-          ready: false,
-          injectable: false,
-        },
-      ],
-    });
-    const { calls, byName } = toolsFor((call) =>
-      call.method === "game.pie.status"
-        ? noInjectable
-        : { requestId: "req-5", status: "reached", clientId: "client-1" },
-    );
-
-    const result = await run(byName.get("studiorpc_game_character_move_status"), { requestId: "req-5" });
-
-    expect(calls[1].params).toMatchObject({ pieSessionId: "pie-1", requestId: "req-5" });
-    expect(result.metadata).toMatchObject({ status: "reached", done: true });
+    // What to do about it is now stated in place of a tool to call.
+    expect(result.output).toContain("larger timeoutMs");
   });
 
   test("inject expands a press into the down/wait/up Studio understands", async () => {
@@ -1219,6 +1161,84 @@ describe("play-test input tools", () => {
     await run(byName.get("studiorpc_game_input_inject"), { events });
 
     expect(calls[1].params?.events).toEqual(events);
+  });
+
+  test("a blocked look at the end of a batch is an answer, not a failure", async () => {
+    // Verbatim from the playtest7 run: one look event, alone, against a game with a fixed
+    // camera. Studio failed the inject saying "the 0 event(s) behind it were cancelled" — a
+    // sentence that names the whole reason for the failure and then counts it at zero.
+    const blockedLook = new StudioRpcError(
+      "Studio RPC error [-32108]: The look did not land, so the 0 event(s) behind it were cancelled. " +
+        "The view never moved: this game does not take mouse-look.",
+      -32108,
+      {
+        looks: [
+          {
+            status: "blocked",
+            requested: { yawDegrees: 45, pitchDegrees: 0 },
+            turned: { yawDegrees: 0, pitchDegrees: 0 },
+            facing: { yaw: 0, pitch: 0 },
+          },
+        ],
+      },
+    );
+    const { byName } = toolsFor((call) => {
+      if (call.method === "game.pie.status") return runningStatus();
+      throw blockedLook;
+    });
+
+    const result = await run(byName.get("studiorpc_game_input_inject"), {
+      events: [{ type: "look", yawDegrees: 45, pitchDegrees: 0, timeoutMs: 1000 }],
+    });
+
+    const output = JSON.parse(result.output as string);
+    expect(output.looks[0].status).toBe("blocked");
+    expect(output.status).toBe("blocked");
+    // The run that met this reported it under "confusing test-tool support" rather than as the
+    // finding it was: the game has a fixed camera, which is what it had set out to check.
+    expect(result.output).not.toContain("unexpected error");
+  });
+
+  test("a look that stopped short mid-batch stays a failure, because the tail was dropped", async () => {
+    const cancelledTail = new StudioRpcError(
+      "Studio RPC error [-32108]: The look did not land, so the 2 event(s) behind it were cancelled.",
+      -32108,
+      { looks: [{ status: "timedOut", turned: { yawDegrees: 123 } }] },
+    );
+    const { byName } = toolsFor((call) => {
+      if (call.method === "game.pie.status") return runningStatus();
+      throw cancelledTail;
+    });
+
+    // The batch ends in a key, so events really did go unsent and the caller has to know.
+    await expect(
+      run(byName.get("studiorpc_game_input_inject"), {
+        events: [
+          { type: "look", yawDegrees: 180, timeoutMs: 800 },
+          { type: "key", key: "F", action: "press", durationMs: 100 },
+        ],
+      }),
+    ).rejects.toThrow(/2 event\(s\) behind it were cancelled/);
+  });
+
+  test("a pointer failure is still a failure, even as the last event", async () => {
+    // The look is recoverable because the event happened and blocked is its answer. A pointer
+    // that could not be clicked did not happen at all, and there is no answer in that.
+    const hidden = new StudioRpcError(
+      'Studio RPC error [-32108]: "Parcel" exists but cannot be clicked where it is: it is hidden.',
+      -32108,
+      { pointerTargets: [{ target: "Parcel" }] },
+    );
+    const { byName } = toolsFor((call) => {
+      if (call.method === "game.pie.status") return runningStatus();
+      throw hidden;
+    });
+
+    await expect(
+      run(byName.get("studiorpc_game_input_inject"), {
+        events: [{ type: "pointerButton", button: "left", action: "press", target: "Parcel" }],
+      }),
+    ).rejects.toThrow(/cannot be clicked/);
   });
 
   test("pie_status reports clients without needing a running session", async () => {

@@ -1,5 +1,6 @@
 // @summary Declares the Studio RPC method for reading the camera that is currently on screen.
 import { z } from "zod";
+import { withCameraAxes } from "../camera-response";
 
 export const method = "viewport.camera.read";
 
@@ -23,6 +24,15 @@ export const description =
   "the screen center) is the real zoom indicator, and visibleExtentAtFocus is how wide and tall the screen " +
   "is in world units at that distance. orthoWidth is filled in only for an orthographic viewport, where it " +
   "is the true magnification. centerHit, focusDistance and visibleExtentAtFocus are null when the center " +
-  "of the screen hits nothing.";
+  "of the screen hits nothing. " +
+  "camera.axes gives the view's own directions as world unit vectors, which is what turns an instruction " +
+  "phrased against the screen into an edit: groundRight and groundForward are right and forward flattened " +
+  "onto the ground, so moving a part rightwards on screen is position + groundRight * distance. Use them " +
+  "rather than re-deriving a heading from Orientation — the sign of right is easy to invert and a symmetric " +
+  "scene gives back no sign that it was.";
 
 export const params = z.object({}).strict();
+
+export function postProcess(result: unknown): unknown {
+  return withCameraAxes(result);
+}

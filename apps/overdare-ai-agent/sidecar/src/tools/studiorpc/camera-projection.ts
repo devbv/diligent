@@ -71,6 +71,38 @@ export function cameraBasis(orientation: Vec3): { forward: Vec3; right: Vec3; up
   return { forward, right: normalize(cross(forward, up)), up };
 }
 
+/**
+ * The camera's axes as world directions, including the two flattened onto the ground plane.
+ *
+ * This exists so nobody has to re-derive it from Orientation. The sign of `right` is the whole
+ * problem: get it backwards and every view-relative move goes the opposite way, and in a
+ * symmetric scene there is nothing in the result that says so. The values are already computed
+ * here for the projection, so reporting them costs nothing and removes the one step where a
+ * mistake is invisible.
+ *
+ * groundRight/groundForward are the pair to use for level editing. "Move it right" in a viewport
+ * looking down at 40 degrees means along the ground, not down into it; `right` is already
+ * horizontal for an unrolled camera, but `forward` is not, and mixing the two buries the object.
+ * Both are null when the camera points straight down, where no horizontal heading exists.
+ */
+export function cameraAxes(orientation: Vec3): {
+  forward: Vec3;
+  right: Vec3;
+  up: Vec3;
+  groundForward: Vec3 | null;
+  groundRight: Vec3 | null;
+} {
+  const { forward, right, up } = cameraBasis(orientation);
+  const flat = { x: forward.x, y: 0, z: forward.z };
+  const flatLength = Math.sqrt(dot(flat, flat));
+  if (flatLength < 1e-6) return { forward, right, up, groundForward: null, groundRight: null };
+  const groundForward = scale(flat, 1 / flatLength);
+  // Right-of-forward on the horizontal plane. Taken from the same cross product the projection
+  // uses rather than rebuilt from yaw, so the two can never disagree about which way is right.
+  const groundRight = normalize({ x: right.x, y: 0, z: right.z });
+  return { forward, right, up, groundForward, groundRight };
+}
+
 function halfExtents(camera: CameraBlock): { tanH: number; tanV: number } {
   const tanH = Math.tan((camera.fieldOfView * DEG) / 2);
   return { tanH, tanV: tanH / camera.aspectRatio };

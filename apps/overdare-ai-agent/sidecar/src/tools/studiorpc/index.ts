@@ -268,6 +268,7 @@ export async function createStudioRpcTools(ctx: {
         const release = isMutating ? await writeLock.acquire() : undefined;
         try {
           try {
+            if (mod.preCall) await mod.preCall(args as Record<string, unknown>, callRpc);
             const normalizedArgs = mod.normalizeArgs
               ? mod.normalizeArgs(args as Record<string, unknown>)
               : (args as Record<string, unknown>);
@@ -279,7 +280,7 @@ export async function createStudioRpcTools(ctx: {
               result = await mod.recover(rpcError, args as Record<string, unknown>, callRpc);
             }
             if (mod.postProcess) {
-              result = mod.postProcess(result, args as Record<string, unknown>);
+              result = await mod.postProcess(result, args as Record<string, unknown>, callRpc);
             }
             // Persist editor-state changes to file immediately on success.
             if (savingMethods.has(method)) {
@@ -288,10 +289,14 @@ export async function createStudioRpcTools(ctx: {
             const output = typeof result === "string" ? result : JSON.stringify(result, null, 2);
             const renderBuilder = renderBuilders[toolName];
             const render = renderBuilder?.({ args: args as Record<string, unknown>, normalizedArgs, output, result });
+            const outputImages = mod.attachImages
+              ? await mod.attachImages(result, args as Record<string, unknown>)
+              : undefined;
 
             return {
               output: warning ? `${warning}\n${output}` : output,
               render,
+              outputImages,
               metadata: { method: rpcMethod, result },
             };
           } catch (error) {

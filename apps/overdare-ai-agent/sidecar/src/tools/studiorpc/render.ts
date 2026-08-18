@@ -172,7 +172,7 @@ export function buildInstanceDeleteRender(args: Record<string, unknown>, output:
   const items = Array.isArray(args.items) ? args.items : [];
   const targetGuids = items.flatMap((item) => {
     if (!isRecord(item)) return [];
-    const guid = readString(item.targetGuid);
+    const guid = readString(item.guid);
     return guid ? [guid] : [];
   });
   const deleteCount = targetGuids.length;

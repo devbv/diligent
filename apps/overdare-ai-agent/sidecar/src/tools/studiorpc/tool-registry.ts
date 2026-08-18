@@ -1,11 +1,13 @@
 // @summary Registers generic Studio RPC method modules and their render builders.
 
+import type { ImageBlock } from "@diligent/protocol";
 import type { z } from "zod";
 import * as actionSequencerApplyJson from "./methods/action-sequencer-service.apply-json";
 import * as assetDrawerImport from "./methods/asset-drawer.import";
 import * as assetManagerImageImport from "./methods/asset-manager.image.import";
 import * as gameCharacterRead from "./methods/game.character.read";
 import * as gameInstanceRead from "./methods/game.instance.read";
+import * as gameObserve from "./methods/game.observe";
 import * as gamePlay from "./methods/game.play";
 import * as gameScreenshot from "./methods/game.screenshot";
 import * as gameStop from "./methods/game.stop";
@@ -47,7 +49,18 @@ type MethodModule = {
   timeoutMs?: number;
   resolveMethod?: (args: Record<string, unknown>) => string;
   normalizeArgs?: (args: Record<string, unknown>) => Record<string, unknown>;
-  postProcess?: (result: unknown, args: Record<string, unknown>) => unknown;
+  /**
+   * Run something before the RPC, for a method whose ordinary case is really two calls in a fixed
+   * order. It sees the arguments as the caller wrote them, before normalizeArgs strips whatever
+   * Studio does not know about.
+   */
+  preCall?: (args: Record<string, unknown>, callRpc: CallRpc) => Promise<void>;
+  /**
+   * Shape the answer after Studio returns it. It gets callRpc because some of what the caller
+   * asked for is answerable only by asking Studio something else — resolving an instance name to
+   * a position, for one — and making the caller do that round trip is the friction this removes.
+   */
+  postProcess?: (result: unknown, args: Record<string, unknown>, callRpc: CallRpc) => unknown | Promise<unknown>;
   /**
    * Turn a Studio error into an answer, where the failure is itself information the
    * caller asked for. Looking up a name that is not there is the case: absence is
@@ -55,6 +68,13 @@ type MethodModule = {
    * path. Return a replacement result, or rethrow to keep the error.
    */
   recover?: (error: unknown, args: Record<string, unknown>, callRpc: CallRpc) => Promise<unknown>;
+  /**
+   * Images to hand back with the answer. A tool that produces a picture and reports only where it
+   * put it makes the caller fetch it: measured across 294 captures, 274 were followed within three
+   * calls by reading the file back. The catalog downscales whatever comes out of here, so a tool
+   * returns the picture at whatever size it has.
+   */
+  attachImages?: (result: unknown, args: Record<string, unknown>) => Promise<ImageBlock[] | undefined>;
 };
 
 type RenderBuilder = (ctx: {
@@ -76,6 +96,7 @@ export const methodModules: MethodModule[] = [
   gameScreenshot,
   gameCharacterRead,
   gameInstanceRead,
+  gameObserve,
   gameUiBrowse,
   viewportCameraRead,
   hubTokenRead,

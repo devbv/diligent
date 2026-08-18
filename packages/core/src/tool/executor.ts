@@ -1,6 +1,7 @@
 // @summary Executes tool calls with parameter validation and auto-truncation
 import type { ZodIssue } from "zod";
 import type { ToolCallBlock } from "../types";
+import { dropEmptyOptionals } from "./empty-arguments";
 import {
   MAX_OUTPUT_BYTES,
   shouldTruncate,
@@ -31,10 +32,12 @@ export async function executeTool(
     return { output: `Error: Unknown tool "${toolCall.name}"`, metadata: { error: true } };
   }
 
+  const input = dropEmptyOptionals(tool.parameters, toolCall.input);
+
   let args: unknown;
   if (tool.parseArgs) {
     try {
-      args = tool.parseArgs(toolCall.input);
+      args = tool.parseArgs(input);
     } catch (err) {
       return {
         output: `Error: Invalid arguments for "${toolCall.name}":\n${err instanceof Error ? err.message : String(err)}`,
@@ -42,7 +45,7 @@ export async function executeTool(
       };
     }
   } else {
-    const parsed = tool.parameters.safeParse(toolCall.input);
+    const parsed = tool.parameters.safeParse(input);
     if (!parsed.success) {
       return {
         output: `Error: Invalid arguments for "${toolCall.name}":\n${parsed.error.issues.map((i: ZodIssue) => `  [${i.path.join(".")}] ${i.message}`).join("\n")}`,
