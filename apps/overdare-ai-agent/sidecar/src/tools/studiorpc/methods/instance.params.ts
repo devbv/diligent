@@ -9,13 +9,17 @@ const udim2 = z.object({
   X: z.object({ Scale: z.number(), Offset: z.number() }),
   Y: z.object({ Scale: z.number(), Offset: z.number() }),
 });
-/** Studio serialises Rect flat — four scalars, not two nested Vector2s. */
-const rect = z.object({
-  MinX: z.number(),
-  MinY: z.number(),
-  MaxX: z.number(),
-  MaxY: z.number(),
-});
+/** Studio serialises Rect flat — four scalars, not two nested Vector2s. It clamps out-of-range values but not inverted ones. */
+const rect = z
+  .object({
+    MinX: z.number(),
+    MinY: z.number(),
+    MaxX: z.number(),
+    MaxY: z.number(),
+  })
+  .refine((r) => r.MinX <= r.MaxX && r.MinY <= r.MaxY, {
+    message: "SliceCenter needs MinX <= MaxX and MinY <= MaxY; an inverted rectangle has no centre region.",
+  });
 
 const normalIdEnum = z.enum(["Right", "Top", "Back", "Left", "Bottom", "Front"]);
 /** Tile, Crop and Fit exist in the engine but ship hidden, so they stay out of reach here. */
@@ -1076,6 +1080,7 @@ function zodToShape(schema: z.ZodTypeAny): ShapeSpec {
   if (schema instanceof z.ZodOptional) return zodToShape(schema.unwrap());
   if (schema instanceof z.ZodDefault) return zodToShape(schema.removeDefault());
   if (schema instanceof z.ZodArray) return zodToShape(schema.element);
+  if (schema instanceof z.ZodEffects) return zodToShape(schema.innerType());
   return true;
 }
 

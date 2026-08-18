@@ -9,6 +9,7 @@ Use for confirmation dialogs, alerts, rewards, tutorial messages, pause menus, o
 - Use direct GUI creation for predictable behavior.
 - Use worldAsset panels if visual style is important.
 - Hybrid is often useful: direct modal structure + imported decorative panel.
+- A background image on the panel needs `ScaleType = "Slice"` with `SliceCenter`, so corner art survives the panel size range.
 
 ## Common Hierarchy
 
