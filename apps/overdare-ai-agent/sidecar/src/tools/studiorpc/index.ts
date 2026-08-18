@@ -9,6 +9,7 @@ import {
 } from "@diligent/runtime";
 import { call } from "./rpc";
 import { methodModules, mutatingMethods, renderBuilders, savingMethods } from "./tool-registry";
+import { createAssetDrawerImportBulkTool } from "./tools/asset-drawer-import-bulk-tool";
 import { createCollisionProfileTools } from "./tools/collision-profile-tool";
 import { createHubWorldCategoriesListTool } from "./tools/hub-world-categories-list-tool";
 import { createHubWorldLookupTool } from "./tools/hub-world-lookup-tool";
@@ -216,6 +217,7 @@ export async function createStudioRpcTools(ctx: {
     wrapTool(withSnapshot(createScriptAddTool(ctx.cwd, writeLock)), ctx.host),
     wrapTool(withSnapshot(createScriptDeleteTool(ctx.cwd, writeLock)), ctx.host),
     wrapTool(withSnapshot(createScriptEditTool(ctx.cwd, writeLock)), ctx.host),
+    wrapTool(withSnapshot(createAssetDrawerImportBulkTool(callRpc, writeLock)), ctx.host),
     ...createCollisionProfileTools(ctx.cwd, writeLock, applyLevelChanges).map((tool) =>
       wrapTool(isCollisionEdit(tool.name) ? withSnapshot(tool) : tool, ctx.host),
     ),
