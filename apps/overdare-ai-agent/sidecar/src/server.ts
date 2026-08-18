@@ -15,6 +15,7 @@ import {
   toCatalogSnapshot,
 } from "./mcp-server";
 import { createRouterEndpoint } from "./router-endpoint";
+import { flushSentry } from "./sentry";
 import { createSidecarToken, type StudioRegistration, startStudioRegistration } from "./studio-registry";
 import { createStudioBundledToolProviders } from "./tools";
 import { type ConsentService, createGatewayConsentService } from "./tools/gateway/consent";
@@ -226,6 +227,7 @@ export async function startStudioServer(argv: string[] = process.argv.slice(2)):
       message: `Failed to start studio web server: ${message}`,
       error,
     });
+    await flushSentry();
     process.exit(1);
   }
 }

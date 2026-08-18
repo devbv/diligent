@@ -215,6 +215,53 @@ async fn wait_for_health(port: u16) -> Result<(), String> {
     })?
 }
 
+/// Bounded ring of the sidecar's most recent stderr lines, filled while the
+/// launcher echoes them, so failure reports can attach what the process last
+/// said even when it died before writing its log file.
+#[derive(Clone, Default)]
+struct StderrTail(std::sync::Arc<std::sync::Mutex<std::collections::VecDeque<String>>>);
+
+impl StderrTail {
+    const MAX_LINES: usize = 60;
+
+    fn push(&self, line: String) {
+        let mut lines = self.0.lock().unwrap();
+        if lines.len() >= Self::MAX_LINES {
+            lines.pop_front();
+        }
+        lines.push_back(line);
+    }
+
+    fn snapshot(&self) -> String {
+        let lines = self.0.lock().unwrap();
+        lines.iter().cloned().collect::<Vec<_>>().join("\n")
+    }
+}
+
+/// Last `max_bytes` of the sidecar log (the sidecar mirrors its stdout/stderr
+/// there). Seeks instead of reading the whole file — a long session's log can
+/// be large.
+fn read_log_tail(path: &Path, max_bytes: u64) -> Option<String> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut file = std::fs::File::open(path).ok()?;
+    let len = file.metadata().ok()?.len();
+    file.seek(SeekFrom::Start(len.saturating_sub(max_bytes)))
+        .ok()?;
+    let mut buf = Vec::new();
+    file.read_to_end(&mut buf).ok()?;
+    Some(String::from_utf8_lossy(&buf).into_owned())
+}
+
+/// Puts the sidecar's log tail and captured stderr on the Sentry scope so the
+/// failure event that follows carries the actual cause, not just the exit code.
+fn attach_sidecar_diagnostics(log_path: &Path, stderr_tail: &StderrTail) {
+    const LOG_TAIL_BYTES: u64 = 8 * 1024;
+    let log_tail =
+        read_log_tail(log_path, LOG_TAIL_BYTES).unwrap_or_else(|| "<no log file>".to_string());
+    crate::monitoring::attach_diagnostics("sidecar_log_tail", &log_tail);
+    crate::monitoring::attach_diagnostics("sidecar_stderr_tail", &stderr_tail.snapshot());
+}
+
 fn format_child_exit(status: std::process::ExitStatus) -> String {
     #[cfg(unix)]
     {
@@ -232,6 +279,8 @@ fn format_child_exit(status: std::process::ExitStatus) -> String {
 pub struct RunningWebServer {
     pub port: u16,
     child: tokio::process::Child,
+    log_path: PathBuf,
+    stderr_tail: StderrTail,
 }
 
 impl RunningWebServer {
@@ -244,6 +293,7 @@ impl RunningWebServer {
         if status.success() {
             Ok(())
         } else {
+            attach_sidecar_diagnostics(&self.log_path, &self.stderr_tail);
             Err(format!(
                 "Webserver sidecar exited unexpectedly ({})",
                 format_child_exit(status)
@@ -353,7 +403,9 @@ async fn start_once(
     }
     cmd.args(&args)
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::inherit())
+        // Piped (not inherited) so failure reports can attach the sidecar's
+        // last words; the reader task below still echoes every line through.
+        .stderr(std::process::Stdio::piped())
         // Belt-and-braces for early-return paths: the sidecar's own
         // --parent-pid watchdog only fires after this launcher exits, which is
         // too late when a retry respawns within the same process.
@@ -383,6 +435,18 @@ async fn start_once(
         let _ = child.kill().await;
         return Err(StartFailure::terminal("No stdout from updated sidecar"));
     };
+
+    let stderr_tail = StderrTail::default();
+    if let Some(stderr) = child.stderr.take() {
+        let tail = stderr_tail.clone();
+        tokio::spawn(async move {
+            let mut lines = BufReader::new(stderr).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                eprintln!("{line}");
+                tail.push(line);
+            }
+        });
+    }
 
     let port_result = {
         let mut reader = BufReader::new(stdout);
@@ -435,24 +499,57 @@ async fn start_once(
             // Kill and reap before surfacing the failure — a retry (or the
             // caller's next action) must never race a still-alive child.
             let _ = child.kill().await;
+            attach_sidecar_diagnostics(log_path, &stderr_tail);
             return Err(failure);
         }
     };
 
     if let Err(err) = wait_for_health(port).await {
         let _ = child.kill().await;
+        attach_sidecar_diagnostics(log_path, &stderr_tail);
         return Err(StartFailure::transient(err));
     }
-    Ok(RunningWebServer { port, child })
+    Ok(RunningWebServer {
+        port,
+        child,
+        log_path: log_path.to_path_buf(),
+        stderr_tail,
+    })
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_args, resolve_installed_runtime_version, rg_bin_path};
+    use super::{
+        parse_args, read_log_tail, resolve_installed_runtime_version, rg_bin_path, StderrTail,
+    };
     use crate::env::{Env, EnvSelection};
     use crate::storage::storage_namespace;
     use crate::testutil::with_temp_home;
     use std::fs;
+
+    #[test]
+    fn read_log_tail_returns_only_last_bytes() {
+        let dir = std::env::temp_dir().join(format!("weblog-tail-{}", std::process::id()));
+        fs::create_dir_all(&dir).expect("create temp dir");
+        let path = dir.join("sidecar.log");
+        fs::write(&path, "old old old\nrecent line").expect("write log");
+        let tail = read_log_tail(&path, 11).expect("tail");
+        assert_eq!(tail, "recent line");
+        assert!(read_log_tail(&dir.join("missing.log"), 11).is_none());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn stderr_tail_keeps_most_recent_lines() {
+        let tail = StderrTail::default();
+        for i in 0..(StderrTail::MAX_LINES + 5) {
+            tail.push(format!("line {i}"));
+        }
+        let snapshot = tail.snapshot();
+        assert!(snapshot.starts_with("line 5\n"));
+        assert!(snapshot.ends_with(&format!("line {}", StderrTail::MAX_LINES + 4)));
+        assert_eq!(snapshot.lines().count(), StderrTail::MAX_LINES);
+    }
 
     #[test]
     fn parse_args_reads_cwd_and_userid() {
