@@ -255,7 +255,18 @@ async function enumeratePack(keyword: string): Promise<Array<Partial<AssetResult
       throw new Error(`Pack enumeration failed (HTTP ${response.status})`);
     }
     const data = (await response.json()) as RagResponse;
-    return (data?.results ?? []).filter(isAssetResult).map(normalizeAssetResult);
+    // Subset selection only needs identity metadata. Keeping the per-asset
+    // description text would put ~20k tokens on the model for a 145-member
+    // pack; without it the same list is ~7.7k. Scores don't exist in
+    // enumeration mode (no ranking).
+    return (data?.results ?? []).filter(isAssetResult).map((result) => ({
+      title: result.title,
+      keywords: result.keywords,
+      assetId: result.assetId,
+      assetType: result.assetType,
+      categoryId: result.categoryId,
+      subCategoryId: result.subCategoryId,
+    }));
   } catch (err) {
     if (err instanceof Error && err.name === "AbortError") {
       throw new Error("Pack enumeration timed out");
