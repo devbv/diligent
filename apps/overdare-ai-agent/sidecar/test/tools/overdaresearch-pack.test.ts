@@ -103,9 +103,12 @@ describe("overdaresearch pack detection", () => {
     const result = await tool.execute({ query: "subway", source: "assets", topK: 8, selectable: true }, ctx);
 
     const values = seen?.questions[0].options.map((o) => o.value) ?? [];
-    expect(values).toContain("pack:pack_metro");
+    // Pack options lead the list so they don't drown at the end of the grid.
+    expect(values[0]).toBe("pack:pack_metro");
     const packOption = seen?.questions[0].options.find((o) => o.value === "pack:pack_metro");
     expect(packOption?.label).toContain("145");
+    // No asset payload: the picker renders payload-less options as wide text rows.
+    expect((packOption as { asset?: unknown })?.asset).toBeUndefined();
     // Choosing a normal asset still returns the single-asset result.
     expect(result.output).toContain("1");
   });
@@ -164,7 +167,7 @@ describe("overdaresearch pack detection", () => {
     const result = await tool.execute({ query: "metro car", source: "assets", topK: 8, selectable: true }, ctx);
 
     const values = seen?.questions[0].options.map((o) => o.value) ?? [];
-    expect(values).toEqual(["2", "pack:pack_metro"]);
+    expect(values).toEqual(["pack:pack_metro", "2"]);
     expect(result.output).toContain("2");
   });
 

@@ -200,6 +200,16 @@ async function selectAsset(
         question: `Pick an asset for "${query}"`,
         display: "asset",
         options: [
+          // Themed packs come first so they don't drown at the end of the asset
+          // grid. They carry no `asset` payload on purpose: the picker renders
+          // payload-less options as full-width text rows instead of thumbnail
+          // cards, which visually separates "import the whole set" from the
+          // individual assets.
+          ...packs.map((p) => ({
+            label: `Import full pack: ${p.keyword} (${p.memberCount} assets)`,
+            description: "Themed asset collection",
+            value: `${PACK_OPTION_PREFIX}${p.keyword}`,
+          })),
           ...normalized.map((a) => ({
             label: a.title,
             description: a.price ? `${a.assetType} · ${a.price}` : a.assetType,
@@ -210,12 +220,6 @@ async function selectAsset(
               price: a.price,
               subtitle: a.assetType,
             },
-          })),
-          // Themed packs detected in the results: offer importing the whole set.
-          ...packs.map((p) => ({
-            label: `Import full pack: ${p.keyword} (${p.memberCount} assets)`,
-            description: "Themed asset collection",
-            value: `${PACK_OPTION_PREFIX}${p.keyword}`,
           })),
         ],
       },
