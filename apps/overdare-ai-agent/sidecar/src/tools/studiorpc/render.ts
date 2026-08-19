@@ -545,56 +545,12 @@ export function buildGameScreenshotRender(
   };
 }
 
-export function buildGameUiBrowseRender(result: unknown, output: string): ToolRenderPayload {
-  const elements = isRecord(result) && Array.isArray(result.elements) ? result.elements : [];
-  const clickable = elements.filter(
-    (element) =>
-      isRecord(element) &&
-      typeof element.class === "string" &&
-      element.class.includes("Button") &&
-      element.onScreen !== false,
-  );
-  const named = clickable
-    .map((element) => (isRecord(element) ? (readString(element.text) ?? readString(element.path)) : undefined))
-    .filter((value): value is string => value !== undefined);
-
-  const items: { key: string; value: string }[] = [
-    { key: "elements", value: summarizeCount(elements.length, "element") },
-  ];
-  if (clickable.length > 0) items.push({ key: "buttons", value: summarizeTargets(named, "").trim() || "—" });
-
-  return {
-    inputSummary: "browse play-test UI",
-    outputSummary: summarizeCount(elements.length, "UI element"),
-    blocks: [
-      { type: "key_value", title: "Play-test UI", items },
-      {
-        type: "summary",
-        text:
-          elements.length > 0
-            ? `${summarizeCount(elements.length, "element")} on screen.`
-            : firstLine(output, "No UI on screen."),
-        tone: "success",
-      },
-    ],
-  };
-}
-
 export function buildViewportCameraReadRender(result: unknown, output: string): ToolRenderPayload {
   const camera = isRecord(result) && isRecord(result.camera) ? result.camera : undefined;
-  const source = isRecord(result) ? readString(result.source) : undefined;
-  const viewport = isRecord(result) && isRecord(result.viewport) ? result.viewport : undefined;
   const centerHit = camera && isRecord(camera.centerHit) ? camera.centerHit : undefined;
   const lookingAt = centerHit ? readString(centerHit.instanceName) : undefined;
 
   const items: { key: string; value: string }[] = [];
-  if (source) items.push({ key: "source", value: source });
-  if (typeof viewport?.width === "number" && typeof viewport?.height === "number") {
-    items.push({ key: "viewport", value: `${viewport.width}×${viewport.height}` });
-  }
-  if (typeof camera?.focusDistance === "number") {
-    items.push({ key: "focusDistance", value: `${Math.round(camera.focusDistance)} units` });
-  }
   if (lookingAt) items.push({ key: "centerHit", value: lookingAt });
 
   return {

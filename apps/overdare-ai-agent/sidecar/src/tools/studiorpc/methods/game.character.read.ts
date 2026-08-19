@@ -22,13 +22,15 @@ export const description =
   "facing is where the view is pointing, in the same degrees studiorpc_game_input_inject's look event " +
   "reports and moves. Read it before sending W: key movement is camera-relative, so after any look the " +
   "same key walks a different direction in the world, and one run walked its character back down the route " +
-  "it had just climbed. It is not studiorpc_viewport_camera_read's Orientation.Y — that is this value " +
-  "negated, and the sign is a trap this loop has already paid for once. " +
+  "it had just climbed. facing.yaw is the same number as studiorpc_viewport_camera_read's Orientation.Y " +
+  "and as the yawDegrees a look event takes: 0 faces -Z, +90 faces -X, and positive turns left. Those " +
+  "used to be two conventions, one the negation of the other, and the sign is a trap this loop has " +
+  "already paid for once — there is nothing left to convert. " +
   "gameTimeSeconds is the world's own clock, which is the clock a timed round runs on. Its value on its " +
   "own means nothing; the difference between two reads is how much game time your calls and your reasoning " +
   "just cost, which is the only way to tell a round that expired from one that was never started. It is " +
   "already scaled, so at timeScale 0.25 it advances a second for every four real ones. This is the cheap " +
-  "way to ask: reading it off a countdown on screen costs a whole studiorpc_game_ui_browse payload. " +
+  "way to ask: reading it off a countdown on screen costs a whole ui section. " +
   "When the next thing you want after this is the UI or some instances, ask studiorpc_game_observe for all " +
   "of it instead: separate calls are seconds of game time apart and describe different moments, and one " +
   "observe stamps the moment they all share.";

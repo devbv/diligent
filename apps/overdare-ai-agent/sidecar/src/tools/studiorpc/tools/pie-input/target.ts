@@ -6,27 +6,15 @@ export type CallRpc = typeof call;
 
 export interface PieClientSnapshot {
   clientId: string;
-  clientIndex: number;
-  pieInstance: number;
-  processId: number;
-  netMode: string;
-  ready: boolean;
   injectable: boolean;
+  targeted?: boolean;
 }
 
 export interface PieStatusSnapshot {
-  protocolVersion: number;
   running: boolean;
-  state: string;
   pieSessionId?: string;
-  mode: string;
-  scope: string;
+  timeScale?: number;
   clients: PieClientSnapshot[];
-  capabilities: {
-    multiProcess: boolean;
-    crossRequestHeldInput: boolean;
-    mouseDeltaRequiresCapture: boolean;
-  };
 }
 
 export interface PieTarget {
@@ -52,12 +40,7 @@ export async function readPieStatus(callRpc: CallRpc): Promise<PieStatusSnapshot
 
 function describeClients(clients: PieClientSnapshot[]): string {
   if (clients.length === 0) return "no PIE clients are registered";
-  return clients
-    .map(
-      (client) =>
-        `${client.clientId} (netMode=${client.netMode}, ready=${client.ready}, injectable=${client.injectable})`,
-    )
-    .join("; ");
+  return clients.map((client) => `${client.clientId} (injectable=${client.injectable})`).join("; ");
 }
 
 /**
@@ -70,16 +53,7 @@ export async function resolvePieTarget(callRpc: CallRpc, overrides: PieTargetOve
   const status = await readPieStatus(callRpc);
 
   if (!status.running) {
-    throw new Error(
-      `PIE is not running (state=${status.state || "unknown"}). ` +
-        "Start play mode with studiorpc_game_play, then retry.",
-    );
-  }
-  if (status.mode !== "singleProcess") {
-    throw new Error(
-      `PIE runs in ${status.mode} mode; input injection needs singleProcess (unsupportedPieMode). ` +
-        "Restart play mode with a single process.",
-    );
+    throw new Error("PIE is not running. Start play mode with studiorpc_game_play, then retry.");
   }
 
   const pieSessionId = overrides.pieSessionId ?? status.pieSessionId;
@@ -101,9 +75,7 @@ export async function resolvePieTarget(callRpc: CallRpc, overrides: PieTargetOve
     throw new Error(`No injectable PIE client${suffix} was found: ${describeClients(status.clients)}.`);
   }
   if (!client.injectable) {
-    throw new Error(
-      `PIE client "${client.clientId}" is not injectable (ready=${client.ready}, netMode=${client.netMode}).`,
-    );
+    throw new Error(`PIE client "${client.clientId}" is not injectable.`);
   }
 
   return { pieSessionId, clientId: client.clientId, status };

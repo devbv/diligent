@@ -57,22 +57,51 @@ export function withCameraAxes(result: unknown): unknown {
           "World unit vectors for this view. groundRight/groundForward are the same directions flattened " +
           "onto the horizontal plane, which is what a level edit means by right and forward: newPosition = " +
           "position + groundRight * distance moves a thing rightwards on screen without sinking it into the " +
-          "floor. Scale distance to the object's own Size, not to visibleExtentAtFocus — that number " +
-          "describes wherever the centre ray happened to land and reads in the tens of thousands when it " +
-          "grazes distant ground. Both ground vectors are null looking straight down, where no heading " +
-          "exists. Call locate again after the move: the pixel must travel the way you meant, and that is " +
-          "the only check that catches a sign error.",
+          "floor. Scale distance to the object's own Size. Both ground vectors are null looking straight " +
+          "down, where no heading exists. Call locate again after the move: the pixel must travel the way " +
+          "you meant, and that is the only check that catches a sign error.",
       },
     },
   };
 }
 
-type BrowseNode = { guid?: string; name?: string; class?: string; children?: BrowseNode[] };
+/**
+ * `level.browse` spells its tree Name/ActorGuid/LuaChildren. Reading it as name/guid/children
+ * matched nothing, which made the saved-level fallback below a no-op: outside a play test every
+ * locate came back "lookup failed" from the live read, and the editor case — the one this is
+ * mostly for — could not locate anything at all. Both spellings are accepted so a browse that
+ * ever answers the other way keeps working.
+ */
+type BrowseNode = {
+  guid?: string;
+  name?: string;
+  children?: BrowseNode[];
+  ActorGuid?: string;
+  Name?: string;
+  LuaChildren?: BrowseNode[];
+};
+
+function nodeGuid(node: BrowseNode): string | undefined {
+  return typeof node.guid === "string" ? node.guid : typeof node.ActorGuid === "string" ? node.ActorGuid : undefined;
+}
 
 function findNamedNode(nodes: BrowseNode[], name: string): BrowseNode | undefined {
   for (const node of nodes) {
-    if (node.name === name && typeof node.guid === "string") return node;
-    const found = node.children ? findNamedNode(node.children, name) : undefined;
+    if ((node.name ?? node.Name) === name && nodeGuid(node) !== undefined) return node;
+    const children = node.children ?? node.LuaChildren;
+    const found = children ? findNamedNode(children, name) : undefined;
+    if (found) return found;
+  }
+  return undefined;
+}
+
+/** Any vector-valued property in a response, wherever the reading tool chose to nest it. */
+function findVec3Field(value: unknown, key: string, depth = 0): Vec3 | undefined {
+  if (!isRecord(value) || depth > 4) return undefined;
+  const here = readVec3(value[key]);
+  if (here) return here;
+  for (const child of Object.values(value)) {
+    const found = findVec3Field(child, key, depth + 1);
     if (found) return found;
   }
   return undefined;
@@ -101,7 +130,10 @@ function findCFramePosition(value: unknown, depth = 0): Vec3 | undefined {
  * the editor viewport.
  */
 export type LocateResult =
-  | { found: true; position: Vec3; path?: string; matches?: number; otherPaths?: string[] }
+  /** `half` is the instance's half-size when it reported one, so visibility can be judged by its
+   * bounds: a long sweeper arm crosses the whole screen while its centre is out of frame, and a
+   * centre-only verdict called that off-screen. */
+  | { found: true; position: Vec3; half?: Vec3; path?: string; matches?: number; otherPaths?: string[] }
   /** Both sources answered, and the name is in neither. */
   | { found: false; reason: "absent" }
   /** A lookup errored, so nothing is known about the name — which is not the same claim. */
@@ -118,7 +150,10 @@ export type LocateResult =
  */
 function isDefinitelyAbsent(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
-  return message.includes("is in the running Workspace");
+  // The second sentence is the editor: there is no running world to be absent from, so the live
+  // read has not failed to answer — it has no question to answer. Counting it as a failure made
+  // every editor locate report "lookup failed" even when the saved level held the object.
+  return message.includes("is in the running Workspace") || message.includes("only exists while a play test runs");
 }
 
 export async function locateInstanceByName(callRpc: CallRpc, name: string): Promise<LocateResult> {
@@ -133,9 +168,11 @@ export async function locateInstanceByName(callRpc: CallRpc, name: string): Prom
     if (position) {
       const record = isRecord(live) ? live : {};
       const instance = isRecord(record.instance) ? record.instance : {};
+      const size = readVec3(instance.Size);
       return {
         found: true,
         position,
+        half: size ? { x: size.x / 2, y: size.y / 2, z: size.z / 2 } : undefined,
         path: typeof instance.path === "string" ? instance.path : undefined,
         matches: typeof record.matches === "number" ? record.matches : undefined,
         otherPaths: Array.isArray(record.otherPaths) ? (record.otherPaths as string[]) : undefined,
@@ -147,13 +184,32 @@ export async function locateInstanceByName(callRpc: CallRpc, name: string): Prom
     if (!isDefinitelyAbsent(error)) failure = error instanceof Error ? error.message : String(error);
   }
   try {
-    const browsed = (await callRpc("level.browse", {})) as { instances?: BrowseNode[] } | BrowseNode[];
-    const roots = Array.isArray(browsed) ? browsed : (browsed?.instances ?? []);
-    const node = findNamedNode(roots, name);
-    if (node?.guid) {
-      const read = await callRpc("instance.read", { guid: node.guid, recursive: false });
+    // The server answers with { level: [...] }; only the tool's postProcess unwraps that, and this
+    // goes to the raw method. Reading `instances` found nothing every time, which is the other half
+    // of why an editor locate never answered.
+    const browsed = (await callRpc("level.browse", {})) as
+      | { instances?: BrowseNode[]; level?: BrowseNode[] }
+      | BrowseNode[];
+    const roots = Array.isArray(browsed) ? browsed : (browsed?.level ?? browsed?.instances ?? []);
+    // The tree stores leaf names, so a dotted path never matches a node. Callers write paths —
+    // five camera rounds asked for `Workspace.CamExp.Ramp`, got "in neither", and only found it
+    // again by dropping the prefix by hand.
+    const node = findNamedNode(roots, name.includes(".") ? (name.split(".").pop() as string) : name);
+    const guid = node ? nodeGuid(node) : undefined;
+    if (guid !== undefined) {
+      // The Studio-side method names it ActorGuid; only the tool of the same name accepts `guid`.
+      const read = await callRpc("instance.read", { ActorGuid: guid });
       const position = findCFramePosition(read);
-      if (position) return { found: true, position };
+      // Size travels with it so an editor locate can judge visibility by the object's bounds,
+      // the same way a play-test locate does. Without it a long wall reads as a single point.
+      const size = findVec3Field(read, "Size");
+      if (position) {
+        return {
+          found: true,
+          position,
+          half: size ? { x: size.x / 2, y: size.y / 2, z: size.z / 2 } : undefined,
+        };
+      }
     }
   } catch (error) {
     failure ??= error instanceof Error ? error.message : String(error);

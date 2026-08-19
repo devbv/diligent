@@ -3,13 +3,10 @@
 import { describe, expect, test } from "bun:test";
 import { normalizeArgs, params, postProcess } from "../../../../src/tools/studiorpc/methods/game.observe";
 
-function reply(frames: { reply: number; character: number; instances: number }) {
+function reply() {
   return {
-    atGameTime: 41.5,
-    atFrame: frames.reply,
-    character: { atFrame: frames.character, status: "ok", data: { success: true, character: {} } },
+    character: { status: "ok", data: { success: true, character: {} } },
     instances: {
-      atFrame: frames.instances,
       status: "ok",
       data: {
         success: true,
@@ -29,34 +26,47 @@ function reply(frames: { reply: number; character: number; instances: number }) 
   };
 }
 
-describe("game.observe keeps its one-instant claim checkable", () => {
-  test("says nothing when every section came from the same frame", () => {
-    const out = postProcess(reply({ reply: 8899, character: 8899, instances: 8899 })) as Record<string, unknown>;
-    expect(out.sectionsSpanFrames).toBeUndefined();
-    expect(out.sectionsSpanNote).toBeUndefined();
-  });
-
-  // The whole argument for this tool over three separate calls is that the readings are one
-  // moment. If that ever stops being true, a run would reconcile two moments as one and nothing
-  // would say so — so the reply checks itself rather than leaving it to the test suite.
-  test("says so loudly when a section came from a different frame", () => {
-    const out = postProcess(reply({ reply: 8899, character: 8899, instances: 8901 })) as Record<string, unknown>;
-    expect(out.sectionsSpanFrames).toBe(true);
-    expect(out.sectionsSpanNote).toContain("8901");
-    expect(out.sectionsSpanNote).toContain("not as one moment");
-  });
-
+describe("game.observe reply shape", () => {
   test("a name that missed is still told what it probably meant", () => {
-    const out = postProcess(reply({ reply: 1, character: 1, instances: 1 })) as {
-      instances: { data: { instances: { query: string; nearestNames?: string[] }[] } };
+    const out = postProcess(reply()) as {
+      instances: { instances: { query: string; nearestNames?: string[] }[] };
     };
-    const miss = out.instances.data.instances.find((entry) => entry.query === "BedZzz");
+    const miss = out.instances.instances.find((entry) => entry.query === "BedZzz");
     expect(miss?.nearestNames?.[0]).toBe("Bed");
   });
 
+  // The `data` wrapper existed only to keep each section byte-identical to a single tool that
+  // could also be called on its own. Those tools are gone, so the depth buys nothing.
+  test("a section's own fields sit on the section, not under data", () => {
+    const out = postProcess(reply()) as Record<string, Record<string, unknown>>;
+
+    expect(out.instances.data).toBeUndefined();
+    expect(out.instances.status).toBe("ok");
+    expect(Array.isArray(out.instances.instances)).toBe(true);
+    // `success` said what `status` says. Two verdict fields is a reply where the reader picks one.
+    expect(out.instances.success).toBeUndefined();
+    // The character payload's only content was another `character`, so it is hoisted twice.
+    expect(out.character.character).toBeUndefined();
+    expect(out.character.data).toBeUndefined();
+    expect(out.character.status).toBe("ok");
+    // The verdict comes first. A section's status printed after a 178-entry listing is a
+    // status nobody reads, which is the same as not having one.
+    expect(Object.keys(out.instances)[0]).toBe("status");
+  });
+
+  test("a payload cannot overwrite the word that describes the read", () => {
+    // `status` says how the section itself went. A payload carrying its own would be answering
+    // a different question under the same name, and the reader cannot tell.
+    const collided = {
+      instances: { status: "ok", data: { status: "notFound", instances: [] } },
+    };
+    const out = postProcess(collided) as { instances: Record<string, unknown> };
+    expect(out.instances.status).toBe("ok");
+  });
+
   test("a reply with no instances section is left alone rather than crashed on", () => {
-    const bare = { atFrame: 5, ui: { atFrame: 5, status: "ok", data: {} }, requestedSections: ["ui"] };
-    expect(postProcess(bare)).toEqual(bare);
+    const bare = { ui: { status: "ok", data: {} } };
+    expect(postProcess(bare)).toEqual({ ui: { status: "ok" } });
   });
 });
 
@@ -88,18 +98,84 @@ describe("game.observe instance selectors", () => {
     expect(() => params.parse({ instances: { namePattern: "Pot", maxDepth: 4 } })).not.toThrow();
   });
 
-  test("refuses naming instances and searching for them in one section", () => {
-    // studiorpc_game_instance_read refuses the same pair, and for the same reason: Studio answers
-    // whichever it reads first and drops the other in silence, so the reply looks like a complete
-    // answer to a question that was only half asked.
-    expect(() => params.parse({ instances: { targets: ["Turret"], namePattern: "Turret" } })).toThrow(/two questions/);
-    expect(() => params.parse({ instances: { targets: ["Turret"], class: "Part" } })).toThrow(/two questions/);
-    // `under` narrows a search rather than competing with it, and listing depth belongs to either.
-    expect(() => params.parse({ instances: { targets: ["Lane"], maxDepth: 3 } })).not.toThrow();
+  test("naming instances and searching for them are separate shapes", () => {
+    // Ten of eleven reports in one round named the mixed object as the parameter that earned
+    // nothing, and four raised it again as a defect. Resolving it after the fact was the second
+    // attempt; refusing it was the first, and playtest10 measured what that did — the same call
+    // three times, first with four real paths beside namePattern "Pot", then with the search
+    // values replaced by "x", then with targets replaced by ["X"]. Offered a parameter the agent
+    // fills it. Two shapes give it somewhere to put nothing.
+    expect(() => params.parse({ instances: { targets: ["Turret"] } })).not.toThrow();
+    expect(() => params.parse({ instances: { targets: ["Turret"], properties: true } })).not.toThrow();
     expect(() => params.parse({ instances: { namePattern: "Turret", under: "Lane" } })).not.toThrow();
+    expect(() => params.parse({ instances: { namePattern: "Pot", maxDepth: 4 } })).not.toThrow();
+    // Mixing them is now unspellable rather than silently half-answered.
+    expect(() => params.parse({ instances: { targets: ["Turret"], namePattern: "Turret" } })).toThrow();
+    expect(() => params.parse({ instances: { targets: ["Lane"], maxDepth: 3 } })).toThrow();
+    expect(() => params.parse({ instances: { targets: ["Lane"], under: "Workspace.Lane" } })).toThrow();
     // The array shorthand is `targets` by another name, so it cannot carry a search either —
     // there is nowhere in it to put one.
     expect(() => params.parse({ instances: ["Turret"] })).not.toThrow();
+  });
+
+  test("properties: true answers with the game's properties, not the engine's", () => {
+    // Every report in the round listed the same fields as read-past noise. They are the
+    // serializer's view of an actor; a reader asking whether a door is open wants CanCollide.
+    const args = { instances: { targets: ["DoorC1"], properties: true } };
+    const reply = {
+      instances: {
+        status: "ok",
+        data: {
+          instances: [
+            {
+              name: "DoorC1",
+              CanCollide: false,
+              Shape: "Box",
+              HoldDuration: 1.5,
+              Color: { R: 1, G: 0, B: 0 },
+              ObjectKey: 41,
+              Archivable: true,
+              Mobility: "Movable",
+              PivotOffsetCFrame: {},
+              AssemblyRootPart: "DoorC1",
+              CurrentPhysicalProperties: {},
+              WorldTransform: {},
+              UnitExtent: {},
+              BrickColor: "Really red",
+            },
+          ],
+        },
+      },
+    };
+    const out = postProcess(reply, args) as { instances: { instances: Record<string, unknown>[] } };
+    const entry = out.instances.instances[0];
+
+    // What the game is made of survives, including the properties this flag exists to reach.
+    expect(entry).toEqual({
+      name: "DoorC1",
+      CanCollide: false,
+      Shape: "Box",
+      HoldDuration: 1.5,
+      Color: { R: 1, G: 0, B: 0 },
+    });
+
+    // Without the flag there is no dump to strip, and nothing is touched.
+    const plain = postProcess(reply, { instances: { targets: ["DoorC1"] } }) as {
+      instances: { instances: Record<string, unknown>[] };
+    };
+    expect(plain.instances.instances[0].ObjectKey).toBe(41);
+  });
+
+  test("instances: true lists the top level, the way ui: true reads all of it", () => {
+    // The starting move of a run that does not know any names yet. It cannot be spelled `{}`:
+    // an empty object is a blank, blanks are dropped before the call is built, and the section
+    // would disappear — leaving the caller rejected for asking for nothing.
+    expect(() => params.parse({ instances: true })).not.toThrow();
+    expect(normalizeArgs({ instances: true })).toEqual({ instances: {} });
+    expect(normalizeArgs({ instances: true, fields: ["Color"] })).toEqual({
+      instances: { fields: ["Color"] },
+      fields: ["Color"],
+    });
   });
 
   test("fields is declared once and reaches either shape of instances", () => {
@@ -145,13 +221,11 @@ describe("game.observe instance selectors", () => {
     };
 
     const out = postProcess(reply) as {
-      instances: { data: { instances: Record<string, unknown>[]; distanceNote?: string } };
+      instances: { instances: Record<string, unknown>[] };
     };
-    const [gate, model] = out.instances.data.instances;
+    const [gate, model] = out.instances.instances;
     expect(gate.distanceFromCharacter).toBeCloseTo(134.8, 1);
-    expect(gate.horizontalDistanceToCentre).toBeCloseTo(154.1, 1);
     expect(model.distanceFromCharacter).toBeUndefined();
-    expect(out.instances.data.distanceNote).toContain("surface");
   });
 
   test("no character section means no distances, rather than distances from nowhere", () => {
@@ -164,8 +238,8 @@ describe("game.observe instance selectors", () => {
       },
       requestedSections: ["instances"],
     };
-    const out = postProcess(reply) as { instances: { data: { instances: Record<string, unknown>[] } } };
-    expect(out.instances.data.instances[0].distanceFromCharacter).toBeUndefined();
+    const out = postProcess(reply) as { instances: { instances: Record<string, unknown>[] } };
+    expect(out.instances.instances[0].distanceFromCharacter).toBeUndefined();
   });
 
   test("a placeholder filter in the section is dropped, as it is on the single read", () => {

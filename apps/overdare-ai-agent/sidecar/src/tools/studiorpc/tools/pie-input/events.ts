@@ -77,8 +77,29 @@ export const ALLOWED_KEYS = [
 
 /** Studio rejects a batch above this many events. */
 export const MAX_EVENT_COUNT = 64;
-/** Studio rejects a batch whose `wait` durations sum above this. */
-export const MAX_TOTAL_DURATION_MS = 10_000;
+/**
+ * Real time one batch may spend. Studio enforces the same number and rejects anything over it.
+ *
+ * It was 10s, and the 10s kept pushing callers into worse shapes. playtest10 wanted a 40.5s
+ * wait, was refused, fell back to repeating 10s waits, and was then warned for a doom loop —
+ * the harness scolding the workaround the harness forced. playtest11 walked an 11,000-unit
+ * route in 8000, 7000 and 9500ms presses of W, each chunk costing a round trip whose model
+ * thinking is about five seconds.
+ *
+ * The limit is policy, not capacity: Studio schedules a sequence across frames rather than
+ * holding the game thread, so a long batch does not freeze anything. And a wait with an
+ * `until` returns the moment its condition is true, so a long timeout costs nothing when the
+ * thing actually happens — a short ceiling was buying polling, not safety.
+ */
+export const MAX_TOTAL_DURATION_MS = 60_000;
+/**
+ * What a conditional wait costs against the batch ceiling. It is not its timeout: a wait that
+ * names what it is waiting for returns when that happens, and charging the whole allowance refused
+ * batches that would have finished in seconds. The timeout is bounded separately, below.
+ */
+export const CONDITIONAL_WAIT_CHARGE_MS = 2_000;
+/** The worst case a batch's conditional waits may add up to, so a batch can always end. */
+export const MAX_CONDITIONAL_TIMEOUT_MS = 300_000;
 /** Per-axis bound on a single `mouseDelta` event. */
 export const MAX_MOUSE_DELTA = 4096;
 /** Wheel notches Studio accepts in one `scroll` event. */
@@ -168,13 +189,14 @@ const lookEventSchema = z.object({
     .max(180)
     .optional()
     .describe(
-      "How far to turn from where the view faces now. Right is positive. This is relative, so to face " +
-        "something in particular read the camera first. Measured against the world, a facing of 0 looks " +
-        "down -Z, +90 looks down +X, and 180 looks down +Z. Note that the `facing` this reply gives you is " +
-        "the negation of the Orientation.Y that studiorpc_viewport_camera_read reports for the same camera, " +
-        "so do not mix the two: work in one or the other. The reliable check on either is where the camera " +
-        "sits relative to the character, since it trails behind the way the view is pointed. One play test " +
-        "spent eight calls rediscovering the convention by trial.",
+      "How far to turn from where the view faces now, in the same degrees everything else here reports: " +
+        "a facing of 0 looks down -Z, +90 down -X, 180 down +Z, so **positive turns left** and negative " +
+        "turns right. This is relative, so to face something in particular read the facing first and " +
+        "subtract — `yawDegrees` and the `facing.yaw` in studiorpc_game_character_read, in this reply, and " +
+        "in studiorpc_viewport_camera_read's Orientation.Y are one number in one frame, and adding this to " +
+        "the facing you read is what you should get back. There used to be two conventions here, this one " +
+        "negated against the camera's, and a play test spent eight calls rediscovering which was which " +
+        "before walking its character back down the route it had just climbed.",
     ),
   pitchDegrees: z.number().min(-89).max(89).optional().describe("Up is positive."),
   timeoutMs: z
@@ -184,13 +206,13 @@ const lookEventSchema = z.object({
     .max(5_000)
     .optional()
     .describe(
-      "Budget for converging before Studio reports what it got. Defaults to 2000, and a turn much over 90 " +
-        "degrees usually wants more than that or wants splitting in two — one 180-degree turn stopped at 123 " +
-        "on an 800ms budget. Running out mid-turn (`timedOut`), or never moving at all (`blocked`), cancels " +
+      "Budget for converging before Studio reports what it got. Leave it out and it is set from the angle " +
+        "you asked for, which is what you want unless the game turns unusually slowly. " +
+        "Running out mid-turn (`timedOut`), or never moving at all (`blocked`), cancels " +
         "whatever the batch had queued behind the look rather than sending it at a view pointing somewhere " +
         "unintended: those two shots would otherwise go into empty ground and read as the game swallowing " +
         "input. `clamped` is not a failure — it is the game refusing to turn further, so the rest of the " +
-        "batch runs. The budget is charged in full against the batch's 10s limit whether or not the turn " +
+        "batch runs. The budget is charged in full against the batch's time limit whether or not the turn " +
         "needs it.",
     ),
 });
@@ -214,7 +236,7 @@ const pointerButtonEventSchema = z.object({
     .optional()
     .describe(
       "What to click, by name — the same resolution pointerMove's target does, so the rect comes from the " +
-        "live layout instead of being read out of studiorpc_game_ui_browse and copied. Give this or " +
+        "live layout instead of being read out of a ui section and copied. Give this or " +
         "position, not both. On down and up separately it is a drag: press down on one element and release " +
         "over another, with the pointer captured the whole way, which is the one gesture nothing else here " +
         "exercises.",
@@ -257,7 +279,7 @@ const untilSchema = z
         instance: z
           .string()
           .min(1)
-          .describe("Name of a live Workspace instance, as studiorpc_game_instance_read takes."),
+          .describe("Name of a live Workspace instance, as studiorpc_game_observe's instances section takes."),
         property: z
           .enum([
             "CanCollide",
@@ -273,7 +295,7 @@ const untilSchema = z
             "Orientation.Z",
           ])
           .describe(
-            "Which property to watch, reading the same value studiorpc_game_instance_read reports for it. " +
+            "Which property to watch, reading the same value studiorpc_game_observe reports for it. " +
               "Orientation is in degrees and wraps, so a rotating part passes " +
               "through 359 to 0 rather than climbing past it — phrase a phase condition as a band you can " +
               "enter (atLeast 90 with atMost 180 in two waits) rather than a threshold it might jump.",
@@ -323,12 +345,7 @@ const waitEventSchema = z.object({
     .describe(
       "Clock speed for this wait only, restored the moment it ends. durationMs stays real time, so the " +
         "game time covered is durationMs x timeScale: 10s at 10 skips 100 game-seconds. Leave it out and " +
-        "the wait runs at whatever scale the session is already on, changing nothing. " +
-        "Known defect: a key pressed while the clock is already slowed moves the character nothing at all — " +
-        "zero, not merely slower. A key already held when the scale drops keeps moving and scales " +
-        "correctly, so putting timeScale on the wait *between* a down and an up works; a press at a " +
-        "session that is already slowed does not. Simpler and safer at any scale below 1: move with " +
-        "studiorpc_game_character_move_to, which navigation drives and which is unaffected.",
+        "the wait runs at whatever scale the session is already on, changing nothing.",
     ),
 });
 
@@ -362,7 +379,8 @@ export const inputEventsSchema = z
       "drag or press-and-hold written the Roblox way, filtering on MouseButton1, ignores every event this " +
       "tool can send while the rest of the game keeps working. If a control responds to nothing and its " +
       "buttons are fine, check what its handler filters on before reporting it as broken. " +
-      "look: turn the view by yawDegrees (right is positive) and pitchDegrees (up is positive), the way the " +
+      "look: turn the view by yawDegrees (positive turns left, the same frame every facing here is reported " +
+      "in) and pitchDegrees (up is positive), the way the " +
       "player's own camera input would — use it to see what is beside or behind the character before taking " +
       "a screenshot. The result's looks[] reports how far the view actually turned, in one of four states. " +
       "reached got there. clamped is the view against a limit the game sets — looking further up when already " +
@@ -412,6 +430,27 @@ export function normalizeEventShapes(events: unknown): unknown {
  * from. Studio validates the expanded batch, so without the map its errors name an
  * index the caller never wrote: a two-event batch reported a failure at `events[4]`.
  */
+/** Slower than any turn measured, so the budget below is never the reason one stops short. */
+const LOOK_DEGREES_PER_SECOND = 60;
+/** The most Studio accepts on one look. */
+const MAX_LOOK_TIMEOUT_MS = 5_000;
+
+/**
+ * A budget that fits the turn being asked for.
+ *
+ * Studio defaults every look to 2000ms whatever the angle, and the description told callers to
+ * raise it themselves past 90 degrees — a rule that has to be read, remembered and applied, and
+ * playtest11 did none of the three: a 180-degree look ran out at 164.24 degrees and cancelled the
+ * `E` press queued behind it, which cost the run a stage and a retry. Measured there, the view
+ * turns about 82 degrees a second; budgeting for 60 leaves room and still lands inside the 5s
+ * ceiling. A caller that names its own timeoutMs keeps it.
+ */
+function budgetForLook(event: { yawDegrees?: number; pitchDegrees?: number }): number {
+  const widest = Math.max(Math.abs(event.yawDegrees ?? 0), Math.abs(event.pitchDegrees ?? 0));
+  const needed = 1_000 + (widest * 1_000) / LOOK_DEGREES_PER_SECOND;
+  return Math.min(MAX_LOOK_TIMEOUT_MS, Math.max(DEFAULT_LOOK_TIMEOUT_MS, Math.round(needed)));
+}
+
 export function expandWithOrigin(events: InputEvent[]): { sent: InputEvent[]; origin: number[] } {
   const expanded: InputEvent[] = [];
   const origin: number[] = [];
@@ -428,6 +467,9 @@ export function expandWithOrigin(events: InputEvent[]): { sent: InputEvent[]; or
      * true, because down and up did hit the same wrong widget. Moving first is what
      * makes a button take the click, so the position now expands into that move. */
     let event = original;
+    if (event.type === "look" && event.timeoutMs === undefined) {
+      event = { ...event, timeoutMs: budgetForLook(event) };
+    }
     if (event.type === "pointerButton" && event.position !== undefined) {
       const { position, ...rest } = event;
       push({ type: "pointerMove", position });
@@ -476,6 +518,7 @@ export function validateBatch(events: InputEvent[], origin?: number[]): string |
   const heldKeys = new Set<string>();
   const heldButtons = new Set<string>();
   let totalDurationMs = 0;
+  let conditionalTimeoutMs = 0;
 
   for (const [index, event] of events.entries()) {
     if (event.type === "pointerMove" && (event.position === undefined) === (event.target === undefined)) {
@@ -497,6 +540,22 @@ export function validateBatch(events: InputEvent[], origin?: number[]): string |
     if (event.type === "look") {
       if (!event.yawDegrees && !event.pitchDegrees) {
         return `${at(index)}: look with no rotation — give yawDegrees or pitchDegrees (lookOutOfRange).`;
+      }
+      /* A timeout too small for the angle is refused here rather than part-way round. playtest5
+       * asked for 90 degrees in 600ms, got 82.35, and the look's failure cancelled the 34 events
+       * queued behind it — in the middle of a real-time fight, which cost the run the sequence it
+       * had spent the batch building. The number needed is not a guess: it is the same budget the
+       * tool gives a look that does not name one. */
+      if (event.timeoutMs !== undefined) {
+        const needed = budgetForLook(event);
+        if (event.timeoutMs < needed) {
+          const widest = Math.max(Math.abs(event.yawDegrees ?? 0), Math.abs(event.pitchDegrees ?? 0));
+          return (
+            `${at(index)}: ${widest} degrees needs about ${needed}ms and this look allows ${event.timeoutMs}ms ` +
+            "(lookTimeoutTooSmall). A look that runs out mid-turn cancels every event behind it in the batch, " +
+            "so it is refused here instead. Raise timeoutMs, or leave it out and the tool budgets the turn."
+          );
+        }
       }
       // Converging may take this much real time, so it spends the same budget waits do.
       const lookBudgetMs = event.timeoutMs ?? DEFAULT_LOOK_TIMEOUT_MS;
@@ -535,15 +594,32 @@ export function validateBatch(events: InputEvent[], origin?: number[]): string |
     }
 
     if (event.type === "wait") {
-      totalDurationMs += event.durationMs;
+      /* A conditional wait is charged what it will probably spend, not what it is allowed to.
+       * The ceiling exists to bound how long Studio holds a sequence, and a wait that names what
+       * it is waiting for returns the moment that comes true — the previous rule charged the whole
+       * timeout anyway, so "start the run, wait for the loss line, wait for the reset line" was
+       * refused at 60,150ms for a batch that would have taken a fraction of it. Splitting it is
+       * not free either: the reset happened between the two calls and was never seen.
+       * The timeout is still bounded, just against its own larger allowance below. */
+      totalDurationMs += event.until === undefined ? event.durationMs : CONDITIONAL_WAIT_CHARGE_MS;
+      conditionalTimeoutMs += event.until === undefined ? 0 : event.durationMs;
+      if (conditionalTimeoutMs > MAX_CONDITIONAL_TIMEOUT_MS) {
+        return (
+          `${at(index)}: the batch's conditional waits could sit for ${conditionalTimeoutMs}ms between them, ` +
+          `over the ${MAX_CONDITIONAL_TIMEOUT_MS}ms ceiling (conditionalTimeoutExceeded). Each one returns as ` +
+          "soon as its condition comes true, so this is the worst case rather than the expected cost — but " +
+          "the batch still has to be able to end. Shorten a timeout or drop a condition."
+        );
+      }
       if (totalDurationMs > MAX_TOTAL_DURATION_MS) {
         return (
           // Named "total wait" this reported a number the wait events do not add up to, and the
           // caller had to read the next sentence to find out the label was wrong.
           `${at(index)}: the batch spends ${totalDurationMs}ms, over the ${MAX_TOTAL_DURATION_MS}ms limit ` +
           "(totalDurationExceeded). That is every wait plus every press durationMs, since a press is a " +
-          "hold and spends its time the same way — so a 10s wait beside one 100ms click is already over. " +
-          "Split the input across several calls."
+          "hold and spends its time the same way. Before splitting this across calls, check whether it " +
+          "wants an `until` instead: a wait that names what it is waiting for returns the moment that " +
+          "comes true, so its durationMs is a timeout it usually does not spend."
         );
       }
     }

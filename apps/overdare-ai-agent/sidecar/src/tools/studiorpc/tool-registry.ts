@@ -6,12 +6,10 @@ import * as actionSequencerApplyJson from "./methods/action-sequencer-service.ap
 import * as assetDrawerImport from "./methods/asset-drawer.import";
 import * as assetManagerImageImport from "./methods/asset-manager.image.import";
 import * as gameCharacterRead from "./methods/game.character.read";
-import * as gameInstanceRead from "./methods/game.instance.read";
 import * as gameObserve from "./methods/game.observe";
 import * as gamePlay from "./methods/game.play";
 import * as gameScreenshot from "./methods/game.screenshot";
 import * as gameStop from "./methods/game.stop";
-import * as gameUiBrowse from "./methods/game.ui.browse";
 import * as hubTokenRead from "./methods/hub.token.read";
 import * as levelBrowse from "./methods/level.browse";
 import * as levelPublish from "./methods/level.publish";
@@ -21,6 +19,7 @@ import * as _scriptAdd from "./methods/script.add";
 // biome-ignore lint/correctness/noUnusedImports: script.delete moved to tools/script-delete-tool.ts
 import * as _scriptDelete from "./methods/script.delete";
 import * as viewportCameraRead from "./methods/viewport.camera.read";
+import * as viewportCameraSet from "./methods/viewport.camera.set";
 import {
   buildActionSequencerApplyJsonRender,
   buildAssetDrawerImportRender,
@@ -28,7 +27,6 @@ import {
   buildGamePlayRender,
   buildGameScreenshotRender,
   buildGameStopRender,
-  buildGameUiBrowseRender,
   buildHubTokenReadRender,
   buildInstanceDeleteRender,
   buildInstanceMoveRender,
@@ -95,10 +93,15 @@ export const methodModules: MethodModule[] = [
   gameStop,
   gameScreenshot,
   gameCharacterRead,
-  gameInstanceRead,
+  // game.instance.read and game.ui.browse are not tools of their own any more, only sections of
+  // game.observe — which is literally their handlers, wrapped. Measured across six full runs:
+  // 64 observe calls, 6 ui_browse, 3 instance_read — and all three of those instance_read calls
+  // carried `target` and `namePattern` and `class` and `under` together, the two-questions bug,
+  // while observe's instances section never did it once because it offers no `target`. A third
+  // name for the same handler bought nothing and cost that.
   gameObserve,
-  gameUiBrowse,
   viewportCameraRead,
+  viewportCameraSet,
   hubTokenRead,
 ];
 
@@ -134,7 +137,6 @@ export const renderBuilders: Record<string, RenderBuilder> = {
     buildGameScreenshotRender(result, normalizedArgs, output),
   studiorpc_level_publish: ({ normalizedArgs, output, result }) =>
     buildLevelPublishRender(result, normalizedArgs, output),
-  studiorpc_game_ui_browse: ({ output, result }) => buildGameUiBrowseRender(result, output),
   studiorpc_viewport_camera_read: ({ output, result }) => buildViewportCameraReadRender(result, output),
   studiorpc_hub_token_read: ({ output, result }) => buildHubTokenReadRender(result, output),
 };

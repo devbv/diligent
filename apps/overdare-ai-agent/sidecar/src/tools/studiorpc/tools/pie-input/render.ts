@@ -72,37 +72,30 @@ export function buildPieStatusRender(status: PieStatusSnapshot): ToolRenderPaylo
   const injectable = status.clients.filter((client) => client.injectable);
   return {
     inputSummary: "pie status",
-    outputSummary: status.running
-      ? `${status.state}, ${injectable.length}/${status.clients.length} injectable`
-      : `not running (${status.state || "unknown"})`,
+    outputSummary: status.running ? `running, ${injectable.length}/${status.clients.length} injectable` : "not running",
     blocks: [
       {
         type: "key_value",
         title: "Play-in-editor session",
-        items: [
-          { key: "state", value: status.state || "unknown" },
-          { key: "mode", value: status.mode ?? "" },
-          { key: "pieSessionId", value: status.pieSessionId ?? "-" },
-        ].filter((item) => item.value.length > 0),
+        items: [{ key: "pieSessionId", value: status.pieSessionId ?? "-" }],
       },
       ...(status.clients.length > 0
         ? [
             {
               type: "table" as const,
               title: "Clients",
-              columns: ["clientId", "netMode", "ready", "injectable"],
+              columns: ["clientId", "injectable", "targeted"],
               rows: status.clients.map((client) => [
                 client.clientId,
-                client.netMode,
-                String(client.ready),
                 String(client.injectable),
+                String(client.targeted ?? false),
               ]),
             },
           ]
         : []),
       {
         type: "summary",
-        text: status.running ? `PIE is running (${status.state}).` : "PIE is not running.",
+        text: status.running ? "PIE is running." : "PIE is not running.",
         tone: status.running ? "success" : "warning",
       },
     ],

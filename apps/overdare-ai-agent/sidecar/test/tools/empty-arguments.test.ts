@@ -2,7 +2,6 @@
 import { describe, expect, test } from "bun:test";
 import { dropEmptyOptionals } from "@diligent/core/tool-contract";
 import { params as characterReadParams } from "../../src/tools/studiorpc/methods/game.character.read";
-import { params as instanceReadParams } from "../../src/tools/studiorpc/methods/game.instance.read";
 import { params as observeParams } from "../../src/tools/studiorpc/methods/game.observe";
 import { params as screenshotParams } from "../../src/tools/studiorpc/methods/game.screenshot";
 
@@ -24,15 +23,14 @@ describe("what a caller with no value to give sends", () => {
   });
 
   test("every filter on a call that wanted the top level", () => {
-    // The `.` values are handled separately, by game.instance.read's own placeholder rule —
-    // they are not empty, and only that tool knows an instance name cannot be punctuation.
-    expect(dropEmptyOptionals(instanceReadParams, { maxDepth: 1, fields: [], namePattern: "" })).toEqual({
-      maxDepth: 1,
-    });
-    // The same call written as an observe section, where the blanks nest one level down.
+    // The `.` values are handled separately, by the placeholder rule in live-instance-names —
+    // they are not empty, and only that code knows an instance name cannot be punctuation.
+    // The blanks nest one level down here, inside the section, which is the case that found the
+    // union bug: the walk stopped at `array | object` and left everything below it untouched.
     expect(dropEmptyOptionals(observeParams, { instances: { maxDepth: 1, namePattern: "" }, character: true })).toEqual(
       { instances: { maxDepth: 1 }, character: true },
     );
+    expect(dropEmptyOptionals(observeParams, { instances: true, fields: [] })).toEqual({ instances: true });
   });
 
   test("a camera it did not want to move", () => {
@@ -52,6 +50,6 @@ describe("what a caller with no value to give sends", () => {
 
   test("zero and false are answers, not blanks", () => {
     expect(dropEmptyOptionals(screenshotParams, { includeGui: false })).toEqual({ includeGui: false });
-    expect(dropEmptyOptionals(instanceReadParams, { maxDepth: 0 })).toEqual({ maxDepth: 0 });
+    expect(dropEmptyOptionals(observeParams, { instances: { maxDepth: 0 } })).toEqual({ instances: { maxDepth: 0 } });
   });
 });

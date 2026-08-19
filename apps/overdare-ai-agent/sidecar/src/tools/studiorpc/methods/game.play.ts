@@ -18,22 +18,11 @@ export const description =
   "matters because OVERDARE puts game rules in server Scripts: scaling only the client would slow the " +
   "character while the round timer and the rules kept running at full speed, which is a different game " +
   "rather than a slower one. " +
-  "**It does not slow `task.wait`**, which is how almost every countdown in Lua is written. Measured on a " +
-  "55-second `task.wait(1)` loop: 56 real seconds at 1, and 56 real seconds at 0.2. So a slowed session " +
-  "gives you a slow character inside a round that expires on schedule — which is not the game running " +
-  "slowly, it is a different game, and a timing rule tested that way was not tested. Until that is fixed, " +
-  "test a timed round at 1 and give yourself the room by other means. Everything a script schedules " +
-  "through the world — physics, movement, a prompt's hold — does dilate. " +
-  "Known defect, and the one thing to plan around: a key pressed while the clock is already slowed moves " +
-  "the character nothing at all. Not slowed — zero, measured five times out of five, where the identical " +
-  "press at 1 covers about 500 units. Movement itself is dilated correctly; what fails is starting it, so " +
-  "a key already held when the clock drops keeps moving and scales properly. " +
-  "So at any scale below 1, move with studiorpc_game_character_move_to, which navigation drives and which " +
-  "is unaffected. Keys at a slowed clock look exactly like a character wedged against a wall. " +
-  "This is about movement and nothing else: an action key reaches the game's own script normally at any " +
-  "scale, verified at 0.3 for a key the game reads through UserInputService. A run that took the warning to " +
-  "mean all key input was suspect avoided the mechanic it had come to test, so it is worth being plain — " +
-  "press action keys freely at any scale, and drive movement with move_to. " +
+  "Everything dilates with it: physics, movement, a prompt's hold, and `task.wait`/`task.delay` " +
+  "countdowns — measured on a `task.wait(5)` at 0.2, which took the expected ~25 real seconds. A slowed " +
+  "round really is the same round, slower, so a timing rule holds whatever scale it was tested at. " +
+  "Keys work normally at any scale, movement and action keys alike — a fresh press at 0.2 was measured " +
+  "moving the character at the correctly scaled rate. " +
   "Leave it out and the session runs at 1. Stopping the play test always returns the clock to 1, so a scale " +
   "cannot leak into the next session or into someone else's measurement. " +
   "To skip ahead inside a running session — reaching a round's timeout without waiting it out — put " +

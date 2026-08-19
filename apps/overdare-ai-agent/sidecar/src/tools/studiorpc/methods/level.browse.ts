@@ -27,13 +27,48 @@ export function normalizeArgs(args: Record<string, unknown>): Record<string, unk
   return rest;
 }
 
-type BrowseNode = { guid: string; class: string; children?: BrowseNode[] };
+/**
+ * Studio writes the tree as Name/ActorGuid/InstanceType/LuaChildren. Reading it as guid/class/
+ * children matched nothing, so every filter below silently returned an empty list: four camera
+ * rounds browsed from the Workspace GUID, got `[]`, and had to fall back to a full-tree read.
+ * Both spellings are accepted so a server that ever answers the other way keeps working.
+ */
+type BrowseNode = {
+  guid?: string;
+  class?: string;
+  children?: BrowseNode[];
+  ActorGuid?: string;
+  InstanceType?: string;
+  LuaChildren?: BrowseNode[];
+};
+
+function nodeGuid(node: BrowseNode): string | undefined {
+  return node.guid ?? node.ActorGuid;
+}
+
+function nodeClass(node: BrowseNode): string | undefined {
+  return node.class ?? node.InstanceType;
+}
+
+function nodeChildren(node: BrowseNode): BrowseNode[] | undefined {
+  return node.children ?? node.LuaChildren;
+}
+
+/** Rewrites a node's children in whichever key it arrived under, so a filter cannot lose them. */
+function withChildren(node: BrowseNode, children: BrowseNode[] | undefined): BrowseNode {
+  const { children: _c, LuaChildren: _l, ...rest } = node;
+  if (children === undefined) return rest;
+  return node.children !== undefined || node.LuaChildren === undefined
+    ? { ...rest, children }
+    : { ...rest, LuaChildren: children };
+}
 
 function findNode(nodes: BrowseNode[], guid: string): BrowseNode | undefined {
   for (const node of nodes) {
-    if (node.guid === guid) return node;
-    if (node.children) {
-      const found = findNode(node.children, guid);
+    if (nodeGuid(node) === guid) return node;
+    const children = nodeChildren(node);
+    if (children) {
+      const found = findNode(children, guid);
       if (found) return found;
     }
   }
@@ -43,9 +78,10 @@ function findNode(nodes: BrowseNode[], guid: string): BrowseNode | undefined {
 function filterByClass(nodes: BrowseNode[], classType: string): BrowseNode[] {
   const result: BrowseNode[] = [];
   for (const node of nodes) {
-    const children = node.children ? filterByClass(node.children, classType) : [];
-    if (node.class === classType || children.length > 0) {
-      result.push({ ...node, children });
+    const own = nodeChildren(node);
+    const children = own ? filterByClass(own, classType) : [];
+    if (nodeClass(node) === classType || children.length > 0) {
+      result.push(withChildren(node, children));
     }
   }
   return result;
@@ -53,11 +89,9 @@ function filterByClass(nodes: BrowseNode[], classType: string): BrowseNode[] {
 
 function truncateDepth(nodes: BrowseNode[], maxDepth: number, depth = 1): BrowseNode[] {
   return nodes.map((node) => {
-    if (depth >= maxDepth || !node.children) {
-      const { children: _, ...rest } = node as BrowseNode & { children?: unknown };
-      return rest as BrowseNode;
-    }
-    return { ...node, children: truncateDepth(node.children, maxDepth, depth + 1) };
+    const children = nodeChildren(node);
+    if (depth >= maxDepth || !children) return withChildren(node, undefined);
+    return withChildren(node, truncateDepth(children, maxDepth, depth + 1));
   });
 }
 

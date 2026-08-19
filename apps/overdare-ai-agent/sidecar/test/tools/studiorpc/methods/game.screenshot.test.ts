@@ -17,6 +17,8 @@ import {
  * against one taken with the probes hidden. Every projection below matched its measured centroid
  * to within 2.8px, so these expectations pin the convention, not just the arithmetic.
  */
+const IMAGE = { width: 998, height: 735 };
+
 function shot(
   position: { X: number; Y: number; Z: number },
   orientation: { X: number; Y: number; Z: number },
@@ -24,7 +26,7 @@ function shot(
 ) {
   return {
     success: true,
-    image: { width: 998, height: 735 },
+    image: IMAGE,
     camera: {
       CFrame: { Position: position, Orientation: orientation },
       projection: "perspective",
@@ -40,12 +42,19 @@ function shot(
 const LEVEL_SHOT = shot({ X: 0, Y: 340, Z: 900 }, { X: -0.9548412561416626, Y: 0, Z: 0 });
 // Camera off to one corner: yaw 43.6 and a slight downward pitch.
 const ANGLED_SHOT = shot({ X: 620, Y: 430, Z: 640 }, { X: -6.243453502655029, Y: 43.63607406616211, Z: 0 });
-// Camera high and pitched 37.9 down at the origin.
-const TOPDOWN_SHOT = shot({ X: 0, Y: 700, Z: 900 }, { X: -37.87498474121094, Y: 0, Z: 0 });
-
 function located(result: unknown, index = 0) {
   const list = (result as { located: Record<string, unknown>[] }).located;
   return list[index];
+}
+
+/**
+ * The photographed centroids below are in pixels, and the reply reports fractions of the image.
+ * `pixel` used to ship beside `normalized` and was cut as derivable from it — this is that
+ * division, kept in one place so the measurements stay the measurements.
+ */
+function pixelOf(entry: unknown): { x: number; y: number } {
+  const { normalized } = entry as { normalized: { x: number; y: number } };
+  return { x: normalized.x * IMAGE.width, y: normalized.y * IMAGE.height };
 }
 
 describe("game.screenshot locate", () => {
@@ -67,14 +76,11 @@ describe("game.screenshot locate", () => {
       ["overhead", 498.5, 99.4],
     ] as const;
     measured.forEach(([label, px, py], index) => {
-      const entry = located(result, index) as {
-        label: string;
-        pixel: { x: number; y: number };
-        onScreen: boolean;
-      };
+      const entry = located(result, index) as { label: string; onScreen: boolean };
+      const pixel = pixelOf(entry);
       expect(entry.label).toBe(label);
       expect(entry.onScreen).toBe(true);
-      expect(Math.hypot(entry.pixel.x - px, entry.pixel.y - py)).toBeLessThan(3);
+      expect(Math.hypot(pixel.x - px, pixel.y - py)).toBeLessThan(3);
     });
   });
 
@@ -85,97 +91,36 @@ describe("game.screenshot locate", () => {
         { x: 420, y: 320, z: -420 },
       ],
     });
-    const first = located(result, 0) as { pixel: { x: number; y: number } };
-    const second = located(result, 1) as { pixel: { x: number; y: number } };
-    expect(Math.hypot(first.pixel.x - 159.1, first.pixel.y - 375.2)).toBeLessThan(3);
-    expect(Math.hypot(second.pixel.x - 819.7, second.pixel.y - 373.2)).toBeLessThan(3);
+    const first = pixelOf(located(result, 0));
+    const second = pixelOf(located(result, 1));
+    expect(Math.hypot(first.x - 159.1, first.y - 375.2)).toBeLessThan(3);
+    expect(Math.hypot(second.x - 819.7, second.y - 373.2)).toBeLessThan(3);
   });
 
   test("normalized output is what input_inject takes, so it stays a 0..1 fraction", async () => {
     const result = await postProcess(LEVEL_SHOT, { locate: [{ x: 420, y: 320, z: 420 }] });
-    const entry = located(result) as { normalized: { x: number; y: number }; pixel: { x: number; y: number } };
-    expect(entry.normalized.x).toBeCloseTo(entry.pixel.x / 998, 3);
-    expect(entry.normalized.y).toBeCloseTo(entry.pixel.y / 735, 3);
+    const entry = located(result) as { normalized: { x: number; y: number } };
+    // A fraction of the image, in range, and landing on the same measured centroid as the pixel
+    // form did — within the 3px the rest of these poses are held to.
+    expect(entry.normalized.x).toBeGreaterThan(0);
+    expect(entry.normalized.x).toBeLessThan(1);
+    expect(entry.normalized.y).toBeGreaterThan(0);
+    expect(entry.normalized.y).toBeLessThan(1);
+    const pixel = pixelOf(entry);
+    expect(Math.hypot(pixel.x - 937.1, pixel.y - 379.8)).toBeLessThan(3);
   });
 
-  test("a point behind the camera is reported, not folded back into the frame", async () => {
-    const result = await postProcess(LEVEL_SHOT, { locate: [{ x: 0, y: 340, z: 1600 }] });
-    const entry = located(result) as { onScreen: boolean; behindCamera: boolean };
-    expect(entry.behindCamera).toBe(true);
-    expect(entry.onScreen).toBe(false);
-  });
-
-  test("a point outside the frustum is off screen but not behind the camera", async () => {
-    const result = await postProcess(LEVEL_SHOT, { locate: [{ x: -4000, y: 320, z: 420 }] });
-    const entry = located(result) as { onScreen: boolean; behindCamera: boolean };
-    expect(entry.behindCamera).toBe(false);
-    expect(entry.onScreen).toBe(false);
-  });
-});
-
-describe("game.screenshot pixelToGround", () => {
-  test("recovers the world points that pads were photographed at", async () => {
-    const result = (await postProcess(TOPDOWN_SHOT, {
-      pixelToGround: [
-        { x: 120, y: 200 },
-        { x: 860, y: 220 },
-        { x: 300, y: 600 },
-        { x: 700, y: 640 },
-        { x: 499, y: 400 },
-      ],
-    })) as { groundPoints: { world: { x: number; z: number } }[] };
-    const measured = [
-      [-1523.49, -1096.7],
-      [1330.51, -885.48],
-      [-284.35, 541.13],
-      [269.82, 595.83],
-      [0, 111.61],
-    ];
-    measured.forEach(([x, z], index) => {
-      expect(result.groundPoints[index].world.x).toBeCloseTo(x, 1);
-      expect(result.groundPoints[index].world.z).toBeCloseTo(z, 1);
-    });
-  });
-
-  test("round trips back to the pixel it came from", async () => {
-    const ground = (await postProcess(TOPDOWN_SHOT, { pixelToGround: [{ x: 300, y: 600 }] })) as {
-      groundPoints: { world: { x: number; y: number; z: number } }[];
-    };
-    const back = await postProcess(TOPDOWN_SHOT, { locate: [ground.groundPoints[0].world] });
-    const entry = located(back) as { pixel: { x: number; y: number } };
-    expect(entry.pixel.x).toBeCloseTo(300, 0);
-    expect(entry.pixel.y).toBeCloseTo(600, 0);
-  });
-
-  test("a pixel above the horizon reports no hit instead of a point behind the camera", async () => {
-    const result = (await postProcess(LEVEL_SHOT, { pixelToGround: [{ x: 499, y: 5 }] })) as {
-      groundPoints: { world: unknown; note?: string }[];
-    };
-    expect(result.groundPoints[0].world).toBeNull();
-    expect(result.groundPoints[0].note).toContain("never meets that plane");
-  });
-
-  test("planeY lifts the plane off the floor", async () => {
-    const floor = (await postProcess(TOPDOWN_SHOT, { pixelToGround: [{ x: 300, y: 600 }] })) as {
-      groundPoints: { world: { y: number } }[];
-    };
-    const raised = (await postProcess(TOPDOWN_SHOT, { pixelToGround: [{ x: 300, y: 600, planeY: 100 }] })) as {
-      groundPoints: { world: { y: number } }[];
-    };
-    expect(floor.groundPoints[0].world.y).toBe(0);
-    expect(raised.groundPoints[0].world.y).toBe(100);
+  test("a point behind the camera or outside the frustum is not on screen", async () => {
+    const behind = await postProcess(LEVEL_SHOT, { locate: [{ x: 0, y: 340, z: 1600 }] });
+    expect((located(behind) as { onScreen: boolean }).onScreen).toBe(false);
+    const outside = await postProcess(LEVEL_SHOT, { locate: [{ x: -4000, y: 320, z: 420 }] });
+    expect((located(outside) as { onScreen: boolean }).onScreen).toBe(false);
   });
 });
 
 describe("game.screenshot plumbing", () => {
-  test("defaults includeGui to true and preserves an explicit false", () => {
-    expect(normalizeArgs({})).toEqual({ includeGui: true });
-    expect(normalizeArgs({ captureType: "Viewport" })).toEqual({ captureType: "Viewport", includeGui: true });
-    expect(normalizeArgs({ includeGui: false })).toEqual({ includeGui: false });
-  });
-
-  test("locate and pixelToGround never reach Studio, which does not implement them", () => {
-    const sent = normalizeArgs({ includeGui: true, locate: [{ x: 1, y: 2, z: 3 }], pixelToGround: [{ x: 1, y: 2 }] });
+  test("locate never reaches Studio, which does not implement it", () => {
+    const sent = normalizeArgs({ includeGui: true, locate: [{ x: 1, y: 2, z: 3 }] });
     expect(sent).toEqual({ includeGui: true });
   });
 
@@ -194,7 +139,8 @@ describe("game.screenshot plumbing", () => {
     expect(() => params.parse({ locateNames: ["Gate"] })).toThrow();
     // captureType had one legal value and was never passed in 290 captures.
     expect(() => params.parse({ captureType: "Viewport" })).toThrow();
-    expect(() => params.parse({ pixelToGround: [{ x: 1, y: 2, planeY: 5 }] })).not.toThrow();
+    // pixelToGround went with the fixture era: zero uses across the final round.
+    expect(() => params.parse({ pixelToGround: [{ x: 1, y: 2 }] })).toThrow();
     expect(() => params.parse({ nope: 1 })).toThrow();
   });
 

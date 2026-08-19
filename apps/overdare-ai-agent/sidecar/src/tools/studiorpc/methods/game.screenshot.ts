@@ -2,7 +2,7 @@
 import { readFile } from "node:fs/promises";
 import type { ImageBlock } from "@diligent/protocol";
 import { z } from "zod";
-import { type CameraBlock, projectWorldToScreen, unprojectScreenToPlane } from "../camera-projection";
+import { type CameraBlock, projectWorldToScreen } from "../camera-projection";
 import {
   type CallRpc,
   isRecord,
@@ -21,7 +21,7 @@ export const description =
   "Take one whenever the question is what the screen looks like rather than what a value says — whether " +
   "text can be read, whether two things overlap, whether art is missing. Every structured signal can read " +
   "correct while the player sees a broken screen. " +
-  "Overlap is now half-answerable without a picture: studiorpc_game_ui_browse reports occludedBy and " +
+  "Overlap is now half-answerable without a picture: studiorpc_game_observe's ui section reports occludedBy and " +
   "occludedFraction for text with something painted over it. That tells you a label is covered and by how " +
   "much of its area; it cannot tell you which words are gone. When the missing characters are the finding — " +
   "a countdown, a total, the tail of a sentence — the picture is still the only answer. " +
@@ -29,7 +29,7 @@ export const description =
   "post-processing, so the same button photographed green in one shot came out grey in another with no " +
   "code between them, and a play test reported the game greying out a control it never touched. Judge " +
   "layout, overlap and legibility from the picture; for what colour something actually is, read " +
-  "studiorpc_game_ui_browse, which reports the live backgroundColor, textColor and contrast. " +
+  "studiorpc_game_observe's ui section, which reports the live backgroundColor, textColor and contrast. " +
   "The on-screen UI is in the shot unless you pass includeGui: false, which leaves the world render on its " +
   "own. The image covers the same viewport rectangle that studiorpc_game_input_inject's " +
   "normalized pointer coordinates map onto, so a point read off the image as a fraction of its width and " +
@@ -42,17 +42,25 @@ export const description =
   "The response also reports the camera the shot was taken from " +
   "(same block studiorpc_viewport_camera_read returns), and whether that camera is the editor viewport " +
   "or the running play test — enough to turn a point on the image back into a world ray, or to compare " +
-  "the framing of a before and after shot. " +
+  "the framing of a before and after shot. In that block fieldOfView is the HORIZONTAL angle in degrees " +
+  "and the vertical one is narrower by aspectRatio, so projecting a point divides the sideways offset by " +
+  "tan(fieldOfView/2) and the upward one by tan(fieldOfView/2) / aspectRatio — swapping which axis carries " +
+  "the aspect lands a point about a tenth of the screen away. " +
   "Pass locate to have that conversion done for you. Each entry is either a world position or a name — a " +
   "dotted path as readily as a bare one, and a path is the only form that identifies one instance in a " +
   "world that reuses names, so a bare name that matched several says so. Names are looked up in the running " +
-  "game, or in the saved level when no play test is up. Either way the entry comes back as a pixel and as a " +
-  "normalized point that studiorpc_game_input_inject accepts directly, plus onScreen telling you whether it " +
-  "is in frame at all. That is how you check a thing you placed is where you meant it to be, or aim a click " +
-  "at an object whose coordinates you know. Note that onScreen means inside the frustum, not unoccluded — a " +
-  "part behind a wall still reports onScreen. " +
-  "Pass pixelToGround with image pixels for the reverse: the world point where that pixel's view ray meets " +
-  "a horizontal plane, for reading a position off a shot. " +
+  "game, or in the saved level when no play test is up. Either way the entry comes back as a normalized " +
+  "point that studiorpc_game_input_inject accepts directly — the object's centre, which is where you aim a " +
+  "click — plus onScreen. That is how you check a thing you placed is where you meant it to be, or aim a " +
+  "click at an object whose coordinates you know. " +
+  "`screen` is the object's bounds projected to those same normalized units (minX/minY/maxX/maxY), left " +
+  "unclamped so you can see how far past an edge it runs, and it is what onScreen is judged by: a wall whose " +
+  "centre sits off frame is still on screen, and a centre reading 1.06 beside onScreen true is that case " +
+  "rather than a contradiction. Intersect it with 0..1 for how much is in frame; compare minX across entries " +
+  "for which one sits leftmost. It is absent for a bare position and for a name with no size, where onScreen " +
+  "judges the reported point itself. " +
+  "Note that onScreen means inside the frustum, not unoccluded — a part behind a wall still reports " +
+  "onScreen. " +
   "The camera block also reports axes — the view's forward/right/up as world vectors, plus groundRight and " +
   "groundForward flattened onto the horizontal plane. Those are what convert an instruction given against " +
   "the screen into an edit: position + groundRight * distance moves a part rightwards from where the user " +
@@ -97,31 +105,19 @@ export const params = z
       .describe(
         "What to project onto the captured image: either a world position, or the name or dotted path of an " +
           "instance whose coordinates you do not already have. Both kinds may be mixed in one list, and each " +
-          "comes back in `located` with its pixel, its normalized point for studiorpc_game_input_inject, and " +
-          'whether it is in frame. This is the call that answers "which of these is the one at the top ' +
-          'left": ask for the names and sort the results by normalized y then x, instead of listing ' +
-          "instances, copying coordinates, and projecting them in a second call.",
+          "comes back in `located` with its normalized point for studiorpc_game_input_inject, its `screen` " +
+          "bounds where the instance has a size, and whether it is in frame. This is the call that answers " +
+          '"which of these is the one at the top left": ask for the names and sort the results by normalized ' +
+          "y then x, instead of listing instances, copying coordinates, and projecting them in a second call.",
       ),
-    pixelToGround: z
-      .array(
-        z.object({
-          x: z.number().describe("Pixel column in the captured image, 0 at the left edge."),
-          y: z.number().describe("Pixel row in the captured image, 0 at the top edge."),
-          planeY: z.number().optional().describe("Height of the horizontal plane to hit. Defaults to 0."),
-          label: z.string().optional().describe("Name echoed back on the result."),
-        }),
-      )
-      .max(32)
-      .optional()
-      .describe("Image pixels to convert into world positions on a horizontal plane."),
   })
   .strict();
 
 // Default at the RPC boundary (not via zod .default) so every call path —
 // agent runtime and MCP server — sends an explicit includeGui to Studio.
-/** locate and pixelToGround are computed here from the returned camera; Studio does not know them. */
+/** locate is computed here from the returned camera; Studio does not know it. */
 export function normalizeArgs(args: Record<string, unknown>): Record<string, unknown> {
-  const { locate: _l, pixelToGround: _p, camera, ...rest } = args;
+  const { locate: _l, camera, ...rest } = args;
   // Studio still takes the placement as two fields. Declaring it as one is what stops half of
   // it arriving: `cameraPosition` without `lookAt` was a rejected call, and the caller had no
   // way to see that the two belonged together except by reading both descriptions.
@@ -154,7 +150,7 @@ export async function attachImages(result: unknown): Promise<ImageBlock[] | unde
   }
 }
 
-type Point = { x: number; y: number; z: number; label?: string };
+type Point = { x: number; y: number; z: number; label?: string; half?: { x: number; y: number; z: number } };
 
 function readCamera(result: unknown): { camera: CameraBlock; image: { width: number; height: number } } | undefined {
   if (!isRecord(result)) return undefined;
@@ -175,6 +171,63 @@ function readCamera(result: unknown): { camera: CameraBlock; image: { width: num
 function round(value: number, places = 2): number {
   const factor = 10 ** places;
   return Math.round(value * factor) / factor;
+}
+
+/**
+ * Where an instance's bounds land on screen, as a rectangle in normalized units — unclamped, so
+ * how far out of frame it reaches is visible rather than rounded away.
+ *
+ * This is what makes `onScreen` checkable: with only a centre reported, a verdict drawn from the
+ * corners was a claim about numbers the reader never saw. It also answers, without a second call,
+ * the questions rounds kept computing by hand — which of these objects sits leftmost, and how much
+ * of one is in frame.
+ *
+ * The box is world-axis-aligned, so a rotated part reads slightly large; that errs toward calling
+ * things visible, which is the safe direction for "can a player see any of this".
+ *
+ * Corners behind the camera project to mirrored nonsense and are dropped. Dropping them quietly
+ * would shrink the rect and could call a wall filling the view off-screen, so a box with corners
+ * on both sides of the near plane — which does reach past the frame — is opened out to it.
+ */
+function projectedRect(
+  read: { camera: CameraBlock; image: { width: number; height: number } },
+  centre: Point,
+  half: { x: number; y: number; z: number },
+): { minX: number; minY: number; maxX: number; maxY: number } | undefined {
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+  let inFront = 0;
+  let behind = 0;
+  for (const sx of [-1, 1]) {
+    for (const sy of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        const projected = projectWorldToScreen(read.camera, read.image, {
+          x: centre.x + sx * half.x,
+          y: centre.y + sy * half.y,
+          z: centre.z + sz * half.z,
+        });
+        if (projected.behindCamera) {
+          behind++;
+          continue;
+        }
+        inFront++;
+        minX = Math.min(minX, projected.normalized.x);
+        maxX = Math.max(maxX, projected.normalized.x);
+        minY = Math.min(minY, projected.normalized.y);
+        maxY = Math.max(maxY, projected.normalized.y);
+      }
+    }
+  }
+  if (inFront === 0) return undefined;
+  if (behind > 0) {
+    minX = Math.min(minX, 0);
+    maxX = Math.max(maxX, 1);
+    minY = Math.min(minY, 0);
+    maxY = Math.max(maxY, 1);
+  }
+  return { minX: round(minX, 4), minY: round(minY, 4), maxX: round(maxX, 4), maxY: round(maxY, 4) };
 }
 
 /**
@@ -203,19 +256,17 @@ export async function postProcess(result: unknown, args: Record<string, unknown>
   const requested = Array.isArray(args.locate) ? (args.locate as (string | Point)[]) : [];
   const locate = requested.filter((entry): entry is Point => typeof entry !== "string");
   const locateNames = requested.filter((entry): entry is string => typeof entry === "string");
-  const pixelToGround = Array.isArray(args.pixelToGround)
-    ? (args.pixelToGround as { x: number; y: number; planeY?: number; label?: string }[])
-    : undefined;
   const read = readCamera(result);
-  if (!locate?.length && !locateNames?.length && !pixelToGround?.length) {
+  if (!locate?.length && !locateNames?.length) {
     // Worth saying on every shot, not only the ones doing geometry — a distorted
     // picture misleads the eye whether or not anything was projected onto it.
     const note = read ? aspectNote(read) : undefined;
     return withCameraAxes(note && isRecord(result) ? { ...result, imageAspectNote: note } : result);
   }
   // An orthographic capture or a camera block the shot did not report leaves the request unanswered
-  // rather than answered with perspective math that does not apply.
-  if (!read || (isRecord(result) && isRecord(result.camera) && result.camera.projection !== "perspective")) {
+  // rather than answered with perspective math that does not apply. Perspective is the default and
+  // is spelled by absence — the camera block carries `projection` only when it is orthographic.
+  if (!read || (isRecord(result) && isRecord(result.camera) && result.camera.projection === "orthographic")) {
     return { ...(isRecord(result) ? result : { result }), locateError: "camera block is missing or not perspective" };
   }
   const out: Record<string, unknown> = { ...(result as Record<string, unknown>) };
@@ -233,7 +284,7 @@ export async function postProcess(result: unknown, args: Record<string, unknown>
       // Label it with what actually answered. Asking for "Pot2" and getting a pixel back is
       // only useful if the pixel is the Pot2 you meant, and in a world with sixteen of them it
       // need not be — run 71 was handed another tray's pair with nothing to notice it by.
-      named.push({ ...result.position, label: result.path ?? name });
+      named.push({ ...result.position, label: result.path ?? name, half: result.half });
       if (result.matches !== undefined && result.matches > 1) {
         ambiguous.push(`${name}: ${result.matches} instances share that name; this one is ${result.path ?? "unknown"}`);
       }
@@ -261,7 +312,7 @@ export async function postProcess(result: unknown, args: Record<string, unknown>
   if (ambiguous.length > 0) {
     out.locateAmbiguous = ambiguous;
     out.locateAmbiguousNote =
-      "A name is unique only among siblings, so these each matched more than one instance and the pixel " +
+      "A name is unique only among siblings, so these each matched more than one instance and the point " +
       "reported is for the one listed. Pass the dotted path instead — locate takes either — to say " +
       "which one you meant.";
   }
@@ -277,26 +328,20 @@ export async function postProcess(result: unknown, args: Record<string, unknown>
   if (points.length > 0) {
     out.located = points.map((point) => {
       const p = projectWorldToScreen(read.camera, read.image, point);
+      const screen = point.half ? projectedRect(read, point, point.half) : undefined;
+      // A verdict has to be reproducible from what the reply shows. Judging visibility by the
+      // instance's bounds while reporting only its centre was not: three rounds received
+      // `onScreen: true` next to a normalized y of 1.062, or -0.0513, and had to guess which of
+      // the two was lying. Now the rect that decided it travels with the verdict.
+      const onScreen = screen
+        ? screen.maxX >= 0 && screen.minX <= 1 && screen.maxY >= 0 && screen.minY <= 1
+        : p.onScreen;
       return {
         ...(point.label === undefined ? {} : { label: point.label }),
         world: { x: point.x, y: point.y, z: point.z },
-        pixel: { x: round(p.pixel.x, 1), y: round(p.pixel.y, 1) },
         normalized: { x: round(p.normalized.x, 4), y: round(p.normalized.y, 4) },
-        onScreen: p.onScreen,
-        behindCamera: p.behindCamera,
-        distance: round(p.depth, 1),
-      };
-    });
-  }
-  if (pixelToGround?.length) {
-    out.groundPoints = pixelToGround.map((entry) => {
-      const hit = unprojectScreenToPlane(read.camera, read.image, entry, entry.planeY ?? 0);
-      return {
-        ...(entry.label === undefined ? {} : { label: entry.label }),
-        pixel: { x: entry.x, y: entry.y },
-        planeY: entry.planeY ?? 0,
-        world: hit ? { x: round(hit.x), y: round(hit.y), z: round(hit.z) } : null,
-        ...(hit ? {} : { note: "view ray never meets that plane in front of the camera" }),
+        ...(screen ? { screen } : {}),
+        onScreen,
       };
     });
   }
