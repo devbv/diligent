@@ -18,7 +18,7 @@ import type { z } from "zod";
  * reading a different request than the one sent.
  */
 export function dropEmptyOptionals(schema: z.ZodTypeAny, input: unknown): unknown {
-  const shape = objectShape(schema);
+  const shape = objectShape(schema, input);
   if (!shape || !isPlainObject(input)) return input;
 
   const out: Record<string, unknown> = {};
@@ -47,6 +47,19 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/** An object that rejects keys it does not declare, looked up through the same wrappers as its shape. */
+function isStrictObject(schema: z.ZodTypeAny): boolean {
+  let current = schema as { _def?: Record<string, unknown> } | undefined;
+  for (let depth = 0; current?._def && depth < 10; depth += 1) {
+    const def = current._def as { typeName?: string; unknownKeys?: string; innerType?: unknown; schema?: unknown };
+    if (def.typeName === "ZodObject") return def.unknownKeys === "strict";
+    const inner = def.innerType ?? def.schema;
+    if (!inner) return false;
+    current = inner as { _def?: Record<string, unknown> };
+  }
+  return false;
+}
+
 function isOptional(schema: z.ZodTypeAny): boolean {
   try {
     return schema.isOptional();
@@ -60,7 +73,7 @@ function isOptional(schema: z.ZodTypeAny): boolean {
  * on the way to being declared — `.optional()`, `.default()`, `.preprocess()`. Matched by typeName
  * rather than instanceof so a second copy of zod in the tree does not silently disable this.
  */
-function objectShape(schema: z.ZodTypeAny): Record<string, z.ZodTypeAny> | undefined {
+function objectShape(schema: z.ZodTypeAny, input: unknown): Record<string, z.ZodTypeAny> | undefined {
   let current = schema as { _def?: Record<string, unknown> } | undefined;
   for (let depth = 0; current?._def && depth < 10; depth += 1) {
     const def = current._def as { typeName?: string; innerType?: unknown; schema?: unknown; options?: unknown };
@@ -68,12 +81,26 @@ function objectShape(schema: z.ZodTypeAny): Record<string, z.ZodTypeAny> | undef
       const shape = (current as unknown as z.ZodObject<z.ZodRawShape>).shape;
       return shape as Record<string, z.ZodTypeAny>;
     }
-    // A parameter offered in two shapes — an object or a shorthand for it, which is how one
-    // question stops being two parameters. Only an unambiguous object branch is followed; with
-    // several, which one was meant is a guess, and guessing here edits the caller's request.
+    // A parameter offered in several shapes — an object, a shorthand for it, or a second object
+    // that asks a different question, which is how one question stops being two parameters.
     if (Array.isArray(def.options)) {
-      const objects = (def.options as z.ZodTypeAny[]).filter((option) => objectShape(option) !== undefined);
-      return objects.length === 1 ? objectShape(objects[0]) : undefined;
+      const branches = (def.options as z.ZodTypeAny[])
+        .map((option) => ({ option, shape: objectShape(option, input) }))
+        .filter((branch): branch is { option: z.ZodTypeAny; shape: Record<string, z.ZodTypeAny> } => {
+          return branch.shape !== undefined;
+        });
+      if (branches.length === 1) return branches[0].shape;
+      // Several object branches. The keys the caller wrote can choose between them, but only when
+      // every branch is strict: a branch that strips what it does not declare would have accepted
+      // the value either way, so its not declaring a key proves nothing and picking the other one
+      // is the guess this refuses to make. All strict, a missing key is a branch that could not
+      // have taken the call at all. Measured on observe's `instances`, where naming and searching
+      // are two strict objects in a union inside a union — the walk stopped here and
+      // `namePattern: ""` travelled all the way to Studio.
+      if (!isPlainObject(input) || !branches.every((branch) => isStrictObject(branch.option))) return undefined;
+      const keys = Object.keys(input);
+      const fits = branches.filter((branch) => keys.every((key) => key in branch.shape));
+      return fits.length === 1 ? fits[0].shape : undefined;
     }
     const inner = def.innerType ?? def.schema;
     if (!inner) return undefined;
