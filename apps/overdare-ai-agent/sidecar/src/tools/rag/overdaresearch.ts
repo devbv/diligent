@@ -236,8 +236,15 @@ async function selectAsset(
   };
 }
 
+// Asset content text is "<visual description>. Category: … Keywords: … Type: …";
+// the tail duplicates the structured metadata fields, so keep only the prose.
+function packMemberDescription(text: string): string {
+  const withoutTail = text.split(/\s+Category:\s/)[0].trim();
+  return withoutTail.length > 400 ? `${withoutTail.slice(0, 400)}…` : withoutTail;
+}
+
 // Enumerate every member of a pack via the exact keyword filter (no ranking).
-async function enumeratePack(keyword: string): Promise<Array<Partial<AssetResult>>> {
+async function enumeratePack(keyword: string): Promise<Array<Partial<AssetResult> & { description?: string }>> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
@@ -255,12 +262,14 @@ async function enumeratePack(keyword: string): Promise<Array<Partial<AssetResult
       throw new Error(`Pack enumeration failed (HTTP ${response.status})`);
     }
     const data = (await response.json()) as RagResponse;
-    // Subset selection only needs identity metadata. Keeping the per-asset
-    // description text would put ~20k tokens on the model for a 145-member
-    // pack; without it the same list is ~7.7k. Scores don't exist in
-    // enumeration mode (no ranking).
+    // Keep the visual description (needed to compose a scene from vague titles
+    // like "Wall 06"), but strip the "Category:/Keywords:/Type:" tail — it
+    // duplicates the structured fields below and roughly doubles the payload
+    // (~20k → ~16k tokens for the 145-member metro pack). Scores don't exist
+    // in enumeration mode (no ranking).
     return (data?.results ?? []).filter(isAssetResult).map((result) => ({
       title: result.title,
+      description: packMemberDescription(result.text ?? ""),
       keywords: result.keywords,
       assetId: result.assetId,
       assetType: result.assetType,
