@@ -207,7 +207,9 @@ const lookEventSchema = z.object({
     .optional()
     .describe(
       "Budget for converging before Studio reports what it got. Leave it out and it is set from the angle " +
-        "you asked for, which is what you want unless the game turns unusually slowly. " +
+        "you asked for, which is what you want unless the game turns unusually slowly. A value smaller " +
+        "than the angle needs is raised to what it needs rather than refused, and the reply says so in " +
+        "`raisedLookTimeouts` — so this is only worth naming to give a slow game more time, never less. " +
         "Running out mid-turn (`timedOut`), or never moving at all (`blocked`), cancels " +
         "whatever the batch had queued behind the look rather than sending it at a view pointing somewhere " +
         "unintended: those two shots would otherwise go into empty ground and read as the game swallowing " +
@@ -451,9 +453,14 @@ function budgetForLook(event: { yawDegrees?: number; pitchDegrees?: number }): n
   return Math.min(MAX_LOOK_TIMEOUT_MS, Math.max(DEFAULT_LOOK_TIMEOUT_MS, Math.round(needed)));
 }
 
-export function expandWithOrigin(events: InputEvent[]): { sent: InputEvent[]; origin: number[] } {
+export function expandWithOrigin(events: InputEvent[]): {
+  sent: InputEvent[];
+  origin: number[];
+  raisedLooks: { event: number; from: number; to: number }[];
+} {
   const expanded: InputEvent[] = [];
   const origin: number[] = [];
+  const raisedLooks: { event: number; from: number; to: number }[] = [];
 
   for (const [authoredIndex, original] of events.entries()) {
     const push = (event: InputEvent) => {
@@ -467,8 +474,20 @@ export function expandWithOrigin(events: InputEvent[]): { sent: InputEvent[]; or
      * true, because down and up did hit the same wrong widget. Moving first is what
      * makes a button take the click, so the position now expands into that move. */
     let event = original;
-    if (event.type === "look" && event.timeoutMs === undefined) {
-      event = { ...event, timeoutMs: budgetForLook(event) };
+    /* A look gets the budget its angle needs. Naming a smaller one used to refuse the whole batch,
+     * and three play tests in one round spent a call finding that out — the minimum was not
+     * knowable until the rejection named it. Refusing was never about the caller's number being
+     * forbidden; it was about a look running out mid-turn and cancelling everything queued behind
+     * it. Raising it prevents the same thing without spending the call, and the reply says what
+     * was raised so the caller's next batch can carry the right number itself. */
+    if (event.type === "look") {
+      const needed = budgetForLook(event);
+      if (event.timeoutMs === undefined) {
+        event = { ...event, timeoutMs: needed };
+      } else if (event.timeoutMs < needed) {
+        raisedLooks.push({ event: authoredIndex, from: event.timeoutMs, to: needed });
+        event = { ...event, timeoutMs: needed };
+      }
     }
     if (event.type === "pointerButton" && event.position !== undefined) {
       const { position, ...rest } = event;
@@ -497,7 +516,7 @@ export function expandWithOrigin(events: InputEvent[]): { sent: InputEvent[]; or
     push({ ...held, action: "up" });
   }
 
-  return { sent: expanded, origin };
+  return { sent: expanded, origin, raisedLooks };
 }
 
 export function expandShorthand(events: InputEvent[]): InputEvent[] {
@@ -541,24 +560,14 @@ export function validateBatch(events: InputEvent[], origin?: number[]): string |
       if (!event.yawDegrees && !event.pitchDegrees) {
         return `${at(index)}: look with no rotation — give yawDegrees or pitchDegrees (lookOutOfRange).`;
       }
-      /* A timeout too small for the angle is refused here rather than part-way round. playtest5
+      /* A timeout too small for the angle used to be refused here. The reason was real — playtest5
        * asked for 90 degrees in 600ms, got 82.35, and the look's failure cancelled the 34 events
-       * queued behind it — in the middle of a real-time fight, which cost the run the sequence it
-       * had spent the batch building. The number needed is not a guess: it is the same budget the
-       * tool gives a look that does not name one. */
-      if (event.timeoutMs !== undefined) {
-        const needed = budgetForLook(event);
-        if (event.timeoutMs < needed) {
-          const widest = Math.max(Math.abs(event.yawDegrees ?? 0), Math.abs(event.pitchDegrees ?? 0));
-          return (
-            `${at(index)}: ${widest} degrees needs about ${needed}ms and this look allows ${event.timeoutMs}ms ` +
-            "(lookTimeoutTooSmall). A look that runs out mid-turn cancels every event behind it in the batch, " +
-            "so it is refused here instead. Raise timeoutMs, or leave it out and the tool budgets the turn."
-          );
-        }
-      }
-      // Converging may take this much real time, so it spends the same budget waits do.
-      const lookBudgetMs = event.timeoutMs ?? DEFAULT_LOOK_TIMEOUT_MS;
+       * queued behind it, in the middle of a real-time fight — but refusing charged a whole call
+       * for a number the caller had no way to compute first, and three play tests in one round
+       * paid it. `expandWithOrigin` raises the timeout to the budget the angle needs and the reply
+       * lists what it raised, which stops the mid-turn failure without stopping the batch. */
+      // The budget the look will actually be sent with, so the total below is charged the truth.
+      const lookBudgetMs = Math.max(event.timeoutMs ?? DEFAULT_LOOK_TIMEOUT_MS, budgetForLook(event));
       totalDurationMs += lookBudgetMs;
       if (totalDurationMs > MAX_TOTAL_DURATION_MS) {
         // Naming the look as the offender without saying what it charged reads as a bug,

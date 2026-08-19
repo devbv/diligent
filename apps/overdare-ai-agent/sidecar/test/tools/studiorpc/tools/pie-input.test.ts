@@ -82,10 +82,10 @@ const walkForward = [
 
 describe("play-test input tools", () => {
   test("normalizes waited move status to the measured outcome", () => {
-    expect(normalizeWaitedMoveStatus("arrived", "running")).toBe("reached");
-    expect(normalizeWaitedMoveStatus("navigationGaveUp", "running")).toBe("navigationGaveUp");
-    expect(normalizeWaitedMoveStatus("stoppedShort", "reached")).toBe("stoppedShort");
-    expect(normalizeWaitedMoveStatus("stillMoving", "running")).toBe("running");
+    expect(normalizeWaitedMoveStatus("arrived")).toBe("reached");
+    expect(normalizeWaitedMoveStatus("navigationGaveUp")).toBe("navigationGaveUp");
+    expect(normalizeWaitedMoveStatus("stoppedShort")).toBe("stoppedShort");
+    expect(normalizeWaitedMoveStatus("timedOut")).toBe("cancelled");
   });
 
   test("expresses the stall window in game time when the world is slowed", () => {
@@ -1006,14 +1006,16 @@ describe("play-test input tools", () => {
     });
 
     expect(calls.some((call) => call.method === "game.pie.status")).toBe(true);
-    expect(result.output).toContain('"outcome": "stillMoving"');
+    expect(result.output).toContain('"outcome": "timedOut"');
     expect(result.output).not.toContain('"stalled"');
     expect(result.output).not.toContain('"blocked"');
   });
 
-  test("move_to withholds a verdict while the move is still running", async () => {
-    // A character partway through a journey has not moved much and is not near the
-    // target; saying `blocked` there states an outcome the move has not reached.
+  test("move_to withholds an arrival verdict on a move it had to stop", async () => {
+    // A character partway through a journey has not moved much and is not near the target; saying
+    // it gave up there states an outcome the move never reached. The position is still reported —
+    // the cancel ended the move, so where it stopped is a fact — but `arrived` is not, because the
+    // move did not finish, it was stopped.
     const { byName } = toolsFor((call) => {
       if (call.method === "game.pie.status") return runningStatus();
       if (call.method === "game.character.moveTo") return { requestId: "req-15", status: "pendingStart" };
@@ -1029,9 +1031,55 @@ describe("play-test input tools", () => {
     });
 
     expect(result.output).not.toContain('"blocked"');
-    expect(result.output).not.toContain('"endedAt"');
-    expect(result.output).toContain('"at"');
-    expect(result.output).toContain('"outcome": "stillMoving"');
+    expect(result.output).not.toContain('"arrived"');
+    expect(result.output).toContain('"endedAt"');
+    expect(result.output).toContain('"outcome": "timedOut"');
+  });
+
+  test("move_to cancels the route its wait ran out on", async () => {
+    // One play test's wait ran out, it pressed RESET and START, and the character walked off along
+    // the abandoned route without new input — contaminating the next attempt and costing it the
+    // whole session. A caller who has stopped waiting has stopped watching.
+    const { calls, byName } = toolsFor((call) => {
+      if (call.method === "game.pie.status") return runningStatus();
+      if (call.method === "game.character.moveTo") return { requestId: "req-cancel", status: "pendingStart" };
+      if (call.method === "game.character.moveCancel") return { requestId: "req-cancel", status: "cancelled" };
+      if (call.method === "game.character.read") {
+        return { character: { CFrame: { Position: { X: 1, Y: 0, Z: 0 } } } };
+      }
+      return { requestId: "req-cancel", status: "running", clientId: "client-1" };
+    });
+
+    const result = await run(byName.get("studiorpc_game_character_move_to"), {
+      target: { x: 5000, y: 0, z: 0 },
+      timeoutMs: 1_000,
+    });
+
+    const cancel = calls.find((call) => call.method === "game.character.moveCancel");
+    expect(cancel?.params).toMatchObject({ requestId: "req-cancel" });
+    expect(result.output).toContain('"outcome": "timedOut"');
+    // Silent in the normal case: the field exists to say the cleanup failed.
+    expect(result.output).not.toContain('"routeStillRunning"');
+  });
+
+  test("move_to says so when it could not stop the route", async () => {
+    const { byName } = toolsFor((call) => {
+      if (call.method === "game.pie.status") return runningStatus();
+      if (call.method === "game.character.moveTo") return { requestId: "req-nocancel", status: "pendingStart" };
+      if (call.method === "game.character.moveCancel") throw new Error("moveRequestNotFound");
+      if (call.method === "game.character.read") {
+        return { character: { CFrame: { Position: { X: 1, Y: 0, Z: 0 } } } };
+      }
+      return { requestId: "req-nocancel", status: "running", clientId: "client-1" };
+    });
+
+    const result = await run(byName.get("studiorpc_game_character_move_to"), {
+      target: { x: 5000, y: 0, z: 0 },
+      timeoutMs: 1_000,
+    });
+
+    expect(result.output).toContain('"outcome": "timedOut"');
+    expect(result.output).toContain('"routeStillRunning": true');
   });
 
   test("move_to still calls out a move that went nowhere", async () => {
@@ -1091,7 +1139,7 @@ describe("play-test input tools", () => {
     expect(() => schema.parse({ timeoutMs: 5000 })).toThrow();
   });
 
-  test("move_to reports the still-running move when its wait budget runs out", async () => {
+  test("move_to reports a stopped route when its wait budget runs out", async () => {
     const { byName } = toolsFor((call) => {
       if (call.method === "game.pie.status") return runningStatus();
       if (call.method === "game.character.moveTo") return { requestId: "req-3", status: "pendingStart" };
@@ -1103,8 +1151,10 @@ describe("play-test input tools", () => {
       timeoutMs: 1000,
     });
 
-    expect(result.metadata).toMatchObject({ status: "running" });
-    expect(result.output).toContain('"outcome": "stillMoving"');
+    // `running` was the metadata status here, and it outlived the route it described: the reply
+    // now goes out after the cancel, so the last word about the move is the one that is still true.
+    expect(result.metadata).toMatchObject({ status: "cancelled" });
+    expect(result.output).toContain('"outcome": "timedOut"');
   });
 
   test("inject expands a press into the down/wait/up Studio understands", async () => {
@@ -1181,14 +1231,43 @@ describe("play-test input tools", () => {
     expect(sent[0].timeoutMs).toBe(4000);
     // A small turn keeps the floor, so nothing that worked before turns slower.
     expect(sent[1].timeoutMs).toBe(2000);
+  });
 
-    // A named budget the turn cannot fit is refused up front: running out mid-turn would
-    // cancel everything queued behind the look.
-    await expect(
-      run(byName.get("studiorpc_game_input_inject"), {
-        events: [{ type: "look", yawDegrees: 180, timeoutMs: 1200 }],
-      }),
-    ).rejects.toThrow(/lookTimeoutTooSmall/);
+  test("a look asking for less time than its angle takes is raised, not refused", async () => {
+    // Refusing was right about the danger and wrong about the remedy: a look that runs out
+    // mid-turn cancels everything queued behind it, but the caller could not compute the minimum
+    // before being told it, and three play tests in one round spent a call finding out.
+    const { calls, byName } = toolsFor((call) =>
+      call.method === "game.pie.status" ? runningStatus() : { sequenceId: "seq-raise", status: "completed" },
+    );
+
+    const result = await run(byName.get("studiorpc_game_input_inject"), {
+      events: [{ type: "look", yawDegrees: 180, timeoutMs: 1200 }],
+    });
+
+    const sent = calls.find((call) => call.method === "game.input.inject")?.params?.events as Array<{
+      timeoutMs?: number;
+    }>;
+    expect(sent[0].timeoutMs).toBe(4000);
+    expect(result.output).toContain('"raisedLookTimeouts"');
+    expect(result.output).toContain('"from": 1200');
+    expect(result.output).toContain('"to": 4000');
+  });
+
+  test("a look with a big enough budget of its own keeps it, and says nothing", async () => {
+    const { calls, byName } = toolsFor((call) =>
+      call.method === "game.pie.status" ? runningStatus() : { sequenceId: "seq-keep", status: "completed" },
+    );
+
+    const result = await run(byName.get("studiorpc_game_input_inject"), {
+      events: [{ type: "look", yawDegrees: 90, timeoutMs: 4500 }],
+    });
+
+    const sent = calls.find((call) => call.method === "game.input.inject")?.params?.events as Array<{
+      timeoutMs?: number;
+    }>;
+    expect(sent[0].timeoutMs).toBe(4500);
+    expect(result.output).not.toContain('"raisedLookTimeouts"');
   });
 
   test("a blocked look at the end of a batch is an answer, not a failure", async () => {

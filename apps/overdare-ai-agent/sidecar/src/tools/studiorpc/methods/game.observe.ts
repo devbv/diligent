@@ -16,6 +16,10 @@ export const description =
   'Read `outcome`: "ok" means every section answered; "partial" means `failedSections` names the ones ' +
   "that did not. A failed section is still here, carrying its own `error` where its fields would be — " +
   'do not read a failed `ui` section as "this game has no UI". ' +
+  "A section you narrowed with `fields` carries `fieldsNotAnswered` when some of them came back under " +
+  "no element, so a field that is missing is visibly missing rather than looking empty. It does not " +
+  "say why — unsupported, unavailable and blank read alike from here — only that the read did not " +
+  "answer it. " +
   "A section's own fields sit directly on it — `character.CFrame`, `instances.instances` — beside its " +
   "`status`. When the character and instances are read together, each instance also carries " +
   "`distanceFromCharacter`, measured to its surface (the thing a character can reach), from the " +
@@ -320,6 +324,41 @@ function flattenSection(name: string, section: unknown): unknown {
   return flat;
 }
 
+/**
+ * Which of the fields the caller asked for came back under no element.
+ *
+ * A narrowed read that answers with fewer fields than it was given reads as "those are empty",
+ * and two play tests took it that way: one asked a HUD for `readable`, `contrast`, `occludedBy`
+ * and `occludedFraction` and got text, visibility, position and colour, with no way to tell
+ * whether the fields are unsupported, unavailable, or simply blank. This cannot tell those apart
+ * either — but it can say the read did not answer them, which is the part the reader was guessing.
+ *
+ * Names are matched without case, because the field a caller writes and the property Studio
+ * serializes differ in it often enough that flagging that would be noise, not news.
+ */
+function fieldsNotAnswered(section: unknown, requested: unknown): string[] | undefined {
+  if (!Array.isArray(requested) || requested.length === 0 || !isRecord(section)) return undefined;
+  const answered = new Set<string>();
+  let sawAnElement = false;
+  const collect = (value: unknown) => {
+    if (Array.isArray(value)) {
+      for (const entry of value) collect(entry);
+      return;
+    }
+    if (!isRecord(value)) return;
+    sawAnElement = true;
+    for (const key of Object.keys(value)) answered.add(key.toLowerCase());
+  };
+  for (const value of Object.values(section)) collect(value);
+  // Nothing came back at all, so every field is "missing" and saying so is noise. The section's
+  // own status and error already describe a read that did not happen.
+  if (!sawAnElement) return undefined;
+  const missing = requested.filter(
+    (name): name is string => typeof name === "string" && !answered.has(name.toLowerCase()),
+  );
+  return missing.length > 0 ? missing : undefined;
+}
+
 export function postProcess(result: unknown, args: Record<string, unknown> = {}): unknown {
   if (!isRecord(result)) return result;
   const shaped: Record<string, unknown> = isRecord(result.instances)
@@ -352,6 +391,17 @@ export function postProcess(result: unknown, args: Record<string, unknown> = {})
   const flat: Record<string, unknown> = { ...measured };
   for (const name of ["character", "ui", "instances"]) {
     if (name in flat) flat[name] = flattenSection(name, flat[name]);
+  }
+
+  // A narrowed read says what it could not answer, beside the section that could not answer it.
+  const uiFields = isRecord(args.ui) ? args.ui.fields : undefined;
+  const instanceFields = args.fields ?? (isRecord(args.instances) ? args.instances.fields : undefined);
+  for (const [name, requested] of [
+    ["ui", uiFields],
+    ["instances", instanceFields],
+  ] as const) {
+    const missing = fieldsNotAnswered(flat[name], requested);
+    if (missing && isRecord(flat[name])) flat[name] = { ...flat[name], fieldsNotAnswered: missing };
   }
   return flat;
 }

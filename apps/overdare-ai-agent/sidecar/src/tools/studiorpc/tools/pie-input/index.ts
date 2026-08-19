@@ -196,7 +196,7 @@ interface GameTimeScaleReadResult {
   timeScale?: number;
 }
 
-type MoveOutcome = "arrived" | "navigationGaveUp" | "stoppedShort" | "stillMoving";
+type MoveOutcome = "arrived" | "navigationGaveUp" | "stoppedShort" | "timedOut";
 
 /**
  * Which of the three arrival rules produced `arrived: true`.
@@ -217,8 +217,14 @@ type ArrivalReason = "standingOnTarget" | "atopTarget" | "withinRadius";
  * read it as a wall. One walked away believing a level was unwinnable and only found out
  * otherwise by holding W through the same spot; the other got it for a character that had walked
  * into lava and died. `navigationGaveUp` claims only what was observed.
+ *
+ * `stillMoving` was the fourth word and is gone with the route it described. A wait that ran out
+ * used to return while navigation kept walking: one play test pressed RESET and START and watched
+ * the character resume the abandoned route, which contaminated the next attempt and cost it a whole
+ * play session. The route is now cancelled when the wait ends, so the character is not still moving
+ * and the word for what happened is `timedOut`.
  */
-export function normalizeWaitedMoveStatus(outcome: MoveOutcome, rawStatus: string | undefined): string | undefined {
+export function normalizeWaitedMoveStatus(outcome: MoveOutcome): string {
   switch (outcome) {
     case "arrived":
       return "reached";
@@ -226,8 +232,8 @@ export function normalizeWaitedMoveStatus(outcome: MoveOutcome, rawStatus: strin
       return "navigationGaveUp";
     case "stoppedShort":
       return "stoppedShort";
-    case "stillMoving":
-      return rawStatus ?? "running";
+    case "timedOut":
+      return "cancelled";
   }
 }
 
@@ -548,7 +554,7 @@ function createInputInjectTool(callRpc: CallRpc): Tool {
       const events = normalizeEventShapes(args.events) as InputEvent[];
       // Studio has no press action, so expand before validating — the limits it
       // enforces apply to what actually reaches it, not to what was authored.
-      const { sent, origin } = expandWithOrigin(events);
+      const { sent, origin, raisedLooks } = expandWithOrigin(events);
       if (sent.length > MAX_EVENT_COUNT) {
         // Name the split point rather than the overage. playtest5 planned a whole victory
         // sequence, was told only that 84 was above 64, and had to work out by hand which of its
@@ -592,6 +598,10 @@ function createInputInjectTool(callRpc: CallRpc): Tool {
           ...result,
           ...(track ? { characterTrack: track } : {}),
           ...(result?.fellAtEvent === undefined ? {} : { fellAtEvent: toAuthored(result.fellAtEvent) }),
+          // Absent unless a look asked for less time than its angle takes. The batch ran with the
+          // larger number rather than being refused over it; this says which event and what it
+          // became, so the next batch can carry the right value itself.
+          ...(raisedLooks.length > 0 ? { raisedLookTimeouts: raisedLooks } : {}),
           clientId: target.clientId,
         }),
         render: buildInputInjectRender(target, events, undefined, sent.length),
@@ -767,7 +777,7 @@ const moveToDescription = [
     "navigation instead of steering it with key events. ",
   "Naming the target is the safer form: the tool reads where the thing actually is and measures to its " +
     "surface, where typed coordinates invite an invented height that aims at empty air above it. ",
-  "Read `outcome`: arrived, navigationGaveUp, stoppedShort, or stillMoving. It is the tool's own " +
+  "Read `outcome`: arrived, navigationGaveUp, stoppedShort, or timedOut. It is the tool's own " +
     "verdict, measured from where the character actually stopped, because Studio's raw " +
     "path-following word says `reached` even when it could not get there. " +
     "`navigationGaveUp` means navigation stopped without reaching the target and the character was " +
@@ -778,7 +788,12 @@ const moveToDescription = [
     "got this 3766 units short of an open route and nearly filed the game as unwinnable. " +
     "Whether the character died, respawned or was teleported on the way is a question for the " +
     "game's own log — add a print to the script that moves it and read Play.log; `characterTrack` " +
-    "shows the jump too. ",
+    "shows the jump too. " +
+    "`timedOut` means the wait ran out, and the route was cancelled before this reply so the " +
+    "character is not still walking somewhere nobody is watching: one play test pressed RESET and " +
+    "START and found its character resuming an abandoned route, which cost it the whole session. " +
+    "Raise `timeoutMs` and ask again. If `routeStillRunning` is present the cancel itself failed " +
+    "and the old route may still be going. ",
   "`arrivalReason` names the rule that decided `arrived`, and is the field to read before " +
     "believing the distance contradicts the verdict. `withinRadius` judged `distanceToTarget` " +
     "against `arrivedWithin` (" +
@@ -948,6 +963,9 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
       const walkedTrack: TrackSample[] = [...polled.track];
       let endedState = await readCharacterState(callRpc, target);
       let reaims = 0;
+      // Which request is actually walking. Re-aiming starts a new one, and cancelling the first
+      // would leave the last route running — the one thing this whole path exists to prevent.
+      let activeRequestId = requestId;
       while (
         reaims < MAX_MOVE_REAIMS &&
         Date.now() < deadlineAtMs &&
@@ -973,6 +991,7 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
         )) as MoveToResult;
         if (!again?.requestId) break;
         reaims += 1;
+        activeRequestId = again.requestId;
         polled = await pollMoveStatus(
           callRpc,
           target.pieSessionId,
@@ -983,6 +1002,27 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
         );
         walkedTrack.push(...polled.track);
         endedState = await readCharacterState(callRpc, target);
+      }
+      // The wait ran out with the route still going. Stop it before returning: a caller whose wait
+      // ended has stopped watching, and a route that keeps walking after that walks through
+      // whatever the next test is setting up. One play test pressed RESET and START and watched the
+      // character carry on to the abandoned destination, then had to restart the play session.
+      // Best effort — a cancel that fails leaves the reply honest about the timeout either way,
+      // which is worth more than failing the whole call over the cleanup.
+      let cancelled = false;
+      if (polled.timedOut) {
+        try {
+          await callRpc(
+            "game.character.moveCancel",
+            { pieSessionId: target.pieSessionId, requestId: activeRequestId },
+            { timeoutMs: MOVE_RPC_TIMEOUT_MS },
+          );
+          cancelled = true;
+          // Where it actually stopped, not where it was when the wait expired.
+          endedState = (await readCharacterState(callRpc, target)) ?? endedState;
+        } catch {
+          cancelled = false;
+        }
       }
       const status = polled.status ?? started?.status;
 
@@ -1067,6 +1107,10 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
       // A stall counts as finished: navigation has not given up, but the character
       // has stopped, and waiting out the budget would not learn anything more.
       const settled = isTerminalMoveStatus(status) || polled.stalled;
+      // A cancelled route has ended too — the character is standing still where the cancel caught
+      // it. That is enough to report a position and what is under its feet, and not enough to
+      // publish an arrival verdict: the move did not finish, it was stopped.
+      const ended = settled || cancelled;
       // Whatever the verdict above, a move that never set off is a fact the caller needs, and
       // it was the one thing the reply would not say. Measured on Glasshouse: asking twice for
       // a 560-wide bed answered `blocked`, `rawNavStatus: reached`, `movedDistance: 0` at 80.1
@@ -1101,13 +1145,13 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
       // anything it would have excused is already `arrived`.
       const gaveUp = settled && distanceToTarget !== undefined && !arrived && obstructed;
       const outcome: MoveOutcome = !settled
-        ? "stillMoving"
+        ? "timedOut"
         : arrived
           ? "arrived"
           : gaveUp
             ? "navigationGaveUp"
             : "stoppedShort";
-      const navStatus = normalizeWaitedMoveStatus(outcome, status);
+      const navStatus = normalizeWaitedMoveStatus(outcome);
       // The speed the walk actually achieved, from the route as walked. `walkSpeed` reports what
       // was asked of the character controller; a game that clamps movement in its own script wins
       // that argument without telling either field. Measured: both nominal fields said 500 while
@@ -1130,7 +1174,7 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
       return {
         output: jsonOutput({
           // The tool's own verdict, because navigation's raw word keeps saying `running` for a
-          // character that stopped dead. arrived / blocked / stoppedShort / stillMoving.
+          // character that stopped dead. arrived / navigationGaveUp / stoppedShort / timedOut.
           outcome,
           ...(settled ? { arrived } : {}),
           // Which rule said so. `standingOnTarget` and `atopTarget` both accept a character
@@ -1138,6 +1182,10 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
           // from the values beside it reads as a bug in the tool: four play tests stopped on
           // `arrived: true` next to 84.1 > 60. Naming the rule costs a string and is the whole fix.
           ...(arrivalReason ? { arrivalReason } : {}),
+          // A `timedOut` move has had its route cancelled, so this field is absent in the normal
+          // case and says the one thing worth interrupting the reader for: the cancel did not go
+          // through, and the character may still be walking to a destination nobody is watching.
+          ...(polled.timedOut && !cancelled ? { routeStillRunning: true } : {}),
           // `rawNavStatus` stood here: navigation's own last word, shipped whenever it disagreed
           // with the verdict. Disagreeing was the normal case, so what readers saw was a reply
           // contradicting itself — `arrived` beside `running`, five rounds calling it confusing
@@ -1157,7 +1205,7 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
           ...(startedNearTarget && args.target ? { alreadyAtTarget: args.target } : {}),
           ...(endedAt
             ? {
-                [settled ? "endedAt" : "at"]: endedAt,
+                [ended ? "endedAt" : "at"]: endedAt,
                 // One decimal, not an integer: 60.1 against a radius of 60 must not print as
                 // 60 outside 60 — a reply that contradicts its own numbers reads as broken.
                 distanceToTarget: Math.round((distanceToTarget ?? 0) * 10) / 10,
@@ -1168,7 +1216,7 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
             : {}),
           // What is under the character's feet where the move ended — null is falling, and a
           // move that ended falling did not really end here.
-          ...(settled && endedState !== undefined ? { standingOn: endedState.standingOnName ?? null } : {}),
+          ...(ended && endedState !== undefined ? { standingOn: endedState.standingOnName ?? null } : {}),
           // A move that navigation answered `reached` for without moving the character is it
           // declining to walk: it already counts this close as arrived, and asking for the same
           // point again will not make it move.

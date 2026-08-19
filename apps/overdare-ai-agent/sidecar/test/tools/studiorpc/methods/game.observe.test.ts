@@ -68,6 +68,38 @@ describe("game.observe reply shape", () => {
     const bare = { ui: { status: "ok", data: {} } };
     expect(postProcess(bare)).toEqual({ ui: { status: "ok" } });
   });
+
+  test("a narrowed read says which of the fields it was given came back under nothing", () => {
+    // newgame4 asked a HUD for readable, contrast, occludedBy and occludedFraction and got text,
+    // visibility, position and colour. Nothing said the other four had not been answered, so
+    // "absent" and "empty" looked the same and the reader had to guess which it was.
+    const reply = {
+      ui: {
+        status: "ok",
+        data: { elements: [{ path: "HUD.Tally", Text: "4", Visible: true, readable: true }] },
+      },
+    };
+    const out = postProcess(reply, { ui: { fields: ["Text", "readable", "contrast", "occludedFraction"] } }) as {
+      ui: { fieldsNotAnswered?: string[] };
+    };
+
+    // Matched without case: `Text` was asked for in that spelling and came back in it.
+    expect(out.ui.fieldsNotAnswered).toEqual(["contrast", "occludedFraction"]);
+  });
+
+  test("a read that answered everything it was asked for says nothing", () => {
+    const reply = { ui: { status: "ok", data: { elements: [{ path: "HUD.Tally", text: "4" }] } } };
+    const out = postProcess(reply, { ui: { fields: ["text"] } }) as { ui: Record<string, unknown> };
+    expect(out.ui.fieldsNotAnswered).toBeUndefined();
+  });
+
+  test("a section that came back with no elements is not accused of dropping every field", () => {
+    // The section's own status and error describe a read that did not happen. Listing all four
+    // fields as unanswered on top of that is noise dressed as a finding.
+    const reply = { ui: { status: "error", error: "no play test running", data: { elements: [] } } };
+    const out = postProcess(reply, { ui: { fields: ["text", "readable"] } }) as { ui: Record<string, unknown> };
+    expect(out.ui.fieldsNotAnswered).toBeUndefined();
+  });
 });
 
 describe("game.observe arguments", () => {
