@@ -351,10 +351,13 @@ export async function execute(args: Params, _ctx: ToolContext, host?: RuntimeToo
       const packs = data?.packs ?? [];
 
       if (args.selectable) {
-        if (rawAssets.length === 0) {
+        // The pack scan runs at a lower score floor than the visible results, so
+        // "0 results but a pack was detected" is reachable — the pack is then the
+        // only answer and must still reach the picker.
+        if (rawAssets.length === 0 && packs.length === 0) {
           return { output: "No results found.", metadata: { resultCount: 0 } };
         }
-        // A detected pack must reach the picker even with a single asset match —
+        // A detected pack must reach the picker even with zero or one asset match —
         // the pack option may be the better answer (e.g. "subway" matches one old
         // prop while the metro pack holds the real content).
         if (rawAssets.length === 1 && packs.length === 0) {
@@ -362,7 +365,7 @@ export async function execute(args: Params, _ctx: ToolContext, host?: RuntimeToo
         }
         // Audio/Animation/Effects/UI and Action-Sequence assets skip the picker
         // and auto-select the top-scored match.
-        if (shouldAutoSelect(rawAssets[0])) {
+        if (rawAssets.length > 0 && shouldAutoSelect(rawAssets[0])) {
           return autoSelectResult(rawAssets[0], rawAssets.length);
         }
         const selection = await selectAsset(host, args.query, rawAssets, packs);
