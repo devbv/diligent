@@ -13,7 +13,13 @@ import {
   totalWaitMs,
   validateBatch,
 } from "./events";
-import { buildInputInjectRender, buildMoveToRender, buildPieStatusRender, isTerminalMoveStatus } from "./render";
+import {
+  buildInputInjectRender,
+  buildMoveRouteRender,
+  buildMoveToRender,
+  buildPieStatusRender,
+  isTerminalMoveStatus,
+} from "./render";
 import { type CallRpc, type PieTarget, readPieStatus, resolvePieTarget } from "./target";
 
 const INJECT_OVERHEAD_MS = 15_000;
@@ -40,6 +46,7 @@ function wasMovedNotWalked(track: TrackSample[]): boolean {
 const TRACK_MOVE_THRESHOLD = 25;
 const TRACK_MAX_SAMPLES = 24;
 const MAX_MOVE_REAIMS = 40;
+const MAX_MOVE_WAYPOINTS = 32;
 
 const targetOverrides = {
   pieSessionId: z
@@ -54,12 +61,15 @@ const injectParams = z.object({
   ...targetOverrides,
 });
 
+const moveDestination = z.union([z.string().min(1), z.object({ x: z.number(), y: z.number(), z: z.number() })]);
+
 const moveToShape = {
   target: z
-    .union([z.string().min(1), z.object({ x: z.number(), y: z.number(), z: z.number() })])
+    .union([moveDestination, z.array(moveDestination).min(1).max(MAX_MOVE_WAYPOINTS)])
     .describe(
-      "Runtime name, dotted path, or OVERDARE world position. Named targets are measured to their surface. " +
-        "For a bare position, use ground-level y rather than an object's center height.",
+      "One runtime name, dotted path, or OVERDARE world position, or an array of up to 32 waypoints to walk " +
+        "in order. Named targets are measured to their surface. For a bare position, use ground-level y rather " +
+        "than an object's center height.",
     ),
   timeoutMs: z
     .number()
@@ -67,7 +77,10 @@ const moveToShape = {
     .min(1_000)
     .max(MOVE_WAIT_MAX_MS)
     .optional()
-    .describe(`How long to wait for the move to end. Defaults to ${MOVE_WAIT_DEFAULT_MS}ms.`),
+    .describe(
+      `How long to wait for the move to end. Defaults to ${MOVE_WAIT_DEFAULT_MS}ms. For a waypoint array, ` +
+        "this is the total route budget, not a new budget for each leg.",
+    ),
   speedMultiplier: z
     .number()
     .min(0.1)
@@ -82,16 +95,29 @@ const moveToShape = {
     .boolean()
     .optional()
     .describe(
-      "Teleport instead of walking. Use only to arrange state outside the behavior under test. Any active " +
-        "move is cancelled; landedAt reports the collision-adjusted destination.",
+      "Teleport to one target instead of walking. It cannot be combined with a target array. Use only to " +
+        "arrange state outside the behavior under test. Any active move is cancelled; landedAt reports the " +
+        "collision-adjusted destination.",
     ),
   ...targetOverrides,
 };
 
-const moveToParams = z.object(moveToShape).strict();
+const moveToParams = z
+  .object(moveToShape)
+  .strict()
+  .superRefine((value, ctx) => {
+    if (Array.isArray(value.target) && value.teleport) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["teleport"],
+        message: "teleport accepts one target; omit it to walk a waypoint array in order",
+      });
+    }
+  });
 
 type InjectParams = z.infer<typeof injectParams>;
 type MoveToParams = z.infer<typeof moveToParams>;
+type MoveDestination = z.infer<typeof moveDestination>;
 
 interface InjectResult {
   status?: string;
@@ -505,7 +531,9 @@ async function pollMoveStatus(
 }
 
 const moveToDescription = [
-  "Navigate the play-test character to a live instance or world position and wait for a measured result. ",
+  "Navigate the play-test character to one live instance or world position, or through a target array in order, " +
+    "and wait for measured results. A route stops at its first failed waypoint and reports completedWaypoints, " +
+    "failedWaypointIndex, and a compact result for every attempted leg. timeoutMs is one budget for the whole route. ",
   "Read `outcome`: arrived, navigationGaveUp, stoppedShort, or timedOut. navigationGaveUp says only that " +
     "navigation ended short; it does not prove collision or an unreachable level. timedOut cancels the " +
     "active route; routeStillRunning appears if cancellation could not be confirmed. ",
@@ -521,11 +549,119 @@ const moveToDescription = [
 ].join("");
 
 function createCharacterMoveToTool(callRpc: CallRpc): Tool {
-  return {
+  const tool: Tool = {
     name: "studiorpc_game_character_move_to",
     description: moveToDescription,
     parameters: moveToParams,
     async execute(args: MoveToParams, ctx): Promise<ToolResult> {
+      if (Array.isArray(args.target)) {
+        const routeTarget = await resolvePieTarget(withSignal(callRpc, ctx.signal), args);
+        const routeStartedAt = Date.now();
+        const routeTimeoutMs = args.timeoutMs ?? MOVE_WAIT_DEFAULT_MS;
+        const deadlineAt = routeStartedAt + routeTimeoutMs;
+        const waypointCount = args.target.length;
+        const waypoints: Array<Record<string, unknown>> = [];
+        const requestIds: string[] = [];
+        let completedWaypoints = 0;
+
+        const finishRoute = (outcome: string, failedWaypointIndex?: number): ToolResult => {
+          const waitedMs = Date.now() - routeStartedAt;
+          const last = waypoints[waypoints.length - 1];
+          const status =
+            outcome === "arrived" ||
+            outcome === "navigationGaveUp" ||
+            outcome === "stoppedShort" ||
+            outcome === "timedOut"
+              ? normalizeWaitedMoveStatus(outcome)
+              : outcome;
+          return {
+            output: jsonOutput({
+              outcome,
+              completedWaypoints,
+              waypointCount,
+              ...(failedWaypointIndex === undefined ? {} : { failedWaypointIndex }),
+              waypoints,
+              ...(last?.endedAt === undefined ? {} : { endedAt: last.endedAt }),
+              ...(last?.at === undefined ? {} : { at: last.at }),
+              ...(last?.standingOn === undefined ? {} : { standingOn: last.standingOn }),
+              clientId: routeTarget.clientId,
+            }),
+            render: buildMoveRouteRender(routeTarget, waypointCount, completedWaypoints, outcome, waitedMs),
+            metadata: {
+              tool: "studiorpc_game_character_move_to",
+              clientId: routeTarget.clientId,
+              requestIds,
+              status,
+              waitedMs,
+              completedWaypoints,
+              waypointCount,
+              ...(failedWaypointIndex === undefined ? {} : { failedWaypointIndex }),
+            },
+          };
+        };
+
+        for (let index = 0; index < args.target.length; index++) {
+          const remainingMs = deadlineAt - Date.now();
+          if (remainingMs < 1_000) return finishRoute("timedOut", index);
+          const requested = args.target[index] as MoveDestination;
+          try {
+            const leg = await tool.execute(
+              {
+                ...args,
+                target: requested,
+                pieSessionId: routeTarget.pieSessionId,
+                clientId: routeTarget.clientId,
+                timeoutMs: Math.max(1_000, Math.floor(remainingMs)),
+              } as never,
+              ctx,
+            );
+            const payload = JSON.parse(leg.output) as Record<string, unknown>;
+            const report: Record<string, unknown> = {
+              index,
+              requested,
+              outcome: payload.outcome ?? "unknown",
+            };
+            for (const field of [
+              "arrived",
+              "arrivalReason",
+              "target",
+              "endedAt",
+              "at",
+              "distanceToTarget",
+              "arrivedWithin",
+              "standingOn",
+              "standingOnTarget",
+              "alreadyAtTarget",
+              "didNotSetOff",
+              "declinedToWalk",
+              "routeStillRunning",
+            ]) {
+              if (payload[field] !== undefined) report[field] = payload[field];
+            }
+            const requestId = typeof leg.metadata?.requestId === "string" ? leg.metadata.requestId : undefined;
+            if (requestId) {
+              report.requestId = requestId;
+              requestIds.push(requestId);
+            }
+            waypoints.push(report);
+            if (payload.outcome !== "arrived") {
+              return finishRoute(typeof payload.outcome === "string" ? payload.outcome : "routeFailed", index);
+            }
+            completedWaypoints += 1;
+          } catch (error) {
+            if (ctx.signal.aborted) throw error;
+            waypoints.push({
+              index,
+              requested,
+              outcome: "routeFailed",
+              error: error instanceof Error ? error.message : String(error),
+            });
+            return finishRoute("routeFailed", index);
+          }
+        }
+        return finishRoute("arrived");
+      }
+
       const toolCallRpc = withSignal(callRpc, ctx.signal);
       const target = await resolvePieTarget(toolCallRpc, args);
       const wantedTarget = typeof args.target === "string" ? stripWorkspacePrefix(args.target) : undefined;
@@ -786,6 +922,7 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
       };
     },
   };
+  return tool;
 }
 export function createPieInputTools(callRpc: CallRpc = call): Tool[] {
   return [createPieStatusTool(callRpc), createInputInjectTool(callRpc), createCharacterMoveToTool(callRpc)];

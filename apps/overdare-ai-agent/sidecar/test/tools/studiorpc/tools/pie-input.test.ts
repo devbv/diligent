@@ -422,6 +422,89 @@ describe("play-test input tools", () => {
     expect(calls.filter((call) => call.method === "game.character.moveStatus")).toHaveLength(3);
     expect(result.metadata).toMatchObject({ requestId: "req-1", status: "navigationGaveUp" });
   });
+
+  test("move_to walks an array of waypoints in order in one tool call", async () => {
+    let currentX = 0;
+    let request = 0;
+    const { calls, byName } = toolsFor((call) => {
+      if (call.method === "game.pie.status") return runningStatus();
+      if (call.method === "game.character.moveTo") {
+        currentX = (call.params?.position as { x: number }).x;
+        request += 1;
+        return { requestId: `route-${request}`, status: "pendingStart" };
+      }
+      if (call.method === "game.character.read") {
+        return { character: { CFrame: { Position: { X: currentX, Y: 0, Z: 0 } } } };
+      }
+      return { requestId: `route-${request}`, status: "reached", clientId: "client-1" };
+    });
+
+    const result = await run(byName.get("studiorpc_game_character_move_to"), {
+      target: [
+        { x: 100, y: 0, z: 0 },
+        { x: 250, y: 0, z: 0 },
+        { x: 400, y: 0, z: 0 },
+      ],
+      timeoutMs: 10_000,
+    });
+
+    expect(
+      calls.filter((call) => call.method === "game.character.moveTo").map((call) => call.params?.position),
+    ).toEqual([
+      { x: 100, y: 0, z: 0 },
+      { x: 250, y: 0, z: 0 },
+      { x: 400, y: 0, z: 0 },
+    ]);
+    expect(JSON.parse(result.output)).toMatchObject({
+      outcome: "arrived",
+      completedWaypoints: 3,
+      waypointCount: 3,
+      waypoints: [
+        { index: 0, outcome: "arrived" },
+        { index: 1, outcome: "arrived" },
+        { index: 2, outcome: "arrived" },
+      ],
+    });
+    expect(result.metadata).toMatchObject({ status: "reached", completedWaypoints: 3, waypointCount: 3 });
+  });
+
+  test("move_to stops a waypoint route at the first failed leg", async () => {
+    let currentX = 0;
+    let request = 0;
+    const { calls, byName } = toolsFor((call) => {
+      if (call.method === "game.pie.status") return runningStatus();
+      if (call.method === "game.character.moveTo") {
+        request += 1;
+        if (request === 1) currentX = (call.params?.position as { x: number }).x;
+        return { requestId: `route-fail-${request}`, status: "pendingStart" };
+      }
+      if (call.method === "game.character.read") {
+        return { character: { CFrame: { Position: { X: currentX, Y: 0, Z: 0 } } } };
+      }
+      return { requestId: `route-fail-${request}`, status: "reached", clientId: "client-1" };
+    });
+
+    const result = await run(byName.get("studiorpc_game_character_move_to"), {
+      target: [
+        { x: 100, y: 0, z: 0 },
+        { x: 1_000, y: 0, z: 0 },
+        { x: 2_000, y: 0, z: 0 },
+      ],
+      timeoutMs: 10_000,
+    });
+
+    expect(calls.filter((call) => call.method === "game.character.moveTo")).toHaveLength(2);
+    expect(JSON.parse(result.output)).toMatchObject({
+      outcome: "navigationGaveUp",
+      completedWaypoints: 1,
+      waypointCount: 3,
+      failedWaypointIndex: 1,
+      waypoints: [
+        { index: 0, outcome: "arrived" },
+        { index: 1, outcome: "navigationGaveUp" },
+      ],
+    });
+  });
   test("a move that names a client measures that client, not the main one", async () => {
     const twoPlayers = runningStatus({
       clients: [
@@ -1068,6 +1151,22 @@ describe("play-test input tools", () => {
     expect(() => schema.parse({ target: { x: 100, y: 84, z: 300 } })).not.toThrow();
     expect(() => schema.parse({ target: "PressurePump", position: { x: 0, y: 0, z: 0 } })).toThrow();
     expect(() => schema.parse({ timeoutMs: 5000 })).toThrow();
+  });
+
+  test("move_to validates a bounded walking route in the target parameter", () => {
+    const { byName } = toolsFor((call) => (call.method === "game.pie.status" ? runningStatus() : {}));
+    const schema = byName.get("studiorpc_game_character_move_to")?.parameters as {
+      parse: (value: unknown) => unknown;
+    };
+    expect(() =>
+      schema.parse({
+        target: ["Gate", { x: 100, y: 0, z: 50 }],
+        timeoutMs: 60_000,
+      }),
+    ).not.toThrow();
+    expect(() => schema.parse({ target: [] })).toThrow();
+    expect(() => schema.parse({ target: Array.from({ length: 33 }, () => "Gate") })).toThrow();
+    expect(() => schema.parse({ target: ["Gate", "Exit"], teleport: true })).toThrow();
   });
 
   test("move_to reports a stopped route when its wait budget runs out", async () => {

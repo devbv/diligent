@@ -150,3 +150,33 @@ export function buildMoveToRender(
     ],
   };
 }
+
+export function buildMoveRouteRender(
+  target: PieTarget,
+  waypointCount: number,
+  completedWaypoints: number,
+  outcome: string,
+  waitedMs: number,
+): ToolRenderPayload {
+  const complete = completedWaypoints === waypointCount && outcome === "arrived";
+  return {
+    inputSummary: `moveTo route with ${waypointCount} waypoints`,
+    outputSummary: `${completedWaypoints}/${waypointCount} waypoints, ${outcome} after ${waitedMs}ms`,
+    blocks: [
+      {
+        type: "key_value",
+        title: "Character moveTo route",
+        items: [
+          { key: "clientId", value: target.clientId },
+          { key: "waypoints", value: `${completedWaypoints}/${waypointCount}` },
+          { key: "outcome", value: outcome },
+        ],
+      },
+      {
+        type: "summary",
+        text: complete ? "All waypoints reached in order." : `Route stopped after ${completedWaypoints} waypoints.`,
+        tone: complete ? "success" : "warning",
+      },
+    ],
+  };
+}
