@@ -1,41 +1,32 @@
-// @summary Reads a script's Source property from .ovdrjm with line numbers.
+// @summary Reads a script's Source through the Studio instance.read RPC, with line numbers.
 
-import { resolveApiVersion } from "../config";
-import * as scriptRead from "../methods/script.read";
-import { buildScriptReadRender } from "../render";
-import type { Tool, ToolResult } from "../types";
-import { findNodeByActorGuid, readOvdrjmRoot } from "./ovdrjm-utils";
-import { readScriptViaRpc } from "./v2/script-read";
+import type * as scriptRead from "../../methods/script.read";
+import { buildScriptReadRender } from "../../render";
+import type { ToolResult } from "../../types";
+import { DEPTH_SELF, readInstanceNode } from "./client";
+import { instanceTypeOf, SCRIPT_CLASSES } from "./scripts";
 
-const SCRIPT_CLASSES = new Set(["Script", "LocalScript", "ModuleScript"]);
+type ScriptReadArgs = ReturnType<typeof scriptRead.params.parse>;
+
 const DEFAULT_LIMIT = 2000;
-
-function toToolName(method: string): string {
-  return `studiorpc_${method.replace(/\./g, "_")}`;
-}
 
 function formatLineNumber(lineNum: number, maxLineNum: number): string {
   const width = String(maxLineNum).length;
   return `${String(lineNum).padStart(width)}\t`;
 }
 
-async function executeScriptRead(args: Record<string, unknown>, cwd: string): Promise<ToolResult> {
-  const parsed = scriptRead.params.parse(args);
-  if (resolveApiVersion() === "v2") return await readScriptViaRpc(parsed);
+export async function readScriptViaRpc(parsed: ScriptReadArgs): Promise<ToolResult> {
   const { targetGuid, offset, limit } = parsed;
 
-  // --- Read .ovdrjm ---
   let source: string;
   let scriptName: string;
   try {
-    const { root } = readOvdrjmRoot(cwd);
-
-    const target = findNodeByActorGuid(root, targetGuid);
+    const target = await readInstanceNode(targetGuid, DEPTH_SELF);
     if (!target) {
       return { output: `Error: ActorGuid not found: ${targetGuid}`, metadata: { error: true } };
     }
 
-    const instanceType = typeof target.InstanceType === "string" ? target.InstanceType : undefined;
+    const instanceType = instanceTypeOf(target);
     if (!instanceType || !SCRIPT_CLASSES.has(instanceType)) {
       return {
         output:
@@ -54,14 +45,12 @@ async function executeScriptRead(args: Record<string, unknown>, cwd: string): Pr
     };
   }
 
-  // --- Apply offset/limit ---
   const allLines = source.split("\n");
   const startLine = offset ? offset - 1 : 0;
   const maxLines = limit ?? DEFAULT_LIMIT;
   const selectedLines = allLines.slice(startLine, startLine + maxLines);
   const totalLines = allLines.length;
 
-  // --- Format with line numbers ---
   const maxLineNum = startLine + selectedLines.length;
   const numbered = selectedLines.map((line, i) => formatLineNumber(startLine + i + 1, maxLineNum) + line);
 
@@ -82,16 +71,5 @@ async function executeScriptRead(args: Record<string, unknown>, cwd: string): Pr
       limit: maxLines,
     }),
     metadata: { method: "script.read", targetGuid, totalLines, linesReturned: selectedLines.length },
-  };
-}
-
-export function createScriptReadTool(cwd: string): Tool {
-  return {
-    name: toToolName(scriptRead.method),
-    description: scriptRead.description,
-    parameters: scriptRead.params,
-    async execute(args) {
-      return executeScriptRead(args, cwd);
-    },
   };
 }
