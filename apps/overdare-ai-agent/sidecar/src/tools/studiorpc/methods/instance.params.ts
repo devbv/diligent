@@ -987,16 +987,22 @@ const rawInstancePropertiesUnion = z.union([
     .describe("Use when class=ProximityPrompt. Nearby interaction prompt triggered when a player approaches."),
   z
     .object({
-      ApplyStrokeMode: z.enum(["Contextual", "Border"]).optional(),
-      BorderOffset: udim.describe("Stroke offset from the border (UDim)").optional(),
-      BorderStrokePosition: z.enum(["Inner", "Center", "Outer"]).optional(),
+      ApplyStrokeMode: z
+        .enum(["Contextual", "Border"])
+        .describe("Contextual is only valid on text elements (TextLabel/TextButton); use Border otherwise")
+        .optional(),
+      BorderOffset: udim.describe("Stroke offset from the border (UDim); Border mode only").optional(),
+      BorderStrokePosition: z.enum(["Inner", "Center", "Outer"]).describe("Border mode only").optional(),
       Color: rgb.optional(),
       Enabled: z.boolean().default(true),
       LineJoinMode: z.enum(["Round", "Bevel", "Miter"]).optional(),
       StrokeSizingMode: z.enum(["FixedSize", "ScaledSize"]).optional(),
       Thickness: z.number().default(1),
       Transparency: z.number().describe("(0~1)").optional(),
-      ZIndex: z.number().optional(),
+      ZIndex: z
+        .number()
+        .describe("Display priority vs other overlapping UIStrokes (not general GUI ZIndex); Border mode only")
+        .optional(),
     })
     .strict()
     .describe(
