@@ -477,8 +477,9 @@ export function buildHubTokenReadRender(result: unknown, output: string): ToolRe
 export function buildLevelPublishRender(
   _result: unknown,
   args: Record<string, unknown>,
-  output: string,
+  _output: string,
 ): ToolRenderPayload {
+  const skipCreatorHubLaunch = args.skipCreatorHubLaunch === true;
   const worldName = readString(args.worldName);
   const description = readString(args.description);
   const categories = Array.isArray(args.category)
@@ -496,12 +497,14 @@ export function buildLevelPublishRender(
 
   return {
     inputSummary: clip(worldName ? `publish ${worldName}` : "publish world"),
-    outputSummary: summarizeText(output, "Publish requested. Approve in browser to finalize."),
+    outputSummary: "Publish result ready.",
     blocks: [
       ...(items.length > 0 ? [{ type: "key_value" as const, title: "Level publish", items }] : []),
       {
         type: "summary",
-        text: firstLine(output, "Studio is opening the web approval page — finalize publish there."),
+        text: skipCreatorHubLaunch
+          ? "Studio returned a publish result without opening Creator Hub."
+          : "Studio returned a publish result and opened Creator Hub for approval.",
         tone: "success",
       },
     ],
