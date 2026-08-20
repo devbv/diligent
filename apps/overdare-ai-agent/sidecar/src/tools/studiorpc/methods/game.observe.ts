@@ -79,21 +79,23 @@ export const params = z
       .optional()
       .describe("Include the targeted character's pose, velocity, facing, and standingOn state."),
     ui: z
-      .union([z.literal(true), uiSection])
+      .union([z.boolean(), uiSection])
       .optional()
       .describe(
         "Include UI text, normalized rects, visibility, contrast, and occlusion. Pass true or narrow with " +
-          "paths/fields. `readable` covers contrast against the element's own opaque background; null means " +
-          "the background is transparent and must be judged from a screenshot. Occlusion is reported " +
-          "separately and does not detect the element clipping its own text.",
+          "paths/fields; omit it to skip UI. false is accepted as omission for conditional calls. `readable` " +
+          "covers contrast against the element's own opaque background; null means the background is " +
+          "transparent and must be judged from a screenshot. Occlusion is reported separately and does not " +
+          "detect the element clipping its own text.",
       ),
     instances: z
-      .union([z.literal(true), z.array(z.string().min(1)).min(1).max(64), instancesSection])
+      .union([z.boolean(), z.array(z.string().min(1)).min(1).max(64), instancesSection])
       .optional()
       .describe(
         "Include script-mutated live instance state. true lists the top level; an array or `targets` reads " +
-          "names/paths independently; `{namePattern, class, under, maxDepth}` searches. Use either naming " +
-          "or searching. Missing targets keep the successful entries and receive name suggestions.",
+          "names/paths independently; `{namePattern, class, under, maxDepth}` searches. Omit it to skip " +
+          "instances; false is accepted as omission for conditional calls. Use either naming or searching. " +
+          "Missing targets keep the successful entries and receive name suggestions.",
       ),
     fields: z.array(z.string().min(1)).optional().describe("Per-instance fields to keep for any instances shape."),
   })
@@ -125,7 +127,14 @@ function withoutEnginePlumbing(entry: unknown): unknown {
 }
 
 export function normalizeArgs(args: Record<string, unknown>): Record<string, unknown> {
-  const shaped = args.instances === true ? { ...args, instances: {} } : args;
+  const withoutDisabledSections = { ...args };
+  for (const section of ["character", "ui", "instances"]) {
+    if (withoutDisabledSections[section] === false) delete withoutDisabledSections[section];
+  }
+  const shaped =
+    withoutDisabledSections.instances === true
+      ? { ...withoutDisabledSections, instances: {} }
+      : withoutDisabledSections;
   const { instances, fields } = shaped;
   if (!Array.isArray(fields) || Array.isArray(instances) || !isRecord(instances)) {
     return isRecord(instances) && !Array.isArray(instances)

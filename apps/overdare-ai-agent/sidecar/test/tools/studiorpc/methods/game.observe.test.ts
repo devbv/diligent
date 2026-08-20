@@ -123,6 +123,14 @@ describe("game.observe arguments", () => {
     expect(() => params.parse({ ui: { textContains: "BLIGHTED" } })).toThrow();
   });
 
+  test("false section toggles are treated exactly like omitted sections", () => {
+    const args = { character: true, ui: false, instances: ["Gate"] };
+    expect(() => params.parse(args)).not.toThrow();
+    expect(() => params.parse({ character: false, ui: false, instances: false })).not.toThrow();
+    expect(normalizeArgs(args)).toEqual({ character: true, instances: ["Gate"] });
+    expect(normalizeArgs({ character: false, ui: false, instances: false })).toEqual({});
+  });
+
   test("unknown keys are rejected rather than silently ignored", () => {
     expect(() => params.parse({ screenshot: true })).toThrow();
   });
