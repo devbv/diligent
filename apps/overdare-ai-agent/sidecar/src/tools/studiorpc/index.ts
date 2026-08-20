@@ -150,6 +150,10 @@ function withApproval(ctx: CoreToolContext, host?: RuntimeToolHost): StudioRpcTo
   };
 }
 
+function withSignal(callRpc: typeof call, signal: AbortSignal): typeof call {
+  return (method, params, options = {}) => callRpc(method, params, { ...options, signal });
+}
+
 export async function createStudioRpcTools(ctx: {
   cwd: string;
   host?: RuntimeToolHost;
@@ -209,10 +213,10 @@ export async function createStudioRpcTools(ctx: {
 
   const tools: Tool[] = [
     wrapTool(createInstanceReadTool(ctx.cwd), ctx.host),
-    wrapTool(withSnapshot(createInstanceUpsertTool(ctx.cwd, writeLock)), ctx.host),
+    wrapTool(withSnapshot(createInstanceUpsertTool(ctx.cwd, writeLock, applyLevelChanges)), ctx.host),
     wrapTool(withSnapshot(createProceduralRunTool(ctx.cwd, writeLock)), ctx.host),
     wrapTool(withSnapshot(createInstanceDeleteTool(ctx.cwd, writeLock)), ctx.host),
-    wrapTool(withSnapshot(createInstanceMoveTool(ctx.cwd, writeLock)), ctx.host),
+    wrapTool(withSnapshot(createInstanceMoveTool(ctx.cwd, writeLock, applyLevelChanges)), ctx.host),
     wrapTool(createScriptReadTool(ctx.cwd), ctx.host),
     wrapTool(createScriptGrepTool(ctx.cwd), ctx.host),
     wrapTool(withSnapshot(createScriptAddTool(ctx.cwd, writeLock)), ctx.host),
@@ -248,6 +252,7 @@ export async function createStudioRpcTools(ctx: {
       async execute(args, toolCtx) {
         const warning = capturesBeforeRun ? ensureSnapshot() : undefined;
         const bundledToolCtx = withApproval(toolCtx, ctx.host);
+        const toolCallRpc = withSignal(callRpc, toolCtx.signal);
         const rpcMethod = mod.resolveMethod ? mod.resolveMethod(args as Record<string, unknown>) : method;
 
         const approval = await bundledToolCtx.approve({
@@ -268,23 +273,23 @@ export async function createStudioRpcTools(ctx: {
         const release = isMutating ? await writeLock.acquire() : undefined;
         try {
           try {
-            if (mod.preCall) await mod.preCall(args as Record<string, unknown>, callRpc);
+            if (mod.preCall) await mod.preCall(args as Record<string, unknown>, toolCallRpc);
             const normalizedArgs = mod.normalizeArgs
               ? mod.normalizeArgs(args as Record<string, unknown>)
               : (args as Record<string, unknown>);
             let result: unknown;
             try {
-              result = await callRpc(rpcMethod, normalizedArgs, { timeoutMs: mod.timeoutMs });
+              result = await toolCallRpc(rpcMethod, normalizedArgs, { timeoutMs: mod.timeoutMs });
             } catch (rpcError) {
               if (!mod.recover) throw rpcError;
-              result = await mod.recover(rpcError, args as Record<string, unknown>, callRpc);
+              result = await mod.recover(rpcError, args as Record<string, unknown>, toolCallRpc);
             }
             if (mod.postProcess) {
-              result = await mod.postProcess(result, args as Record<string, unknown>, callRpc);
+              result = await mod.postProcess(result, args as Record<string, unknown>, toolCallRpc);
             }
             // Persist editor-state changes to file immediately on success.
             if (savingMethods.has(method)) {
-              await callRpc("level.save.file", {});
+              await toolCallRpc("level.save.file", {});
             }
             const output = typeof result === "string" ? result : JSON.stringify(result, null, 2);
             const renderBuilder = renderBuilders[toolName];

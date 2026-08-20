@@ -4,7 +4,6 @@ import type { ToolRenderPayload } from "../../types";
 import type { InputEvent } from "./events";
 import type { PieStatusSnapshot, PieTarget } from "./target";
 
-/** moveTo statuses Studio never leaves; anything else is still in flight. */
 const TERMINAL_MOVE_STATUSES = new Set([
   "reached",
   "interrupted",
@@ -29,8 +28,11 @@ function describeUntil(until: NonNullable<Extract<InputEvent, { type: "wait" }>[
   if ("log" in until) return `log "${until.log}"`;
   if ("ui" in until) {
     if (until.textEquals !== undefined) return `${until.ui} = "${until.textEquals}"`;
-    return `${until.ui} ~ "${until.textContains}"`;
+    if (until.textContains !== undefined) return `${until.ui} ~ "${until.textContains}"`;
+    if (until.onScreen !== undefined) return `${until.ui} onScreen = ${until.onScreen}`;
+    return `${until.ui} visible = ${until.visible}`;
   }
+  if ("exists" in until) return `${until.instance} exists = ${until.exists}`;
   const value = until.equals ?? until.atLeast ?? until.atMost;
   const operator = until.equals !== undefined ? "=" : until.atLeast !== undefined ? "≥" : "≤";
   return `${until.instance}.${until.property} ${operator} ${value}`;
@@ -55,13 +57,9 @@ export function describeEvent(event: InputEvent): string {
     case "scroll":
       return `scroll ${event.delta > 0 ? "+" : ""}${event.delta}`;
     case "wait":
-      // A conditional wait usually ends long before its timeout, so printing the timeout as
-      // a duration would read as time the batch actually spent.
       return event.until === undefined ? `wait ${event.durationMs}ms` : `wait for ${describeUntil(event.until)}`;
   }
 }
-
-/** One-line event summary; long batches keep the head and a remainder count. */
 export function describeEvents(events: InputEvent[], maxParts = 4): string {
   const parts = events.slice(0, maxParts).map(describeEvent);
   const rest = events.length - parts.length;
@@ -106,7 +104,6 @@ export function buildInputInjectRender(
   target: PieTarget,
   events: InputEvent[],
   appliedEventCount: number | undefined,
-  // Studio counts the expanded batch, so a press authored as one event applies as three.
   sentEventCount: number = events.length,
 ): ToolRenderPayload {
   const summary = describeEvents(events);

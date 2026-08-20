@@ -42,13 +42,6 @@ function describeClients(clients: PieClientSnapshot[]): string {
   if (clients.length === 0) return "no PIE clients are registered";
   return clients.map((client) => `${client.clientId} (injectable=${client.injectable})`).join("; ");
 }
-
-/**
- * Resolve the session and client to inject into. Both ids are optional so the
- * model can send input without a preceding status call; explicit ids win, and
- * are validated against the live snapshot so a stale id fails here with a
- * readable message instead of as a Studio error code.
- */
 export async function resolvePieTarget(callRpc: CallRpc, overrides: PieTargetOverrides = {}): Promise<PieTarget> {
   const status = await readPieStatus(callRpc);
 

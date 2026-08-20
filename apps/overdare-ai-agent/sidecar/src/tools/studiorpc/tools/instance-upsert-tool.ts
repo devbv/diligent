@@ -3,7 +3,7 @@
 import * as instanceUpsert from "../methods/instance.upsert";
 import { collectUiDiagnostics } from "../methods/instance.upsert";
 import { buildInstanceUpsertRender } from "../render";
-import { applyLevelChanges } from "../rpc";
+import { applyLevelChanges as applyLevelChangesDefault } from "../rpc";
 import type { Tool, ToolContext, ToolResult } from "../types";
 import type { WriteLock } from "../write-lock";
 import {
@@ -24,6 +24,7 @@ async function executeInstanceUpsert(
   ctx: ToolContext,
   cwd: string,
   writeLock: WriteLock,
+  applyLevelChanges: () => Promise<unknown>,
 ): Promise<ToolResult> {
   const toolName = "studiorpc_instance_upsert";
   const parsedArgs = instanceUpsert.parseArgs(args);
@@ -43,7 +44,7 @@ async function executeInstanceUpsert(
 
   const release = await writeLock.acquire();
   try {
-    return await executeInstanceUpsertInner(parsedArgs, cwd);
+    return await executeInstanceUpsertInner(parsedArgs, cwd, { applyLevelChanges });
   } finally {
     release();
   }
@@ -52,7 +53,7 @@ async function executeInstanceUpsert(
 export async function executeInstanceUpsertInner(
   parsedArgs: ReturnType<typeof instanceUpsert.parseArgs>,
   cwd: string,
-  options: { applyAndSaveChanges?: boolean } = {},
+  options: { applyAndSaveChanges?: boolean; applyLevelChanges?: () => Promise<unknown> } = {},
 ): Promise<ToolResult> {
   let ovdrjmRoot: OvdrjmNode | undefined;
   const applyAndSaveChanges = options.applyAndSaveChanges ?? true;
@@ -94,7 +95,7 @@ export async function executeInstanceUpsertInner(
   }
 
   if (applyAndSaveChanges) {
-    await applyLevelChanges();
+    await (options.applyLevelChanges ?? applyLevelChangesDefault)();
   }
   const diag = ovdrjmRoot ? collectUiDiagnostics(ovdrjmRoot) : { warnings: [], info: [] };
   diag.info.push(...fileResult.mobilityInfo);
@@ -134,14 +135,18 @@ export async function executeInstanceUpsertInner(
   };
 }
 
-export function createInstanceUpsertTool(cwd: string, writeLock: WriteLock): Tool {
+export function createInstanceUpsertTool(
+  cwd: string,
+  writeLock: WriteLock,
+  applyLevelChanges: () => Promise<unknown> = applyLevelChangesDefault,
+): Tool {
   return {
     name: toToolName(instanceUpsert.method),
     description: instanceUpsert.description,
     parameters: instanceUpsert.params,
     parseArgs: (raw) => instanceUpsert.parseArgs(raw as Record<string, unknown>),
     async execute(args, ctx) {
-      return executeInstanceUpsert(args, ctx, cwd, writeLock);
+      return executeInstanceUpsert(args, ctx, cwd, writeLock, applyLevelChanges);
     },
   };
 }

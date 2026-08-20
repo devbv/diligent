@@ -27,16 +27,12 @@ describe("game.play restart", () => {
     expect(calls).toEqual([]);
   });
 
-  test("restarting from a stopped session starts it, rather than failing to stop it", async () => {
-    // Studio refuses game.stop when nothing is running. Raising that would make `restart: true`
-    // fail from exactly the state the caller cannot distinguish — which is why the flag exists:
-    // a caller that knew a play test was up would have called game.stop itself.
-    const calls: string[] = [];
-    await preCall({ restart: true }, async (method) => {
-      calls.push(method);
-      throw new Error("Studio RPC error [-32130]: No play test is running.");
-    });
-    expect(calls).toEqual(["game.stop"]);
+  test("does not start when the required stop could not be confirmed", async () => {
+    await expect(
+      preCall({ restart: true }, async () => {
+        throw new Error("Studio RPC connection failed");
+      }),
+    ).rejects.toThrow("connection failed");
   });
 
   test("restart never reaches Studio, which does not know the flag", () => {

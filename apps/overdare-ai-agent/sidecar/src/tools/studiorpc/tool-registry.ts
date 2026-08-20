@@ -47,31 +47,9 @@ type MethodModule = {
   timeoutMs?: number;
   resolveMethod?: (args: Record<string, unknown>) => string;
   normalizeArgs?: (args: Record<string, unknown>) => Record<string, unknown>;
-  /**
-   * Run something before the RPC, for a method whose ordinary case is really two calls in a fixed
-   * order. It sees the arguments as the caller wrote them, before normalizeArgs strips whatever
-   * Studio does not know about.
-   */
   preCall?: (args: Record<string, unknown>, callRpc: CallRpc) => Promise<void>;
-  /**
-   * Shape the answer after Studio returns it. It gets callRpc because some of what the caller
-   * asked for is answerable only by asking Studio something else — resolving an instance name to
-   * a position, for one — and making the caller do that round trip is the friction this removes.
-   */
   postProcess?: (result: unknown, args: Record<string, unknown>, callRpc: CallRpc) => unknown | Promise<unknown>;
-  /**
-   * Turn a Studio error into an answer, where the failure is itself information the
-   * caller asked for. Looking up a name that is not there is the case: absence is
-   * the result of the question, and raising it makes every existence check an error
-   * path. Return a replacement result, or rethrow to keep the error.
-   */
   recover?: (error: unknown, args: Record<string, unknown>, callRpc: CallRpc) => Promise<unknown>;
-  /**
-   * Images to hand back with the answer. A tool that produces a picture and reports only where it
-   * put it makes the caller fetch it: measured across 294 captures, 274 were followed within three
-   * calls by reading the file back. The catalog downscales whatever comes out of here, so a tool
-   * returns the picture at whatever size it has.
-   */
   attachImages?: (result: unknown, args: Record<string, unknown>) => Promise<ImageBlock[] | undefined>;
 };
 
@@ -93,30 +71,16 @@ export const methodModules: MethodModule[] = [
   gameStop,
   gameScreenshot,
   gameCharacterRead,
-  // game.instance.read and game.ui.browse are not tools of their own any more, only sections of
-  // game.observe — which is literally their handlers, wrapped. Measured across six full runs:
-  // 64 observe calls, 6 ui_browse, 3 instance_read — and all three of those instance_read calls
-  // carried `target` and `namePattern` and `class` and `under` together, the two-questions bug,
-  // while observe's instances section never did it once because it offers no `target`. A third
-  // name for the same handler bought nothing and cost that.
   gameObserve,
   viewportCameraRead,
   viewportCameraSet,
   hubTokenRead,
 ];
-
-/** Methods that mutate the level and should be serialized with the write lock. */
 export const mutatingMethods = new Set([
   assetDrawerImport.method,
   assetManagerImageImport.method,
   actionSequencerApplyJson.method,
 ]);
-
-/**
- * Methods that change the live editor state and should immediately flush it to
- * file (level.save.file) once they succeed, so the change is persisted without
- * waiting for the turn-boundary save hook.
- */
 export const savingMethods = new Set([assetDrawerImport.method, assetManagerImageImport.method]);
 
 export const renderBuilders: Record<string, RenderBuilder> = {
