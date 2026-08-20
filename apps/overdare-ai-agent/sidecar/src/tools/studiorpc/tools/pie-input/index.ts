@@ -113,11 +113,14 @@ const moveToShape = {
         "Only for crossing ground you have already judged: a long empty run to the far side of the map " +
         "inside a timer that is spending itself while you walk. Arriving early is still arriving at a " +
         "different moment than a player would, so whatever the game times, spawns or sweeps on arrival " +
-        "meets you in a state it would not have. Leave it out to walk at the speed a player has, which is the only " +
-        "speed a claim about the game holds at. The reply says baseWalkSpeed and walkSpeed so the change " +
-        "is on the record; the speed is put back when the move ends, however it ends. A game that clamps " +
+        "meets you in a state it would not have. Leave it out — do not send 1, which says the same thing " +
+        "and puts three speed fields in the reply that a walk at normal speed has no use for. Walking at " +
+        "the speed a player has is the only speed a claim about the game holds at. " +
+        "The reply says walkSpeed and measuredSpeed so the change is on the record; the speed is put back " +
+        "when the move ends, however it ends. A game that clamps " +
         "its own movement wins over this — playtest11 held its character to 70 units a second in its own " +
-        "Heartbeat and no multiplier would have moved it.",
+        "Heartbeat and no multiplier would have moved it, which is what measuredSpeed shows and walkSpeed " +
+        "does not.",
     ),
   teleport: z
     .boolean()
@@ -130,7 +133,12 @@ const moveToShape = {
         "map you have already crossed once, the ledge whose approach is not today's question — and " +
         "walk the part you are. The reply says teleported and landedAt; landedAt can " +
         "differ from what you asked for, because a blocked destination is nudged to somewhere the " +
-        "character can stand. Any move already running is cancelled first.",
+        "character can stand. It is where the engine put the character at that instant, while " +
+        "`standingOn` in the same reply is read a moment later — so a game that moves the character " +
+        "on arrival makes the two disagree, and the disagreement is a fact about the game rather " +
+        "than a broken reply. One play test teleported into empty space, got landedAt at y -300 " +
+        'beside standingOn "SpawnLocation", and the answer was the game\'s own fall handler. ' +
+        "Any move already running is cancelled first.",
     ),
   ...targetOverrides,
 };
@@ -816,7 +824,11 @@ const moveToDescription = [
     "answered from it, not from separate fields. `reaimed` counts how many times navigation quit " +
     "mid-walk and was set off again at the same target, which a game that clamps movement speed in " +
     "its own script routinely causes. ",
-  "`didNotSetOff` means the character never moved at all; with `declinedToWalk` true, navigation " +
+  "`didNotSetOff` is measured from where the move began to where it ended, so it means the character " +
+    "finished where it started — not that it never set off. A walk that went out and was put back " +
+    "reads the same, and one play test got it for a character its game's sweeper had returned to a " +
+    "checkpoint mid-route. Read `characterTrack` before believing nothing happened. " +
+    "With `declinedToWalk` true, navigation " +
     "answered `reached` without walking because it already counts that distance as close enough — " +
     "asking for the same point again will not make it move. ",
   "The call waits for the move to finish, so the reply describes where the character ended up rather " +

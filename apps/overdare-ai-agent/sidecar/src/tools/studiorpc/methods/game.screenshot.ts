@@ -64,7 +64,7 @@ export const description =
   "The camera block also reports axes — the view's forward/right/up as world vectors, plus groundRight and " +
   "groundForward flattened onto the horizontal plane. Those are what convert an instruction given against " +
   "the screen into an edit: position + groundRight * distance moves a part rightwards from where the user " +
-  "is looking. Project it again afterwards and check the pixel moved the way you intended, because an " +
+  "is looking. Project it again afterwards and check `normalized` moved the way you intended, because an " +
   "inverted right vector moves everything the wrong way and looks perfectly correct in the numbers.";
 
 const worldPoint = z.object({

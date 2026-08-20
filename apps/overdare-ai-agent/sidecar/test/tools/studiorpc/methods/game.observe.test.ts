@@ -93,6 +93,19 @@ describe("game.observe reply shape", () => {
     expect(out.ui.fieldsNotAnswered).toBeUndefined();
   });
 
+  test("a field answered with null counts as answered", () => {
+    // Studio sends null for a contrast it cannot measure -- a see-through background leaves the
+    // text sitting on the game behind it, which changes every frame. That is an answer, and
+    // reporting it as unanswered would send the reader looking for a tool that does not exist.
+    const reply = {
+      ui: { status: "ok", data: { elements: [{ path: "HUD.Tally", text: "4", contrast: null, readable: null }] } },
+    };
+    const out = postProcess(reply, { ui: { fields: ["text", "contrast", "readable"] } }) as {
+      ui: Record<string, unknown>;
+    };
+    expect(out.ui.fieldsNotAnswered).toBeUndefined();
+  });
+
   test("a section that came back with no elements is not accused of dropping every field", () => {
     // The section's own status and error describe a read that did not happen. Listing all four
     // fields as unanswered on top of that is noise dressed as a finding.

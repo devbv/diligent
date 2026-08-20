@@ -132,7 +132,18 @@ export const params = z
           "`position` takes, so seeing a control and clicking it is one call and then one call. " +
           "`readable` is a contrast verdict against the element's OWN background and nothing else: a label " +
           "can be visible, onScreen and readable at contrast 13 and still unreadable because a button sits " +
-          "on top of it, which is what `occludedBy` and `occludedFraction` are for.",
+          "on top of it, which is what `occludedBy` and `occludedFraction` are for. " +
+          "`occludedBy` is `[]` and `occludedFraction` is 0 when nothing covers the element — a value, not " +
+          "an absence, so it never reads as the tool declining to answer. Both are absent only where the " +
+          "verdict has no meaning: an element with no text, or one that is not on screen. Ask for " +
+          "`onScreen` alongside them if you narrow with `fields`, or the reason for the absence is not " +
+          "in the reply you get. " +
+          "`readable` and `contrast` come back null when the element's background is see-through: what the " +
+          "text sits on is then the game behind it, which changes every frame, so there is nothing to " +
+          "measure against. Null means unmeasurable here, not unreadable — most HUD labels have no " +
+          "background, and a screenshot is what answers it. " +
+          "None of the three describe whether the rendered text is clipped by its own bounds; the value " +
+          "you get is the full string whether or not the player can see all of it.",
       ),
     instances: z
       .union([z.literal(true), z.array(z.string().min(1)).min(1), instancesSection])

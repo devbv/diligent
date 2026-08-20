@@ -58,8 +58,8 @@ export function withCameraAxes(result: unknown): unknown {
           "onto the horizontal plane, which is what a level edit means by right and forward: newPosition = " +
           "position + groundRight * distance moves a thing rightwards on screen without sinking it into the " +
           "floor. Scale distance to the object's own Size. Both ground vectors are null looking straight " +
-          "down, where no heading exists. Call locate again after the move: the pixel must travel the way " +
-          "you meant, and that is the only check that catches a sign error.",
+          "down, where no heading exists. Call locate again after the move and read `normalized`: the " +
+          "point must travel the way you meant, and that is the only check that catches a sign error.",
       },
     },
   };
