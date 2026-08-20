@@ -103,9 +103,12 @@ describe("overdaresearch pack detection", () => {
     const result = await tool.execute({ query: "subway", source: "assets", topK: 8, selectable: true }, ctx);
 
     const values = seen?.questions[0].options.map((o) => o.value) ?? [];
-    expect(values).toContain("pack:pack_metro");
+    // Pack options lead the list so they don't drown at the end of the grid.
+    expect(values[0]).toBe("pack:pack_metro");
     const packOption = seen?.questions[0].options.find((o) => o.value === "pack:pack_metro");
     expect(packOption?.label).toContain("145");
+    // No asset payload: the picker renders payload-less options as wide text rows.
+    expect((packOption as { asset?: unknown })?.asset).toBeUndefined();
     // Choosing a normal asset still returns the single-asset result.
     expect(result.output).toContain("1");
   });
@@ -164,8 +167,54 @@ describe("overdaresearch pack detection", () => {
     const result = await tool.execute({ query: "metro car", source: "assets", topK: 8, selectable: true }, ctx);
 
     const values = seen?.questions[0].options.map((o) => o.value) ?? [];
-    expect(values).toEqual(["2", "pack:pack_metro"]);
+    expect(values).toEqual(["pack:pack_metro", "2"]);
     expect(result.output).toContain("2");
+  });
+
+  test("zero visible results with a detected pack still shows the picker", async () => {
+    // The pack scan uses a lower score floor than the visible results, so the
+    // pack can be the only answer.
+    const recorded = mockRagFetchSequence([
+      { results: [], totalCount: 0, packs: [{ keyword: "pack_metro", memberCount: 145 }] },
+      {
+        results: [asset("2", "Car 01", ["pack_metro", "car"])],
+        totalCount: 1,
+      },
+    ]);
+    let seen: UserInputRequest | undefined;
+    const tool = await searchTool({
+      approve: async () => "once",
+      ask: async (r) => {
+        seen = r;
+        return { answers: { [r.questions[0].id]: "pack:pack_metro" } };
+      },
+    });
+
+    const result = await tool.execute(
+      { query: "underground station", source: "assets", topK: 8, selectable: true },
+      ctx,
+    );
+
+    expect(seen?.questions[0].options.map((o) => o.value)).toEqual(["pack:pack_metro"]);
+    expect(recorded.bodies[1].assetFilter).toEqual({ keywords: ["pack_metro"] });
+    expect(result.metadata?.packKeyword).toBe("pack_metro");
+  });
+
+  test("zero results and zero packs still returns not-found", async () => {
+    mockRagFetchSequence([{ results: [], totalCount: 0, packs: [] }]);
+    let asked = false;
+    const tool = await searchTool({
+      approve: async () => "once",
+      ask: async () => {
+        asked = true;
+        return { answers: {} };
+      },
+    });
+
+    const result = await tool.execute({ query: "nothing", source: "assets", topK: 8, selectable: true }, ctx);
+
+    expect(asked).toBe(false);
+    expect(result.output).toBe("No results found.");
   });
 
   test("a single asset match with no pack still auto-selects", async () => {

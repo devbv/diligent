@@ -200,6 +200,16 @@ async function selectAsset(
         question: `Pick an asset for "${query}"`,
         display: "asset",
         options: [
+          // Themed packs come first so they don't drown at the end of the asset
+          // grid. They carry no `asset` payload on purpose: the picker renders
+          // payload-less options as full-width text rows instead of thumbnail
+          // cards, which visually separates "import the whole set" from the
+          // individual assets.
+          ...packs.map((p) => ({
+            label: `Import full pack: ${p.keyword} (${p.memberCount} assets)`,
+            description: "Themed asset collection",
+            value: `${PACK_OPTION_PREFIX}${p.keyword}`,
+          })),
           ...normalized.map((a) => ({
             label: a.title,
             description: a.price ? `${a.assetType} · ${a.price}` : a.assetType,
@@ -210,12 +220,6 @@ async function selectAsset(
               price: a.price,
               subtitle: a.assetType,
             },
-          })),
-          // Themed packs detected in the results: offer importing the whole set.
-          ...packs.map((p) => ({
-            label: `Import full pack: ${p.keyword} (${p.memberCount} assets)`,
-            description: "Themed asset collection",
-            value: `${PACK_OPTION_PREFIX}${p.keyword}`,
           })),
         ],
       },
@@ -236,8 +240,15 @@ async function selectAsset(
   };
 }
 
+// Asset content text is "<visual description>. Category: … Keywords: … Type: …";
+// the tail duplicates the structured metadata fields, so keep only the prose.
+function packMemberDescription(text: string): string {
+  const withoutTail = text.split(/\s+Category:\s/)[0].trim();
+  return withoutTail.length > 400 ? `${withoutTail.slice(0, 400)}…` : withoutTail;
+}
+
 // Enumerate every member of a pack via the exact keyword filter (no ranking).
-async function enumeratePack(keyword: string): Promise<Array<Partial<AssetResult>>> {
+async function enumeratePack(keyword: string): Promise<Array<Partial<AssetResult> & { description?: string }>> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
@@ -255,7 +266,20 @@ async function enumeratePack(keyword: string): Promise<Array<Partial<AssetResult
       throw new Error(`Pack enumeration failed (HTTP ${response.status})`);
     }
     const data = (await response.json()) as RagResponse;
-    return (data?.results ?? []).filter(isAssetResult).map(normalizeAssetResult);
+    // Keep the visual description (needed to compose a scene from vague titles
+    // like "Wall 06"), but strip the "Category:/Keywords:/Type:" tail — it
+    // duplicates the structured fields below and roughly doubles the payload
+    // (~20k → ~16k tokens for the 145-member metro pack). Scores don't exist
+    // in enumeration mode (no ranking).
+    return (data?.results ?? []).filter(isAssetResult).map((result) => ({
+      title: result.title,
+      description: packMemberDescription(result.text ?? ""),
+      keywords: result.keywords,
+      assetId: result.assetId,
+      assetType: result.assetType,
+      categoryId: result.categoryId,
+      subCategoryId: result.subCategoryId,
+    }));
   } catch (err) {
     if (err instanceof Error && err.name === "AbortError") {
       throw new Error("Pack enumeration timed out");
@@ -327,10 +351,13 @@ export async function execute(args: Params, _ctx: ToolContext, host?: RuntimeToo
       const packs = data?.packs ?? [];
 
       if (args.selectable) {
-        if (rawAssets.length === 0) {
+        // The pack scan runs at a lower score floor than the visible results, so
+        // "0 results but a pack was detected" is reachable — the pack is then the
+        // only answer and must still reach the picker.
+        if (rawAssets.length === 0 && packs.length === 0) {
           return { output: "No results found.", metadata: { resultCount: 0 } };
         }
-        // A detected pack must reach the picker even with a single asset match —
+        // A detected pack must reach the picker even with zero or one asset match —
         // the pack option may be the better answer (e.g. "subway" matches one old
         // prop while the metro pack holds the real content).
         if (rawAssets.length === 1 && packs.length === 0) {
@@ -338,7 +365,7 @@ export async function execute(args: Params, _ctx: ToolContext, host?: RuntimeToo
         }
         // Audio/Animation/Effects/UI and Action-Sequence assets skip the picker
         // and auto-select the top-scored match.
-        if (shouldAutoSelect(rawAssets[0])) {
+        if (rawAssets.length > 0 && shouldAutoSelect(rawAssets[0])) {
           return autoSelectResult(rawAssets[0], rawAssets.length);
         }
         const selection = await selectAsset(host, args.query, rawAssets, packs);

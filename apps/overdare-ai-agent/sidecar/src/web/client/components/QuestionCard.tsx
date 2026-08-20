@@ -123,36 +123,64 @@ export const QuestionCard = memo(function QuestionCard({
                 <p className="mb-3 text-sm font-semibold leading-6 text-text">{question.question}</p>
 
                 {isAsset ? (
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                    {question.options.map((opt) => {
-                      const val = optionValue(opt);
-                      const checked = selectedSet.has(val);
-                      const meta = opt.asset?.price ?? opt.description;
-                      return (
-                        <button
-                          key={val}
-                          type="button"
-                          data-asset-value={val}
-                          onClick={() => onAnswerChange(question.id, val)}
-                          className={`flex flex-col gap-1.5 rounded-md border p-1.5 text-left transition ${
-                            checked ? "border-accent bg-white/5" : "border-border/30 hover:bg-white/[.03]"
-                          }`}
-                        >
-                          <span className="block h-[7rem] w-full overflow-hidden rounded bg-fill-secondary">
-                            <AssetThumbnail
-                              asset={{
-                                title: opt.label,
-                                subtitle: opt.asset?.subtitle ?? opt.description,
-                                thumbnailUrl: opt.asset?.thumbnailUrl,
-                                previewUrl: opt.asset?.previewUrl,
-                              }}
-                            />
-                          </span>
-                          <span className="block truncate text-sm text-text-soft">{opt.label}</span>
-                          {meta ? <span className="block truncate text-xs text-muted">{meta}</span> : null}
-                        </button>
-                      );
-                    })}
+                  <div className="space-y-2">
+                    {/* Options without an asset payload (e.g. "import full pack")
+                        render as full-width text rows above the thumbnail grid. */}
+                    {question.options
+                      .filter((opt) => !opt.asset)
+                      .map((opt) => {
+                        const val = optionValue(opt);
+                        const checked = selectedSet.has(val);
+                        return (
+                          <button
+                            key={val}
+                            type="button"
+                            data-asset-value={val}
+                            onClick={() => onAnswerChange(question.id, val)}
+                            className={`flex w-full items-center justify-between gap-3 rounded-md border px-3 py-2.5 text-left transition ${
+                              checked ? "border-accent bg-white/5" : "border-border/30 hover:bg-white/[.03]"
+                            }`}
+                          >
+                            <span className="block truncate text-sm font-medium text-text">{opt.label}</span>
+                            {opt.description ? (
+                              <span className="block shrink-0 text-xs text-muted">{opt.description}</span>
+                            ) : null}
+                          </button>
+                        );
+                      })}
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                      {question.options
+                        .filter((opt) => opt.asset)
+                        .map((opt) => {
+                          const val = optionValue(opt);
+                          const checked = selectedSet.has(val);
+                          const meta = opt.asset?.price ?? opt.description;
+                          return (
+                            <button
+                              key={val}
+                              type="button"
+                              data-asset-value={val}
+                              onClick={() => onAnswerChange(question.id, val)}
+                              className={`flex flex-col gap-1.5 rounded-md border p-1.5 text-left transition ${
+                                checked ? "border-accent bg-white/5" : "border-border/30 hover:bg-white/[.03]"
+                              }`}
+                            >
+                              <span className="block h-[7rem] w-full overflow-hidden rounded bg-fill-secondary">
+                                <AssetThumbnail
+                                  asset={{
+                                    title: opt.label,
+                                    subtitle: opt.asset?.subtitle ?? opt.description,
+                                    thumbnailUrl: opt.asset?.thumbnailUrl,
+                                    previewUrl: opt.asset?.previewUrl,
+                                  }}
+                                />
+                              </span>
+                              <span className="block truncate text-sm text-text-soft">{opt.label}</span>
+                              {meta ? <span className="block truncate text-xs text-muted">{meta}</span> : null}
+                            </button>
+                          );
+                        })}
+                    </div>
                   </div>
                 ) : hasOptions ? (
                   <div className="space-y-1">
