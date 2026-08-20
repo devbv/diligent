@@ -32,6 +32,16 @@ describe("OVERDARE bootstrap config", () => {
     expect(prompt).not.toContain("Treat W A S D as no-ops for movement");
   });
 
+  test("grounds user spatial directions in the current viewport", async () => {
+    const prompt = await readFile(join(import.meta.dir, "../../bootstrap/system-prompt.txt"), "utf-8");
+
+    expect(prompt).toContain("spatial directions and locations in the user's current viewport");
+    expect(prompt).toContain("camera.axes.groundRight/groundForward");
+    expect(prompt).toContain("back-project the screen point through the camera");
+    expect(prompt).toContain("A 2D screen point is not one unique world position without depth");
+    expect(prompt).toContain("read the camera immediately before converting the instruction");
+  });
+
   test("enables the procedural experiment by default", async () => {
     testRoot = await mkdtemp(join(tmpdir(), "overdare-bootstrap-config-"));
     const globalConfigDir = join(testRoot, ".overdare");
