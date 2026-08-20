@@ -115,6 +115,7 @@ export const instanceClassEnum = z.enum([
   "SpawnLocation",
   "UIAspectRatioConstraint",
   "ProximityPrompt",
+  "UIStroke",
 ]);
 
 export const serviceClassEnum = z.enum([
@@ -984,6 +985,23 @@ const rawInstancePropertiesUnion = z.union([
     })
     .strict()
     .describe("Use when class=ProximityPrompt. Nearby interaction prompt triggered when a player approaches."),
+  z
+    .object({
+      ApplyStrokeMode: z.enum(["Contextual", "Border"]).optional(),
+      BorderOffset: udim.describe("Stroke offset from the border (UDim)").optional(),
+      BorderStrokePosition: z.enum(["Inner", "Center", "Outer"]).optional(),
+      Color: rgb.optional(),
+      Enabled: z.boolean().default(true),
+      LineJoinMode: z.enum(["Round", "Bevel", "Miter"]).optional(),
+      StrokeSizingMode: z.enum(["FixedSize", "ScaledSize"]).optional(),
+      Thickness: z.number().default(1),
+      Transparency: z.number().describe("(0~1)").optional(),
+      ZIndex: z.number().optional(),
+    })
+    .strict()
+    .describe(
+      "Use when class=UIStroke. Applies an outline stroke to the parent GuiObject's border or text with configurable color, thickness, and join style.",
+    ),
   workspaceServiceSchema,
   lightingServiceSchema,
   atmosphereServiceSchema,
