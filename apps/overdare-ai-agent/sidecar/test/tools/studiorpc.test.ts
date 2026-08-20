@@ -247,51 +247,19 @@ describe("createStudioRpcToolProvider", () => {
     ]);
   });
 
-  test("always returns the publish result and uses skipCreatorHubLaunch only for browser control", async () => {
+  test("uses an extended timeout and guidance for level publish", async () => {
     const calls: Array<{ method: string; params?: Record<string, unknown>; timeoutMs?: number }> = [];
     const tools = await loadStudioTools("/tmp/project", calls);
     const publishTool = tools.get("studiorpc_level_publish")!;
 
     expect(publishTool.description).toContain("click confirmation buttons");
-    expect(publishTool.description).toContain("skipCreatorHubLaunch");
 
-    const defaultResult = await publishTool.execute({ worldName: "My World" }, toolContext());
-    await publishTool.execute({ skipCreatorHubLaunch: false }, toolContext());
-    const headlessResult = await publishTool.execute({ skipCreatorHubLaunch: true }, toolContext());
-
-    expect(defaultResult.render).toMatchObject({
-      outputSummary: "Publish result ready.",
-      blocks: expect.arrayContaining([
-        expect.objectContaining({
-          type: "summary",
-          text: "Studio returned a publish result and opened Creator Hub for approval.",
-        }),
-      ]),
-    });
-    expect(headlessResult.render).toMatchObject({
-      outputSummary: "Publish result ready.",
-      blocks: expect.arrayContaining([
-        expect.objectContaining({
-          type: "summary",
-          text: "Studio returned a publish result without opening Creator Hub.",
-        }),
-      ]),
-    });
+    await publishTool.execute({ worldName: "My World" }, toolContext());
 
     expect(calls).toEqual([
       {
         method: "level.publish",
         params: { worldName: "My World" },
-        timeoutMs: 300_000,
-      },
-      {
-        method: "level.publish",
-        params: { skipCreatorHubLaunch: false },
-        timeoutMs: 300_000,
-      },
-      {
-        method: "level.publish",
-        params: { skipCreatorHubLaunch: true },
         timeoutMs: 300_000,
       },
     ]);
