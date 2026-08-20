@@ -446,13 +446,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          # Keep dev release notes on the dev chain: baseline is the most
-          # recent published dev-v* release, never a prod tag GitHub might
-          # auto-pick. First dev release falls back to the automatic baseline.
+          # Keep dev release notes on the main dev chain: baseline is the tag
+          # dev-latest currently points to. Only main-derived dev releases
+          # refresh dev-latest, so feature-branch dev tags (and prod tags
+          # GitHub might auto-pick) never become the baseline. This step runs
+          # before the dev-latest refresh below, so the pointer still names the
+          # PREVIOUS main dev release here. The pointer's tag is parsed from
+          # its title, "dev-latest (pointer to dev-vX.Y.Z)" — keep in sync
+          # with the refresh step's --title. No dev-latest yet (or an
+          # unparsable title) falls back to GitHub's automatic baseline.
           extra_flags=()
-          PREV_TAG=$(gh api "repos/$REPOSITORY/releases?per_page=100" \
-            --jq '[.[] | select(.draft|not) | select(.tag_name|startswith("dev-v")) | .tag_name][0] // empty' \
-            2>/dev/null || true)
+          PREV_TAG=$(gh release view dev-latest --json name --jq .name 2>/dev/null \
+            | grep -oE 'dev-v[^) ]+' || true)
           if [ -n "$PREV_TAG" ]; then
             extra_flags+=(--notes-start-tag "$PREV_TAG")
           fi
