@@ -165,7 +165,7 @@ export function AssistantMessage({
   const renderableContentBlocks = contentBlocks.filter(isRenderableAssistantContentBlock);
   const hasStructuredBlocks = renderableContentBlocks.length > 0;
   const thinkingDurationLabel = formatDurationLabel(item.reasoningDurationMs);
-  const showActions = Boolean(onReport && isReportableAssistantResponse(item));
+  const showActions = onReport !== undefined && isReportableAssistantResponse(item);
   const copyText = item.text.trim()
     ? item.text
     : item.contentBlocks.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("\n");
