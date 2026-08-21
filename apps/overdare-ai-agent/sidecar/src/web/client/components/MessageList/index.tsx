@@ -4,7 +4,7 @@ import type { KeyboardEvent as ReactKeyboardEvent, WheelEvent as ReactWheelEvent
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type SizeFunction, Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { CHAT_NEAR_BOTTOM_THRESHOLD_PX } from "../../lib/scroll-utils";
-import { hasRenderableAssistantResponseContent } from "../AssistantContentBlocks";
+import { isReportableAssistantResponse } from "../AssistantContentBlocks";
 import { EmptyState } from "../EmptyState";
 import { ScrollToBottom } from "../ScrollToBottom";
 import {
@@ -72,12 +72,7 @@ function MessageListImpl({
   const lastCompletedResponseId = useMemo(() => {
     for (let index = items.length - 1; index >= 0; index -= 1) {
       const item = items[index];
-      if (
-        item?.kind === "assistant" &&
-        !item.isStreaming &&
-        item.messageId &&
-        hasRenderableAssistantResponseContent(item)
-      ) {
+      if (item?.kind === "assistant" && isReportableAssistantResponse(item)) {
         return item.id;
       }
     }

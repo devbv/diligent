@@ -5,8 +5,8 @@ import type { RenderItem } from "../lib/thread-store";
 import { formatDurationLabel } from "../lib/time-format";
 import {
   AssistantContentBlocks,
-  hasRenderableAssistantResponseContent,
   isRenderableAssistantContentBlock,
+  isReportableAssistantResponse,
 } from "./AssistantContentBlocks";
 import { MarkdownContent } from "./MarkdownContent";
 import { MessageActions } from "./MessageActions";
@@ -165,9 +165,7 @@ export function AssistantMessage({
   const renderableContentBlocks = contentBlocks.filter(isRenderableAssistantContentBlock);
   const hasStructuredBlocks = renderableContentBlocks.length > 0;
   const thinkingDurationLabel = formatDurationLabel(item.reasoningDurationMs);
-  const showActions = Boolean(
-    onReport && item.messageId && !item.isStreaming && hasRenderableAssistantResponseContent(item),
-  );
+  const showActions = Boolean(onReport && isReportableAssistantResponse(item));
   const copyText = item.text.trim()
     ? item.text
     : item.contentBlocks.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("\n");
