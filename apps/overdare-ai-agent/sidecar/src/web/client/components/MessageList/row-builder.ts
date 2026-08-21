@@ -2,15 +2,17 @@
 
 import type { RenderItem } from "../../lib/thread-store";
 import { normalizeToolName } from "../../lib/thread-utils";
-import { isRenderableAssistantContentBlock } from "../AssistantContentBlocks";
+import { hasRenderableAssistantResponseContent } from "../AssistantContentBlocks";
 import { estimateCollabGroupHeight, estimateMessageHeight, estimateToolGroupHeight } from "./row-estimates";
 import type { CollabItem, MessageContentItem, MessageListProps, ToolItem, VirtualMessageRow } from "./types";
 
-function createMessageRow(
-  item: MessageContentItem,
-  suppressThinking?: boolean,
-  estimatedItem: MessageContentItem = item,
-): VirtualMessageRow {
+interface CreateMessageRowOptions {
+  suppressThinking?: boolean;
+  estimatedItem?: MessageContentItem;
+}
+
+function createMessageRow(item: MessageContentItem, options: CreateMessageRowOptions = {}): VirtualMessageRow {
+  const { suppressThinking, estimatedItem = item } = options;
   return {
     kind: "message",
     key: item.id,
@@ -20,13 +22,16 @@ function createMessageRow(
   };
 }
 
-function shouldRenderAssistantRow(item: Extract<RenderItem, { kind: "assistant" }>, suppressThinking = false): boolean {
-  return (
-    (!suppressThinking && item.thinking.length > 0) ||
-    item.text.length > 0 ||
-    item.contentBlocks.some(isRenderableAssistantContentBlock) ||
-    Boolean(item.messageId && item.isStreaming === false)
-  );
+interface AssistantRowVisibilityOptions {
+  includeThinking?: boolean;
+}
+
+function shouldRenderAssistantRow(
+  item: Extract<RenderItem, { kind: "assistant" }>,
+  { includeThinking = true }: AssistantRowVisibilityOptions = {},
+): boolean {
+  const hasVisibleThinking = includeThinking && item.thinking.length > 0;
+  return hasVisibleThinking || hasRenderableAssistantResponseContent(item);
 }
 
 function hasAssetGallery(item: ToolItem): boolean {
@@ -102,7 +107,7 @@ export function buildGroupedRows(items: RenderItem[]): VirtualMessageRow[] {
         if (shouldRenderAssistantRow(displayItem)) {
           flushCollab();
           flushTools();
-          result.push(createMessageRow(displayItem, false));
+          result.push(createMessageRow(displayItem));
         }
         break;
       }
@@ -121,8 +126,13 @@ export function applyCompactingVisibility(
 
   return groupedRows.flatMap((row) => {
     if (row.kind !== "message" || row.item.kind !== "assistant") return [row];
-    if (!shouldRenderAssistantRow(row.item, true)) return [];
-    return [createMessageRow(row.item, true, { ...row.item, thinking: "" })];
+    if (!shouldRenderAssistantRow(row.item, { includeThinking: false })) return [];
+    return [
+      createMessageRow(row.item, {
+        suppressThinking: true,
+        estimatedItem: { ...row.item, thinking: "" },
+      }),
+    ];
   });
 }
 

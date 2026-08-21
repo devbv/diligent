@@ -3,17 +3,32 @@
 import { useState } from "react";
 import type { RenderItem } from "../lib/thread-store";
 import { formatDurationLabel } from "../lib/time-format";
-import { AssistantContentBlocks, isRenderableAssistantContentBlock } from "./AssistantContentBlocks";
+import {
+  AssistantContentBlocks,
+  isRenderableAssistantContentBlock,
+  isReportableAssistantResponse,
+} from "./AssistantContentBlocks";
 import { MarkdownContent } from "./MarkdownContent";
 import { MessageActions } from "./MessageActions";
 import { ThinkingBlock } from "./ThinkingBlock";
 import { ToolActivityRow } from "./ToolActivityRow";
 
+type AssistantRenderItem = Extract<RenderItem, { kind: "assistant" }>;
+
 interface AssistantMessageProps {
-  item: Extract<RenderItem, { kind: "assistant" }>;
+  item: AssistantRenderItem;
   suppressThinking?: boolean;
-  onReport?: (item: Extract<RenderItem, { kind: "assistant" }>) => void;
+  onReport?: (item: AssistantRenderItem) => void;
   alwaysShowActions?: boolean;
+}
+
+function createReportAction(
+  item: AssistantRenderItem,
+  onReport?: (item: AssistantRenderItem) => void,
+): (() => void) | null {
+  if (!onReport) return null;
+  if (!isReportableAssistantResponse(item)) return null;
+  return () => onReport(item);
 }
 
 interface SkillUsageNotice {
@@ -161,15 +176,15 @@ export function AssistantMessage({
   const renderableContentBlocks = contentBlocks.filter(isRenderableAssistantContentBlock);
   const hasStructuredBlocks = renderableContentBlocks.length > 0;
   const thinkingDurationLabel = formatDurationLabel(item.reasoningDurationMs);
-  const showActions = Boolean(onReport && item.messageId && !item.isStreaming);
+  const reportAction = createReportAction(item, onReport);
   const copyText = item.text.trim()
     ? item.text
     : item.contentBlocks.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("\n");
 
-  if (!hasThinking && !hasText && !hasStructuredBlocks && !showActions) return null;
+  if (!hasThinking && !hasText && !hasStructuredBlocks && !reportAction) return null;
 
   return (
-    <div className={showActions ? "group/message pb-1" : "pb-1"} tabIndex={showActions ? 0 : undefined}>
+    <div className={reportAction ? "group/message relative py-2" : "py-2"} tabIndex={reportAction ? 0 : undefined}>
       {hasThinking && !suppressThinking && (
         <div className="pb-3">
           <ThinkingBlock text={item.thinking} streaming={!item.thinkingDone} durationLabel={thinkingDurationLabel} />
@@ -183,12 +198,12 @@ export function AssistantMessage({
       ) : hasVisibleText ? (
         <MarkdownContent text={visibleText} />
       ) : null}
-      {showActions ? (
+      {reportAction ? (
         <MessageActions
           targetKind="response"
           copyText={copyText}
           timestamp={item.timestamp}
-          onReport={() => onReport?.(item)}
+          onReport={reportAction}
           alwaysVisible={alwaysShowActions}
         />
       ) : null}
