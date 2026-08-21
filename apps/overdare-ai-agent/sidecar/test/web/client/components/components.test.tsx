@@ -7,6 +7,7 @@ const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-5";
 
 import { AppHeader } from "../../../../src/web/client/components/AppHeader";
 import { AssetThumbnail } from "../../../../src/web/client/components/AssetThumbnail";
+import { isReportableAssistantResponse } from "../../../../src/web/client/components/AssistantContentBlocks";
 import { AssistantMessage } from "../../../../src/web/client/components/AssistantMessage";
 import { Button } from "../../../../src/web/client/components/Button";
 import {
@@ -1510,6 +1511,52 @@ test("assistant message exposes copy and report actions for a completed response
   expect(html).toContain("1m ago");
   expect(html).toContain('role="tooltip"');
   expect(html).toContain("visible opacity-100");
+});
+
+test("reportable assistant response predicate preserves completion semantics", () => {
+  const completedResponse = {
+    messageId: "persistent-assistant-id",
+    isStreaming: false,
+    text: "Completed the requested change.",
+    contentBlocks: [],
+  };
+
+  expect(isReportableAssistantResponse(completedResponse)).toBe(true);
+  expect(isReportableAssistantResponse({ ...completedResponse, isStreaming: undefined })).toBe(true);
+  expect(isReportableAssistantResponse({ ...completedResponse, isStreaming: true })).toBe(false);
+  expect(isReportableAssistantResponse({ ...completedResponse, messageId: undefined })).toBe(false);
+  expect(isReportableAssistantResponse({ ...completedResponse, messageId: "" })).toBe(false);
+  expect(isReportableAssistantResponse({ ...completedResponse, text: "" })).toBe(false);
+  expect(
+    isReportableAssistantResponse({
+      ...completedResponse,
+      text: "",
+      contentBlocks: [{ type: "text", text: "Structured response" }],
+    }),
+  ).toBe(true);
+});
+
+test("completed assistant response without a report callback keeps content but hides actions", () => {
+  const html = renderToStaticMarkup(
+    <AssistantMessage
+      item={{
+        id: "render:assistant-without-report-handler",
+        messageId: "persistent-assistant-id",
+        kind: "assistant",
+        text: "Completed without a report handler.",
+        thinking: "",
+        contentBlocks: [],
+        thinkingDone: true,
+        isStreaming: false,
+        timestamp: 1,
+      }}
+    />,
+  );
+
+  expect(html).toContain("Completed without a report handler.");
+  expect(html).not.toContain('title="Copy response"');
+  expect(html).not.toContain('title="Report response"');
+  expect(html).not.toContain("tabindex");
 });
 
 test("request actions use the reserved row gap and appear on hover or keyboard focus", () => {
