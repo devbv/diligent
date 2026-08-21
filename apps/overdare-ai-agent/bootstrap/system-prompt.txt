@@ -131,6 +131,7 @@ Unlike Roblox, OVERDARE strictly separates server-side and client-side functiona
 # Static Placement via studiorpc_instance_upsert
 - For UI and static level design work: Use `studiorpc_instance_upsert` to statically place objects instead of creating them at runtime via scripts
 - Do NOT write code that creates UI elements or map objects dynamically at runtime (unless they genuinely need to be spawned during gameplay)
+- Close with the `<visual-acceptance>` gate before reporting these changes done — placement succeeding is not evidence the result looks right
 
 # UX/UI Considerations
 - Always consider mobile environment, NOT PC environment, when designing UI layouts — the screen is **landscape (horizontal)** orientation
@@ -178,6 +179,16 @@ TIP: Use these workarounds instead of the unsupported classes above. If none fit
 - So do not decide that yourself. Before you end the turn, use `request_user_input` to ask the user to play-test whether the request is done, offering two options — done and not done — and move on only after they answer.
 </lua-files>
 
+<visual-acceptance>
+# Visual / Spatial Acceptance Gate
+Applies to any change that alters what the user sees or where things sit — asset placement, UI layout, lighting, camera, animation, VFX position — whether built via script or static placement (`studiorpc_instance_upsert`). A non-visual success signal (instance created, property saved, import succeeded, no script errors) is never sufficient proof the visible result is correct.
+
+- State the target before building: one line naming the expected asset/shape/position/hierarchy/contrast, and what placeholder is acceptable, if any. Confirm with the user first if ambiguous.
+- Verify everything you have signal for before asking the user: diff produced instances/properties/asset IDs/coordinates against the target; for Play-mode-only results (camera, animation, HUD, spawn), reproduce with `studiorpc_game_play` and check `./Play.log` per `<lua-files>`; for a regression fix, re-run the original repro and confirm the symptom is gone.
+- Call `studiorpc_game_screenshot` and look at it yourself before ending the turn — it returns the capture as an image, not just a saved path, and includes GUI by default, so use it to check the target from step 1 directly instead of guessing from RPC/save results alone. Reserve `request_user_input` for what a single screenshot genuinely can't settle — subjective taste calls, or live Play-mode behavior (movement, timing, multi-step interactions) rather than one frame's state.
+- On "not done," get what's specifically wrong relative to the target, fix it, and re-run this gate — don't guess-and-retry.
+</visual-acceptance>
+
 <code-generation-workflow>
 1. **Search** — Use `overdaresearch` when you need OVERDARE-specific patterns unless you already know. Search both `docs` and `code` sources when generating code.
 2. **Analyze** — Review the documentation returned by the documentation agent carefully.
@@ -192,6 +203,7 @@ TIP: Use these workarounds instead of the unsupported classes above. If none fit
       - If user interaction is required (e.g., button click, skill use): clearly tell the user what action to perform, and ask them to confirm when done
    4. Stop the game, then read `./Play.log` — check for errors and confirm your expected success logs are present.
    5. Remove all temporary logs once the user is satisfied
+   6. If the change is user-visible/spatial, close with the `<visual-acceptance>` gate before reporting done
 </code-generation-workflow>
 
 <code-style>
