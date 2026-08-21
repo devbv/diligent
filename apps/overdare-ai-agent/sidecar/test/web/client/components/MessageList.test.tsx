@@ -75,11 +75,13 @@ test("MessageList groups consecutive mixed tool activity rows", () => {
     },
     {
       id: "assistant-empty",
+      messageId: "persistent-assistant-empty",
       kind: "assistant",
       text: "",
       thinking: "",
       contentBlocks: [],
       thinkingDone: true,
+      isStreaming: false,
       timestamp: 4,
     },
     {
@@ -99,10 +101,17 @@ test("MessageList groups consecutive mixed tool activity rows", () => {
   ];
 
   const html = renderToStaticMarkup(
-    <MessageList items={items} threadStatus="idle" hasProvider={true} onOpenProviders={() => {}} />,
+    <MessageList
+      items={items}
+      threadStatus="idle"
+      hasProvider={true}
+      onOpenProviders={() => {}}
+      onReportMessage={() => {}}
+    />,
   );
 
   expect(html).toContain('data-message-list-row="tool-group:tool-read+tool-grep+tool-bash+tool-plan"');
+  expect(html).not.toContain('data-message-list-row="assistant-empty"');
   expect(html).not.toContain('data-message-list-row="tool-read"');
   expect(html).toContain("Read 1 file, searched code, ran 1 command, and updated plan");
   expect(html).not.toContain("Read file: src/App.tsx");

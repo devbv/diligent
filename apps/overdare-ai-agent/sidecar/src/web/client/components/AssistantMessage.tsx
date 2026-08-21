@@ -3,7 +3,11 @@
 import { useState } from "react";
 import type { RenderItem } from "../lib/thread-store";
 import { formatDurationLabel } from "../lib/time-format";
-import { AssistantContentBlocks, isRenderableAssistantContentBlock } from "./AssistantContentBlocks";
+import {
+  AssistantContentBlocks,
+  hasRenderableAssistantResponseContent,
+  isRenderableAssistantContentBlock,
+} from "./AssistantContentBlocks";
 import { MarkdownContent } from "./MarkdownContent";
 import { MessageActions } from "./MessageActions";
 import { ThinkingBlock } from "./ThinkingBlock";
@@ -161,7 +165,9 @@ export function AssistantMessage({
   const renderableContentBlocks = contentBlocks.filter(isRenderableAssistantContentBlock);
   const hasStructuredBlocks = renderableContentBlocks.length > 0;
   const thinkingDurationLabel = formatDurationLabel(item.reasoningDurationMs);
-  const showActions = Boolean(onReport && item.messageId && !item.isStreaming);
+  const showActions = Boolean(
+    onReport && item.messageId && !item.isStreaming && hasRenderableAssistantResponseContent(item),
+  );
   const copyText = item.text.trim()
     ? item.text
     : item.contentBlocks.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("\n");
@@ -169,7 +175,7 @@ export function AssistantMessage({
   if (!hasThinking && !hasText && !hasStructuredBlocks && !showActions) return null;
 
   return (
-    <div className={showActions ? "group/message pb-1" : "pb-1"} tabIndex={showActions ? 0 : undefined}>
+    <div className={showActions ? "group/message relative py-2" : "py-2"} tabIndex={showActions ? 0 : undefined}>
       {hasThinking && !suppressThinking && (
         <div className="pb-3">
           <ThinkingBlock text={item.thinking} streaming={!item.thinkingDone} durationLabel={thinkingDurationLabel} />

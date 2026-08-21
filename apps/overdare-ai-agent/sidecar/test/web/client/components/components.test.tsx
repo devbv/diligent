@@ -1504,12 +1504,15 @@ test("assistant message exposes copy and report actions for a completed response
   expect(html).toContain('data-icon="copy"');
   expect(html).toContain('data-icon="flag"');
   expect(html).toContain("justify-start");
+  expect(html).toContain("group/message relative py-2");
+  expect(html).toContain("absolute top-full left-0");
+  expect(html).toContain("w-max whitespace-nowrap");
   expect(html).toContain("1m ago");
   expect(html).toContain('role="tooltip"');
   expect(html).toContain("visible opacity-100");
 });
 
-test("request actions reserve layout space and appear on hover or keyboard focus", () => {
+test("request actions use the reserved row gap and appear on hover or keyboard focus", () => {
   const html = renderToStaticMarkup(
     <UserMessage
       item={{
@@ -1528,6 +1531,10 @@ test("request actions reserve layout space and appear on hover or keyboard focus
   expect(html).toContain('title="Report request"');
   expect(html).toContain("h-4");
   expect(html).toContain("justify-end");
+  expect(html).toContain("group/message flex justify-end py-2");
+  expect(html).toContain("relative max-w-message");
+  expect(html).toContain("absolute top-full right-0");
+  expect(html).toContain("w-max whitespace-nowrap");
   expect(html).toContain("group-hover/message:visible");
   expect(html).toContain("group-focus-within/message:visible");
 });
@@ -1555,7 +1562,29 @@ test("streaming assistant response hides response actions", () => {
   expect(html).not.toContain('title="Report response"');
 });
 
-test("message list keeps only the last completed response actions visible without hover", () => {
+test("empty completed assistant carrier renders no response actions", () => {
+  const html = renderToStaticMarkup(
+    <AssistantMessage
+      item={{
+        id: "render:assistant-carrier",
+        messageId: "persistent-assistant-carrier",
+        kind: "assistant",
+        text: "",
+        thinking: "",
+        contentBlocks: [],
+        thinkingDone: true,
+        isStreaming: false,
+        timestamp: 1,
+      }}
+      alwaysShowActions={true}
+      onReport={() => {}}
+    />,
+  );
+
+  expect(html).toBe("");
+});
+
+test("message list keeps the last visible completed response actions visible past an empty carrier", () => {
   const html = renderToStaticMarkup(
     <MessageList
       items={[
@@ -1581,6 +1610,17 @@ test("message list keeps only the last completed response actions visible withou
           isStreaming: false,
           timestamp: 2,
         },
+        {
+          id: "render:assistant-carrier",
+          messageId: "persistent-assistant-carrier",
+          kind: "assistant",
+          text: "",
+          thinking: "",
+          contentBlocks: [],
+          thinkingDone: true,
+          isStreaming: false,
+          timestamp: 3,
+        },
       ]}
       threadStatus="idle"
       hasProvider={true}
@@ -1589,6 +1629,7 @@ test("message list keeps only the last completed response actions visible withou
     />,
   );
 
+  expect(html).not.toContain('data-message-list-row="render:assistant-carrier"');
   expect(html.match(/visible opacity-100/g)).toHaveLength(1);
   expect(html.match(/invisible opacity-0/g)).toHaveLength(1);
 });
@@ -1610,7 +1651,7 @@ test("assistant message can suppress thinking block during compaction", () => {
     />,
   );
 
-  expect(html).toBe('<div class="pb-1"></div>');
+  expect(html).toBe('<div class="py-2"></div>');
 });
 
 test("empty state renders connect CTA when provider is not configured", () => {

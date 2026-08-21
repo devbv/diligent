@@ -39,6 +39,10 @@ export function isRenderableAssistantContentBlock(block: ContentBlock): boolean 
   }
 }
 
+export function hasRenderableAssistantResponseContent(item: { text: string; contentBlocks: ContentBlock[] }): boolean {
+  return item.text.length > 0 || item.contentBlocks.some(isRenderableAssistantContentBlock);
+}
+
 type TextBlock = Extract<ContentBlock, { type: "text" }>;
 type TextCitation = NonNullable<TextBlock["citations"]>[number];
 

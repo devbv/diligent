@@ -69,8 +69,8 @@ export function UserMessage({ item, text = "", images = [], contextItems = [], o
   const showActions = Boolean(item?.messageId && onReport);
 
   return (
-    <div className="group/message flex justify-end py-1" tabIndex={showActions ? 0 : undefined}>
-      <div className="max-w-message">
+    <div className="group/message flex justify-end py-2" tabIndex={showActions ? 0 : undefined}>
+      <div className="relative max-w-message">
         <div className="flex flex-col items-end gap-2 rounded-md bg-surface-light px-3.5 py-2">
           {resolvedImages.length > 0 ? (
             <section aria-label="Image attachments" className="flex flex-wrap justify-end gap-2">

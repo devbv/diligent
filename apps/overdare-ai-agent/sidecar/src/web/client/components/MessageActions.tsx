@@ -57,10 +57,13 @@ export function MessageActions({
   const buttonClasses =
     "inline-flex h-4 w-4 items-center justify-center rounded p-0.5 text-[#565f69] transition hover:bg-[#2a3038] hover:text-[#88929c] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent";
   const alignmentClasses = targetKind === "request" ? "justify-end" : "justify-start";
+  const positionClasses = targetKind === "request" ? "right-0" : "left-0";
   const tooltipAlignmentClasses = targetKind === "request" ? "right-0" : "left-0";
 
   return (
-    <div className={`mt-1 flex h-4 items-center gap-2 transition-opacity ${alignmentClasses} ${visibilityClasses}`}>
+    <div
+      className={`absolute top-full ${positionClasses} mt-1 flex h-4 w-max whitespace-nowrap items-center gap-2 transition-opacity ${alignmentClasses} ${visibilityClasses}`}
+    >
       <span className="group/time relative inline-flex h-3 items-center">
         <time dateTime={dateTime} className="text-[10px] leading-3 text-[#565f69]">
           {timestampLabel}

@@ -2,7 +2,7 @@
 
 import type { RenderItem } from "../../lib/thread-store";
 import { normalizeToolName } from "../../lib/thread-utils";
-import { isRenderableAssistantContentBlock } from "../AssistantContentBlocks";
+import { hasRenderableAssistantResponseContent } from "../AssistantContentBlocks";
 import { estimateCollabGroupHeight, estimateMessageHeight, estimateToolGroupHeight } from "./row-estimates";
 import type { CollabItem, MessageContentItem, MessageListProps, ToolItem, VirtualMessageRow } from "./types";
 
@@ -21,12 +21,7 @@ function createMessageRow(
 }
 
 function shouldRenderAssistantRow(item: Extract<RenderItem, { kind: "assistant" }>, suppressThinking = false): boolean {
-  return (
-    (!suppressThinking && item.thinking.length > 0) ||
-    item.text.length > 0 ||
-    item.contentBlocks.some(isRenderableAssistantContentBlock) ||
-    Boolean(item.messageId && item.isStreaming === false)
-  );
+  return (!suppressThinking && item.thinking.length > 0) || hasRenderableAssistantResponseContent(item);
 }
 
 function hasAssetGallery(item: ToolItem): boolean {
