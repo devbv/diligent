@@ -114,6 +114,11 @@ describe("play-test input tools", () => {
     ).not.toThrow();
     expect(() =>
       inputEventsSchema.parse([
+        { type: "wait", durationMs: 1_000, until: { ui: "HUD", textEquals: "READY", visible: true } },
+      ]),
+    ).toThrow();
+    expect(() =>
+      inputEventsSchema.parse([
         { type: "wait", durationMs: 1_000, until: { instance: "Gate", property: "CanCollide" } },
       ]),
     ).toThrow();
@@ -956,14 +961,20 @@ describe("play-test input tools", () => {
     expect(result.output).toContain('"arrived": true');
   });
 
-  test("move_to gives up on a character that has stopped moving", async () => {
-    const { byName } = toolsFor((call) => {
+  test("move_to cancels a character route that has stopped making progress", async () => {
+    const { calls, byName } = toolsFor((call) => {
       if (call.method === "game.pie.status") return runningStatus();
       if (call.method === "game.character.moveTo") return { requestId: "req-18", status: "pendingStart" };
+      if (call.method === "game.character.moveCancel") return { requestId: "req-18", status: "cancelled" };
       if (call.method === "game.character.read") {
         return { character: { CFrame: { Position: { X: 500, Y: 0, Z: 0 } } } };
       }
-      return { requestId: "req-18", status: "running", clientId: "client-1" };
+      return {
+        requestId: "req-18",
+        status: "running",
+        clientId: "client-1",
+        diagnostics: { terminalStatus: "running", noProgressForMs: 3_100 },
+      };
     });
 
     const result = await run(byName.get("studiorpc_game_character_move_to"), {
@@ -972,6 +983,13 @@ describe("play-test input tools", () => {
     });
 
     expect(result.output).toContain('"outcome": "navigationGaveUp"');
+    expect(calls.find((call) => call.method === "game.character.moveCancel")?.params).toMatchObject({
+      requestId: "req-18",
+    });
+    expect(result.output).toContain('"terminalStatus": "cancelled"');
+    expect(result.output).toContain('"statusBeforeCancellation": "running"');
+    expect(result.output).not.toContain('"terminalStatus": "running"');
+    expect(result.output).not.toContain('"routeStillRunning"');
     expect(result.output).not.toContain('"rawNavStatus"');
   });
 
@@ -1007,10 +1025,38 @@ describe("play-test input tools", () => {
     expect(output.navigation.terminalStatus).toBe("interrupted");
     expect(output.arrived).toBeUndefined();
   });
+  test("move_to does not label an unconfirmed stalled route status as terminal", async () => {
+    const { byName } = toolsFor((call) => {
+      if (call.method === "game.pie.status") return runningStatus();
+      if (call.method === "game.character.moveTo")
+        return { requestId: "req-stall-cancel-failed", status: "pendingStart" };
+      if (call.method === "game.character.moveCancel") throw new Error("moveRequestNotFound");
+      if (call.method === "game.character.read") {
+        return { character: { CFrame: { Position: { X: 500, Y: 0, Z: 0 } } } };
+      }
+      return {
+        requestId: "req-stall-cancel-failed",
+        status: "running",
+        diagnostics: { terminalStatus: "running", noProgressForMs: 3_100 },
+      };
+    });
+
+    const result = await run(byName.get("studiorpc_game_character_move_to"), {
+      target: { x: 5000, y: 0, z: 0 },
+      timeoutMs: 60_000,
+    });
+
+    expect(result.output).toContain('"outcome": "navigationGaveUp"');
+    expect(result.output).toContain('"lastObservedStatus": "running"');
+    expect(result.output).toContain('"statusBeforeCancellation": "running"');
+    expect(result.output).toContain('"routeStillRunning": true');
+    expect(result.output).not.toContain('"terminalStatus": "running"');
+  });
   test("an arrived move stays arrived when the wait was cut by the stall window", async () => {
     const { byName } = toolsFor((call) => {
       if (call.method === "game.pie.status") return runningStatus();
       if (call.method === "game.character.moveTo") return { requestId: "req-stall", status: "pendingStart" };
+      if (call.method === "game.character.moveCancel") return { requestId: "req-stall", status: "cancelled" };
       if (call.method === "game.character.read") {
         return { character: { CFrame: { Position: { X: 0, Y: 0, Z: 0 } } } };
       }
@@ -1025,6 +1071,7 @@ describe("play-test input tools", () => {
     const parsed = JSON.parse(result.output);
     expect(parsed.arrived).toBe(true);
     expect(parsed.outcome).toBe("arrived");
+    expect(parsed.routeStillRunning).toBeUndefined();
     expect(result.output).not.toContain('"stalled"');
   }, 20_000);
 

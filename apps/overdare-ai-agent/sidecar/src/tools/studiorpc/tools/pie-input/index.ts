@@ -577,8 +577,9 @@ const moveToDescription = [
     "failedWaypointIndex, and a compact result for every attempted leg. timeoutMs is one budget for the whole route. ",
   "Read `outcome`: arrived, interrupted, navigationGaveUp, stoppedShort, or timedOut. interrupted means " +
     "the reached position did not remain stable through Studio's confirmation window. navigationGaveUp says only that " +
-    "navigation ended short; it does not prove collision or an unreachable level. timedOut cancels the " +
-    "active route; routeStillRunning appears if cancellation could not be confirmed. ",
+    "navigation ended short or stopped making measurable progress; it does not prove collision or an unreachable level. " +
+    "The tool cancels a still-active route before returning navigationGaveUp or timedOut; routeStillRunning appears if " +
+    "cancellation could not be confirmed. ",
   "arrivalReason names the successful rule. withinRadius compares distanceToTarget with arrivedWithin (" +
     TOUCH_MARGIN +
     " to a named target surface, " +
@@ -842,8 +843,9 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
         walkedTrack.push(...polled.track);
         endedState = await readCharacterState(toolCallRpc, target);
       }
+      const stopActiveRoute = polled.timedOut || polled.stalled;
       let cancelStatus: string | undefined;
-      if (polled.timedOut) {
+      if (stopActiveRoute) {
         try {
           const cancelResult = (await toolCallRpc(
             "game.character.moveCancel",
@@ -921,13 +923,20 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
                   : "stoppedShort";
       const navStatus = normalizeWaitedMoveStatus(outcome);
       const roundedDistance = distanceToTarget === undefined ? undefined : Math.round(distanceToTarget * 10) / 10;
+      const engineDiagnostics = (() => {
+        if (!stopActiveRoute || polled.diagnostics?.terminalStatus === undefined) return polled.diagnostics;
+        const { terminalStatus: statusBeforeCancellation, ...rest } = polled.diagnostics;
+        return { statusBeforeCancellation, ...rest };
+      })();
       const navigation =
         outcome === "navigationGaveUp" || outcome === "stoppedShort" || outcome === "interrupted"
           ? {
-              terminalStatus: status ?? "unknown",
+              ...(isTerminalMoveStatus(status)
+                ? { terminalStatus: status }
+                : { lastObservedStatus: status ?? "unknown" }),
               stoppedMoving: !stillWalking,
               ...(roundedDistance === undefined ? {} : { remainingDistance: roundedDistance }),
-              ...(polled.diagnostics ? { engine: polled.diagnostics } : {}),
+              ...(engineDiagnostics ? { engine: engineDiagnostics } : {}),
             }
           : undefined;
       const interruption = interrupted ? (polled.diagnostics ?? { kind: "moveInterrupted" }) : undefined;
@@ -952,7 +961,7 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
           ...(arrivalReason ? { arrivalReason } : {}),
           ...(navigation ? { navigation } : {}),
           ...(interruption ? { interruption } : {}),
-          ...(polled.timedOut && !isTerminalMoveStatus(cancelStatus) ? { routeStillRunning: true } : {}),
+          ...(stopActiveRoute && !isTerminalMoveStatus(cancelStatus) ? { routeStillRunning: true } : {}),
           ...(named?.path ? { target: named.path } : {}),
           ...(named?.matches !== undefined && named.matches > 1
             ? { targetMatches: named.matches, targetOtherPaths: named.otherPaths ?? [] }

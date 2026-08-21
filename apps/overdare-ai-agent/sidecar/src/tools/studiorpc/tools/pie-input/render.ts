@@ -27,9 +27,9 @@ function moveTone(status: string | undefined): "success" | "warning" | "info" {
 function describeUntil(until: NonNullable<Extract<InputEvent, { type: "wait" }>["until"]>): string {
   if ("log" in until) return `log "${until.log}"`;
   if ("ui" in until) {
-    if (until.textEquals !== undefined) return `${until.ui} = "${until.textEquals}"`;
-    if (until.textContains !== undefined) return `${until.ui} ~ "${until.textContains}"`;
-    if (until.onScreen !== undefined) return `${until.ui} onScreen = ${until.onScreen}`;
+    if ("textEquals" in until) return `${until.ui} = "${until.textEquals}"`;
+    if ("textContains" in until) return `${until.ui} ~ "${until.textContains}"`;
+    if ("onScreen" in until) return `${until.ui} onScreen = ${until.onScreen}`;
     return `${until.ui} visible = ${until.visible}`;
   }
   if ("exists" in until) return `${until.instance} exists = ${until.exists}`;

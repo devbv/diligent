@@ -204,20 +204,17 @@ const instancePropertyCondition = z
     message: "Give exactly one of equals, atLeast, or atMost.",
   });
 
+const uiTarget = z.string().min(1).describe("Name, path, or label of a UI element — the same resolution target uses.");
 const uiCondition = z
-  .object({
-    ui: z.string().min(1).describe("Name, path, or label of a UI element — the same resolution target uses."),
-    textEquals: z.string().optional(),
-    textContains: z.string().optional(),
-    onScreen: z.boolean().optional(),
-    visible: z.boolean().optional(),
-  })
-  .strict()
-  .refine(
-    (value) =>
-      [value.textEquals, value.textContains, value.onScreen, value.visible].filter((entry) => entry !== undefined)
-        .length === 1,
-    { message: "Give exactly one UI comparison." },
+  .union([
+    z.object({ ui: uiTarget, textEquals: z.string() }).strict(),
+    z.object({ ui: uiTarget, textContains: z.string() }).strict(),
+    z.object({ ui: uiTarget, onScreen: z.boolean() }).strict(),
+    z.object({ ui: uiTarget, visible: z.boolean() }).strict(),
+  ])
+  .describe(
+    "One UI comparison: choose exactly one of textEquals, textContains, onScreen, or visible. " +
+      "Use separate waits when two observations matter.",
   );
 
 const untilSchema = z
