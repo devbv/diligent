@@ -11,6 +11,7 @@ import {
   readVec3,
   withCameraAxes,
 } from "../camera-response";
+import { StudioRpcError } from "../rpc";
 
 export const method = "game.screenshot";
 
@@ -65,6 +66,23 @@ export function normalizeArgs(args: Record<string, unknown>): Record<string, unk
     Object.assign(rest, { cameraPosition: camera.position, lookAt: camera.lookAt });
   }
   return { includeGui: true, ...rest };
+}
+
+export async function recover(error: unknown, args: Record<string, unknown>): Promise<unknown> {
+  const data = error instanceof StudioRpcError && isRecord(error.data) ? error.data : undefined;
+  const structured = data?.name === "unsupportedWhilePlaying" && data.capability === "editorCameraOverride";
+  const compatibleOlderBuild =
+    error instanceof StudioRpcError &&
+    error.code === -32602 &&
+    isRecord(args.camera) &&
+    error.message.includes("play test is drawing the screen");
+  if (!structured && !compatibleOlderBuild) throw error;
+  return {
+    status: "unsupportedWhilePlaying",
+    capability: "editorCameraOverride",
+    while: "playTest",
+    retry: { omitCamera: true },
+  };
 }
 export async function attachImages(result: unknown): Promise<ImageBlock[] | undefined> {
   if (!isRecord(result) || typeof result.path !== "string") return undefined;

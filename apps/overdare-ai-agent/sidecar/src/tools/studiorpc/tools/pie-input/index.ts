@@ -121,6 +121,8 @@ type MoveDestination = z.infer<typeof moveDestination>;
 
 interface InjectResult {
   status?: string;
+  failedEventIndex?: number;
+  cancelledEventCount?: number;
   characterTrack?: Array<{ event: number; x: number; y: number; z: number; falling?: boolean }>;
   fellAtEvent?: number;
   looks?: Array<{
@@ -144,6 +146,7 @@ interface MoveStatusResult {
   requestId?: string;
   status?: string;
   clientId?: string;
+  diagnostics?: Record<string, unknown>;
 }
 
 interface CharacterReadResult {
@@ -163,7 +166,7 @@ interface GameTimeScaleReadResult {
   timeScale?: number;
 }
 
-type MoveOutcome = "arrived" | "navigationGaveUp" | "stoppedShort" | "timedOut";
+type MoveOutcome = "arrived" | "navigationGaveUp" | "stoppedShort" | "timedOut" | "interrupted";
 type ArrivalReason = "standingOnTarget" | "atopTarget" | "withinRadius";
 export function normalizeWaitedMoveStatus(outcome: MoveOutcome): string {
   switch (outcome) {
@@ -175,6 +178,8 @@ export function normalizeWaitedMoveStatus(outcome: MoveOutcome): string {
       return "stoppedShort";
     case "timedOut":
       return "cancelled";
+    case "interrupted":
+      return "interrupted";
   }
 }
 export function moveStallWindowMs(timeScale: number | undefined): number {
@@ -376,13 +381,26 @@ function createInputInjectTool(callRpc: CallRpc): Tool {
       const events = normalizeEventShapes(args.events) as InputEvent[];
       const { sent, origin, raisedLooks } = expandWithOrigin(events);
       if (sent.length > MAX_EVENT_COUNT) {
-        const lastFitting = origin[MAX_EVENT_COUNT - 1];
-        throw new Error(
-          `The batch expands to ${sent.length} events, above Studio's ${MAX_EVENT_COUNT} limit ` +
-            `(each press with a durationMs becomes three). Your ${events.length} events fit up to and ` +
-            `including index ${lastFitting}; send events 0-${lastFitting} in one call and ` +
-            `${lastFitting + 1}-${events.length - 1} in the next.`,
-        );
+        const retryFromEventIndex = origin[MAX_EVENT_COUNT] ?? events.length;
+        const acceptedThroughEventIndex = retryFromEventIndex - 1;
+        return {
+          output: jsonOutput({
+            status: "limitExceeded",
+            limit: MAX_EVENT_COUNT,
+            authoredEventCount: events.length,
+            expandedEventCount: sent.length,
+            acceptedThroughEventIndex,
+            retryFromEventIndex,
+            message:
+              `The authored events through index ${acceptedThroughEventIndex} expand within Studio's ` +
+              `${MAX_EVENT_COUNT}-event limit. Retry from index ${retryFromEventIndex} in a second call.`,
+          }),
+          metadata: {
+            tool: "studiorpc_game_input_inject",
+            status: "limitExceeded",
+            eventCount: sent.length,
+          },
+        };
       }
       const batchError = validateBatch(sent, origin);
       if (batchError) throw new Error(batchError);
@@ -396,11 +414,16 @@ function createInputInjectTool(callRpc: CallRpc): Tool {
           { timeoutMs: totalWaitMs(sent) + INJECT_OVERHEAD_MS },
         )) as InjectResult;
       } catch (error) {
-        const answered = lookThatCancelledNothing(error, sent);
+        const answered = expectedLookResult(error, sent);
         if (!answered) throw error;
         result = answered;
       }
       const toAuthored = (sentIndex: number) => origin[Math.min(sentIndex, origin.length - 1)] ?? events.length - 1;
+      const failedEventIndex = result?.failedEventIndex === undefined ? undefined : toAuthored(result.failedEventIndex);
+      const cancelledEventCount =
+        failedEventIndex === undefined
+          ? result?.cancelledEventCount
+          : Math.max(0, events.length - failedEventIndex - 1);
       const track = result?.characterTrack?.map((sample) => ({
         ...sample,
         event: sample.event >= sent.length ? events.length : toAuthored(sample.event),
@@ -409,6 +432,8 @@ function createInputInjectTool(callRpc: CallRpc): Tool {
       return {
         output: jsonOutput({
           ...result,
+          ...(failedEventIndex === undefined ? {} : { failedEventIndex }),
+          ...(cancelledEventCount === undefined ? {} : { cancelledEventCount }),
           ...(track ? { characterTrack: track } : {}),
           ...(result?.fellAtEvent === undefined ? {} : { fellAtEvent: toAuthored(result.fellAtEvent) }),
           ...(raisedLooks.length > 0 ? { raisedLookTimeouts: raisedLooks } : {}),
@@ -425,16 +450,26 @@ function createInputInjectTool(callRpc: CallRpc): Tool {
     },
   };
 }
-export function lookThatCancelledNothing(error: unknown, sent: InputEvent[]): InjectResult | undefined {
-  if (!(error instanceof StudioRpcError) || sent[sent.length - 1]?.type !== "look") return undefined;
+export function expectedLookResult(error: unknown, sent: InputEvent[]): InjectResult | undefined {
+  if (!(error instanceof StudioRpcError) || error.code !== -32108) return undefined;
   const data = error.data;
   if (!data || typeof data !== "object") return undefined;
-  const looks = (data as { looks?: InjectResult["looks"] }).looks;
+  const typedData = data as { looks?: InjectResult["looks"]; failedEventIndex?: number };
+  const looks = typedData.looks;
   if (!Array.isArray(looks) || looks.length === 0) return undefined;
-  if (looks.length !== sent.filter((event) => event.type === "look").length) return undefined;
   const last = looks[looks.length - 1]?.status;
   if (last !== "blocked" && last !== "timedOut") return undefined;
-  return { ...(data as Record<string, unknown>), status: last };
+  const lookIndices = sent.flatMap((event, index) => (event.type === "look" ? [index] : []));
+  const inferredFailedIndex = lookIndices[looks.length - 1];
+  const failedEventIndex =
+    typeof typedData.failedEventIndex === "number" ? typedData.failedEventIndex : inferredFailedIndex;
+  if (failedEventIndex === undefined) return undefined;
+  return {
+    ...(data as Record<string, unknown>),
+    status: last,
+    failedEventIndex,
+    cancelledEventCount: Math.max(0, sent.length - failedEventIndex - 1),
+  };
 }
 async function readGameTimeScale(callRpc: CallRpc): Promise<number | undefined> {
   try {
@@ -465,6 +500,7 @@ async function pollMoveStatus(
   gameTimeScale: number | undefined;
   stallWindowMs: number;
   track: TrackSample[];
+  diagnostics?: Record<string, unknown>;
 }> {
   const startedAt = Date.now();
   const stallWindowMs = moveStallWindowMs(gameTimeScale);
@@ -472,6 +508,7 @@ async function pollMoveStatus(
   let stillSince: number | undefined;
   let stillAnchor: { x: number; y: number; z: number } | undefined;
   let lastTrackedPosition: { x: number; y: number; z: number } | undefined;
+  let diagnostics: Record<string, unknown> | undefined;
   const track: TrackSample[] = [];
 
   while (Date.now() - startedAt < timeoutMs) {
@@ -482,6 +519,7 @@ async function pollMoveStatus(
       { timeoutMs: MOVE_RPC_TIMEOUT_MS },
     )) as MoveStatusResult;
     status = result?.status;
+    diagnostics = result?.diagnostics;
     if (isTerminalMoveStatus(status)) {
       return {
         status,
@@ -491,6 +529,7 @@ async function pollMoveStatus(
         gameTimeScale,
         stallWindowMs,
         track,
+        ...(diagnostics ? { diagnostics } : {}),
       };
     }
 
@@ -514,6 +553,7 @@ async function pollMoveStatus(
           gameTimeScale,
           stallWindowMs,
           track,
+          ...(diagnostics ? { diagnostics } : {}),
         };
       }
     }
@@ -527,6 +567,7 @@ async function pollMoveStatus(
     gameTimeScale,
     stallWindowMs,
     track,
+    ...(diagnostics ? { diagnostics } : {}),
   };
 }
 
@@ -534,7 +575,8 @@ const moveToDescription = [
   "Navigate the play-test character to one live instance or world position, or through a target array in order, " +
     "and wait for measured results. A route stops at its first failed waypoint and reports completedWaypoints, " +
     "failedWaypointIndex, and a compact result for every attempted leg. timeoutMs is one budget for the whole route. ",
-  "Read `outcome`: arrived, navigationGaveUp, stoppedShort, or timedOut. navigationGaveUp says only that " +
+  "Read `outcome`: arrived, interrupted, navigationGaveUp, stoppedShort, or timedOut. interrupted means " +
+    "the reached position did not remain stable through Studio's confirmation window. navigationGaveUp says only that " +
     "navigation ended short; it does not prove collision or an unreachable level. timedOut cancels the " +
     "active route; routeStillRunning appears if cancellation could not be confirmed. ",
   "arrivalReason names the successful rule. withinRadius compares distanceToTarget with arrivedWithin (" +
@@ -544,6 +586,7 @@ const moveToDescription = [
     " to a bare position). standingOnTarget and atopTarget account for the character origin being about " +
     "84 units above its feet. ",
   "endedAt, standingOn, characterTrack, measuredSpeed, and reaimed describe the final position and route. " +
+    "navigation reports observed terminal state and progress facts without guessing at collision or navmesh causes. " +
     "didNotSetOff means start and end matched; declinedToWalk means navigation considered the request " +
     "already satisfied. Use characterTrack before inferring that no movement occurred.",
 ].join("");
@@ -571,7 +614,8 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
             outcome === "arrived" ||
             outcome === "navigationGaveUp" ||
             outcome === "stoppedShort" ||
-            outcome === "timedOut"
+            outcome === "timedOut" ||
+            outcome === "interrupted"
               ? normalizeWaitedMoveStatus(outcome)
               : outcome;
           return {
@@ -584,6 +628,8 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
               ...(last?.endedAt === undefined ? {} : { endedAt: last.endedAt }),
               ...(last?.at === undefined ? {} : { at: last.at }),
               ...(last?.standingOn === undefined ? {} : { standingOn: last.standingOn }),
+              ...(last?.navigation === undefined ? {} : { navigation: last.navigation }),
+              ...(last?.interruption === undefined ? {} : { interruption: last.interruption }),
               clientId: routeTarget.clientId,
             }),
             render: buildMoveRouteRender(routeTarget, waypointCount, completedWaypoints, outcome, waitedMs),
@@ -635,6 +681,8 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
               "didNotSetOff",
               "declinedToWalk",
               "routeStillRunning",
+              "navigation",
+              "interruption",
             ]) {
               if (payload[field] !== undefined) report[field] = payload[field];
             }
@@ -834,8 +882,10 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
           : undefined;
       const knownFalling = endedState?.falling === true;
       const cancelledForTimeout = polled.timedOut && cancelStatus === "cancelled";
+      const interrupted = status === "interrupted";
       const arrived =
         !cancelledForTimeout &&
+        !interrupted &&
         (standingOnTarget ||
           atopTarget ||
           (!knownFalling && distanceToTarget !== undefined && distanceToTarget <= tolerance));
@@ -862,12 +912,25 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
           ? "timedOut"
           : cancelledForTimeout
             ? "timedOut"
-            : arrived
-              ? "arrived"
-              : gaveUp
-                ? "navigationGaveUp"
-                : "stoppedShort";
+            : interrupted
+              ? "interrupted"
+              : arrived
+                ? "arrived"
+                : gaveUp
+                  ? "navigationGaveUp"
+                  : "stoppedShort";
       const navStatus = normalizeWaitedMoveStatus(outcome);
+      const roundedDistance = distanceToTarget === undefined ? undefined : Math.round(distanceToTarget * 10) / 10;
+      const navigation =
+        outcome === "navigationGaveUp" || outcome === "stoppedShort" || outcome === "interrupted"
+          ? {
+              terminalStatus: status ?? "unknown",
+              stoppedMoving: !stillWalking,
+              ...(roundedDistance === undefined ? {} : { remainingDistance: roundedDistance }),
+              ...(polled.diagnostics ? { engine: polled.diagnostics } : {}),
+            }
+          : undefined;
+      const interruption = interrupted ? (polled.diagnostics ?? { kind: "moveInterrupted" }) : undefined;
       const measuredSpeed = (() => {
         if (!track || track.length < 2) return undefined;
         let walked = 0;
@@ -885,8 +948,10 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
       return {
         output: jsonOutput({
           outcome,
-          ...(completed ? { arrived } : {}),
+          ...(completed && !interrupted ? { arrived } : {}),
           ...(arrivalReason ? { arrivalReason } : {}),
+          ...(navigation ? { navigation } : {}),
+          ...(interruption ? { interruption } : {}),
           ...(polled.timedOut && !isTerminalMoveStatus(cancelStatus) ? { routeStillRunning: true } : {}),
           ...(named?.path ? { target: named.path } : {}),
           ...(named?.matches !== undefined && named.matches > 1
@@ -897,7 +962,7 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
           ...(endedAt
             ? {
                 [ended ? "endedAt" : "at"]: endedAt,
-                distanceToTarget: Math.round((distanceToTarget ?? 0) * 10) / 10,
+                distanceToTarget: roundedDistance,
                 arrivedWithin: tolerance,
               }
             : {}),

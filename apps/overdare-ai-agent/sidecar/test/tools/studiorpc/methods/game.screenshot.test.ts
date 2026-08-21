@@ -9,6 +9,7 @@ import {
   normalizeArgs,
   params,
   postProcess,
+  recover,
 } from "../../../../src/tools/studiorpc/methods/game.screenshot";
 import { StudioRpcError } from "../../../../src/tools/studiorpc/rpc";
 
@@ -268,5 +269,25 @@ describe("game.screenshot camera placement", () => {
       cameraPosition: { x: 1, y: 2, z: 3 },
       lookAt: { x: 4, y: 5, z: 6 },
     });
+  });
+
+  test("PIE editor-camera refusal is returned as an expected structured result", async () => {
+    const error = new StudioRpcError(
+      "cameraPosition/lookAt only aim the editor viewport while a play test is drawing the screen",
+      -32602,
+      { name: "unsupportedWhilePlaying", capability: "editorCameraOverride" },
+    );
+
+    await expect(recover(error, { camera: { position: {}, lookAt: {} } })).resolves.toEqual({
+      status: "unsupportedWhilePlaying",
+      capability: "editorCameraOverride",
+      while: "playTest",
+      retry: { omitCamera: true },
+    });
+  });
+
+  test("unrelated screenshot failures remain errors", async () => {
+    const error = new StudioRpcError("capture failed", -32603, { name: "captureFailed" });
+    await expect(recover(error, {})).rejects.toBe(error);
   });
 });

@@ -974,6 +974,39 @@ describe("play-test input tools", () => {
     expect(result.output).toContain('"outcome": "navigationGaveUp"');
     expect(result.output).not.toContain('"rawNavStatus"');
   });
+
+  test("move_to preserves an observed position-discontinuity interruption", async () => {
+    const { byName } = toolsFor((call) => {
+      if (call.method === "game.pie.status") return runningStatus();
+      if (call.method === "game.character.moveTo") return { requestId: "req-interrupted", status: "pendingStart" };
+      if (call.method === "game.character.moveStatus") {
+        return {
+          requestId: "req-interrupted",
+          status: "interrupted",
+          diagnostics: {
+            kind: "positionDiscontinuity",
+            observedFrom: { x: 4900, y: 0, z: 0 },
+            observedTo: { x: 0, y: 0, z: 0 },
+            distance: 4900,
+          },
+        };
+      }
+      if (call.method === "game.character.read") {
+        return { character: { CFrame: { Position: { X: 0, Y: 0, Z: 0 } } } };
+      }
+      return {};
+    });
+
+    const result = await run(byName.get("studiorpc_game_character_move_to"), {
+      target: { x: 5000, y: 0, z: 0 },
+    });
+    const output = JSON.parse(result.output);
+
+    expect(output.outcome).toBe("interrupted");
+    expect(output.interruption.kind).toBe("positionDiscontinuity");
+    expect(output.navigation.terminalStatus).toBe("interrupted");
+    expect(output.arrived).toBeUndefined();
+  });
   test("an arrived move stays arrived when the wait was cut by the stall window", async () => {
     const { byName } = toolsFor((call) => {
       if (call.method === "game.pie.status") return runningStatus();
@@ -1222,7 +1255,17 @@ describe("play-test input tools", () => {
       durationMs: 10,
     }));
 
-    await expect(run(byName.get("studiorpc_game_input_inject"), { events })).rejects.toThrow(/expands to 90 events/);
+    const result = await run(byName.get("studiorpc_game_input_inject"), { events });
+    const output = JSON.parse(result.output);
+
+    expect(output).toMatchObject({
+      status: "limitExceeded",
+      limit: 64,
+      authoredEventCount: 30,
+      expandedEventCount: 90,
+      acceptedThroughEventIndex: 20,
+      retryFromEventIndex: 21,
+    });
     expect(calls).toHaveLength(0);
   });
 
@@ -1320,7 +1363,7 @@ describe("play-test input tools", () => {
     expect(result.output).not.toContain("unexpected error");
   });
 
-  test("a look that stopped short mid-batch stays a failure, because the tail was dropped", async () => {
+  test("a look that stopped short mid-batch reports the cancelled authored tail", async () => {
     const cancelledTail = new StudioRpcError(
       "Studio RPC error [-32108]: The look did not land, so the 2 event(s) behind it were cancelled.",
       -32108,
@@ -1330,14 +1373,18 @@ describe("play-test input tools", () => {
       if (call.method === "game.pie.status") return runningStatus();
       throw cancelledTail;
     });
-    await expect(
-      run(byName.get("studiorpc_game_input_inject"), {
-        events: [
-          { type: "look", yawDegrees: 180, timeoutMs: 4000 },
-          { type: "key", key: "F", action: "press", durationMs: 100 },
-        ],
-      }),
-    ).rejects.toThrow(/2 event\(s\) behind it were cancelled/);
+    const result = await run(byName.get("studiorpc_game_input_inject"), {
+      events: [
+        { type: "look", yawDegrees: 180, timeoutMs: 4000 },
+        { type: "key", key: "F", action: "press", durationMs: 100 },
+      ],
+    });
+    const output = JSON.parse(result.output);
+
+    expect(output.status).toBe("timedOut");
+    expect(output.failedEventIndex).toBe(0);
+    expect(output.cancelledEventCount).toBe(1);
+    expect(output.looks[0].turned.yawDegrees).toBe(123);
   });
 
   test("a pointer failure is still a failure, even as the last event", async () => {
