@@ -189,7 +189,7 @@ export interface SessionManagerConfig {
   /** When spawned as a sub-agent, identity info persisted in session header */
   collabMeta?: CollabSessionMeta;
   /**
-   * Runs external Stop lifecycle work after a successful turn (not abort or error).
+   * Runs external Stop lifecycle work after a successful or user-interrupted turn, but not an unexpected error.
    * The callback is awaited, but its output cannot add messages or re-run the model.
    */
   onStop?: (context: Message[]) => Promise<void>;

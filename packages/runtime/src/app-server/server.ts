@@ -87,7 +87,7 @@ export interface CreateAgentArgs {
   getSessionId?: () => string | undefined;
   /** The thread's current agent, if one already exists. Passed so createAgent can reuse the registry. */
   existingAgent?: RuntimeAgent;
-  /** Called when a child agent's turn completes normally. Propagated to the collab registry. */
+  /** Called when a child agent's turn completes or is interrupted. Propagated to the collab registry. */
   onChildStop?: (info: ChildStopInfo) => Promise<void>;
   /** User ID propagated to child agent stop hooks. */
   userId?: string;
