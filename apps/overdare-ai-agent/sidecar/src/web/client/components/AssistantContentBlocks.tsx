@@ -49,9 +49,9 @@ export function isReportableAssistantResponse(item: {
   text: string;
   contentBlocks: ContentBlock[];
 }): boolean {
-  const hasPersistentId = typeof item.messageId === "string" && item.messageId.length > 0;
-  const isComplete = item.isStreaming !== true;
-  return hasPersistentId && isComplete && hasRenderableAssistantResponseContent(item);
+  if (item.isStreaming) return false;
+  if (!item.messageId) return false;
+  return hasRenderableAssistantResponseContent(item);
 }
 
 type TextBlock = Extract<ContentBlock, { type: "text" }>;
