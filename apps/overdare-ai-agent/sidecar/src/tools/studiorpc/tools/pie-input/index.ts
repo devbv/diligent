@@ -71,11 +71,11 @@ const moveToShape = {
         "this is the total route budget, not a new budget for each leg.",
     ),
   pathMode: z
-    .enum(["direct", "nav", "teleport"])
+    .enum(["navigation", "teleport"])
     .optional()
     .describe(
-      "How to reach the target. direct (default) uses the character's normal straight-line MoveTo. nav follows " +
-        "an Unreal Navigation System path around walkable obstacles, but cannot invent jumps or operate game " +
+      "How to reach the target. navigation (default) follows an Unreal Navigation System path around walkable " +
+        "obstacles, but cannot invent jumps or operate game " +
         "mechanics. teleport moves to one target immediately and is only for arranging state outside the behavior " +
         "under test; landedAt reports the collision-adjusted destination.",
     ),
@@ -90,7 +90,7 @@ const moveToParams = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["pathMode"],
-        message: "pathMode teleport accepts one target; use direct or nav for a waypoint array",
+        message: "pathMode teleport accepts one target; use navigation for a waypoint array",
       });
     }
   });
@@ -116,7 +116,7 @@ interface InjectResult {
 interface MoveToResult {
   requestId?: string;
   status?: string;
-  pathMode?: "direct" | "nav" | "teleport";
+  pathMode?: "navigation" | "teleport";
   teleported?: boolean;
   landedAt?: { x: number; y: number; z: number };
 }
@@ -496,24 +496,27 @@ const moveToDescription = [
   "Navigate the play-test character to one live instance or world position, or through a target array in order, " +
     "and wait for measured results. A route stops at its first failed waypoint and reports completedWaypoints, " +
     "failedWaypointIndex, and a compact result for every attempted leg. timeoutMs is one budget for the whole route. ",
-  "Choose pathMode direct for the existing straight-line MoveTo, nav for an Unreal navmesh route around walkable " +
-    "obstacles, or teleport only to arrange test state. nav follows grounded walkable paths; it does not jump, use " +
+  "Movement uses pathMode navigation by default: an Unreal navmesh route around grounded walkable obstacles. " +
+    "Use teleport only to arrange test state. navigation does not jump, use " +
     "elevators, press controls, or bypass scripts that constrain character movement. ",
   "Read `outcome`: arrived, interrupted, navigationGaveUp, stoppedShort, or timedOut. interrupted means " +
     "the reached position did not remain stable through Studio's confirmation window. navigationGaveUp says only that " +
-    "Studio ended navigation short; it does not prove collision or an unreachable level. The sidecar does not infer " +
-    "failure from sampled position or reissue a completed move. It cancels only when timeoutMs expires; " +
+    "Studio ended navigation short; it does not prove collision or an unreachable level. `rpcStatus` and " +
+    "`rpcDiagnostics` preserve Studio's authoritative result; sampled position adds observations but never rewrites " +
+    "that result. The sidecar does " +
+    "not infer failure from sampled position or reissue a completed move. It cancels only when timeoutMs expires; " +
     "routeStillRunning appears if that cancellation could not be confirmed. ",
   "arrivalReason names the successful rule. withinRadius compares distanceToTarget with arrivedWithin (" +
     TOUCH_MARGIN +
     " to a named target surface, " +
     ARRIVAL_TOLERANCE +
-    " to a bare position). standingOnTarget and atopTarget account for the character origin being about " +
+    " to a bare position). Use the named target, not a nearby bare coordinate, when interaction reach matters. " +
+    "standingOnTarget and atopTarget account for the character origin being about " +
     "84 units above its feet. ",
   "endedAt, standingOn, characterTrack, and measuredSpeed describe the final position and route. " +
     "navigation reports observed terminal state and progress facts without guessing at collision or navmesh causes. " +
-    "didNotSetOff means start and end matched; declinedToWalk means navigation considered the request " +
-    "already satisfied. Use characterTrack before inferring that no movement occurred.",
+    "didNotSetOff means a failed request started and ended at the same place. Use characterTrack before inferring " +
+    "that no movement occurred.",
 ].join("");
 
 function createCharacterMoveToTool(callRpc: CallRpc): Tool {
@@ -535,18 +538,20 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
         const finishRoute = (outcome: string, failedWaypointIndex?: number): ToolResult => {
           const waitedMs = Date.now() - routeStartedAt;
           const last = waypoints[waypoints.length - 1];
+          const rpcStatus = typeof last?.rpcStatus === "string" ? last.rpcStatus : undefined;
           const status =
-            outcome === "arrived" ||
+            rpcStatus ??
+            (outcome === "arrived" ||
             outcome === "navigationGaveUp" ||
             outcome === "stoppedShort" ||
             outcome === "timedOut" ||
             outcome === "interrupted"
               ? normalizeWaitedMoveStatus(outcome)
-              : outcome;
+              : outcome);
           return {
             output: jsonOutput({
               outcome,
-              pathMode: args.pathMode ?? "direct",
+              pathMode: args.pathMode ?? "navigation",
               completedWaypoints,
               waypointCount,
               ...(failedWaypointIndex === undefined ? {} : { failedWaypointIndex }),
@@ -556,6 +561,8 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
               ...(last?.standingOn === undefined ? {} : { standingOn: last.standingOn }),
               ...(last?.navigation === undefined ? {} : { navigation: last.navigation }),
               ...(last?.interruption === undefined ? {} : { interruption: last.interruption }),
+              ...(last?.rpcStatus === undefined ? {} : { rpcStatus: last.rpcStatus }),
+              ...(last?.rpcDiagnostics === undefined ? {} : { rpcDiagnostics: last.rpcDiagnostics }),
               clientId: routeTarget.clientId,
             }),
             render: buildMoveRouteRender(routeTarget, waypointCount, completedWaypoints, outcome, waitedMs),
@@ -605,11 +612,12 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
               "standingOnTarget",
               "alreadyAtTarget",
               "didNotSetOff",
-              "declinedToWalk",
               "routeStillRunning",
               "navigation",
               "interruption",
               "pathMode",
+              "rpcStatus",
+              "rpcDiagnostics",
             ]) {
               if (payload[field] !== undefined) report[field] = payload[field];
             }
@@ -673,7 +681,8 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
       const startedNearTarget =
         wantedTarget !== undefined && startedFrom !== undefined && measureTo(startedFrom) <= ALREADY_AT_RADIUS;
       const destination = wantedPosition;
-      const pathMode = args.pathMode ?? "direct";
+      const pathMode = args.pathMode ?? "navigation";
+      const tolerance = named?.half ? TOUCH_MARGIN : ARRIVAL_TOLERANCE;
       const started = (await toolCallRpc(
         "game.character.moveTo",
         {
@@ -681,6 +690,8 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
           clientId: target.clientId,
           position: destination,
           pathMode,
+          acceptanceRadius: tolerance,
+          ...(named?.half ? { targetHalfExtents: named.half } : {}),
         },
         { timeoutMs: MOVE_RPC_TIMEOUT_MS },
       )) as MoveToResult;
@@ -691,6 +702,7 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
           output: jsonOutput({
             outcome: "teleported",
             pathMode,
+            rpcStatus: started?.status,
             teleported: started?.teleported === true,
             ...(named?.path ? { target: named.path } : {}),
             landedAt: landed,
@@ -766,7 +778,6 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
         feetAboveTargetTop !== undefined &&
         feetAboveTargetTop >= 0 &&
         feetAboveTargetTop <= CHARACTER_ORIGIN_ABOVE_FEET + TOUCH_MARGIN;
-      const tolerance = named?.half ? TOUCH_MARGIN : ARRIVAL_TOLERANCE;
       const route: TrackSample[] | undefined =
         startedFrom && endedAt
           ? [{ ...startedFrom, atMs: startedAtMs }, ...walkedTrack, { ...endedAt, atMs: endedAtMs }]
@@ -774,28 +785,23 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
       const knownFalling = endedState?.falling === true;
       const cancelledForTimeout = polled.timedOut && cancelStatus === "cancelled";
       const interrupted = status === "interrupted";
-      const arrived =
-        !cancelledForTimeout &&
-        !interrupted &&
-        (standingOnTarget ||
-          atopTarget ||
-          (!knownFalling && distanceToTarget !== undefined && distanceToTarget <= tolerance));
-      const arrivalReason: ArrivalReason | undefined = !arrived
-        ? undefined
-        : standingOnTarget
-          ? "standingOnTarget"
-          : atopTarget
-            ? "atopTarget"
-            : "withinRadius";
+      const observedArrivalReason: ArrivalReason | undefined = standingOnTarget
+        ? "standingOnTarget"
+        : atopTarget
+          ? "atopTarget"
+          : !knownFalling && distanceToTarget !== undefined && distanceToTarget <= tolerance
+            ? "withinRadius"
+            : undefined;
       const movedDistance = startedFrom && endedAt ? distanceBetween(startedFrom, endedAt) : undefined;
       const moved = movedDistance !== undefined && movedDistance > MOVED_AT_ALL;
       const track = compactRoute(route, startedAtMs);
       const settled = isTerminalMoveStatus(status);
       const ended = settled;
       const completed = settled && !cancelledForTimeout;
+      const arrived = completed && !interrupted && status === "reached";
+      const arrivalReason: ArrivalReason | undefined = !arrived ? undefined : observedArrivalReason;
       const didNotSetOff = completed && !moved && !arrived;
-      const declinedToWalk = didNotSetOff && status === "reached";
-      const gaveUp = completed && distanceToTarget !== undefined && !arrived && (status !== "reached" || !moved);
+      const gaveUp = completed && !arrived;
       const outcome: MoveOutcome =
         polled.timedOut && !isTerminalMoveStatus(cancelStatus)
           ? "timedOut"
@@ -803,11 +809,13 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
             ? "timedOut"
             : interrupted
               ? "interrupted"
-              : arrived
+              : status === "reached"
                 ? "arrived"
-                : gaveUp
-                  ? "navigationGaveUp"
-                  : "stoppedShort";
+                : status === "timedOut"
+                  ? "timedOut"
+                  : gaveUp
+                    ? "navigationGaveUp"
+                    : "stoppedShort";
       const navStatus = normalizeWaitedMoveStatus(outcome);
       const roundedDistance = distanceToTarget === undefined ? undefined : Math.round(distanceToTarget * 10) / 10;
       const engineDiagnostics = (() => {
@@ -845,6 +853,8 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
         output: jsonOutput({
           outcome,
           pathMode,
+          rpcStatus: status,
+          ...(engineDiagnostics ? { rpcDiagnostics: engineDiagnostics } : {}),
           ...(completed && !interrupted ? { arrived } : {}),
           ...(arrivalReason ? { arrivalReason } : {}),
           ...(navigation ? { navigation } : {}),
@@ -864,7 +874,7 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
               }
             : {}),
           ...(ended && endedState !== undefined ? { standingOn: endedState.standingOnName ?? null } : {}),
-          ...(didNotSetOff ? { didNotSetOff: true, declinedToWalk } : {}),
+          ...(didNotSetOff ? { didNotSetOff: true } : {}),
           ...(track && track.length > 1 ? { characterTrack: track } : {}),
           ...(measuredSpeed !== undefined ? { measuredSpeed } : {}),
           clientId: target.clientId,
@@ -874,7 +884,7 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
           tool: "studiorpc_game_character_move_to",
           clientId: target.clientId,
           requestId,
-          status: navStatus,
+          status: status ?? navStatus,
           waitedMs: polled.waitedMs,
         },
       };

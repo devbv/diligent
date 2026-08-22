@@ -413,10 +413,11 @@ describe("play-test input tools", () => {
     const result = await run(byName.get("studiorpc_game_character_move_to"), { target: { x: 100, y: 200, z: 300 } });
 
     expect(calls.filter((call) => call.method === "game.character.moveStatus")).toHaveLength(3);
-    expect(result.metadata).toMatchObject({ requestId: "req-1", status: "navigationGaveUp" });
+    expect(result.metadata).toMatchObject({ requestId: "req-1", status: "reached" });
+    expect(JSON.parse(result.output)).toMatchObject({ outcome: "arrived", rpcStatus: "reached" });
   });
 
-  test("move_to sends the selected path mode and defaults to direct", async () => {
+  test("move_to defaults to the full navigation path mode name", async () => {
     const { calls, byName } = toolsFor((call) => {
       if (call.method === "game.pie.status") return runningStatus();
       if (call.method === "game.character.moveTo") {
@@ -428,19 +429,22 @@ describe("play-test input tools", () => {
       return { requestId: "req-path-mode", status: "reached", clientId: "client-1" };
     });
 
-    const direct = await run(byName.get("studiorpc_game_character_move_to"), {
+    const implicitNavigation = await run(byName.get("studiorpc_game_character_move_to"), {
       target: { x: 100, y: 0, z: 0 },
     });
-    const nav = await run(byName.get("studiorpc_game_character_move_to"), {
+    const explicitNavigation = await run(byName.get("studiorpc_game_character_move_to"), {
       target: { x: 100, y: 0, z: 0 },
-      pathMode: "nav",
+      pathMode: "navigation",
     });
 
     expect(
       calls.filter((call) => call.method === "game.character.moveTo").map((call) => call.params?.pathMode),
-    ).toEqual(["direct", "nav"]);
-    expect(JSON.parse(direct.output)).toMatchObject({ pathMode: "direct" });
-    expect(JSON.parse(nav.output)).toMatchObject({ pathMode: "nav" });
+    ).toEqual(["navigation", "navigation"]);
+    expect(
+      calls.filter((call) => call.method === "game.character.moveTo").map((call) => call.params?.acceptanceRadius),
+    ).toEqual([150, 150]);
+    expect(JSON.parse(implicitNavigation.output)).toMatchObject({ pathMode: "navigation" });
+    expect(JSON.parse(explicitNavigation.output)).toMatchObject({ pathMode: "navigation" });
   });
 
   test("move_to uses pathMode teleport without exposing legacy speed echoes", async () => {
@@ -493,7 +497,7 @@ describe("play-test input tools", () => {
 
     const result = await run(byName.get("studiorpc_game_character_move_to"), {
       target: { x: 400, y: 0, z: 0 },
-      pathMode: "nav",
+      pathMode: "navigation",
     });
     const payload = JSON.parse(result.output);
 
@@ -560,7 +564,11 @@ describe("play-test input tools", () => {
       if (call.method === "game.character.read") {
         return { character: { CFrame: { Position: { X: currentX, Y: 0, Z: 0 } } } };
       }
-      return { requestId: `route-fail-${request}`, status: "reached", clientId: "client-1" };
+      return {
+        requestId: `route-fail-${request}`,
+        status: request === 1 ? "reached" : "failed",
+        clientId: "client-1",
+      };
     });
 
     const result = await run(byName.get("studiorpc_game_character_move_to"), {
@@ -631,7 +639,7 @@ describe("play-test input tools", () => {
     expect(JSON.parse(result.output)).toMatchObject({ arrived: true, outcome: "arrived" });
   });
 
-  test("move_to checks Studio's reached against where the character actually stopped", async () => {
+  test("move_to preserves Studio's reached status and reports the observed position separately", async () => {
     const { byName } = toolsFor((call) => {
       if (call.method === "game.pie.status") return runningStatus();
       if (call.method === "game.character.moveTo") return { requestId: "req-9", status: "pendingStart" };
@@ -646,8 +654,10 @@ describe("play-test input tools", () => {
     });
 
     expect(result.output).toContain('"distanceToTarget"');
-    expect(result.output).toContain('"outcome": "navigationGaveUp"');
-    expect(result.output).not.toContain('"rawNavStatus"');
+    expect(result.output).toContain('"distanceToTarget": 990');
+    expect(result.output).toContain('"outcome": "arrived"');
+    expect(result.output).toContain('"rpcStatus": "reached"');
+    expect(result.output).not.toContain('"arrivalReason"');
   });
 
   test("move_to stays quiet when the character really arrived", async () => {
@@ -678,7 +688,7 @@ describe("play-test input tools", () => {
       if (call.method === "game.character.read") {
         return { character: { CFrame: { Position: { X: 934.9, Y: 0, Z: 5 } } } };
       }
-      return { requestId: "req-80", status: "reached", clientId: "client-1" };
+      return { requestId: "req-80", status: "failed", clientId: "client-1" };
     };
 
     const result = await run(toolsFor(parked).byName.get("studiorpc_game_character_move_to"), { target: "Bed" });
@@ -686,9 +696,9 @@ describe("play-test input tools", () => {
     expect(result.output).toContain('"arrivedWithin": 60');
     expect(result.output).toContain('"arrived": false');
     expect(result.output).toContain('"didNotSetOff": true');
-    expect(result.output).toContain('"declinedToWalk": true');
+    expect(result.output).toContain('"rpcStatus": "failed"');
   });
-  test("move_to distinguishes navigation declining to walk from something holding the character", async () => {
+  test("move_to reports a failed no-movement RPC without inventing a cause", async () => {
     const held = (call: { method: string }) => {
       if (call.method === "game.pie.status") return runningStatus();
       if (call.method === "game.character.moveTo") return { requestId: "req-81", status: "pendingStart" };
@@ -703,25 +713,27 @@ describe("play-test input tools", () => {
     });
 
     expect(result.output).toContain('"didNotSetOff": true');
-    expect(result.output).toContain('"declinedToWalk": false');
+    expect(result.output).toContain('"rpcStatus": "failed"');
+    expect(result.output).not.toContain('"declinedToWalk"');
   });
 
   test("move_to separates a move that was unnecessary from one that went nowhere", async () => {
-    const parked = (position: { X: number; Z: number }) => (call: { method: string }) => {
+    const parked = (position: { X: number; Z: number }, status: string) => (call: { method: string }) => {
       if (call.method === "game.pie.status") return runningStatus();
       if (call.method === "game.character.moveTo") return { requestId: "req-13", status: "pendingStart" };
       if (call.method === "game.character.read") {
         return { character: { CFrame: { Position: { X: position.X, Y: 0, Z: position.Z } } } };
       }
-      return { requestId: "req-13", status: "reached", clientId: "client-1" };
+      return { requestId: "req-13", status, clientId: "client-1" };
     };
 
-    const alreadyThere = await run(toolsFor(parked({ X: 1000, Z: 5 })).byName.get("studiorpc_game_character_move_to"), {
-      target: { x: 1000, y: 0, z: 5 },
-    });
+    const alreadyThere = await run(
+      toolsFor(parked({ X: 1000, Z: 5 }, "reached")).byName.get("studiorpc_game_character_move_to"),
+      { target: { x: 1000, y: 0, z: 5 } },
+    );
     expect(alreadyThere.output).toContain('"outcome": "arrived"');
 
-    const stuck = await run(toolsFor(parked({ X: 0, Z: 0 })).byName.get("studiorpc_game_character_move_to"), {
+    const stuck = await run(toolsFor(parked({ X: 0, Z: 0 }, "failed")).byName.get("studiorpc_game_character_move_to"), {
       target: { x: 5000, y: 0, z: 0 },
     });
     expect(stuck.output).toContain('"outcome": "navigationGaveUp"');
@@ -746,7 +758,7 @@ describe("play-test input tools", () => {
     expect(result.output).toContain('"outcome": "arrived"');
   });
 
-  test("move_to reports a character that walked into a wall as blocked", async () => {
+  test("move_to preserves Studio's timeout after partial movement", async () => {
     let read = 0;
     const { byName } = toolsFor((call) => {
       if (call.method === "game.pie.status") return runningStatus();
@@ -762,7 +774,8 @@ describe("play-test input tools", () => {
       target: { x: 1000, y: 0, z: 0 },
     });
 
-    expect(result.output).toContain('"outcome": "navigationGaveUp"');
+    expect(result.output).toContain('"outcome": "timedOut"');
+    expect(result.output).toContain('"rpcStatus": "timedOut"');
     expect(result.output).not.toContain('"didNotSetOff"');
   });
   test("move_to counts standing on the target as arriving at it", async () => {
@@ -812,7 +825,7 @@ describe("play-test input tools", () => {
     expect(result.output).toContain('"arrivalReason": "withinRadius"');
   });
 
-  test("move_to still says blocked when standing on something that is not the target", async () => {
+  test("move_to keeps Studio's timeout when the observation does not match the target", async () => {
     let read = 0;
     const { byName } = toolsFor((call) => {
       if (call.method === "game.pie.status") return runningStatus();
@@ -834,7 +847,8 @@ describe("play-test input tools", () => {
 
     const result = await run(byName.get("studiorpc_game_character_move_to"), { target: "PlinthMid" });
 
-    expect(result.output).toContain('"outcome": "navigationGaveUp"');
+    expect(result.output).toContain('"outcome": "timedOut"');
+    expect(result.output).toContain('"rpcStatus": "timedOut"');
     expect(result.output).not.toContain('"standingOnTarget"');
     expect(result.output).not.toContain('"arrivalReason"');
   });
@@ -978,12 +992,16 @@ describe("play-test input tools", () => {
 
     const sent = calls.find((call) => call.method === "game.character.moveTo");
     expect((sent?.params as { position: unknown }).position).toMatchObject({ x: 350, y: 60, z: 250 });
+    expect(sent?.params).toMatchObject({
+      acceptanceRadius: 60,
+      targetHalfExtents: { x: 45, y: 45, z: 45 },
+    });
     expect(result.output).toContain('"distanceToTarget": 0');
     expect(result.output).toContain('"arrivedWithin": 60');
   });
 
   test("move_to measures a big target from its surface, not its middle", async () => {
-    const { byName } = toolsFor((call) => {
+    const { calls, byName } = toolsFor((call) => {
       if (call.method === "game.pie.status") return runningStatus();
       if (call.method === "game.instance.read") {
         return { instance: { CFrame: { Position: { X: 0, Y: 200, Z: -600 } }, Size: { X: 400, Y: 400, Z: 40 } } };
@@ -992,7 +1010,7 @@ describe("play-test input tools", () => {
       if (call.method === "game.character.read") {
         return { character: { CFrame: { Position: { X: 0, Y: 200, Z: -450 } } } };
       }
-      return { requestId: "req-23", status: "reached", clientId: "client-1" };
+      return { requestId: "req-23", status: "failed", clientId: "client-1" };
     });
 
     const result = await run(byName.get("studiorpc_game_character_move_to"), { target: "Gate" });
@@ -1000,6 +1018,11 @@ describe("play-test input tools", () => {
     expect(result.output).toContain('"distanceToTarget": 130');
     expect(result.output).toContain('"arrived": false');
     expect(result.output).toContain('"outcome": "navigationGaveUp"');
+    expect(result.output).toContain('"rpcStatus": "failed"');
+    expect(calls.find((call) => call.method === "game.character.moveTo")?.params).toMatchObject({
+      acceptanceRadius: 60,
+      targetHalfExtents: { x: 200, y: 200, z: 20 },
+    });
   });
 
   test("move_to says so when the named instance is not in the world", async () => {
@@ -1028,7 +1051,7 @@ describe("play-test input tools", () => {
     const result = await run(tool, { target: { x: 1000, y: 0, z: 5 } });
 
     expect(result.output).toContain('"outcome": "arrived"');
-    for (const field of ["outcome", "arrived", "distanceToTarget", "arrivedWithin", "standingOn"]) {
+    for (const field of ["outcome", "rpcStatus", "arrived", "distanceToTarget", "arrivedWithin", "standingOn"]) {
       expect(tool?.description).toContain(field);
       expect(result.output).toContain(`"${field}"`);
     }
@@ -1093,11 +1116,13 @@ describe("play-test input tools", () => {
     const output = JSON.parse(result.output);
 
     expect(output.outcome).toBe("interrupted");
+    expect(output.rpcStatus).toBe("interrupted");
+    expect(output.rpcDiagnostics.kind).toBe("positionDiscontinuity");
     expect(output.interruption.kind).toBe("positionDiscontinuity");
     expect(output.navigation.terminalStatus).toBe("interrupted");
     expect(output.arrived).toBeUndefined();
   });
-  test("move_to does not reissue a move after Studio ends it", async () => {
+  test("move_to does not reissue or override a move after Studio reaches it", async () => {
     let statusPolls = 0;
     let x = 0;
     const { calls, byName } = toolsFor((call) => {
@@ -1121,7 +1146,8 @@ describe("play-test input tools", () => {
       timeoutMs: 10_000,
     });
 
-    expect(result.output).toContain('"outcome": "stoppedShort"');
+    expect(result.output).toContain('"outcome": "arrived"');
+    expect(result.output).toContain('"rpcStatus": "reached"');
     expect(calls.filter((call) => call.method === "game.character.moveTo")).toHaveLength(1);
     expect(result.output).not.toContain('"reaimed"');
   });
@@ -1246,7 +1272,7 @@ describe("play-test input tools", () => {
       if (call.method === "game.character.read") {
         return { character: { CFrame: { Position: { X: 0, Y: 0, Z: 0 } } } };
       }
-      return { requestId: "req-12", status: "reached", clientId: "client-1" };
+      return { requestId: "req-12", status: "failed", clientId: "client-1" };
     };
 
     const result = await run(toolsFor(wentNowhere).byName.get("studiorpc_game_character_move_to"), {
@@ -1254,7 +1280,8 @@ describe("play-test input tools", () => {
     });
 
     expect(result.output).toContain('"didNotSetOff": true');
-    expect(result.output).toContain('"declinedToWalk": true');
+    expect(result.output).toContain('"rpcStatus": "failed"');
+    expect(result.output).not.toContain('"declinedToWalk"');
   });
   test("parameters that were removed are refused rather than ignored", async () => {
     const { byName } = toolsFor((call) =>
@@ -1300,13 +1327,18 @@ describe("play-test input tools", () => {
     expect(() => schema.parse({ target: [] })).toThrow();
     expect(() => schema.parse({ target: Array.from({ length: 33 }, () => "Gate") })).toThrow();
     expect(() => schema.parse({ target: ["Gate", "Exit"], pathMode: "teleport" })).toThrow();
-    expect(() => schema.parse({ target: ["Gate", "Exit"], pathMode: "nav" })).not.toThrow();
+    expect(() => schema.parse({ target: ["Gate", "Exit"], pathMode: "navigation" })).not.toThrow();
+    expect(() => schema.parse({ target: "Gate", pathMode: "direct" })).toThrow();
+    expect(() => schema.parse({ target: "Gate", pathMode: "nav" })).toThrow();
   });
 
   test("move_to reports a stopped route when its wait budget runs out", async () => {
     const { byName } = toolsFor((call) => {
       if (call.method === "game.pie.status") return runningStatus();
       if (call.method === "game.character.moveTo") return { requestId: "req-3", status: "pendingStart" };
+      if (call.method === "game.character.moveCancel") {
+        return { requestId: "req-3", status: "cancelled", clientId: "client-1" };
+      }
       return { requestId: "req-3", status: "running", clientId: "client-1" };
     });
 
