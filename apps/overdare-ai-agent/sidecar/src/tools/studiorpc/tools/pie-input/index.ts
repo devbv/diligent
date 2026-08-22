@@ -70,23 +70,14 @@ const moveToShape = {
       `How long to wait for the move to end. Defaults to ${MOVE_WAIT_DEFAULT_MS}ms. For a waypoint array, ` +
         "this is the total route budget, not a new budget for each leg.",
     ),
-  speedMultiplier: z
-    .number()
-    .min(0.1)
-    .max(10)
+  pathMode: z
+    .enum(["direct", "nav", "teleport"])
     .optional()
     .describe(
-      "Temporary multiplier for this character's WalkSpeed, restored on every exit path. It does not change " +
-        "the game clock; omit it when judging normal traversal or timing. The reply includes requested and " +
-        "measured speed because game scripts may clamp movement.",
-    ),
-  teleport: z
-    .boolean()
-    .optional()
-    .describe(
-      "Teleport to one target instead of walking. It cannot be combined with a target array. Use only to " +
-        "arrange state outside the behavior under test. Any active move is cancelled; landedAt reports the " +
-        "collision-adjusted destination.",
+      "How to reach the target. direct (default) uses the character's normal straight-line MoveTo. nav follows " +
+        "an Unreal Navigation System path around walkable obstacles, but cannot invent jumps or operate game " +
+        "mechanics. teleport moves to one target immediately and is only for arranging state outside the behavior " +
+        "under test; landedAt reports the collision-adjusted destination.",
     ),
   ...targetOverrides,
 };
@@ -95,11 +86,11 @@ const moveToParams = z
   .object(moveToShape)
   .strict()
   .superRefine((value, ctx) => {
-    if (Array.isArray(value.target) && value.teleport) {
+    if (Array.isArray(value.target) && value.pathMode === "teleport") {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ["teleport"],
-        message: "teleport accepts one target; omit it to walk a waypoint array in order",
+        path: ["pathMode"],
+        message: "pathMode teleport accepts one target; use direct or nav for a waypoint array",
       });
     }
   });
@@ -125,8 +116,7 @@ interface InjectResult {
 interface MoveToResult {
   requestId?: string;
   status?: string;
-  baseWalkSpeed?: number;
-  walkSpeed?: number;
+  pathMode?: "direct" | "nav" | "teleport";
   teleported?: boolean;
   landedAt?: { x: number; y: number; z: number };
 }
@@ -506,6 +496,9 @@ const moveToDescription = [
   "Navigate the play-test character to one live instance or world position, or through a target array in order, " +
     "and wait for measured results. A route stops at its first failed waypoint and reports completedWaypoints, " +
     "failedWaypointIndex, and a compact result for every attempted leg. timeoutMs is one budget for the whole route. ",
+  "Choose pathMode direct for the existing straight-line MoveTo, nav for an Unreal navmesh route around walkable " +
+    "obstacles, or teleport only to arrange test state. nav follows grounded walkable paths; it does not jump, use " +
+    "elevators, press controls, or bypass scripts that constrain character movement. ",
   "Read `outcome`: arrived, interrupted, navigationGaveUp, stoppedShort, or timedOut. interrupted means " +
     "the reached position did not remain stable through Studio's confirmation window. navigationGaveUp says only that " +
     "Studio ended navigation short; it does not prove collision or an unreachable level. The sidecar does not infer " +
@@ -553,6 +546,7 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
           return {
             output: jsonOutput({
               outcome,
+              pathMode: args.pathMode ?? "direct",
               completedWaypoints,
               waypointCount,
               ...(failedWaypointIndex === undefined ? {} : { failedWaypointIndex }),
@@ -615,6 +609,7 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
               "routeStillRunning",
               "navigation",
               "interruption",
+              "pathMode",
             ]) {
               if (payload[field] !== undefined) report[field] = payload[field];
             }
@@ -678,23 +673,24 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
       const startedNearTarget =
         wantedTarget !== undefined && startedFrom !== undefined && measureTo(startedFrom) <= ALREADY_AT_RADIUS;
       const destination = wantedPosition;
+      const pathMode = args.pathMode ?? "direct";
       const started = (await toolCallRpc(
         "game.character.moveTo",
         {
           pieSessionId: target.pieSessionId,
           clientId: target.clientId,
           position: destination,
-          ...(args.speedMultiplier === undefined ? {} : { speedMultiplier: args.speedMultiplier }),
-          ...(args.teleport ? { teleport: true } : {}),
+          pathMode,
         },
         { timeoutMs: MOVE_RPC_TIMEOUT_MS },
       )) as MoveToResult;
-      if (args.teleport) {
+      if (pathMode === "teleport") {
         const landedState = await readCharacterState(toolCallRpc, target);
         const landed = started?.landedAt ?? landedState?.position;
         return {
           output: jsonOutput({
             outcome: "teleported",
+            pathMode,
             teleported: started?.teleported === true,
             ...(named?.path ? { target: named.path } : {}),
             landedAt: landed,
@@ -848,6 +844,7 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
       return {
         output: jsonOutput({
           outcome,
+          pathMode,
           ...(completed && !interrupted ? { arrived } : {}),
           ...(arrivalReason ? { arrivalReason } : {}),
           ...(navigation ? { navigation } : {}),
@@ -870,9 +867,6 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
           ...(didNotSetOff ? { didNotSetOff: true, declinedToWalk } : {}),
           ...(track && track.length > 1 ? { characterTrack: track } : {}),
           ...(measuredSpeed !== undefined ? { measuredSpeed } : {}),
-          ...(args.speedMultiplier !== undefined
-            ? { speedMultiplier: args.speedMultiplier, walkSpeed: started?.walkSpeed }
-            : {}),
           clientId: target.clientId,
         }),
         render: buildMoveToRender(target, wantedPosition, requestId, navStatus, polled.waitedMs),

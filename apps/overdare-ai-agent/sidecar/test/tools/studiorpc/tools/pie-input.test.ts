@@ -416,6 +416,92 @@ describe("play-test input tools", () => {
     expect(result.metadata).toMatchObject({ requestId: "req-1", status: "navigationGaveUp" });
   });
 
+  test("move_to sends the selected path mode and defaults to direct", async () => {
+    const { calls, byName } = toolsFor((call) => {
+      if (call.method === "game.pie.status") return runningStatus();
+      if (call.method === "game.character.moveTo") {
+        return { requestId: "req-path-mode", status: "pendingStart", pathMode: call.params?.pathMode };
+      }
+      if (call.method === "game.character.read") {
+        return { character: { CFrame: { Position: { X: 100, Y: 0, Z: 0 } } } };
+      }
+      return { requestId: "req-path-mode", status: "reached", clientId: "client-1" };
+    });
+
+    const direct = await run(byName.get("studiorpc_game_character_move_to"), {
+      target: { x: 100, y: 0, z: 0 },
+    });
+    const nav = await run(byName.get("studiorpc_game_character_move_to"), {
+      target: { x: 100, y: 0, z: 0 },
+      pathMode: "nav",
+    });
+
+    expect(
+      calls.filter((call) => call.method === "game.character.moveTo").map((call) => call.params?.pathMode),
+    ).toEqual(["direct", "nav"]);
+    expect(JSON.parse(direct.output)).toMatchObject({ pathMode: "direct" });
+    expect(JSON.parse(nav.output)).toMatchObject({ pathMode: "nav" });
+  });
+
+  test("move_to uses pathMode teleport without exposing legacy speed echoes", async () => {
+    const { calls, byName } = toolsFor((call) => {
+      if (call.method === "game.pie.status") return runningStatus();
+      if (call.method === "game.character.moveTo") {
+        return {
+          requestId: "req-teleport",
+          status: "reached",
+          pathMode: "teleport",
+          teleported: true,
+          landedAt: { x: 20, y: 0, z: 10 },
+          walkSpeed: 999,
+        };
+      }
+      if (call.method === "game.character.read") {
+        return { character: { CFrame: { Position: { X: 20, Y: 0, Z: 10 } } } };
+      }
+      return {};
+    });
+
+    const result = await run(byName.get("studiorpc_game_character_move_to"), {
+      target: { x: 20, y: 0, z: 10 },
+      pathMode: "teleport",
+    });
+    const payload = JSON.parse(result.output);
+
+    expect(calls.find((call) => call.method === "game.character.moveTo")?.params).toMatchObject({
+      pathMode: "teleport",
+    });
+    expect(payload).toMatchObject({ outcome: "teleported", pathMode: "teleport" });
+    expect(payload.walkSpeed).toBeUndefined();
+    expect(payload.speedMultiplier).toBeUndefined();
+    expect(calls.some((call) => call.method === "game.character.moveStatus")).toBe(false);
+  });
+
+  test("move_to keeps measuredSpeed as an observed result", async () => {
+    let statusPolls = 0;
+    let positionReads = 0;
+    const { byName } = toolsFor((call) => {
+      if (call.method === "game.pie.status") return runningStatus();
+      if (call.method === "game.character.moveTo") return { requestId: "req-speed", status: "pendingStart" };
+      if (call.method === "game.character.read") {
+        const x = Math.min(400, positionReads++ * 100);
+        return { character: { CFrame: { Position: { X: x, Y: 0, Z: 0 } } } };
+      }
+      statusPolls += 1;
+      return { requestId: "req-speed", status: statusPolls >= 4 ? "reached" : "running", clientId: "client-1" };
+    });
+
+    const result = await run(byName.get("studiorpc_game_character_move_to"), {
+      target: { x: 400, y: 0, z: 0 },
+      pathMode: "nav",
+    });
+    const payload = JSON.parse(result.output);
+
+    expect(payload.measuredSpeed).toBeGreaterThan(0);
+    expect(payload.speedMultiplier).toBeUndefined();
+    expect(payload.walkSpeed).toBeUndefined();
+  });
+
   test("move_to walks an array of waypoints in order in one tool call", async () => {
     let currentX = 0;
     let request = 0;
@@ -1182,6 +1268,8 @@ describe("play-test input tools", () => {
       { passThroughBeyond: 40 },
       { targetName: "Gate" },
       { position: { x: 0, y: 0, z: 0 } },
+      { speedMultiplier: 2 },
+      { teleport: true },
     ]) {
       expect(() => schema.parse({ target: "Gate", ...gone })).toThrow(/[Uu]nrecognized/);
     }
@@ -1211,7 +1299,8 @@ describe("play-test input tools", () => {
     ).not.toThrow();
     expect(() => schema.parse({ target: [] })).toThrow();
     expect(() => schema.parse({ target: Array.from({ length: 33 }, () => "Gate") })).toThrow();
-    expect(() => schema.parse({ target: ["Gate", "Exit"], teleport: true })).toThrow();
+    expect(() => schema.parse({ target: ["Gate", "Exit"], pathMode: "teleport" })).toThrow();
+    expect(() => schema.parse({ target: ["Gate", "Exit"], pathMode: "nav" })).not.toThrow();
   });
 
   test("move_to reports a stopped route when its wait budget runs out", async () => {
