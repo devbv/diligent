@@ -70,6 +70,17 @@ const moveToShape = {
       `How long to wait for the move to end. Defaults to ${MOVE_WAIT_DEFAULT_MS}ms. For a waypoint array, ` +
         "this is the total route budget, not a new budget for each leg.",
     ),
+  arrivedWithin: z
+    .number()
+    .min(0)
+    .max(1_000)
+    .optional()
+    .describe(
+      `Final-position acceptance radius for an {x, y, z} navigation target. Defaults to ${ARRIVAL_TOLERANCE} ` +
+        "world units. Navigation still tries to approach the requested point and does not stop when it first enters " +
+        "the radius; the radius accepts the result only after navigation ends or cannot progress. For a waypoint " +
+        "array, the same radius applies to every coordinate. Named targets keep their surface rule.",
+    ),
   pathMode: z
     .enum(["navigation", "teleport"])
     .optional()
@@ -92,6 +103,23 @@ const moveToParams = z
         path: ["pathMode"],
         message: "pathMode teleport accepts one target; use navigation for a waypoint array",
       });
+    }
+    if (value.arrivedWithin !== undefined) {
+      const targets = Array.isArray(value.target) ? value.target : [value.target];
+      if (targets.some((target) => typeof target === "string")) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["arrivedWithin"],
+          message: "arrivedWithin applies only to {x, y, z} targets; named targets use their surface",
+        });
+      }
+      if (value.pathMode === "teleport") {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["arrivedWithin"],
+          message: "arrivedWithin applies to navigation; teleport reports its collision-adjusted landing point",
+        });
+      }
     }
   });
 
@@ -506,7 +534,9 @@ const moveToDescription = [
     "that result. The sidecar does not infer failure from sampled position, reissue a completed move, or cancel " +
     "Studio navigation. timeoutMs limits how long the tool waits; routeStillRunning reports navigation that remains " +
     "active when that wait expires. ",
-  "arrivalReason names the successful rule. withinRadius compares distanceToTarget with arrivedWithin (" +
+  "For an {x, y, z} target, arrivedWithin optionally sets the Studio-owned terminal acceptance radius from 0 to " +
+    "1000. Navigation still approaches the requested point; entering this radius does not stop it early. " +
+    "arrivalReason names the successful rule. withinRadius compares distanceToTarget with arrivedWithin (" +
     TOUCH_MARGIN +
     " to a named target surface, " +
     ARRIVAL_TOLERANCE +
@@ -682,7 +712,7 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
         wantedTarget !== undefined && startedFrom !== undefined && measureTo(startedFrom) <= ALREADY_AT_RADIUS;
       const destination = wantedPosition;
       const pathMode = args.pathMode ?? "navigation";
-      const tolerance = named?.half ? TOUCH_MARGIN : ARRIVAL_TOLERANCE;
+      const tolerance = named?.half ? TOUCH_MARGIN : (args.arrivedWithin ?? ARRIVAL_TOLERANCE);
       const started = (await toolCallRpc(
         "game.character.moveTo",
         {
@@ -753,7 +783,9 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
         ?.split(".")
         .pop();
       const standingOnTarget = targetLeaf !== undefined && endedState?.standingOnName === targetLeaf;
-      const distanceToTarget = endedAt ? measureTo(endedAt) : undefined;
+      const rpcDistanceToTarget = polled.diagnostics?.distanceToTargetRegion;
+      const distanceToTarget =
+        typeof rpcDistanceToTarget === "number" ? rpcDistanceToTarget : endedAt ? measureTo(endedAt) : undefined;
       const feetAboveTargetTop = named?.half && endedAt ? endedAt.y - (named.position.y + named.half.y) : undefined;
       const horizontalToTarget =
         named?.half && endedAt ? distanceToSurface(endedAt, named.position, named.half, true) : undefined;
