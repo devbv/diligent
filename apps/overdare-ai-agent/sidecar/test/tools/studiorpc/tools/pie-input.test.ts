@@ -87,7 +87,7 @@ describe("play-test input tools", () => {
     expect(normalizeWaitedMoveStatus("arrived")).toBe("reached");
     expect(normalizeWaitedMoveStatus("navigationGaveUp")).toBe("navigationGaveUp");
     expect(normalizeWaitedMoveStatus("stoppedShort")).toBe("stoppedShort");
-    expect(normalizeWaitedMoveStatus("timedOut")).toBe("cancelled");
+    expect(normalizeWaitedMoveStatus("timedOut")).toBe("timedOut");
   });
 
   test("validates every wait condition shape before it reaches Studio", () => {
@@ -1084,7 +1084,6 @@ describe("play-test input tools", () => {
     expect(result.output).toContain('"terminalStatus": "failed"');
     expect(calls.filter((call) => call.method === "game.character.moveStatus")).toHaveLength(12);
     expect(calls.filter((call) => call.method === "game.character.moveTo")).toHaveLength(1);
-    expect(calls.some((call) => call.method === "game.character.moveCancel")).toBe(false);
     expect(result.output).not.toContain('"routeStillRunning"');
   }, 10_000);
 
@@ -1157,7 +1156,6 @@ describe("play-test input tools", () => {
     const { calls, byName } = toolsFor((call) => {
       if (call.method === "game.pie.status") return runningStatus({ timeScale: 0.05 });
       if (call.method === "game.character.moveTo") return { requestId: "req-slow", status: "pendingStart" };
-      if (call.method === "game.character.moveCancel") return { requestId: "req-slow", status: "cancelled" };
       if (call.method === "game.character.read") {
         x += 4;
         return { character: { CFrame: { Position: { X: x, Y: 0, Z: 0 } } } };
@@ -1172,14 +1170,14 @@ describe("play-test input tools", () => {
 
     expect(calls.filter((call) => call.method === "game.pie.status")).toHaveLength(1);
     expect(result.output).toContain('"outcome": "timedOut"');
+    expect(result.output).toContain('"routeStillRunning": true');
     expect(result.output).not.toContain('"blocked"');
   });
 
-  test("move_to withholds an arrival verdict on a move it had to stop", async () => {
+  test("move_to withholds an arrival verdict when its wait expires", async () => {
     const { byName } = toolsFor((call) => {
       if (call.method === "game.pie.status") return runningStatus();
       if (call.method === "game.character.moveTo") return { requestId: "req-15", status: "pendingStart" };
-      if (call.method === "game.character.moveCancel") return { requestId: "req-15", status: "cancelled" };
       if (call.method === "game.character.read") {
         return { character: { CFrame: { Position: { X: 1, Y: 0, Z: 0 } } } };
       }
@@ -1193,37 +1191,17 @@ describe("play-test input tools", () => {
 
     expect(result.output).not.toContain('"blocked"');
     expect(result.output).not.toContain('"arrived"');
-    expect(result.output).toContain('"endedAt"');
+    expect(result.output).toContain('"at"');
+    expect(result.output).not.toContain('"endedAt"');
     expect(result.output).toContain('"outcome": "timedOut"');
+    expect(result.output).toContain('"rpcStatus": "running"');
+    expect(result.output).toContain('"routeStillRunning": true');
   });
 
-  test("move_to cancels the route its wait ran out on", async () => {
-    const { calls, byName } = toolsFor((call) => {
-      if (call.method === "game.pie.status") return runningStatus();
-      if (call.method === "game.character.moveTo") return { requestId: "req-cancel", status: "pendingStart" };
-      if (call.method === "game.character.moveCancel") return { requestId: "req-cancel", status: "cancelled" };
-      if (call.method === "game.character.read") {
-        return { character: { CFrame: { Position: { X: 1, Y: 0, Z: 0 } } } };
-      }
-      return { requestId: "req-cancel", status: "running", clientId: "client-1" };
-    });
-
-    const result = await run(byName.get("studiorpc_game_character_move_to"), {
-      target: { x: 5000, y: 0, z: 0 },
-      timeoutMs: 1_000,
-    });
-
-    const cancel = calls.find((call) => call.method === "game.character.moveCancel");
-    expect(cancel?.params).toMatchObject({ requestId: "req-cancel" });
-    expect(result.output).toContain('"outcome": "timedOut"');
-    expect(result.output).not.toContain('"routeStillRunning"');
-  });
-
-  test("move_to keeps a terminal status that wins the timeout-cancel race", async () => {
+  test("move_to does not infer arrival from position when its wait expires", async () => {
     const { byName } = toolsFor((call) => {
       if (call.method === "game.pie.status") return runningStatus();
       if (call.method === "game.character.moveTo") return { requestId: "req-race", status: "pendingStart" };
-      if (call.method === "game.character.moveCancel") return { requestId: "req-race", status: "reached" };
       if (call.method === "game.character.read") {
         return {
           character: {
@@ -1240,16 +1218,16 @@ describe("play-test input tools", () => {
       timeoutMs: 1_000,
     });
 
-    expect(result.output).toContain('"outcome": "arrived"');
-    expect(result.output).toContain('"arrived": true');
-    expect(result.output).not.toContain('"routeStillRunning"');
+    expect(result.output).toContain('"outcome": "timedOut"');
+    expect(result.output).toContain('"rpcStatus": "running"');
+    expect(result.output).toContain('"routeStillRunning": true');
+    expect(result.output).not.toContain('"arrived": true');
   });
 
-  test("move_to says so when it could not stop the route", async () => {
+  test("move_to reports that navigation remains active after its wait expires", async () => {
     const { byName } = toolsFor((call) => {
       if (call.method === "game.pie.status") return runningStatus();
       if (call.method === "game.character.moveTo") return { requestId: "req-nocancel", status: "pendingStart" };
-      if (call.method === "game.character.moveCancel") throw new Error("moveRequestNotFound");
       if (call.method === "game.character.read") {
         return { character: { CFrame: { Position: { X: 1, Y: 0, Z: 0 } } } };
       }
@@ -1332,13 +1310,10 @@ describe("play-test input tools", () => {
     expect(() => schema.parse({ target: "Gate", pathMode: "nav" })).toThrow();
   });
 
-  test("move_to reports a stopped route when its wait budget runs out", async () => {
+  test("move_to reports an active route when its wait budget runs out", async () => {
     const { byName } = toolsFor((call) => {
       if (call.method === "game.pie.status") return runningStatus();
       if (call.method === "game.character.moveTo") return { requestId: "req-3", status: "pendingStart" };
-      if (call.method === "game.character.moveCancel") {
-        return { requestId: "req-3", status: "cancelled", clientId: "client-1" };
-      }
       return { requestId: "req-3", status: "running", clientId: "client-1" };
     });
 
@@ -1346,8 +1321,9 @@ describe("play-test input tools", () => {
       target: { x: 1, y: 2, z: 3 },
       timeoutMs: 1000,
     });
-    expect(result.metadata).toMatchObject({ status: "cancelled" });
+    expect(result.metadata).toMatchObject({ status: "running" });
     expect(result.output).toContain('"outcome": "timedOut"');
+    expect(result.output).toContain('"routeStillRunning": true');
   });
 
   test("inject expands a press into the down/wait/up Studio understands", async () => {

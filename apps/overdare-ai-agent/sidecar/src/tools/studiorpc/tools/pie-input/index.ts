@@ -152,7 +152,7 @@ export function normalizeWaitedMoveStatus(outcome: MoveOutcome): string {
     case "stoppedShort":
       return "stoppedShort";
     case "timedOut":
-      return "cancelled";
+      return "timedOut";
     case "interrupted":
       return "interrupted";
   }
@@ -503,9 +503,9 @@ const moveToDescription = [
     "the reached position did not remain stable through Studio's confirmation window. navigationGaveUp says only that " +
     "Studio ended navigation short; it does not prove collision or an unreachable level. `rpcStatus` and " +
     "`rpcDiagnostics` preserve Studio's authoritative result; sampled position adds observations but never rewrites " +
-    "that result. The sidecar does " +
-    "not infer failure from sampled position or reissue a completed move. It cancels only when timeoutMs expires; " +
-    "routeStillRunning appears if that cancellation could not be confirmed. ",
+    "that result. The sidecar does not infer failure from sampled position, reissue a completed move, or cancel " +
+    "Studio navigation. timeoutMs limits how long the tool waits; routeStillRunning reports navigation that remains " +
+    "active when that wait expires. ",
   "arrivalReason names the successful rule. withinRadius compares distanceToTarget with arrivedWithin (" +
     TOUCH_MARGIN +
     " to a named target surface, " +
@@ -743,23 +743,8 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
         target.clientId,
       );
       const walkedTrack: TrackSample[] = polled.track;
-      let endedState = await readCharacterState(toolCallRpc, target);
-      const stopActiveRoute = polled.timedOut;
-      let cancelStatus: string | undefined;
-      if (stopActiveRoute) {
-        try {
-          const cancelResult = (await toolCallRpc(
-            "game.character.moveCancel",
-            { pieSessionId: target.pieSessionId, requestId },
-            { timeoutMs: MOVE_RPC_TIMEOUT_MS },
-          )) as MoveStatusResult;
-          cancelStatus = cancelResult?.status;
-          endedState = (await readCharacterState(toolCallRpc, target)) ?? endedState;
-        } catch {
-          cancelStatus = undefined;
-        }
-      }
-      const status = cancelStatus ?? polled.status ?? started?.status;
+      const endedState = await readCharacterState(toolCallRpc, target);
+      const status = polled.status ?? started?.status;
       const endedAt = endedState?.position;
       const endedAtMs = Date.now();
       const targetLeaf = (
@@ -783,7 +768,6 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
           ? [{ ...startedFrom, atMs: startedAtMs }, ...walkedTrack, { ...endedAt, atMs: endedAtMs }]
           : undefined;
       const knownFalling = endedState?.falling === true;
-      const cancelledForTimeout = polled.timedOut && cancelStatus === "cancelled";
       const interrupted = status === "interrupted";
       const observedArrivalReason: ArrivalReason | undefined = standingOnTarget
         ? "standingOnTarget"
@@ -797,32 +781,25 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
       const track = compactRoute(route, startedAtMs);
       const settled = isTerminalMoveStatus(status);
       const ended = settled;
-      const completed = settled && !cancelledForTimeout;
+      const completed = settled;
       const arrived = completed && !interrupted && status === "reached";
       const arrivalReason: ArrivalReason | undefined = !arrived ? undefined : observedArrivalReason;
       const didNotSetOff = completed && !moved && !arrived;
       const gaveUp = completed && !arrived;
-      const outcome: MoveOutcome =
-        polled.timedOut && !isTerminalMoveStatus(cancelStatus)
-          ? "timedOut"
-          : cancelledForTimeout
-            ? "timedOut"
-            : interrupted
-              ? "interrupted"
-              : status === "reached"
-                ? "arrived"
-                : status === "timedOut"
-                  ? "timedOut"
-                  : gaveUp
-                    ? "navigationGaveUp"
-                    : "stoppedShort";
+      const outcome: MoveOutcome = polled.timedOut
+        ? "timedOut"
+        : interrupted
+          ? "interrupted"
+          : status === "reached"
+            ? "arrived"
+            : status === "timedOut"
+              ? "timedOut"
+              : gaveUp
+                ? "navigationGaveUp"
+                : "stoppedShort";
       const navStatus = normalizeWaitedMoveStatus(outcome);
       const roundedDistance = distanceToTarget === undefined ? undefined : Math.round(distanceToTarget * 10) / 10;
-      const engineDiagnostics = (() => {
-        if (!stopActiveRoute || polled.diagnostics?.terminalStatus === undefined) return polled.diagnostics;
-        const { terminalStatus: statusBeforeCancellation, ...rest } = polled.diagnostics;
-        return { statusBeforeCancellation, ...rest };
-      })();
+      const engineDiagnostics = polled.diagnostics;
       const navigation =
         outcome === "navigationGaveUp" || outcome === "stoppedShort" || outcome === "interrupted"
           ? {
@@ -859,7 +836,7 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
           ...(arrivalReason ? { arrivalReason } : {}),
           ...(navigation ? { navigation } : {}),
           ...(interruption ? { interruption } : {}),
-          ...(stopActiveRoute && !isTerminalMoveStatus(cancelStatus) ? { routeStillRunning: true } : {}),
+          ...(polled.timedOut && !settled ? { routeStillRunning: true } : {}),
           ...(named?.path ? { target: named.path } : {}),
           ...(named?.matches !== undefined && named.matches > 1
             ? { targetMatches: named.matches, targetOtherPaths: named.otherPaths ?? [] }
