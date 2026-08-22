@@ -30,22 +30,11 @@ const MOVE_WAIT_MAX_MS = 300_000;
 const ARRIVAL_TOLERANCE = 150;
 const MOVED_AT_ALL = 5;
 const MOVE_NAME_SUGGESTIONS = 8;
-const MOVE_STALL_MS = 3_000;
-const MIN_GAME_TIME_SCALE = 0.05;
 const TOUCH_MARGIN = 60;
 const ALREADY_AT_RADIUS = 30;
 const CHARACTER_ORIGIN_ABOVE_FEET = 84;
-function wasMovedNotWalked(track: TrackSample[]): boolean {
-  for (let index = 1; index < track.length; index++) {
-    const gap = distanceBetween(track[index - 1], track[index]);
-    const seconds = Math.max(track[index].atMs - track[index - 1].atMs, 1) / 1_000;
-    if (gap >= 300 && gap / seconds >= 2_000) return true;
-  }
-  return false;
-}
 const TRACK_MOVE_THRESHOLD = 25;
 const TRACK_MAX_SAMPLES = 24;
-const MAX_MOVE_REAIMS = 40;
 const MAX_MOVE_WAYPOINTS = 32;
 
 const targetOverrides = {
@@ -162,10 +151,6 @@ interface CharacterState {
   falling?: boolean;
 }
 
-interface GameTimeScaleReadResult {
-  timeScale?: number;
-}
-
 type MoveOutcome = "arrived" | "navigationGaveUp" | "stoppedShort" | "timedOut" | "interrupted";
 type ArrivalReason = "standingOnTarget" | "atopTarget" | "withinRadius";
 export function normalizeWaitedMoveStatus(outcome: MoveOutcome): string {
@@ -181,11 +166,6 @@ export function normalizeWaitedMoveStatus(outcome: MoveOutcome): string {
     case "interrupted":
       return "interrupted";
   }
-}
-export function moveStallWindowMs(timeScale: number | undefined): number {
-  if (timeScale === undefined || !Number.isFinite(timeScale) || timeScale <= 0) return MOVE_STALL_MS;
-  const boundedScale = Math.max(timeScale, MIN_GAME_TIME_SCALE);
-  return Math.round(MOVE_STALL_MS / Math.min(boundedScale, 1));
 }
 type ClientRef = { pieSessionId?: string; clientId?: string };
 
@@ -303,11 +283,6 @@ function distanceToSurface(
   return Math.hypot(dx, dy, dz);
 }
 type TrackSample = { x: number; y: number; z: number; atMs: number };
-function movingAtTheEnd(track: TrackSample[], endedAtMs: number, windowMs: number): boolean {
-  const recent = track.filter((sample) => endedAtMs - sample.atMs <= windowMs);
-  if (recent.length < 2) return false;
-  return distanceBetween(recent[0], recent[recent.length - 1]) > MOVED_AT_ALL;
-}
 function compactRoute(
   route: TrackSample[] | undefined,
   startedAtMs: number,
@@ -471,42 +446,21 @@ export function expectedLookResult(error: unknown, sent: InputEvent[]): InjectRe
     cancelledEventCount: Math.max(0, sent.length - failedEventIndex - 1),
   };
 }
-async function readGameTimeScale(callRpc: CallRpc): Promise<number | undefined> {
-  try {
-    const result = (await callRpc(
-      "game.pie.status",
-      {},
-      { timeoutMs: MOVE_RPC_TIMEOUT_MS },
-    )) as GameTimeScaleReadResult;
-    const scale = result?.timeScale;
-    return typeof scale === "number" && Number.isFinite(scale) && scale > 0 ? scale : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 async function pollMoveStatus(
   callRpc: CallRpc,
   pieSessionId: string,
   requestId: string,
   timeoutMs: number,
-  gameTimeScale: number | undefined,
   clientId?: string,
 ): Promise<{
   status: string | undefined;
   waitedMs: number;
   timedOut: boolean;
-  stalled: boolean;
-  gameTimeScale: number | undefined;
-  stallWindowMs: number;
   track: TrackSample[];
   diagnostics?: Record<string, unknown>;
 }> {
   const startedAt = Date.now();
-  const stallWindowMs = moveStallWindowMs(gameTimeScale);
   let status: string | undefined;
-  let stillSince: number | undefined;
-  let stillAnchor: { x: number; y: number; z: number } | undefined;
   let lastTrackedPosition: { x: number; y: number; z: number } | undefined;
   let diagnostics: Record<string, unknown> | undefined;
   const track: TrackSample[] = [];
@@ -525,9 +479,6 @@ async function pollMoveStatus(
         status,
         waitedMs: Date.now() - startedAt,
         timedOut: false,
-        stalled: false,
-        gameTimeScale,
-        stallWindowMs,
         track,
         ...(diagnostics ? { diagnostics } : {}),
       };
@@ -535,26 +486,9 @@ async function pollMoveStatus(
 
     const position = await readCharacterPosition(callRpc, { pieSessionId, clientId });
     if (position) {
-      const madeProgress = stillAnchor !== undefined && distanceBetween(position, stillAnchor) > MOVED_AT_ALL;
-      if (stillAnchor === undefined || madeProgress) {
-        stillAnchor = position;
-        stillSince = Date.now();
-      }
       if (lastTrackedPosition === undefined || distanceBetween(position, lastTrackedPosition) > MOVED_AT_ALL) {
         track.push({ ...position, atMs: Date.now() });
         lastTrackedPosition = position;
-      }
-      if (stillSince !== undefined && Date.now() - stillSince >= stallWindowMs) {
-        return {
-          status,
-          waitedMs: Date.now() - startedAt,
-          timedOut: false,
-          stalled: true,
-          gameTimeScale,
-          stallWindowMs,
-          track,
-          ...(diagnostics ? { diagnostics } : {}),
-        };
       }
     }
   }
@@ -563,9 +497,6 @@ async function pollMoveStatus(
     status,
     waitedMs: Date.now() - startedAt,
     timedOut: true,
-    stalled: false,
-    gameTimeScale,
-    stallWindowMs,
     track,
     ...(diagnostics ? { diagnostics } : {}),
   };
@@ -577,16 +508,16 @@ const moveToDescription = [
     "failedWaypointIndex, and a compact result for every attempted leg. timeoutMs is one budget for the whole route. ",
   "Read `outcome`: arrived, interrupted, navigationGaveUp, stoppedShort, or timedOut. interrupted means " +
     "the reached position did not remain stable through Studio's confirmation window. navigationGaveUp says only that " +
-    "navigation ended short or stopped making measurable progress; it does not prove collision or an unreachable level. " +
-    "The tool cancels a still-active route before returning navigationGaveUp or timedOut; routeStillRunning appears if " +
-    "cancellation could not be confirmed. ",
+    "Studio ended navigation short; it does not prove collision or an unreachable level. The sidecar does not infer " +
+    "failure from sampled position or reissue a completed move. It cancels only when timeoutMs expires; " +
+    "routeStillRunning appears if that cancellation could not be confirmed. ",
   "arrivalReason names the successful rule. withinRadius compares distanceToTarget with arrivedWithin (" +
     TOUCH_MARGIN +
     " to a named target surface, " +
     ARRIVAL_TOLERANCE +
     " to a bare position). standingOnTarget and atopTarget account for the character origin being about " +
     "84 units above its feet. ",
-  "endedAt, standingOn, characterTrack, measuredSpeed, and reaimed describe the final position and route. " +
+  "endedAt, standingOn, characterTrack, and measuredSpeed describe the final position and route. " +
     "navigation reports observed terminal state and progress facts without guessing at collision or navmesh causes. " +
     "didNotSetOff means start and end matched; declinedToWalk means navigation considered the request " +
     "already satisfied. Use characterTrack before inferring that no movement occurred.",
@@ -795,61 +726,23 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
       }
 
       const timeoutMs = args.timeoutMs ?? MOVE_WAIT_DEFAULT_MS;
-      const gameTimeScale = await readGameTimeScale(toolCallRpc);
       const deadlineAtMs = Date.now() + timeoutMs;
-      let polled = await pollMoveStatus(
+      const polled = await pollMoveStatus(
         toolCallRpc,
         target.pieSessionId,
         requestId,
         Math.max(1_000, deadlineAtMs - Date.now()),
-        gameTimeScale,
         target.clientId,
       );
-      const walkedTrack: TrackSample[] = [...polled.track];
+      const walkedTrack: TrackSample[] = polled.track;
       let endedState = await readCharacterState(toolCallRpc, target);
-      let reaims = 0;
-      let activeRequestId = requestId;
-      while (
-        reaims < MAX_MOVE_REAIMS &&
-        Date.now() < deadlineAtMs &&
-        isTerminalMoveStatus(polled.status) &&
-        endedState?.position !== undefined &&
-        measureTo(endedState.position) > (named?.half ? TOUCH_MARGIN : ARRIVAL_TOLERANCE) &&
-        movingAtTheEnd(polled.track, Date.now(), polled.stallWindowMs) &&
-        endedState.standingOnName !== undefined &&
-        !wasMovedNotWalked(polled.track)
-      ) {
-        const again = (await toolCallRpc(
-          "game.character.moveTo",
-          {
-            pieSessionId: target.pieSessionId,
-            clientId: target.clientId,
-            position: destination,
-            ...(args.speedMultiplier === undefined ? {} : { speedMultiplier: args.speedMultiplier }),
-          },
-          { timeoutMs: MOVE_RPC_TIMEOUT_MS },
-        )) as MoveToResult;
-        if (!again?.requestId) break;
-        reaims += 1;
-        activeRequestId = again.requestId;
-        polled = await pollMoveStatus(
-          toolCallRpc,
-          target.pieSessionId,
-          again.requestId,
-          Math.max(1_000, deadlineAtMs - Date.now()),
-          gameTimeScale,
-          target.clientId,
-        );
-        walkedTrack.push(...polled.track);
-        endedState = await readCharacterState(toolCallRpc, target);
-      }
-      const stopActiveRoute = polled.timedOut || polled.stalled;
+      const stopActiveRoute = polled.timedOut;
       let cancelStatus: string | undefined;
       if (stopActiveRoute) {
         try {
           const cancelResult = (await toolCallRpc(
             "game.character.moveCancel",
-            { pieSessionId: target.pieSessionId, requestId: activeRequestId },
+            { pieSessionId: target.pieSessionId, requestId },
             { timeoutMs: MOVE_RPC_TIMEOUT_MS },
           )) as MoveStatusResult;
           cancelStatus = cancelResult?.status;
@@ -901,14 +794,12 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
       const movedDistance = startedFrom && endedAt ? distanceBetween(startedFrom, endedAt) : undefined;
       const moved = movedDistance !== undefined && movedDistance > MOVED_AT_ALL;
       const track = compactRoute(route, startedAtMs);
-      const settled = isTerminalMoveStatus(status) || polled.stalled;
+      const settled = isTerminalMoveStatus(status);
       const ended = settled;
       const completed = settled && !cancelledForTimeout;
       const didNotSetOff = completed && !moved && !arrived;
       const declinedToWalk = didNotSetOff && status === "reached";
-      const stillWalking = movingAtTheEnd(walkedTrack, endedAtMs, polled.stallWindowMs);
-      const obstructed = (!moved || status !== "reached") && !stillWalking;
-      const gaveUp = completed && distanceToTarget !== undefined && !arrived && obstructed;
+      const gaveUp = completed && distanceToTarget !== undefined && !arrived && (status !== "reached" || !moved);
       const outcome: MoveOutcome =
         polled.timedOut && !isTerminalMoveStatus(cancelStatus)
           ? "timedOut"
@@ -934,7 +825,7 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
               ...(isTerminalMoveStatus(status)
                 ? { terminalStatus: status }
                 : { lastObservedStatus: status ?? "unknown" }),
-              stoppedMoving: !stillWalking,
+              stoppedMoving: isTerminalMoveStatus(status),
               ...(roundedDistance === undefined ? {} : { remainingDistance: roundedDistance }),
               ...(engineDiagnostics ? { engine: engineDiagnostics } : {}),
             }
@@ -979,7 +870,6 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
           ...(didNotSetOff ? { didNotSetOff: true, declinedToWalk } : {}),
           ...(track && track.length > 1 ? { characterTrack: track } : {}),
           ...(measuredSpeed !== undefined ? { measuredSpeed } : {}),
-          ...(reaims > 0 ? { reaimed: reaims } : {}),
           ...(args.speedMultiplier !== undefined
             ? { speedMultiplier: args.speedMultiplier, walkSpeed: started?.walkSpeed }
             : {}),
