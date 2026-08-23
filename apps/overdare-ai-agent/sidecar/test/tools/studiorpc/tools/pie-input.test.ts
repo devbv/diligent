@@ -478,6 +478,29 @@ describe("play-test input tools", () => {
     });
   });
 
+  test("move_to measures a bare ground position from the character's feet when Studio diagnostics are absent", async () => {
+    const { byName } = toolsFor((call) => {
+      if (call.method === "game.pie.status") return runningStatus();
+      if (call.method === "game.character.moveTo") return { requestId: "req-ground", status: "pendingStart" };
+      if (call.method === "game.character.read") {
+        return { character: { CFrame: { Position: { X: 0, Y: 84, Z: 0 } } } };
+      }
+      return { requestId: "req-ground", status: "reached", clientId: "client-1" };
+    });
+
+    const result = await run(byName.get("studiorpc_game_character_move_to"), {
+      target: { x: 0, y: 0, z: 0 },
+      arrivedWithin: 30,
+    });
+
+    expect(JSON.parse(result.output)).toMatchObject({
+      outcome: "arrived",
+      arrivalReason: "withinRadius",
+      distanceToTarget: 0,
+      arrivedWithin: 30,
+    });
+  });
+
   test("move_to uses pathMode teleport without exposing legacy speed echoes", async () => {
     const { calls, byName } = toolsFor((call) => {
       if (call.method === "game.pie.status") return runningStatus();
@@ -675,7 +698,7 @@ describe("play-test input tools", () => {
       if (call.method === "game.pie.status") return runningStatus();
       if (call.method === "game.character.moveTo") return { requestId: "req-9", status: "pendingStart" };
       if (call.method === "game.character.read") {
-        return { character: { CFrame: { Position: { X: 10, Y: 0, Z: 5 } } } };
+        return { character: { CFrame: { Position: { X: 10, Y: 84, Z: 5 } } } };
       }
       return { requestId: "req-9", status: "reached", clientId: "client-1" };
     });
@@ -696,7 +719,7 @@ describe("play-test input tools", () => {
       if (call.method === "game.pie.status") return runningStatus();
       if (call.method === "game.character.moveTo") return { requestId: "req-10", status: "pendingStart" };
       if (call.method === "game.character.read") {
-        return { character: { CFrame: { Position: { X: 1000, Y: 0, Z: 5 } } } };
+        return { character: { CFrame: { Position: { X: 1000, Y: 84, Z: 5 } } } };
       }
       return { requestId: "req-10", status: "reached", clientId: "client-1" };
     });
@@ -1031,6 +1054,36 @@ describe("play-test input tools", () => {
     expect(result.output).toContain('"arrivedWithin": 60');
   });
 
+  test("move_to forwards arrivedWithin as a named-target surface radius", async () => {
+    const { calls, byName } = toolsFor((call) => {
+      if (call.method === "game.pie.status") return runningStatus();
+      if (call.method === "game.instance.read") {
+        return { instance: { CFrame: { Position: { X: 350, Y: 60, Z: 250 } }, Size: { X: 90, Y: 90, Z: 90 } } };
+      }
+      if (call.method === "game.character.moveTo") return { requestId: "req-named-radius", status: "pendingStart" };
+      if (call.method === "game.character.read") {
+        return { character: { CFrame: { Position: { X: 350, Y: 60, Z: 250 } } } };
+      }
+      return {
+        requestId: "req-named-radius",
+        status: "reached",
+        clientId: "client-1",
+        diagnostics: { terminalStatus: "reached", distanceToTargetRegion: 0, acceptanceRadius: 90 },
+      };
+    });
+
+    const result = await run(byName.get("studiorpc_game_character_move_to"), {
+      target: "Coin1",
+      arrivedWithin: 90,
+    });
+
+    expect(calls.find((call) => call.method === "game.character.moveTo")?.params).toMatchObject({
+      acceptanceRadius: 90,
+      targetHalfExtents: { x: 45, y: 45, z: 45 },
+    });
+    expect(JSON.parse(result.output)).toMatchObject({ arrivedWithin: 90, distanceToTarget: 0 });
+  });
+
   test("move_to reports Studio's feet-aware distance for a thin named target", async () => {
     const { byName } = toolsFor((call) => {
       if (call.method === "game.pie.status") return runningStatus();
@@ -1356,7 +1409,7 @@ describe("play-test input tools", () => {
     expect(() => schema.parse({ timeoutMs: 5000 })).toThrow();
   });
 
-  test("arrivedWithin is bounded and belongs only to coordinate navigation", () => {
+  test("arrivedWithin is bounded and applies to every navigation target", () => {
     const { byName } = toolsFor((call) => (call.method === "game.pie.status" ? runningStatus() : {}));
     const schema = byName.get("studiorpc_game_character_move_to")?.parameters as {
       parse: (value: unknown) => unknown;
@@ -1374,8 +1427,8 @@ describe("play-test input tools", () => {
     ).not.toThrow();
     expect(() => schema.parse({ target: { x: 0, y: 0, z: 0 }, arrivedWithin: -1 })).toThrow();
     expect(() => schema.parse({ target: { x: 0, y: 0, z: 0 }, arrivedWithin: 1_001 })).toThrow();
-    expect(() => schema.parse({ target: "ExitPad", arrivedWithin: 100 })).toThrow(/named targets/);
-    expect(() => schema.parse({ target: ["Gate", { x: 0, y: 0, z: 0 }], arrivedWithin: 100 })).toThrow(/named targets/);
+    expect(() => schema.parse({ target: "ExitPad", arrivedWithin: 100 })).not.toThrow();
+    expect(() => schema.parse({ target: ["Gate", { x: 0, y: 0, z: 0 }], arrivedWithin: 100 })).not.toThrow();
     expect(() => schema.parse({ target: { x: 0, y: 0, z: 0 }, pathMode: "teleport", arrivedWithin: 100 })).toThrow(
       /navigation/,
     );

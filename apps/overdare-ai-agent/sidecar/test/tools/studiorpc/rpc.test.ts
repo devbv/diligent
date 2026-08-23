@@ -41,4 +41,37 @@ describe("Studio RPC cancellation", () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(accepted?.destroyed).toBe(true);
   });
+
+  test("surfaces a structured Studio rejection reason without dropping its data", async () => {
+    server = createServer((socket) => {
+      accepted = socket;
+      socket.once("data", (requestBytes) => {
+        const request = JSON.parse(requestBytes.toString()) as { id: number };
+        socket.write(
+          `${JSON.stringify({
+            jsonrpc: "2.0",
+            id: request.id,
+            error: {
+              code: -32111,
+              message: "Move rejected",
+              data: { name: "moveRejected", reason: "navigationSystemUnavailable" },
+            },
+          })}\n`,
+        );
+      });
+    });
+    await new Promise<void>((resolve) => server!.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("test server has no TCP port");
+    process.env.STUDIO_HOST = "127.0.0.1";
+    process.env.STUDIO_PORT = String(address.port);
+
+    const rejected = call("game.character.moveTo", {}, { timeoutMs: 1_000 });
+
+    await expect(rejected).rejects.toMatchObject({
+      code: -32111,
+      data: { name: "moveRejected", reason: "navigationSystemUnavailable" },
+      message: expect.stringContaining("Reason: navigationSystemUnavailable"),
+    });
+  });
 });

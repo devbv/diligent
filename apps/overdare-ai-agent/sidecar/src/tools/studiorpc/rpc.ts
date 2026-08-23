@@ -41,6 +41,11 @@ function renderMeasurements(data: unknown): string {
   }
   return sections.length > 0 ? `\n\n${sections.join("\n\n")}` : "";
 }
+function renderReason(data: unknown): string {
+  if (!data || typeof data !== "object") return "";
+  const reason = (data as Record<string, unknown>).reason;
+  return typeof reason === "string" && reason.length > 0 ? `\n\nReason: ${reason}` : "";
+}
 export async function applyLevelChanges(): Promise<unknown> {
   return call("level.apply", {});
 }
@@ -120,6 +125,7 @@ export async function call(
           });
           if (response.error) {
             let errorMsg = `Studio RPC error [${response.error.code}]: ${response.error.message}`;
+            errorMsg += renderReason(response.error.data);
             errorMsg += renderMeasurements(response.error.data);
             errorMsg += `\n\nRequest method: ${method} (id ${id})`;
             if (response.error.message?.toLowerCase().includes("guid")) {

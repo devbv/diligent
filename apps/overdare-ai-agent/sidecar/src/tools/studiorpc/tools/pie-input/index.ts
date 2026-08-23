@@ -76,10 +76,11 @@ const moveToShape = {
     .max(1_000)
     .optional()
     .describe(
-      `Final-position acceptance radius for an {x, y, z} navigation target. Defaults to ${ARRIVAL_TOLERANCE} ` +
-        "world units. Navigation still tries to approach the requested point and does not stop when it first enters " +
-        "the radius; the radius accepts the result only after navigation ends or cannot progress. For a waypoint " +
-        "array, the same radius applies to every coordinate. Named targets keep their surface rule.",
+      "Final-position acceptance radius for a navigation target. It defaults to " +
+        `${ARRIVAL_TOLERANCE} world units from a bare ground position and ${TOUCH_MARGIN} from a named target's ` +
+        "surface. Navigation still tries to approach the target and does not stop when it first enters the radius; " +
+        "the radius accepts the result only after navigation ends or cannot progress. For a waypoint array, the " +
+        "same radius applies to every target using that target's distance rule.",
     ),
   pathMode: z
     .enum(["navigation", "teleport"])
@@ -105,14 +106,6 @@ const moveToParams = z
       });
     }
     if (value.arrivedWithin !== undefined) {
-      const targets = Array.isArray(value.target) ? value.target : [value.target];
-      if (targets.some((target) => typeof target === "string")) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["arrivedWithin"],
-          message: "arrivedWithin applies only to {x, y, z} targets; named targets use their surface",
-        });
-      }
       if (value.pathMode === "teleport") {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -217,6 +210,17 @@ async function readCharacterPosition(
 
 function distanceBetween(a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }): number {
   return Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+}
+
+function distanceToGroundPosition(
+  characterOrigin: { x: number; y: number; z: number },
+  groundPosition: { x: number; y: number; z: number },
+): number {
+  return Math.hypot(
+    characterOrigin.x - groundPosition.x,
+    characterOrigin.y - CHARACTER_ORIGIN_ABOVE_FEET - groundPosition.y,
+    characterOrigin.z - groundPosition.z,
+  );
 }
 
 interface LiveInstance {
@@ -534,13 +538,15 @@ const moveToDescription = [
     "that result. The sidecar does not infer failure from sampled position, reissue a completed move, or cancel " +
     "Studio navigation. timeoutMs limits how long the tool waits; routeStillRunning reports navigation that remains " +
     "active when that wait expires. ",
-  "For an {x, y, z} target, arrivedWithin optionally sets the Studio-owned terminal acceptance radius from 0 to " +
-    "1000. Navigation still approaches the requested point; entering this radius does not stop it early. " +
-    "arrivalReason names the successful rule. withinRadius compares distanceToTarget with arrivedWithin (" +
+  "For any navigation target, arrivedWithin optionally sets the Studio-owned terminal acceptance radius from 0 to " +
+    "1000. Navigation still approaches the target; entering this radius does not stop it early. A bare position " +
+    "measures the character's feet to the ground-level point, while a named target measures to its surface. " +
+    "arrivalReason names the successful rule, and withinRadius compares distanceToTarget with arrivedWithin. " +
+    "Defaults are " +
     TOUCH_MARGIN +
     " to a named target surface, " +
     ARRIVAL_TOLERANCE +
-    " to a bare position). Use the named target, not a nearby bare coordinate, when interaction reach matters. " +
+    " to a bare position. Use the named target, not a nearby bare coordinate, when interaction reach matters. " +
     "standingOnTarget and atopTarget account for the character origin being about " +
     "84 units above its feet. ",
   "endedAt, standingOn, characterTrack, and measuredSpeed describe the final position and route. " +
@@ -707,12 +713,14 @@ function createCharacterMoveToTool(callRpc: CallRpc): Tool {
       const startedFrom = await readCharacterPosition(toolCallRpc, target);
       const startedAtMs = Date.now();
       const measureTo = (from: { x: number; y: number; z: number }) =>
-        named?.half ? distanceToSurface(from, named.position, named.half) : distanceBetween(from, wantedPosition);
+        named?.half
+          ? distanceToSurface(from, named.position, named.half)
+          : distanceToGroundPosition(from, wantedPosition);
       const startedNearTarget =
         wantedTarget !== undefined && startedFrom !== undefined && measureTo(startedFrom) <= ALREADY_AT_RADIUS;
       const destination = wantedPosition;
       const pathMode = args.pathMode ?? "navigation";
-      const tolerance = named?.half ? TOUCH_MARGIN : (args.arrivedWithin ?? ARRIVAL_TOLERANCE);
+      const tolerance = args.arrivedWithin ?? (named?.half ? TOUCH_MARGIN : ARRIVAL_TOLERANCE);
       const started = (await toolCallRpc(
         "game.character.moveTo",
         {
