@@ -1,4 +1,4 @@
-// @summary Verifies OVERDARE bootstrap config defaults and play-test prompt contracts.
+// @summary Verifies OVERDARE bootstrap config defaults and essential cross-tool prompt policy.
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { cp, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
@@ -20,26 +20,14 @@ afterEach(async () => {
 });
 
 describe("OVERDARE bootstrap config", () => {
-  test("describes working key movement and the short input/read feedback loop", async () => {
-    const prompt = await readFile(join(import.meta.dir, "../../bootstrap/system-prompt.txt"), "utf-8");
-
-    expect(prompt).toContain("W A S D do drive the built-in walk axes in this Studio build");
-    expect(prompt).toContain("affected by acceleration, collisions, and camera facing");
-    expect(prompt).toContain("For walls, jumps, corners");
-    expect(prompt).toContain("send a short key batch");
-    expect(prompt).toContain("then call `studiorpc_game_character_read`");
-    expect(prompt).toContain("For a distant destination, prefer `move_to`");
-    expect(prompt).not.toContain("Treat W A S D as no-ops for movement");
-  });
-
-  test("grounds user spatial directions in the current viewport", async () => {
+  test("keeps cross-tool play-test policy without duplicating individual tool definitions", async () => {
     const prompt = await readFile(join(import.meta.dir, "../../bootstrap/system-prompt.txt"), "utf-8");
 
     expect(prompt).toContain("spatial directions and locations in the user's current viewport");
-    expect(prompt).toContain("camera.axes.groundRight/groundForward");
-    expect(prompt).toContain("back-project the screen point through the camera");
-    expect(prompt).toContain("A 2D screen point is not one unique world position without depth");
-    expect(prompt).toContain("read the camera immediately before converting the instruction");
+    expect(prompt).toContain("drive it yourself with the play-test input tools");
+    expect(prompt).toContain("Ask the user to play-test by hand only when");
+    expect(prompt).not.toContain("<play-test-input>");
+    expect(prompt).not.toContain("`studiorpc_game_pie_status` ");
   });
 
   test("enables the procedural experiment by default", async () => {
