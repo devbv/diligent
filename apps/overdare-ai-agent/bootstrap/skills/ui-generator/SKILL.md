@@ -86,6 +86,7 @@ OVERDARE Studio UI is designed mobile-landscape first. Cross-cutting assumptions
 - Preserve existing UI unless the user explicitly asks to replace or delete it.
 - Attach new UI to the screen root and script that already own that flow. Read the owning controller/server script first, hang the UI off the existing screen root, and let that script drive it — do not spin up a competing script or a stray new `ScreenGui`. Reusing the current owner is the most reliable outcome; a new floating root is the least.
 - When the user gives asset names, IDs, atlas cell offsets, or image sizes, bind them to the real properties — `Image`, `ImageRectOffset`, `ImageRectSize`, button images. Building the layout but leaving these unbound is a common, immediately-reported failure.
+- Border and frame art reused at several sizes — popup backgrounds, panels, speech bubbles, button frames — needs `ScaleType = "Slice"` with `SliceCenter` in source-image pixels, not plain stretching.
 - Imported assets often land under `Workspace` — move them to `StarterGui` (or the right UI parent) with `studiorpc_instance_move`.
 - GUI input and camera behavior run in a `LocalScript`.
 - Read and act on warnings from Studio tool results — they catch runtime layout conflicts (safe-area overlap, ZIndex band misuse) not visible in the instance tree.

@@ -9,8 +9,21 @@ const udim2 = z.object({
   X: z.object({ Scale: z.number(), Offset: z.number() }),
   Y: z.object({ Scale: z.number(), Offset: z.number() }),
 });
+/** Studio serialises Rect flat — four scalars, not two nested Vector2s. It clamps out-of-range values but not inverted ones. */
+const rect = z
+  .object({
+    MinX: z.number(),
+    MinY: z.number(),
+    MaxX: z.number(),
+    MaxY: z.number(),
+  })
+  .refine((r) => r.MinX <= r.MaxX && r.MinY <= r.MaxY, {
+    message: "SliceCenter needs MinX <= MaxX and MinY <= MaxY; an inverted rectangle has no centre region.",
+  });
 
 const normalIdEnum = z.enum(["Right", "Top", "Back", "Left", "Bottom", "Front"]);
+/** Tile, Crop and Fit exist in the engine but ship hidden, so they stay out of reach here. */
+const scaleTypeEnum = z.enum(["Stretch", "Slice"]);
 const mobilityEnum = z
   .enum(["Static", "Movable"])
   .describe(
@@ -492,6 +505,13 @@ const rawInstancePropertiesUnion = z.union([
       ImageTransparency: z.number().describe("(0~1)").optional(),
       PressImage: z.string().describe("Image asset ID").optional(),
       HoverImage: z.string().describe("Image asset ID").optional(),
+      ScaleType: scaleTypeEnum
+        .describe("How the image fills the element. Slice keeps the corners at their source size.")
+        .optional(),
+      SliceCenter: rect
+        .describe("9-slice boundaries in source-image pixels from the top-left. Applies when ScaleType is Slice.")
+        .optional(),
+      SliceScale: z.number().describe("Multiplier for 9-slice edge thickness. Default 1.").optional(),
       ...guiObjectProperties,
     })
     .strict()
@@ -501,6 +521,13 @@ const rawInstancePropertiesUnion = z.union([
       Image: z.string().describe("Image asset ID").optional(),
       ImageColor3: rgb.optional(),
       ImageTransparency: z.number().describe("(0~1)").optional(),
+      ScaleType: scaleTypeEnum
+        .describe("How the image fills the element. Slice keeps the corners at their source size.")
+        .optional(),
+      SliceCenter: rect
+        .describe("9-slice boundaries in source-image pixels from the top-left. Applies when ScaleType is Slice.")
+        .optional(),
+      SliceScale: z.number().describe("Multiplier for 9-slice edge thickness. Default 1.").optional(),
       ...guiObjectProperties,
     })
     .strict()
@@ -1077,6 +1104,7 @@ function zodToShape(schema: z.ZodTypeAny): ShapeSpec {
   if (schema instanceof z.ZodOptional) return zodToShape(schema.unwrap());
   if (schema instanceof z.ZodDefault) return zodToShape(schema.removeDefault());
   if (schema instanceof z.ZodArray) return zodToShape(schema.element);
+  if (schema instanceof z.ZodEffects) return zodToShape(schema.innerType());
   return true;
 }
 

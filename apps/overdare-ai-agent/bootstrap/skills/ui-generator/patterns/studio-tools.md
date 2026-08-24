@@ -183,6 +183,9 @@ Important properties:
 - `ImageColor3`
 - `ImageTransparency`
 - `BackgroundTransparency`
+- `ScaleType`
+- `SliceCenter`
+- `SliceScale`
 - All common frame layout properties
 
 Asset paths must use `ovdrassetid://[number]`.
