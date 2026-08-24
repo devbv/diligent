@@ -5,7 +5,7 @@ import { normalizeArgs, params, preCall } from "../../../../src/tools/studiorpc/
 describe("game.play restart", () => {
   test("stops the running session before starting one", async () => {
     const calls: string[] = [];
-    await preCall({ restart: true, timeScale: 0.2 }, async (method) => {
+    await preCall({ restart: true, numberOfPlayer: 2 }, async (method) => {
       calls.push(method);
       return {};
     });
@@ -19,9 +19,7 @@ describe("game.play restart", () => {
       calls.push(method);
       return {};
     };
-    // 59 of 140 measured plays landed on an already-running session on purpose, to rescale
-    // its clock. Stopping those would throw away the state they were about to read.
-    await preCall({ timeScale: 0.2 }, record);
+    await preCall({ numberOfPlayer: 2 }, record);
     await preCall({ restart: false }, record);
 
     expect(calls).toEqual([]);
@@ -36,14 +34,10 @@ describe("game.play restart", () => {
   });
 
   test("restart never reaches Studio, which does not know the flag", () => {
-    expect(normalizeArgs({ restart: true, timeScale: 0.2 })).toEqual({ timeScale: 0.2 });
+    expect(normalizeArgs({ restart: true, numberOfPlayer: 2 })).toEqual({ numberOfPlayer: 2 });
   });
 
-  test("states the clock range it enforces", () => {
-    expect(() => params.parse({ timeScale: 10 })).not.toThrow();
-    // Codex asked for 20, and the refusal left the play test stopped — the range is in the
-    // description now because the failure costs the call after it as well.
-    expect(() => params.parse({ timeScale: 20 })).toThrow();
-    expect(() => params.parse({ timeScale: 0.04 })).toThrow();
+  test("strips the removed timeScale parameter before calling Studio", () => {
+    expect(params.parse({ numberOfPlayer: 2, timeScale: 10 })).toEqual({ numberOfPlayer: 2 });
   });
 });

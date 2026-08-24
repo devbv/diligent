@@ -121,6 +121,12 @@ describe("play-test input tools", () => {
     ).toThrow();
   });
 
+  test("strips the removed timeScale field from wait events", () => {
+    expect(inputEventsSchema.parse([{ type: "wait", durationMs: 100, timeScale: 10 }])).toEqual([
+      { type: "wait", durationMs: 100 },
+    ]);
+  });
+
   test("are registered on the Studio RPC provider", async () => {
     const provider = createStudioRpcToolProvider({ callRpc: async () => ({}) });
     const names = (await provider.createTools({ cwd: "/tmp/project" })).map((tool) => tool.name);
@@ -1269,10 +1275,10 @@ describe("play-test input tools", () => {
     expect(result.output).not.toContain('"reaimed"');
   });
 
-  test("move_to does not query game time scale to decide movement completion", async () => {
+  test("move_to does not infer a block from slow progress", async () => {
     let x = 0;
     const { calls, byName } = toolsFor((call) => {
-      if (call.method === "game.pie.status") return runningStatus({ timeScale: 0.05 });
+      if (call.method === "game.pie.status") return runningStatus();
       if (call.method === "game.character.moveTo") return { requestId: "req-slow", status: "pendingStart" };
       if (call.method === "game.character.read") {
         x += 4;

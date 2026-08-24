@@ -347,7 +347,7 @@ function createPieStatusTool(callRpc: CallRpc): Tool {
   return {
     name: "studiorpc_game_pie_status",
     description:
-      "Report PIE session state, pieSessionId, timeScale, and clients. targeted marks the default client. " +
+      "Report PIE session state, pieSessionId, and clients. targeted marks the default client. " +
       "Input, move, and character.read accept another injectable clientId; UI, screenshots, camera, and " +
       "game.observe use the targeted client.",
     parameters: z.object({}),

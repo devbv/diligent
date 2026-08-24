@@ -81,10 +81,7 @@ const pressDurationSchema = z
   .min(0)
   .max(MAX_TOTAL_DURATION_MS)
   .optional()
-  .describe(
-    'Real milliseconds to hold action "press"; ignored by down/up and defaults to a tap. At a slowed ' +
-      "game clock, divide the required game-time hold by timeScale.",
-  );
+  .describe('Real milliseconds to hold action "press"; ignored by down/up and defaults to a tap.');
 
 const keyEventSchema = z.object({
   type: z.literal("key"),
@@ -243,16 +240,6 @@ const waitEventSchema = z.object({
   type: z.literal("wait"),
   durationMs: z.number().int().min(0).max(MAX_TOTAL_DURATION_MS),
   until: untilSchema.optional(),
-  timeScale: z
-    .number()
-    .min(0.05)
-    .max(10)
-    .optional()
-    .describe(
-      "Clock speed for this wait only, restored the moment it ends. durationMs stays real time, so the " +
-        "game time covered is durationMs x timeScale: 10s at 10 skips 100 game-seconds. Leave it out and " +
-        "the wait runs at whatever scale the session is already on, changing nothing.",
-    ),
 });
 
 export const inputEventSchema = z.discriminatedUnion("type", [
@@ -275,8 +262,8 @@ export const inputEventsSchema = z
     "Ordered PIE input, up to 64 events. Keys use Enum.KeyCode names and down/up/press. pointerMove and " +
       "pointerButton take a normalized position or live UI target; separate down/up positions form a drag. " +
       "Pointer buttons arrive to Lua as Touch, while Activated still fires. look reports reached, clamped, " +
-      "blocked, or timedOut. mouseDelta needs capture; scroll uses wheel notches. wait uses real durationMs, " +
-      "an optional temporary timeScale, and optional instance/UI/log conditions. Every down must be released " +
+      "blocked, or timedOut. mouseDelta needs capture; scroll uses wheel notches. wait uses real durationMs " +
+      "and optional instance/UI/log conditions. Every down must be released " +
       "inside the batch; prefer press for self-balanced input.",
   );
 export function normalizeEventShapes(events: unknown): unknown {

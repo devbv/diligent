@@ -28,9 +28,8 @@ export const description =
   "already paid for once — there is nothing left to convert. " +
   "gameTimeSeconds is the world's own clock, which is the clock a timed round runs on. Its value on its " +
   "own means nothing; the difference between two reads is how much game time your calls and your reasoning " +
-  "just cost, which is the only way to tell a round that expired from one that was never started. It is " +
-  "already scaled, so at timeScale 0.25 it advances a second for every four real ones. This is the cheap " +
-  "way to ask: reading it off a countdown on screen costs a whole ui section. " +
+  "just cost, which is the only way to tell a round that expired from one that was never started. This is " +
+  "the cheap way to ask: reading it off a countdown on screen costs a whole ui section. " +
   "When the next thing you want after this is the UI or some instances, ask studiorpc_game_observe for all " +
   "of it instead: separate calls are seconds of game time apart and describe different moments, and one " +
   "observe stamps the moment they all share.";

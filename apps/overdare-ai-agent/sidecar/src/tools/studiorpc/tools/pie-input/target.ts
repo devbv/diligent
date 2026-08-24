@@ -13,7 +13,6 @@ export interface PieClientSnapshot {
 export interface PieStatusSnapshot {
   running: boolean;
   pieSessionId?: string;
-  timeScale?: number;
   clients: PieClientSnapshot[];
 }
 
