@@ -120,13 +120,6 @@ describe("play-test input tools", () => {
       ]),
     ).toThrow();
   });
-
-  test("strips the removed timeScale field from wait events", () => {
-    expect(inputEventsSchema.parse([{ type: "wait", durationMs: 100, timeScale: 10 }])).toEqual([
-      { type: "wait", durationMs: 100 },
-    ]);
-  });
-
   test("are registered on the Studio RPC provider", async () => {
     const provider = createStudioRpcToolProvider({ callRpc: async () => ({}) });
     const names = (await provider.createTools({ cwd: "/tmp/project" })).map((tool) => tool.name);

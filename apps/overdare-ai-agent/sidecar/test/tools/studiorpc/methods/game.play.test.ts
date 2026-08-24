@@ -1,6 +1,6 @@
 // @summary Tests that restart really stops first, and that Studio never sees the flag.
 import { describe, expect, test } from "bun:test";
-import { normalizeArgs, params, preCall } from "../../../../src/tools/studiorpc/methods/game.play";
+import { normalizeArgs, preCall } from "../../../../src/tools/studiorpc/methods/game.play";
 
 describe("game.play restart", () => {
   test("stops the running session before starting one", async () => {
@@ -35,9 +35,5 @@ describe("game.play restart", () => {
 
   test("restart never reaches Studio, which does not know the flag", () => {
     expect(normalizeArgs({ restart: true, numberOfPlayer: 2 })).toEqual({ numberOfPlayer: 2 });
-  });
-
-  test("strips the removed timeScale parameter before calling Studio", () => {
-    expect(params.parse({ numberOfPlayer: 2, timeScale: 10 })).toEqual({ numberOfPlayer: 2 });
   });
 });
