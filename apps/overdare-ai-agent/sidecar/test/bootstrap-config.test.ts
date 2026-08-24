@@ -1,7 +1,7 @@
-// @summary Verifies OVERDARE bootstrap config enables advertised product experiments by default.
+// @summary Verifies OVERDARE bootstrap config defaults and essential cross-tool prompt policy.
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { cp, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadDiligentConfig } from "@diligent/runtime/config";
@@ -20,6 +20,16 @@ afterEach(async () => {
 });
 
 describe("OVERDARE bootstrap config", () => {
+  test("keeps cross-tool play-test policy without duplicating individual tool definitions", async () => {
+    const prompt = await readFile(join(import.meta.dir, "../../bootstrap/system-prompt.txt"), "utf-8");
+
+    expect(prompt).toContain("spatial directions and locations in the user's current viewport");
+    expect(prompt).toContain("drive it yourself with the play-test input tools");
+    expect(prompt).toContain("Ask the user to play-test by hand only when");
+    expect(prompt).not.toContain("<play-test-input>");
+    expect(prompt).not.toContain("`studiorpc_game_pie_status` ");
+  });
+
   test("enables the procedural experiment by default", async () => {
     testRoot = await mkdtemp(join(tmpdir(), "overdare-bootstrap-config-"));
     const globalConfigDir = join(testRoot, ".overdare");

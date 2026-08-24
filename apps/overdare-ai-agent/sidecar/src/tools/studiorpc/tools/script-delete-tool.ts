@@ -31,7 +31,7 @@ async function executeScriptDelete(
   const approval = await ctx.approve({
     permission: "write",
     toolName,
-    description: `Delete script ${parsed.targetGuid}`,
+    description: `Delete script ${parsed.guid}`,
     details: parsed,
   });
   if (approval === "reject") {
@@ -46,22 +46,22 @@ async function executeScriptDelete(
         throw new Error("Invalid .ovdrjm format: Root object is missing.");
       }
 
-      const target = findNodeByActorGuid(root as OvdrjmNode, parsed.targetGuid);
+      const target = findNodeByActorGuid(root as OvdrjmNode, parsed.guid);
       if (!target) {
-        throw new Error(`ActorGuid not found in .ovdrjm: ${parsed.targetGuid}`);
+        throw new Error(`ActorGuid not found in .ovdrjm: ${parsed.guid}`);
       }
 
       const instanceType = typeof target.InstanceType === "string" ? target.InstanceType : undefined;
       if (!instanceType || !SCRIPT_CLASSES.has(instanceType)) {
         throw new Error(
-          `Instance ${parsed.targetGuid} is ${instanceType ?? "unknown"}, not a script. ` +
+          `Instance ${parsed.guid} is ${instanceType ?? "unknown"}, not a script. ` +
             "Use studiorpc_instance_delete to delete non-script instances.",
         );
       }
 
-      const removed = removeNodeByActorGuid(root as OvdrjmNode, parsed.targetGuid);
+      const removed = removeNodeByActorGuid(root as OvdrjmNode, parsed.guid);
       if (!removed) {
-        throw new Error(`Failed to remove ActorGuid from .ovdrjm: ${parsed.targetGuid}`);
+        throw new Error(`Failed to remove ActorGuid from .ovdrjm: ${parsed.guid}`);
       }
     });
 
@@ -70,8 +70,8 @@ async function executeScriptDelete(
     const output = "Deleted.";
     return {
       output,
-      render: buildDeleteRender("Studio script delete", parsed.targetGuid, output),
-      metadata: { method: "script.delete", targetGuid: parsed.targetGuid },
+      render: buildDeleteRender("Studio script delete", parsed.guid, output),
+      metadata: { method: "script.delete", targetGuid: parsed.guid },
     };
   } catch (err) {
     return {

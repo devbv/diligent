@@ -8,6 +8,7 @@ const logger = createLogger({ scope: "sidecar/studiorpc", context: { component: 
 
 export interface StudioRpcCallOptions {
   timeoutMs?: number;
+  signal?: AbortSignal;
 }
 
 interface JsonRpcResponse {
@@ -16,21 +17,35 @@ interface JsonRpcResponse {
   result?: unknown;
   error?: { code: number; message: string; data?: unknown };
 }
+export class StudioRpcError extends Error {
+  constructor(
+    message: string,
+    readonly code: number,
+    readonly data: unknown,
+  ) {
+    super(message);
+    this.name = "StudioRpcError";
+  }
+}
 
 let nextId = 1;
-
-/**
- * Send a JSON-RPC 2.0 request over a TCP socket to OVERDARE Studio.
- *
- * Configuration (in priority order):
- *   1. STUDIO_HOST / STUDIO_PORT environment variables
- *   2. ~/.<storage-namespace>/overdare.jsonc config file
- *   3. Hard-coded defaults: localhost:13377
- */
-/**
- * Apply pending level changes.
- * Returns the result of `level.apply`.
- */
+function renderMeasurements(data: unknown): string {
+  if (!data || typeof data !== "object") return "";
+  const record = data as Record<string, unknown>;
+  const sections: string[] = [];
+  for (const key of ["waits", "looks", "pointerTargets"] as const) {
+    const value = record[key];
+    if (Array.isArray(value) && value.length > 0) {
+      sections.push(`${key} that completed before the failure:\n${JSON.stringify(value, null, 2)}`);
+    }
+  }
+  return sections.length > 0 ? `\n\n${sections.join("\n\n")}` : "";
+}
+function renderReason(data: unknown): string {
+  if (!data || typeof data !== "object") return "";
+  const reason = (data as Record<string, unknown>).reason;
+  return typeof reason === "string" && reason.length > 0 ? `\n\nReason: ${reason}` : "";
+}
 export async function applyLevelChanges(): Promise<unknown> {
   return call("level.apply", {});
 }
@@ -43,6 +58,7 @@ export async function call(
   const host = resolveStudioHost();
   const port = resolveStudioPort();
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  options.signal?.throwIfAborted();
 
   return new Promise((resolve, reject) => {
     const id = nextId++;
@@ -52,27 +68,17 @@ export async function call(
       method,
       ...(params !== undefined && Object.keys(params).length > 0 && { params }),
     };
-
-    // Guard against double-settlement: on Windows, Bun's happy-eyeballs
-    // dual-stack (::1 then 127.0.0.1) can emit two consecutive error events
-    // on the same socket.  Without this flag the second error escapes all
-    // handlers and crashes the process.
     let settled = false;
     function settle(fn: () => void) {
       if (settled) return;
       settled = true;
       fn();
     }
-
-    // On Windows, Bun resolves "localhost" via happy-eyeballs (tries ::1 and
-    // 127.0.0.1 simultaneously).  When both fail the error events bypass
-    // user-space handlers and crash the process.  Force IPv4 to use a single
-    // connection attempt so our error handler is reliably invoked.
     const connectHost = host === "localhost" ? "127.0.0.1" : host;
     const rawRequest = JSON.stringify(request);
     logger.debug("request.sent", {
-      message: `[RPC →] ${rawRequest}`,
-      fields: { id, method },
+      message: `[RPC →] ${method} (${rawRequest.length} bytes)`,
+      fields: { id, method, bytes: rawRequest.length },
     });
     const socket = net.createConnection({ host: connectHost, port }, () => {
       socket.write(`${rawRequest}\n`);
@@ -92,8 +98,18 @@ export async function call(
       });
     }, timeoutMs);
 
+    const onAbort = () => {
+      settle(() => {
+        cleanup();
+        reject(options.signal?.reason ?? new DOMException("Studio RPC call aborted", "AbortError"));
+      });
+    };
+    options.signal?.addEventListener("abort", onAbort, { once: true });
+    if (options.signal?.aborted) onAbort();
+
     function cleanup() {
       clearTimeout(timer);
+      options.signal?.removeEventListener("abort", onAbort);
       rl.close();
       socket.destroy();
     }
@@ -104,16 +120,18 @@ export async function call(
         try {
           const response = JSON.parse(line) as JsonRpcResponse;
           logger.debug("response.received", {
-            message: `[RPC ←] ${line}`,
-            fields: { id, method },
+            message: `[RPC ←] ${method} (${line.length} bytes)`,
+            fields: { id, method, bytes: line.length },
           });
           if (response.error) {
             let errorMsg = `Studio RPC error [${response.error.code}]: ${response.error.message}`;
-            errorMsg += `\n\nRequest was:\n${rawRequest}`;
+            errorMsg += renderReason(response.error.data);
+            errorMsg += renderMeasurements(response.error.data);
+            errorMsg += `\n\nRequest method: ${method} (id ${id})`;
             if (response.error.message?.toLowerCase().includes("guid")) {
               errorMsg += `\n\nTip: Use studiorpc_level_browse first to get valid GUIDs.`;
             }
-            reject(new Error(errorMsg));
+            reject(new StudioRpcError(errorMsg, response.error.code, response.error.data));
           } else {
             resolve(response.result);
           }
