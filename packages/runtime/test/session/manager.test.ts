@@ -842,9 +842,10 @@ describe("SessionManager", () => {
     expect(entries[compactionIndex]).not.toHaveProperty("recentUserMessages");
   });
 
-  test("aborted signal settles run() without hanging", async () => {
+  test("aborted signal settles run() and runs the Stop lifecycle", async () => {
     const dir = await setupDir();
     const controller = new AbortController();
+    let stopCalls = 0;
     controller.abort();
 
     const mgr = new SessionManager({
@@ -854,6 +855,9 @@ describe("SessionManager", () => {
         effort: "medium",
         llmMsgStreamFn: createMockStreamFn([makeAssistant("should not run")]),
       }),
+      onStop: async () => {
+        stopCalls += 1;
+      },
     });
     await mgr.create();
 
@@ -871,6 +875,27 @@ describe("SessionManager", () => {
     ]);
 
     expect(settled).toBe(true);
+    expect(stopCalls).toBe(1);
+  });
+
+  test("unexpected turn errors do not run the Stop lifecycle", async () => {
+    const dir = await setupDir();
+    const controller = new AbortController();
+    let stopCalls = 0;
+    const mgr = new SessionManager({
+      ...makeManagerConfig(dir, () => createProviderEventStream(new Error("provider failed"))),
+      onStop: async () => {
+        stopCalls += 1;
+      },
+    });
+    await mgr.create();
+
+    await mgr.run(
+      { role: "user", content: "trigger provider failure", timestamp: Date.now() },
+      { signal: controller.signal },
+    );
+
+    expect(stopCalls).toBe(0);
   });
 
   test("run() compacts between tool turn and next LLM call (proactive via Agent)", async () => {

@@ -160,8 +160,10 @@ Current hook events:
 
 - `UserPromptSubmit`: runs after the user submits a prompt and before the agent turn starts. Synchronous hook results
   may block that prompt or add `additionalContext`; asynchronous results are ignored.
-- `Stop`: runs after a successful turn completion as an external lifecycle notification. Runtime isolates and ignores
-  all Stop outputs and errors. They never add model context, accept or reject an answer, or trigger another model run.
+- `Stop`: runs after a successful completion or user interruption as an external lifecycle notification, but not after
+  an unexpected turn error. Synchronous Stop handlers settle before `turn/completed` or `turn/interrupted` is emitted.
+  Runtime isolates and ignores all Stop outputs and errors. They never add model context, accept or reject an answer,
+  or trigger another model run.
 
 ## Manual compaction
 

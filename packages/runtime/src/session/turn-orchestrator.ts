@@ -93,11 +93,12 @@ export class TurnOrchestrator {
       this.finishRun(unsubscribe);
     }
 
-    this.throwIfAborted(opts.signal);
-
-    if (normalCompletion && this.ctx.config.onStop) {
-      await this.ctx.config.onStop(this.ctx.getContext());
+    const shouldRunStop = normalCompletion || opts.signal?.aborted === true;
+    if (shouldRunStop) {
+      await this.ctx.config.onStop?.(this.ctx.getContext());
     }
+
+    this.throwIfAborted(opts.signal);
   }
 
   async compactNow(): Promise<{
