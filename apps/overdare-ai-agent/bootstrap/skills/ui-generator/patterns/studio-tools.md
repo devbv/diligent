@@ -168,7 +168,7 @@ Important properties:
 - `TextWrapped`
 - `TextXAlignment`
 - `TextYAlignment`
-- `Bold`
+- `FontFace` — `{Family, Style (Normal|Italic), Weight (Thin~Black)}`; use `Weight: "Bold"` for bold text (the boolean `Bold` property no longer exists)
 - All common frame layout properties
 
 ### ImageButton / ImageLabel
@@ -183,6 +183,9 @@ Important properties:
 - `ImageColor3`
 - `ImageTransparency`
 - `BackgroundTransparency`
+- `ScaleType` — `"Stretch"` (default) or `"Slice"` for 9-slice scaling
+- `SliceCenter` — center rect `{Min: {X, Y}, Max: {X, Y}}` in image pixels; Slice mode only
+- `SliceScale` — scale multiplier for the slice borders; Slice mode only
 - All common frame layout properties
 
 Asset paths must use `ovdrassetid://[number]`.

@@ -32,6 +32,20 @@ const numberSequence = z
   .array(z.object({ Time: z.number(), Value: z.number(), Envelope: z.number().optional() }))
   .describe("NumberSequence keypoints [{Time,Value,Envelope?}]");
 const numberRange = z.object({ Min: z.number(), Max: z.number() });
+const vec2 = z.object({ X: z.number(), Y: z.number() });
+const rect = z.object({ Min: vec2, Max: vec2 });
+const fontFace = z.object({
+  Family: z.string(),
+  Style: z.enum(["Normal", "Italic"]).optional(),
+  Weight: z
+    .enum(["Thin", "ExtraLight", "Light", "Regular", "Medium", "SemiBold", "Bold", "ExtraBold", "Black"])
+    .optional(),
+});
+const nineSliceProperties = {
+  ScaleType: z.enum(["Stretch", "Slice"]).optional(),
+  SliceCenter: rect.describe("9-slice center rect in image pixels; Slice mode only").optional(),
+  SliceScale: z.number().describe("Slice mode only").optional(),
+};
 const surfaceGuiBaseProperties = {
   Active: z.boolean().default(true),
   Adornee: z.string().optional(),
@@ -59,7 +73,7 @@ const guiObjectProperties = {
 };
 
 const textProperties = {
-  Bold: z.boolean().optional(),
+  FontFace: fontFace.optional(),
   Text: z.string().optional(),
   TextColor3: rgb.optional(),
   TextScaled: z.boolean().optional(),
@@ -492,6 +506,7 @@ const rawInstancePropertiesUnion = z.union([
       ImageTransparency: z.number().describe("(0~1)").optional(),
       PressImage: z.string().describe("Image asset ID").optional(),
       HoverImage: z.string().describe("Image asset ID").optional(),
+      ...nineSliceProperties,
       ...guiObjectProperties,
     })
     .strict()
@@ -501,6 +516,7 @@ const rawInstancePropertiesUnion = z.union([
       Image: z.string().describe("Image asset ID").optional(),
       ImageColor3: rgb.optional(),
       ImageTransparency: z.number().describe("(0~1)").optional(),
+      ...nineSliceProperties,
       ...guiObjectProperties,
     })
     .strict()
