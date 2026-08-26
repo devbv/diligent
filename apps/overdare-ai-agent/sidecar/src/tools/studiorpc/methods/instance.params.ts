@@ -130,6 +130,7 @@ export const instanceClassEnum = z.enum([
   "UIAspectRatioConstraint",
   "ProximityPrompt",
   "UIStroke",
+  "ProgressBar",
 ]);
 
 export const serviceClassEnum = z.enum([
@@ -1023,6 +1024,38 @@ const rawInstancePropertiesUnion = z.union([
     .strict()
     .describe(
       "Use when class=UIStroke. Applies an outline stroke to the parent GuiObject's border or text with configurable color, thickness, and join style.",
+    ),
+  z
+    .object({
+      ArcSize: z.number().describe("Clockwise/CounterClockwise fill only").optional(),
+      CornerClipEnabled: z.boolean().optional(),
+      FillColor3: rgb.optional(),
+      FillCornerRadius: udim.optional(),
+      FillDirection: z
+        .enum([
+          "LeftToRight",
+          "RightToLeft",
+          "TopToBottom",
+          "BottomToTop",
+          "CenterHorizontal",
+          "CenterVertical",
+          "Clockwise",
+          "CounterClockwise",
+        ])
+        .optional(),
+      FillImage: z.string().describe("Image asset ID").optional(),
+      FillTransparency: z.number().describe("(0~1)").optional(),
+      StartAngle: z.number().describe("Clockwise/CounterClockwise fill only").optional(),
+      TrackColor3: rgb.optional(),
+      TrackCornerRadius: udim.optional(),
+      TrackImage: z.string().describe("Image asset ID").optional(),
+      TrackTransparency: z.number().describe("(0~1)").optional(),
+      Value: z.number().optional(),
+      ...guiObjectProperties,
+    })
+    .strict()
+    .describe(
+      "Use when class=ProgressBar. GUI progress bar with separately styled track and fill, supporting linear and radial fill directions.",
     ),
   workspaceServiceSchema,
   lightingServiceSchema,

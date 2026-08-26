@@ -73,4 +73,37 @@ describe("instance.upsert class property validation", () => {
       expect(parsed.items[0].properties?.ScaleType).toBe("Slice");
     }
   });
+
+  test("accepts ProgressBar with fill/track styling and rejects an invalid FillDirection", () => {
+    const parsed = parseArgs({
+      items: [
+        {
+          class: "ProgressBar",
+          parentGuid: "screen",
+          name: "HpBar",
+          properties: {
+            Value: 0.5,
+            FillDirection: "LeftToRight",
+            FillColor3: { R: 255, G: 0, B: 0 },
+            TrackColor3: { R: 30, G: 30, B: 30 },
+            FillCornerRadius: { Scale: 0, Offset: 4 },
+          },
+        },
+      ],
+    });
+    expect(parsed.items[0].properties?.FillDirection).toBe("LeftToRight");
+
+    expect(() =>
+      parseArgs({
+        items: [
+          {
+            class: "ProgressBar",
+            parentGuid: "screen",
+            name: "HpBar",
+            properties: { FillDirection: "Diagonal" },
+          },
+        ],
+      }),
+    ).toThrow(/class=ProgressBar/);
+  });
 });

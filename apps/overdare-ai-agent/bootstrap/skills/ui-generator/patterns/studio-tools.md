@@ -126,6 +126,7 @@ Screen-space UI (this skill is screen-space 2D UI only):
 - `UIGridLayout`
 - `UIAspectRatioConstraint`
 - `UIStroke`
+- `ProgressBar`
 
 ---
 
@@ -220,6 +221,20 @@ Important properties:
 - `ApplyStrokeMode` (`"Contextual"` or `"Border"`)
 - `BorderStrokePosition` (`"Inner"`, `"Center"`, `"Outer"`)
 - `LineJoinMode` (`"Round"`, `"Bevel"`, `"Miter"`)
+
+### ProgressBar
+
+Built-in progress bar GuiObject — use for HP/MP bars, loading bars, cooldown indicators, and circular gauges instead of hand-building a Frame-inside-Frame bar.
+
+Important properties:
+
+- `Value` — current progress
+- `FillDirection` — `"LeftToRight"`, `"RightToLeft"`, `"TopToBottom"`, `"BottomToTop"`, `"CenterHorizontal"`, `"CenterVertical"`, `"Clockwise"`, `"CounterClockwise"`
+- `FillColor3` / `FillTransparency` / `FillImage` / `FillCornerRadius` — fill styling
+- `TrackColor3` / `TrackTransparency` / `TrackImage` / `TrackCornerRadius` — track (background) styling
+- `StartAngle` / `ArcSize` — radial gauges (`Clockwise`/`CounterClockwise`) only
+- `CornerClipEnabled`
+- All common frame layout properties
 
 ---
 
