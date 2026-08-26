@@ -75,7 +75,8 @@ apps/overdare-ai-agent/bootstrap/skills/vfx-recipe/
 
 `apps/overdare-ai-agent/scripts/sync-vfx-references.ts` (bun):
 
-1. Fetch the three upstream paths via `gh api` (falls back to `GITHUB_TOKEN` + raw fetch).
+1. Fetch the three upstream paths via `gh api` (gh-only; the runner's `gh` session must have
+   read access to `overdare/creator-guide-eng`).
 2. Apply the distillation rules above (HTML table parsing, tag/comment stripping,
    frontmatter → INDEX).
 3. Overwrite `references/` and print a row-count summary.

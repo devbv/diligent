@@ -47,4 +47,35 @@ describe("vfx-recipe bundled references", () => {
     const listed = [...index.matchAll(/\*\*(combo_[^*]+)\*\*/g)].map((m) => m[1]).sort();
     expect(listed).toEqual(files);
   });
+
+  test("every source.md entry is covered by vfxLayerSourceNames with a matching NiagaraSystem path", () => {
+    const layerDir: Record<string, string> = { Base: "0_Base", Detail: "1_Detail", Extra: "2_Extra" };
+
+    const src = readFileSync(join(REF_DIR, "sources.md"), "utf8");
+    const entries: { resourceName: string; niagaraSystem: string; layer: string }[] = [];
+    let cur: Partial<{ resourceName: string; niagaraSystem: string; layer: string }> = {};
+    for (const line of src.split("\n")) {
+      const rn = line.match(/^- \*\*Resource Name\*\*:\s*(\S+)/);
+      const ns = line.match(/^- \*\*NiagaraSystem\*\*:\s*`(.+)`/);
+      const layer = line.match(/^- \*\*Layer\*\*:\s*(\S+)/);
+      if (rn) {
+        if (cur.resourceName) entries.push(cur as (typeof entries)[number]);
+        cur = { resourceName: rn[1] };
+      }
+      if (ns) cur.niagaraSystem = ns[1];
+      if (layer) cur.layer = layer[1];
+    }
+    if (cur.resourceName) entries.push(cur as (typeof entries)[number]);
+    expect(entries.length).toBeGreaterThan(0);
+
+    for (const entry of entries) {
+      const m = entry.resourceName.match(/^VFX_UGC_(Base|Detail|Extra)_(.+)$/);
+      expect(m).not.toBeNull();
+      const [, layer, shortName] = m as RegExpMatchArray;
+      expect(entry.layer).toBe(layer);
+      expect(LAYER_TO_NAMES[layerDir[layer]]).toContain(shortName);
+      const expectedPath = `/CommonContent/VFX/Layer/${layerDir[layer]}/${shortName}/VFX_UGC_${layer}_${shortName}.VFX_UGC_${layer}_${shortName}`;
+      expect(entry.niagaraSystem).toBe(expectedPath);
+    }
+  });
 });

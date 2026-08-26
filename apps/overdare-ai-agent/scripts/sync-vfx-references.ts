@@ -61,8 +61,9 @@ function transformPresets(src: string, sha: string): string {
         .match(/키워드:\s*([A-Za-z0-9_,\- ]+)/)?.[1]
         ?.trim() ?? "";
     const display = stripHtml(cells[10]);
+    const esc = (s: string) => s.replace(/\|/g, "\\|");
     lines.push(
-      `| ${name} | ${display} | ${stripHtml(cells[4])} | ${stripHtml(cells[5])} | ${stripHtml(cells[6])} | ${keywords} |`,
+      `| ${esc(name)} | ${esc(display)} | ${esc(stripHtml(cells[4]))} | ${esc(stripHtml(cells[5]))} | ${esc(stripHtml(cells[6]))} | ${esc(keywords)} |`,
     );
   }
   return (
@@ -123,10 +124,13 @@ async function main() {
     ...templateNames.map((n) => fetchRaw(`vfx-recipe-template/${n}`)),
   ]);
 
+  const presetsOut = transformPresets(presetsSrc, sha);
+  const presetCount = presetsOut.split("\n").filter((l) => l.startsWith("| VFX_")).length;
+  if (presetCount < 100) throw new Error(`suspiciously few presets (${presetCount}) — upstream format changed?`);
+
   await rm(OUT_DIR, { recursive: true, force: true });
   await mkdir(join(OUT_DIR, "templates"), { recursive: true });
 
-  const presetsOut = transformPresets(presetsSrc, sha);
   await writeFile(join(OUT_DIR, "presets.md"), presetsOut);
   await writeFile(join(OUT_DIR, "sources.md"), transformSources(sourcesSrc, sha));
   for (let i = 0; i < templateNames.length; i++) {
@@ -139,9 +143,7 @@ async function main() {
     `${templateNames.map((n, i) => indexLine(n, templates[i])).join("\n")}\n`;
   await writeFile(join(OUT_DIR, "templates", "00_INDEX.md"), index);
 
-  const presetCount = presetsOut.split("\n").filter((l) => l.startsWith("| VFX_")).length;
   console.log(`synced @${sha}: ${presetCount} presets, ${templateNames.length} templates`);
-  if (presetCount < 100) throw new Error(`suspiciously few presets (${presetCount}) — upstream format changed?`);
 }
 
 await main();

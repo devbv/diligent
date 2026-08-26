@@ -172,14 +172,48 @@ export const vfxLayerSourceNames = {
   Base: [
     "EmptySprite",
     "EmptySprite_R",
+    "FireBurst_A",
     "FireRise_A",
+    "LightBurst_A",
+    "LightFlash_A",
+    "LightFlash_B",
+    "LightFlash_C",
+    "LightRise_R_A",
     "LiquidFlash_A",
     "LiquidScatter_R_A",
     "NeutralBurst_A",
+    "NeutralBurst_B",
+    "NeutralTrail_A",
     "SmokeBurst_A",
+    "SmokeRing_A",
+    "TechDecal_R_A",
   ],
-  Detail: ["FireScatter_B", "LightBurst_R_A", "LightShimmer_A", "NeutralDecal_A", "NeutralFlash_C", "NeutralPulse_R_A"],
-  Extra: ["FireScatter_C", "FireScatter_D", "LiquidScatter_R_A", "SmokeRise_A"],
+  Detail: [
+    "FireDecal_A",
+    "FireFlash_A",
+    "FireScatter_B",
+    "LightBurst_R_A",
+    "LightRise_R_B",
+    "LightRise_R_C",
+    "LightShimmer_A",
+    "LightShimmer_R_B",
+    "NeutralDecal_A",
+    "NeutralFlash_C",
+    "NeutralPulse_R_A",
+    "NeutralRing_B",
+    "SmokeBurst_A",
+    "SmokeTrail_A",
+  ],
+  Extra: [
+    "FireScatter_C",
+    "FireScatter_D",
+    "LightRise_R_A",
+    "LightningScatter_A",
+    "LiquidScatter_R_A",
+    "MagicRing_A",
+    "NeutralRing_A",
+    "SmokeRise_A",
+  ],
 } as const;
 
 const vfxBaseLayerSchema = vfxLayerSourceArray(vfxNiagaraSystem("0_Base", "Base", vfxLayerSourceNames.Base));
@@ -694,7 +728,7 @@ const rawInstancePropertiesUnion = z.union([
     .describe(
       "Use when class=VFXRecipe. Custom layered VFX composed of Base/Detail/Extra layer source items, " +
         "each playing a serving VFX source asset with per-source user parameters. " +
-        "Compose from recipe templates found via overdaresearch source=vfx when possible.",
+        "Compose via the vfx-recipe skill (bundled templates in references/templates/).",
     ),
   z
     .object({
