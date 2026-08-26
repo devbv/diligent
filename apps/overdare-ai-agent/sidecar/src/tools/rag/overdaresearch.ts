@@ -42,29 +42,7 @@ interface DebugResult {
   keywords: string[];
 }
 
-interface VfxResult {
-  text: string;
-  score: number;
-  title: string;
-  docType: "vfx_preset" | "recipe_template" | "vfx_source";
-  docId: string;
-  keywords: string[];
-  // vfx_preset only: preset resource name (e.g. "VFX_UGC_Muzzle_01"), feeds VFXPreset.PresetName
-  presetName?: string;
-  // vfx_preset (primary category) and recipe_template
-  category?: string;
-  // recipe_template only
-  elements?: string[];
-  sources?: string[];
-  patterns?: string[];
-  // vfx_source only
-  layer?: string;
-  spawnType?: string;
-  element?: string;
-  resourceName?: string;
-}
-
-type AnyResult = RagResult | AssetResult | DebugResult | VfxResult;
+type AnyResult = RagResult | AssetResult | DebugResult;
 
 interface RagResponse {
   results: AnyResult[];
@@ -77,30 +55,6 @@ function isAssetResult(result: AnyResult): result is AssetResult {
 
 function isDebugResult(result: AnyResult): result is DebugResult {
   return "caseId" in result;
-}
-
-function isVfxResult(result: AnyResult): result is VfxResult {
-  return "docType" in result;
-}
-
-function normalizeVfxResult(result: Partial<VfxResult>): Partial<VfxResult> {
-  return {
-    text: result.text,
-    score: result.score,
-    title: result.title,
-    docType: result.docType,
-    docId: result.docId,
-    keywords: result.keywords,
-    presetName: result.presetName,
-    category: result.category,
-    elements: result.elements,
-    sources: result.sources,
-    patterns: result.patterns,
-    layer: result.layer,
-    spawnType: result.spawnType,
-    element: result.element,
-    resourceName: result.resourceName,
-  };
 }
 
 function normalizeAssetResult(result: Partial<AssetResult>): Partial<AssetResult> {
@@ -143,12 +97,11 @@ export const description = `Searches OVERDARE documentation, code examples, asse
 Use this tool to find relevant OVERDARE API references, guides, code examples, Lua scripts, asset metadata, and debugging cases.
 
 When to use each source:
-  - Default topK by source: docs=4, code=4, assets=8, debug=5, vfx=3; only increase if results are insufficient
+  - Default topK by source: docs=4, code=4, assets=8, debug=5; only increase if results are insufficient
   - "docs": API references, conceptual guides, configuration details, service descriptions
   - "code": Working Lua implementation examples, proven patterns, real script snippets
   - "assets": Asset catalog search returning asset metadata such as title, keywords, assetId, assetType, categoryId, and subCategoryId
   - "debug": Debugging-case knowledge base (symptom → cause → solution). Each result includes symptom, causeClassification, solution, and caseId. Use when diagnosing a bug or unexpected behavior — describe the symptom in natural language.
-  - "vfx": VFX knowledge base for effect requests, in three units: presets (docType=vfx_preset, ready-made named effects with presetName for VFXPreset creation), recipe templates (docType=recipe_template, full doc including an Original Payload JSON to copy and adapt), and VFX source catalog entries (docType=vfx_source, with layer/spawnType/element/resourceName for composing or editing VFXRecipe layers). Query by desired element, mood, or pattern (e.g. "fire explosion burst"). Narrow with vfxDocTypes when a specific unit is needed — presets dominate unfiltered results. Results carry the full doc text — no second fetch needed.
   - When writing or modifying code, search BOTH docs and code in parallel (two calls: one for docs, one for code) to get API shape + implementation patterns simultaneously
 
 Query tips:
@@ -162,9 +115,9 @@ Query tips:
 export const parameters = z.object({
   query: z.string().describe("Search query for OVERDARE (English only)"),
   source: z
-    .enum(["docs", "code", "assets", "debug", "vfx"])
+    .enum(["docs", "code", "assets", "debug"])
     .describe(
-      "docs = API references and guides. code = working Lua implementation examples and patterns. assets = asset catalog search with asset metadata fields. debug = debugging cases (symptom → cause → solution). vfx = VFX presets, recipe templates, and source catalog for effect requests.",
+      "docs = API references and guides. code = working Lua implementation examples and patterns. assets = asset catalog search with asset metadata fields. debug = debugging cases (symptom → cause → solution).",
     ),
   topK: z.number().int().min(1).max(10).describe("Number of results to return"),
   selectable: z
@@ -172,12 +125,6 @@ export const parameters = z.object({
     .default(true)
     .describe(
       "Assets only (default true). When 2+ assets match, the user is asked to pick one and the chosen assetId is returned; exactly 1 match auto-selects; 0 matches returns not-found. Set false ONLY for internal/informational asset lookups where you must read the results yourself (e.g. choosing UI element assets while generating an interface); never set false to pick a placement asset on the user's behalf.",
-    ),
-  vfxDocTypes: z
-    .array(z.enum(["vfx_preset", "recipe_template", "vfx_source"]))
-    .optional()
-    .describe(
-      'Only used when source=vfx. Restrict results to these doc types (OR); omit to search all three. Use ["recipe_template"] or ["vfx_source"] when escalating past presets — the preset corpus is much larger and dominates unfiltered results.',
     ),
   debugCaseFilter: z
     .object({
@@ -285,7 +232,6 @@ export async function execute(args: Params, _ctx: ToolContext, host?: RuntimeToo
         topK: args.topK ?? 4,
         threshold: 0.5,
         ...(args.source === "debug" && args.debugCaseFilter ? { debugCaseFilter: args.debugCaseFilter } : {}),
-        ...(args.source === "vfx" && args.vfxDocTypes?.length ? { vfxDocTypes: args.vfxDocTypes } : {}),
       }),
       signal: controller.signal,
     });
@@ -352,20 +298,8 @@ export async function execute(args: Params, _ctx: ToolContext, host?: RuntimeToo
       };
     }
 
-    if (args.source === "vfx") {
-      const rawVfx = results.filter(isVfxResult);
-      const vfxResults = rawVfx.map(normalizeVfxResult);
-      return {
-        output: vfxResults.length
-          ? JSON.stringify({ results: vfxResults, totalCount: data?.totalCount ?? vfxResults.length }, null, 2)
-          : "No results found.",
-        render: buildSearchRender({ source: args.source, query: args.query }, rawVfx),
-        metadata: { resultCount: vfxResults.length, results: vfxResults },
-      };
-    }
-
     const ragResults = results.filter(
-      (result): result is RagResult => !isAssetResult(result) && !isDebugResult(result) && !isVfxResult(result),
+      (result): result is RagResult => !isAssetResult(result) && !isDebugResult(result),
     );
 
     return {
