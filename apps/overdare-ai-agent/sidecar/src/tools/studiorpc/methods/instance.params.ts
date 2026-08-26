@@ -100,7 +100,7 @@ const vfxSourceShortName = (value: unknown) =>
   typeof value === "string" ? value.replace(/^.*VFX_UGC_(?:Base|Detail|Extra)_/, "").split(".")[0] : value;
 
 /** Builds the per-layer NiagaraSystem field: short-name enum in, full serving-asset path out. */
-function vfxNiagaraSystem(layerDir: string, prefix: string, names: [string, ...string[]]) {
+function vfxNiagaraSystem(layerDir: string, prefix: string, names: readonly [string, ...string[]]) {
   return z
     .preprocess(
       vfxSourceShortName,
@@ -167,8 +167,9 @@ function vfxLayerSourceArray(niagaraSystem: z.ZodTypeAny) {
   );
 }
 
-const vfxBaseLayerSchema = vfxLayerSourceArray(
-  vfxNiagaraSystem("0_Base", "Base", [
+/** Per-layer VFX source short names — single source of truth for the NiagaraSystem enums. */
+export const vfxLayerSourceNames = {
+  Base: [
     "EmptySprite",
     "EmptySprite_R",
     "FireRise_A",
@@ -176,21 +177,14 @@ const vfxBaseLayerSchema = vfxLayerSourceArray(
     "LiquidScatter_R_A",
     "NeutralBurst_A",
     "SmokeBurst_A",
-  ]),
-);
-const vfxDetailLayerSchema = vfxLayerSourceArray(
-  vfxNiagaraSystem("1_Detail", "Detail", [
-    "FireScatter_B",
-    "LightBurst_R_A",
-    "LightShimmer_A",
-    "NeutralDecal_A",
-    "NeutralFlash_C",
-    "NeutralPulse_R_A",
-  ]),
-);
-const vfxExtraLayerSchema = vfxLayerSourceArray(
-  vfxNiagaraSystem("2_Extra", "Extra", ["FireScatter_C", "FireScatter_D", "LiquidScatter_R_A", "SmokeRise_A"]),
-);
+  ],
+  Detail: ["FireScatter_B", "LightBurst_R_A", "LightShimmer_A", "NeutralDecal_A", "NeutralFlash_C", "NeutralPulse_R_A"],
+  Extra: ["FireScatter_C", "FireScatter_D", "LiquidScatter_R_A", "SmokeRise_A"],
+} as const;
+
+const vfxBaseLayerSchema = vfxLayerSourceArray(vfxNiagaraSystem("0_Base", "Base", vfxLayerSourceNames.Base));
+const vfxDetailLayerSchema = vfxLayerSourceArray(vfxNiagaraSystem("1_Detail", "Detail", vfxLayerSourceNames.Detail));
+const vfxExtraLayerSchema = vfxLayerSourceArray(vfxNiagaraSystem("2_Extra", "Extra", vfxLayerSourceNames.Extra));
 
 export const instanceClassEnum = z.enum([
   "Part",
