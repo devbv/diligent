@@ -663,7 +663,7 @@ const rawInstancePropertiesUnion = z.union([
       PresetName: z
         .string()
         .describe(
-          'Preset resource name, e.g. "VFX_UGC_Muzzle_01" — discover via overdaresearch source=vfx (presetName field of vfx_preset results)',
+          'Preset resource name, e.g. "VFX_UGC_Muzzle_01" — discover via the vfx-recipe skill (references/presets.md, Resource column)',
         ),
       Color: z.array(z.object({ Time: z.number(), R: z.number(), G: z.number(), B: z.number() })),
       Enabled: z.boolean().default(true),
