@@ -142,13 +142,15 @@ fi
 free_port() {
   local port="$1"
   local pids
-  pids="$(lsof -ti:"$port" 2>/dev/null || true)"
+  # -b -w: skip blocking kernel calls so a stalled SMB/NFS mount (e.g. the
+  # remote Studio share) cannot hang the port scan; -nP: no DNS/port lookups.
+  pids="$(lsof -b -w -nP -ti:"$port" 2>/dev/null || true)"
   if [ -n "$pids" ]; then
     echo "  + killing process(es) holding port ${port}: ${pids}"
     # shellcheck disable=SC2086
     kill $pids 2>/dev/null || true
     sleep 1
-    pids="$(lsof -ti:"$port" 2>/dev/null || true)"
+    pids="$(lsof -b -w -nP -ti:"$port" 2>/dev/null || true)"
     # shellcheck disable=SC2086
     [ -n "$pids" ] && kill -9 $pids 2>/dev/null || true
   fi
