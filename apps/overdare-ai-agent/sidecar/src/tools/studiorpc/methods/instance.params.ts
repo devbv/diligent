@@ -45,6 +45,22 @@ const numberSequence = z
   .array(z.object({ Time: z.number(), Value: z.number(), Envelope: z.number().optional() }))
   .describe("NumberSequence keypoints [{Time,Value,Envelope?}]");
 const numberRange = z.object({ Min: z.number(), Max: z.number() });
+const fontFace = z.object({
+  Family: z.string(),
+  Style: z.enum(["Normal", "Italic"]).optional(),
+  Weight: z
+    .enum(["Thin", "ExtraLight", "Light", "Regular", "Medium", "SemiBold", "Bold", "ExtraBold", "Black"])
+    .optional(),
+});
+const nineSliceProperties = {
+  ScaleType: scaleTypeEnum
+    .describe("How the image fills the element. Slice keeps the corners at their source size.")
+    .optional(),
+  SliceCenter: rect
+    .describe("9-slice boundaries in source-image pixels from the top-left. Applies when ScaleType is Slice.")
+    .optional(),
+  SliceScale: z.number().describe("Multiplier for 9-slice edge thickness. Default 1.").optional(),
+};
 const surfaceGuiBaseProperties = {
   Active: z.boolean().default(true),
   Adornee: z.string().optional(),
@@ -72,7 +88,7 @@ const guiObjectProperties = {
 };
 
 const textProperties = {
-  Bold: z.boolean().optional(),
+  FontFace: fontFace.optional(),
   Text: z.string().optional(),
   TextColor3: rgb.optional(),
   TextScaled: z.boolean().optional(),
@@ -280,6 +296,7 @@ export const instanceClassEnum = z.enum([
   "UIAspectRatioConstraint",
   "ProximityPrompt",
   "UIStroke",
+  "ProgressBar",
 ]);
 
 export const serviceClassEnum = z.enum([
@@ -656,13 +673,7 @@ const rawInstancePropertiesUnion = z.union([
       ImageTransparency: z.number().describe("(0~1)").optional(),
       PressImage: z.string().describe("Image asset ID").optional(),
       HoverImage: z.string().describe("Image asset ID").optional(),
-      ScaleType: scaleTypeEnum
-        .describe("How the image fills the element. Slice keeps the corners at their source size.")
-        .optional(),
-      SliceCenter: rect
-        .describe("9-slice boundaries in source-image pixels from the top-left. Applies when ScaleType is Slice.")
-        .optional(),
-      SliceScale: z.number().describe("Multiplier for 9-slice edge thickness. Default 1.").optional(),
+      ...nineSliceProperties,
       ...guiObjectProperties,
     })
     .strict()
@@ -672,13 +683,7 @@ const rawInstancePropertiesUnion = z.union([
       Image: z.string().describe("Image asset ID").optional(),
       ImageColor3: rgb.optional(),
       ImageTransparency: z.number().describe("(0~1)").optional(),
-      ScaleType: scaleTypeEnum
-        .describe("How the image fills the element. Slice keeps the corners at their source size.")
-        .optional(),
-      SliceCenter: rect
-        .describe("9-slice boundaries in source-image pixels from the top-left. Applies when ScaleType is Slice.")
-        .optional(),
-      SliceScale: z.number().describe("Multiplier for 9-slice edge thickness. Default 1.").optional(),
+      ...nineSliceProperties,
       ...guiObjectProperties,
     })
     .strict()
@@ -1211,6 +1216,38 @@ const rawInstancePropertiesUnion = z.union([
     .strict()
     .describe(
       "Use when class=UIStroke. Applies an outline stroke to the parent GuiObject's border or text with configurable color, thickness, and join style.",
+    ),
+  z
+    .object({
+      ArcSize: z.number().describe("Clockwise/CounterClockwise fill only").optional(),
+      CornerClipEnabled: z.boolean().optional(),
+      FillColor3: rgb.optional(),
+      FillCornerRadius: udim.optional(),
+      FillDirection: z
+        .enum([
+          "LeftToRight",
+          "RightToLeft",
+          "TopToBottom",
+          "BottomToTop",
+          "CenterHorizontal",
+          "CenterVertical",
+          "Clockwise",
+          "CounterClockwise",
+        ])
+        .optional(),
+      FillImage: z.string().describe("Image asset ID").optional(),
+      FillTransparency: z.number().describe("(0~1)").optional(),
+      StartAngle: z.number().describe("Clockwise/CounterClockwise fill only").optional(),
+      TrackColor3: rgb.optional(),
+      TrackCornerRadius: udim.optional(),
+      TrackImage: z.string().describe("Image asset ID").optional(),
+      TrackTransparency: z.number().describe("(0~1)").optional(),
+      Value: z.number().optional(),
+      ...guiObjectProperties,
+    })
+    .strict()
+    .describe(
+      "Use when class=ProgressBar. GUI progress bar with separately styled track and fill, supporting linear and radial fill directions.",
     ),
   workspaceServiceSchema,
   lightingServiceSchema,

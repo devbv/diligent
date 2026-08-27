@@ -163,4 +163,102 @@ describe("instance.upsert class property validation", () => {
       "/CommonContent/VFX/Layer/2_Extra/LiquidScatter_R_A/VFX_UGC_Extra_LiquidScatter_R_A.VFX_UGC_Extra_LiquidScatter_R_A",
     );
   });
+
+  test("accepts FontFace on text classes and rejects the removed Bold property", () => {
+    const parsed = parseArgs({
+      items: [
+        {
+          class: "TextLabel",
+          parentGuid: "screen",
+          name: "Title",
+          properties: { Text: "Hi", FontFace: { Family: "Default", Weight: "Bold" } },
+        },
+      ],
+    });
+    expect(parsed.items[0].properties?.FontFace).toEqual({ Family: "Default", Weight: "Bold" });
+
+    expect(() =>
+      parseArgs({
+        items: [
+          {
+            class: "TextButton",
+            parentGuid: "screen",
+            name: "Btn",
+            properties: { Text: "Hi", Bold: true },
+          },
+        ],
+      }),
+    ).toThrow(/class=TextButton/);
+  });
+
+  test("accepts 9-slice properties on image classes", () => {
+    for (const cls of ["ImageButton", "ImageLabel"] as const) {
+      const parsed = parseArgs({
+        items: [
+          {
+            class: cls,
+            parentGuid: "screen",
+            name: "Panel",
+            properties: {
+              ScaleType: "Slice",
+              SliceCenter: { MinX: 10, MinY: 10, MaxX: 90, MaxY: 90 },
+              SliceScale: 1.5,
+            },
+          },
+        ],
+      });
+      expect(parsed.items[0].properties?.ScaleType).toBe("Slice");
+    }
+  });
+
+  test("accepts ProgressBar with fill/track styling and rejects an invalid FillDirection", () => {
+    const parsed = parseArgs({
+      items: [
+        {
+          class: "ProgressBar",
+          parentGuid: "screen",
+          name: "HpBar",
+          properties: {
+            Value: 0.5,
+            FillDirection: "LeftToRight",
+            FillColor3: { R: 255, G: 0, B: 0 },
+            TrackColor3: { R: 30, G: 30, B: 30 },
+            FillCornerRadius: { Scale: 0, Offset: 4 },
+          },
+        },
+      ],
+    });
+    expect(parsed.items[0].properties?.FillDirection).toBe("LeftToRight");
+
+    expect(() =>
+      parseArgs({
+        items: [
+          {
+            class: "ProgressBar",
+            parentGuid: "screen",
+            name: "HpBar",
+            properties: { FillDirection: "Diagonal" },
+          },
+        ],
+      }),
+    ).toThrow(/class=ProgressBar/);
+  });
+
+  test("rejects an inverted 9-slice rectangle", () => {
+    expect(() =>
+      parseArgs({
+        items: [
+          {
+            class: "ImageLabel",
+            parentGuid: "screen",
+            name: "Panel",
+            properties: {
+              ScaleType: "Slice",
+              SliceCenter: { MinX: 90, MinY: 90, MaxX: 10, MaxY: 10 },
+            },
+          },
+        ],
+      }),
+    ).toThrow(/class=ImageLabel/);
+  });
 });
