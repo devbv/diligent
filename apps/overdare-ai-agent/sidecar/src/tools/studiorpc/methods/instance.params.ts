@@ -64,10 +64,19 @@ const colorSequence = z
     ObjectType: "ColorSequence" as const,
     Keypoints: keypoints.map(({ Time, Color }) => ({ Time, Value: Color })),
   }));
-const numberSequence = z
+/**
+ * A VFXRecipe layer takes the keypoints as the list itself; the wrapped form is accepted and then
+ * stored empty, with nothing on the response to say so. An instance property is the opposite — it
+ * is the wrapped form that Studio keeps. Same spelling in, different type out, so the two are
+ * declared apart. Measured 2026-08-27.
+ */
+const vfxNumberSequence = z
   .array(z.object({ Time: z.number(), Value: z.number(), Envelope: z.number().optional() }))
-  .describe("NumberSequence keypoints [{Time,Value,Envelope?}]")
-  .transform((Keypoints) => ({ ObjectType: "NumberSequence" as const, Keypoints }));
+  .describe("NumberSequence keypoints [{Time,Value,Envelope?}]");
+const numberSequence = vfxNumberSequence.transform((Keypoints) => ({
+  ObjectType: "NumberSequence" as const,
+  Keypoints,
+}));
 const numberRange = tagged("NumberRange", { Min: z.number(), Max: z.number() });
 /** Studio requires all three: a Font missing Style or Weight is rejected, and one it accepts reads back with both. */
 const fontFace = tagged("Font", {
@@ -192,7 +201,7 @@ function vfxLayerSourceArray(niagaraSystem: z.ZodTypeAny) {
         Acceleration: vec3.describe("Particle acceleration").optional(),
         BoundSize: vec3.describe("Size of the particle spawn bounds").optional(),
         Color: vfxColorSequence.optional(),
-        Alpha: numberSequence
+        Alpha: vfxNumberSequence
           .describe("Alpha (opacity) keypoints over the source lifetime [{Time,Value}], 0~1")
           .optional(),
         Delay: z.number().describe("Playback start delay in seconds").optional(),

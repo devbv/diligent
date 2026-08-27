@@ -153,18 +153,50 @@ describe("instance.upsert class property validation", () => {
     const properties = parsed.items[0].properties as Record<string, unknown>;
     expect(properties.LoopDuration).toBeUndefined();
     const [base] = properties.BaseLayer as Record<string, unknown>[];
-    expect(base.Alpha).toEqual({
-      ObjectType: "NumberSequence",
-      Keypoints: [
-        { Time: 0, Value: 1 },
-        { Time: 1, Value: 1 },
-      ],
-    });
+    // A VFXRecipe layer keeps the bare list — Studio stores the wrapped form as an empty one.
+    expect(base.Alpha).toEqual([
+      { Time: 0, Value: 1 },
+      { Time: 1, Value: 1 },
+    ]);
     // LiquidScatter_R_A exists in both Base and Extra; the Extra layer expands to the Extra asset.
     const [extra] = properties.ExtraLayer as Record<string, unknown>[];
     expect(extra.NiagaraSystem).toBe(
       "/CommonContent/VFX/Layer/2_Extra/LiquidScatter_R_A/VFX_UGC_Extra_LiquidScatter_R_A.VFX_UGC_Extra_LiquidScatter_R_A",
     );
+  });
+
+  // Merging these two was tried and reverted: sending a VFXRecipe layer the wrapped form stores
+  // Alpha as [] and says nothing about it, so the two spellings cannot be one schema.
+  test("keeps a VFXRecipe layer's keypoints bare and wraps an instance property's", () => {
+    const vfx = parseArgs({
+      items: [
+        {
+          class: "VFXRecipe",
+          parentGuid: "workspace",
+          name: "Recipe",
+          properties: {
+            BaseLayer: [{ Name: "LiquidFlash_A", NiagaraSystem: "LiquidFlash_A", Alpha: [{ Time: 0, Value: 0.25 }] }],
+          },
+        },
+      ],
+    });
+    const [layer] = (vfx.items[0].properties as Record<string, Record<string, unknown>[]>).BaseLayer;
+    expect(layer.Alpha).toEqual([{ Time: 0, Value: 0.25 }]);
+
+    const emitter = parseArgs({
+      items: [
+        {
+          class: "ParticleEmitter",
+          parentGuid: "part",
+          name: "Sparks",
+          properties: { Transparency: [{ Time: 0, Value: 0.25 }] },
+        },
+      ],
+    });
+    expect(emitter.items[0].properties?.Transparency).toEqual({
+      ObjectType: "NumberSequence",
+      Keypoints: [{ Time: 0, Value: 0.25 }],
+    });
   });
 
   test("accepts FontFace on text classes and rejects the removed Bold property", () => {
