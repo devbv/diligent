@@ -62,6 +62,7 @@ OVERDARE offers several built-in features that simplify common game-dev tasks co
 - **CameraOffset**: Sets camera's relative position regardless of camera state; works with Custom and Scriptable cameras (e.g., CameraShake)
 - **TPS Strafing System**: Built-in third-person shooter movement (view-locked strafing, diagonal/backward movement) without scripting
 - **VFXPreset**: Pre-defined visual effects (fire, explosions, barriers, healing) applied by selection — no manual editing
+- **VFXRecipe**: Custom layered VFX composed from Base/Detail/Extra layer source items, tunable at runtime via SetParam/SetParamAt — for any effect request (create or edit), use the `vfx-recipe` skill, which asks the user to pick preset / recipe-template / direct composition and searches its bundled references
 - **Outline / Fill**: Separated from Roblox's Highlight into two instances for finer control over object outline and interior emphasis
 - **BlendSpace**: Blends multiple animations per-object with automatic smooth transitions based on context
 - **ActionSequencer**: Timeline-based visual editor for combo attacks, dashes, chained skills — integrates animation, sound, camera, VFX, and markers in one UI
