@@ -28,6 +28,9 @@ export class StudioRpcError extends Error {
   }
 }
 
+/** Studio's code for a GUID that names no instance. */
+export const RPC_INSTANCE_NOT_FOUND = -32004;
+
 let nextId = 1;
 function renderMeasurements(data: unknown): string {
   if (!data || typeof data !== "object") return "";
