@@ -1,24 +1,45 @@
-// @summary Tests the agent-done baseline capture and the human-edits diff tool.
+// @summary Tests EditLogging consumption, summarization, and human-edits context injection.
 
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createStudioRpcToolProvider } from "../../src/tools/studiorpc";
-import { createHumanEditsTool, diffOvdrjmRoots } from "../../src/tools/studiorpc/tools/human-edits-tool";
-import type { OvdrjmNode } from "../../src/tools/studiorpc/tools/ovdrjm-utils";
-import {
-  baselinePath,
-  captureBaseline,
-  findLatestSnapshot,
-  snapshotsDir,
-} from "../../src/tools/studiorpc/tools/snapshot";
+import { editLoggingDir, rotateAndReadEditLogs, summarizeEditLog } from "../../src/tools/studiorpc/tools/edit-log";
+import { consumeHumanEdits, createHumanEditsTool } from "../../src/tools/studiorpc/tools/human-edits-tool";
 
-function projectDir(ovdrjm = '{"Root":{"x":1}}'): string {
+const NO_EDITS = "No human edits detected since the agent's last completed turn.";
+
+function projectDir(): string {
   const cwd = mkdtempSync(join(tmpdir(), "proj-"));
   writeFileSync(join(cwd, "world.umap"), "umap");
-  writeFileSync(join(cwd, "world.ovdrjm"), ovdrjm);
+  writeFileSync(join(cwd, "world.ovdrjm"), '{"Root":{}}');
   return cwd;
+}
+
+function writeEditLog(cwd: string, envelopes: unknown[], file = "EditLog.json"): void {
+  const dir = editLoggingDir(cwd);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, file), envelopes.map((envelope) => JSON.stringify(envelope)).join("\n"));
+}
+
+function envelope(
+  operation: string,
+  objects: Array<Record<string, unknown>>,
+  extra: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return { timestamp: "2026-08-27T00:00:00.000Z", transactionId: "tx", operation, objects, ...extra };
+}
+
+function subject(
+  type: string,
+  guid: string,
+  name: string,
+  action: string,
+  changes: unknown[] = [],
+  extra: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return { InstanceType: type, ActorGuid: guid, Name: name, action, role: "subject", changes, ...extra };
 }
 
 function toolCtx() {
@@ -30,181 +51,319 @@ function toolCtx() {
   };
 }
 
-function stopInput(cwd: string) {
+function promptInput(cwd: string) {
   return {
     session_id: "sess",
     transcript_path: "/tmp/s.jsonl",
     cwd,
-    hook_event_name: "Stop",
+    hook_event_name: "UserPromptSubmit",
+    prompt: "hello",
   };
 }
 
-function node(
-  type: string,
-  guid: string,
-  name: string,
-  extra: Record<string, unknown> = {},
-  children?: unknown[],
-): OvdrjmNode {
-  return { InstanceType: type, ActorGuid: guid, Name: name, ...extra, ...(children ? { LuaChildren: children } : {}) };
-}
+describe("summarizeEditLog", () => {
+  test("reports created, removed, moved, and modified instances by section", () => {
+    const envelopes = [
+      envelope("Create", [subject("Part", "p2", "Ramp", "Create")]),
+      envelope("Delete", [subject("PointLight", "l1", "Lamp", "Delete")]),
+      envelope("Reparent", [
+        subject("Model", "m1", "Tree", "Reparent", [{ property: "Parent", before: "Workspace", after: "Props" }]),
+        {
+          InstanceType: "Folder",
+          ActorGuid: "f1",
+          Name: "Props",
+          role: "auxiliary",
+          action: "SetProperty",
+          changes: [],
+        },
+      ]),
+      envelope("SetProperty", [
+        subject("Part", "p1", "Floor", "SetProperty", [{ property: "Size", before: "(4,1,4)", after: "(12,1,4)" }]),
+      ]),
+    ];
 
-async function stopProvider(cwd: string) {
-  const provider = createStudioRpcToolProvider({ callRpc: async () => ({}) });
-  const p = provider as typeof provider & { onStop: NonNullable<typeof provider.onStop> };
-  await p.onStop(stopInput(cwd));
-  return provider;
-}
-
-describe("baseline capture on Stop", () => {
-  test("copies the current ovdrjm to the fixed baseline and overwrites it each turn", async () => {
-    const cwd = projectDir();
-    await stopProvider(cwd);
-    expect(readFileSync(baselinePath(cwd), "utf-8")).toBe('{"Root":{"x":1}}');
-
-    writeFileSync(join(cwd, "world.ovdrjm"), '{"Root":{"x":2}}');
-    await stopProvider(cwd);
-    expect(readFileSync(baselinePath(cwd), "utf-8")).toBe('{"Root":{"x":2}}');
+    const { output, editCount } = summarizeEditLog(envelopes.map(parse));
+    expect(editCount).toBe(4);
+    expect(output).toContain('Added (1):\n+ Part "Ramp" (p2)');
+    expect(output).toContain('Removed (1):\n- PointLight "Lamp" (l1)');
+    expect(output).toContain('> Model "Tree" (m1): parent Workspace -> Props');
+    expect(output).toContain('~ Part "Floor" (p1)');
+    expect(output).toContain("  Size: (4,1,4) -> (12,1,4)");
+    expect(output).not.toContain('"Props" (f1)'); // auxiliary records carry no human intent
   });
 
-  test("does not throw when cwd is not a Studio project", async () => {
-    const cwd = mkdtempSync(join(tmpdir(), "empty-"));
-    await stopProvider(cwd); // no .umap — capture is best-effort
-    expect(existsSync(baselinePath(cwd))).toBe(false);
+  test("collapses repeated edits of the same property to first-before -> last-after", () => {
+    const envelopes = [
+      envelope("SetProperty", [
+        subject("Part", "p1", "Door", "SetProperty", [{ property: "CFrame", before: "A", after: "B" }]),
+      ]),
+      envelope("SetProperty", [
+        subject("Part", "p1", "Door", "SetProperty", [{ property: "CFrame", before: "B", after: "C" }]),
+      ]),
+    ];
+
+    const { output } = summarizeEditLog(envelopes.map(parse));
+    expect(output).toContain("  CFrame: A -> C (2 edits)");
+    expect(output).not.toContain("A -> B");
+  });
+
+  test("folds an instance that was added and then removed into its own section", () => {
+    const envelopes = [
+      envelope("Create", [subject("Tool", "w1", "Weapon", "Create")]),
+      envelope("Delete", [subject("Tool", "w1", "Weapon", "Delete")]),
+    ];
+
+    const { output } = summarizeEditLog(envelopes.map(parse));
+    expect(output).toContain('Added then removed (1):\n± Tool "Weapon" (w1)');
+    expect(output).not.toContain("Added (1)");
+    expect(output).not.toContain("Removed (1)");
+  });
+
+  test("renders list deltas (added/removed) and modified struct elements", () => {
+    const envelopes = [
+      envelope("SetProperty", [
+        subject("Workspace", "ws-0", "Workspace", "SetProperty", [
+          { property: "Tag", added: ["Enemy", "Interactable"] },
+          {
+            property: "LuaChildren",
+            added: [{ Name: "LuaSpawnLocation", InstanceType: "SpawnLocation", ObjectGuid: "sp1" }],
+          },
+          {
+            property: "Attribute",
+            modified: [
+              {
+                before: { Key: "TestColor", DataType: "Color3", Value: { R: 254, G: 254, B: 254 } },
+                after: { Key: "TestColor", DataType: "Color3", Value: { R: 254, G: 0, B: 0 } },
+              },
+            ],
+          },
+        ]),
+      ]),
+    ];
+
+    const { output } = summarizeEditLog(envelopes.map(parse));
+    expect(output).toContain("  Tag: added Enemy, Interactable");
+    expect(output).toContain('  LuaChildren: added SpawnLocation "LuaSpawnLocation"');
+    expect(output).toContain('  Attribute: modified "TestColor":');
+  });
+
+  test("reports script Source changes as events without content", () => {
+    const envelopes = [
+      envelope("SetProperty", [subject("Script", "s1", "GameLoop", "SetProperty", [{ property: "Source" }])]),
+    ];
+
+    const { output } = summarizeEditLog(envelopes.map(parse));
+    expect(output).toContain('* Script "GameLoop" (s1): source edited 1 time(s)');
+    expect(output).toContain("content is not logged");
+  });
+
+  test("falls back to subjectGuids when records carry no role", () => {
+    const envelopes = [
+      envelope(
+        "Create",
+        [
+          { InstanceType: "Camera", ObjectGuid: "c1", Name: "Camera", changes: [] },
+          { InstanceType: "Workspace", ObjectGuid: "ws-0", Name: "Workspace", changes: [] },
+        ],
+        { ObjectGuids: ["c1"] },
+      ),
+    ];
+
+    const { output } = summarizeEditLog(envelopes.map(parse));
+    expect(output).toContain('+ Camera "Camera" (c1)');
+    expect(output).not.toContain("Workspace");
+  });
+
+  test("returns the no-edits message for an empty batch", () => {
+    expect(summarizeEditLog([]).output).toBe(NO_EDITS);
   });
 });
 
-describe("findLatestSnapshot vs baseline", () => {
-  test("never picks the baseline even when it is the newest file", () => {
+/** Round-trip a raw envelope through the real file parser so tests exercise it too. */
+function parse(raw: Record<string, unknown>) {
+  const cwd = projectDir();
+  writeEditLog(cwd, [raw]);
+  const batch = rotateAndReadEditLogs(cwd);
+  if (batch.envelopes.length !== 1) throw new Error("test envelope failed to parse");
+  return batch.envelopes[0];
+}
+
+describe("real Studio Edit.Log format", () => {
+  // Verbatim shape observed from Studio 2026-08: single `Edit.Log` in the
+  // project root, CRLF, PascalCase fields, pretty-printed objects concatenated
+  // back to back (not JSONL, not an array), subjects via envelope ActorGuids.
+  const REAL_LOG = [
+    JSON.stringify(
+      {
+        Timestamp: "2026-08-26T12:14:59.968Z",
+        TransactionId: "7C20523D489A46F9D55A4384881357DD",
+        Action: "Create",
+        ActorGuids: ["00A01E0A47D96274567636A74BCA5513"],
+        ParentGuid: "AC1F33D84F36064BB118299C2D2AA77E",
+        Objects: [
+          { InstanceType: "PointLight", ActorGuid: "BD2B5821", Name: "PointLight" },
+          { InstanceType: "Model", ActorGuid: "00A01E0A47D96274567636A74BCA5513", Name: "Campfire" },
+          {
+            InstanceType: "Workspace",
+            ActorGuid: "AC1F33D84F36064BB118299C2D2AA77E",
+            Name: "Workspace",
+            Changes: [
+              {
+                Property: "LuaChildren",
+                Added: [{ InstanceType: "Model", Name: "Campfire", ActorGuid: "00A01E0A47D96274567636A74BCA5513" }],
+              },
+            ],
+          },
+        ],
+      },
+      null,
+      "\t",
+    ),
+    JSON.stringify(
+      {
+        Timestamp: "2026-08-26T12:17:15.940Z",
+        TransactionId: "BC860CAF41C11CC996D06CB3A3660E99",
+        Action: "SetProperty",
+        ActorGuids: ["3DB92227FA6C6CAE98C3BEB1766F8599"],
+        Objects: [
+          {
+            InstanceType: "LocalScript",
+            ActorGuid: "3DB92227FA6C6CAE98C3BEB1766F8599",
+            Name: "WASDController",
+            Changes: [{ Property: "Source", Changed: true }],
+          },
+        ],
+      },
+      null,
+      "\t",
+    ),
+  ]
+    .join("\n")
+    .replace(/\n/g, "\r\n");
+
+  test("consumes a root Edit.Log with PascalCase concatenated envelopes", () => {
     const cwd = projectDir();
-    const dir = snapshotsDir(cwd);
+    writeFileSync(join(cwd, "Edit.Log"), REAL_LOG);
+
+    const capture = consumeHumanEdits(cwd);
+    expect(capture.result.metadata?.humanEditsDetected).toBe(true);
+    expect(capture.result.metadata?.transactions).toBe(2);
+    // Only the envelope subject (ActorGuids) counts; auxiliary creations and
+    // the Workspace LuaChildren fallout are not the human's direct intent.
+    expect(capture.result.output).toContain('+ Model "Campfire" (00A01E0A47D96274567636A74BCA5513)');
+    expect(capture.result.output).not.toContain("PointLight");
+    expect(capture.result.output).not.toContain("Workspace");
+    expect(capture.result.output).toContain('* LocalScript "WASDController"');
+
+    // Rotation happens at the root, and finalize clears it.
+    const rootNames = readdirSync(cwd);
+    expect(rootNames).not.toContain("Edit.Log");
+    expect(rootNames.some((name) => name.endsWith(".consuming"))).toBe(true);
+    capture.finalize();
+    expect(readdirSync(cwd).some((name) => name.endsWith(".consuming"))).toBe(false);
+  });
+
+  test("ignores unrelated root files and a truncated trailing envelope", () => {
+    const cwd = projectDir();
+    writeFileSync(join(cwd, "Play.log"), "not an edit log");
+    writeFileSync(join(cwd, "Edit.Log"), `${REAL_LOG}\r\n{\r\n\t"Timestamp": "2026-08-26T12:`);
+
+    const { result } = consumeHumanEdits(cwd);
+    expect(result.metadata?.humanEditsDetected).toBe(true);
+    expect(result.metadata?.transactions).toBe(2); // truncated tail dropped, not fatal
+    expect(readdirSync(cwd)).toContain("Play.log"); // untouched
+  });
+});
+
+describe("consumeHumanEdits", () => {
+  test("returns no-edits when the EditLogging directory does not exist", () => {
+    const { result } = consumeHumanEdits(projectDir());
+    expect(result.output).toBe(NO_EDITS);
+    expect(result.metadata?.humanEditsDetected).toBe(false);
+  });
+
+  test("rotates log files immediately and deletes them only on finalize", () => {
+    const cwd = projectDir();
+    writeEditLog(cwd, [envelope("Create", [subject("Part", "p2", "Ramp", "Create")])]);
+
+    const capture = consumeHumanEdits(cwd);
+    expect(capture.result.metadata?.humanEditsDetected).toBe(true);
+    const afterConsume = readdirSync(editLoggingDir(cwd));
+    expect(afterConsume.some((name) => name.endsWith(".consuming"))).toBe(true);
+    expect(afterConsume).not.toContain("EditLog.json");
+
+    capture.finalize();
+    expect(readdirSync(editLoggingDir(cwd))).toEqual([]);
+  });
+
+  test("re-reads leftover .consuming files from a crashed turn", () => {
+    const cwd = projectDir();
+    const dir = editLoggingDir(cwd);
     mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, "sess_0.ovdrjm"), "snap");
-    captureBaseline(cwd);
-    utimesSync(join(dir, "sess_0.ovdrjm"), new Date(2020, 0, 1), new Date(2020, 0, 1));
-    utimesSync(baselinePath(cwd), new Date(2020, 0, 2), new Date(2020, 0, 2));
+    writeFileSync(
+      join(dir, "EditLog.json.old.consuming"),
+      JSON.stringify(envelope("Create", [subject("Part", "p1", "Old", "Create")])),
+    );
+    writeEditLog(cwd, [envelope("Create", [subject("Part", "p2", "New", "Create")])]);
 
-    expect(findLatestSnapshot(cwd).id).toBe("sess_0");
-  });
-});
-
-describe("diffOvdrjmRoots", () => {
-  const baseline = node("Workspace", "ws-0", "Workspace", {}, [
-    node("Part", "p1", "Floor", { Size: { X: 4, Y: 1, Z: 4 } }),
-    node("Model", "m1", "Tree"),
-    node("Folder", "f1", "Props"),
-    node("PointLight", "l1", "Lamp"),
-    node("Script", "s1", "GameLoop", { Source: "local speed = 5\nprint(speed)\n" }),
-  ]);
-
-  test("reports added, removed, moved, and modified instances", () => {
-    const current = node("Workspace", "ws-0", "Workspace", {}, [
-      node("Part", "p1", "Floor", { Size: { X: 12, Y: 1, Z: 4 } }),
-      node("Folder", "f1", "Props", {}, [node("Model", "m1", "Tree")]),
-      node("Part", "p2", "Ramp"),
-      node("Script", "s1", "GameLoop", { Source: "local speed = 5\nprint(speed)\n" }),
-    ]);
-
-    const output = diffOvdrjmRoots(baseline, current);
-    expect(output).toContain('+ Part "Ramp" (p2) under "Workspace" (ws-0)');
-    expect(output).toContain('- PointLight "Lamp" (l1) was under "Workspace" (ws-0)');
-    expect(output).toContain('> Model "Tree" (m1): from "Workspace" (ws-0) to "Props" (f1)');
-    expect(output).toContain('~ Part "Floor" (p1)');
-    expect(output).toContain('Size: {"X":4,"Y":1,"Z":4} -> {"X":12,"Y":1,"Z":4}');
+    const { result } = consumeHumanEdits(cwd);
+    expect(result.output).toContain('+ Part "Old" (p1)');
+    expect(result.output).toContain('+ Part "New" (p2)');
   });
 
-  test("ignores WorldTransform-only changes", () => {
-    const before = node("Workspace", "ws-0", "Workspace", {}, [node("Part", "p1", "Floor", { WorldTransform: "a" })]);
-    const after = node("Workspace", "ws-0", "Workspace", {}, [node("Part", "p1", "Floor", { WorldTransform: "b" })]);
-    expect(diffOvdrjmRoots(before, after)).toBe("No human edits detected since the agent's last completed turn.");
+  test("counts malformed envelopes but keeps the parsable ones", () => {
+    const cwd = projectDir();
+    const dir = editLoggingDir(cwd);
+    mkdirSync(dir, { recursive: true });
+    // A brace-balanced but invalid chunk is a parse failure; a truncated tail
+    // (mid-append) is silently dropped instead.
+    writeFileSync(
+      join(dir, "EditLog.json"),
+      `${JSON.stringify(envelope("Create", [subject("Part", "p2", "Ramp", "Create")]))}\n{"bad": }\n{"truncated`,
+    );
+
+    const { result } = consumeHumanEdits(cwd);
+    expect(result.output).toContain('+ Part "Ramp" (p2)');
+    expect(result.output).toContain("1 log entries could not be parsed");
   });
 
-  test("ignores Source differences that are only EOL/indent normalization", () => {
-    const before = node("Workspace", "ws-0", "Workspace", {}, [
-      node("Script", "s1", "GameLoop", { Source: "if x then\n\tprint(x)\nend\n" }),
-    ]);
-    const after = node("Workspace", "ws-0", "Workspace", {}, [
-      node("Script", "s1", "GameLoop", { Source: "if x then\r\n    print(x)\r\nend\r\n" }),
-    ]);
-    expect(diffOvdrjmRoots(before, after)).toBe("No human edits detected since the agent's last completed turn.");
-  });
+  test("accepts a whole-file JSON array as well as JSONL", () => {
+    const cwd = projectDir();
+    const dir = editLoggingDir(cwd);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, "EditLog.json"),
+      JSON.stringify([envelope("Create", [subject("Part", "p2", "Ramp", "Create")])]),
+    );
 
-  test("reports a real Source change as a compact line diff", () => {
-    const current = node("Workspace", "ws-0", "Workspace", {}, [
-      node("Part", "p1", "Floor", { Size: { X: 4, Y: 1, Z: 4 } }),
-      node("Model", "m1", "Tree"),
-      node("Folder", "f1", "Props"),
-      node("PointLight", "l1", "Lamp"),
-      node("Script", "s1", "GameLoop", { Source: "local speed = 12\nprint(speed)\n" }),
-    ]);
-
-    const output = diffOvdrjmRoots(baseline, current);
-    expect(output).toContain('* Script "GameLoop" (s1) lines 1-1:');
-    expect(output).toContain("  - local speed = 5");
-    expect(output).toContain("  + local speed = 12");
-  });
-
-  test("caps long Source diffs", () => {
-    const oldSource = Array.from({ length: 60 }, (_, i) => `old ${i}`).join("\n");
-    const newSource = Array.from({ length: 60 }, (_, i) => `new ${i}`).join("\n");
-    const before = node("Workspace", "ws-0", "Workspace", {}, [node("Script", "s1", "S", { Source: oldSource })]);
-    const after = node("Workspace", "ws-0", "Workspace", {}, [node("Script", "s1", "S", { Source: newSource })]);
-
-    const output = diffOvdrjmRoots(before, after);
-    expect(output).toContain("(… 40 more lines)");
-    expect(output).not.toContain("old 25");
-  });
-
-  test("skips nodes without an ActorGuid but still walks their children", () => {
-    const before = node("Workspace", "ws-0", "Workspace", {}, [
-      { InstanceType: "Folder", Name: "NoGuid", LuaChildren: [node("Part", "p1", "Floor")] },
-    ]);
-    const after = node("Workspace", "ws-0", "Workspace", {}, [
-      { InstanceType: "Folder", Name: "NoGuid", LuaChildren: [node("Part", "p1", "Floor", { Anchored: true })] },
-    ]);
-
-    const output = diffOvdrjmRoots(before, after);
-    expect(output).toContain('~ Part "Floor" (p1)');
-    expect(output).toContain("Anchored: (none) -> true");
+    const { result } = consumeHumanEdits(cwd);
+    expect(result.output).toContain('+ Part "Ramp" (p2)');
   });
 });
 
 describe("createHumanEditsTool", () => {
-  test("returns a friendly message when no baseline exists", async () => {
+  test("serves the turn-start cache and reports edits made during the turn", async () => {
     const cwd = projectDir();
-    const result = await createHumanEditsTool(cwd).execute({} as never, toolCtx());
-    expect(result.output).toContain("No baseline snapshot exists yet");
-    expect(result.metadata?.error).toBeUndefined();
-    expect(result.metadata?.noBaseline).toBe(true);
+    writeEditLog(cwd, [envelope("Create", [subject("Part", "p2", "Ramp", "Create")])]);
+    const capture = consumeHumanEdits(cwd);
+    capture.finalize();
+
+    // Human keeps editing while the agent works.
+    writeEditLog(cwd, [envelope("Delete", [subject("Part", "p9", "Crate", "Delete")])]);
+
+    const tool = createHumanEditsTool(cwd, () => capture.result);
+    const result = await tool.execute({} as never, toolCtx());
+    expect(result.output).toContain('+ Part "Ramp" (p2)');
+    expect(result.output).toContain("while this turn was in progress");
+    expect(result.output).toContain('- Part "Crate" (p9)');
+    // Peek must not consume: the mid-turn log stays for the next turn.
+    expect(readdirSync(editLoggingDir(cwd))).toContain("EditLog.json");
   });
 
-  test("diffs the baseline against the current file", async () => {
-    const cwd = projectDir(
-      JSON.stringify({ Root: node("Workspace", "ws-0", "Workspace", {}, [node("Part", "p1", "Floor")]) }),
-    );
-    captureBaseline(cwd);
-    writeFileSync(
-      join(cwd, "world.ovdrjm"),
-      JSON.stringify({
-        Root: node("Workspace", "ws-0", "Workspace", {}, [node("Part", "p1", "Floor"), node("Part", "p2", "Ramp")]),
-      }),
-    );
-
-    const result = await createHumanEditsTool(cwd).execute({} as never, toolCtx());
-    expect(result.output).toContain('+ Part "Ramp" (p2)');
+  test("returns the no-edits message when nothing is pending or cached", async () => {
+    const result = await createHumanEditsTool(projectDir()).execute({} as never, toolCtx());
+    expect(result.output).toBe(NO_EDITS);
     expect(result.metadata?.error).toBeUndefined();
-  });
-
-  test("reads a UTF-16LE baseline", async () => {
-    const cwd = projectDir(
-      JSON.stringify({ Root: node("Workspace", "ws-0", "Workspace", {}, [node("Part", "p2", "Ramp")]) }),
-    );
-    const baselineJson = JSON.stringify({ Root: node("Workspace", "ws-0", "Workspace") });
-    mkdirSync(snapshotsDir(cwd), { recursive: true });
-    writeFileSync(baselinePath(cwd), Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(baselineJson, "utf16le")]));
-
-    const result = await createHumanEditsTool(cwd).execute({} as never, toolCtx());
-    expect(result.output).toContain('+ Part "Ramp" (p2)');
   });
 
   test("is registered as a tool on the provider", async () => {
@@ -217,73 +376,20 @@ describe("createHumanEditsTool", () => {
   });
 });
 
-describe("turn-start diff cache", () => {
-  test("a late tool call does not misattribute agent edits made after the prompt", async () => {
-    const cwd = projectDir(
-      JSON.stringify({ Root: node("Workspace", "ws-0", "Workspace", {}, [node("Part", "p1", "Floor")]) }),
-    );
-    const provider = createStudioRpcToolProvider({ callRpc: async () => ({}) });
-    const p = provider as typeof provider & {
-      onStop: NonNullable<typeof provider.onStop>;
-      onUserPromptSubmit: NonNullable<typeof provider.onUserPromptSubmit>;
-    };
-
-    // Turn N ends: baseline captured.
-    await p.onStop(stopInput(cwd));
-
-    // Human adds Ramp in Studio (flushed to file), then submits a prompt.
-    writeFileSync(
-      join(cwd, "world.ovdrjm"),
-      JSON.stringify({
-        Root: node("Workspace", "ws-0", "Workspace", {}, [node("Part", "p1", "Floor"), node("Part", "p2", "Ramp")]),
-      }),
-    );
-    await p.onUserPromptSubmit({ ...stopInput(cwd), hook_event_name: "UserPromptSubmit" });
-
-    // Agent edits the map BEFORE calling the human-edits tool.
-    writeFileSync(
-      join(cwd, "world.ovdrjm"),
-      JSON.stringify({
-        Root: node("Workspace", "ws-0", "Workspace", {}, [
-          node("Part", "p1", "Floor"),
-          node("Part", "p2", "Ramp"),
-          node("Part", "p3", "AgentPart"),
-        ]),
-      }),
-    );
-
-    const tools = await provider.createTools({ cwd, host: { approve: async () => "once" } });
-    const tool = tools.find((t) => t.name === "studiorpc_human_edits")!;
-    const result = await tool.execute({} as never, toolCtx());
-
-    expect(result.output).toContain('+ Part "Ramp" (p2)'); // human edit reported
-    expect(result.output).not.toContain("AgentPart"); // agent edit excluded
-  });
-});
-
 describe("human-edits unified loop-hook context injection", () => {
   function promptProvider() {
     const provider = createStudioRpcToolProvider({ callRpc: async () => ({}) });
     return provider as typeof provider & {
-      onStop: NonNullable<typeof provider.onStop>;
       onUserPromptSubmit: NonNullable<typeof provider.onUserPromptSubmit>;
     };
   }
 
-  test("freezes edits in the outer hook and injects them through an Agent loop hook", async () => {
-    const cwd = projectDir(
-      JSON.stringify({ Root: node("Workspace", "ws-0", "Workspace", {}, [node("Part", "p1", "Floor")]) }),
-    );
+  test("consumes the log in the outer hook and injects the summary through an Agent loop hook", async () => {
+    const cwd = projectDir();
+    writeEditLog(cwd, [envelope("Create", [subject("Part", "p2", "Ramp", "Create")])]);
     const p = promptProvider();
-    await p.onStop(stopInput(cwd)); // baseline
-    writeFileSync(
-      join(cwd, "world.ovdrjm"),
-      JSON.stringify({
-        Root: node("Workspace", "ws-0", "Workspace", {}, [node("Part", "p1", "Floor"), node("Part", "p2", "Ramp")]),
-      }),
-    );
 
-    const result = await p.onUserPromptSubmit({ ...stopInput(cwd), hook_event_name: "UserPromptSubmit" });
+    const result = await p.onUserPromptSubmit(promptInput(cwd));
     expect(result.additionalContext).toBeUndefined();
 
     const hook = p.createAgentLoopHooks?.({ agentKind: "main" } as never)[0];
@@ -298,28 +404,31 @@ describe("human-edits unified loop-hook context injection", () => {
       },
     });
     expect(injections?.[0]?.content).toContain('+ Part "Ramp" (p2)');
+    // Injection delivered -> consumed log files are gone.
+    expect(readdirSync(editLoggingDir(cwd))).toEqual([]);
   });
 
-  test("returns no additionalContext when nothing changed", async () => {
-    const cwd = projectDir(
-      JSON.stringify({ Root: node("Workspace", "ws-0", "Workspace", {}, [node("Part", "p1", "Floor")]) }),
-    );
+  test("injects nothing when the log is empty", async () => {
+    const cwd = projectDir();
     const p = promptProvider();
-    await p.onStop(stopInput(cwd));
-
-    const result = await p.onUserPromptSubmit({ ...stopInput(cwd), hook_event_name: "UserPromptSubmit" });
-    expect(result.additionalContext).toBeUndefined();
+    await p.onUserPromptSubmit(promptInput(cwd));
     const hook = p.createAgentLoopHooks?.({ agentKind: "main" } as never)[0];
     hook?.onPromptStart?.({ messages: [] });
     expect(hook?.beforeTurn?.({ messages: [], turnId: "turn-1", compactedThisTurn: false })).toBeUndefined();
   });
 
-  test("returns no additionalContext when no baseline exists", async () => {
-    const cwd = projectDir();
-    const p = promptProvider();
-
-    const result = await p.onUserPromptSubmit({ ...stopInput(cwd), hook_event_name: "UserPromptSubmit" });
-    expect(result.additionalContext).toBeUndefined();
+  test("does not call any RPC at turn start", async () => {
+    const calls: string[] = [];
+    const provider = createStudioRpcToolProvider({
+      callRpc: async (method) => {
+        calls.push(method);
+        return {};
+      },
+    });
+    const p = provider as typeof provider & { onUserPromptSubmit: NonNullable<typeof provider.onUserPromptSubmit> };
+    await p.onUserPromptSubmit(promptInput(projectDir()));
+    expect(calls).toEqual([]);
+    expect(provider.onStop).toBeUndefined();
   });
 
   test("does not register the Studio human-edits loop hook for child agents", () => {

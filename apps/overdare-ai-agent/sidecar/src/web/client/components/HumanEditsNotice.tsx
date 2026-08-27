@@ -9,7 +9,14 @@ interface HumanEditsNoticeProps {
   summary: string;
 }
 
-const COUNT_SECTIONS = ["Added", "Removed", "Moved", "Modified", "Script source changed"] as const;
+const COUNT_SECTIONS = [
+  "Added",
+  "Added then removed",
+  "Removed",
+  "Moved",
+  "Modified",
+  "Script source changed",
+] as const;
 
 /** Total change count parsed from the diff section headers, e.g. "3 changes". */
 function countLabel(summary: string): string {

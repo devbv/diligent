@@ -181,7 +181,7 @@ describe("createStudioRpcToolProvider", () => {
     });
   });
 
-  test("saves the Studio level at turn start and turn stop hooks", async () => {
+  test("does not save the Studio level at turn boundaries (Studio saves on Send itself)", async () => {
     const calls: Array<{ method: string; params?: Record<string, unknown> }> = [];
     const provider = createStudioRpcToolProvider({
       callRpc: async (method, params) => {
@@ -192,11 +192,10 @@ describe("createStudioRpcToolProvider", () => {
 
     const studioRpcProvider = provider as typeof provider & {
       onUserPromptSubmit: NonNullable<typeof provider.onUserPromptSubmit>;
-      onStop: NonNullable<typeof provider.onStop>;
     };
 
     expect(studioRpcProvider.onUserPromptSubmit.mode).toBe("sync");
-    expect(studioRpcProvider.onStop.mode).toBe("sync");
+    expect(provider.onStop).toBeUndefined();
 
     await studioRpcProvider.onUserPromptSubmit({
       session_id: "session-1",
@@ -205,17 +204,8 @@ describe("createStudioRpcToolProvider", () => {
       hook_event_name: "UserPromptSubmit",
       prompt: "hello",
     });
-    await studioRpcProvider.onStop({
-      session_id: "session-1",
-      transcript_path: "/tmp/session.jsonl",
-      cwd: "/tmp/project",
-      hook_event_name: "Stop",
-    });
 
-    expect(calls).toEqual([
-      { method: "level.save.file", params: {} },
-      { method: "level.save.file", params: {} },
-    ]);
+    expect(calls).toEqual([]);
   });
 
   test("saves the level to file after a mutating asset-import tool call", async () => {
