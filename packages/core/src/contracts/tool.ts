@@ -1,5 +1,6 @@
 // @summary Public tool definition, registry, execution, and truncation-policy boundary
 
+export { dropEmptyOptionals } from "../tool/empty-arguments";
 export type { ExecuteToolOptions, ToolOutputFileStore } from "../tool/executor";
 export { executeTool } from "../tool/executor";
 export type { ObjectJsonSchema } from "../tool/input-schema";

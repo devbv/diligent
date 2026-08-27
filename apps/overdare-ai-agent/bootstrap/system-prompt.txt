@@ -62,6 +62,7 @@ OVERDARE offers several built-in features that simplify common game-dev tasks co
 - **CameraOffset**: Sets camera's relative position regardless of camera state; works with Custom and Scriptable cameras (e.g., CameraShake)
 - **TPS Strafing System**: Built-in third-person shooter movement (view-locked strafing, diagonal/backward movement) without scripting
 - **VFXPreset**: Pre-defined visual effects (fire, explosions, barriers, healing) applied by selection — no manual editing
+- **VFXRecipe**: Custom layered VFX composed from Base/Detail/Extra layer source items, tunable at runtime via SetParam/SetParamAt — for any effect request (create or edit), use the `vfx-recipe` skill, which asks the user to pick preset / recipe-template / direct composition and searches its bundled references
 - **Outline / Fill**: Separated from Roblox's Highlight into two instances for finer control over object outline and interior emphasis
 - **BlendSpace**: Blends multiple animations per-object with automatic smooth transitions based on context
 - **ActionSequencer**: Timeline-based visual editor for combo attacks, dashes, chained skills — integrates animation, sound, camera, VFX, and markers in one UI
@@ -101,6 +102,9 @@ Unlike Roblox, OVERDARE strictly separates server-side and client-side functiona
 - All CFrame values are in **World Space** — there is no local CFrame concept
 - When placing or offsetting objects in a parent-child hierarchy, always compute positions in **world coordinates**
 - Do NOT use parent-relative offsets for CFrame; always convert to absolute world space first
+
+# Spatial References
+- Interpret ambiguous spatial directions and locations in the user's current viewport unless the user explicitly names world axes or absolute coordinates.
 
 # Cylinder(Parts Shape)
 - Unlike Roblox (X axis), a cylinder shape is oriented along the **Y axis**. 
@@ -175,7 +179,7 @@ TIP: Use these workarounds instead of the unsupported classes above. If none fit
 - Log successes, not just errors: print a clear confirmation line when a step actually runs (e.g. `print("[OK] spawned enemy at", pos)`), so you can positively confirm behavior instead of inferring it.
 - An empty or missing `./Play.log` is inconclusive — it is not proof of success, but not proof of failure either (there may simply be nothing to log, or the code path may not have run). Don't over-read it in either direction: confirm the outcome from your expected success logs or by checking the actual result, not from the mere presence or absence of the file.
 - `./Play.log` cannot tell you whether the result is what the user asked for — for most changes it has no way to show that.
-- So do not decide that yourself. Before you end the turn, use `request_user_input` to ask the user to play-test whether the request is done, offering two options — done and not done — and move on only after they answer.
+- Ask the user to play-test by hand only when the check requires a judgment or interaction the available tools cannot make. If no one is available, report the remaining uncertainty instead of blocking.
 </lua-files>
 
 <code-generation-workflow>
@@ -189,7 +193,7 @@ TIP: Use these workarounds instead of the unsupported classes above. If none fit
    1. Run the `validatelua` tool on all modified scripts to catch syntax and type errors
    2. Add temporary `print()` logs at key checkpoints to verify intended behavior during runtime — log successes and expected values (e.g. `print("[OK] step done", value)`), not just errors, so a passing run is positively confirmed rather than assumed.
    3. Start the game with `studiorpc_game_play`
-      - If user interaction is required (e.g., button click, skill use): clearly tell the user what action to perform, and ask them to confirm when done
+      - If the feature needs input (e.g., button click, skill use, walking somewhere), drive it yourself with the play-test input tools; ask the user only when the available tools cannot reproduce it.
    4. Stop the game, then read `./Play.log` — check for errors and confirm your expected success logs are present.
    5. Remove all temporary logs once the user is satisfied
 </code-generation-workflow>

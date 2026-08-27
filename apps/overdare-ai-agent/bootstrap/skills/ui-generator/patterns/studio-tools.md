@@ -185,7 +185,7 @@ Important properties:
 - `ImageTransparency`
 - `BackgroundTransparency`
 - `ScaleType` — `"Stretch"` (default) or `"Slice"` for 9-slice scaling
-- `SliceCenter` — center rect `{Min: {X, Y}, Max: {X, Y}}` in image pixels; Slice mode only
+- `SliceCenter` — `{MinX, MinY, MaxX, MaxY}` in image pixels from the top-left; Slice mode only
 - `SliceScale` — scale multiplier for the slice borders; Slice mode only
 - All common frame layout properties
 
