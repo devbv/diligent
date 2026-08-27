@@ -162,7 +162,7 @@ if [ -z "$STUDIO_DISABLED" ] && command -v nc >/dev/null 2>&1; then
   if nc -z -w 2 "$STUDIO_HOST" "$STUDIO_PORT" 2>/dev/null; then
     echo "> Studio reachability: OK (${STUDIO_HOST}:${STUDIO_PORT})"
   else
-    echo "! Cannot reach Studio (${STUDIO_HOST}:${STUDIO_PORT}) — check Windows listen/firewall. Continuing anyway."
+    echo "! Cannot reach Studio (${STUDIO_HOST}:${STUDIO_PORT}) — Studio may be bound to 127.0.0.1 only, or the firewall is blocking. See docs/guide/mac-agent-windows-studio.md. Continuing anyway."
   fi
 fi
 

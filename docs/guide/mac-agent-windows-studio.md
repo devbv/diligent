@@ -42,7 +42,7 @@ bun install
 
 ### On Windows (this is the real crux)
 
-1. **Studio must listen for RPC on a LAN interface (`0.0.0.0` or its LAN IP).** If it binds only to `127.0.0.1`, the Mac cannot connect -> work around it with an [SSH tunnel](#when-studio-listens-only-on-localhost--ssh-tunnel).
+1. **Studio must listen for RPC on a LAN interface (`0.0.0.0` or its LAN IP).** Recent Studio builds bind **`127.0.0.1` only**, so the Mac cannot connect at all -> relay the port with [portproxy](#when-studio-listens-only-on-localhost--portproxy). Symptom: `ping` to the Windows IP succeeds but the TCP connection sits in `SYN_SENT` and every RPC dies at the 10s timeout.
 2. **Allow inbound on the Studio RPC port (default 13377) in the firewall.**
 3. Find the Windows LAN IP: `ipconfig` -> IPv4 address (e.g. `192.168.0.42`).
 
@@ -258,26 +258,64 @@ RPC endpoint: ws://localhost:7433/rpc
 | `studiorpc_*` tools not visible | Started the sidecar with `STUDIO_DISABLED=1`. Restart without it to enable Studio tools |
 | Bundle skills (actionsequence, etc.) not visible | Option 2 symlink not done. Check the symlinks under `~/.overdare/skills` |
 | Studio connection timeout | `STUDIO_HOST`/`STUDIO_PORT` wrong, or Windows Studio not listening on that port / firewall blocked |
+| `ping` OK but the port stalls in `SYN_SENT` | Studio is bound to `127.0.0.1` only (recent builds). Relay it with [portproxy](#when-studio-listens-only-on-localhost--portproxy). If SMB (445) to the same host still works, it is the binding, not the firewall |
+| Worked before, suddenly times out | A Studio build update narrowed the bind to `127.0.0.1`, or one of the two IPs pinned in the portproxy / firewall rule changed |
 | `nc -vz` works but only RPC fails | Studio isn't speaking the RPC protocol (another process holds the port). Restart Studio |
 | Port conflict (`EADDRINUSE`) | Kill the existing process and rerun: `lsof -ti:7433 \| xargs kill` |
 | `EACCES: permission denied ... .ovdrjm` / session save fails | Mount is read-only. Grant [SMB write permission](#smb-share--mount--write-permission-required-for-editing) (share + NTFS) and **remount**. If browse works but only editing fails, this is almost always it |
 | Still denied after fixing permissions | SMB credential caching. `umount` + `security delete-internet-password -s <ip>`, then reconnect. Judge by the `touch` test, not Finder's displayed permissions |
 
-### When Studio listens only on localhost — SSH tunnel
+### When Studio listens only on localhost — portproxy
 
-If Windows Studio binds only to `127.0.0.1` and LAN access is blocked, tunnel from the Mac:
+Recent Studio builds bind the RPC port to `127.0.0.1` instead of `0.0.0.0`, so there is no LAN route to it. Confirm on Windows — the Studio process holds loopback only:
 
-```bash
-# Mac: forward Windows' 13377 to the Mac's 13377
-ssh -L 13377:localhost:13377 <windows-user>@192.168.0.42
+```powershell
+netstat -ano | findstr ":13377"
+#   TCP    127.0.0.1:13377    0.0.0.0:0    LISTENING    7400
 ```
 
-With the tunnel up, point the sidecar at **localhost**:
+Relay it with Windows' built-in portproxy. **Run in an elevated PowerShell, on the Windows machine:**
+
+```powershell
+# <windows-ip> = the Studio machine, <mac-ip> = the machine running the agent
+netsh interface portproxy add v4tov4 listenport=13377 listenaddress=<windows-ip> connectport=13377 connectaddress=127.0.0.1
+
+New-NetFirewallRule -DisplayName "Studio RPC" -Direction Inbound -Protocol TCP `
+  -LocalPort 13377 -Action Allow -RemoteAddress <mac-ip>
+```
+
+Nothing changes on the Mac — the port stays 13377, so the usual `STUDIO_HOST=<windows-ip>` keeps working.
+
+Two details that matter:
+
+- **Use the LAN IP as `listenaddress`, not `0.0.0.0`.** The wildcard covers `127.0.0.1`, which Studio already holds, so the bind clashes (`WSAEADDRINUSE`). Naming the LAN IP sidesteps it and keeps the port number identical on both sides.
+- **Scope the firewall rule with `-RemoteAddress`.** Studio RPC has no authentication — it assumes local callers only. Opening 13377 LAN-wide lets anyone who can reach the machine drive Studio. `-Profile` is deliberately omitted: on a domain-joined machine the profile is `DomainAuthenticated`, not `Private`, so a profile filter can silently make the rule inert.
+
+Verify from the Mac:
 
 ```bash
-STUDIO_HOST=localhost STUDIO_PORT=13377 \
-bun run apps/overdare-ai-agent/sidecar/src/server.ts --dev --port=7433 --cwd="$PWD"
+nc -vz <windows-ip> 13377
 ```
+
+To undo:
+
+```powershell
+netsh interface portproxy delete v4tov4 listenport=13377 listenaddress=<windows-ip>
+Remove-NetFirewallRule -DisplayName "Studio RPC"
+```
+
+> The portproxy entry is pinned to the Windows IP and the firewall rule to the Mac IP, so a DHCP lease change on either machine breaks the connection. That is the first thing to check if this stops working after it once worked.
+
+#### Alternative — SSH tunnel
+
+If the Windows machine already runs OpenSSH Server, a tunnel avoids exposing the port on the LAN at all. Run it in its own terminal and leave it open:
+
+```bash
+ssh -N -L 13377:127.0.0.1:13377 <windows-user>@<windows-ip>
+STUDIO_HOST=localhost make dev-cross   # in another terminal
+```
+
+On a corporate machine, installing OpenSSH Server may not be possible: `Add-WindowsCapability` pulls Features-on-Demand from Windows Update, and if policy points the machine at an internal WSUS that carries no FoD packages it fails with `0x800f0954`. Ask IT rather than flipping `UseWUServer` on a managed box — or just use portproxy above, which needs nothing installed.
 
 ---
 
