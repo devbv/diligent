@@ -1,25 +1,38 @@
 // @summary Defines shared instance property schemas and class enums for Studio RPC tools.
 import { z } from "zod";
 
-const vec3 = z.object({ X: z.number(), Y: z.number(), Z: z.number() });
-const udim = z.object({ Scale: z.number(), Offset: z.number() });
+/**
+ * Studio names the type inside the value — `{"ObjectType":"CFrame", "Position":{...}}` — in the
+ * .ovdrjm and over the RPC alike. The file parser also accepts a value without it, inferring the
+ * type from the property, but instance.create and instance.update do not: an untagged CFrame comes
+ * back as "Property CFrame expects LuaCFrame ... but received Position : Object".
+ *
+ * So the name is declared here and defaulted in, once per type. Callers still write the bare shape
+ * and every path downstream sends what Studio writes itself. The name is the rejection's Lua type
+ * without the prefix — LuaUDim2 is UDim2, LuaFont is Font (the property is FontFace, the type is
+ * not). Measured against Studio 2026-08-27.
+ */
+function tagged<const N extends string, S extends z.ZodRawShape>(name: N, shape: S) {
+  return z.object({ ObjectType: z.literal(name).default(name), ...shape });
+}
+
+const vec3 = tagged("Vector3", { X: z.number(), Y: z.number(), Z: z.number() });
+/** A Vector2 and a UDim2 are both `{X, Y}`; only the member type separates them. */
+const vec2 = tagged("Vector2", { X: z.number(), Y: z.number() });
+const udim = tagged("UDim", { Scale: z.number(), Offset: z.number() });
 const colorChannel = z.number().int().min(0).max(255);
-const rgb = z.object({ R: colorChannel, G: colorChannel, B: colorChannel });
-const udim2 = z.object({
-  X: z.object({ Scale: z.number(), Offset: z.number() }),
-  Y: z.object({ Scale: z.number(), Offset: z.number() }),
-});
+const rgb = tagged("Color3", { R: colorChannel, G: colorChannel, B: colorChannel });
+const udim2 = tagged("UDim2", { X: udim, Y: udim });
+const cframe = tagged("CFrame", { Position: vec3, Orientation: vec3 });
 /** Studio serialises Rect flat — four scalars, not two nested Vector2s. It clamps out-of-range values but not inverted ones. */
-const rect = z
-  .object({
-    MinX: z.number(),
-    MinY: z.number(),
-    MaxX: z.number(),
-    MaxY: z.number(),
-  })
-  .refine((r) => r.MinX <= r.MaxX && r.MinY <= r.MaxY, {
-    message: "SliceCenter needs MinX <= MaxX and MinY <= MaxY; an inverted rectangle has no centre region.",
-  });
+const rect = tagged("Rect", {
+  MinX: z.number(),
+  MinY: z.number(),
+  MaxX: z.number(),
+  MaxY: z.number(),
+}).refine((r) => r.MinX <= r.MaxX && r.MinY <= r.MaxY, {
+  message: "SliceCenter needs MinX <= MaxX and MinY <= MaxY; an inverted rectangle has no centre region.",
+});
 
 const normalIdEnum = z.enum(["Right", "Top", "Back", "Left", "Bottom", "Front"]);
 /** Tile, Crop and Fit exist in the engine but ship hidden, so they stay out of reach here. */
@@ -38,19 +51,31 @@ const mobilityEnum = z
 const instanceBaseProperties = {
   Mobility: mobilityEnum.optional(),
 };
+/**
+ * A sequence is the one value whose shape differs, not just its tag: keypoints are written as a
+ * list and Studio wants that list under `Keypoints` — "Property Color expects Object, but received
+ * Array" otherwise. A ColorSequence keypoint names its colour `Value`. The list stays the argument
+ * so the caller writes what reads like a sequence.
+ */
 const colorSequence = z
   .array(z.object({ Time: z.number(), Color: rgb }))
-  .describe("ColorSequence keypoints [{Time,Color}]");
+  .describe("ColorSequence keypoints [{Time,Color}]")
+  .transform((keypoints) => ({
+    ObjectType: "ColorSequence" as const,
+    Keypoints: keypoints.map(({ Time, Color }) => ({ Time, Value: Color })),
+  }));
 const numberSequence = z
   .array(z.object({ Time: z.number(), Value: z.number(), Envelope: z.number().optional() }))
-  .describe("NumberSequence keypoints [{Time,Value,Envelope?}]");
-const numberRange = z.object({ Min: z.number(), Max: z.number() });
-const fontFace = z.object({
+  .describe("NumberSequence keypoints [{Time,Value,Envelope?}]")
+  .transform((Keypoints) => ({ ObjectType: "NumberSequence" as const, Keypoints }));
+const numberRange = tagged("NumberRange", { Min: z.number(), Max: z.number() });
+/** Studio requires all three: a Font missing Style or Weight is rejected, and one it accepts reads back with both. */
+const fontFace = tagged("Font", {
   Family: z.string(),
-  Style: z.enum(["Normal", "Italic"]).optional(),
+  Style: z.enum(["Normal", "Italic"]).default("Normal"),
   Weight: z
     .enum(["Thin", "ExtraLight", "Light", "Regular", "Medium", "SemiBold", "Bold", "ExtraBold", "Black"])
-    .optional(),
+    .default("Regular"),
 });
 const nineSliceProperties = {
   ScaleType: scaleTypeEnum
@@ -75,7 +100,7 @@ const surfaceGuiBaseProperties = {
 
 const guiObjectProperties = {
   Active: z.boolean().default(true),
-  AnchorPoint: z.object({ X: z.number(), Y: z.number() }).optional(),
+  AnchorPoint: vec2.optional(),
   BackgroundColor3: rgb.optional(),
   BackgroundTransparency: z.number().describe("(0~1)").optional(),
   ClipsDescendants: z.boolean().optional(),
@@ -622,7 +647,7 @@ const rawInstancePropertiesUnion = z.union([
   z
     .object({
       Shape: z.enum(["Block", "Ball", "Cylinder"]).optional(),
-      CFrame: z.object({ Position: vec3, Orientation: vec3 }).optional(),
+      CFrame: cframe.optional(),
       Size: vec3.describe("units in cm").optional(),
       Anchored: z.boolean().default(true),
       BrickColor: z.string().optional(),
@@ -885,7 +910,7 @@ const rawInstancePropertiesUnion = z.union([
   z
     .object({
       Axis: vec3.optional(),
-      CFrame: z.object({ Position: vec3, Orientation: vec3 }).optional(),
+      CFrame: cframe.optional(),
       SecondaryAxis: vec3.optional(),
     })
     .strict()
@@ -995,7 +1020,7 @@ const rawInstancePropertiesUnion = z.union([
   z
     .object({
       Shape: z.enum(["Block", "Ball", "Cylinder"]).optional(),
-      CFrame: z.object({ Position: vec3, Orientation: vec3 }).optional(),
+      CFrame: cframe.optional(),
       Size: vec3.describe("units in cm").optional(),
       Anchored: z.boolean().default(true),
       BrickColor: z.string().optional(),
@@ -1084,7 +1109,7 @@ const rawInstancePropertiesUnion = z.union([
     ),
   z
     .object({
-      CFrame: z.object({ Position: vec3, Orientation: vec3 }).optional(),
+      CFrame: cframe.optional(),
       CameraOffset: vec3.optional(),
       CameraSubject: z.string().describe("InstanceGuid of the subject to follow").optional(),
       CameraType: z.enum(["Fixed", "Attach", "Watch", "Track", "Follow", "Custom", "Scriptable", "Orbital"]).optional(),
@@ -1126,7 +1151,7 @@ const rawInstancePropertiesUnion = z.union([
       BallMeshCollisionProfile: z.string().optional(),
       BallRadius: z.number().optional(),
       BallTraceChannel: z.number().optional(),
-      CFrame: z.object({ Position: vec3, Orientation: vec3 }).optional(),
+      CFrame: cframe.optional(),
       Color: rgb.optional(),
       EnablePathMarker: z.boolean().optional(),
       IsPathMarkerWorldSpace: z.boolean().optional(),
@@ -1148,7 +1173,7 @@ const rawInstancePropertiesUnion = z.union([
   z
     .object({
       Shape: z.enum(["Block", "Ball", "Cylinder"]).optional(),
-      CFrame: z.object({ Position: vec3, Orientation: vec3 }).optional(),
+      CFrame: cframe.optional(),
       Size: vec3.describe("units in cm").optional(),
       Anchored: z.boolean().default(true),
       BrickColor: z.string().optional(),

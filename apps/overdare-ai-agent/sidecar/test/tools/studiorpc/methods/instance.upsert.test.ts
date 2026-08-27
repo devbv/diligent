@@ -153,10 +153,13 @@ describe("instance.upsert class property validation", () => {
     const properties = parsed.items[0].properties as Record<string, unknown>;
     expect(properties.LoopDuration).toBeUndefined();
     const [base] = properties.BaseLayer as Record<string, unknown>[];
-    expect(base.Alpha).toEqual([
-      { Time: 0, Value: 1 },
-      { Time: 1, Value: 1 },
-    ]);
+    expect(base.Alpha).toEqual({
+      ObjectType: "NumberSequence",
+      Keypoints: [
+        { Time: 0, Value: 1 },
+        { Time: 1, Value: 1 },
+      ],
+    });
     // LiquidScatter_R_A exists in both Base and Extra; the Extra layer expands to the Extra asset.
     const [extra] = properties.ExtraLayer as Record<string, unknown>[];
     expect(extra.NiagaraSystem).toBe(
@@ -175,7 +178,13 @@ describe("instance.upsert class property validation", () => {
         },
       ],
     });
-    expect(parsed.items[0].properties?.FontFace).toEqual({ Family: "Default", Weight: "Bold" });
+    // Studio requires all three members; the schema fills the ones the caller left out.
+    expect(parsed.items[0].properties?.FontFace).toEqual({
+      ObjectType: "Font",
+      Family: "Default",
+      Style: "Normal",
+      Weight: "Bold",
+    });
 
     expect(() =>
       parseArgs({

@@ -1,5 +1,6 @@
 // @summary Edits a script's Source property in .ovdrjm via exact string replacement.
 
+import { resolveApiVersion } from "../config";
 import * as scriptEdit from "../methods/script.edit";
 import { buildScriptEditRender } from "../render";
 import { applyLevelChanges } from "../rpc";
@@ -13,6 +14,7 @@ import {
   type OvdrjmNode,
   readAndWriteOvdrjm,
 } from "./ovdrjm-utils";
+import { editScriptViaRpc } from "./v2/script-edit";
 
 // ---------------------------------------------------------------------------
 // Helpers — line-oriented matching in the style of apply_patch's deriveNewContent.
@@ -189,6 +191,7 @@ async function executeScriptEdit(
   // --- Read .ovdrjm, apply edit, write back ---
   const release = await writeLock.acquire();
   try {
+    if (resolveApiVersion() === "v2") return await editScriptViaRpc(parsed);
     let count = 0;
     let tabCount = 0;
     let eolCount = 0;
@@ -259,3 +262,5 @@ export function createScriptEditTool(cwd: string, writeLock: WriteLock): Tool {
     },
   };
 }
+
+export { applyEdit };

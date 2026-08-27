@@ -1,5 +1,6 @@
 // @summary Deletes a script instance from the .ovdrjm level file.
 
+import { resolveApiVersion } from "../config";
 import * as scriptDelete from "../methods/script.delete";
 import { buildDeleteRender } from "../render";
 import { applyLevelChanges } from "../rpc";
@@ -12,6 +13,7 @@ import {
   readAndWriteOvdrjm,
   removeNodeByActorGuid,
 } from "./ovdrjm-utils";
+import { deleteScriptViaRpc } from "./v2/script-delete";
 
 const SCRIPT_CLASSES = new Set(["Script", "LocalScript", "ModuleScript"]);
 
@@ -40,6 +42,7 @@ async function executeScriptDelete(
 
   const release = await writeLock.acquire();
   try {
+    if (resolveApiVersion() === "v2") return await deleteScriptViaRpc(parsed);
     readAndWriteOvdrjm(cwd, (rootDoc) => {
       const root = rootDoc.Root;
       if (!isRecord(root)) {
