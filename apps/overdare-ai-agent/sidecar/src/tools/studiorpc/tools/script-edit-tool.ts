@@ -169,7 +169,7 @@ async function executeScriptEdit(
 ): Promise<ToolResult> {
   const toolName = toToolName(scriptEdit.method);
   const parsed = scriptEdit.params.parse(args);
-  const { targetGuid, old_string, new_string, replace_all } = parsed;
+  const { guid: targetGuid, old_string, new_string, replace_all } = parsed;
 
   if (old_string === "") {
     return { output: "Error: old_string cannot be empty for script edit", metadata: { error: true } };

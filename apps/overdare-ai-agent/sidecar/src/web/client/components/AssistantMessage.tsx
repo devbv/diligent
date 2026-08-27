@@ -3,14 +3,32 @@
 import { useState } from "react";
 import type { RenderItem } from "../lib/thread-store";
 import { formatDurationLabel } from "../lib/time-format";
-import { AssistantContentBlocks, isRenderableAssistantContentBlock } from "./AssistantContentBlocks";
+import {
+  AssistantContentBlocks,
+  isRenderableAssistantContentBlock,
+  isReportableAssistantResponse,
+} from "./AssistantContentBlocks";
 import { MarkdownContent } from "./MarkdownContent";
+import { MessageActions } from "./MessageActions";
 import { ThinkingBlock } from "./ThinkingBlock";
 import { ToolActivityRow } from "./ToolActivityRow";
 
+type AssistantRenderItem = Extract<RenderItem, { kind: "assistant" }>;
+
 interface AssistantMessageProps {
-  item: Extract<RenderItem, { kind: "assistant" }>;
+  item: AssistantRenderItem;
   suppressThinking?: boolean;
+  onReport?: (item: AssistantRenderItem) => void;
+  alwaysShowActions?: boolean;
+}
+
+function createReportAction(
+  item: AssistantRenderItem,
+  onReport?: (item: AssistantRenderItem) => void,
+): (() => void) | null {
+  if (!onReport) return null;
+  if (!isReportableAssistantResponse(item)) return null;
+  return () => onReport(item);
 }
 
 interface SkillUsageNotice {
@@ -142,7 +160,12 @@ function SkillUsageRow({ notice, hasFollowingContent }: { notice: SkillUsageNoti
   );
 }
 
-export function AssistantMessage({ item, suppressThinking = false }: AssistantMessageProps) {
+export function AssistantMessage({
+  item,
+  suppressThinking = false,
+  onReport,
+  alwaysShowActions = false,
+}: AssistantMessageProps) {
   const hasThinking = item.thinking.length > 0;
   const hasText = item.text.length > 0;
   const skillNotice =
@@ -153,11 +176,15 @@ export function AssistantMessage({ item, suppressThinking = false }: AssistantMe
   const renderableContentBlocks = contentBlocks.filter(isRenderableAssistantContentBlock);
   const hasStructuredBlocks = renderableContentBlocks.length > 0;
   const thinkingDurationLabel = formatDurationLabel(item.reasoningDurationMs);
+  const reportAction = createReportAction(item, onReport);
+  const copyText = item.text.trim()
+    ? item.text
+    : item.contentBlocks.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("\n");
 
-  if (!hasThinking && !hasText && !hasStructuredBlocks) return null;
+  if (!hasThinking && !hasText && !hasStructuredBlocks && !reportAction) return null;
 
   return (
-    <div className="pb-1">
+    <div className={reportAction ? "group/message relative py-2" : "py-2"} tabIndex={reportAction ? 0 : undefined}>
       {hasThinking && !suppressThinking && (
         <div className="pb-3">
           <ThinkingBlock text={item.thinking} streaming={!item.thinkingDone} durationLabel={thinkingDurationLabel} />
@@ -170,6 +197,15 @@ export function AssistantMessage({ item, suppressThinking = false }: AssistantMe
         <AssistantContentBlocks blocks={contentBlocks} />
       ) : hasVisibleText ? (
         <MarkdownContent text={visibleText} />
+      ) : null}
+      {reportAction ? (
+        <MessageActions
+          targetKind="response"
+          copyText={copyText}
+          timestamp={item.timestamp}
+          onReport={reportAction}
+          alwaysVisible={alwaysShowActions}
+        />
       ) : null}
     </div>
   );

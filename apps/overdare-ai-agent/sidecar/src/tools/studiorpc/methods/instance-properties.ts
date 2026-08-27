@@ -50,6 +50,20 @@ export function parseInstancePatchProperties(className: string, value: unknown):
   return Object.fromEntries(Object.keys(raw).map((key) => [key, result.data[key]]));
 }
 
+/**
+ * The .ovdrjm does not spell every struct field the way the schema does: a UDim2 is written
+ * `{"X": ..., "y": ...}` — capital X, lowercase y — and a UDim2 whose Y is dropped reads as a
+ * control sitting at the top of its parent, which is a plausible enough layout that nothing
+ * downstream can tell it from the truth. Matched case-insensitively, but only when exactly one
+ * field matches, so two genuinely distinct keys are never silently merged.
+ */
+function sourceKeyFor(record: Record<string, unknown>, key: string): string | undefined {
+  if (key in record) return key;
+  const lowered = key.toLowerCase();
+  const matches = Object.keys(record).filter((candidate) => candidate.toLowerCase() === lowered);
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
 function stripByShape(value: unknown, shape: ShapeSpec): unknown {
   if (shape === true) return value;
   if (value === null || value === undefined) return value;
@@ -59,7 +73,8 @@ function stripByShape(value: unknown, shape: ShapeSpec): unknown {
   const record = value as Record<string, unknown>;
   const result: Record<string, unknown> = {};
   for (const [key, childShape] of Object.entries(shape)) {
-    if (key in record) result[key] = stripByShape(record[key], childShape);
+    const sourceKey = sourceKeyFor(record, key);
+    if (sourceKey !== undefined) result[key] = stripByShape(record[sourceKey], childShape);
   }
   return result;
 }

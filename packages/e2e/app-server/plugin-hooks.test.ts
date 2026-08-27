@@ -4,7 +4,7 @@ import { access, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DILIGENT_SERVER_NOTIFICATION_METHODS } from "@diligent/protocol";
-import { createSimpleStream } from "./helpers/fake-stream";
+import { createSimpleStream, createSlowStream } from "./helpers/fake-stream";
 import { createProtocolClient, type ProtocolTestClient } from "./helpers/protocol-client";
 import { createTestServer } from "./helpers/server-factory";
 
@@ -23,13 +23,13 @@ async function installPlugin(cwd: string, pluginName: string): Promise<void> {
   await copyFile(join(fixtureDir, "index.js"), join(pluginDir, "index.js"));
 }
 
-async function setup() {
+async function setup(streamFunction = createSimpleStream("ok")) {
   tmpDir = await mkdtemp(join(tmpdir(), "diligent-e2e-hooks-"));
   await installPlugin(tmpDir, PLUGIN_NAME);
 
   const server = createTestServer({
     cwd: tmpDir,
-    streamFunction: createSimpleStream("ok"),
+    streamFunction,
     runtimeToolsConfig: {
       plugins: [{ package: PLUGIN_NAME, enabled: true }],
     },
@@ -64,7 +64,17 @@ describe("plugin-hooks", () => {
     const threadId = await client.initAndStartThread(tmpDir);
 
     // Send a prompt that triggers the blocking hook
-    const turnNotifs = await client.sendTurnAndWait(threadId, "BLOCK this prompt please");
+    await client.request("thread/subscribe", { threadId });
+    const startIndex = client.notifications.length;
+    const turnStart = (await client.request("turn/start", {
+      threadId,
+      message: "BLOCK this prompt please",
+    })) as { accepted: true; userMessageId?: string };
+    const turnNotifs = client.notifications.slice(startIndex);
+
+    expect(turnStart.userMessageId).toBeUndefined();
+    const history = (await client.request("thread/read", { threadId })) as { items: Array<{ type: string }> };
+    expect(history.items.some((item) => item.type === "userMessage")).toBe(false);
 
     // The hook should have blocked the prompt: expect an error notification with HookBlocked
     const errorNotif = turnNotifs.find((n) => n.method === DILIGENT_SERVER_NOTIFICATION_METHODS.ERROR);
@@ -154,6 +164,28 @@ describe("plugin-hooks", () => {
     const markerPath = join(tmpDir, "hook-stop-fired");
     await expect(access(markerPath)).resolves.toBeNull();
 
+    const markerContent = JSON.parse(await readFile(markerPath, "utf8")) as { hook_event_name?: string };
+    expect(markerContent.hook_event_name).toBe("Stop");
+  });
+
+  test("Stop hook fires after a user interrupts an active turn", async () => {
+    await setup(createSlowStream("a response that remains active", 20));
+    const threadId = await client.initAndStartThread(tmpDir);
+
+    await client.request("thread/subscribe", { threadId });
+    await client.request("turn/start", { threadId, message: "start a long response" });
+    await client.waitFor(
+      (notification) =>
+        notification.method === DILIGENT_SERVER_NOTIFICATION_METHODS.AGENT_EVENT &&
+        (notification.params as { event?: { type?: string } }).event?.type === "message_delta",
+    );
+
+    const result = (await client.request("turn/interrupt", { threadId })) as { interrupted: boolean };
+    expect(result.interrupted).toBe(true);
+    await client.waitForNotification(DILIGENT_SERVER_NOTIFICATION_METHODS.TURN_INTERRUPTED);
+
+    const markerPath = join(tmpDir, "hook-stop-fired");
+    await expect(access(markerPath)).resolves.toBeNull();
     const markerContent = JSON.parse(await readFile(markerPath, "utf8")) as { hook_event_name?: string };
     expect(markerContent.hook_event_name).toBe("Stop");
   });

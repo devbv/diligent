@@ -66,6 +66,17 @@ interface PendingServerRequest {
   response?: DiligentServerRequestResponse;
 }
 
+export class RpcRequestError extends Error {
+  constructor(
+    readonly code: number,
+    message: string,
+    readonly data?: unknown,
+  ) {
+    super(message);
+    this.name = "RpcRequestError";
+  }
+}
+
 export class WebRpcClient {
   private ws: WebSocket | null = null;
   private nextRequestId = 1;
@@ -423,7 +434,7 @@ export class WebRpcClient {
       this.pending.delete(id);
 
       if ("error" in response) {
-        pending.reject(new Error(response.error.message));
+        pending.reject(new RpcRequestError(response.error.code, response.error.message, response.error.data));
         return;
       }
 

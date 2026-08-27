@@ -168,7 +168,11 @@ fn bundle_zip_path(updates: &Path, version: &str, platform: &str, token: u32) ->
 }
 
 /// Crash-orphaned update scratch older than this is reclaimed at update start.
-const SCRATCH_MAX_AGE: Duration = Duration::from_secs(24 * 60 * 60);
+/// The age guard only has to outlive a live concurrent update's scratch — an
+/// update never runs anywhere near an hour (download is capped at 10 min per
+/// attempt), so 1 h keeps the protection while a multi-hundred-MB orphan no
+/// longer squats on disk for a day.
+const SCRATCH_MAX_AGE: Duration = Duration::from_secs(60 * 60);
 
 /// Total wall-clock budget for init's network work (manifest fetch + bundle
 /// download) when a bootable runtime already exists to fall back to. Must stay
@@ -1223,46 +1227,44 @@ fn download_bundle(
     Err(last_err)
 }
 
+/// In-process ZIP extraction via the `zip` crate. Replaces the former
+/// PowerShell `Expand-Archive` / `unzip` shell-outs, so extraction no longer
+/// depends on execution policy, PATH, or external tool versions — and is
+/// substantially faster on large bundles.
 fn extract_zip(zip_path: &Path, out_dir: &Path) -> Result<(), String> {
     if out_dir.exists() {
         retry_fs_op("clean extract dir", || fs::remove_dir_all(out_dir))?;
     }
     fs::create_dir_all(out_dir).map_err(|e| format!("create extract dir: {e}"))?;
-    #[cfg(windows)]
-    {
-        let mut cmd = std::process::Command::new("powershell");
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        cmd.creation_flags(CREATE_NO_WINDOW);
-        let status = cmd
-            .args([
-                "-NoProfile",
-                "-Command",
-                &format!(
-                    "Expand-Archive -LiteralPath '{}' -DestinationPath '{}' -Force",
-                    zip_path.display().to_string().replace('\'', "''"),
-                    out_dir.display().to_string().replace('\'', "''")
-                ),
-            ])
-            .status()
-            .map_err(|e| format!("launch Expand-Archive: {e}"))?;
-        if !status.success() {
-            return Err(format!("Expand-Archive failed with status: {status}"));
+    let file = fs::File::open(zip_path).map_err(|e| format!("open bundle zip: {e}"))?;
+    let mut archive = zip::ZipArchive::new(std::io::BufReader::new(file))
+        .map_err(|e| format!("read bundle zip: {e}"))?;
+    for index in 0..archive.len() {
+        let mut entry = archive
+            .by_index(index)
+            .map_err(|e| format!("read zip entry {index}: {e}"))?;
+        // enclosed_name rejects absolute paths and `..` components (zip-slip),
+        // so a malicious or corrupt archive cannot write outside out_dir.
+        let Some(relative) = entry.enclosed_name() else {
+            return Err(format!("zip entry has an unsafe path: {}", entry.name()));
+        };
+        let dest = out_dir.join(relative);
+        if entry.is_dir() {
+            fs::create_dir_all(&dest).map_err(|e| format!("create dir {}: {e}", dest.display()))?;
+            continue;
         }
-    }
-    #[cfg(not(windows))]
-    {
-        let status = std::process::Command::new("unzip")
-            .args([
-                "-oq",
-                &zip_path.to_string_lossy(),
-                "-d",
-                &out_dir.to_string_lossy(),
-            ])
-            .status()
-            .map_err(|e| format!("launch unzip: {e}"))?;
-        if !status.success() {
-            return Err(format!("unzip failed with status: {status}"));
+        if let Some(parent) = dest.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("create dir {}: {e}", parent.display()))?;
+        }
+        let mut out =
+            fs::File::create(&dest).map_err(|e| format!("create {}: {e}", dest.display()))?;
+        std::io::copy(&mut entry, &mut out)
+            .map_err(|e| format!("extract {}: {e}", dest.display()))?;
+        #[cfg(unix)]
+        if let Some(mode) = entry.unix_mode() {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = fs::set_permissions(&dest, fs::Permissions::from_mode(mode));
         }
     }
     Ok(())
@@ -1549,6 +1551,64 @@ mod tests {
             env: env_field.map(|s| s.to_string()),
             platforms: Default::default(),
         }
+    }
+
+    #[test]
+    fn extract_zip_extracts_nested_entries() {
+        let base = std::env::temp_dir().join(format!("ovdr-extract-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(&base).unwrap();
+        let zip_path = base.join("bundle.zip");
+        {
+            let file = fs::File::create(&zip_path).unwrap();
+            let mut writer = zip::ZipWriter::new(file);
+            let options = zip::write::SimpleFileOptions::default();
+            writer.add_directory("dist/", options).unwrap();
+            writer.start_file("dist/client.txt", options).unwrap();
+            std::io::Write::write_all(&mut writer, b"web client").unwrap();
+            writer.start_file("diligent-web-server", options).unwrap();
+            std::io::Write::write_all(&mut writer, b"binary").unwrap();
+            writer.finish().unwrap();
+        }
+
+        let out = base.join("staging");
+        super::extract_zip(&zip_path, &out).expect("extract");
+
+        assert_eq!(
+            fs::read_to_string(out.join("dist/client.txt")).unwrap(),
+            "web client"
+        );
+        assert_eq!(
+            fs::read_to_string(out.join("diligent-web-server")).unwrap(),
+            "binary"
+        );
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn extract_zip_rejects_path_traversal() {
+        let base = std::env::temp_dir().join(format!("ovdr-zipslip-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(&base).unwrap();
+        let zip_path = base.join("evil.zip");
+        {
+            let file = fs::File::create(&zip_path).unwrap();
+            let mut writer = zip::ZipWriter::new(file);
+            let options = zip::write::SimpleFileOptions::default();
+            writer.start_file("../evil.txt", options).unwrap();
+            std::io::Write::write_all(&mut writer, b"escape").unwrap();
+            writer.finish().unwrap();
+        }
+
+        let out = base.join("staging");
+        let result = super::extract_zip(&zip_path, &out);
+
+        assert!(result.is_err(), "traversal entry must fail extraction");
+        assert!(
+            !base.join("evil.txt").exists(),
+            "no file may be written outside the extract dir"
+        );
+        let _ = fs::remove_dir_all(&base);
     }
 
     #[test]

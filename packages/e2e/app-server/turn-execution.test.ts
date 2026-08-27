@@ -183,6 +183,35 @@ describe("turn-execution", () => {
     expect(itemTypes).toContain("agentMessage");
   });
 
+  test("live request and response ids match their persistent thread entries", async () => {
+    await setup({ streamFunction: createSimpleStream("persisted response") });
+    const threadId = await client.initAndStartThread(tmpDir);
+
+    await client.request("thread/subscribe", { threadId });
+    const startIndex = client.notifications.length;
+    const turnStart = (await client.request("turn/start", { threadId, message: "hello" })) as {
+      accepted: true;
+      userMessageId?: string;
+    };
+    await client.waitForNotification(DILIGENT_SERVER_NOTIFICATION_METHODS.TURN_COMPLETED);
+    const notifications = client.notifications.slice(startIndex);
+    const liveEvents = notifications
+      .filter((notification) => notification.method === DILIGENT_SERVER_NOTIFICATION_METHODS.AGENT_EVENT)
+      .map((notification) => (notification.params as { event?: { type?: string; itemId?: string } }).event);
+    const liveAssistantId = liveEvents.find((event) => event?.type === "message_end")?.itemId;
+
+    const result = (await client.request("thread/read", { threadId })) as {
+      items: Array<{ type: string; itemId: string }>;
+    };
+    const persistedUserId = result.items.find((item) => item.type === "userMessage")?.itemId;
+    const persistedAssistantId = result.items.find((item) => item.type === "agentMessage")?.itemId;
+
+    expect(turnStart.userMessageId).toBeDefined();
+    expect(liveAssistantId).toBeDefined();
+    expect(turnStart.userMessageId).toBe(persistedUserId);
+    expect(liveAssistantId).toBe(persistedAssistantId);
+  });
+
   test("multi-turn accumulates context", async () => {
     await setup({ streamFunction: createSimpleStream("response") });
     const threadId = await client.initAndStartThread(tmpDir);

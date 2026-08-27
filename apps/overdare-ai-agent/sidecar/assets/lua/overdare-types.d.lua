@@ -1,6 +1,6 @@
---#METADATA#{"CREATABLE_INSTANCES": ["ActionRunner", "ActionSequence", "ActionSequenceService", "AngularVelocity", "Animation", "AnimationTrack", "Animator", "Atmosphere", "Attachment", "Backpack", "BackpackItem", "BasePart", "BaseScript", "Beam", "BillboardGui", "BindableEvent", "Bone", "BoolValue", "Camera", "CharacterMesh", "CollectionService", "Constraint", "ContextActionService", "CoreGui", "DataModel", "DataStore", "DataStoreGetOptions", "DataStoreIncrementOptions", "DataStoreInfo", "DataStoreKeyInfo", "DataStoreKeyPages", "DataStoreListingPages", "DataStoreService", "DataStoreSetOptions", "Fill", "Folder", "FormFactorPart", "Frame", "GenericSettings", "GlobalDataStore", "GuiBase2d", "GuiButton", "GuiObject", "HttpService", "Humanoid", "HumanoidDescription", "ImageButton", "ImageLabel", "InputObject", "Instance", "IntValue", "LayerCollector", "Light", "Lighting", "LinearVelocity", "LocalScript", "LocalizationService", "LuaSourceContainer", "MarketplaceService", "MaterialService", "MaterialVariant", "MeshPart", "Model", "ModuleScript", "Mouse", "NumberValue", "OrderedDataStore", "Outline", "OverlayBase", "PVInstance", "Pages", "Part", "ParticleEmitter", "PhysicsService", "Player", "PlayerGui", "PlayerScripts", "Players", "PointLight", "ProximityPrompt", "ProximityPromptService", "RemoteEvent", "ReplicatedStorage", "RunService", "ScreenGui", "Script", "ScrollingFrame", "ServerScriptService", "ServerStorage", "ServiceProvider", "SimulationBall", "Skeleton", "Sound", "SoundGroup", "SoundService", "SpawnLocation", "SpotLight", "StarterCharacterScripts", "StarterGui", "StarterPack", "StarterPlayer", "StarterPlayerScripts", "StringValue", "SurfaceGui", "SurfaceGuiBase", "Team", "Teams", "TeleportAsyncResult", "TeleportOptions", "TeleportService", "TextButton", "TextLabel", "Tool", "Trail", "Translator", "Tween", "TweenBase", "TweenService", "UIAspectRatioConstraint", "UIGridLayout", "UIGridStyleLayout", "UIListLayout", "UserGameSettings", "UserInputService", "UserSettings", "VFXPreset", "ValueBase", "VectorForce", "Workspace", "WorldRankService", "WorldRoot", "WrapLayer", "WrapTarget"], "SERVICES": ["ActionSequenceService", "CollectionService", "ContextActionService", "DataStoreService", "HttpService", "Lighting", "LocalizationService", "MarketplaceService", "MaterialService", "PhysicsService", "Players", "ProximityPromptService", "ReplicatedStorage", "RunService", "ServerScriptService", "ServerStorage", "SoundService", "TeleportService", "TweenService", "UserInputService", "Workspace", "WorldRankService"]}
+--#METADATA#{"CREATABLE_INSTANCES": ["ActionRunner", "ActionSequence", "ActionSequenceService", "AngularVelocity", "Animation", "AnimationTrack", "Animator", "Atmosphere", "Attachment", "Backpack", "BackpackItem", "BasePart", "BaseScript", "Beam", "BillboardGui", "BindableEvent", "Bone", "BoolValue", "Camera", "CharacterMesh", "CollectionService", "Constraint", "ContextActionService", "CoreGui", "DataModel", "DataStore", "DataStoreGetOptions", "DataStoreIncrementOptions", "DataStoreInfo", "DataStoreKeyInfo", "DataStoreKeyPages", "DataStoreListingPages", "DataStoreService", "DataStoreSetOptions", "Fill", "Folder", "FormFactorPart", "Frame", "GenericSettings", "GetTextBoundsParams", "GlobalDataStore", "GuiBase2d", "GuiButton", "GuiObject", "HttpService", "Humanoid", "HumanoidDescription", "ImageButton", "ImageLabel", "InputObject", "Instance", "IntValue", "LayerCollector", "Light", "Lighting", "LinearVelocity", "LocalScript", "LocalizationService", "LuaSourceContainer", "MarketplaceService", "MaterialService", "MaterialVariant", "MeshPart", "Model", "ModuleScript", "Mouse", "NumberValue", "OrderedDataStore", "Outline", "OverlayBase", "PVInstance", "Pages", "Part", "ParticleEmitter", "PhysicsService", "Player", "PlayerGui", "PlayerScripts", "Players", "PointLight", "ProgressBar", "ProximityPrompt", "ProximityPromptService", "RemoteEvent", "ReplicatedStorage", "RunService", "ScreenGui", "Script", "ScrollingFrame", "ServerScriptService", "ServerStorage", "ServiceProvider", "SimulationBall", "Skeleton", "Sound", "SoundGroup", "SoundService", "SpawnLocation", "SpotLight", "StarterCharacterScripts", "StarterGui", "StarterPack", "StarterPlayer", "StarterPlayerScripts", "StringValue", "SurfaceGui", "SurfaceGuiBase", "Team", "Teams", "TeleportAsyncResult", "TeleportOptions", "TeleportService", "TextButton", "TextLabel", "TextService", "Tool", "Trail", "Translator", "Tween", "TweenBase", "TweenService", "UIAspectRatioConstraint", "UIGridLayout", "UIGridStyleLayout", "UIListLayout", "UIStroke", "UserGameSettings", "UserInputService", "UserSettings", "VFXPreset", "VFXRecipe", "ValueBase", "VectorForce", "Workspace", "WorldRankService", "WorldRoot", "WrapLayer", "WrapTarget"], "SERVICES": ["ActionSequenceService", "CollectionService", "ContextActionService", "DataStoreService", "HttpService", "Lighting", "LocalizationService", "MarketplaceService", "MaterialService", "PhysicsService", "Players", "ProximityPromptService", "ReplicatedStorage", "RunService", "ServerScriptService", "ServerStorage", "SoundService", "TeleportService", "TextService", "TweenService", "UserInputService", "Workspace", "WorldRankService"]}
 -- Overdare API Type Definitions
--- Auto-generated on 2026-07-03 13:16:47
+-- Auto-generated on 2026-08-26 19:26:49
 -- DO NOT EDIT MANUALLY
 
 -- Event Types
@@ -14,6 +14,7 @@ declare class BallBounce
 	BouncedAngularVelocity: Vector3
 	BouncedDirection: Vector3
 	BouncedPosition: Vector3
+	BouncedRotation: Vector3
 	BouncedSpeed: number
 	BouncedSpin: number
 	BouncedTime: number
@@ -21,9 +22,11 @@ declare class BallBounce
 	Direction: Vector3
 	ImpactNormal: Vector3
 	ImpactPoint: Vector3
-	IsSliding: boolean
+	IsBouncedHit: boolean
+	IsSlidingHit: boolean
+	SnapshotIndex: number
 	Speed: number
-	Spin: number
+	SpinSpeed: number
 	StartPos: Vector3
 end
 
@@ -31,31 +34,44 @@ declare class BallSimParams
 	BaseGravity: number
 	DampingAngular: number
 	DampingLinear: number
-	DeltaTime: number
 	EnableGravityFalloff: boolean
+	ForwardSpaceSpinAxis: boolean
 	Friction: number
-	Gravity: Vector3
 	GravityFalloffEndHeight: number
 	GravityFalloffStartHeight: number
+	InertiaScale: number
 	InitialCFrame: CFrame
+	InitialDirection: Vector3
+	InitialSpeed: number
 	InitialSpinAxis: Vector3
 	InitialSpinSpeed: number
-	InitialVelocity: Vector3
 	Mass: number
+	MaxSpeedForMagnus: number
 	MinFalloffGravity: number
+	MinSpeedForMagnus: number
+	MinSpinForMagnus: number
 	Restitution: number
+	RollingFriction: number
 	Simsteps: number
 	SpinMagnusWeight: number
+	StepsPerSecond: number
 end
 
 declare BallSimParams: {
 	new: () -> BallSimParams,
 }
 
+declare class BallSimTargetResult
+	ActualSpeed: number
+	bHit: boolean
+	Direction: Vector3
+	HitTime: number
+end
+
 declare class BallSnapshot
 	CFrame: CFrame
 	Direction: Vector3
-	hitCount: number
+	HitCount: number
 	HitLastIndex: number
 	HitStartIndex: number
 	Speed: number
@@ -77,6 +93,7 @@ declare BrickColor: {
 }
 
 declare class CFrame
+	Identity: CFrame
 	identity: CFrame
 	LookVector: Vector3
 	Orientation: Vector3
@@ -111,9 +128,9 @@ declare CFrame: {
 	Angles: (rx: number, ry: number, rz: number) -> CFrame,
 	fromEulerAnglesXYZ: (rx: number, ry: number, rz: number) -> CFrame,
 	fromEulerAnglesYXZ: (rx: number, ry: number, rz: number) -> CFrame,
-	fromMatrix: (pos: Vector3, vX: Vector3, vY: Vector3, vZ: Vector3) -> CFrame,
+	fromMatrix: (pos: Vector3, vX: Vector3, vY: Vector3, vZ: Vector3?) -> CFrame,
 	fromOrientation: (rx: number, ry: number, rz: number) -> CFrame,
-	lookAt: (at: Vector3, lookAt: Vector3, up: Vector3) -> CFrame,
+	lookAt: (at: Vector3, lookAt: Vector3, up: Vector3?) -> CFrame,
 	new: () -> CFrame,
 	new: (Position: Vector3) -> CFrame,
 	new: (Position: Vector3, Look: Vector3) -> CFrame,
@@ -139,6 +156,7 @@ declare class CollisionQueryParams
 	IgnoreTouches: boolean
 	SkipNarrowPhase: boolean
 	TraceComplex: boolean
+	TraceGroupName: string
 	TraceIntoSubComponents: boolean
 end
 
@@ -201,6 +219,18 @@ declare class EnumItem
 	EnumType: Enum
 end
 
+declare class Font
+	Family: string
+	Style: FontStyle
+	Weight: FontWeight
+end
+
+declare Font: {
+	fromId: (id: number, weight: FontWeight?, style: FontStyle?) -> Font,
+	fromName: (name: string, weight: FontWeight?, style: FontStyle?) -> Font,
+	new: (family: string, weight: FontWeight?, style: FontStyle?) -> Font,
+}
+
 declare class NumberRange
 	Max: number
 	Min: number
@@ -237,6 +267,7 @@ declare class OverlapParams
 	FilterType: RaycastFilterType
 	MaxParts: number
 	RespectCanCollide: boolean
+	TraceGroupName: string
 	function AddToFilter(self, InValue: any): OverlapParams
 end
 
@@ -317,6 +348,7 @@ declare class RaycastParams
 	IgnoreWater: boolean
 	RespectCanCollide: boolean
 	TraceComplex: boolean
+	TraceGroupName: string
 	function AddToFilter(self, InValue: any): RaycastParams
 end
 
@@ -331,6 +363,19 @@ declare class RaycastResult
 	Normal: Vector3
 	Position: Vector3
 end
+
+declare class Rect
+	Height: number
+	Max: Vector2
+	Min: Vector2
+	Width: number
+end
+
+declare Rect: {
+	new: () -> Rect,
+	new: (arg1: Vector2, arg2: Vector2) -> Rect,
+	new: (arg1: number, arg2: number, arg3: number, arg4: number) -> Rect,
+}
 
 declare class ScriptConnection
 	Connected: boolean
@@ -382,7 +427,9 @@ declare UDim2: {
 }
 
 declare class Vector2
+	Magnitude: number
 	one: Vector2
+	Unit: Vector2
 	X: number
 	xAxis: Vector2
 	Y: number
@@ -528,6 +575,14 @@ declare class AnimationPriority_INTERNAL extends Enum
 	None: AnimationPriority
 end
 
+declare class ApplyStrokeMode extends EnumItem
+end
+
+declare class ApplyStrokeMode_INTERNAL extends Enum
+	Contextual: ApplyStrokeMode
+	Border: ApplyStrokeMode
+end
+
 declare class AspectType extends EnumItem
 end
 
@@ -571,6 +626,15 @@ declare class BorderMode_INTERNAL extends Enum
 	Insert: BorderMode
 	Middle: BorderMode
 	Outline: BorderMode
+end
+
+declare class BorderStrokePosition extends EnumItem
+end
+
+declare class BorderStrokePosition_INTERNAL extends Enum
+	Inner: BorderStrokePosition
+	Center: BorderStrokePosition
+	Outer: BorderStrokePosition
 end
 
 declare class CameraMode extends EnumItem
@@ -723,6 +787,29 @@ end
 declare class FillDirection_INTERNAL extends Enum
 	Horizontal: FillDirection
 	Vertical: FillDirection
+end
+
+declare class FontStyle extends EnumItem
+end
+
+declare class FontStyle_INTERNAL extends Enum
+	Normal: FontStyle
+	Italic: FontStyle
+end
+
+declare class FontWeight extends EnumItem
+end
+
+declare class FontWeight_INTERNAL extends Enum
+	Thin: FontWeight
+	ExtraLight: FontWeight
+	Light: FontWeight
+	Regular: FontWeight
+	Medium: FontWeight
+	SemiBold: FontWeight
+	Bold: FontWeight
+	ExtraBold: FontWeight
+	Black: FontWeight
 end
 
 declare class ForceLimitMode extends EnumItem
@@ -987,6 +1074,15 @@ declare class KeyCode_INTERNAL extends Enum
 	Thumbstick2: KeyCode
 end
 
+declare class LineJoinMode extends EnumItem
+end
+
+declare class LineJoinMode_INTERNAL extends Enum
+	Round: LineJoinMode
+	Bevel: LineJoinMode
+	Miter: LineJoinMode
+end
+
 declare class Material extends EnumItem
 end
 
@@ -1244,6 +1340,20 @@ declare class ProductPurchaseDecision_INTERNAL extends Enum
 	PurchaseGranted: ProductPurchaseDecision
 end
 
+declare class ProgressBarFillDirection extends EnumItem
+end
+
+declare class ProgressBarFillDirection_INTERNAL extends Enum
+	LeftToRight: ProgressBarFillDirection
+	RightToLeft: ProgressBarFillDirection
+	TopToBottom: ProgressBarFillDirection
+	BottomToTop: ProgressBarFillDirection
+	CenterHorizontal: ProgressBarFillDirection
+	CenterVertical: ProgressBarFillDirection
+	Clockwise: ProgressBarFillDirection
+	CounterClockwise: ProgressBarFillDirection
+end
+
 declare class ProximityPromptExclusivity extends EnumItem
 end
 
@@ -1288,6 +1398,14 @@ declare class RotationType_INTERNAL extends Enum
 	None: RotationType
 end
 
+declare class ScaleType extends EnumItem
+end
+
+declare class ScaleType_INTERNAL extends Enum
+	Stretch: ScaleType
+	Slice: ScaleType
+end
+
 declare class ScrollingDirection extends EnumItem
 end
 
@@ -1324,6 +1442,14 @@ declare class SoundPlayState_INTERNAL extends Enum
 	ResumedByProperty: SoundPlayState
 	PausedByProperty: SoundPlayState
 	Ended: SoundPlayState
+end
+
+declare class StrokeSizingMode extends EnumItem
+end
+
+declare class StrokeSizingMode_INTERNAL extends Enum
+	FixedSize: StrokeSizingMode
+	ScaledSize: StrokeSizingMode
 end
 
 declare class TextXAlignment extends EnumItem
@@ -1440,11 +1566,13 @@ declare class EnumContainer
 	ActionSequenceTrackType: ActionSequenceTrackType_INTERNAL
 	ActuatorRelativeTo: ActuatorRelativeTo_INTERNAL
 	AnimationPriority: AnimationPriority_INTERNAL
+	ApplyStrokeMode: ApplyStrokeMode_INTERNAL
 	AspectType: AspectType_INTERNAL
 	AssetTypeVerification: AssetTypeVerification_INTERNAL
 	AutomaticSize: AutomaticSize_INTERNAL
 	BallState: BallState_INTERNAL
 	BorderMode: BorderMode_INTERNAL
+	BorderStrokePosition: BorderStrokePosition_INTERNAL
 	CameraMode: CameraMode_INTERNAL
 	CameraType: CameraType_INTERNAL
 	CollisionChannel: CollisionChannel_INTERNAL
@@ -1457,6 +1585,8 @@ declare class EnumContainer
 	EasingStyle: EasingStyle_INTERNAL
 	FillDepthModeType: FillDepthModeType_INTERNAL
 	FillDirection: FillDirection_INTERNAL
+	FontStyle: FontStyle_INTERNAL
+	FontWeight: FontWeight_INTERNAL
 	ForceLimitMode: ForceLimitMode_INTERNAL
 	GuiButtonState: GuiButtonState_INTERNAL
 	HitboxType: HitboxType_INTERNAL
@@ -1467,6 +1597,7 @@ declare class EnumContainer
 	HumanoidStateType: HumanoidStateType_INTERNAL
 	InfoType: InfoType_INTERNAL
 	KeyCode: KeyCode_INTERNAL
+	LineJoinMode: LineJoinMode_INTERNAL
 	Material: Material_INTERNAL
 	MaterialCategory: MaterialCategory_INTERNAL
 	MaterialPattern: MaterialPattern_INTERNAL
@@ -1482,15 +1613,18 @@ declare class EnumContainer
 	PartType: PartType_INTERNAL
 	PlaybackState: PlaybackState_INTERNAL
 	ProductPurchaseDecision: ProductPurchaseDecision_INTERNAL
+	ProgressBarFillDirection: ProgressBarFillDirection_INTERNAL
 	ProximityPromptExclusivity: ProximityPromptExclusivity_INTERNAL
 	ProximityPromptInputType: ProximityPromptInputType_INTERNAL
 	RaycastFilterType: RaycastFilterType_INTERNAL
 	RollOffMode: RollOffMode_INTERNAL
 	RotationType: RotationType_INTERNAL
+	ScaleType: ScaleType_INTERNAL
 	ScrollingDirection: ScrollingDirection_INTERNAL
 	ShadowDetailLevel: ShadowDetailLevel_INTERNAL
 	SortOrder: SortOrder_INTERNAL
 	SoundPlayState: SoundPlayState_INTERNAL
+	StrokeSizingMode: StrokeSizingMode_INTERNAL
 	TextXAlignment: TextXAlignment_INTERNAL
 	TextYAlignment: TextYAlignment_INTERNAL
 	UserInputState: UserInputState_INTERNAL
@@ -1551,7 +1685,7 @@ end
 declare class ActionRunner extends Instance
 	function ChangeSpeedRate(self, InActionSequenceID: string, InSpeedRate: number): ()
 	function GetActionSequences(self): any
-	function Play(self, InActionSequenceID: string, TransitionTime: number, SpeedRate: number): ()
+	function Play(self, InActionSequenceID: string, InTransitionTime: number, InSpeedRate: number): ()
 	function Stop(self, InActionSequenceID: string): ()
 	function StopAll(self): ()
 	Ended: ScriptSignal
@@ -1679,6 +1813,7 @@ declare class BasePart extends PVInstance
 	Orientation: Vector3
 	Position: Vector3
 	Size: Vector3
+	TraceGroupName: string
 	Transparency: number
 	function ApplyImpulse(self, InImpulse: Vector3): ()
 	function GetCollisionProfile(self): string
@@ -1787,11 +1922,11 @@ declare class CharacterMesh extends Instance
 end
 
 declare class CollectionService extends Instance
-	function AddTag(self, instance: Instance, tag: string): ()
-	function GetTagged(self, tag: string): {any}
+	function AddTag(self, Instance: Instance, TagName: string): ()
+	function GetTagged(self, TagName: string): {any}
 	function GetTags(self, Instance: Instance): {any}
-	function HasTag(self, instance: Instance, tag: string): boolean
-	function RemoveTag(self, instance: Instance, tag: string): ()
+	function HasTag(self, Instance: Instance, TagName: string): boolean
+	function RemoveTag(self, Instance: Instance, TagName: string): ()
 end
 
 declare class ContextActionService extends Instance
@@ -1930,6 +2065,13 @@ end
 declare class GenericSettings extends ServiceProvider
 end
 
+declare class GetTextBoundsParams extends Instance
+	Font: Font
+	Size: number
+	Text: string
+	Width: number
+end
+
 declare class GuiButton extends GuiObject
 	Activated: ScriptSignal
 end
@@ -1989,7 +2131,6 @@ declare class Humanoid extends Instance
 	function UnequipTools(self): ()
 	Climbing: ScriptSignal
 	Died: ScriptSignal
-	FallingDown: ScriptSignal
 	FreeFalling: ScriptSignal
 	HealthChanged: ScriptSignal
 	Jumping: ScriptSignal
@@ -2067,12 +2208,18 @@ declare class ImageButton extends GuiButton
 	ImageColor3: Color3
 	ImageTransparency: number
 	PressImage: string
+	ScaleType: ScaleType
+	SliceCenter: Rect
+	SliceScale: number
 end
 
 declare class ImageLabel extends GuiObject
 	Image: string
 	ImageColor3: Color3
 	ImageTransparency: number
+	ScaleType: ScaleType
+	SliceCenter: Rect
+	SliceScale: number
 end
 
 declare class InputObject extends Instance
@@ -2150,7 +2297,6 @@ declare class LocalScript extends BaseScript
 end
 
 declare class MarketplaceService extends Instance
-	ProcessReceipt: any
 	function GetProductInfo(self, ProductId: number, InfoType: InfoType): any
 	function GetWorldProductsAsync(self): Pages
 	function PromptProductPurchase(self, Player: Player, ProductId: number): ()
@@ -2269,7 +2415,6 @@ declare class MaterialVariant extends Instance
 	NormalMap: Content
 	Roughness: number
 	RoughnessMap: Content
-	UseCustomPhysicsProperties: boolean
 end
 
 declare class MeshPart extends BasePart
@@ -2355,6 +2500,10 @@ declare class ParticleEmitter extends Instance
 end
 
 declare class PhysicsService extends Instance
+	function IsChannelRegistered(self, Channel: CollisionChannel): boolean
+	function IsCustomChannel(self, Channel: CollisionChannel): boolean
+	function IsCustomProfile(self, ProfileString: string): boolean
+	function IsProfileRegistered(self, ProfileString: string): boolean
 end
 
 declare class Player extends Instance
@@ -2393,6 +2542,22 @@ end
 
 declare class PointLight extends Light
 	Range: number
+end
+
+declare class ProgressBar extends GuiObject
+	ArcSize: number
+	CornerClipEnabled: boolean
+	FillColor3: Color3
+	FillCornerRadius: UDim
+	FillDirection: ProgressBarFillDirection
+	FillImage: string
+	FillTransparency: number
+	StartAngle: number
+	TrackColor3: Color3
+	TrackCornerRadius: UDim
+	TrackImage: string
+	TrackTransparency: number
+	Value: number
 end
 
 declare class ProximityPrompt extends Instance
@@ -2476,41 +2641,48 @@ declare class ServerStorage extends Instance
 end
 
 declare class SimulationBall extends PVInstance
+	BallCFrame: CFrame
 	BallMeshCollisionProfile: string
 	BallRadius: number
 	BallState: BallState
-	BallTraceChannel: number
 	CFrame: CFrame
 	Color: Color3
 	EnablePathMarker: boolean
-	IsPathMarkerWorldSpace: boolean
 	Material: Material
 	MaterialVariant: string
 	PathMarkerScale: number
+	PlaybackTime: number
 	Position: Vector3
 	SlomoFactor: number
+	StaticObjectTypes: {any}
 	TextureId: string
+	TraceComplex: boolean
 	Transparency: number
 	function ClearPathMarkers(self): ()
 	function FindNextBallBounce(self): BallBounce
 	function GetAngularVelocityAtTime(self, Time: number): Vector3
 	function GetBallBounceByIndex(self, bounceIndex: number): BallBounce
-	function GetBestDirectionToTargetAtTime(self, InPlaybackTime: number, InTargetPosition: Vector3, InSpeed: number, SpinAxis: Vector3, InSpinSpeed: number, InStepCount: number, InTargetRadius: number, InMaxSampleCount: number): Vector3
+	function GetBestVelocityToTargetAtTime(self, InPlaybackTime: number, InTargetPosition: Vector3, InDesiredSpeed_Kmh: number, SpinAxis: Vector3, InSpinSpeed_RPM: number, InStepCount: number, InTargetRadius: number, InMaxSampleCount: number, UseDesiredPitchAngle: boolean, InDesiredPitchAngle: number): Vector3
 	function GetCFrameAtTime(self, Time: number): CFrame
 	function GetCurrentPlaybackPosition(self): Vector3
 	function GetCurrentSnapshotIndex(self): any
 	function GetLinearVelocityAtTime(self, Time: number): Vector3
+	function GetNextSnapshot(self): BallSnapshot
 	function GetPlaybackTime(self): number
+	function GetPrevSnapshot(self): BallSnapshot
 	function GetRemainedTimeForNextBounce(self): number
+	function GetServerWorldTime(self): number
 	function GetSpeedAtTime(self, Time: number): number
+	function GetStartTime(self): number
 	function IsValidBounceIndex(self, bounceIndex: number): boolean
 	function Pause(self): ()
-	function Play(self): ()
-	function ReSimulateSpinToTargetWithDelay(self, InDelayTime: number, InTargetPosition: Vector3, InSpeed: number, InSpinAxis: Vector3, InSpinSpeed: number, InStepCount: number): boolean
-	function ReSimulateToTargetWithDelay(self, InDelayTime: number, InTargetPosition: Vector3, InSpeed: number, InStepCount: number): boolean
-	function ReSimulateWithDelay(self, InDelayTime: number, InDirection: Vector3, InSpeed: number, InSpinAxis: Vector3, InSpinSpeed: number, InStepCount: number): ()
+	function Play(self, ResetPlaybackTime: boolean?): ()
+	function ReSimulateSpinToTargetWithDelay(self, InDelaySeconds: number, InTargetPosition: Vector3, InDesiredSpeed: number, InSpinAxis: Vector3, InSpinSpeed_Rpm: number, InStepCount: number, UseDesiredSpeed: boolean): BallSimTargetResult
+	function ReSimulateToTargetWithDelay(self, InDelayTime: number, InTargetPosition: Vector3, InDesiredSpeed: number, InStepCount: number, UseDesiredSpeed: boolean): BallSimTargetResult
+	function ReSimulateWithDelay(self, InDelaySeconds: number, InDirection: Vector3, InSpeed_Kmh: number, InSpinAxis: Vector3, InSpinSpeed_Rpm: number, InStepCount: number): ()
 	function SetPlaybackTime(self, InPlaybackTime: number): ()
-	function Simulate(self, InBallSimParams: BallSimParams): ()
+	function Simulate(self, InBallSimParams: BallSimParams, AutoPlay: boolean): ()
+	function SimulateToTarget(self, InBallSimParams: BallSimParams, InTargetPosition: Vector3, UseDesiredSpeed: boolean, AutoPlay: boolean): BallSimTargetResult
 	function Stop(self): ()
 	Bounded: ScriptSignal
 	Paused: ScriptSignal
@@ -2521,6 +2693,7 @@ declare class SimulationBall extends PVInstance
 end
 
 declare class Skeleton extends PVInstance
+	SkeletonId: string
 end
 
 declare class Sound extends Instance
@@ -2652,7 +2825,7 @@ declare class TeleportService extends Instance
 end
 
 declare class TextButton extends GuiButton
-	Bold: boolean
+	FontFace: Font
 	LocalizedText: string
 	Text: string
 	TextColor3: Color3
@@ -2665,7 +2838,7 @@ declare class TextButton extends GuiButton
 end
 
 declare class TextLabel extends GuiObject
-	Bold: boolean
+	FontFace: Font
 	LocalizedText: string
 	Text: string
 	TextColor3: Color3
@@ -2675,6 +2848,10 @@ declare class TextLabel extends GuiObject
 	TextWrapped: boolean
 	TextXAlignment: TextXAlignment
 	TextYAlignment: TextYAlignment
+end
+
+declare class TextService extends Instance
+	function GetTextBoundsAsync(self, InParams: GetTextBoundsParams): Vector2
 end
 
 declare class Tool extends BackpackItem
@@ -2750,6 +2927,19 @@ declare class UIListLayout extends UIGridStyleLayout
 	Wraps: boolean
 end
 
+declare class UIStroke extends Instance
+	ApplyStrokeMode: ApplyStrokeMode
+	BorderOffset: UDim
+	BorderStrokePosition: BorderStrokePosition
+	Color: Color3
+	Enabled: boolean
+	LineJoinMode: LineJoinMode
+	StrokeSizingMode: StrokeSizingMode
+	Thickness: number
+	Transparency: number
+	ZIndex: number
+end
+
 declare class UserGameSettings extends Instance
 	CharacterTurnRate: number
 	RotationType: RotationType
@@ -2784,6 +2974,24 @@ declare class VFXPreset extends Instance
 	Transparency: number
 	function Clear(self): ()
 	function Emit(self, ParticleCount: number): ()
+end
+
+declare class VFXRecipe extends Instance
+	AutoActivate: boolean
+	BaseLayer: {any}
+	DetailLayer: {any}
+	ExtraLayer: {any}
+	InfiniteLoop: boolean
+	LoopCount: number
+	LoopDuration: number
+	function GetParam(self, SourceName: string, ParamName: string): any
+	function GetParamAt(self, LayerName: string, Index: number, ParamName: string): any
+	function IsPlaying(self): boolean
+	function Play(self): ()
+	function SetParam(self, SourceName: string, ParamName: string, Value: any): ()
+	function SetParamAt(self, LayerName: string, Index: number, ParamName: string, Value: any): ()
+	function Stop(self): ()
+	Finished: ScriptSignal
 end
 
 declare class WorldRoot extends Instance

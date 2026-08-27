@@ -7,6 +7,7 @@ const TEST_ANTHROPIC_MODEL_ID = "claude-sonnet-5";
 
 import { AppHeader } from "../../../../src/web/client/components/AppHeader";
 import { AssetThumbnail } from "../../../../src/web/client/components/AssetThumbnail";
+import { isReportableAssistantResponse } from "../../../../src/web/client/components/AssistantContentBlocks";
 import { AssistantMessage } from "../../../../src/web/client/components/AssistantMessage";
 import { Button } from "../../../../src/web/client/components/Button";
 import {
@@ -19,6 +20,7 @@ import { CollabGroup } from "../../../../src/web/client/components/CollabGroup";
 import { ContextMessage } from "../../../../src/web/client/components/ContextMessage";
 import { EmptyState } from "../../../../src/web/client/components/EmptyState";
 import { ErrorBanner } from "../../../../src/web/client/components/ErrorBanner";
+import { FeedbackReportModal } from "../../../../src/web/client/components/FeedbackReportModal";
 import { HumanEditsNotice } from "../../../../src/web/client/components/HumanEditsNotice";
 import { Input } from "../../../../src/web/client/components/Input";
 import {
@@ -1421,6 +1423,264 @@ test("sidebar includes a mobile close action", () => {
   expect(html).toContain("sm:hidden");
 });
 
+test("sidebar does not expose the removed conversation-level report action", () => {
+  const html = renderToStaticMarkup(
+    <Sidebar
+      cwd="/repo/project"
+      threadList={[
+        {
+          id: "session-123",
+          path: "/repo/.overdare/sessions/session-123.jsonl",
+          cwd: "/repo/project",
+          created: "2026-07-24T00:00:00.000Z",
+          modified: "2026-07-24T00:00:00.000Z",
+          messageCount: 4,
+          firstUserMessage: "Fix the selected object",
+        },
+      ]}
+      activeThreadId="session-123"
+      onNewThread={() => {}}
+      onOpenThread={() => {}}
+    />,
+  );
+
+  expect(html).not.toContain('aria-label="Report conversation"');
+  expect(html).not.toContain('data-icon="clipboard-list"');
+});
+
+test("feedback report modal shows target context, reduced categories, and accurate transmission copy", () => {
+  const html = renderToStaticMarkup(
+    <FeedbackReportModal
+      target={{
+        kind: "response",
+        messageId: "persistent-message-id",
+        preview: "First response line\nSecond response line",
+      }}
+      onSubmit={async () => {}}
+      onCancel={() => {}}
+    />,
+  );
+
+  expect(html).toContain("Report an issue");
+  expect(html).toContain("Reporting this message");
+  expect(html).toContain("Response");
+  expect(html).toContain("First response line");
+  expect(html).toContain("Select a type");
+  expect(html).not.toContain("Incorrect result");
+  expect(html).toContain(
+    "Your conversation, device, and version details are sent with this report so we can investigate.",
+  );
+  expect(html.toLowerCase()).not.toContain("account");
+  expect(html).toContain('id="feedback-report-description"');
+  expect(html).toContain('maxLength="1000"');
+  expect(html).toContain("What went wrong?");
+  expect(html).toContain("max-w-[390px]");
+  expect(html).toContain("absolute inset-0");
+  expect(html).toContain('title="Close report"');
+  expect(html).not.toContain(">Cancel<");
+  expect(html).toContain('disabled=""');
+});
+
+test("assistant message exposes copy and report actions for a completed response", () => {
+  const html = renderToStaticMarkup(
+    <AssistantMessage
+      item={{
+        id: "render:assistant-1",
+        messageId: "persistent-assistant-id",
+        kind: "assistant",
+        text: "Completed the requested change.",
+        thinking: "",
+        contentBlocks: [],
+        thinkingDone: true,
+        isStreaming: false,
+        timestamp: Date.now() - 65_000,
+      }}
+      alwaysShowActions={true}
+      onReport={() => {}}
+    />,
+  );
+
+  expect(html).toContain('title="Copy response"');
+  expect(html).toContain('title="Report response"');
+  expect(html).toContain('data-icon="copy"');
+  expect(html).toContain('data-icon="flag"');
+  expect(html).toContain("justify-start");
+  expect(html).toContain("group/message relative py-2");
+  expect(html).toContain("absolute top-full left-0");
+  expect(html).toContain("w-max whitespace-nowrap");
+  expect(html).toContain("1m ago");
+  expect(html).toContain('role="tooltip"');
+  expect(html).toContain("visible opacity-100");
+});
+
+test("reportable assistant response predicate preserves completion semantics", () => {
+  const completedResponse = {
+    messageId: "persistent-assistant-id",
+    isStreaming: false,
+    text: "Completed the requested change.",
+    contentBlocks: [],
+  };
+
+  expect(isReportableAssistantResponse(completedResponse)).toBe(true);
+  expect(isReportableAssistantResponse({ ...completedResponse, isStreaming: undefined })).toBe(true);
+  expect(isReportableAssistantResponse({ ...completedResponse, isStreaming: true })).toBe(false);
+  expect(isReportableAssistantResponse({ ...completedResponse, messageId: undefined })).toBe(false);
+  expect(isReportableAssistantResponse({ ...completedResponse, messageId: "" })).toBe(false);
+  expect(isReportableAssistantResponse({ ...completedResponse, text: "" })).toBe(false);
+  expect(
+    isReportableAssistantResponse({
+      ...completedResponse,
+      text: "",
+      contentBlocks: [{ type: "text", text: "Structured response" }],
+    }),
+  ).toBe(true);
+});
+
+test("completed assistant response without a report callback keeps content but hides actions", () => {
+  const html = renderToStaticMarkup(
+    <AssistantMessage
+      item={{
+        id: "render:assistant-without-report-handler",
+        messageId: "persistent-assistant-id",
+        kind: "assistant",
+        text: "Completed without a report handler.",
+        thinking: "",
+        contentBlocks: [],
+        thinkingDone: true,
+        isStreaming: false,
+        timestamp: 1,
+      }}
+    />,
+  );
+
+  expect(html).toContain("Completed without a report handler.");
+  expect(html).not.toContain('title="Copy response"');
+  expect(html).not.toContain('title="Report response"');
+  expect(html).not.toContain("tabindex");
+});
+
+test("request actions use the reserved row gap and appear on hover or keyboard focus", () => {
+  const html = renderToStaticMarkup(
+    <UserMessage
+      item={{
+        id: "render:user-1",
+        messageId: "persistent-user-id",
+        kind: "user",
+        text: "Fix the selected object.",
+        images: [],
+        timestamp: 1,
+      }}
+      onReport={() => {}}
+    />,
+  );
+
+  expect(html).toContain('title="Copy request"');
+  expect(html).toContain('title="Report request"');
+  expect(html).toContain("h-4");
+  expect(html).toContain("justify-end");
+  expect(html).toContain("group/message flex justify-end py-2");
+  expect(html).toContain("relative max-w-message");
+  expect(html).toContain("absolute top-full right-0");
+  expect(html).toContain("w-max whitespace-nowrap");
+  expect(html).toContain("group-hover/message:visible");
+  expect(html).toContain("group-focus-within/message:visible");
+});
+
+test("streaming assistant response hides response actions", () => {
+  const html = renderToStaticMarkup(
+    <AssistantMessage
+      item={{
+        id: "render:assistant-streaming",
+        messageId: "persistent-assistant-id",
+        kind: "assistant",
+        text: "Still working",
+        thinking: "",
+        contentBlocks: [],
+        thinkingDone: true,
+        isStreaming: true,
+        timestamp: 1,
+      }}
+      alwaysShowActions={true}
+      onReport={() => {}}
+    />,
+  );
+
+  expect(html).not.toContain('title="Copy response"');
+  expect(html).not.toContain('title="Report response"');
+});
+
+test("empty completed assistant carrier renders no response actions", () => {
+  const html = renderToStaticMarkup(
+    <AssistantMessage
+      item={{
+        id: "render:assistant-carrier",
+        messageId: "persistent-assistant-carrier",
+        kind: "assistant",
+        text: "",
+        thinking: "",
+        contentBlocks: [],
+        thinkingDone: true,
+        isStreaming: false,
+        timestamp: 1,
+      }}
+      alwaysShowActions={true}
+      onReport={() => {}}
+    />,
+  );
+
+  expect(html).toBe("");
+});
+
+test("message list keeps the last visible completed response actions visible past an empty carrier", () => {
+  const html = renderToStaticMarkup(
+    <MessageList
+      items={[
+        {
+          id: "render:assistant-1",
+          messageId: "persistent-assistant-1",
+          kind: "assistant",
+          text: "First response",
+          thinking: "",
+          contentBlocks: [],
+          thinkingDone: true,
+          isStreaming: false,
+          timestamp: 1,
+        },
+        {
+          id: "render:assistant-2",
+          messageId: "persistent-assistant-2",
+          kind: "assistant",
+          text: "Second response",
+          thinking: "",
+          contentBlocks: [],
+          thinkingDone: true,
+          isStreaming: false,
+          timestamp: 2,
+        },
+        {
+          id: "render:assistant-carrier",
+          messageId: "persistent-assistant-carrier",
+          kind: "assistant",
+          text: "",
+          thinking: "",
+          contentBlocks: [],
+          thinkingDone: true,
+          isStreaming: false,
+          timestamp: 3,
+        },
+      ]}
+      threadStatus="idle"
+      hasProvider={true}
+      onOpenProviders={() => {}}
+      onReportMessage={() => {}}
+    />,
+  );
+
+  expect(html).not.toContain('data-message-list-row="render:assistant-carrier"');
+  expect(html.match(/visible opacity-100/g)).toHaveLength(1);
+  expect(html.match(/invisible opacity-0/g)).toHaveLength(1);
+});
+
 test("assistant message can suppress thinking block during compaction", () => {
   const html = renderToStaticMarkup(
     <AssistantMessage
@@ -1438,7 +1698,7 @@ test("assistant message can suppress thinking block during compaction", () => {
     />,
   );
 
-  expect(html).toBe('<div class="pb-1"></div>');
+  expect(html).toBe('<div class="py-2"></div>');
 });
 
 test("empty state renders connect CTA when provider is not configured", () => {

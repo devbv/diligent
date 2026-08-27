@@ -125,6 +125,7 @@ Screen-space UI (this skill is screen-space 2D UI only):
 - `UIListLayout`
 - `UIGridLayout`
 - `UIAspectRatioConstraint`
+- `UIStroke`
 
 ---
 
@@ -182,6 +183,9 @@ Important properties:
 - `ImageColor3`
 - `ImageTransparency`
 - `BackgroundTransparency`
+- `ScaleType`
+- `SliceCenter`
+- `SliceScale`
 - All common frame layout properties
 
 Asset paths must use `ovdrassetid://[number]`.
@@ -203,6 +207,19 @@ Use `UIListLayout` for simple rows or columns.
 Use `UIGridLayout` for inventory grids, shop grids, or icon grids.
 
 Use `UIAspectRatioConstraint` to keep skill buttons, item slots, and icons square.
+
+### UIStroke
+
+Visual decorator that adds an outline stroke to its parent GuiObject — use for button borders, panel outlines, and text emphasis. Parent it under the target GuiObject; it does not affect layout or sizing.
+
+Important properties:
+
+- `Color`
+- `Thickness`
+- `Transparency`
+- `ApplyStrokeMode` (`"Contextual"` or `"Border"`)
+- `BorderStrokePosition` (`"Inner"`, `"Center"`, `"Outer"`)
+- `LineJoinMode` (`"Round"`, `"Bevel"`, `"Miter"`)
 
 ---
 

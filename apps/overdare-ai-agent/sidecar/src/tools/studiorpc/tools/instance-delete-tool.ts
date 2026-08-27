@@ -61,26 +61,26 @@ async function executeInstanceDeleteInner(
 
         const deletedGuids: string[] = [];
         for (const item of parsedArgs.items) {
-          const target = findNodeByActorGuid(root as OvdrjmNode, item.targetGuid);
+          const target = findNodeByActorGuid(root as OvdrjmNode, item.guid);
           if (!target) {
-            throw missingGuidError({ operation: "instance.delete", guid: item.targetGuid, role: "target" });
+            throw missingGuidError({ operation: "instance.delete", guid: item.guid, role: "target" });
           }
           const instanceType = typeof target.InstanceType === "string" ? target.InstanceType : undefined;
           if (instanceType && serviceClasses.has(instanceType)) {
             throw invalidInstanceOperationError({
               operation: "instance.delete",
               code: "protected_service_class",
-              guid: item.targetGuid,
+              guid: item.guid,
               role: "target",
               class: instanceType,
               message: `"${instanceType}" is a Service and cannot be deleted.`,
             });
           }
-          const removed = removeNodeByActorGuid(root as OvdrjmNode, item.targetGuid);
+          const removed = removeNodeByActorGuid(root as OvdrjmNode, item.guid);
           if (!removed) {
-            throw new Error(`Failed to remove ActorGuid from .ovdrjm: ${item.targetGuid}`);
+            throw new Error(`Failed to remove ActorGuid from .ovdrjm: ${item.guid}`);
           }
-          deletedGuids.push(item.targetGuid);
+          deletedGuids.push(item.guid);
         }
 
         return { deletedGuids };

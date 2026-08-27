@@ -8,7 +8,13 @@ import { existsSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { type Tool, type ToolContext, type ToolResult, toToolInputSchema } from "@diligent/core/tool-contract";
+import {
+  dropEmptyOptionals,
+  type Tool,
+  type ToolContext,
+  type ToolResult,
+  toToolInputSchema,
+} from "@diligent/core/tool-contract";
 import { createLogger } from "@diligent/logging";
 import type { BundledToolProvider, ResolvedExperiment } from "@diligent/runtime";
 import { loadDiligentConfig, resolveExperimentGates, resolveExperimentStates } from "@diligent/runtime";
@@ -25,6 +31,7 @@ import {
 import { z } from "zod";
 import { OVERDARE_EXPERIMENTS } from "./experiments";
 import { configureSidecarLogging } from "./logging";
+import { flushSentry } from "./sentry";
 import type { StudioCatalogSnapshot, StudioPromptDescriptor, StudioToolDescriptor } from "./studio-registry";
 import { createRagToolProvider } from "./tools/rag";
 import { createStudioRpcToolProvider } from "./tools/studiorpc";
@@ -260,7 +267,12 @@ export async function callRegistryTool(
     return { content: [{ type: "text", text: `Unknown tool: ${name}` }], isError: true };
   }
   try {
-    const args = tool.parseArgs ? tool.parseArgs(rawArgs ?? {}) : tool.parameters.parse(rawArgs ?? {});
+    // The same rule the agent's own tool loop applies, and for the same caller: an optional
+    // parameter filled with nothing is one that was not given. It is schema-aware on purpose —
+    // an earlier version here dropped every empty string, which would have taken `newText: ""`
+    // with it, and that is how a script edit deletes a line.
+    const cleaned = dropEmptyOptionals(tool.parameters, rawArgs ?? {});
+    const args = tool.parseArgs ? tool.parseArgs(cleaned) : tool.parameters.parse(cleaned);
     const result = await tool.execute(args, createToolContext());
     const content: Array<Record<string, unknown>> = [{ type: "text", text: result.output ?? "" }];
     for (const image of result.outputImages ?? []) {
@@ -434,6 +446,7 @@ export async function runMcpServerMain(): Promise<void> {
       message: `Failed to start OVERDARE MCP server: ${message}`,
       error,
     });
+    await flushSentry();
     process.exit(1);
   }
 }

@@ -59,3 +59,12 @@ if (dsn) {
 export function createSentryLogSink(): LogSink {
   return createSharedSentryLogSink(Sentry);
 }
+
+/**
+ * Awaits pending Sentry transport sends. The transport is async, so any
+ * `process.exit` that follows a captured error without this drops the event
+ * (seen live: 27 startup.failed exits on 2026-08-13 arrived as zero events).
+ */
+export function flushSentry(timeoutMs = 2000): Promise<boolean> {
+  return Sentry.flush(timeoutMs).catch(() => false);
+}

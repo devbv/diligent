@@ -1,9 +1,12 @@
 // @summary Registers generic Studio RPC method modules and their render builders.
 
+import type { ImageBlock } from "@diligent/protocol";
 import type { z } from "zod";
 import * as actionSequencerApplyJson from "./methods/action-sequencer-service.apply-json";
 import * as assetDrawerImport from "./methods/asset-drawer.import";
 import * as assetManagerImageImport from "./methods/asset-manager.image.import";
+import * as gameCharacterRead from "./methods/game.character.read";
+import * as gameObserve from "./methods/game.observe";
 import * as gamePlay from "./methods/game.play";
 import * as gameScreenshot from "./methods/game.screenshot";
 import * as gameStop from "./methods/game.stop";
@@ -15,6 +18,8 @@ import * as levelSaveFile from "./methods/level.save.file";
 import * as _scriptAdd from "./methods/script.add";
 // biome-ignore lint/correctness/noUnusedImports: script.delete moved to tools/script-delete-tool.ts
 import * as _scriptDelete from "./methods/script.delete";
+import * as viewportCameraRead from "./methods/viewport.camera.read";
+import * as viewportCameraSet from "./methods/viewport.camera.set";
 import {
   buildActionSequencerApplyJsonRender,
   buildAssetDrawerImportRender,
@@ -30,7 +35,9 @@ import {
   buildLevelBrowseRender,
   buildLevelPublishRender,
   buildLevelSaveFileRender,
+  buildViewportCameraReadRender,
 } from "./render";
+import type { CallRpc } from "./tools/pie-input/target";
 import type { ToolRenderPayload } from "./types";
 
 type MethodModule = {
@@ -40,7 +47,10 @@ type MethodModule = {
   timeoutMs?: number;
   resolveMethod?: (args: Record<string, unknown>) => string;
   normalizeArgs?: (args: Record<string, unknown>) => Record<string, unknown>;
-  postProcess?: (result: unknown, args: Record<string, unknown>) => unknown;
+  preCall?: (args: Record<string, unknown>, callRpc: CallRpc) => Promise<void>;
+  postProcess?: (result: unknown, args: Record<string, unknown>, callRpc: CallRpc) => unknown | Promise<unknown>;
+  recover?: (error: unknown, args: Record<string, unknown>, callRpc: CallRpc) => Promise<unknown>;
+  attachImages?: (result: unknown, args: Record<string, unknown>) => Promise<ImageBlock[] | undefined>;
 };
 
 type RenderBuilder = (ctx: {
@@ -60,21 +70,17 @@ export const methodModules: MethodModule[] = [
   gamePlay,
   gameStop,
   gameScreenshot,
+  gameCharacterRead,
+  gameObserve,
+  viewportCameraRead,
+  viewportCameraSet,
   hubTokenRead,
 ];
-
-/** Methods that mutate the level and should be serialized with the write lock. */
 export const mutatingMethods = new Set([
   assetDrawerImport.method,
   assetManagerImageImport.method,
   actionSequencerApplyJson.method,
 ]);
-
-/**
- * Methods that change the live editor state and should immediately flush it to
- * file (level.save.file) once they succeed, so the change is persisted without
- * waiting for the turn-boundary save hook.
- */
 export const savingMethods = new Set([assetDrawerImport.method, assetManagerImageImport.method]);
 
 export const renderBuilders: Record<string, RenderBuilder> = {
@@ -95,5 +101,6 @@ export const renderBuilders: Record<string, RenderBuilder> = {
     buildGameScreenshotRender(result, normalizedArgs, output),
   studiorpc_level_publish: ({ normalizedArgs, output, result }) =>
     buildLevelPublishRender(result, normalizedArgs, output),
+  studiorpc_viewport_camera_read: ({ output, result }) => buildViewportCameraReadRender(result, output),
   studiorpc_hub_token_read: ({ output, result }) => buildHubTokenReadRender(result, output),
 };

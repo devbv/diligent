@@ -79,6 +79,7 @@ export type RenderItem =
   | {
       id: string;
       kind: "user";
+      messageId?: string;
       text: string;
       contextItems?: AgentContextItem[];
       images: Array<{ url: string; fileName?: string; mediaType?: string }>;
@@ -87,10 +88,12 @@ export type RenderItem =
   | {
       id: string;
       kind: "assistant";
+      messageId?: string;
       text: string;
       thinking: string;
       contentBlocks: ContentBlock[];
       thinkingDone: boolean;
+      isStreaming?: boolean;
       timestamp: number;
       reasoningDurationMs?: number;
       turnDurationMs?: number;
@@ -304,10 +307,12 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent, turnId?: string
           {
             id: renderId,
             kind: "assistant",
+            messageId: event.itemId,
             text: "",
             thinking: "",
             contentBlocks: [],
             thinkingDone: false,
+            isStreaming: true,
             timestamp:
               typeof (event as { timestamp?: number }).timestamp === "number"
                 ? (event as { timestamp?: number }).timestamp!
@@ -386,7 +391,30 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent, turnId?: string
         return finalizeChildAssistantTimeline(merged, event.childThreadId, event.message);
       }
       const renderId = merged.itemSlots[event.itemId];
-      if (!renderId) return merged;
+      if (!renderId) {
+        const completedRenderId = `item:${turnId ?? "unknown"}:${event.itemId}:completed`;
+        const { text, thinking } = extractAssistantTextFromMessage(event.message);
+        return withItem(merged, completedRenderId, {
+          id: completedRenderId,
+          kind: "assistant",
+          messageId: event.itemId,
+          text,
+          thinking,
+          contentBlocks: event.message.content,
+          thinkingDone: true,
+          isStreaming: false,
+          timestamp:
+            typeof (event as { timestamp?: number }).timestamp === "number"
+              ? (event as { timestamp?: number }).timestamp!
+              : event.message.timestamp,
+          ...(typeof (event as { reasoningDurationMs?: number }).reasoningDurationMs === "number"
+            ? { reasoningDurationMs: (event as { reasoningDurationMs: number }).reasoningDurationMs }
+            : {}),
+          ...(typeof (event as { turnDurationMs?: number }).turnDurationMs === "number"
+            ? { turnDurationMs: (event as { turnDurationMs: number }).turnDurationMs }
+            : {}),
+        });
+      }
       const { [event.itemId]: _, ...remainingSlots } = merged.itemSlots;
       const { text: finalText, thinking: finalThinking } = extractAssistantTextFromMessage(event.message);
       const nextState =
@@ -410,7 +438,9 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent, turnId?: string
           current.kind === "assistant"
             ? {
                 ...current,
+                messageId: event.itemId,
                 thinkingDone: true,
+                isStreaming: false,
                 contentBlocks: event.message.content,
                 timestamp:
                   typeof (event as { timestamp?: number }).timestamp === "number"
@@ -442,6 +472,7 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent, turnId?: string
       nextState = withItem(nextState, `remote-user-${event.itemId}`, {
         id: `remote-user-${event.itemId}`,
         kind: "user",
+        messageId: event.itemId,
         text: remainingText,
         contextItems,
         images,
@@ -555,9 +586,11 @@ function reduceAgentEvent(state: ThreadState, event: AgentEvent, turnId?: string
           : fallbackFromEvent.slice(0, event.messageCount);
       const newItems: RenderItem[] = drained.map(({ text, images }, i) => {
         const { contextItems, remainingText } = parseContextFromText(text);
+        const messageId = event.messageIds?.[i];
         return {
-          id: `steer-injected-${Date.now()}-${i}`,
+          id: `steer-injected-${messageId ?? `${Date.now()}-${i}`}`,
           kind: "user" as const,
+          ...(messageId ? { messageId } : {}),
           text: remainingText,
           contextItems,
           images,

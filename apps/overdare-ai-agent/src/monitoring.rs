@@ -75,6 +75,14 @@ pub fn capture_warning(message: &str) {
     sentry::capture_message(&scrub_home(message), sentry::Level::Warning);
 }
 
+/// Attaches scrubbed diagnostic content to the current Sentry scope as an
+/// extra. It rides along on whatever error event is captured next (extras do
+/// not affect issue grouping); no-op when Sentry is disabled.
+pub fn attach_diagnostics(key: &str, content: &str) {
+    let value = scrub_home(content);
+    sentry::configure_scope(|scope| scope.set_extra(key, value.into()));
+}
+
 #[cfg(test)]
 mod tests {
     use super::scrub_home;

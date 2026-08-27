@@ -1,6 +1,7 @@
 // @summary Renders colocated MessageList virtual row descriptors into concrete row UI
 
 import type { ThreadReadResponse } from "@diligent/protocol";
+import type { RenderItem } from "../../lib/thread-store";
 import { ApprovalCard } from "../ApprovalCard";
 import { AssistantMessage } from "../AssistantMessage";
 import { CollabGroup } from "../CollabGroup";
@@ -19,10 +20,14 @@ export function MessageListRowContent({
   row,
   threadCwd,
   onLoadChildThread,
+  onReportMessage,
+  lastCompletedResponseId,
 }: {
   row: VirtualMessageRow;
   threadCwd?: string;
   onLoadChildThread?: (childThreadId: string) => Promise<ThreadReadResponse>;
+  onReportMessage?: (item: Extract<RenderItem, { kind: "user" | "assistant" }>) => void;
+  lastCompletedResponseId?: string;
 }) {
   switch (row.kind) {
     case "collab":
@@ -40,9 +45,16 @@ export function MessageListRowContent({
         case "tool":
           return <ToolBlock item={row.item} threadCwd={threadCwd} />;
         case "user":
-          return <UserMessage text={row.item.text} images={row.item.images} contextItems={row.item.contextItems} />;
+          return <UserMessage item={row.item} onReport={onReportMessage} />;
         case "assistant":
-          return <AssistantMessage item={row.item} suppressThinking={row.suppressThinking ?? false} />;
+          return (
+            <AssistantMessage
+              item={row.item}
+              suppressThinking={row.suppressThinking ?? false}
+              onReport={onReportMessage}
+              alwaysShowActions={row.item.id === lastCompletedResponseId}
+            />
+          );
       }
       break;
     case "streaming":

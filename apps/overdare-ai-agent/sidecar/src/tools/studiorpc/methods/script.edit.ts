@@ -25,7 +25,11 @@ Do not use one edit call to describe unrelated non-contiguous changes. Rewrite a
 file or its structure is being replaced; otherwise prefer targeted edits.`;
 
 export const params = z.object({
-  targetGuid: z.string().describe("GUID of the script to edit"),
+  guid: z
+    .string()
+    .describe(
+      "GUID of the script to edit — the GUID studiorpc_level_browse, studiorpc_script_grep and studiorpc_instance_read all report.",
+    ),
   old_string: z.string().describe("The exact text to find in the script source"),
   new_string: z.string().describe("The replacement text"),
   replace_all: z

@@ -39,6 +39,21 @@ export function isRenderableAssistantContentBlock(block: ContentBlock): boolean 
   }
 }
 
+export function hasRenderableAssistantResponseContent(item: { text: string; contentBlocks: ContentBlock[] }): boolean {
+  return item.text.length > 0 || item.contentBlocks.some(isRenderableAssistantContentBlock);
+}
+
+export function isReportableAssistantResponse(item: {
+  messageId?: string;
+  isStreaming?: boolean;
+  text: string;
+  contentBlocks: ContentBlock[];
+}): boolean {
+  if (item.isStreaming) return false;
+  if (!item.messageId) return false;
+  return hasRenderableAssistantResponseContent(item);
+}
+
 type TextBlock = Extract<ContentBlock, { type: "text" }>;
 type TextCitation = NonNullable<TextBlock["citations"]>[number];
 

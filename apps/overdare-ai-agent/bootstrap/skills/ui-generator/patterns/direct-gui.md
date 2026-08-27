@@ -57,6 +57,7 @@ When the user supplies asset resources — a name, an `ovdrassetid://`, atlas ce
 - Full image → `Image`.
 - Atlas / sprite sheet cell → `Image` plus `ImageRectOffset` (cell position) and `ImageRectSize` (cell size).
 - Button art → the `ImageButton`'s image properties.
+- Border / frame art stretched to several sizes → `ScaleType = "Slice"` plus `SliceCenter` (border thickness in source-image pixels).
 
 Creating the frames but leaving the provided assets unbound is one of the most common immediately-reported failures ("none of the assets I gave you are used"). Record the asset IDs you bound in the final report.
 

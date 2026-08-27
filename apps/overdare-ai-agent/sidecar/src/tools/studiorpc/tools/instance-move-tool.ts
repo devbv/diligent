@@ -2,7 +2,7 @@
 
 import * as instanceMove from "../methods/instance.move";
 import { buildInstanceMoveRender } from "../render";
-import { applyLevelChanges } from "../rpc";
+import { applyLevelChanges as applyLevelChangesDefault } from "../rpc";
 import type { Tool, ToolContext, ToolResult } from "../types";
 import type { WriteLock } from "../write-lock";
 import { normalizeWorkspaceMobility } from "./instance-document-operations";
@@ -15,6 +15,7 @@ async function executeInstanceMove(
   ctx: ToolContext,
   cwd: string,
   writeLock: WriteLock,
+  applyLevelChanges: () => Promise<unknown>,
 ): Promise<ToolResult> {
   const toolName = "studiorpc_instance_move";
   const parsedArgs = instanceMove.parseArgs(args);
@@ -34,7 +35,7 @@ async function executeInstanceMove(
 
   const release = await writeLock.acquire();
   try {
-    return await executeInstanceMoveInner(parsedArgs, cwd);
+    return await executeInstanceMoveInner(parsedArgs, cwd, applyLevelChanges);
   } finally {
     release();
   }
@@ -43,6 +44,7 @@ async function executeInstanceMove(
 async function executeInstanceMoveInner(
   parsedArgs: ReturnType<typeof instanceMove.parseArgs>,
   cwd: string,
+  applyLevelChanges: () => Promise<unknown>,
 ): Promise<ToolResult> {
   const fileResult = (() => {
     try {
@@ -88,13 +90,17 @@ async function executeInstanceMoveInner(
   };
 }
 
-export function createInstanceMoveTool(cwd: string, writeLock: WriteLock): Tool {
+export function createInstanceMoveTool(
+  cwd: string,
+  writeLock: WriteLock,
+  applyLevelChanges: () => Promise<unknown> = applyLevelChangesDefault,
+): Tool {
   return {
     name: "studiorpc_instance_move",
     description: instanceMove.description,
     parameters: instanceMove.params,
     async execute(args, ctx) {
-      return executeInstanceMove(args, ctx, cwd, writeLock);
+      return executeInstanceMove(args, ctx, cwd, writeLock, applyLevelChanges);
     },
   };
 }

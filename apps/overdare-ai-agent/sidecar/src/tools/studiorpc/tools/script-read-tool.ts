@@ -19,7 +19,7 @@ function formatLineNumber(lineNum: number, maxLineNum: number): string {
 
 async function executeScriptRead(args: Record<string, unknown>, cwd: string): Promise<ToolResult> {
   const parsed = scriptRead.params.parse(args);
-  const { targetGuid, offset, limit } = parsed;
+  const { guid: targetGuid, offset, limit } = parsed;
 
   // --- Read .ovdrjm ---
   let source: string;

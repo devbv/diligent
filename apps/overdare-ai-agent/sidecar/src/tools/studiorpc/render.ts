@@ -172,7 +172,7 @@ export function buildInstanceDeleteRender(args: Record<string, unknown>, output:
   const items = Array.isArray(args.items) ? args.items : [];
   const targetGuids = items.flatMap((item) => {
     if (!isRecord(item)) return [];
-    const guid = readString(item.targetGuid);
+    const guid = readString(item.guid);
     return guid ? [guid] : [];
   });
   const deleteCount = targetGuids.length;
@@ -517,15 +517,21 @@ export function buildGameScreenshotRender(
   output: string,
 ): ToolRenderPayload {
   const captureType = readString(args.captureType) ?? "Viewport";
-  const size = isRecord(args.size) ? args.size : undefined;
-  const width = size && typeof size.width === "number" ? size.width : undefined;
-  const height = size && typeof size.height === "number" ? size.height : undefined;
+  // Studio reports the size it actually captured; `args.size` only ever describes a request.
+  const image = isRecord(result) && isRecord(result.image) ? result.image : undefined;
+  const width = typeof image?.width === "number" ? image.width : undefined;
+  const height = typeof image?.height === "number" ? image.height : undefined;
   const path = isRecord(result) ? readString(result.path) : undefined;
+  const source = isRecord(result) ? readString(result.source) : undefined;
 
   const items: { key: string; value: string }[] = [{ key: "captureType", value: captureType }];
+  if (typeof args.includeGui === "boolean") {
+    items.push({ key: "includeGui", value: String(args.includeGui) });
+  }
   if (width !== undefined && height !== undefined) {
     items.push({ key: "size", value: `${width}×${height}` });
   }
+  if (source) items.push({ key: "source", value: source });
   if (path) items.push({ key: "path", value: path });
 
   return {
@@ -536,6 +542,28 @@ export function buildGameScreenshotRender(
       {
         type: "summary",
         text: path ? `Saved to ${path}` : firstLine(output, "Screenshot captured."),
+        tone: "success",
+      },
+    ],
+  };
+}
+
+export function buildViewportCameraReadRender(result: unknown, output: string): ToolRenderPayload {
+  const camera = isRecord(result) && isRecord(result.camera) ? result.camera : undefined;
+  const centerHit = camera && isRecord(camera.centerHit) ? camera.centerHit : undefined;
+  const lookingAt = centerHit ? readString(centerHit.instanceName) : undefined;
+
+  const items: { key: string; value: string }[] = [];
+  if (lookingAt) items.push({ key: "centerHit", value: lookingAt });
+
+  return {
+    inputSummary: "read viewport camera",
+    outputSummary: lookingAt ? `looking at ${lookingAt}` : summarizeText(output, "Camera read."),
+    blocks: [
+      ...(items.length > 0 ? [{ type: "key_value" as const, title: "Viewport camera", items }] : []),
+      {
+        type: "summary",
+        text: lookingAt ? `Screen center is on ${lookingAt}.` : firstLine(output, "Camera read."),
         tone: "success",
       },
     ],

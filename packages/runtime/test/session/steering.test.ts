@@ -146,6 +146,13 @@ describe("SessionManager.steer() — unified queue", () => {
       (e) => e.type === "message" && ((e.message as UserMessage).content as string) === "change approach",
     );
     expect(hasSteeringContent).toBe(true);
+    const steeringEvent = steeringEvents[0];
+    const persistedSteering = userEntries.find(
+      (e) => e.type === "message" && ((e.message as UserMessage).content as string) === "change approach",
+    );
+    expect(steeringEvent?.steerIds).toHaveLength(1);
+    expect(steeringEvent?.messageIds).toEqual([persistedSteering?.id]);
+    expect(steeringEvent?.messageIds).not.toEqual(steeringEvent?.steerIds);
 
     // No steering-type entries should exist
     const steeringEntries = entries.filter((e) => (e as { type: string }).type === "steering");

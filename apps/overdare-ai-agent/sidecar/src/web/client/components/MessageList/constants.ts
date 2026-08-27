@@ -1,6 +1,6 @@
 // @summary Shared sizing and virtualization constants for the web message list
 
-export const MESSAGE_ROW_GAP_PX = 8;
+export const MESSAGE_ROW_GAP_PX = 20;
 export const MESSAGE_LIST_VERTICAL_PADDING_PX = 24;
 export const DEFAULT_ESTIMATED_ROW_HEIGHT_PX = 132;
 export const COLLAPSED_TOOL_BLOCK_ESTIMATE_PX = 44;

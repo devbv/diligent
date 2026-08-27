@@ -4,6 +4,7 @@ import { DILIGENT_SERVER_NOTIFICATION_METHODS, DILIGENT_SERVER_REQUEST_METHODS }
 import {
   getReconnectAttemptLimit,
   getReconnectDelay,
+  RpcRequestError,
   resolveWebSocketUrl,
   WebRpcClient,
 } from "../../../../src/web/client/lib/rpc-client";
@@ -203,6 +204,40 @@ test("request accepts null timeout for long-running rpc calls", async () => {
   });
 
   await expect(rawPromise).resolves.toEqual({ ok: true });
+  client.disconnect();
+});
+
+test("preserves structured JSON-RPC error code and data", async () => {
+  globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket;
+
+  const client = new WebRpcClient("ws://example.test/rpc");
+  await client.connect();
+
+  const requestPromise = client.requestRaw("feedback/report", { category: "etc" });
+  const sent = FakeWebSocket.instances[0]?.sent.map((entry) => JSON.parse(entry));
+  const request = sent?.find((entry) => entry.method === "feedback/report");
+  expect(request?.id).toBeDefined();
+
+  FakeWebSocket.instances[0]!.onmessage?.({
+    data: JSON.stringify({
+      id: request!.id,
+      error: {
+        code: -32000,
+        message: "Feedback report failed",
+        data: { httpStatus: 429 },
+      },
+    }),
+  });
+
+  try {
+    await requestPromise;
+    expect.unreachable("Expected the request to reject");
+  } catch (error) {
+    expect(error).toBeInstanceOf(RpcRequestError);
+    expect((error as RpcRequestError).code).toBe(-32000);
+    expect((error as RpcRequestError).data).toEqual({ httpStatus: 429 });
+  }
+
   client.disconnect();
 });
 

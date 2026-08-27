@@ -420,7 +420,7 @@ describe("createStudioRpcToolProvider", () => {
 
     const result = await tools
       .get("studiorpc_instance_delete")!
-      .execute({ items: [{ targetGuid: "missing-target" }] }, toolContext());
+      .execute({ items: [{ guid: "missing-target" }] }, toolContext());
 
     expectStatus(result, {
       kind: "missing_guid",
@@ -444,7 +444,7 @@ describe("createStudioRpcToolProvider", () => {
       .execute({ items: [{ guid: workspaceGuid, parentGuid: folderGuid }] }, toolContext());
     const deleteResult = await tools
       .get("studiorpc_instance_delete")!
-      .execute({ items: [{ targetGuid: workspaceGuid }] }, toolContext());
+      .execute({ items: [{ guid: workspaceGuid }] }, toolContext());
 
     expectStatus(moveResult, {
       kind: "invalid_operation",

@@ -316,7 +316,7 @@ export class AgentRegistry {
 
     // Wire onChildStop as onStop for the child manager.
     // The `let childManager` binding is valid because onStop is only called
-    // after the manager has been fully constructed and run() completes.
+    // after the manager has been fully constructed and run() settles.
     const onChildStop = this.deps.onChildStop;
     let childManager: SessionManager;
 
