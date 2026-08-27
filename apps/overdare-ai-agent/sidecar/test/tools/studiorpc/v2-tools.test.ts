@@ -13,7 +13,6 @@ import readline from "node:readline";
 import type { Tool } from "@diligent/core/tool-contract";
 import { createStudioRpcToolProvider } from "../../../src/tools/studiorpc";
 import { checkResult } from "../../../src/tools/studiorpc/tools/v2/result";
-import { tagObjectTypes } from "../../../src/tools/studiorpc/tools/v2/wire";
 
 interface RpcCall {
   method: string;
@@ -190,85 +189,6 @@ describe("checkResult", () => {
     }
     expect(() => checkResult("instance.update", undefined)).not.toThrow();
     expect(() => checkResult("instance.update", "ok")).not.toThrow();
-  });
-});
-
-describe("tagObjectTypes", () => {
-  // Values and tags measured against Studio 2026-08-27; each untagged form was rejected.
-  test("tags the UI structs the schema keeps bare, nested ones included", () => {
-    expect(tagObjectTypes({ X: { Scale: 0.1, Offset: 0 }, Y: { Scale: 0.2, Offset: 4 } })).toEqual({
-      ObjectType: "UDim2",
-      X: { ObjectType: "UDim", Scale: 0.1, Offset: 0 },
-      Y: { ObjectType: "UDim", Scale: 0.2, Offset: 4 },
-    });
-    expect(tagObjectTypes({ Scale: 0, Offset: 8 })).toEqual({ ObjectType: "UDim", Scale: 0, Offset: 8 });
-    expect(tagObjectTypes({ MinX: 4, MinY: 4, MaxX: 12, MaxY: 12 })).toEqual({
-      ObjectType: "Rect",
-      MinX: 4,
-      MinY: 4,
-      MaxX: 12,
-      MaxY: 12,
-    });
-    expect(tagObjectTypes({ Min: 1, Max: 2 })).toEqual({ ObjectType: "NumberRange", Min: 1, Max: 2 });
-  });
-
-  // Studio takes the wrong tag without a word: an AnchorPoint tagged UDim2 is stored as one.
-  test("separates a Vector2 from a UDim2 by what its members hold", () => {
-    expect(tagObjectTypes({ X: 0.5, Y: 0.5 })).toEqual({ ObjectType: "Vector2", X: 0.5, Y: 0.5 });
-    expect(tagObjectTypes({ X: { Scale: 1, Offset: 0 }, Y: { Scale: 1, Offset: 0 } })).toMatchObject({
-      ObjectType: "UDim2",
-    });
-  });
-
-  test("fills the Font members Studio requires and the schema leaves optional", () => {
-    expect(tagObjectTypes({ Family: "Roboto" })).toEqual({
-      ObjectType: "Font",
-      Family: "Roboto",
-      Style: "Normal",
-      Weight: "Regular",
-    });
-    expect(tagObjectTypes({ Family: "Roboto", Weight: "Bold" })).toEqual({
-      ObjectType: "Font",
-      Family: "Roboto",
-      Style: "Normal",
-      Weight: "Bold",
-    });
-  });
-
-  test("wraps a keypoint array, naming a ColorSequence keypoint the way the RPC does", () => {
-    expect(
-      tagObjectTypes([
-        { Time: 0, Color: { R: 255, G: 0, B: 0 } },
-        { Time: 1, Color: { R: 0, G: 0, B: 255 } },
-      ]),
-    ).toEqual({
-      ObjectType: "ColorSequence",
-      Keypoints: [
-        { Time: 0, Value: { ObjectType: "Color3", R: 255, G: 0, B: 0 } },
-        { Time: 1, Value: { ObjectType: "Color3", R: 0, G: 0, B: 255 } },
-      ],
-    });
-    expect(
-      tagObjectTypes([
-        { Time: 0, Value: 1, Envelope: 0 },
-        { Time: 1, Value: 2 },
-      ]),
-    ).toEqual({
-      ObjectType: "NumberSequence",
-      Keypoints: [
-        { Time: 0, Value: 1, Envelope: 0 },
-        { Time: 1, Value: 2 },
-      ],
-    });
-  });
-
-  test("leaves a value that matches nothing, and one already tagged, alone", () => {
-    expect(tagObjectTypes({ Family: "Roboto", Size: 14 })).toEqual({ Family: "Roboto", Size: 14 });
-    expect(tagObjectTypes({ ObjectType: "Content", Content: "ovdrassetid://1" })).toEqual({
-      ObjectType: "Content",
-      Content: "ovdrassetid://1",
-    });
-    expect(tagObjectTypes([{ Name: "a" }, { Name: "b" }])).toEqual([{ Name: "a" }, { Name: "b" }]);
   });
 });
 

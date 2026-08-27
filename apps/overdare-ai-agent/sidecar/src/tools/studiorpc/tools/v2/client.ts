@@ -3,7 +3,6 @@
 import { call, RPC_INSTANCE_NOT_FOUND, StudioRpcError } from "../../rpc";
 import { isRecord, type OvdrjmNode } from "../ovdrjm-utils";
 import { checkResult } from "./result";
-import { tagObjectTypes } from "./wire";
 
 /** `instance.read` depth: 0 = the instance alone, N = N levels below it, -1 = the whole subtree. */
 export const DEPTH_SELF = 0;
@@ -23,7 +22,7 @@ export function takeWarnings(): string[] {
 
 /** Members of `params` are PascalCase; the envelope and method names stay snake_case. */
 export async function callInstanceRpc(method: string, params: Record<string, unknown>): Promise<unknown> {
-  const result = await call(method, tagObjectTypes(params) as Record<string, unknown>);
+  const result = await call(method, params);
   lastWarnings = lastWarnings.concat(checkResult(method, result).warnings);
   return result;
 }
