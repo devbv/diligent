@@ -24,6 +24,20 @@ const colorChannel = z.number().int().min(0).max(255);
 const rgb = tagged("Color3", { R: colorChannel, G: colorChannel, B: colorChannel });
 const udim2 = tagged("UDim2", { X: udim, Y: udim });
 const cframe = tagged("CFrame", { Position: vec3, Orientation: vec3 });
+/** Ranges come from the engine's ClampMin/ClampMax on FLuaPhysicalProperties. */
+const physicalProperties = tagged("PhysicalProperties", {
+  Density: z.number().min(0).max(1000),
+  Elasticity: z.number().min(0).max(1),
+  Friction: z.number().min(0).max(2),
+});
+/** Studio's BrickColor is a palette entry, not a free colour. Note the lowercase channel keys. */
+const brickColor = tagged("BrickColor", {
+  Name: z.string(),
+  Number: z.number().int(),
+  r: colorChannel,
+  g: colorChannel,
+  b: colorChannel,
+});
 /** Studio serialises Rect flat — four scalars, not two nested Vector2s. It clamps out-of-range values but not inverted ones. */
 const rect = tagged("Rect", {
   MinX: z.number(),
@@ -35,13 +49,46 @@ const rect = tagged("Rect", {
 });
 
 const normalIdEnum = z.enum(["Right", "Top", "Back", "Left", "Bottom", "Front"]);
+const traceChannelEnum = z.enum([
+  "L_ECC_WorldStatic",
+  "L_ECC_WorldDynamic",
+  "L_ECC_Pawn",
+  "L_ECC_Visibility",
+  "L_ECC_Camera",
+  "L_ECC_PhysicsBody",
+  "L_ECC_Vehicle",
+  "L_ECC_Destructible",
+  "L_ECC_EngineTraceChannel1",
+  "L_ECC_EngineTraceChannel2",
+  "L_ECC_EngineTraceChannel3",
+  "L_ECC_EngineTraceChannel4",
+  "L_ECC_WeaponTrace",
+  "L_ECC_InteractionTrace",
+  "L_ECC_GameTraceChannel1",
+  "L_ECC_GameTraceChannel2",
+  "L_ECC_GameTraceChannel3",
+  "L_ECC_GameTraceChannel4",
+  "L_ECC_GameTraceChannel5",
+  "L_ECC_GameTraceChannel6",
+  "L_ECC_GameTraceChannel7",
+  "L_ECC_GameTraceChannel8",
+  "L_ECC_GameTraceChannel9",
+  "L_ECC_GameTraceChannel10",
+  "L_ECC_GameTraceChannel11",
+  "L_ECC_GameTraceChannel12",
+  "L_ECC_GameTraceChannel13",
+  "L_ECC_GameTraceChannel14",
+  "L_ECC_GameTraceChannel15",
+  "L_ECC_GameTraceChannel16",
+  "L_ECC_GameTraceChannel17",
+  "L_ECC_GameTraceChannel18",
+  "L_ECC_OverlapAll_Deprecated",
+]);
 /** Tile, Crop and Fit exist in the engine but ship hidden, so they stay out of reach here. */
 const scaleTypeEnum = z.enum(["Stretch", "Slice"]);
 const mobilityEnum = z
   .enum(["Static", "Movable"])
-  .describe(
-    "Movable or Static; settable only on top-level Workspace objects (direct children of Workspace). Never set this params unless user requests.",
-  );
+  .describe("Movable or Static; settable only on top-level Workspace objects (direct children of Workspace).");
 
 /**
  * Universal base-Instance properties present on every instance class (comparable to ClassName/Name),
@@ -95,10 +142,37 @@ const nineSliceProperties = {
     .optional(),
   SliceScale: z.number().describe("Multiplier for 9-slice edge thickness. Default 1.").optional(),
 };
+/** SimulationBall's solver seed state. Every field is required once the object is supplied. */
+const ballSimParams = tagged("BallSimParams", {
+  BaseGravity: z.number(),
+  DampingAngular: z.number(),
+  DampingLinear: z.number(),
+  EnableGravityFalloff: z.boolean(),
+  Friction: z.number(),
+  GravityFalloffEndHeight: z.number(),
+  GravityFalloffStartHeight: z.number(),
+  InertiaScale: z.number(),
+  InitialCFrame: cframe,
+  InitialDirection: vec3,
+  InitialSpeed: z.number(),
+  InitialSpinAxis: vec3,
+  InitialSpinSpeed: z.number(),
+  Mass: z.number(),
+  MaxSpeedForMagnus: z.number(),
+  MinFalloffGravity: z.number(),
+  MinSpeedForMagnus: z.number(),
+  MinSpinForMagnus: z.number(),
+  Restitution: z.number(),
+  RollingFriction: z.number(),
+  Simsteps: z.number(),
+  SpinMagnusWeight: z.number(),
+  StepsPerSecond: z.number(),
+  bForwardSpaceSpinAxis: z.boolean(),
+});
 const surfaceGuiBaseProperties = {
   Active: z.boolean().default(true),
-  Adornee: z.string().optional(),
   AlwaysOnTop: z.boolean().optional(),
+  AutoLocalize: z.boolean().optional(),
   Brightness: z.number().default(1),
   ClipsDescendants: z.boolean().default(true),
   Enabled: z.boolean().default(true),
@@ -110,6 +184,7 @@ const surfaceGuiBaseProperties = {
 const guiObjectProperties = {
   Active: z.boolean().default(true),
   AnchorPoint: vec2.optional(),
+  AutoLocalize: z.boolean().optional(),
   BackgroundColor3: rgb.optional(),
   BackgroundTransparency: z.number().describe("(0~1)").optional(),
   ClipsDescendants: z.boolean().optional(),
@@ -330,7 +405,18 @@ export const instanceClassEnum = z.enum([
   "UIAspectRatioConstraint",
   "ProximityPrompt",
   "UIStroke",
+  "ActionSequence",
+  "Bone",
+  "Constraint",
+  "Humanoid",
+  "LocalScript",
+  "ModuleScript",
   "ProgressBar",
+  "Script",
+  "Skeleton",
+  "Team",
+  "UIGridStyleLayout",
+  "WrapLayer",
 ]);
 
 export const serviceClassEnum = z.enum([
@@ -455,6 +541,7 @@ export const materialEnum = z.enum([
 
 const workspaceServiceSchema = z
   .object({
+    AllowDebugDraw: z.boolean().describe("Enables WorldRoot Draw* debug rendering.").optional(),
     Gravity: z.number().optional(),
     HitboxType: z.string().describe('e.g. "Single"').optional(),
   })
@@ -463,11 +550,9 @@ const workspaceServiceSchema = z
 
 const lightingServiceSchema = z
   .object({
-    Ambient: rgb.optional(),
     AmbientSkyBrightness: z.number().max(10).optional(),
     AmbientSkyColor: rgb.optional(),
     AutoTimeCycle: z.boolean().optional(),
-    Brightness: z.number().max(50).optional(),
     ClockTime: z.number().optional(),
     Contrast: z.number().max(2).optional(),
     GroundReflectionColor: rgb.optional(),
@@ -500,19 +585,15 @@ const atmosphereServiceSchema = z
     CloudAmount: z.number().optional(),
     CloudSpeed: z.number().optional(),
     CloudTexture: z.string().optional(),
-    Color: rgb.optional(),
-    Density: z.number().optional(),
     FogColor: rgb.optional(),
     FogDensity: z.number().optional(),
     FogFalloff: z.number().optional(),
-    FogFalloffClear: z.number().optional(),
     FogHorizon: z.boolean().optional(),
     FogStart: z.number().optional(),
     GlareColor: rgb.optional(),
     GlareFalloff: z.number().optional(),
     HazeColor: rgb.optional(),
     HazeSpread: z.number().optional(),
-    StartDistance: z.number().optional(),
   })
   .strict()
   .describe("Use when updating Atmosphere service. Controls fog, haze, glare, and cloud settings.");
@@ -558,97 +639,104 @@ const materialServiceSchema = z
   .object(
     Object.fromEntries(
       [
-        "AsphaltName",
-        "BarkName",
-        "BasicName",
+        "Asphalt",
+        "Bark",
+        "Basic",
         "BeigeTerrazzoFloor",
+        "Brick",
         "BrickCeramicTile",
-        "BrickName",
-        "BrokenConcreteName",
+        "BrokenConcrete",
         "BrokenRoof",
         "BrushMetal",
-        "CementWallName",
-        "CheckerTileFloorName",
-        "ConcreteName",
-        "ConcretePlateName",
-        "CopperName",
-        "CorrugatedSteelName",
-        "CrackedMiddleCeramicTileName",
-        "CrackedSmallCeramicTileName",
-        "DamagedRoofName",
-        "DistroyedBronzeName",
+        "CementWall",
+        "Chainmail",
+        "CheckerTileFloor",
+        "Concrete",
+        "ConcretePlate",
+        "Copper",
+        "CorrugatedSteel",
+        "CrackedMiddleCeramicTile",
+        "CrackedSmallCeramicTile",
+        "CrocEmbossedLeather",
+        "DamagedRoof",
+        "DistroyedBronze",
         "EmeraldGridTile",
+        "FabricDenim",
+        "FabricWeave",
+        "Foil",
         "GalvanizedMetal",
-        "GlassName",
-        "GrassName",
+        "Glass",
+        "GrainLeather",
+        "Grass",
         "GreyWovenFabric",
         "GridBorder",
-        "GridBoxName",
-        "GridMarbleName",
-        "GridPentagonName",
-        "GridQuadName",
-        "GridTileName",
-        "GroundName",
-        "HalfLeafyGroundName",
-        "HouseBricksName",
+        "GridBox",
+        "GridMarble",
+        "GridPentagon",
+        "GridQuad",
+        "GridTile",
+        "Ground",
+        "HalfLeafyGround",
+        "HouseBricks",
         "IndustrialRibbedSteel",
-        "LeafyGroundName",
-        "MarbleName",
-        "MetalName",
-        "MetalPlateName",
-        "MixRoadName",
-        "MosaicCarpetName",
-        "MossyGroundName",
-        "MossyRockName",
+        "LeafyGround",
+        "Marble",
+        "MatteRubber",
+        "Metal",
+        "MetalPlate",
+        "MixRoad",
+        "MosaicCarpet",
+        "MossyGround",
+        "MossyRock",
         "OceanPanelTile",
-        "OfficeCeilingWhiteName",
+        "OfficeCeilingLight",
+        "OfficeCeilingWhite",
         "PaintedMetal",
         "PaintedWood",
-        "PavingBlockName",
-        "PavingBrickName",
-        "PavingFloorName",
-        "PavingName",
-        "PavingStonesName",
-        "PavingWallName",
+        "PaintedWornWood",
+        "Paving",
+        "PavingBlock",
+        "PavingBrick",
+        "PavingFloor",
+        "PavingStones",
+        "PavingWall",
         "PeelingPaintSteel",
-        "PlankName",
-        "PlasticName",
-        "RoadName",
-        "RockName",
-        "RoofName",
-        "RustBrassName",
-        "RustName",
+        "Plank",
+        "Plastic",
+        "Road",
+        "Rock",
+        "Roof",
+        "Rust",
+        "RustBrass",
+        "RustMetal",
         "RustySteel",
-        "SandName",
+        "Sand",
         "SandstoneBrick",
-        "SilverMetalName",
-        "SmallBrickName",
-        "SnowName",
-        "SoilRockGroundName",
+        "SilverMetal",
+        "SmallBrick",
+        "Snow",
+        "SoilRockGround",
         "SquareCeramicTile",
-        "StoneBrickName",
-        "StoneFloorName",
-        "TakenOffCeramicTileName",
-        "TerrazzoFloorName",
+        "StoneBrick",
+        "StoneFloor",
+        "TakenOffCeramicTile",
+        "Tatami",
+        "TerrazzoFloor",
         "ThickCarpet",
-        "UnlitName",
+        "Unlit",
         "UrbanSlateFloor",
         "WeatheredPlasterBrick",
         "WhiteCementBrick",
-        "WhiteGrayBrickName",
-        "WoodName",
+        "WhiteGrayBrick",
+        "Wood",
+        "WoodLogSidingWall",
+        "WoodSidingWall",
+        "WoodTileFloor",
       ].map((n) => [n, z.string().optional()]),
     ) as Record<string, z.ZodOptional<z.ZodString>>,
   )
   .strict()
   .describe("Use when updating MaterialService. Each property maps a base material to its custom variant name.");
-
-const httpServiceSchema = z
-  .object({
-    HttpEnabled: z.boolean().optional(),
-  })
-  .strict()
-  .describe("Use when updating HttpService. Controls whether HTTP requests are enabled.");
 
 const emptyServiceSchema = z.object({}).strict();
 
@@ -659,18 +747,20 @@ const rawInstancePropertiesUnion = z.union([
       CFrame: cframe.optional(),
       Size: vec3.describe("units in cm").optional(),
       Anchored: z.boolean().default(true),
-      BrickColor: z.string().optional(),
+      AssemblyLinearVelocity: vec3.optional(),
       CanClimb: z.boolean().optional(),
       CanCollide: z.boolean().default(true),
       CanQuery: z.boolean().default(true),
       CanTouch: z.boolean().default(true),
       CastShadow: z.boolean().optional(),
-      CollisionGroup: z.string().optional(),
       CollisionProfile: z.string().describe('e.g. "BlockAll"').optional(),
       Color: rgb.optional(),
+      CustomPhysicalProperties: physicalProperties.optional(),
       Locked: z.boolean().optional(),
       Material: materialEnum.optional(),
       MaterialVariant: z.string().optional(),
+      PivotOffsetCFrame: cframe.optional(),
+      TraceGroupNameString: z.string().optional(),
       Transparency: z.number().describe("(0~1)").optional(),
     })
     .strict()
@@ -679,7 +769,6 @@ const rawInstancePropertiesUnion = z.union([
     .object({
       Color: rgb.optional(),
       Thickness: z.number().optional(),
-      Adornee: z.string().describe("InstanceGuid of the target instance to outline").optional(),
       Enabled: z.boolean().optional(),
     })
     .strict()
@@ -689,7 +778,6 @@ const rawInstancePropertiesUnion = z.union([
       Color: rgb.optional(),
       DepthMode: z.enum(["AlwaysOnTop", "VisibleWhenNotOccluded", "VisibleWhenOccluded"]).optional(),
       Transparency: z.number().describe("(0~1)").optional(),
-      Adornee: z.string().describe("InstanceGuid of the target instance to fill").optional(),
       Enabled: z.boolean().optional(),
     })
     .strict()
@@ -697,6 +785,9 @@ const rawInstancePropertiesUnion = z.union([
   z
     .object({
       ...guiObjectProperties,
+      BorderColor3: rgb.optional(),
+      BorderMode: z.enum(["Insert", "Middle", "Outline"]).optional(),
+      BorderPixelSize: z.number().optional(),
     })
     .strict()
     .describe("Use when class=Frame. Layout and visual properties with optional border styling."),
@@ -745,6 +836,11 @@ const rawInstancePropertiesUnion = z.union([
       RollOffMinDistance: z.number().default(10),
       RollOffMode: z.enum(["Inverse", "InverseTapered", "Linear", "LinearSquare"]).optional(),
       StartTimePosition: z.number().optional(),
+      TimePosition: z
+        .number()
+        .min(0)
+        .describe("Playback position in seconds; settable before and during playback.")
+        .optional(),
     })
     .strict()
     .describe("Use when class=Sound. Audio source with 3D spatial roll-off."),
@@ -756,6 +852,8 @@ const rawInstancePropertiesUnion = z.union([
     .object({
       CanBeDropped: z.boolean().default(true),
       Enabled: z.boolean().optional(),
+      Grip: cframe.describe("The tool's grip offset, as one CFrame.").optional(),
+      TextureId: z.string().describe("Icon shown for the tool in the player's backpack.").optional(),
     })
     .strict()
     .describe("Use when class=Tool. An equippable item a player can pick up and activate."),
@@ -766,8 +864,13 @@ const rawInstancePropertiesUnion = z.union([
         .describe(
           'Preset resource name, e.g. "VFX_UGC_Muzzle_01" — discover via the vfx-recipe skill (references/presets.md, Resource column)',
         ),
+      Alpha: z
+        .array(z.object({ Time: z.number(), Value: z.number() }))
+        .describe("Alpha curve keypoints [{Time,Value}]")
+        .optional(),
       Color: z.array(z.object({ Time: z.number(), R: z.number(), G: z.number(), B: z.number() })),
       Enabled: z.boolean().default(true),
+      Importance: z.string().optional(),
       InfiniteLoop: z.boolean().default(true),
       LoopCount: z.number().default(1),
       Size: z.number().default(1),
@@ -802,29 +905,24 @@ const rawInstancePropertiesUnion = z.union([
       AngularVelocity: vec3.optional(),
       Enabled: z.boolean().default(true),
       MaxTorque: z.number().default(1000),
-      ReactionTorqueEnabled: z.boolean().optional(),
       RelativeTo: z.string().describe('e.g. "World"').optional(),
     })
     .strict()
     .describe("Use when class=AngularVelocity. Applies a target rotational velocity to a physics body."),
   z
     .object({
-      VelocityConstraintMode: z.string().describe('e.g. "Vector"').optional(),
+      VelocityConstraintMode: z
+        .enum(["Vector"])
+        .describe("Line and Plane exist in the editor but their parameters are not serialized.")
+        .optional(),
       VectorVelocity: vec3.optional(),
-      LineDirection: vec3.optional(),
-      LineVelocity: z.number().optional(),
-      PlaneVelocity: z.object({ X: z.number(), Y: z.number() }).optional(),
-      PrimaryTangentAxis: vec3.optional(),
-      SecondaryTangentAxis: vec3.optional(),
       Enabled: z.boolean().default(true),
       ForceLimitsEnabled: z.boolean().default(true),
       MaxForce: z.number().default(10),
       RelativeTo: z.string().describe('e.g. "World"').optional(),
     })
     .strict()
-    .describe(
-      "Use when class=LinearVelocity. Applies a target linear velocity to a physics body via Vector, Line, or Plane mode.",
-    ),
+    .describe("Use when class=LinearVelocity. Applies a target linear velocity to a physics body along a vector."),
   z
     .object({
       Force: vec3.optional(),
@@ -839,8 +937,8 @@ const rawInstancePropertiesUnion = z.union([
   z
     .object({
       CastShadow: z.boolean().optional(),
-      PrimaryPart: z.string().describe("InstanceGuid of the primary part").optional(),
-      WorldPivot: z.object({ Position: vec3, Orientation: vec3 }).optional(),
+      PivotOffsetCFrame: cframe.optional(),
+      WorldPivot: cframe.optional(),
     })
     .strict()
     .describe(
@@ -900,6 +998,7 @@ const rawInstancePropertiesUnion = z.union([
       ExtentsOffsetWorldSpace: vec3.optional(),
       PositionOffset: vec3.optional(),
       PositionOffsetWorldSpace: vec3.optional(),
+      Size: udim2.describe("Canvas size (UDim2)").optional(),
       SizeOffset: z.object({ X: z.number(), Y: z.number() }).describe("Screen-space size offset (Vector2)").optional(),
     })
     .strict()
@@ -908,6 +1007,7 @@ const rawInstancePropertiesUnion = z.union([
     .object({
       ...surfaceGuiBaseProperties,
       Face: normalIdEnum.optional(),
+      Size: udim2.describe("Canvas size (UDim2)").optional(),
       ZOffset: z.number().default(1),
     })
     .strict()
@@ -921,6 +1021,9 @@ const rawInstancePropertiesUnion = z.union([
       Axis: vec3.optional(),
       CFrame: cframe.optional(),
       SecondaryAxis: vec3.optional(),
+      WorldAxis: vec3.describe("Unit direction of the attachment's X axis in world space.").optional(),
+      WorldCFrame: cframe.optional(),
+      WorldSecondaryAxis: vec3.describe("Unit direction of the attachment's Y axis in world space.").optional(),
     })
     .strict()
     .describe("Use when class=Attachment. Defines a local coordinate frame on a BasePart for constraints and effects."),
@@ -1028,19 +1131,18 @@ const rawInstancePropertiesUnion = z.union([
     .describe("Use when class=IntValue. Stores a single integer value."),
   z
     .object({
-      Shape: z.enum(["Block", "Ball", "Cylinder"]).optional(),
       CFrame: cframe.optional(),
       Size: vec3.describe("units in cm").optional(),
       Anchored: z.boolean().default(true),
-      BrickColor: z.string().optional(),
+      AssemblyLinearVelocity: vec3.optional(),
       CanClimb: z.boolean().optional(),
       CanCollide: z.boolean().default(true),
       CanQuery: z.boolean().default(true),
       CanTouch: z.boolean().default(true),
       CastShadow: z.boolean().optional(),
-      CollisionGroup: z.string().optional(),
       CollisionProfile: z.string().describe('e.g. "BlockAll"').optional(),
       Color: rgb.optional(),
+      CustomPhysicalProperties: physicalProperties.optional(),
       DoubleSided: z.boolean().optional(),
       EnableMeshShadowDetails: z.boolean().optional(),
       Locked: z.boolean().optional(),
@@ -1048,7 +1150,9 @@ const rawInstancePropertiesUnion = z.union([
       MaterialVariant: z.string().optional(),
       MeshId: z.string().describe("Mesh asset ID").optional(),
       MeshShadowDetailLevel: z.enum(["Original", "Medium", "Low"]).optional(),
+      PivotOffsetCFrame: cframe.optional(),
       TextureId: z.string().describe("Surface texture asset ID").optional(),
+      TraceGroupNameString: z.string().optional(),
       Transparency: z.number().describe("(0~1)").optional(),
     })
     .strict()
@@ -1120,7 +1224,6 @@ const rawInstancePropertiesUnion = z.union([
     .object({
       CFrame: cframe.optional(),
       CameraOffset: vec3.optional(),
-      CameraSubject: z.string().describe("InstanceGuid of the subject to follow").optional(),
       CameraType: z.enum(["Fixed", "Attach", "Watch", "Track", "Follow", "Custom", "Scriptable", "Orbital"]).optional(),
       EnableSmoothFollow: z.boolean().optional(),
       EnableSmoothRotation: z.boolean().optional(),
@@ -1136,20 +1239,20 @@ const rawInstancePropertiesUnion = z.union([
     .object({
       BaseMaterial: materialEnum.optional(),
       ColorMap: z.string().describe("Texture asset ID").optional(),
-      Emissive: rgb.optional(),
-      EmissiveIntensity: z.number().optional(),
-      EmissiveMap: z.string().describe("Texture asset ID").optional(),
+      CustomPhysicalProperties: physicalProperties.optional(),
       Metalness: z.number().describe("(0~1)").optional(),
       MetalnessMap: z.string().describe("Texture asset ID").optional(),
       MetersPerTile: z.number().optional(),
       NormalMap: z.string().describe("Texture asset ID").optional(),
       Roughness: z.number().describe("(0~1)").optional(),
       RoughnessMap: z.string().describe("Texture asset ID").optional(),
+      UseCustomPhysicsProperties: z.boolean().optional(),
     })
     .strict()
     .describe("Use when class=MaterialVariant. Custom material override with PBR texture maps and surface color."),
   z
     .object({
+      AutoLocalize: z.boolean().optional(),
       DisplayOrder: z.number().optional(),
       Enabled: z.boolean().default(true),
     })
@@ -1157,19 +1260,77 @@ const rawInstancePropertiesUnion = z.union([
     .describe("Use when class=ScreenGui. Full-screen GUI container for HUD and menu elements."),
   z
     .object({
+      AfterBounceAngularMultiply: z
+        .number()
+        .describe("Multiplier for angular velocity from contact friction after a bounce. 1.0 = 100%.")
+        .optional(),
+      BPStaticStepAheadSteps: z
+        .number()
+        .int()
+        .min(1)
+        .max(10)
+        .describe("Static simulation steps covered by one broad-phase AABB.")
+        .optional(),
       BallMeshCollisionProfile: z.string().optional(),
-      BallRadius: z.number().optional(),
-      BallTraceChannel: z.number().optional(),
+      BallRadius: z.number().min(1).describe("Collision radius in cm.").optional(),
+      BallSimParams: ballSimParams.optional(),
+      BeforeBounceAngularRetention: z
+        .number()
+        .describe("Fraction of pre-bounce angular velocity retained after impact.")
+        .optional(),
       CFrame: cframe.optional(),
       Color: rgb.optional(),
+      DetectBounceThreshold: z
+        .number()
+        .describe("Normal impulse separating a bounce from a sliding contact.")
+        .optional(),
       EnablePathMarker: z.boolean().optional(),
-      IsPathMarkerWorldSpace: z.boolean().optional(),
       Material: materialEnum.optional(),
       MaterialVariant: z.string().optional(),
-      PathMarkerScale: z.number().optional(),
-      SlomoFactor: z.number().optional(),
+      MaxAllowedImpulse: z.number().describe("Cap on normal impulse during collision response.").optional(),
+      MicroBounceThresholdMult: z.number().optional(),
+      PathMarkerScale: z.number().min(0.01).max(100).optional(),
+      PivotOffsetCFrame: cframe.optional(),
+      RestingMovementEpsilon: z
+        .number()
+        .min(0)
+        .describe("Max per-frame movement in cm still counted as resting.")
+        .optional(),
+      RestingSpinSpeedThreshold: z
+        .number()
+        .min(0)
+        .describe("Spin speed in RPM below which resting spin snaps to zero.")
+        .optional(),
+      RestingToSleepingFrameThreshold: z
+        .number()
+        .int()
+        .min(1)
+        .max(255)
+        .describe("Resting frames required before angular velocity snaps to zero.")
+        .optional(),
+      SameSurfaceNormalDegree: z
+        .number()
+        .min(0)
+        .max(60)
+        .describe("Max normal angle in degrees for treating two contacts as one surface.")
+        .optional(),
+      SimulationTraceChannel: traceChannelEnum.describe("Trace channel for static collision sweeps.").optional(),
+      SlomoFactor: z.number().min(0.001).describe("Preview playback speed multiplier; 1.0 is normal speed.").optional(),
+      TargetRadius: z.number().describe("Target hit radius in cm for trajectory-to-target tests.").optional(),
       TextureId: z.string().describe("Texture asset ID").optional(),
-      Transparency: z.number().describe("(0~1)").optional(),
+      Transparency: z.number().min(0).max(1).describe("(0~1)").optional(),
+      bEnableBroadPhase: z
+        .boolean()
+        .describe("Skip expensive sweeps when broad-phase AABB finds no candidates.")
+        .optional(),
+      bEnableMicroBounceRemoval: z.boolean().describe("Remove micro-bounces on low-speed ground contacts.").optional(),
+      bKeepPassedMarkers: z.boolean().describe("Keep markers for the already-played path visible.").optional(),
+      bPausedWhenSleeping: z.boolean().describe("Pause playback when the simulation snapshot is sleeping.").optional(),
+      bTraceComplex: z.boolean().describe("Use complex triangle-mesh collision instead of simple shapes.").optional(),
+      bUseRestingContactToSleep: z
+        .boolean()
+        .describe("Let near-static ground contacts put the ball to sleep.")
+        .optional(),
     })
     .strict()
     .describe("Use when class=SimulationBall. Physics-simulated ball with trajectory and path marker."),
@@ -1185,21 +1346,23 @@ const rawInstancePropertiesUnion = z.union([
       CFrame: cframe.optional(),
       Size: vec3.describe("units in cm").optional(),
       Anchored: z.boolean().default(true),
-      BrickColor: z.string().optional(),
+      AssemblyLinearVelocity: vec3.optional(),
       CanClimb: z.boolean().optional(),
       CanCollide: z.boolean().default(true),
       CanQuery: z.boolean().default(true),
       CanTouch: z.boolean().default(true),
       CastShadow: z.boolean().optional(),
-      CollisionGroup: z.string().optional(),
       CollisionProfile: z.string().describe('e.g. "BlockAll"').optional(),
       Color: rgb.optional(),
+      CustomPhysicalProperties: physicalProperties.optional(),
       Enabled: z.boolean().optional(),
       Locked: z.boolean().optional(),
       Material: materialEnum.optional(),
       MaterialVariant: z.string().optional(),
       Neutral: z.boolean().optional(),
-      TeamColor: rgb.optional(),
+      PivotOffsetCFrame: cframe.optional(),
+      TeamColor: brickColor.optional(),
+      TraceGroupNameString: z.string().optional(),
       Transparency: z.number().describe("(0~1)").optional(),
     })
     .strict()
@@ -1252,8 +1415,77 @@ const rawInstancePropertiesUnion = z.union([
       "Use when class=UIStroke. Applies an outline stroke to the parent GuiObject's border or text with configurable color, thickness, and join style.",
     ),
   z
+    .object({})
+    .strict()
+    .describe("Use when class=ActionSequence. The sequence payload is owned by the Action Sequencer editor."),
+  z
     .object({
-      ArcSize: z.number().describe("Clockwise/CounterClockwise fill only").optional(),
+      Axis: vec3.optional(),
+      CFrame: cframe.optional(),
+      SecondaryAxis: vec3.optional(),
+      Transform: cframe.describe("Current animated offset of the bone in its local space.").optional(),
+      WorldAxis: vec3.describe("Unit direction of the bone's X axis in world space.").optional(),
+      WorldCFrame: cframe.optional(),
+      WorldSecondaryAxis: vec3.describe("Unit direction of the bone's Y axis in world space.").optional(),
+    })
+    .strict()
+    .describe("Use when class=Bone. A named transform node inside a Skeleton."),
+  z
+    .object({ Enabled: z.boolean().describe("Toggles whether the constraint is active.").optional() })
+    .strict()
+    .describe("Use when class=Constraint. Base physics constraint between two Attachments."),
+  z
+    .object({
+      AirControl: z.number().min(0).max(1).optional(),
+      AutomaticScalingEnabled: z
+        .boolean()
+        .describe("Scale the character to the HumanoidDescription values.")
+        .optional(),
+      BreakJointsOnDeath: z.boolean().optional(),
+      CameraOffset: vec3.optional(),
+      CapsuleHeight: z.number().min(0).optional(),
+      CapsuleRadius: z.number().min(0).optional(),
+      CharacterMeshPos: vec3.optional(),
+      DisplayDistanceType: z
+        .enum(["Viewer", "Subject", "None"])
+        .describe("Distance behaviour of the name and health display.")
+        .optional(),
+      FallingDeceleration: z.number().min(0).optional(),
+      FallingLateralFriction: z.number().min(0).optional(),
+      GravityScale: z.number().min(0).optional(),
+      GroundFriction: z.number().min(0).optional(),
+      Health: z.number().optional(),
+      IgnoreBaseRotation: z.boolean().optional(),
+      Jump: z.boolean().optional(),
+      JumpHeight: z.number().optional(),
+      JumpPower: z.number().optional(),
+      LookCameraDirection: z.boolean().optional(),
+      MaxAcceleration: z.number().min(0).optional(),
+      MaxHealth: z.number().optional(),
+      MaxJumpCount: z.number().int().min(0).optional(),
+      MaxSlopeAngle: z.number().min(0).max(90).optional(),
+      NameDisplayDistance: z.number().optional(),
+      RequiresNeck: z.boolean().optional(),
+      RotationSpeed: z.number().min(0).optional(),
+      StompJumpMultiplier: z.number().optional(),
+      TargetPoint: vec3.optional(),
+      UseJumpPower: z.boolean().optional(),
+      WalkSpeed: z.number().optional(),
+      WalkingDeceleration: z.number().min(0).optional(),
+    })
+    .strict()
+    .describe("Use when class=Humanoid. Character controller: health, movement, jumping and camera behaviour."),
+  z
+    .object({ Enabled: z.boolean().optional(), Source: z.string().optional() })
+    .strict()
+    .describe("Use when class=LocalScript. Lua script that runs on the client."),
+  z
+    .object({ Source: z.string().optional() })
+    .strict()
+    .describe("Use when class=ModuleScript. Reusable Lua module returned to require()."),
+  z
+    .object({
+      ArcSize: z.number().min(0).max(360).describe("Clockwise/CounterClockwise fill only").optional(),
       CornerClipEnabled: z.boolean().optional(),
       FillColor3: rgb.optional(),
       FillCornerRadius: udim.optional(),
@@ -1270,26 +1502,50 @@ const rawInstancePropertiesUnion = z.union([
         ])
         .optional(),
       FillImage: z.string().describe("Image asset ID").optional(),
-      FillTransparency: z.number().describe("(0~1)").optional(),
-      StartAngle: z.number().describe("Clockwise/CounterClockwise fill only").optional(),
+      FillTransparency: z.number().min(0).max(1).describe("(0~1)").optional(),
+      StartAngle: z.number().min(0).max(360).describe("Clockwise/CounterClockwise fill only").optional(),
       TrackColor3: rgb.optional(),
       TrackCornerRadius: udim.optional(),
       TrackImage: z.string().describe("Image asset ID").optional(),
-      TrackTransparency: z.number().describe("(0~1)").optional(),
-      Value: z.number().optional(),
+      TrackTransparency: z.number().min(0).max(1).describe("(0~1)").optional(),
+      Value: z.number().min(0).max(1).describe("Fill amount (0~1)").optional(),
       ...guiObjectProperties,
     })
     .strict()
     .describe(
       "Use when class=ProgressBar. GUI progress bar with separately styled track and fill, supporting linear and radial fill directions.",
     ),
+  z
+    .object({ Enabled: z.boolean().optional(), Source: z.string().optional() })
+    .strict()
+    .describe("Use when class=Script. Lua script that runs on the server."),
+  z
+    .object({ PivotOffsetCFrame: cframe.optional(), SkeletonId: z.string().optional() })
+    .strict()
+    .describe("Use when class=Skeleton. Bone hierarchy driving a skinned mesh."),
+  z
+    .object({ TeamColor: brickColor.optional() })
+    .strict()
+    .describe("Use when class=Team. Player team identified by its BrickColor."),
+  z
+    .object({
+      FillDirection: z.enum(["Horizontal", "Vertical"]).optional(),
+      HorizontalAlignment: z.enum(["Center", "Left", "Right"]).optional(),
+      SortOrder: z.enum(["Name", "LayoutOrder"]).optional(),
+      VerticalAlignment: z.enum(["Center", "Top", "Bottom"]).optional(),
+    })
+    .strict()
+    .describe("Use when class=UIGridStyleLayout. Shared layout controls for grid and list layouts."),
+  z
+    .object({ Order: z.number().int().optional() })
+    .strict()
+    .describe("Use when class=WrapLayer. Clothing wrap layer ordering."),
   workspaceServiceSchema,
   lightingServiceSchema,
   atmosphereServiceSchema,
   playersServiceSchema,
   starterPlayerServiceSchema,
   materialServiceSchema,
-  httpServiceSchema,
 ]);
 
 // The union's first `instanceClassEnum.options.length` members are the instance-class schemas (same
@@ -1304,7 +1560,7 @@ export const instancePropertiesSchema = z
   )
   .optional();
 
-/** Explicit service-class → schema entries (not index-dependent). */
+/** Explicit service-class — schema entries (not index-dependent). */
 const serviceSchemaEntries: [string, z.ZodTypeAny][] = [
   ["Workspace", workspaceServiceSchema],
   ["Lighting", lightingServiceSchema],
@@ -1312,7 +1568,7 @@ const serviceSchemaEntries: [string, z.ZodTypeAny][] = [
   ["Players", playersServiceSchema],
   ["StarterPlayer", starterPlayerServiceSchema],
   ["MaterialService", materialServiceSchema],
-  ["HttpService", httpServiceSchema],
+  ["HttpService", emptyServiceSchema],
   ["CollectionService", emptyServiceSchema],
   ["DataModel", emptyServiceSchema],
   ["DataStoreService", emptyServiceSchema],
