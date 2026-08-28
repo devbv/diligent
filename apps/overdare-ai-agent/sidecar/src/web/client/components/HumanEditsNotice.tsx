@@ -9,7 +9,15 @@ interface HumanEditsNoticeProps {
   summary: string;
 }
 
-const COUNT_SECTIONS = ["Added", "Removed", "Moved", "Modified", "Script source changed"] as const;
+/** Kept in step with SECTION_TITLES in tools/studiorpc/tools/edit-log.ts by a test. */
+export const COUNT_SECTIONS = [
+  "Added",
+  "Added then removed",
+  "Removed",
+  "Moved",
+  "Modified",
+  "Script source changed",
+] as const;
 
 /** Total change count parsed from the diff section headers, e.g. "3 changes". */
 function countLabel(summary: string): string {

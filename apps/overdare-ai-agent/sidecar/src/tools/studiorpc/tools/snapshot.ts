@@ -40,31 +40,6 @@ export function snapshotsDir(cwd: string): string {
 }
 
 /**
- * Fixed per-project baseline captured when the agent finishes a turn. Diffing
- * it against the current .ovdrjm reveals what the human edited in between.
- * Lives in the snapshots dir but is excluded from rollback selection.
- */
-// Invariant: this stem must never contain an underscore. listSnapshots relies
-// on parseSnapshotName rejecting underscore-less stems to implicitly exclude
-// the baseline from rollback selection — an underscore would make it parse as
-// a `{sessionId}_{index}` rollback snapshot, becoming a rollback target and
-// prunable by pruneSnapshots.
-const BASELINE_FILENAME = "agent-done-baseline.ovdrjm";
-
-export function baselinePath(cwd: string): string {
-  return join(snapshotsDir(cwd), BASELINE_FILENAME);
-}
-
-/** Copy the current .ovdrjm to the fixed agent-done baseline (raw bytes, overwrite). */
-export function captureBaseline(cwd: string): string {
-  const { ovdrjmPath } = resolveOvdrjmPathFromUmap(cwd);
-  mkdirSync(snapshotsDir(cwd), { recursive: true });
-  const dest = baselinePath(cwd);
-  copyFileSync(ovdrjmPath, dest);
-  return dest;
-}
-
-/**
  * Next request index for a session, derived by scanning the snapshots dir.
  * Filesystem is the source of truth so the counter survives agent restarts.
  * Snapshots are named `{sessionId}_{index}.ovdrjm`.
