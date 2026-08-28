@@ -1,12 +1,13 @@
 // @summary Tests EditLogging consumption, summarization, and human-edits context injection.
 
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createStudioRpcToolProvider } from "../../src/tools/studiorpc";
-import { editLoggingDir, rotateAndReadEditLogs, summarizeEditLog } from "../../src/tools/studiorpc/tools/edit-log";
+import { rotateAndReadEditLogs, SECTION_TITLES, summarizeEditLog } from "../../src/tools/studiorpc/tools/edit-log";
 import { consumeHumanEdits, createHumanEditsTool } from "../../src/tools/studiorpc/tools/human-edits-tool";
+import { COUNT_SECTIONS } from "../../src/web/client/components/HumanEditsNotice";
 
 const NO_EDITS = "No human edits detected since the agent's last completed turn.";
 
@@ -17,29 +18,52 @@ function projectDir(): string {
   return cwd;
 }
 
-function writeEditLog(cwd: string, envelopes: unknown[], file = "EditLog.json"): void {
-  const dir = editLoggingDir(cwd);
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, file), envelopes.map((envelope) => JSON.stringify(envelope)).join("\n"));
+/**
+ * Write the log the way Studio actually does: a single `Edit.Log` in the project
+ * root, CRLF, tab-indented objects concatenated back to back — no separator, no
+ * array, not JSONL. Fixtures that drift from this shape stop testing anything real.
+ */
+function writeEditLog(cwd: string, envelopes: unknown[], file = "Edit.Log"): void {
+  const text = envelopes.map((envelope) => JSON.stringify(envelope, null, "\t")).join("\n");
+  writeFileSync(join(cwd, file), text.replace(/\n/g, "\r\n"));
 }
 
+/** Envelope keys are PascalCase, and `ActorGuids` alone marks the human's subjects. */
 function envelope(
-  operation: string,
+  action: string,
   objects: Array<Record<string, unknown>>,
   extra: Record<string, unknown> = {},
 ): Record<string, unknown> {
-  return { timestamp: "2026-08-27T00:00:00.000Z", transactionId: "tx", operation, objects, ...extra };
+  const subjects = objects.map((object) => object.ActorGuid).filter((guid): guid is string => typeof guid === "string");
+  return {
+    Timestamp: "2026-08-27T00:00:00.000Z",
+    TransactionId: "7C20523D489A46F9D55A4384881357DD",
+    Action: action,
+    ActorGuids: subjects,
+    Objects: objects,
+    ...extra,
+  };
 }
 
+/** Real logs carry no per-object `action` or `role`; the envelope decides both. */
 function subject(
   type: string,
   guid: string,
   name: string,
-  action: string,
   changes: unknown[] = [],
   extra: Record<string, unknown> = {},
 ): Record<string, unknown> {
-  return { InstanceType: type, ActorGuid: guid, Name: name, action, role: "subject", changes, ...extra };
+  return { InstanceType: type, ActorGuid: guid, Name: name, Changes: changes, ...extra };
+}
+
+/** Log-related entries in the project root; the root also holds .umap/.ovdrjm. */
+function logFiles(cwd: string): string[] {
+  return readdirSync(cwd).filter((name) => name.toLowerCase().startsWith("edit.log"));
+}
+
+/** An object present in the envelope but not among its ActorGuids — collateral, not intent. */
+function collateral(type: string, guid: string, name: string, changes: unknown[] = []): Record<string, unknown> {
+  return { InstanceType: type, ActorGuid: guid, Name: name, Changes: changes };
 }
 
 function toolCtx() {
@@ -61,24 +85,32 @@ function promptInput(cwd: string) {
   };
 }
 
+describe("summary section titles", () => {
+  test("the web notice looks for exactly the headings the summarizer writes", () => {
+    // HumanEditsNotice has no import path into server code, so it carries its own
+    // copy of these strings and regex-parses the rendered summary for a change
+    // count. Renaming a heading on one side alone makes that count silently wrong.
+    expect([...COUNT_SECTIONS]).toEqual(Object.values(SECTION_TITLES));
+  });
+});
+
 describe("summarizeEditLog", () => {
   test("reports created, removed, moved, and modified instances by section", () => {
     const envelopes = [
-      envelope("Create", [subject("Part", "p2", "Ramp", "Create")]),
-      envelope("Delete", [subject("PointLight", "l1", "Lamp", "Delete")]),
-      envelope("Reparent", [
-        subject("Model", "m1", "Tree", "Reparent", [{ property: "Parent", before: "Workspace", after: "Props" }]),
-        {
-          InstanceType: "Folder",
-          ActorGuid: "f1",
-          Name: "Props",
-          role: "auxiliary",
-          action: "SetProperty",
-          changes: [],
-        },
-      ]),
+      envelope("Create", [subject("Part", "p2", "Ramp")]),
+      envelope("Delete", [subject("PointLight", "l1", "Lamp")]),
+      // NOTE: `Reparent` and a `Parent` property are assumed, not observed — no
+      // real capture has shown how Studio logs a drag-to-new-parent yet (OVDR-14148 Q3).
+      envelope(
+        "Reparent",
+        [
+          subject("Model", "m1", "Tree", [{ Property: "Parent", Before: "Workspace", After: "Props" }]),
+          collateral("Folder", "f1", "Props"),
+        ],
+        { ActorGuids: ["m1"] },
+      ),
       envelope("SetProperty", [
-        subject("Part", "p1", "Floor", "SetProperty", [{ property: "Size", before: "(4,1,4)", after: "(12,1,4)" }]),
+        subject("Part", "p1", "Floor", [{ Property: "Size", Before: "(4,1,4)", After: "(12,1,4)" }]),
       ]),
     ];
 
@@ -94,12 +126,8 @@ describe("summarizeEditLog", () => {
 
   test("collapses repeated edits of the same property to first-before -> last-after", () => {
     const envelopes = [
-      envelope("SetProperty", [
-        subject("Part", "p1", "Door", "SetProperty", [{ property: "CFrame", before: "A", after: "B" }]),
-      ]),
-      envelope("SetProperty", [
-        subject("Part", "p1", "Door", "SetProperty", [{ property: "CFrame", before: "B", after: "C" }]),
-      ]),
+      envelope("SetProperty", [subject("Part", "p1", "Door", [{ Property: "CFrame", Before: "A", After: "B" }])]),
+      envelope("SetProperty", [subject("Part", "p1", "Door", [{ Property: "CFrame", Before: "B", After: "C" }])]),
     ];
 
     const { output } = summarizeEditLog(envelopes.map(parse));
@@ -109,8 +137,8 @@ describe("summarizeEditLog", () => {
 
   test("folds an instance that was added and then removed into its own section", () => {
     const envelopes = [
-      envelope("Create", [subject("Tool", "w1", "Weapon", "Create")]),
-      envelope("Delete", [subject("Tool", "w1", "Weapon", "Delete")]),
+      envelope("Create", [subject("Tool", "w1", "Weapon")]),
+      envelope("Delete", [subject("Tool", "w1", "Weapon")]),
     ];
 
     const { output } = summarizeEditLog(envelopes.map(parse));
@@ -122,18 +150,18 @@ describe("summarizeEditLog", () => {
   test("renders list deltas (added/removed) and modified struct elements", () => {
     const envelopes = [
       envelope("SetProperty", [
-        subject("Workspace", "ws-0", "Workspace", "SetProperty", [
-          { property: "Tag", added: ["Enemy", "Interactable"] },
+        subject("Workspace", "ws-0", "Workspace", [
+          { Property: "Tag", Added: ["Enemy", "Interactable"] },
           {
-            property: "LuaChildren",
-            added: [{ Name: "LuaSpawnLocation", InstanceType: "SpawnLocation", ObjectGuid: "sp1" }],
+            Property: "LuaChildren",
+            Added: [{ Name: "LuaSpawnLocation", InstanceType: "SpawnLocation", ObjectGuid: "sp1" }],
           },
           {
-            property: "Attribute",
-            modified: [
+            Property: "Attribute",
+            Modified: [
               {
-                before: { Key: "TestColor", DataType: "Color3", Value: { R: 254, G: 254, B: 254 } },
-                after: { Key: "TestColor", DataType: "Color3", Value: { R: 254, G: 0, B: 0 } },
+                Before: { Key: "TestColor", DataType: "Color3", Value: { R: 254, G: 254, B: 254 } },
+                After: { Key: "TestColor", DataType: "Color3", Value: { R: 254, G: 0, B: 0 } },
               },
             ],
           },
@@ -148,30 +176,59 @@ describe("summarizeEditLog", () => {
   });
 
   test("reports script Source changes as events without content", () => {
-    const envelopes = [
-      envelope("SetProperty", [subject("Script", "s1", "GameLoop", "SetProperty", [{ property: "Source" }])]),
-    ];
+    const envelopes = [envelope("SetProperty", [subject("Script", "s1", "GameLoop", [{ Property: "Source" }])])];
 
     const { output } = summarizeEditLog(envelopes.map(parse));
     expect(output).toContain('* Script "GameLoop" (s1): source edited 1 time(s)');
     expect(output).toContain("content is not logged");
   });
 
-  test("falls back to subjectGuids when records carry no role", () => {
+  test("reports only the envelope's ActorGuids, dropping collateral objects", () => {
+    // Studio lists the edit's fallout alongside its subject: creating a script
+    // also logs the parent's LuaChildren change. Only ActorGuids is human intent.
     const envelopes = [
       envelope(
         "Create",
         [
-          { InstanceType: "Camera", ObjectGuid: "c1", Name: "Camera", changes: [] },
-          { InstanceType: "Workspace", ObjectGuid: "ws-0", Name: "Workspace", changes: [] },
+          subject("LocalScript", "c1", "Controller"),
+          collateral("Part", "ws-0", "Workspace", [
+            { Property: "LuaChildren", Added: [{ InstanceType: "LocalScript", Name: "Controller", ActorGuid: "c1" }] },
+          ]),
         ],
-        { ObjectGuids: ["c1"] },
+        { ActorGuids: ["c1"] },
       ),
     ];
 
     const { output } = summarizeEditLog(envelopes.map(parse));
-    expect(output).toContain('+ Camera "Camera" (c1)');
+    expect(output).toContain('+ LocalScript "Controller" (c1)');
     expect(output).not.toContain("Workspace");
+  });
+
+  test("reports a source edit on a freshly created script, not just the creation", () => {
+    // The creator adds a script and immediately types into it. Reporting only
+    // "added" reads as an empty new script, and the agent overwrites their code.
+    const envelopes = [
+      envelope("Create", [subject("LocalScript", "s1", "abab")]),
+      envelope("SetProperty", [subject("LocalScript", "s1", "abab", [{ Property: "Source", Changed: true }])]),
+    ];
+
+    const { output, editCount } = summarizeEditLog(envelopes.map(parse));
+    expect(output).toContain('+ LocalScript "abab" (s1)');
+    expect(output).toContain('* LocalScript "abab" (s1): source edited 1 time(s)');
+    expect(editCount).toBe(2);
+  });
+
+  test("omits the source note when the script was created and then deleted", () => {
+    // Nothing left to read, so pointing the agent at the script would be noise.
+    const envelopes = [
+      envelope("Create", [subject("LocalScript", "s1", "abab")]),
+      envelope("SetProperty", [subject("LocalScript", "s1", "abab", [{ Property: "Source", Changed: true }])]),
+      envelope("Delete", [subject("LocalScript", "s1", "abab")]),
+    ];
+
+    const { output } = summarizeEditLog(envelopes.map(parse));
+    expect(output).toContain('± LocalScript "abab" (s1)');
+    expect(output).not.toContain("source edited");
   });
 
   test("returns the no-edits message for an empty batch", () => {
@@ -284,27 +341,25 @@ describe("consumeHumanEdits", () => {
 
   test("rotates log files immediately and deletes them only on finalize", () => {
     const cwd = projectDir();
-    writeEditLog(cwd, [envelope("Create", [subject("Part", "p2", "Ramp", "Create")])]);
+    writeEditLog(cwd, [envelope("Create", [subject("Part", "p2", "Ramp")])]);
 
     const capture = consumeHumanEdits(cwd);
     expect(capture.result.metadata?.humanEditsDetected).toBe(true);
-    const afterConsume = readdirSync(editLoggingDir(cwd));
+    const afterConsume = logFiles(cwd);
     expect(afterConsume.some((name) => name.endsWith(".consuming"))).toBe(true);
-    expect(afterConsume).not.toContain("EditLog.json");
+    expect(afterConsume).not.toContain("Edit.Log");
 
     capture.finalize();
-    expect(readdirSync(editLoggingDir(cwd))).toEqual([]);
+    expect(logFiles(cwd)).toEqual([]);
   });
 
   test("re-reads leftover .consuming files from a crashed turn", () => {
     const cwd = projectDir();
-    const dir = editLoggingDir(cwd);
-    mkdirSync(dir, { recursive: true });
     writeFileSync(
-      join(dir, "EditLog.json.old.consuming"),
-      JSON.stringify(envelope("Create", [subject("Part", "p1", "Old", "Create")])),
+      join(cwd, "Edit.Log.old.consuming"),
+      JSON.stringify(envelope("Create", [subject("Part", "p1", "Old")])),
     );
-    writeEditLog(cwd, [envelope("Create", [subject("Part", "p2", "New", "Create")])]);
+    writeEditLog(cwd, [envelope("Create", [subject("Part", "p2", "New")])]);
 
     const { result } = consumeHumanEdits(cwd);
     expect(result.output).toContain('+ Part "Old" (p1)');
@@ -313,13 +368,11 @@ describe("consumeHumanEdits", () => {
 
   test("counts malformed envelopes but keeps the parsable ones", () => {
     const cwd = projectDir();
-    const dir = editLoggingDir(cwd);
-    mkdirSync(dir, { recursive: true });
     // A brace-balanced but invalid chunk is a parse failure; a truncated tail
     // (mid-append) is silently dropped instead.
     writeFileSync(
-      join(dir, "EditLog.json"),
-      `${JSON.stringify(envelope("Create", [subject("Part", "p2", "Ramp", "Create")]))}\n{"bad": }\n{"truncated`,
+      join(cwd, "Edit.Log"),
+      `${JSON.stringify(envelope("Create", [subject("Part", "p2", "Ramp")]))}\n{"bad": }\n{"truncated`,
     );
 
     const { result } = consumeHumanEdits(cwd);
@@ -329,12 +382,7 @@ describe("consumeHumanEdits", () => {
 
   test("accepts a whole-file JSON array as well as JSONL", () => {
     const cwd = projectDir();
-    const dir = editLoggingDir(cwd);
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(
-      join(dir, "EditLog.json"),
-      JSON.stringify([envelope("Create", [subject("Part", "p2", "Ramp", "Create")])]),
-    );
+    writeFileSync(join(cwd, "Edit.Log"), JSON.stringify([envelope("Create", [subject("Part", "p2", "Ramp")])]));
 
     const { result } = consumeHumanEdits(cwd);
     expect(result.output).toContain('+ Part "Ramp" (p2)');
@@ -344,12 +392,12 @@ describe("consumeHumanEdits", () => {
 describe("createHumanEditsTool", () => {
   test("serves the turn-start cache and reports edits made during the turn", async () => {
     const cwd = projectDir();
-    writeEditLog(cwd, [envelope("Create", [subject("Part", "p2", "Ramp", "Create")])]);
+    writeEditLog(cwd, [envelope("Create", [subject("Part", "p2", "Ramp")])]);
     const capture = consumeHumanEdits(cwd);
     capture.finalize();
 
     // Human keeps editing while the agent works.
-    writeEditLog(cwd, [envelope("Delete", [subject("Part", "p9", "Crate", "Delete")])]);
+    writeEditLog(cwd, [envelope("Delete", [subject("Part", "p9", "Crate")])]);
 
     const tool = createHumanEditsTool(cwd, () => capture.result);
     const result = await tool.execute({} as never, toolCtx());
@@ -357,7 +405,7 @@ describe("createHumanEditsTool", () => {
     expect(result.output).toContain("while this turn was in progress");
     expect(result.output).toContain('- Part "Crate" (p9)');
     // Peek must not consume: the mid-turn log stays for the next turn.
-    expect(readdirSync(editLoggingDir(cwd))).toContain("EditLog.json");
+    expect(logFiles(cwd)).toContain("Edit.Log");
   });
 
   test("returns the no-edits message when nothing is pending or cached", async () => {
@@ -386,7 +434,7 @@ describe("human-edits unified loop-hook context injection", () => {
 
   test("consumes the log in the outer hook and injects the summary through an Agent loop hook", async () => {
     const cwd = projectDir();
-    writeEditLog(cwd, [envelope("Create", [subject("Part", "p2", "Ramp", "Create")])]);
+    writeEditLog(cwd, [envelope("Create", [subject("Part", "p2", "Ramp")])]);
     const p = promptProvider();
 
     const result = await p.onUserPromptSubmit(promptInput(cwd));
@@ -405,7 +453,7 @@ describe("human-edits unified loop-hook context injection", () => {
     });
     expect(injections?.[0]?.content).toContain('+ Part "Ramp" (p2)');
     // Injection delivered -> consumed log files are gone.
-    expect(readdirSync(editLoggingDir(cwd))).toEqual([]);
+    expect(logFiles(cwd)).toEqual([]);
   });
 
   test("injects nothing when the log is empty", async () => {

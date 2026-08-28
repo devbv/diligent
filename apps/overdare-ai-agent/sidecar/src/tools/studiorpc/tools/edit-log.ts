@@ -10,17 +10,11 @@ import { decodeOvdrjm, isRecord } from "./ovdrjm-utils";
  * Studio recreates the file when it is missing, which is what makes the
  * rotate-and-delete consumption model safe.
  *
- * Current Studio builds write a single `Edit.Log` in the project root (next to
- * the .umap); the planned `Saved/EditLogging/` directory is scanned too so a
- * relocation doesn't break us.
+ * Studio writes a single `Edit.Log` in the project root, next to the .umap.
  */
 const ROOT_LOG_NAME = "edit.log";
 
-export function editLoggingDir(cwd: string): string {
-  return join(cwd, "Saved", "EditLogging");
-}
-
-/** Pending (and leftover `.consuming`) log files across both known locations. */
+/** Pending (and leftover `.consuming`) log files in the project root. */
 function listLogFiles(cwd: string): { pending: string[]; leftovers: string[] } {
   const pending: string[] = [];
   const leftovers: string[] = [];
@@ -36,9 +30,8 @@ function listLogFiles(cwd: string): { pending: string[]; leftovers: string[] } {
       else if (accept(name)) pending.push(join(dir, name));
     }
   };
-  // Project root holds unrelated files, so only the exact log name is accepted there.
+  // The root holds unrelated files (Play.log, .umap), so only the exact name is accepted.
   scan(cwd, (name) => name.toLowerCase() === ROOT_LOG_NAME);
-  scan(editLoggingDir(cwd), isEditLogName);
   return { pending, leftovers };
 }
 
@@ -47,6 +40,20 @@ const CONSUMING_SUFFIX = ".consuming";
 
 const VALUE_MAX_CHARS = 120;
 const MAX_SECTION_ENTRIES = 30;
+
+/**
+ * Section headings of the rendered summary. The web notice re-parses these out of
+ * the text to show a change count, so renaming one here silently breaks that count
+ * — `studiorpc-human-edits.test.ts` asserts the two lists stay in step.
+ */
+export const SECTION_TITLES = {
+  added: "Added",
+  addedThenRemoved: "Added then removed",
+  removed: "Removed",
+  moved: "Moved",
+  modified: "Modified",
+  sourceChanged: "Script source changed",
+} as const;
 
 export const TURN_START_HEADER = "Human edits since the agent's last completed turn:";
 export const MID_TURN_HEADER = "Human edits made while this turn was in progress:";
@@ -58,7 +65,7 @@ interface EditLogChange {
   after?: unknown;
   added?: unknown[];
   removed?: unknown[];
-  modified?: Array<{ before?: unknown; after?: unknown }>;
+  modified?: Array<Record<string, unknown>>;
 }
 
 interface EditLogObject {
@@ -219,11 +226,6 @@ function parseEnvelopeText(text: string): { envelopes: EditLogEnvelope[]; failur
   }
 }
 
-function isEditLogName(name: string): boolean {
-  const lower = name.toLowerCase();
-  return lower.endsWith(".json") || lower.endsWith(".jsonl");
-}
-
 function readBatchFiles(paths: string[]): Omit<EditLogBatch, "consumedPaths"> {
   const envelopes: EditLogEnvelope[] = [];
   let parseFailures = 0;
@@ -311,12 +313,15 @@ function formatListItem(item: unknown): string {
 }
 
 /** Best-effort identity of a modified struct element (e.g. an Attribute's Key). */
-function formatModifiedItem(item: { before?: unknown; after?: unknown }): string {
+function formatModifiedItem(item: Record<string, unknown>): string {
+  // Every other field goes through pick(); these nested elements must too, or a
+  // PascalCase log (what Studio actually writes) renders as undefined -> undefined.
+  const before = pick(item, "before", "Before");
+  const after = pick(item, "after", "After");
   const key =
-    (isRecord(item.before) ? asString(item.before.Key) : undefined) ??
-    (isRecord(item.after) ? asString(item.after.Key) : undefined);
+    (isRecord(before) ? asString(before.Key) : undefined) ?? (isRecord(after) ? asString(after.Key) : undefined);
   const label = key ? `"${key}": ` : "";
-  return `${label}${formatValue(item.before)} -> ${formatValue(item.after)}`;
+  return `${label}${formatValue(before)} -> ${formatValue(after)}`;
 }
 
 const CREATE_ACTION = /create/i;
@@ -447,6 +452,14 @@ export function summarizeEditLog(
   const sourceChanged: string[] = [];
 
   for (const target of targets.values()) {
+    // Checked before the create/remove branches below: a script that was created
+    // and then written to is reported as both, or the agent sees "a new empty
+    // LocalScript" and overwrites the code the creator just typed into it.
+    if (target.sourceEdits > 0 && !target.removed) {
+      sourceChanged.push(
+        `* ${label(target)}: source edited ${target.sourceEdits} time(s) — content is not logged; read the script for its current state`,
+      );
+    }
     if (target.created && target.removed) {
       addedThenRemoved.push(`± ${label(target)}`);
       continue;
@@ -464,20 +477,15 @@ export function summarizeEditLog(
     }
     const details = detailLines(target);
     if (details.length > 0) modified.push([`~ ${label(target)}`, ...details].join("\n"));
-    if (target.sourceEdits > 0) {
-      sourceChanged.push(
-        `* ${label(target)}: source edited ${target.sourceEdits} time(s) — content is not logged; read the script for its current state`,
-      );
-    }
   }
 
   const sections = [
-    cappedSection("Added", added),
-    cappedSection("Added then removed", addedThenRemoved),
-    cappedSection("Removed", removed),
-    cappedSection("Moved", moved),
-    cappedSection("Modified", modified),
-    cappedSection("Script source changed", sourceChanged),
+    cappedSection(SECTION_TITLES.added, added),
+    cappedSection(SECTION_TITLES.addedThenRemoved, addedThenRemoved),
+    cappedSection(SECTION_TITLES.removed, removed),
+    cappedSection(SECTION_TITLES.moved, moved),
+    cappedSection(SECTION_TITLES.modified, modified),
+    cappedSection(SECTION_TITLES.sourceChanged, sourceChanged),
   ].filter((section): section is string => section !== undefined);
 
   const editCount =

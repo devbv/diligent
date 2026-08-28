@@ -9,7 +9,8 @@ interface HumanEditsNoticeProps {
   summary: string;
 }
 
-const COUNT_SECTIONS = [
+/** Kept in step with SECTION_TITLES in tools/studiorpc/tools/edit-log.ts by a test. */
+export const COUNT_SECTIONS = [
   "Added",
   "Added then removed",
   "Removed",
