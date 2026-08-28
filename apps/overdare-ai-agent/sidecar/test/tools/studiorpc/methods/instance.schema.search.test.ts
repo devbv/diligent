@@ -35,14 +35,6 @@ describe("instance.schema.search arguments", () => {
     expect(params.parse({ classes: ["Part"] }).classes).toEqual(["Part"]);
   });
 
-  test("defaults limit to the server's page size and rejects out-of-range values", () => {
-    expect(params.parse({ query: "color" }).limit).toBe(50);
-    expect(params.parse({ query: "color", limit: 100 }).limit).toBe(100);
-    expect(() => params.parse({ query: "color", limit: 0 })).toThrow();
-    expect(() => params.parse({ query: "color", limit: 101 })).toThrow();
-    expect(() => params.parse({ query: "color", limit: 1.5 })).toThrow();
-  });
-
   test("rejects blank names and oversized class lists rather than sending them to Studio", () => {
     expect(() => params.parse({ query: "" })).toThrow();
     expect(() => params.parse({ classes: [""] })).toThrow();
@@ -53,8 +45,9 @@ describe("instance.schema.search arguments", () => {
     expect(() => params.parse({ query: "color", writableOnly: false })).toThrow();
   });
 
-  test("accepts an opaque cursor for the next page", () => {
-    expect(params.parse({ query: "color", cursor: "abc" }).cursor).toBe("abc");
+  test("rejects the removed pagination arguments", () => {
+    expect(() => params.parse({ query: "color", limit: 10 })).toThrow();
+    expect(() => params.parse({ query: "color", cursor: "abc" })).toThrow();
   });
 });
 
@@ -68,43 +61,38 @@ describe("instance.schema.search tool", () => {
     const calls: RpcCall[] = [];
     const result = {
       schemaVersion: "blake3:abc",
-      matches: [
+      classes: [
         {
           class: "Part",
           creatable: true,
           service: false,
-          property: { name: "Color", declaredOn: "BasePart", valueSchema: { type: "object" } },
+          properties: [{ name: "Color", declaredOn: "BasePart", valueSchema: { type: "object" } }],
         },
       ],
-      nextCursor: null,
     };
     const tool = await loadTool(() => result, calls);
 
-    const executed = await tool.execute({ query: "color", classes: ["Part"], limit: 50 }, toolContext());
+    const executed = await tool.execute({ query: "color", classes: ["Part"] }, toolContext());
 
-    expect(calls).toEqual([
-      { method: "instance.schema.search", params: { query: "color", classes: ["Part"], limit: 50 } },
-    ]);
+    expect(calls).toEqual([{ method: "instance.schema.search", params: { query: "color", classes: ["Part"] } }]);
     expect(JSON.parse(executed.output)).toEqual(result);
     expect(executed.metadata).toMatchObject({ method: "instance.schema.search" });
   });
 
-  test("reports an empty result as an empty match list, not as a failure", async () => {
-    const tool = await loadTool(() => ({ schemaVersion: "blake3:abc", matches: [], nextCursor: null }));
+  test("reports an empty result as an empty class list, not as a failure", async () => {
+    const tool = await loadTool(() => ({ schemaVersion: "blake3:abc", classes: [] }));
 
     const executed = await tool.execute({ classes: ["NoSuchClass"] }, toolContext());
 
-    expect(JSON.parse(executed.output).matches).toEqual([]);
+    expect(JSON.parse(executed.output).classes).toEqual([]);
     expect(executed.metadata).not.toMatchObject({ error: true });
   });
 
   test("propagates a Studio error instead of reporting an empty schema", async () => {
     const tool = await loadTool(() => {
-      throw new Error("Invalid params: cursor does not belong to this query");
+      throw new Error("Schema search failed");
     });
 
-    await expect(tool.execute({ query: "color", cursor: "stale" }, toolContext())).rejects.toThrow(
-      "cursor does not belong to this query",
-    );
+    await expect(tool.execute({ query: "color" }, toolContext())).rejects.toThrow("Schema search failed");
   });
 });
