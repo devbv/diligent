@@ -41,12 +41,8 @@ from typing import Any
 # ---------------------------------------------------------------------------
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_PROJECT_ROOT = os.path.abspath(os.path.join(_HERE, "..", "..", ".."))
-_V1_METRICS_DIR = os.path.join(
-    _PROJECT_ROOT, ".claude", "skills", "humanize-korean", "references"
-)
-if _V1_METRICS_DIR not in sys.path:
-    sys.path.insert(0, _V1_METRICS_DIR)
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
 
 import metrics as _v1  # noqa: E402  (sys.path mutation is intentional)
 
