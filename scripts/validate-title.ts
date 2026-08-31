@@ -57,7 +57,7 @@ function validateTitle(title: string): { valid: boolean; error?: string } {
     };
   }
 
-  const summary = match[3] ?? "";
+  const summary = match[2] ?? "";
   if (summary.length > MAX_SUMMARY_LENGTH) {
     return {
       valid: false,
