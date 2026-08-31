@@ -34,3 +34,6 @@ artifacts/
 # Runtime state outside the repository root
 **/.diligent/
 !/.diligent/
+
+# Understand-Anything generated knowledge graph
+.ua/
