@@ -15,6 +15,14 @@ test("toWebImageUrl converts persisted local image paths to encoded route URLs",
   );
 });
 
+test("toWebImageUrl converts cwd-relative persisted paths", () => {
+  // toPersistedLocalImagePath stores attachments relative to cwd, so restored session messages and
+  // steer echoes carry this form. Leaving it unconverted renders an "Image unavailable" placeholder.
+  expect(toWebImageUrl(".overdare/images/thread-1/shot.png")).toBe(`${WEB_IMAGE_ROUTE_PREFIX}thread-1/shot.png`);
+  expect(toWebImageUrl(".diligent/images/drafts/shot.png")).toBe(`${WEB_IMAGE_ROUTE_PREFIX}drafts/shot.png`);
+  expect(toWebImageUrl(".overdare\\images\\thread-1\\shot.png")).toBe(`${WEB_IMAGE_ROUTE_PREFIX}thread-1/shot.png`);
+});
+
 test("toWebImageUrl leaves non-diligent paths unchanged", () => {
   expect(toWebImageUrl("/tmp/shot.png")).toBe("/tmp/shot.png");
   expect(toWebImageUrl("/repo/images/shot.png")).toBe("/repo/images/shot.png");

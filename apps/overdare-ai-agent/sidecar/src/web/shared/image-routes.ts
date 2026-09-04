@@ -2,7 +2,11 @@
 
 export const WEB_IMAGE_ROUTE_PREFIX = "/_diligent/image/";
 
-const HIDDEN_STORAGE_IMAGES_PATTERN = /[\\/]\.[^\\/]+[\\/]images[\\/]/g;
+// Persisted paths reach the client both absolute ("/repo/.overdare/images/...") and relative to
+// cwd (".overdare/images/...", produced by toPersistedLocalImagePath). Anchor on the start of the
+// string too, or the relative form falls through unconverted and the browser resolves it against
+// the page URL — a 404 that renders as an "Image unavailable" placeholder.
+const HIDDEN_STORAGE_IMAGES_PATTERN = /(?:^|[\\/])\.[^\\/]+[\\/]images[\\/]/g;
 
 export function toWebImageUrl(localPath: string): string {
   const relativePath = extractDiligentImageRelativePath(localPath);
