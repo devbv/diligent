@@ -88,6 +88,7 @@ export function useAppState({
     resetDraftModel: providerMgr.resetDraftModel,
     setEffortState,
     activateThreadPrompts: serverRequests.activateThread,
+    shelveThreadPrompts: serverRequests.shelveActivePrompts,
     clearAttention: notificationState.clearAttention,
     closeModals: modalState.closeModals,
   });

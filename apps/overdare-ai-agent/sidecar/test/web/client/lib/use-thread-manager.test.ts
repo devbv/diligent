@@ -5,6 +5,7 @@ import type { AgentContextItem } from "../../../../src/web/client/lib/agent-nati
 import {
   clearDraftThreadInput,
   DRAFT_INPUT_KEY,
+  deactivateThreadSubscription,
   mergeThreadContextItems,
   switchThreadSubscription,
 } from "../../../../src/web/client/lib/use-thread-manager";
@@ -117,4 +118,45 @@ test("mergeThreadContextItems returns the same object when clearing an absent th
   const next = mergeThreadContextItems(prev, "t2", []);
 
   expect(next).toBe(prev);
+});
+
+test("deactivateThreadSubscription shelves prompts when leaving for a draft", async () => {
+  // New conversation opens a draft, which has no thread id, so activateThreadPrompts never runs.
+  // Without shelving here the previous thread's question UI stays mounted over the new conversation.
+  const rpc = { unsubscribe: mock(async () => ({ ok: true })) } as const;
+  const shelveThreadPrompts = mock(() => {});
+
+  await deactivateThreadSubscription({
+    rpc: rpc as never,
+    activeSubscription: { threadId: "thread-1", subscriptionId: "sub:thread-1" },
+    shelveThreadPrompts,
+  });
+
+  expect(shelveThreadPrompts).toHaveBeenCalledTimes(1);
+  expect(rpc.unsubscribe).toHaveBeenCalledWith("sub:thread-1");
+});
+
+test("deactivateThreadSubscription shelves prompts even without an active subscription", async () => {
+  const shelveThreadPrompts = mock(() => {});
+
+  await deactivateThreadSubscription({ rpc: null, activeSubscription: null, shelveThreadPrompts });
+
+  expect(shelveThreadPrompts).toHaveBeenCalledTimes(1);
+});
+
+test("deactivateThreadSubscription still shelves prompts when unsubscribe fails", async () => {
+  const rpc = {
+    unsubscribe: mock(async () => {
+      throw new Error("socket closed");
+    }),
+  } as const;
+  const shelveThreadPrompts = mock(() => {});
+
+  await deactivateThreadSubscription({
+    rpc: rpc as never,
+    activeSubscription: { threadId: "thread-1", subscriptionId: "sub:thread-1" },
+    shelveThreadPrompts,
+  });
+
+  expect(shelveThreadPrompts).toHaveBeenCalledTimes(1);
 });

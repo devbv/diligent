@@ -102,6 +102,36 @@ export async function switchThreadSubscription({
   return { threadId, subscriptionId: subscribed.subscriptionId };
 }
 
+/**
+ * Leave the active thread without opening another one — the New conversation and
+ * delete-last-thread paths. A draft has no thread id, so activateThreadPrompts never runs for it;
+ * shelving here is what stops the previous thread's question/approval UI from staying mounted over
+ * the new conversation.
+ */
+export async function deactivateThreadSubscription({
+  rpc,
+  activeSubscription,
+  shelveThreadPrompts,
+}: {
+  rpc: WebRpcClient | null;
+  activeSubscription: ActiveThreadSubscription | null;
+  shelveThreadPrompts: () => void;
+}): Promise<void> {
+  shelveThreadPrompts();
+
+  if (!rpc || !activeSubscription) return;
+  try {
+    await rpc.unsubscribe(activeSubscription.subscriptionId);
+  } catch (error) {
+    logger.warn("subscription.unsubscribe_failed", {
+      message: "Failed to unsubscribe from active thread",
+      error,
+      threadId: activeSubscription.threadId,
+      fields: { subscriptionId: activeSubscription.subscriptionId },
+    });
+  }
+}
+
 export function useThreadManager({
   rpcRef,
   dispatch,
@@ -110,6 +140,7 @@ export function useThreadManager({
   resetDraftModel,
   setEffortState,
   activateThreadPrompts,
+  shelveThreadPrompts,
   clearAttention,
   closeModals,
 }: {
@@ -120,6 +151,7 @@ export function useThreadManager({
   resetDraftModel: () => void;
   setEffortState: (effort: ThinkingEffort) => void;
   activateThreadPrompts: (threadId: string) => void;
+  shelveThreadPrompts: () => void;
   clearAttention: (threadId: string) => void;
   closeModals: () => void;
 }) {
@@ -160,21 +192,14 @@ export function useThreadManager({
   }, []);
 
   const deactivateServerThread = useCallback(async (): Promise<void> => {
-    const rpc = rpcRef.current;
     const activeSubscription = activeSubscriptionRef.current;
     activeSubscriptionRef.current = null;
-    if (!rpc || !activeSubscription) return;
-    try {
-      await rpc.unsubscribe(activeSubscription.subscriptionId);
-    } catch (error) {
-      logger.warn("subscription.unsubscribe_failed", {
-        message: "Failed to unsubscribe from active thread",
-        error,
-        threadId: activeSubscription.threadId,
-        fields: { subscriptionId: activeSubscription.subscriptionId },
-      });
-    }
-  }, [rpcRef]);
+    await deactivateThreadSubscription({
+      rpc: rpcRef.current,
+      activeSubscription,
+      shelveThreadPrompts,
+    });
+  }, [rpcRef, shelveThreadPrompts]);
 
   const activateServerThread = useCallback(
     async (threadId: string): Promise<ThreadReadResponse> => {

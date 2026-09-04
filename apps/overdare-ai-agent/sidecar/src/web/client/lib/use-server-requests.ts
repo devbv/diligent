@@ -227,5 +227,6 @@ export function useServerRequests(
     resolveApproval,
     resolveQuestion,
     activateThread,
+    shelveActivePrompts,
   };
 }
